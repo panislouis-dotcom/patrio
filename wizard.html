@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Patrio — Calcula tu proyecto</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+  <div class="wizard">
+
+    <!-- Header -->
+    <header class="wizard__header">
+      <div class="wizard__header-inner">
+        <a href="index.html" class="logo">PATRIO</a>
+        <span class="wizard__step-label">Paso 1 de 8</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-bar__fill" style="width: 12.5%"></div>
+      </div>
+    </header>
+
+    <!-- Body -->
+    <main class="wizard__body">
+
+      <!-- ========== PASO 1: Situación ========== -->
+      <div class="wizard__step active" data-step="1">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Cuál es tu situación?</h1>
+          <p class="wizard__hint fade-in-up">Esto nos ayuda a personalizar tu experiencia.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="adquirir">
+              <div class="option-card__icon">
+                <i data-lucide="plus-circle" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Quiero adquirir o construir un proyecto</div>
+                <div class="option-card__desc">Busco mi primera inversión inmobiliaria con capital propio.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="propiedad">
+              <div class="option-card__icon">
+                <i data-lucide="home" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Ya cuento con una propiedad</div>
+                <div class="option-card__desc">Tengo un inmueble o terreno y quiero saber qué hacer con él.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 2: Objetivo ========== -->
+      <div class="wizard__step" data-step="2">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Cuál es tu objetivo?</h1>
+          <p class="wizard__hint fade-in-up">Esto define cómo presentamos tus resultados.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="patrimonio">
+              <div class="option-card__icon">
+                <i data-lucide="trending-up" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Construir patrimonio a largo plazo</div>
+                <div class="option-card__desc">Para mí o mi familia.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="ingreso">
+              <div class="option-card__icon">
+                <i data-lucide="wallet" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Generar ingresos mensuales</div>
+                <div class="option-card__desc">Que me den tranquilidad financiera.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="independencia">
+              <div class="option-card__icon">
+                <i data-lucide="sun" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Alcanzar independencia financiera</div>
+                <div class="option-card__desc">Vivir de mis activos.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 3: Ciudad ========== -->
+      <div class="wizard__step" data-step="3">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿En qué ciudad te interesa invertir?</h1>
+          <p class="wizard__hint fade-in-up">Cada mercado tiene oportunidades diferentes.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="monterrey">
+              <div class="option-card__icon">
+                <i data-lucide="building-2" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Monterrey</div>
+                <div class="option-card__desc">Alta demanda de renta, zonas consolidadas con crecimiento constante.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="saltillo">
+              <div class="option-card__icon">
+                <i data-lucide="mountain" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Saltillo</div>
+                <div class="option-card__desc">Costos de entrada más accesibles, mercado en expansión industrial.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 4: Tipo de proyecto ========== -->
+      <div class="wizard__step" data-step="4">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Qué tipo de proyecto te interesa?</h1>
+          <p class="wizard__hint fade-in-up">Puedes elegir uno o dejar que te recomendemos.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="multifamiliar">
+              <div class="option-card__icon">
+                <i data-lucide="building" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Multifamiliar</div>
+                <div class="option-card__desc">Construcción nueva de estudios o departamentos para renta (4-10 unidades). $3.5M–$6M | Cap Rate 10%–16%</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="casa_renovada">
+              <div class="option-card__icon">
+                <i data-lucide="hammer" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Casa renovada en estudios</div>
+                <div class="option-card__desc">Adquirir una casa y convertirla en 2-4 unidades independientes. Ideal para primer proyecto. $2M–$3.5M | Cap Rate 14%–20%</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="local_comercial">
+              <div class="option-card__icon">
+                <i data-lucide="store" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Local comercial</div>
+                <div class="option-card__desc">2-6 espacios comerciales de 20-60 m². Mayor renta por m² que residencial. $2.5M–$5M | Cap Rate 8%–14%</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="bodega">
+              <div class="option-card__icon">
+                <i data-lucide="warehouse" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Bodega / Nave industrial</div>
+                <div class="option-card__desc">Bodegas de 150-500 m² en zonas industriales. Alta demanda de PyMEs y talleres. $3M–$6M | Cap Rate 9%–14%</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="recomendado">
+              <div class="option-card__icon">
+                <i data-lucide="sparkles" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">El que mejor se adapte a mi situación</div>
+                <div class="option-card__desc">Patrio recomienda la mejor opción según tu capital y zona.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 5: Capital ========== -->
+      <div class="wizard__step" data-step="5">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Con cuánto cuentas hoy?</h1>
+          <p class="wizard__hint fade-in-up">Tu capital propio disponible para invertir.</p>
+
+          <div class="wizard__form fade-in-up">
+            <div class="input-group">
+              <label class="input-label" for="capital">Capital propio disponible</label>
+              <div class="input-currency">
+                <span class="input-currency__symbol">$</span>
+                <input
+                  type="text"
+                  id="capital"
+                  class="input-field input-field--large"
+                  placeholder="2,500,000"
+                  inputmode="numeric"
+                  autocomplete="off"
+                >
+              </div>
+              <span class="input-helper">Monto en pesos mexicanos</span>
+            </div>
+
+            <div class="input-group" style="margin-top: 32px;">
+              <label class="input-label">¿Buscas complementar con crédito bancario?</label>
+              <div class="wizard__options wizard__options--inline">
+                <div class="option-card option-card--small" data-value="si" data-field="credito">
+                  <div class="option-card__text">
+                    <div class="option-card__title">Sí</div>
+                  </div>
+                  <div class="option-card__check">
+                    <i data-lucide="check" style="width:14px;height:14px;"></i>
+                  </div>
+                </div>
+                <div class="option-card option-card--small" data-value="no" data-field="credito">
+                  <div class="option-card__text">
+                    <div class="option-card__title">No</div>
+                  </div>
+                  <div class="option-card__check">
+                    <i data-lucide="check" style="width:14px;height:14px;"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="input-group credit-amount-group" style="margin-top: 32px; display: none;">
+              <label class="input-label" for="credito-monto">Monto estimado de crédito</label>
+              <div class="input-currency">
+                <span class="input-currency__symbol">$</span>
+                <input
+                  type="text"
+                  id="credito-monto"
+                  class="input-field input-field--large"
+                  placeholder="1,500,000"
+                  inputmode="numeric"
+                  autocomplete="off"
+                >
+              </div>
+              <span class="input-helper">Aproximado que podrías obtener</span>
+            </div>
+          </div>
+
+          <div class="wizard__footer" style="margin-top: 48px;">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Ver resultados
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 6: Resultados ========== -->
+      <div class="wizard__step" data-step="6">
+        <div class="wizard__content">
+          <p class="wizard__hint fade-in-up" id="results-subtitle">Tu proyecto en Monterrey</p>
+          <h1 class="wizard__question fade-in-up" id="results-project-type">Casa renovada en estudios</h1>
+
+          <div class="results-hero fade-in-up">
+            <div class="results-hero__number" id="results-monthly-income">$35,000</div>
+            <div class="results-hero__label">ingreso mensual estimado</div>
+          </div>
+
+          <div class="results-grid fade-in-up">
+            <div class="results-metric">
+              <div class="results-metric__number" id="results-cap-rate">14.8%</div>
+              <div class="results-metric__label">Cap Rate anual</div>
+              <div class="results-metric__hint">Tu dinero genera este % anual solo en rentas</div>
+            </div>
+            <div class="results-metric">
+              <div class="results-metric__number" id="results-payback">6 años</div>
+              <div class="results-metric__label">Se paga solo</div>
+              <div class="results-metric__hint">Las rentas acumuladas cubren tu inversión</div>
+            </div>
+            <div class="results-metric">
+              <div class="results-metric__number" id="results-total-return">$7.2M</div>
+              <div class="results-metric__label">Retorno a 10 años</div>
+              <div class="results-metric__hint">Rentas acumuladas + plusvalía del inmueble</div>
+            </div>
+          </div>
+
+          <div class="results-patrimonio fade-in-up">
+            <div class="results-patrimonio__icon">
+              <i data-lucide="trending-up" style="width:20px;height:20px;"></i>
+            </div>
+            <div class="results-patrimonio__text">
+              <span class="results-patrimonio__label">Crecimiento de tu patrimonio</span>
+              <span class="results-patrimonio__value" id="results-patrimonio-value">$5.4M estimados a 10 años</span>
+            </div>
+          </div>
+
+          <div class="wizard__footer fade-in-up">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn">
+              Ver hoja de ruta
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 7: Hoja de ruta ========== -->
+      <div class="wizard__step" data-step="7">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">Tu hoja de ruta</h1>
+          <p class="wizard__hint fade-in-up">Los pasos concretos para hacerlo realidad. PAGU te acompaña en cada uno.</p>
+
+          <div class="roadmap fade-in-up">
+            <div class="roadmap__item">
+              <div class="roadmap__number">1</div>
+              <div class="roadmap__text">
+                <div class="roadmap__title">Definición del proyecto y modelo financiero</div>
+                <div class="roadmap__pagu">Asesoría estratégica inicial</div>
+              </div>
+            </div>
+            <div class="roadmap__item">
+              <div class="roadmap__number">2</div>
+              <div class="roadmap__text">
+                <div class="roadmap__title">Búsqueda e identificación de la propiedad</div>
+                <div class="roadmap__pagu">Búsqueda y negociación</div>
+              </div>
+            </div>
+            <div class="roadmap__item">
+              <div class="roadmap__number">3</div>
+              <div class="roadmap__text">
+                <div class="roadmap__title">Due diligence legal y técnico del inmueble</div>
+                <div class="roadmap__pagu">Revisión jurídica y estructural</div>
+              </div>
+            </div>
+            <div class="roadmap__item">
+              <div class="roadmap__number">4</div>
+              <div class="roadmap__text">
+                <div class="roadmap__title">Gestión del crédito bancario</div>
+                <div class="roadmap__pagu">Orientación en el proceso</div>
+              </div>
+            </div>
+            <div class="roadmap__item">
+              <div class="roadmap__number">5</div>
+              <div class="roadmap__text">
+                <div class="roadmap__title">Diseño arquitectónico del proyecto</div>
+                <div class="roadmap__pagu">Servicio de diseño PAGU</div>
+              </div>
+            </div>
+            <div class="roadmap__item">
+              <div class="roadmap__number">6</div>
+              <div class="roadmap__text">
+                <div class="roadmap__title">Tramitación de permisos de construcción</div>
+                <div class="roadmap__pagu">Gestión municipal</div>
+              </div>
+            </div>
+            <div class="roadmap__item">
+              <div class="roadmap__number">7</div>
+              <div class="roadmap__text">
+                <div class="roadmap__title">Administración y ejecución de la obra</div>
+                <div class="roadmap__pagu">Project Management y construcción</div>
+              </div>
+            </div>
+            <div class="roadmap__item">
+              <div class="roadmap__number">8</div>
+              <div class="roadmap__text">
+                <div class="roadmap__title">Lanzamiento y gestión de rentas</div>
+                <div class="roadmap__pagu">Administración del activo</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer fade-in-up">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn">
+              Quiero hacer esto realidad
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 8: Contacto ========== -->
+      <div class="wizard__step" data-step="8">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">Hablemos de tu proyecto</h1>
+          <p class="wizard__hint fade-in-up">Déjanos tus datos y un asesor de PAGU Capital te contactará.</p>
+
+          <div class="wizard__form fade-in-up">
+            <div class="input-group">
+              <label class="input-label" for="contact-name">Tu nombre</label>
+              <input
+                type="text"
+                id="contact-name"
+                class="input-field"
+                placeholder="Nombre completo"
+                autocomplete="name"
+              >
+            </div>
+
+            <div class="input-group" style="margin-top: 24px;">
+              <label class="input-label" for="contact-phone">Tu teléfono</label>
+              <input
+                type="tel"
+                id="contact-phone"
+                class="input-field"
+                placeholder="844 484 9359"
+                autocomplete="tel"
+              >
+            </div>
+          </div>
+
+          <div class="wizard__footer fade-in-up" style="margin-top: 48px;">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <a id="whatsapp-btn" href="#" target="_blank" rel="noopener" class="btn-primary btn-whatsapp">
+              <i data-lucide="message-circle" style="width:18px;height:18px;"></i>
+              Hablar con PAGU Capital
+            </a>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="js/wizard.js"></script>
+  <script>lucide.createIcons();</script>
+</body>
+</html>
