@@ -10,19 +10,141 @@
 </head>
 <body>
 
+  <!-- ========== NAV ========== -->
+  <nav class="nav" id="main-nav">
+    <div class="nav__inner">
+      <a href="index.html" class="logo">PATRIO</a>
+      <button class="nav__hamburger" id="nav-toggle" aria-label="Abrir menú">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav__menu" id="nav-menu">
+        <li class="nav__item">
+          <a href="wizard.html" class="nav__link">Invertir</a>
+        </li>
+        <li class="nav__item nav__item--dropdown">
+          <button class="nav__link nav__link--dropdown" aria-expanded="false">
+            Servicios
+            <i data-lucide="chevron-down" style="width:16px;height:16px;"></i>
+          </button>
+          <ul class="nav__dropdown">
+            <li><a href="wizard.html?tipo=jardineria" class="nav__dropdown-link">Jardinería</a></li>
+            <li><span class="nav__dropdown-link nav__dropdown-link--disabled">Construcción y remodelación <span class="nav__badge">Próximamente</span></span></li>
+            <li><span class="nav__dropdown-link nav__dropdown-link--disabled">Mantenimiento <span class="nav__badge">Próximamente</span></span></li>
+            <li><a href="wizard.html?tipo=administracion" class="nav__dropdown-link">Administración de rentas</a></li>
+            <li><span class="nav__dropdown-link nav__dropdown-link--disabled">Supervisión de proyecto <span class="nav__badge">Próximamente</span></span></li>
+          </ul>
+        </li>
+        <li class="nav__item">
+          <span class="nav__link nav__link--disabled">Comprar / Vender <span class="nav__badge">Próximamente</span></span>
+        </li>
+        <li class="nav__item">
+          <span class="nav__link nav__link--disabled">Asesorías <span class="nav__badge">Próximamente</span></span>
+        </li>
+        <li class="nav__item">
+          <a href="nosotros.html" class="nav__link">Nosotros</a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
   <!-- ========== HERO ========== -->
   <section class="hero">
-    <div class="hero__bg"></div>
-    <nav class="hero__nav">
-      <a href="index.html" class="logo">PATRIO</a>
-    </nav>
+    <video class="hero__bg" autoplay loop muted playsinline disablepictureinpicture>
+      <source src="assets/hero-video.mp4" type="video/mp4">
+    </video>
     <div class="hero__content">
-      <h1 class="hero__headline">Tu primera inversión<br>inmobiliaria</h1>
+      <h1 class="hero__headline">Haz crecer<br>tu patrimonio</h1>
       <p class="hero__subheadline">Descubre qué puedes construir con lo que ya tienes. Sin complicaciones, con expertos reales.</p>
       <a href="wizard.html" class="btn-primary">
         Calcular mi proyecto
         <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
       </a>
+    </div>
+  </section>
+
+  <!-- ========== LAS 5 ETAPAS ========== -->
+  <section class="section etapas">
+    <div class="section__inner">
+      <div class="etapas__header">
+        <h2 class="etapas__title">Tu patrimonio crece en etapas.</h2>
+        <p class="etapas__subtitle">PATRIO está contigo en cada una.</p>
+      </div>
+
+      <div class="etapas__grid">
+        <div class="etapa">
+          <span class="etapa__number">01</span>
+          <div class="etapa__icon">
+            <i data-lucide="leaf" style="width:28px;height:28px;"></i>
+          </div>
+          <h3 class="etapa__title">Mejora lo que tienes</h3>
+          <p class="etapa__desc">Transforma tus espacios exteriores en algo que se ve y se siente diferente.</p>
+          <a href="wizard.html?tipo=jardineria" class="etapa__badge etapa__badge--active">Jardinería</a>
+        </div>
+
+        <div class="etapas__arrow">
+          <i data-lucide="arrow-right" style="width:20px;height:20px;"></i>
+        </div>
+
+        <div class="etapa">
+          <span class="etapa__number">02</span>
+          <div class="etapa__icon">
+            <i data-lucide="home" style="width:28px;height:28px;"></i>
+          </div>
+          <h3 class="etapa__title">Activa lo que tienes</h3>
+          <p class="etapa__desc">Tienes una propiedad que no está trabajando para ti. Eso tiene solución.</p>
+          <span class="etapa__badge etapa__badge--soon">Remodelación <span class="nav__badge">Próximamente</span></span>
+        </div>
+
+        <div class="etapas__arrow">
+          <i data-lucide="arrow-right" style="width:20px;height:20px;"></i>
+        </div>
+
+        <div class="etapa">
+          <span class="etapa__number">03</span>
+          <div class="etapa__icon">
+            <i data-lucide="trending-up" style="width:28px;height:28px;"></i>
+          </div>
+          <h3 class="etapa__title">Invierte con criterio</h3>
+          <p class="etapa__desc">¿Con cuánto cuentas y qué puedes construir? Calcula tu proyecto en minutos.</p>
+          <a href="wizard.html" class="etapa__badge etapa__badge--active">Inversión</a>
+        </div>
+
+        <div class="etapas__arrow">
+          <i data-lucide="arrow-right" style="width:20px;height:20px;"></i>
+        </div>
+
+        <div class="etapa">
+          <span class="etapa__number">04</span>
+          <div class="etapa__icon">
+            <i data-lucide="hard-hat" style="width:28px;height:28px;"></i>
+          </div>
+          <h3 class="etapa__title">Construye y ejecuta</h3>
+          <p class="etapa__desc">PATRIO diseña, gestiona y entrega. Tú tomas las decisiones importantes.</p>
+          <span class="etapa__badge etapa__badge--soon">Construcción <span class="nav__badge">Próximamente</span></span>
+        </div>
+
+        <div class="etapas__arrow">
+          <i data-lucide="arrow-right" style="width:20px;height:20px;"></i>
+        </div>
+
+        <div class="etapa">
+          <span class="etapa__number">05</span>
+          <div class="etapa__icon">
+            <i data-lucide="building-2" style="width:28px;height:28px;"></i>
+          </div>
+          <h3 class="etapa__title">Administra y crece</h3>
+          <p class="etapa__desc">Tu propiedad genera. Nosotros la administramos para que pienses en el siguiente paso.</p>
+          <a href="wizard.html?tipo=administracion" class="etapa__badge etapa__badge--active">Administración</a>
+        </div>
+      </div>
+
+      <div class="etapas__cta">
+        <p class="etapas__cta-text">¿En qué etapa estás tú hoy?</p>
+        <a href="wizard.html" class="btn-primary">
+          Calcular mi proyecto
+          <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+        </a>
+      </div>
     </div>
   </section>
 
@@ -56,7 +178,7 @@
             <i data-lucide="hard-hat" style="width:32px;height:32px;"></i>
           </div>
           <span class="step-card__number">Paso 03</span>
-          <h3 class="step-card__title">PAGU lo hace realidad</h3>
+          <h3 class="step-card__title">PATRIO lo hace realidad</h3>
           <p class="step-card__desc">Nuestro equipo se encarga de todo: desde la adquisición hasta la operación y gestión de rentas.</p>
         </div>
       </div>
@@ -149,10 +271,10 @@
     </div>
   </section>
 
-  <!-- ========== POR QUÉ PAGU ========== -->
+  <!-- ========== POR QUÉ PATRIO ========== -->
   <section class="section why-pagu">
     <div class="section__inner">
-      <h2 class="section__title">Por qué PAGU Capital</h2>
+      <h2 class="section__title">Por qué PATRIO</h2>
       <p class="section__subtitle">Resultados reales respaldados por proyectos en operación.</p>
 
       <div class="why-pagu__grid">
@@ -172,6 +294,156 @@
     </div>
   </section>
 
+  <!-- ========== PROYECTOS REALES ========== -->
+  <section class="section casos">
+    <div class="section__inner">
+      <div class="casos__header">
+        <h2 class="section__title">Proyectos reales. Resultados reales.</h2>
+        <p class="section__subtitle" style="max-width:640px;">Estos son algunos de los proyectos que PATRIO ha desarrollado y administrado.</p>
+      </div>
+
+      <div class="casos__filters">
+        <button class="casos__filter casos__filter--active" data-filter="todos">Todos</button>
+        <button class="casos__filter" data-filter="inmobiliario">Inmobiliario</button>
+        <button class="casos__filter" data-filter="jardineria">Jardinería</button>
+      </div>
+
+      <div class="casos__grid">
+
+        <div class="caso-card" id="caso-inmobiliario-01" data-category="inmobiliario">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600&q=80" alt="Edificio uso mixto Monterrey" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
+            <span class="caso-card__city">Monterrey</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">$25,000,000</div>
+            <span class="caso-card__label">valor actual del inmueble</span>
+            <p class="caso-card__desc">Edificio comercial convertido a uso mixto. Inversión de $9M que hoy vale $25M y genera $150,000 al mes.</p>
+          </div>
+        </div>
+
+        <div class="caso-card" id="caso-inmobiliario-02" data-category="inmobiliario">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80" alt="Coliving habitaciones modernas" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
+            <span class="caso-card__city">Monterrey</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">$30,000</div>
+            <span class="caso-card__label">ingreso neto mensual</span>
+            <p class="caso-card__desc">Coliving de 6 habitaciones con 95% de ocupancia. Inversión de $3M generando $30,000 netos al mes.</p>
+          </div>
+        </div>
+
+        <div class="caso-card" id="caso-inmobiliario-03" data-category="inmobiliario">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=600&q=80" alt="Casa familiar moderna Ramos Arizpe" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
+            <span class="caso-card__city">Ramos Arizpe</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">39%</div>
+            <span class="caso-card__label">retorno sobre inversión</span>
+            <p class="caso-card__desc">Casa familiar de 3 recámaras. Inversión de $1.8M vendida en $2.5M en 18 meses de obra.</p>
+          </div>
+        </div>
+
+        <div class="caso-card" id="caso-inmobiliario-04" data-category="inmobiliario">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=600&q=80" alt="Casa antigua rehabilitada Monterrey" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
+            <span class="caso-card__city">Monterrey</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">$7,000,000</div>
+            <span class="caso-card__label">valor actual del inmueble</span>
+            <p class="caso-card__desc">Casa en ruinas adquirida en $2M, rehabilitada con $2M más. Hoy vale $7M y genera $35,000 al mes.</p>
+          </div>
+        </div>
+
+        <div class="caso-card" id="caso-inmobiliario-05" data-category="inmobiliario">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&q=80" alt="Departamentos en renta Ramos Arizpe" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
+            <span class="caso-card__city">Ramos Arizpe</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">$56,000</div>
+            <span class="caso-card__label">renta bruta mensual</span>
+            <p class="caso-card__desc">4 departamentos construidos en 18 meses. Inversión de $6M generando $56,000 al mes.</p>
+          </div>
+        </div>
+
+        <div class="caso-card" id="caso-jardineria-01" data-category="jardineria">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=600&q=80" alt="Jardín patio casa moderna" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
+            <span class="caso-card__city">Monterrey</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">4x</div>
+            <span class="caso-card__label">retorno sobre inversión</span>
+            <p class="caso-card__desc">Diseño completo de jardín en casa habitación. $8,000 invertidos con plusvalía estimada de $30,000.</p>
+          </div>
+        </div>
+
+        <div class="caso-card" id="caso-jardineria-02" data-category="jardineria">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=600&q=80" alt="Rancho urbano" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
+            <span class="caso-card__city">Saltillo</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">$1,000,000</div>
+            <span class="caso-card__label">plusvalía generada</span>
+            <p class="caso-card__desc">Rescate y rediseño de rancho urbano. $100,000 de inversión que agregó $1M de valor a una propiedad de $30M.</p>
+          </div>
+        </div>
+
+        <div class="caso-card" id="caso-jardineria-03" data-category="jardineria">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1598902108854-d1446677849e?w=600&q=80" alt="Jardín fachada casas privadas" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
+            <span class="caso-card__city">Ramos Arizpe</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">$20,000</div>
+            <span class="caso-card__label">plusvalía por vivienda</span>
+            <p class="caso-card__desc">Jardines de fachada de 3m² en 3 casas vecinas. $4,000 de inversión por casa que incrementó el valor de cada propiedad en $20,000.</p>
+          </div>
+        </div>
+
+        <div class="caso-card" id="caso-jardineria-04" data-category="jardineria">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=600&q=80" alt="Terraza departamento" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
+            <span class="caso-card__city">Monterrey</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">120%</div>
+            <span class="caso-card__label">retorno anual</span>
+            <p class="caso-card__desc">Plantas interiores y terraza en departamento. $10,000 invertidos que incrementaron la renta $1,000/mes — inversión recuperada en 10 meses.</p>
+          </div>
+        </div>
+
+        <div class="caso-card" id="caso-jardineria-05" data-category="jardineria">
+          <div class="caso-card__img">
+            <img src="https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=600&q=80" alt="Huerto urbano — nogales" loading="lazy">
+            <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
+            <span class="caso-card__city">Saltillo</span>
+          </div>
+          <div class="caso-card__body">
+            <div class="caso-card__number">—</div>
+            <span class="caso-card__label">mantenimiento especializado</span>
+            <p class="caso-card__desc">Poda y recolección de madera para nogales grandes en huerto urbano establecido.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
   <!-- ========== CTA FINAL ========== -->
   <section class="cta-final">
     <h2 class="cta-final__title">¿Listo para dar el primer paso?</h2>
@@ -185,7 +457,7 @@
   <footer class="footer">
     <div class="footer__inner">
       <a href="index.html" class="logo">PATRIO</a>
-      <p class="footer__text">Una iniciativa de PAGU Capital</p>
+      <p class="footer__text">Una iniciativa de PATRIO</p>
       <a href="https://wa.me/528444849359" target="_blank" rel="noopener" class="footer__link">
         <i data-lucide="message-circle" style="width:14px;height:14px;vertical-align:middle;margin-right:4px;"></i>
         Contáctanos por WhatsApp
@@ -194,5 +466,44 @@
   </footer>
 
   <script>lucide.createIcons();</script>
+  <script>
+    // Hamburger toggle
+    const navToggle = document.getElementById('nav-toggle');
+    const navMenu = document.getElementById('nav-menu');
+    navToggle.addEventListener('click', () => {
+      const open = navMenu.classList.toggle('nav__menu--open');
+      navToggle.classList.toggle('nav__hamburger--open', open);
+      navToggle.setAttribute('aria-label', open ? 'Cerrar menú' : 'Abrir menú');
+    });
+
+    // Dropdown toggle (mobile click, desktop hover handled by CSS)
+    document.querySelectorAll('.nav__link--dropdown').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.nav__item--dropdown');
+        const expanded = item.classList.toggle('nav__item--open');
+        btn.setAttribute('aria-expanded', expanded);
+      });
+    });
+
+    // Close menu on link click (mobile)
+    navMenu.querySelectorAll('a.nav__link, a.nav__dropdown-link').forEach(link => {
+      link.addEventListener('click', () => {
+        navMenu.classList.remove('nav__menu--open');
+        navToggle.classList.remove('nav__hamburger--open');
+      });
+    });
+
+    // Proyectos reales — filter
+    document.querySelectorAll('.casos__filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelector('.casos__filter--active').classList.remove('casos__filter--active');
+        btn.classList.add('casos__filter--active');
+        const filter = btn.dataset.filter;
+        document.querySelectorAll('.caso-card').forEach(card => {
+          card.style.display = (filter === 'todos' || card.dataset.category === filter) ? '' : 'none';
+        });
+      });
+    });
+  </script>
 </body>
 </html>
