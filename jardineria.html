@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Patrio — Jardinería y Paisajismo</title>
+  <meta name="description" content="Transformamos tus espacios exteriores en algo que se ve, se siente y agrega valor real a tu propiedad. Jardinería y paisajismo profesional en Monterrey y Saltillo.">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+  <!-- ========== NAV ========== -->
+  <nav class="nav" id="main-nav">
+    <div class="nav__inner">
+      <a href="index.html" class="logo">PATRIO</a>
+      <button class="nav__hamburger" id="nav-toggle" aria-label="Abrir menú">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav__menu" id="nav-menu">
+        <li class="nav__item">
+          <a href="wizard.html" class="nav__link">Invertir</a>
+        </li>
+        <li class="nav__item nav__item--dropdown">
+          <button class="nav__link nav__link--dropdown" aria-expanded="false">
+            Servicios
+            <i data-lucide="chevron-down" style="width:16px;height:16px;"></i>
+          </button>
+          <ul class="nav__dropdown">
+            <li><a href="wizard.html?tipo=jardineria" class="nav__dropdown-link">Jardinería</a></li>
+            <li><span class="nav__dropdown-link nav__dropdown-link--disabled">Construcción y remodelación <span class="nav__badge">Próximamente</span></span></li>
+            <li><span class="nav__dropdown-link nav__dropdown-link--disabled">Mantenimiento <span class="nav__badge">Próximamente</span></span></li>
+            <li><a href="wizard.html?tipo=administracion" class="nav__dropdown-link">Administración de rentas</a></li>
+            <li><span class="nav__dropdown-link nav__dropdown-link--disabled">Supervisión de proyecto <span class="nav__badge">Próximamente</span></span></li>
+          </ul>
+        </li>
+        <li class="nav__item">
+          <span class="nav__link nav__link--disabled">Comprar / Vender <span class="nav__badge">Próximamente</span></span>
+        </li>
+        <li class="nav__item">
+          <span class="nav__link nav__link--disabled">Asesorías <span class="nav__badge">Próximamente</span></span>
+        </li>
+        <li class="nav__item">
+          <a href="nosotros.html" class="nav__link">Nosotros</a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ========== HERO ========== -->
+  <section class="hero hero--jardineria">
+    <div class="hero__bg hero__bg--image" style="background-image:url('assets/jardines/estado-4-bien-terminado.jpg');"></div>
+    <div class="hero__content">
+      <h1 class="hero__headline">Jardinería<br>y Paisajismo</h1>
+      <p class="hero__subheadline">Transformamos tus espacios exteriores en algo que se ve, se siente y agrega valor real a tu propiedad.</p>
+      <a href="wizard.html?tipo=jardineria" class="btn-primary">
+        Quiero transformar mi espacio
+        <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+      </a>
+    </div>
+  </section>
+
+  <!-- ========== PARA QUIÉN ES ========== -->
+  <section class="section jard-quien">
+    <div class="section__inner">
+      <h2 class="section__title">¿Te identificas con alguna de estas situaciones?</h2>
+
+      <div class="jard-quien__grid">
+        <div class="jard-quien__card">
+          <div class="jard-quien__icon">
+            <i data-lucide="leaf" style="width:28px;height:28px;"></i>
+          </div>
+          <h3 class="jard-quien__title">Jardín descuidado</h3>
+          <p class="jard-quien__desc">Tienes un jardín que perdió su forma y quieres recuperarlo.</p>
+        </div>
+
+        <div class="jard-quien__card">
+          <div class="jard-quien__icon">
+            <i data-lucide="sun" style="width:28px;height:28px;"></i>
+          </div>
+          <h3 class="jard-quien__title">Terraza sin uso</h3>
+          <p class="jard-quien__desc">Un espacio exterior que llevas tiempo sin aprovechar.</p>
+        </div>
+
+        <div class="jard-quien__card">
+          <div class="jard-quien__icon">
+            <i data-lucide="map" style="width:28px;height:28px;"></i>
+          </div>
+          <h3 class="jard-quien__title">Terreno vacío</h3>
+          <p class="jard-quien__desc">Un terreno sin vegetación que podría ser mucho más.</p>
+        </div>
+
+        <div class="jard-quien__card">
+          <div class="jard-quien__icon">
+            <i data-lucide="sparkles" style="width:28px;height:28px;"></i>
+          </div>
+          <h3 class="jard-quien__title">Quiero mejorar</h3>
+          <p class="jard-quien__desc">Tu espacio está bien pero sabes que puede verse mejor.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CÓMO TRABAJAMOS ========== -->
+  <section class="section jard-proceso">
+    <div class="section__inner">
+      <h2 class="section__title">Así de simple es el proceso.</h2>
+
+      <div class="jard-proceso__grid">
+        <div class="jard-proceso__step">
+          <span class="jard-proceso__number">01</span>
+          <h3 class="jard-proceso__title">Visitamos, analizamos y proponemos</h3>
+          <p class="jard-proceso__desc">Conocemos tu espacio, estudiamos las condiciones técnicas y te presentamos un diseño con propuesta de inversión.</p>
+        </div>
+
+        <div class="jard-proceso__step">
+          <span class="jard-proceso__number">02</span>
+          <h3 class="jard-proceso__title">Aprobación y ejecución</h3>
+          <p class="jard-proceso__desc">Una vez que apruebas, arrancamos de inmediato. Tú no tienes que gestionar nada.</p>
+        </div>
+
+        <div class="jard-proceso__step">
+          <span class="jard-proceso__number">03</span>
+          <h3 class="jard-proceso__title">Entrega y seguimiento</h3>
+          <p class="jard-proceso__desc">Te entregamos el espacio terminado con registro fotográfico del antes y después. Garantía de 30 días incluida.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== QUÉ INCLUYE ========== -->
+  <section class="section jard-incluye">
+    <div class="section__inner">
+      <h2 class="section__title">Cada proyecto incluye</h2>
+
+      <ul class="jard-incluye__list">
+        <li class="jard-incluye__item">
+          <i data-lucide="search" style="width:20px;height:20px;"></i>
+          <span>Visita de diagnóstico y análisis técnico del espacio</span>
+        </li>
+        <li class="jard-incluye__item">
+          <i data-lucide="pencil-ruler" style="width:20px;height:20px;"></i>
+          <span>Diseño y propuesta personalizada</span>
+        </li>
+        <li class="jard-incluye__item">
+          <i data-lucide="layers" style="width:20px;height:20px;"></i>
+          <span>Mejoramiento de suelo con sustrato especializado</span>
+        </li>
+        <li class="jard-incluye__item">
+          <i data-lucide="flower-2" style="width:20px;height:20px;"></i>
+          <span>Plantas seleccionadas para las condiciones reales del espacio</span>
+        </li>
+        <li class="jard-incluye__item">
+          <i data-lucide="gem" style="width:20px;height:20px;"></i>
+          <span>Acabados en grava o piedra decorativa</span>
+        </li>
+        <li class="jard-incluye__item">
+          <i data-lucide="lightbulb" style="width:20px;height:20px;"></i>
+          <span>Iluminación de bajo voltaje (según proyecto)</span>
+        </li>
+        <li class="jard-incluye__item">
+          <i data-lucide="sparkles" style="width:20px;height:20px;"></i>
+          <span>Limpieza total al término de la obra</span>
+        </li>
+        <li class="jard-incluye__item">
+          <i data-lucide="shield-check" style="width:20px;height:20px;"></i>
+          <span>Garantía de 30 días</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ========== GALERÍA ========== -->
+  <section class="section jard-galeria">
+    <div class="section__inner">
+      <h2 class="section__title">Proyectos realizados</h2>
+
+      <div id="galeria-jardineria" class="jard-galeria__container">
+        <p class="jard-galeria__placeholder">Próximamente — aquí verás los proyectos terminados.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CTA FINAL ========== -->
+  <section class="cta-final">
+    <h2 class="cta-final__title">¿Listo para transformar tu espacio?</h2>
+    <a href="wizard.html?tipo=jardineria" class="btn-secondary">
+      Calcular mi proyecto
+      <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+    </a>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <a href="index.html" class="logo">PATRIO</a>
+      <p class="footer__text">Una iniciativa de PATRIO</p>
+      <a href="https://wa.me/528444849359" target="_blank" rel="noopener" class="footer__link">
+        <i data-lucide="message-circle" style="width:14px;height:14px;vertical-align:middle;margin-right:4px;"></i>
+        Contáctanos por WhatsApp
+      </a>
+    </div>
+  </footer>
+
+  <script>lucide.createIcons();</script>
+  <script>
+    // Hamburger toggle
+    const navToggle = document.getElementById('nav-toggle');
+    const navMenu = document.getElementById('nav-menu');
+    navToggle.addEventListener('click', () => {
+      const open = navMenu.classList.toggle('nav__menu--open');
+      navToggle.classList.toggle('nav__hamburger--open', open);
+      navToggle.setAttribute('aria-label', open ? 'Cerrar menú' : 'Abrir menú');
+    });
+
+    // Dropdown toggle (mobile click, desktop hover handled by CSS)
+    document.querySelectorAll('.nav__link--dropdown').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.nav__item--dropdown');
+        const expanded = item.classList.toggle('nav__item--open');
+        btn.setAttribute('aria-expanded', expanded);
+      });
+    });
+
+    // Close menu on link click (mobile)
+    navMenu.querySelectorAll('a.nav__link, a.nav__dropdown-link').forEach(link => {
+      link.addEventListener('click', () => {
+        navMenu.classList.remove('nav__menu--open');
+        navToggle.classList.remove('nav__hamburger--open');
+      });
+    });
+  </script>
+</body>
+</html>

@@ -25,33 +25,37 @@
     <!-- Body -->
     <main class="wizard__body">
 
+      <!-- ===================================================
+           WIZARD DE INVERSIÓN
+           =================================================== -->
+
       <!-- ========== PASO 1: Situación ========== -->
-      <div class="wizard__step active" data-step="1">
+      <div class="wizard__step active" data-step="1" data-wizard="inversion">
         <div class="wizard__content">
           <h1 class="wizard__question fade-in-up">¿Cuál es tu situación?</h1>
           <p class="wizard__hint fade-in-up">Esto nos ayuda a personalizar tu experiencia.</p>
 
           <div class="wizard__options">
-            <div class="option-card fade-in-up" data-value="adquirir">
+            <div class="option-card fade-in-up" data-value="desde_cero">
               <div class="option-card__icon">
                 <i data-lucide="plus-circle" style="width:24px;height:24px;"></i>
               </div>
               <div class="option-card__text">
-                <div class="option-card__title">Quiero adquirir o construir un proyecto</div>
-                <div class="option-card__desc">Busco mi primera inversión inmobiliaria con capital propio.</div>
+                <div class="option-card__title">Quiero empezar desde cero</div>
+                <div class="option-card__desc">No tengo propiedad, busco mi primera inversión.</div>
               </div>
               <div class="option-card__check">
                 <i data-lucide="check" style="width:14px;height:14px;"></i>
               </div>
             </div>
 
-            <div class="option-card fade-in-up" data-value="propiedad">
+            <div class="option-card fade-in-up" data-value="tengo_inmueble">
               <div class="option-card__icon">
                 <i data-lucide="home" style="width:24px;height:24px;"></i>
               </div>
               <div class="option-card__text">
-                <div class="option-card__title">Ya cuento con una propiedad</div>
-                <div class="option-card__desc">Tengo un inmueble o terreno y quiero saber qué hacer con él.</div>
+                <div class="option-card__title">Ya tengo un inmueble o terreno</div>
+                <div class="option-card__desc">Quiero saber qué hacer con él para generar rendimiento.</div>
               </div>
               <div class="option-card__check">
                 <i data-lucide="check" style="width:14px;height:14px;"></i>
@@ -69,7 +73,7 @@
       </div>
 
       <!-- ========== PASO 2: Objetivo ========== -->
-      <div class="wizard__step" data-step="2">
+      <div class="wizard__step" data-step="2" data-wizard="inversion">
         <div class="wizard__content">
           <h1 class="wizard__question fade-in-up">¿Cuál es tu objetivo?</h1>
           <p class="wizard__hint fade-in-up">Esto define cómo presentamos tus resultados.</p>
@@ -106,7 +110,7 @@
                 <i data-lucide="sun" style="width:24px;height:24px;"></i>
               </div>
               <div class="option-card__text">
-                <div class="option-card__title">Alcanzar independencia financiera</div>
+                <div class="option-card__title">Independencia financiera</div>
                 <div class="option-card__desc">Vivir de mis activos.</div>
               </div>
               <div class="option-card__check">
@@ -129,7 +133,7 @@
       </div>
 
       <!-- ========== PASO 3: Ciudad ========== -->
-      <div class="wizard__step" data-step="3">
+      <div class="wizard__step" data-step="3" data-wizard="inversion">
         <div class="wizard__content">
           <h1 class="wizard__question fade-in-up">¿En qué ciudad te interesa invertir?</h1>
           <p class="wizard__hint fade-in-up">Cada mercado tiene oportunidades diferentes.</p>
@@ -176,7 +180,7 @@
       </div>
 
       <!-- ========== PASO 4: Tipo de proyecto ========== -->
-      <div class="wizard__step" data-step="4">
+      <div class="wizard__step" data-step="4" data-wizard="inversion">
         <div class="wizard__content">
           <h1 class="wizard__question fade-in-up">¿Qué tipo de proyecto te interesa?</h1>
           <p class="wizard__hint fade-in-up">Puedes elegir uno o dejar que te recomendemos.</p>
@@ -226,7 +230,7 @@
                 <i data-lucide="warehouse" style="width:24px;height:24px;"></i>
               </div>
               <div class="option-card__text">
-                <div class="option-card__title">Bodega / Nave industrial</div>
+                <div class="option-card__title">Bodega o nave pequeña</div>
                 <div class="option-card__desc">Bodegas de 150-500 m² en zonas industriales. Alta demanda de PyMEs y talleres. $3M–$6M | Cap Rate 9%–14%</div>
               </div>
               <div class="option-card__check">
@@ -262,14 +266,15 @@
       </div>
 
       <!-- ========== PASO 5: Capital ========== -->
-      <div class="wizard__step" data-step="5">
+      <div class="wizard__step" data-step="5" data-wizard="inversion">
         <div class="wizard__content">
-          <h1 class="wizard__question fade-in-up">¿Con cuánto cuentas hoy?</h1>
-          <p class="wizard__hint fade-in-up">Tu capital propio disponible para invertir.</p>
+          <h1 class="wizard__question fade-in-up">Tu capital</h1>
+          <p class="wizard__hint fade-in-up">Cuéntanos con cuánto cuentas para armar tu proyecto.</p>
 
           <div class="wizard__form fade-in-up">
+            <!-- Pregunta 1: Capital disponible -->
             <div class="input-group">
-              <label class="input-label" for="capital">Capital propio disponible</label>
+              <label class="input-label" for="capital">¿Cuánto tienes disponible hoy?</label>
               <div class="input-currency">
                 <span class="input-currency__symbol">$</span>
                 <input
@@ -284,8 +289,9 @@
               <span class="input-helper">Monto en pesos mexicanos</span>
             </div>
 
-            <div class="input-group" style="margin-top: 32px;">
-              <label class="input-label">¿Buscas complementar con crédito bancario?</label>
+            <!-- Pregunta 2: ¿Buscas crédito? -->
+            <div class="input-group" style="margin-top: 40px;">
+              <label class="input-label">¿Buscas crédito bancario?</label>
               <div class="wizard__options wizard__options--inline">
                 <div class="option-card option-card--small" data-value="si" data-field="credito">
                   <div class="option-card__text">
@@ -306,8 +312,49 @@
               </div>
             </div>
 
-            <div class="input-group credit-amount-group" style="margin-top: 32px; display: none;">
-              <label class="input-label" for="credito-monto">Monto estimado de crédito</label>
+            <!-- Tipos de crédito (visible solo si selecciona "Sí") -->
+            <div class="credit-types-group" style="display: none;">
+              <label class="input-label">Tipo de crédito</label>
+              <div class="credit-cards">
+                <div class="credit-card" data-value="hipotecario">
+                  <div class="credit-card__check">
+                    <i data-lucide="check" style="width:14px;height:14px;"></i>
+                  </div>
+                  <div class="credit-card__icon">
+                    <i data-lucide="landmark" style="width:24px;height:24px;"></i>
+                  </div>
+                  <div class="credit-card__title">Crédito Hipotecario</div>
+                  <div class="credit-card__detail">11–12% anual</div>
+                  <div class="credit-card__detail">Plazo 10–20 años</div>
+                </div>
+                <div class="credit-card" data-value="puente">
+                  <div class="credit-card__check">
+                    <i data-lucide="check" style="width:14px;height:14px;"></i>
+                  </div>
+                  <div class="credit-card__icon">
+                    <i data-lucide="timer" style="width:24px;height:24px;"></i>
+                  </div>
+                  <div class="credit-card__title">Crédito Puente</div>
+                  <div class="credit-card__detail">13–15% anual</div>
+                  <div class="credit-card__detail">Plazo 12–24 meses</div>
+                </div>
+                <div class="credit-card" data-value="personal">
+                  <div class="credit-card__check">
+                    <i data-lucide="check" style="width:14px;height:14px;"></i>
+                  </div>
+                  <div class="credit-card__icon">
+                    <i data-lucide="user" style="width:24px;height:24px;"></i>
+                  </div>
+                  <div class="credit-card__title">Crédito Personal</div>
+                  <div class="credit-card__detail">15–18% anual</div>
+                  <div class="credit-card__detail">Plazo 3–7 años</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pregunta 3: Monto de crédito (visible solo si selecciona "Sí") -->
+            <div class="credit-amount-group" style="display: none;">
+              <label class="input-label" for="credito-monto">¿Cuánto crédito estimas obtener?</label>
               <div class="input-currency">
                 <span class="input-currency__symbol">$</span>
                 <input
@@ -337,7 +384,7 @@
       </div>
 
       <!-- ========== PASO 6: Resultados ========== -->
-      <div class="wizard__step" data-step="6">
+      <div class="wizard__step" data-step="6" data-wizard="inversion">
         <div class="wizard__content">
           <p class="wizard__hint fade-in-up" id="results-subtitle">Tu proyecto en Monterrey</p>
           <h1 class="wizard__question fade-in-up" id="results-project-type">Casa renovada en estudios</h1>
@@ -350,18 +397,33 @@
           <div class="results-grid fade-in-up">
             <div class="results-metric">
               <div class="results-metric__number" id="results-cap-rate">14.8%</div>
-              <div class="results-metric__label">Cap Rate anual</div>
-              <div class="results-metric__hint">Tu dinero genera este % anual solo en rentas</div>
+              <div class="results-metric__label">
+                Cap Rate anual
+                <button class="tooltip-trigger" data-tooltip="El Cap Rate mide el rendimiento anual de tu inversión. Es la renta anual dividida entre el valor del inmueble. Arriba de 10% es excelente.">
+                  <i data-lucide="info" style="width:14px;height:14px;"></i>
+                </button>
+              </div>
+              <div class="tooltip-box">El Cap Rate mide el rendimiento anual de tu inversión. Es la renta anual dividida entre el valor del inmueble. Arriba de 10% es excelente.</div>
             </div>
             <div class="results-metric">
               <div class="results-metric__number" id="results-payback">6 años</div>
-              <div class="results-metric__label">Se paga solo</div>
-              <div class="results-metric__hint">Las rentas acumuladas cubren tu inversión</div>
+              <div class="results-metric__label">
+                Se paga solo en
+                <button class="tooltip-trigger" data-tooltip="Es el tiempo que tardan las rentas acumuladas en cubrir tu inversión total. Después de este periodo, todo es ganancia neta.">
+                  <i data-lucide="info" style="width:14px;height:14px;"></i>
+                </button>
+              </div>
+              <div class="tooltip-box">Es el tiempo que tardan las rentas acumuladas en cubrir tu inversión total. Después de este periodo, todo es ganancia neta.</div>
             </div>
             <div class="results-metric">
               <div class="results-metric__number" id="results-total-return">$7.2M</div>
-              <div class="results-metric__label">Retorno a 10 años</div>
-              <div class="results-metric__hint">Rentas acumuladas + plusvalía del inmueble</div>
+              <div class="results-metric__label">
+                Retorno total a 10 años
+                <button class="tooltip-trigger" data-tooltip="Suma de todas las rentas acumuladas más la plusvalía del inmueble en 10 años. Es el valor total que genera tu inversión.">
+                  <i data-lucide="info" style="width:14px;height:14px;"></i>
+                </button>
+              </div>
+              <div class="tooltip-box">Suma de todas las rentas acumuladas más la plusvalía del inmueble en 10 años. Es el valor total que genera tu inversión.</div>
             </div>
           </div>
 
@@ -370,8 +432,13 @@
               <i data-lucide="trending-up" style="width:20px;height:20px;"></i>
             </div>
             <div class="results-patrimonio__text">
-              <span class="results-patrimonio__label">Crecimiento de tu patrimonio</span>
-              <span class="results-patrimonio__value" id="results-patrimonio-value">$5.4M estimados a 10 años</span>
+              <span class="results-patrimonio__label">
+                Valor de tu patrimonio a 10 años
+                <button class="tooltip-trigger" data-tooltip="Es el valor estimado de tu propiedad dentro de 10 años, considerando la plusvalía promedio de la zona. Tu inversión no solo genera renta, también se revaloriza.">
+                  <i data-lucide="info" style="width:14px;height:14px;"></i>
+                </button>
+              </span>
+              <span class="results-patrimonio__value" id="results-patrimonio-value">$5.4M estimados</span>
             </div>
           </div>
 
@@ -389,66 +456,94 @@
       </div>
 
       <!-- ========== PASO 7: Hoja de ruta ========== -->
-      <div class="wizard__step" data-step="7">
+      <div class="wizard__step" data-step="7" data-wizard="inversion">
         <div class="wizard__content">
           <h1 class="wizard__question fade-in-up">Tu hoja de ruta</h1>
-          <p class="wizard__hint fade-in-up">Los pasos concretos para hacerlo realidad. PAGU te acompaña en cada uno.</p>
+          <p class="wizard__hint fade-in-up">Los pasos concretos para hacerlo realidad. PATRIO te acompaña en cada uno.</p>
 
           <div class="roadmap fade-in-up">
+            <div class="roadmap__header">
+              <span class="roadmap__header-label">Etapa</span>
+              <span class="roadmap__header-label">¿Te ayudamos?</span>
+            </div>
             <div class="roadmap__item">
               <div class="roadmap__number">1</div>
               <div class="roadmap__text">
-                <div class="roadmap__title">Definición del proyecto y modelo financiero</div>
-                <div class="roadmap__pagu">Asesoría estratégica inicial</div>
+                <div class="roadmap__title">Definición del proyecto</div>
+                <div class="roadmap__desc">Modelo financiero y estrategia</div>
+              </div>
+              <div class="roadmap__help">
+                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
               </div>
             </div>
             <div class="roadmap__item">
               <div class="roadmap__number">2</div>
               <div class="roadmap__text">
-                <div class="roadmap__title">Búsqueda e identificación de la propiedad</div>
-                <div class="roadmap__pagu">Búsqueda y negociación</div>
+                <div class="roadmap__title">Búsqueda de propiedad</div>
+                <div class="roadmap__desc">Identificación y negociación</div>
+              </div>
+              <div class="roadmap__help">
+                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
               </div>
             </div>
             <div class="roadmap__item">
               <div class="roadmap__number">3</div>
               <div class="roadmap__text">
-                <div class="roadmap__title">Due diligence legal y técnico del inmueble</div>
-                <div class="roadmap__pagu">Revisión jurídica y estructural</div>
+                <div class="roadmap__title">Due diligence legal y técnico</div>
+                <div class="roadmap__desc">Revisión jurídica y estructural</div>
+              </div>
+              <div class="roadmap__help">
+                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
               </div>
             </div>
             <div class="roadmap__item">
               <div class="roadmap__number">4</div>
               <div class="roadmap__text">
-                <div class="roadmap__title">Gestión del crédito bancario</div>
-                <div class="roadmap__pagu">Orientación en el proceso</div>
+                <div class="roadmap__title">Gestión del crédito</div>
+                <div class="roadmap__desc">Orientación en el proceso bancario</div>
+              </div>
+              <div class="roadmap__help">
+                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
               </div>
             </div>
             <div class="roadmap__item">
               <div class="roadmap__number">5</div>
               <div class="roadmap__text">
-                <div class="roadmap__title">Diseño arquitectónico del proyecto</div>
-                <div class="roadmap__pagu">Servicio de diseño PAGU</div>
+                <div class="roadmap__title">Diseño arquitectónico</div>
+                <div class="roadmap__desc">Proyecto ejecutivo y renders</div>
+              </div>
+              <div class="roadmap__help">
+                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
               </div>
             </div>
             <div class="roadmap__item">
               <div class="roadmap__number">6</div>
               <div class="roadmap__text">
-                <div class="roadmap__title">Tramitación de permisos de construcción</div>
-                <div class="roadmap__pagu">Gestión municipal</div>
+                <div class="roadmap__title">Permisos de construcción</div>
+                <div class="roadmap__desc">Gestión municipal completa</div>
+              </div>
+              <div class="roadmap__help">
+                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
               </div>
             </div>
             <div class="roadmap__item">
               <div class="roadmap__number">7</div>
               <div class="roadmap__text">
-                <div class="roadmap__title">Administración y ejecución de la obra</div>
-                <div class="roadmap__pagu">Project Management y construcción</div>
+                <div class="roadmap__title">Ejecución de obra</div>
+                <div class="roadmap__desc">Project management y construcción</div>
+              </div>
+              <div class="roadmap__help">
+                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
               </div>
             </div>
             <div class="roadmap__item">
               <div class="roadmap__number">8</div>
               <div class="roadmap__text">
-                <div class="roadmap__title">Lanzamiento y gestión de rentas</div>
-                <div class="roadmap__pagu">Administración del activo</div>
+                <div class="roadmap__title">Gestión de rentas</div>
+                <div class="roadmap__desc">Administración del activo</div>
+              </div>
+              <div class="roadmap__help">
+                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
               </div>
             </div>
           </div>
@@ -467,43 +562,1045 @@
       </div>
 
       <!-- ========== PASO 8: Contacto ========== -->
-      <div class="wizard__step" data-step="8">
+      <div class="wizard__step" data-step="8" data-wizard="inversion">
         <div class="wizard__content">
           <h1 class="wizard__question fade-in-up">Hablemos de tu proyecto</h1>
-          <p class="wizard__hint fade-in-up">Déjanos tus datos y un asesor de PAGU Capital te contactará.</p>
+          <p class="wizard__hint fade-in-up">Déjanos tus datos y un asesor de PATRIO te contactará.</p>
 
-          <div class="wizard__form fade-in-up">
+          <form id="contact-form" class="wizard__form fade-in-up" action="https://formspree.io/f/xwvnqzkj" method="POST">
             <div class="input-group">
-              <label class="input-label" for="contact-name">Tu nombre</label>
+              <label class="input-label" for="contact-name">Tu nombre *</label>
               <input
                 type="text"
                 id="contact-name"
+                name="nombre"
                 class="input-field"
                 placeholder="Nombre completo"
                 autocomplete="name"
+                required
               >
             </div>
 
-            <div class="input-group" style="margin-top: 24px;">
-              <label class="input-label" for="contact-phone">Tu teléfono</label>
+            <div class="input-group">
+              <label class="input-label" for="contact-phone">Tu teléfono *</label>
               <input
                 type="tel"
                 id="contact-phone"
+                name="telefono"
                 class="input-field"
                 placeholder="844 484 9359"
                 autocomplete="tel"
+                required
               >
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="contact-email">Tu correo</label>
+              <input
+                type="email"
+                id="contact-email"
+                name="email"
+                class="input-field"
+                placeholder="tu@correo.com"
+                autocomplete="email"
+              >
+              <span class="input-helper">Para enviarte tu análisis completo</span>
+            </div>
+
+            <div class="contact-autofill fade-in-up">
+              <div class="autofill-item">
+                <span class="autofill-item__label">Ciudad</span>
+                <span class="autofill-item__value" id="autofill-ciudad">—</span>
+                <input type="hidden" name="ciudad" id="autofill-ciudad-input">
+              </div>
+              <div class="autofill-item">
+                <span class="autofill-item__label">Tipo de proyecto</span>
+                <span class="autofill-item__value" id="autofill-proyecto">—</span>
+                <input type="hidden" name="tipo_proyecto" id="autofill-proyecto-input">
+              </div>
+              <div class="autofill-item">
+                <span class="autofill-item__label">Capital total</span>
+                <span class="autofill-item__value" id="autofill-capital">—</span>
+                <input type="hidden" name="capital_total" id="autofill-capital-input">
+              </div>
+            </div>
+
+            <div class="input-group" style="margin-top: 32px;">
+              <label class="input-label">¿Con qué te gustaría que te ayudáramos primero?</label>
+              <div class="wizard__options">
+                <div class="option-card option-card--compact fade-in-up" data-value="buscar_propiedad" data-field="ayuda">
+                  <div class="option-card__icon">
+                    <i data-lucide="search" style="width:20px;height:20px;"></i>
+                  </div>
+                  <div class="option-card__text">
+                    <div class="option-card__title">Buscar la propiedad ideal</div>
+                  </div>
+                  <div class="option-card__check">
+                    <i data-lucide="check" style="width:14px;height:14px;"></i>
+                  </div>
+                </div>
+                <div class="option-card option-card--compact fade-in-up" data-value="supervisar_obra" data-field="ayuda">
+                  <div class="option-card__icon">
+                    <i data-lucide="hard-hat" style="width:20px;height:20px;"></i>
+                  </div>
+                  <div class="option-card__text">
+                    <div class="option-card__title">Supervisar mi obra</div>
+                  </div>
+                  <div class="option-card__check">
+                    <i data-lucide="check" style="width:14px;height:14px;"></i>
+                  </div>
+                </div>
+                <div class="option-card option-card--compact fade-in-up" data-value="administrar_inmueble" data-field="ayuda">
+                  <div class="option-card__icon">
+                    <i data-lucide="settings" style="width:20px;height:20px;"></i>
+                  </div>
+                  <div class="option-card__text">
+                    <div class="option-card__title">Administrar mi inmueble</div>
+                  </div>
+                  <div class="option-card__check">
+                    <i data-lucide="check" style="width:14px;height:14px;"></i>
+                  </div>
+                </div>
+                <div class="option-card option-card--compact fade-in-up" data-value="mas_info" data-field="ayuda">
+                  <div class="option-card__icon">
+                    <i data-lucide="info" style="width:20px;height:20px;"></i>
+                  </div>
+                  <div class="option-card__text">
+                    <div class="option-card__title">Solo quiero más información</div>
+                  </div>
+                  <div class="option-card__check">
+                    <i data-lucide="check" style="width:14px;height:14px;"></i>
+                  </div>
+                </div>
+              </div>
+              <input type="hidden" name="ayuda_primero" id="ayuda-input">
+            </div>
+
+            <!-- Hidden fields for wizard data -->
+            <input type="hidden" name="wizard_tipo" value="inversion">
+            <input type="hidden" name="situacion" id="form-situacion">
+            <input type="hidden" name="objetivo" id="form-objetivo">
+            <input type="hidden" name="ingreso_mensual_estimado" id="form-ingreso">
+            <input type="hidden" name="cap_rate" id="form-caprate">
+
+            <div class="wizard__footer fade-in-up" style="margin-top: 48px;">
+              <button class="btn-back wizard__back-btn" type="button">
+                <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+                Atrás
+              </button>
+              <button type="submit" class="btn-primary wizard__submit-btn" disabled>
+                <i data-lucide="send" style="width:18px;height:18px;"></i>
+                Enviar mis datos
+              </button>
+            </div>
+          </form>
+
+          <!-- Success state (hidden by default) -->
+          <div class="contact-success" style="display: none;">
+            <div class="contact-success__icon">
+              <i data-lucide="check-circle" style="width:48px;height:48px;"></i>
+            </div>
+            <h2 class="contact-success__title">¡Listo! Recibimos tu información</h2>
+            <p class="contact-success__text">Un asesor de PATRIO te contactará pronto.</p>
+            <a id="whatsapp-btn" href="#" target="_blank" rel="noopener" class="btn-whatsapp">
+              <i data-lucide="message-circle" style="width:20px;height:20px;"></i>
+              Hablar ahora por WhatsApp
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================
+           WIZARD DE JARDINES & PAISAJISMO
+           =================================================== -->
+
+      <!-- ========== PASO 0: Gancho ========== -->
+      <div class="wizard__step" data-step="0" data-wizard="jardines">
+        <div class="wizard__content wizard__content--centered">
+          <div class="gancho__icon fade-in-up">
+            <i data-lucide="flower-2" style="width:48px;height:48px;color:var(--color-primary);"></i>
+          </div>
+          <h1 class="wizard__question fade-in-up">¿Sabes cuánto puede subir tu propiedad con un jardín bien hecho?</h1>
+          <p class="wizard__hint fade-in-up">Respóndenos 7 preguntas y te decimos cuánto.</p>
+          <div class="fade-in-up">
+            <button class="btn-primary wizard__next-btn">
+              Calcular mi potencial
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 1: Tipo de espacio ========== -->
+      <div class="wizard__step" data-step="1" data-wizard="jardines">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Cómo describirías tu espacio exterior?</h1>
+          <p class="wizard__hint fade-in-up">Esto nos ayuda a estimar tu proyecto.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="jardin_patio">
+              <div class="option-card__icon">
+                <i data-lucide="tree-pine" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Jardín o patio en casa</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="terraza_balcon">
+              <div class="option-card__icon">
+                <i data-lucide="building" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Terraza o balcón en departamento</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="terreno">
+              <div class="option-card__icon">
+                <i data-lucide="map" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Terreno sin construir</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="abandonado">
+              <div class="option-card__icon">
+                <i data-lucide="leaf" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Tengo un espacio pero está bastante abandonado</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
             </div>
           </div>
 
-          <div class="wizard__footer fade-in-up" style="margin-top: 48px;">
+          <div class="wizard__footer">
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 2: Objetivo ========== -->
+      <div class="wizard__step" data-step="2" data-wizard="jardines">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Qué quieres lograr con este proyecto?</h1>
+          <p class="wizard__hint fade-in-up">Esto personaliza tu resultado.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="vender">
+              <div class="option-card__icon">
+                <i data-lucide="tag" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Vender mi propiedad y que valga más</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="renta">
+              <div class="option-card__icon">
+                <i data-lucide="banknote" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Tengo una renta y quiero cobrar más</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="disfrutar">
+              <div class="option-card__icon">
+                <i data-lucide="heart" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Quiero disfrutarlo más, mejorar mi casa</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="terreno_sin_uso">
+              <div class="option-card__icon">
+                <i data-lucide="help-circle" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Tengo un terreno y no sé qué hacer con él</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
             <button class="btn-back wizard__back-btn">
               <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
               Atrás
             </button>
-            <a id="whatsapp-btn" href="#" target="_blank" rel="noopener" class="btn-primary btn-whatsapp">
-              <i data-lucide="message-circle" style="width:18px;height:18px;"></i>
-              Hablar con PAGU Capital
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 3: Ciudad ========== -->
+      <div class="wizard__step" data-step="3" data-wizard="jardines">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Dónde está tu propiedad?</h1>
+          <p class="wizard__hint fade-in-up">Por ahora atendemos Monterrey y Saltillo.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="monterrey">
+              <div class="option-card__icon">
+                <i data-lucide="building-2" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Monterrey</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="saltillo">
+              <div class="option-card__icon">
+                <i data-lucide="mountain" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Saltillo</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 4: Estado actual (con imágenes) ========== -->
+      <div class="wizard__step" data-step="4" data-wizard="jardines">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Cómo está tu espacio hoy?</h1>
+          <p class="wizard__hint fade-in-up">Elige la imagen que más se parece.</p>
+
+          <div class="wizard__options wizard__options--grid">
+            <div class="option-card option-card--image fade-in-up" data-value="sin_vegetacion">
+              <div class="option-card__img">
+                <img src="assets/jardines/estado-1-sin-vegetacion.jpg" alt="Sin vegetación">
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Sin vegetación</div>
+                <div class="option-card__desc">Tierra, cemento o grava</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card option-card--image fade-in-up" data-value="descuidado">
+              <div class="option-card__img">
+                <img src="assets/jardines/estado-2-descuidado.jpg" alt="Descuidado">
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Algo descuidado</div>
+                <div class="option-card__desc">Algo de pasto o plantas pero descuidado</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card option-card--image fade-in-up" data-value="sin_diseno">
+              <div class="option-card__img">
+                <img src="assets/jardines/estado-3-sin-diseno.jpg" alt="Sin diseño">
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Sin diseño</div>
+                <div class="option-card__desc">Tiene plantas pero sin orden ni diseño</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card option-card--image fade-in-up" data-value="bien_terminado">
+              <div class="option-card__img">
+                <img src="assets/jardines/estado-4-bien-terminado.jpg" alt="Bien terminado">
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Buen nivel</div>
+                <div class="option-card__desc">Está bien, solo quiero llevarlo al siguiente nivel</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 5: Tamaño ========== -->
+      <div class="wizard__step" data-step="5" data-wizard="jardines">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿De qué tamaño es el espacio aproximadamente?</h1>
+          <p class="wizard__hint fade-in-up">No tiene que ser exacto, una idea es suficiente.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="pequeno">
+              <div class="option-card__icon">
+                <i data-lucide="minimize-2" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Pequeño — menos de 20 m²</div>
+                <div class="option-card__desc">Como una recámara</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="mediano">
+              <div class="option-card__icon">
+                <i data-lucide="move" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Mediano — entre 20 y 60 m²</div>
+                <div class="option-card__desc">Como una sala-comedor</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="grande">
+              <div class="option-card__icon">
+                <i data-lucide="maximize-2" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Grande — más de 60 m²</div>
+                <div class="option-card__desc">Como un departamento completo</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 6: Foto (opcional) ========== -->
+      <div class="wizard__step" data-step="6" data-wizard="jardines">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Tienes una foto de tu espacio?</h1>
+          <p class="wizard__hint fade-in-up">Opcional — nos ayuda a darte una propuesta más precisa.</p>
+
+          <div class="photo-upload fade-in-up">
+            <div class="photo-upload__dropzone" id="photo-dropzone">
+              <i data-lucide="camera" style="width:40px;height:40px;color:var(--color-text-light);"></i>
+              <p class="photo-upload__text">Arrastra tu foto aquí o haz clic para seleccionar</p>
+              <p class="photo-upload__hint">JPG, PNG o HEIC — máx. 10 MB</p>
+              <input type="file" id="photo-input" accept=".jpg,.jpeg,.png,.heic" style="display:none;">
+            </div>
+            <div class="photo-upload__preview" id="photo-preview" style="display:none;">
+              <img id="photo-preview-img" alt="Preview de tu espacio">
+              <p class="photo-upload__success">Tu foto ya está lista. El equipo la revisará para darte una propuesta más precisa.</p>
+              <button class="photo-upload__remove" id="photo-remove" type="button">Cambiar foto</button>
+            </div>
+          </div>
+
+          <div class="wizard__footer fade-in-up">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn">
+              Continuar sin foto
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 7: Resultados ========== -->
+      <div class="wizard__step" data-step="7" data-wizard="jardines">
+        <div class="wizard__content">
+          <p class="wizard__hint fade-in-up" id="jardines-results-subtitle">Tu proyecto en Monterrey</p>
+          <p class="jardines-results-label fade-in-up" id="jardines-results-label">Jardín en casa · Mediano</p>
+
+          <div class="results-hero fade-in-up">
+            <div class="results-hero__number" id="jardines-results-inversion">$40,000</div>
+            <div class="results-hero__label">inversión estimada para transformar tu espacio</div>
+          </div>
+
+          <div class="results-grid fade-in-up">
+            <div class="results-metric">
+              <div class="results-metric__number" id="jardines-results-plusvalia">+10%</div>
+              <div class="results-metric__label">Plusvalía estimada</div>
+            </div>
+            <div class="results-metric">
+              <div class="results-metric__number" id="jardines-results-tiempo">3-4 semanas</div>
+              <div class="results-metric__label">Tiempo de obra</div>
+            </div>
+            <div class="results-metric">
+              <div class="results-metric__number">Sí</div>
+              <div class="results-metric__label">Diseño incluido</div>
+            </div>
+          </div>
+
+          <div class="results-insight fade-in-up" id="jardines-results-insight">
+            <p></p>
+          </div>
+
+          <div class="fade-in-up" style="text-align: center; margin-bottom: var(--space-md);">
+            <a href="/jardines/proyectos" target="_blank" rel="noopener" class="btn-ghost">
+              Ver proyectos reales
+            </a>
+          </div>
+
+          <div class="wizard__footer fade-in-up">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn">
+              Quiero hacer esto realidad
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 8: Contacto ========== -->
+      <div class="wizard__step" data-step="8" data-wizard="jardines">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿A dónde te enviamos tu resumen?</h1>
+          <p class="wizard__hint fade-in-up">El equipo de PATRIO te contacta en menos de 24 horas.</p>
+
+          <form id="jardines-contact-form" class="wizard__form fade-in-up" action="https://formspree.io/f/xwvnqzkj" method="POST">
+            <div class="input-group">
+              <label class="input-label" for="jardines-contact-name">Nombre completo *</label>
+              <input
+                type="text"
+                id="jardines-contact-name"
+                name="nombre"
+                class="input-field"
+                placeholder="Tu nombre"
+                autocomplete="name"
+                required
+              >
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="jardines-contact-email">Correo electrónico *</label>
+              <input
+                type="email"
+                id="jardines-contact-email"
+                name="email"
+                class="input-field"
+                placeholder="tu@correo.com"
+                autocomplete="email"
+                required
+              >
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="jardines-contact-phone">Teléfono / WhatsApp *</label>
+              <input
+                type="tel"
+                id="jardines-contact-phone"
+                name="telefono"
+                class="input-field"
+                placeholder="844 484 9359"
+                autocomplete="tel"
+                required
+              >
+            </div>
+
+            <div class="contact-autofill fade-in-up">
+              <div class="autofill-item">
+                <span class="autofill-item__label">Ciudad</span>
+                <span class="autofill-item__value" id="jardines-autofill-ciudad">—</span>
+                <input type="hidden" name="ciudad" id="jardines-autofill-ciudad-input">
+              </div>
+              <div class="autofill-item">
+                <span class="autofill-item__label">Espacio</span>
+                <span class="autofill-item__value" id="jardines-autofill-espacio">—</span>
+                <input type="hidden" name="tipo_espacio" id="jardines-autofill-espacio-input">
+              </div>
+              <div class="autofill-item">
+                <span class="autofill-item__label">Tamaño</span>
+                <span class="autofill-item__value" id="jardines-autofill-tamano">—</span>
+                <input type="hidden" name="tamano" id="jardines-autofill-tamano-input">
+              </div>
+            </div>
+
+            <!-- Hidden fields -->
+            <input type="hidden" name="wizard_tipo" value="jardines">
+            <input type="hidden" name="objetivo" id="jardines-form-objetivo">
+            <input type="hidden" name="estado_espacio" id="jardines-form-estado">
+            <input type="hidden" name="inversion_estimada" id="jardines-form-inversion">
+            <input type="hidden" name="plusvalia_estimada" id="jardines-form-plusvalia">
+            <input type="hidden" name="subio_foto" id="jardines-form-foto">
+
+            <div class="wizard__footer fade-in-up" style="margin-top: 48px;">
+              <button class="btn-back wizard__back-btn" type="button">
+                <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+                Atrás
+              </button>
+              <button type="submit" class="btn-primary wizard__submit-btn" disabled>
+                <i data-lucide="send" style="width:18px;height:18px;"></i>
+                Quiero que me contacten
+              </button>
+            </div>
+          </form>
+
+          <!-- Success state -->
+          <div class="jardines-contact-success contact-success" style="display: none;">
+            <div class="contact-success__icon">
+              <i data-lucide="check-circle" style="width:48px;height:48px;"></i>
+            </div>
+            <h2 class="contact-success__title">¡Listo! Recibimos tu información</h2>
+            <p class="contact-success__text">Un asesor de PATRIO te contactará pronto.</p>
+            <a id="jardines-whatsapp-btn" href="#" target="_blank" rel="noopener" class="btn-whatsapp">
+              <i data-lucide="message-circle" style="width:20px;height:20px;"></i>
+              O escríbenos directo por WhatsApp
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================
+           WIZARD DE ADMINISTRACIÓN
+           =================================================== -->
+
+      <!-- ========== PASO 1: Punto de partida ========== -->
+      <div class="wizard__step" data-step="1" data-wizard="administracion">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿En qué etapa estás?</h1>
+          <p class="wizard__hint fade-in-up">Esto nos ayuda a dirigirte al lugar correcto.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="construir">
+              <div class="option-card__icon">
+                <i data-lucide="plus-circle" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Quiero construir algo que genere rentas</div>
+                <div class="option-card__desc">Aún no tengo propiedad, busco invertir.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="optimizar">
+              <div class="option-card__icon">
+                <i data-lucide="settings" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Ya tengo una propiedad y quiero que trabaje mejor para mí</div>
+                <div class="option-card__desc">Quiero optimizar mi ingreso actual.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 2: Tipo de propiedad ========== -->
+      <div class="wizard__step" data-step="2" data-wizard="administracion">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Qué tipo de propiedad tienes?</h1>
+          <p class="wizard__hint fade-in-up">Selecciona la opción que mejor describe tu inmueble.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="depto_estudio">
+              <div class="option-card__icon">
+                <i data-lucide="building-2" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Departamentos o estudios</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="casa_habitacion">
+              <div class="option-card__icon">
+                <i data-lucide="home" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Casa habitación</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="local_comercial">
+              <div class="option-card__icon">
+                <i data-lucide="store" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Locales comerciales</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="mixto">
+              <div class="option-card__icon">
+                <i data-lucide="layers" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Desarrollo mixto</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="nave_bodega">
+              <div class="option-card__icon">
+                <i data-lucide="warehouse" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Naves o bodegas</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="parque_industrial">
+              <div class="option-card__icon">
+                <i data-lucide="factory" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Parque industrial</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 3: Ubicación y tamaño ========== -->
+      <div class="wizard__step" data-step="3" data-wizard="administracion">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Dónde está tu propiedad y de qué tamaño es?</h1>
+          <p class="wizard__hint fade-in-up">Por ahora atendemos Monterrey y Saltillo.</p>
+
+          <h3 class="wizard__sub-label fade-in-up">Ciudad</h3>
+          <div class="wizard__options wizard__options--inline fade-in-up">
+            <div class="option-card option-card--small" data-value="monterrey" data-field="ciudad">
+              <div class="option-card__icon">
+                <i data-lucide="building-2" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Monterrey</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+            <div class="option-card option-card--small" data-value="saltillo" data-field="ciudad">
+              <div class="option-card__icon">
+                <i data-lucide="mountain" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Saltillo</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <h3 class="wizard__sub-label fade-in-up">Número de unidades</h3>
+          <div class="wizard__options wizard__options--inline fade-in-up">
+            <div class="option-card option-card--small" data-value="1-4" data-field="unidades">
+              <div class="option-card__text">
+                <div class="option-card__title">1–4</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+            <div class="option-card option-card--small" data-value="5-10" data-field="unidades">
+              <div class="option-card__text">
+                <div class="option-card__title">5–10</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+            <div class="option-card option-card--small" data-value="11-20" data-field="unidades">
+              <div class="option-card__text">
+                <div class="option-card__title">11–20</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+            <div class="option-card option-card--small" data-value="20+" data-field="unidades">
+              <div class="option-card__text">
+                <div class="option-card__title">Más de 20</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 4: Ingreso actual ========== -->
+      <div class="wizard__step" data-step="4" data-wizard="administracion">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Sabes cuánto genera tu propiedad hoy?</h1>
+          <p class="wizard__hint fade-in-up">Si no estás seguro, PATRIO estima con datos de mercado.</p>
+
+          <div class="wizard__options">
+            <div class="option-card fade-in-up" data-value="si" data-field="conoce_ingreso">
+              <div class="option-card__icon">
+                <i data-lucide="check-circle" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Sí, conozco mis números</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="no" data-field="conoce_ingreso">
+              <div class="option-card__icon">
+                <i data-lucide="help-circle" style="width:24px;height:24px;"></i>
+              </div>
+              <div class="option-card__text">
+                <div class="option-card__title">No estoy seguro</div>
+                <div class="option-card__desc">PATRIO estima con datos de mercado según tu tipo de propiedad y ciudad.</div>
+              </div>
+              <div class="option-card__check">
+                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="admin-ingreso-group fade-in-up" style="display: none;">
+            <div class="input-group">
+              <label class="input-label" for="admin-ingreso">Ingreso bruto mensual actual</label>
+              <div class="input-currency">
+                <span class="input-currency__symbol">$</span>
+                <input
+                  type="text"
+                  id="admin-ingreso"
+                  class="input-field"
+                  placeholder="0"
+                  inputmode="numeric"
+                >
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-back wizard__back-btn">
+              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+              Atrás
+            </button>
+            <button class="btn-primary wizard__next-btn" disabled>
+              Ver resultados
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 5: Resultados y contacto ========== -->
+      <div class="wizard__step" data-step="5" data-wizard="administracion">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">Así puede trabajar tu propiedad con PATRIO</h1>
+
+          <div class="results-grid results-grid--admin fade-in-up">
+            <div class="results-metric results-metric--large">
+              <div class="results-metric__number" id="admin-ingreso-bruto">$0</div>
+              <div class="results-metric__label">Ingreso bruto mensual</div>
+            </div>
+            <div class="results-metric results-metric--large results-metric--highlight">
+              <div class="results-metric__number" id="admin-ingreso-neto">$0</div>
+              <div class="results-metric__label">Tu ingreso neto con PATRIO</div>
+            </div>
+            <div class="results-metric results-metric--large">
+              <div class="results-metric__number" id="admin-ingreso-anual">$0</div>
+              <div class="results-metric__label">Ingreso neto anual</div>
+            </div>
+          </div>
+
+          <p class="admin-estimacion-nota fade-in-up" id="admin-estimacion-nota" style="display: none;">
+            Estimado basado en propiedades similares en tu zona. En la primera reunión PATRIO analizará tu propiedad específica.
+          </p>
+
+          <div class="admin-upsell fade-in-up" style="background: #F8F7F4; border-radius: 12px; padding: 32px; margin: 32px 0;">
+            <h3 style="font-family: 'Playfair Display', serif; font-size: 1.25rem; margin-bottom: 20px;">¿Y si tu propiedad pudiera generar más?</h3>
+            <div class="admin-upsell__items">
+              <div class="admin-upsell__item">
+                <i data-lucide="trending-up" style="width:22px;height:22px;color:#6B8A5E;flex-shrink:0;"></i>
+                <span>Optimización de ocupancia y precios de renta</span>
+              </div>
+              <div class="admin-upsell__item">
+                <i data-lucide="leaf" style="width:22px;height:22px;color:#6B8A5E;flex-shrink:0;"></i>
+                <span>Mejoras de bajo costo y alto impacto — jardinería, acabados, iluminación</span>
+              </div>
+              <div class="admin-upsell__item">
+                <i data-lucide="repeat" style="width:22px;height:22px;color:#6B8A5E;flex-shrink:0;"></i>
+                <span>Reinversión inteligente hacia tu siguiente proyecto con PATRIO</span>
+              </div>
+            </div>
+          </div>
+
+          <form id="admin-contact-form" class="wizard__form fade-in-up" action="https://formspree.io/f/xwvnqzkj" method="POST">
+            <div class="input-group">
+              <label class="input-label" for="admin-contact-name">Nombre completo *</label>
+              <input
+                type="text"
+                id="admin-contact-name"
+                name="nombre"
+                class="input-field"
+                placeholder="Tu nombre"
+                autocomplete="name"
+                required
+              >
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="admin-contact-phone">Teléfono / WhatsApp *</label>
+              <input
+                type="tel"
+                id="admin-contact-phone"
+                name="telefono"
+                class="input-field"
+                placeholder="844 484 9359"
+                autocomplete="tel"
+                required
+              >
+            </div>
+
+            <!-- Hidden fields -->
+            <input type="hidden" name="wizard_tipo" value="administracion">
+            <input type="hidden" name="tipo_propiedad" id="admin-form-tipo-propiedad">
+            <input type="hidden" name="ciudad" id="admin-form-ciudad">
+            <input type="hidden" name="unidades" id="admin-form-unidades">
+            <input type="hidden" name="ingreso_mensual" id="admin-form-ingreso">
+
+            <div class="wizard__footer fade-in-up" style="margin-top: 48px;">
+              <button type="submit" class="btn-primary wizard__submit-btn">
+                <i data-lucide="send" style="width:18px;height:18px;"></i>
+                Quiero que me contacten
+              </button>
+            </div>
+          </form>
+
+          <!-- Success state -->
+          <div class="admin-contact-success contact-success" style="display: none;">
+            <div class="contact-success__icon">
+              <i data-lucide="check-circle" style="width:48px;height:48px;"></i>
+            </div>
+            <h2 class="contact-success__title">¡Listo! Recibimos tu información</h2>
+            <p class="contact-success__text">Un asesor de PATRIO te contactará pronto.</p>
+            <a id="admin-whatsapp-btn" href="#" target="_blank" rel="noopener" class="btn-whatsapp">
+              <i data-lucide="message-circle" style="width:20px;height:20px;"></i>
+              Hablar ahora por WhatsApp
             </a>
           </div>
         </div>

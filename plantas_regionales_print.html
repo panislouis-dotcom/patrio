@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plantas Regionales del Noreste — Patrio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --green:       #6B8A5E;
+      --green-dark:  #4a6240;
+      --green-light: #e8f0e5;
+      --green-mid:   #b8cdb2;
+      --cream:       #f8f6f1;
+      --sand:        #ede9df;
+      --ink:         #1a1a1a;
+      --muted:       #6b6b6b;
+      --border:      #d5cfc4;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      font-size: 9.5pt;
+      color: var(--ink);
+      background: white;
+      line-height: 1.6;
+    }
+
+    /* ── PORTADA ─────────────────────────────────────────── */
+    .cover {
+      width: 100%;
+      height: 100vh;
+      background: var(--green);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px;
+      text-align: center;
+      page-break-after: always;
+      position: relative;
+    }
+
+    .cover::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 60px,
+        rgba(255,255,255,0.03) 60px,
+        rgba(255,255,255,0.03) 61px
+      );
+    }
+
+    .cover-logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 13pt;
+      font-weight: 600;
+      letter-spacing: 0.4em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 48px;
+      position: relative;
+    }
+
+    .cover-ornament {
+      width: 48px;
+      height: 2px;
+      background: rgba(255,255,255,0.4);
+      margin: 0 auto 48px;
+      position: relative;
+    }
+    .cover-ornament::before,
+    .cover-ornament::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 5px;
+      height: 5px;
+      background: rgba(255,255,255,0.5);
+      border-radius: 50%;
+    }
+    .cover-ornament::before { left: -10px; }
+    .cover-ornament::after  { right: -10px; }
+
+    .cover h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 38pt;
+      font-weight: 700;
+      color: white;
+      line-height: 1.15;
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .cover-subtitle {
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 17pt;
+      color: rgba(255,255,255,0.75);
+      margin-bottom: 48px;
+      position: relative;
+    }
+
+    .cover-divider {
+      width: 80px;
+      height: 1px;
+      background: rgba(255,255,255,0.35);
+      margin: 0 auto 32px;
+    }
+
+    .cover-meta {
+      font-size: 9pt;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.55);
+      position: relative;
+    }
+
+    .cover-region {
+      display: flex;
+      gap: 36px;
+      margin-top: 60px;
+      position: relative;
+    }
+    .cover-region span {
+      font-family: 'Playfair Display', serif;
+      font-size: 10pt;
+      color: rgba(255,255,255,0.85);
+      padding: 10px 22px;
+      border: 1px solid rgba(255,255,255,0.25);
+      letter-spacing: 0.12em;
+    }
+
+    /* ── PÁGINA ──────────────────────────────────────────── */
+    .page {
+      padding: 48px 56px;
+      max-width: 100%;
+    }
+
+    /* ── ENCABEZADO DE SECCIÓN ───────────────────────────── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 40px 0 24px;
+      page-break-after: avoid;
+    }
+
+    .section-number {
+      font-family: 'Playfair Display', serif;
+      font-size: 28pt;
+      font-weight: 700;
+      color: var(--green-light);
+      line-height: 1;
+      min-width: 44px;
+    }
+
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 18pt;
+      font-weight: 600;
+      color: var(--green-dark);
+    }
+
+    .section-line {
+      flex: 1;
+      height: 1px;
+      background: var(--green-mid);
+    }
+
+    /* ── INTRO ───────────────────────────────────────────── */
+    .intro-box {
+      background: var(--green-light);
+      border-left: 4px solid var(--green);
+      padding: 18px 22px;
+      margin-bottom: 32px;
+      font-size: 9.5pt;
+      color: var(--green-dark);
+      line-height: 1.7;
+    }
+
+    /* ── TARJETA DE PLANTA ───────────────────────────────── */
+    .plant-card {
+      border: 1px solid var(--border);
+      margin-bottom: 22px;
+      page-break-inside: avoid;
+    }
+
+    .plant-header {
+      background: var(--green);
+      padding: 12px 18px;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .plant-name {
+      font-family: 'Playfair Display', serif;
+      font-size: 13pt;
+      font-weight: 600;
+      color: white;
+    }
+
+    .plant-scientific {
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 9.5pt;
+      color: rgba(255,255,255,0.75);
+    }
+
+    .plant-family {
+      font-size: 8pt;
+      color: rgba(255,255,255,0.55);
+      margin-left: auto;
+      letter-spacing: 0.05em;
+    }
+
+    .plant-body {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 0;
+    }
+
+    .plant-specs {
+      background: var(--cream);
+      padding: 14px 16px;
+      border-right: 1px solid var(--border);
+    }
+
+    .spec-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 8.5pt;
+    }
+    .spec-row:last-child { margin-bottom: 0; }
+
+    .spec-label {
+      font-weight: 600;
+      color: var(--green-dark);
+      min-width: 58px;
+      font-size: 8pt;
+      letter-spacing: 0.02em;
+    }
+
+    .spec-value {
+      color: var(--ink);
+      flex: 1;
+    }
+
+    .spec-badge {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 20px;
+      font-size: 7.5pt;
+      font-weight: 500;
+    }
+    .badge-sun    { background: #fef3c7; color: #92400e; }
+    .badge-semi   { background: #dbeafe; color: #1e40af; }
+    .badge-water0 { background: #f0fdf4; color: #166534; }
+    .badge-water1 { background: #d1fae5; color: #065f46; }
+    .badge-water2 { background: #a7f3d0; color: #065f46; }
+    .badge-frost  { background: #eff6ff; color: #1d4ed8; }
+    .badge-heat   { background: #fef2f2; color: #991b1b; }
+    .badge-native { background: var(--green-light); color: var(--green-dark); }
+
+    .plant-info {
+      padding: 14px 18px;
+    }
+
+    .plant-description {
+      font-size: 8.5pt;
+      color: var(--muted);
+      line-height: 1.65;
+      margin-bottom: 10px;
+    }
+
+    .plant-uses {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .use-tag {
+      font-size: 7.5pt;
+      padding: 2px 9px;
+      background: var(--sand);
+      color: var(--green-dark);
+      border-radius: 20px;
+      font-weight: 500;
+    }
+
+    .plant-flower {
+      font-size: 8pt;
+      color: var(--green);
+      margin-top: 8px;
+      font-style: italic;
+    }
+
+    .care-tip {
+      margin-top: 8px;
+      padding: 7px 10px;
+      background: var(--green-light);
+      border-radius: 3px;
+      font-size: 8pt;
+      color: var(--green-dark);
+    }
+
+    /* ── TABLA RESUMEN ───────────────────────────────────── */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8pt;
+      margin: 16px 0;
+    }
+
+    .summary-table thead tr {
+      background: var(--green);
+      color: white;
+    }
+
+    .summary-table th {
+      padding: 8px 10px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 7.5pt;
+      letter-spacing: 0.05em;
+    }
+
+    .summary-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .summary-table tr:nth-child(even) td {
+      background: var(--cream);
+    }
+
+    .summary-table tr:hover td {
+      background: var(--green-light);
+    }
+
+    /* ── COMBINACIONES ───────────────────────────────────── */
+    .combo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .combo-card {
+      border: 1px solid var(--border);
+      page-break-inside: avoid;
+    }
+
+    .combo-header {
+      background: var(--green-dark);
+      color: white;
+      padding: 10px 14px;
+      font-family: 'Playfair Display', serif;
+      font-size: 10pt;
+      font-weight: 600;
+    }
+
+    .combo-body {
+      padding: 12px 14px;
+      background: var(--cream);
+    }
+
+    .combo-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 8pt;
+    }
+
+    .combo-category {
+      font-weight: 600;
+      color: var(--green);
+      min-width: 80px;
+      font-size: 7.5pt;
+    }
+
+    .combo-plants {
+      color: var(--ink);
+    }
+
+    /* ── CLIMA ───────────────────────────────────────────── */
+    .clima-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .clima-card {
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .clima-header {
+      background: var(--green-mid);
+      padding: 12px 16px;
+    }
+
+    .clima-city {
+      font-family: 'Playfair Display', serif;
+      font-size: 13pt;
+      font-weight: 700;
+      color: var(--green-dark);
+    }
+
+    .clima-state {
+      font-size: 8pt;
+      color: var(--green-dark);
+      opacity: 0.7;
+      letter-height: 0.05em;
+    }
+
+    .clima-body {
+      padding: 14px 16px;
+      background: var(--cream);
+    }
+
+    .clima-stat {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 8.5pt;
+    }
+    .clima-stat:last-child { border-bottom: none; }
+
+    .clima-stat-label { color: var(--muted); }
+    .clima-stat-value { font-weight: 600; color: var(--ink); }
+
+    .clima-plants {
+      margin-top: 10px;
+      font-size: 8pt;
+      color: var(--green-dark);
+      font-style: italic;
+    }
+
+    /* ── ÍNDICE ──────────────────────────────────────────── */
+    .toc {
+      background: var(--cream);
+      border: 1px solid var(--border);
+      padding: 28px 32px;
+      margin: 24px 0 32px;
+    }
+
+    .toc-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 13pt;
+      font-weight: 600;
+      color: var(--green-dark);
+      margin-bottom: 18px;
+    }
+
+    .toc-item {
+      display: flex;
+      align-items: baseline;
+      gap: 0;
+      padding: 5px 0;
+      border-bottom: 1px dotted var(--border);
+      font-size: 8.5pt;
+    }
+    .toc-item:last-child { border-bottom: none; }
+
+    .toc-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 9pt;
+      color: var(--green);
+      min-width: 24px;
+      font-weight: 600;
+    }
+
+    .toc-label { flex: 1; color: var(--ink); }
+
+    .toc-sub {
+      font-size: 8pt;
+      color: var(--muted);
+    }
+
+    /* ── PIE DE PÁGINA ───────────────────────────────────── */
+    .footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7.5pt;
+      color: var(--muted);
+    }
+
+    .footer-brand {
+      font-family: 'Playfair Display', serif;
+      font-size: 9pt;
+      color: var(--green);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── PRINT ───────────────────────────────────────────── */
+    @media print {
+      @page { margin: 0; size: A4; }
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .cover { height: 100vh; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!--  PORTADA                                                  -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">Patrio · Jardines</div>
+  <div class="cover-ornament"></div>
+  <h1>Plantas Regionales<br>del Noreste</h1>
+  <div class="cover-subtitle">de México</div>
+  <div class="cover-divider"></div>
+  <div class="cover-meta">Guía de referencia · 39 especies documentadas</div>
+  <div class="cover-region">
+    <span>Saltillo · Coahuila</span>
+    <span>Monterrey · Nuevo León</span>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!--  INTERIOR                                                  -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="page">
+
+  <div class="intro-box">
+    Guía de referencia para proyectos de jardinería sustentable en climas áridos y semiáridos del noreste de México. Todas las especies documentadas están adaptadas a las condiciones de la región: veranos calurosos, inviernos fríos esporádicos, lluvia escasa y suelos alcalinos. El uso de plantas nativas reduce el consumo de agua hasta un 80% comparado con jardines convencionales.
+  </div>
+
+  <!-- Índice -->
+  <div class="toc">
+    <div class="toc-title">Contenido</div>
+    <div class="toc-item"><span class="toc-num">1</span><span class="toc-label">Árboles Nativos y Adaptados <span class="toc-sub">— Mezquite, Anacahuita, Ébano, Huizache, Fresno, Retama, Encino, Cedro, Nogal, Chaparro</span></span></div>
+    <div class="toc-item"><span class="toc-num">2</span><span class="toc-label">Palmas y Yucas <span class="toc-sub">— Palma China, Samandoca, Sotol, Washingtonia</span></span></div>
+    <div class="toc-item"><span class="toc-num">3</span><span class="toc-label">Agaves <span class="toc-sub">— Maguey Verde, Lechuguilla, Maguey Cenizo, Agave Variegado</span></span></div>
+    <div class="toc-item"><span class="toc-num">4</span><span class="toc-label">Cactus y Suculentas <span class="toc-sub">— Nopal, Biznaga, Candelilla, Ocotillo, Gobernadora</span></span></div>
+    <div class="toc-item"><span class="toc-num">5</span><span class="toc-label">Arbustos Ornamentales <span class="toc-sub">— Cenizo, Tepozán, Barreta, Damiana, Sangre de Drago, Oregano, Hierba del Burro, Lantana</span></span></div>
+    <div class="toc-item"><span class="toc-num">6</span><span class="toc-label">Hierbas y Perennes <span class="toc-sub">— Salvias, Pastos Nativos, Verbena, Lantana</span></span></div>
+    <div class="toc-item"><span class="toc-num">7</span><span class="toc-label">Combinaciones Recomendadas por Tipo de Jardín</span></div>
+    <div class="toc-item"><span class="toc-num">8</span><span class="toc-label">Clima Regional · Saltillo vs Monterrey</span></div>
+    <div class="toc-item"><span class="toc-num">9</span><span class="toc-label">Tabla Resumen de las 39 especies</span></div>
+  </div>
+
+  <!-- ── SECCIÓN 1: ÁRBOLES ─────────────────────────────── -->
+  <div class="section-header">
+    <span class="section-number">01</span>
+    <span class="section-title">Árboles Nativos y Adaptados</span>
+    <div class="section-line"></div>
+  </div>
+
+  <!-- Mezquite -->
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Mezquite</span>
+      <span class="plant-scientific">Prosopis glandulosa</span>
+      <span class="plant-family">Fabaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Muy escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">5 – 10 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Lenta–moderada</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ hasta −10°C</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Mar–May · Amarillo</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Árbol emblemático del desierto chihuahuense. Copa amplia e irregular, follaje fino que proyecta sombra filtrada. Fija nitrógeno en el suelo. Produce vainas dulces comestibles muy nectaríferas. Sistema radicular profundo, madera extremadamente dura. Una vez establecido (1–2 años) no requiere riego alguno.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Sombra</span>
+          <span class="use-tag">Cerco vivo</span>
+          <span class="use-tag">Focal</span>
+          <span class="use-tag">Jardín xérico</span>
+          <span class="use-tag">Restauración</span>
+          <span class="use-tag">Comestible</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Anacahuita -->
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Anacahuita</span>
+      <span class="plant-scientific">Cordia boissieri</span>
+      <span class="plant-family">Boraginaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Bien drenado, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">3 – 6 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Moderada</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ hasta −5°C</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Todo el año · Blanco</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Uno de los árboles ornamentales más espectaculares del noreste. Flores blancas de hasta 5 cm, hojas grandes aterciopeladas. Florece prácticamente todo el año atrayendo mariposas, colibríes y abejas. Fruto blanco translúcido comestible. En Texas se conoce como "Wild Olive".</div>
+        <div class="plant-uses">
+          <span class="use-tag">Ornamental</span>
+          <span class="use-tag">Focal</span>
+          <span class="use-tag">Polinizadores</span>
+          <span class="use-tag">Jardín xérico</span>
+          <span class="use-tag">Colibríes</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ébano -->
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Ébano</span>
+      <span class="plant-scientific">Ebenopsis ebano</span>
+      <span class="plant-family">Fabaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water1">Escaso–moderado</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Arcilloso, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">8 – 15 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Lenta</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-heat">Sensible</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Primavera · Blanco</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Árbol majestuoso icónico de Nuevo León. Madera negra considerada la más dura de México. Copa densa y redondeada, hojas bipinnadas finas. Flores blancas fragantes. Produce vainas con semillas ("pataste") que se tuestan y consumen. Invertir en ejemplar de buen tamaño por su lento crecimiento.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Sombra principal</span>
+          <span class="use-tag">Focal</span>
+          <span class="use-tag">Alamedas</span>
+          <span class="use-tag">Patrimonial</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Huizache -->
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Huizache</span>
+      <span class="plant-scientific">Vachellia farnesiana</span>
+      <span class="plant-family">Fabaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Muy escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">3 – 8 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Rápida</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ hasta −8°C</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Ene–Mar · Amarillo</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Flores amarillas en pompones intensamente fragantes — usadas en perfumería fina europea desde el siglo XVII. Arbusto espinoso que fija nitrógeno. Excelente como cerco vivo defensivo. Muy rápido para establecerse y cubrir áreas degradadas.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Cerco vivo</span>
+          <span class="use-tag">Restauración</span>
+          <span class="use-tag">Polinizadores</span>
+          <span class="use-tag">Naturalista</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fresno Coahuilteco -->
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Fresno Coahuilteco</span>
+      <span class="plant-scientific">Fraxinus greggii</span>
+      <span class="plant-family">Oleaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Sol / semisombra</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water1">Moderado</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Bien drenado, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">4 – 8 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Moderada</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Fresno nativo, mucho más resistente que el fresno europeo. Follaje pequeño y elegante, semi-perenne. Muy superior al <em>Fraxinus uhdei</em> (fresno común) por su resistencia a plagas y condiciones locales. Hojas pinnadas finas, copa redondeada y densa. Preferir siempre al fresno europeo en proyectos regionales.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Sombra</span>
+          <span class="use-tag">Alineaciones</span>
+          <span class="use-tag">Jardines medianos</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Retama -->
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Retama</span>
+      <span class="plant-scientific">Parkinsonia aculeata</span>
+      <span class="plant-family">Fabaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Muy escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo, pobre</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">4 – 8 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Rápida</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Moderadas</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Primavera · Amarillo-naranja</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Árbol ligero y elegante con ramas colgantes verde-brillante que realizan fotosíntesis. Florece profusamente. Crea sombra filtrada sin bloquear el viento. Crece en suelos muy pobres donde otros árboles no sobreviven. Uno de los más xerofíticos disponibles para jardinería.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Focal</span>
+          <span class="use-tag">Xérico</span>
+          <span class="use-tag">Terrenos difíciles</span>
+          <span class="use-tag">Orillas</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Encino -->
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Encino Roble</span>
+      <span class="plant-scientific">Quercus polymorpha</span>
+      <span class="plant-family">Fagaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water1">Moderado (establecimiento)</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Bien drenado, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">8 – 20 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Lenta</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Muy resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo (Sierra Madre)</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Encino nativo de las estribaciones de la Sierra Madre Oriental. Semi-perenne — renueva follaje sin quedar desnudo. Hojas grandes y brillantes. Produce bellotas que alimentan fauna silvestre. Madera valiosa y duradera. Mejor encino para jardinería urbana en la región.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Sombra permanente</span>
+          <span class="use-tag">Patrimonial</span>
+          <span class="use-tag">Parques</span>
+          <span class="use-tag">Jardines grandes</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cedro -->
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Cedro / Tascate</span>
+      <span class="plant-scientific">Juniperus flaccida</span>
+      <span class="plant-family">Cupressaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Rocoso, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">5 – 15 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Lenta–moderada</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Muy resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo (Sierra Madre)</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Conífera nativa con ramas colgantes y aroma intenso. Muy común en las sierras de Coahuila y Nuevo León. Gálbulos azulados decorativos parecidos a bayas. Madera aromática que repele insectos. Excelente pantalla visual y cortavientos. Puede vivir siglos.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Pantalla de privacidad</span>
+          <span class="use-tag">Seto alto</span>
+          <span class="use-tag">Acento</span>
+          <span class="use-tag">Aves</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nogal -->
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Nogal Silvestre</span>
+      <span class="plant-scientific">Juglans microcarpa</span>
+      <span class="plant-family">Juglandaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water1">Moderado</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Profundo, bien drenado</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">5 – 10 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Lenta</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Muy resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Pariente nativo del nogal común. Caducifolio con color otoñal amarillo intenso. Hojas pinnadas aromáticas a nuez. Sombra en verano, luz en invierno. Produce nueces pequeñas que atraen fauna silvestre. No trasplantar adulto (raíz pivotante profunda).</div>
+        <div class="plant-uses">
+          <span class="use-tag">Focal</span>
+          <span class="use-tag">Sombra estacional</span>
+          <span class="use-tag">Color otoñal</span>
+          <span class="use-tag">Jardines grandes</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 2: PALMAS ───────────────────────────────── -->
+  <div class="section-header">
+    <span class="section-number">02</span>
+    <span class="section-title">Palmas y Yucas</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Palma China / Yuca Gigante</span>
+      <span class="plant-scientific">Yucca filifera</span>
+      <span class="plant-family">Asparagaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Nulo (establecida)</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo bien drenado</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">5 – 15 m (con tronco)</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Muy lenta</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ hasta −15°C</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Primavera · Racimos blancos</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">La yuca más grande e icónica del noreste. Vive cientos de años. Polinizada exclusivamente por la polilla <em>Tegeticula</em>. Flores y frutos comestibles (flor de palma — tradición culinaria local). Fibras para artesanía. Riego de establecimiento 6–12 meses; después ninguno. No regar el tronco.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Focal espectacular</span>
+          <span class="use-tag">Xérico</span>
+          <span class="use-tag">Arquitectónico</span>
+          <span class="use-tag">Comestible</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Sotol / Cucharilla</span>
+      <span class="plant-scientific">Dasylirion wheeleri</span>
+      <span class="plant-family">Asparagaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Nulo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Rocoso, pobre</span></div>
+        <div class="spec-row"><span class="spec-label">Tamaño</span><span class="spec-value">1–1.5 m ø roseta</span></div>
+        <div class="spec-row"><span class="spec-label">Vara floral</span><span class="spec-value">3 – 5 m</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ hasta −18°C</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Roseta densa de hojas delgadas con pequeños dientes. Vara floral plumosa de 3–5 m muy decorativa cuando florece. Base del destilado "Sotol" (denominación de origen). Cuidados nulos una vez establecido. Limpiar hojas secas del centro.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Xérico</span>
+          <span class="use-tag">Rocalla</span>
+          <span class="use-tag">Textural</span>
+          <span class="use-tag">Gramíneas</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 3: AGAVES ───────────────────────────────── -->
+  <div class="section-header">
+    <span class="section-number">03</span>
+    <span class="section-title">Agaves</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Maguey Verde</span>
+      <span class="plant-scientific">Agave salmiana</span>
+      <span class="plant-family">Asparagaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Muy escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo bien drenado</span></div>
+        <div class="spec-row"><span class="spec-label">Tamaño</span><span class="spec-value">1.5–2 m de diámetro</span></div>
+        <div class="spec-row"><span class="spec-label">Vara floral</span><span class="spec-value">6 – 10 m (una sola vez)</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ hasta −10°C</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del altiplano</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">El agave más grande de la región. Monocárpico — florece una sola vez después de 10–25 años, produce vara de hasta 10 m y luego muere, dejando hijuelos. Fuente de pulque, aguamiel y fibra textil. Espacio mínimo de 2.5 m alrededor. Cuidado con la espina terminal.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Focal</span>
+          <span class="use-tag">Barrera</span>
+          <span class="use-tag">Xérico</span>
+          <span class="use-tag">Nativo</span>
+          <span class="use-tag">Comestible</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Maguey Cenizo</span>
+      <span class="plant-scientific">Agave scabra</span>
+      <span class="plant-family">Asparagaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Muy escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Rocoso, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Tamaño</span><span class="spec-value">1–1.5 m de diámetro</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo de Coahuila/NL</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Color gris-azulado muy ornamental. Textura rugosa en las hojas. Excelente contraste cromático con plantas verdes. Produce hijuelos abundantes. Uno de los agaves más decorativos de la región por su tonalidad cenicenta plateada.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Contraste cromático</span>
+          <span class="use-tag">Xérico</span>
+          <span class="use-tag">Rocalla</span>
+          <span class="use-tag">Ornamental</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Lechuguilla</span>
+      <span class="plant-scientific">Agave lechuguilla</span>
+      <span class="plant-family">Asparagaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Nulo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Rocoso, calizo, muy pobre</span></div>
+        <div class="spec-row"><span class="spec-label">Tamaño</span><span class="spec-value">30–60 cm de diámetro</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Muy resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del desierto</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Indicador ecológico del desierto chihuahuense. Forma colonias densas. Fibra (ixtle) de gran valor comercial para artesanía, cepillos y cuerdas. Espinas muy afiladas — planta defensiva natural. Plantar y olvidar: ningún cuidado posterior.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Rocalla</span>
+          <span class="use-tag">Naturalista</span>
+          <span class="use-tag">Cobertura de pendientes</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 4: CACTUS ───────────────────────────────── -->
+  <div class="section-header">
+    <span class="section-number">04</span>
+    <span class="section-title">Cactus y Suculentas</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Nopal</span>
+      <span class="plant-scientific">Opuntia spp.</span>
+      <span class="plant-family">Cactaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Nulo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo bien drenado</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">0.5 – 4 m (según especie)</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Muy resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Primavera · Amarillo/rojo</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Icónico de la flora mexicana. Tuna (fruta) muy nutritiva, nopalito (verdura). Cerco vivo infranqueable de bajísimo mantenimiento. Recomendados: <em>O. robusta</em> (nopal tapón) para jardín ornamental con cladodios grandes circulares; <em>O. engelmannii</em> para cerco; <em>O. lindheimeri</em> más ornamental con espinas amarillas.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Cerco vivo</span>
+          <span class="use-tag">Comestible</span>
+          <span class="use-tag">Focal</span>
+          <span class="use-tag">Pendientes</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Biznaga Barril</span>
+      <span class="plant-scientific">Ferocactus pilosus</span>
+      <span class="plant-family">Cactaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol (obligatorio)</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Nulo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Rocoso, sustrato poroso</span></div>
+        <div class="spec-row"><span class="spec-label">Tamaño</span><span class="spec-value">0.5–2 m alto, 30–60 cm ø</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Moderadas</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo de Coahuila/NL</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Verano–otoño · Corona</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Espinas centrales rojas espectaculares. Flores en corona en la cima. Puede vivir más de 100 años. En extinción en hábitat natural — comprar <strong>solo en viveros certificados</strong>. No regar, plantar en sustrato muy poroso. Pleno sol obligatorio.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Focal en rocalla</span>
+          <span class="use-tag">Xérico</span>
+          <span class="use-tag">Macetones</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Ocotillo</span>
+      <span class="plant-scientific">Fouquieria splendens</span>
+      <span class="plant-family">Fouquieriaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Muy escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Rocoso, arenoso, poroso</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">2 – 6 m</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Moderadas</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del desierto</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Primavera · Rojo-naranja</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Respuesta dramática a la lluvia — de "muerto" a verde en 72 horas. Flores rojo-anaranjadas atraen colibríes. Tallos plantados enraízan — se usa como cerco vivo. Uno de los arbustos más arquitectónicos del desierto. Plantar en otoño para establecimiento con lluvias invernales.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Focal dramático</span>
+          <span class="use-tag">Cerco vivo</span>
+          <span class="use-tag">Colibríes</span>
+          <span class="use-tag">Xérico</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Candelilla</span>
+      <span class="plant-scientific">Euphorbia antisyphilitica</span>
+      <span class="plant-family">Euphorbiaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Nulo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Rocoso, calizo, muy pobre</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">30 – 80 cm</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del desierto</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Tallos delgados y erectos sin hojas, con cera de máxima calidad mundial en su superficie. Denominación de origen en México. Flores blancas-rosadas en primavera. Forma colonias compactas muy ornamentales con textura arquitectónica única. Manejar con guantes — látex irritante.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Textural</span>
+          <span class="use-tag">Xérico</span>
+          <span class="use-tag">Rocalla</span>
+          <span class="use-tag">Nativo</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 5: ARBUSTOS ────────────────────────────── -->
+  <div class="section-header">
+    <span class="section-number">05</span>
+    <span class="section-title">Arbustos Ornamentales</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Cenizo / Salvia Texana</span>
+      <span class="plant-scientific">Leucophyllum frutescens</span>
+      <span class="plant-family">Scrophulariaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol (obligatorio)</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Bien drenado, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">1 – 2.5 m</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ hasta −10°C</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo NE México/Texas</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Verano–otoño · Lavanda</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Follaje plateado decorativo todo el año. Florece masivamente después de la lluvia — "barómetro del desierto". Muy popular en Texas como Texas Sage. Cultivares: 'Green Cloud', 'White Cloud', 'Compacta'. Pleno sol obligatorio para máxima floración. Riego en exceso lo vuelve verde oscuro y pierde atractivo.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Seto formal/informal</span>
+          <span class="use-tag">Borde</span>
+          <span class="use-tag">Contraste plateado</span>
+          <span class="use-tag">Xérico</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Tepozán / Mariposa</span>
+      <span class="plant-scientific">Buddleja cordata</span>
+      <span class="plant-family">Scrophulariaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Sol / semisombra</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water1">Moderado</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">3 – 8 m</span></div>
+        <div class="spec-row"><span class="spec-label">Crecimiento</span><span class="spec-value">Rápida</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Tolerante</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del noreste</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Imán irresistible para mariposas, colibríes y abejas. Flores en racimos anaranjados-amarillos fragantes. Hojas grandes verde oscuro arriba, blancas abajo. Crece rápido — útil para cobertura de espacios. Poda fuerte en invierno para rejuvenecer y mejorar floración.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Jardín mariposas</span>
+          <span class="use-tag">Pantalla rápida</span>
+          <span class="use-tag">Fondo</span>
+          <span class="use-tag">Polinizadores</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Gobernadora / Hediondilla</span>
+      <span class="plant-scientific">Larrea tridentata</span>
+      <span class="plant-family">Zygophyllaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Nulo</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo árido</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">1 – 2 m</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Muy resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del desierto</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">El aroma a lluvia en el desierto. Hojas resinosas con fragancia única a creosota. Colonias de hasta 11,000 años de antigüedad — posiblemente el organismo vivo más longevo de la Tierra. Propiedades medicinales ampliamente estudiadas. Difícil de germinar — comprar en vivero certificado.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Naturalista</span>
+          <span class="use-tag">Cobertura árida</span>
+          <span class="use-tag">Medicinal</span>
+          <span class="use-tag">Nativo</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Damiana</span>
+      <span class="plant-scientific">Turnera diffusa</span>
+      <span class="plant-family">Passifloraceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Arenoso, bien drenado</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">0.5 – 1.5 m</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-heat">Sensible a heladas</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del noreste</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Primavera–verano · Amarillo</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Gran valor etnobotánico. Flores amarillas brillantes muy ornamentales. Aroma muy particular e intenso. Medicinal: tónico, digestivo, adaptógeno. Base del famoso licor de Damiana (Baja California). Poda después de floración para rejuvenecer. Proteger de heladas con mantillo.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Medicinal</span>
+          <span class="use-tag">Sensorial</span>
+          <span class="use-tag">Borde aromático</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Hierba del Burro / Vara Blanca</span>
+      <span class="plant-scientific">Aloysia gratissima</span>
+      <span class="plant-family">Verbenaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Bien drenado</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">1 – 3 m</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Tolerante</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del noreste</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Primavera–otoño · Blanco</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Considerada una de las plantas más aromáticas de América. Fragancia extraordinaria a vainilla-especias. Flores blancas en espigas delicadas. Atrae mariposas y polinizadores masivamente. Excelente para jardines sensoriales y de mariposas.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Sensorial</span>
+          <span class="use-tag">Mariposas</span>
+          <span class="use-tag">Seto aromático</span>
+          <span class="use-tag">Polinizadores</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Oregano de Monte</span>
+      <span class="plant-scientific">Lippia graveolens</span>
+      <span class="plant-family">Verbenaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Bien drenado, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">1 – 2 m</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-heat">Sensible a heladas</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del noreste</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">El orégano mexicano auténtico — diferente al mediterráneo, con aroma más intenso y picante. Muy usado en la cocina del norte de México. Flores blancas nectaríferas que atraen polinizadores. Medicinal: digestivo, antibacterial. Poda post-floración para rejuvenecer.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Culinario</span>
+          <span class="use-tag">Medicinal</span>
+          <span class="use-tag">Polinizadores</span>
+          <span class="use-tag">Aromático</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 6: HIERBAS ─────────────────────────────── -->
+  <div class="section-header">
+    <span class="section-number">06</span>
+    <span class="section-title">Hierbas, Pastos y Perennes</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Salvia Gregg / Mirto Rojo</span>
+      <span class="plant-scientific">Salvia greggii</span>
+      <span class="plant-family">Lamiaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Bien drenado, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">60 – 120 cm</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Tolerante</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo Coahuila/NL/TX</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Casi todo el año</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Floración casi continua en rojo, rosa, salmón o blanco. Imán irresistible para colibríes. Arbusto pequeño perenne muy resistente una vez establecido. Poda ligera después de cada ciclo de floración para mantener compacta.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Colibríes</span>
+          <span class="use-tag">Borde</span>
+          <span class="use-tag">Macetas</span>
+          <span class="use-tag">Xérico</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Zacate Búfalo</span>
+      <span class="plant-scientific">Bouteloua dactyloides</span>
+      <span class="plant-family">Poaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Muy escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo (incluso arcilla)</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">5 – 15 cm (césped)</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Muy resistente</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo praderas noreste</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">El único pasto nativo de América del Norte para uso como césped de bajo mantenimiento. Consume 75% menos agua que el pasto San Agustín. Raíz profunda (hasta 2 m). Color verde-azulado en verano, dorado en invierno. No fertilizar con nitrógeno excesivo. Regar 1× cada 2–3 semanas en verano.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Césped sustentable</span>
+          <span class="use-tag">Taludes</span>
+          <span class="use-tag">Naturalista</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Verbena de Lluvia</span>
+      <span class="plant-scientific">Glandularia bipinnatifida</span>
+      <span class="plant-family">Verbenaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Bien drenado, calizo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">20–40 cm (rastrera)</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-frost">❄ Leves</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo NE México/Texas</span></span></div>
+        <div class="spec-row"><span class="spec-label">Floración</span><span class="spec-value">Prim.–otoño tras lluvia</span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Perenne rastrera con flores rosa-violeta. Florece masivamente después de las lluvias. Cobertura rápida y colorida para suelos pobres. Atrae mariposas y abejas. Se resiembra sola. Excelente para rellenar espacios entre rocas o suculentas.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Cobertura</span>
+          <span class="use-tag">Borde</span>
+          <span class="use-tag">Entre rocas</span>
+          <span class="use-tag">Mariposas</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plant-card">
+    <div class="plant-header">
+      <span class="plant-name">Lantana Nativa / Cenicilla</span>
+      <span class="plant-scientific">Lantana achyranthifolia</span>
+      <span class="plant-family">Verbenaceae</span>
+    </div>
+    <div class="plant-body">
+      <div class="plant-specs">
+        <div class="spec-row"><span class="spec-label">Luz</span><span class="spec-value"><span class="spec-badge badge-sun">☀ Pleno sol</span></span></div>
+        <div class="spec-row"><span class="spec-label">Riego</span><span class="spec-value"><span class="spec-badge badge-water0">Escaso</span></span></div>
+        <div class="spec-row"><span class="spec-label">Suelo</span><span class="spec-value">Cualquier tipo</span></div>
+        <div class="spec-row"><span class="spec-label">Altura</span><span class="spec-value">50 – 150 cm</span></div>
+        <div class="spec-row"><span class="spec-label">Heladas</span><span class="spec-value"><span class="spec-badge badge-heat">Sensible</span></span></div>
+        <div class="spec-row"><span class="spec-label">Origen</span><span class="spec-value"><span class="spec-badge badge-native">Nativo del noreste</span></span></div>
+      </div>
+      <div class="plant-info">
+        <div class="plant-description">Planta favorita de la mariposa monarca durante su migración. Flores multicolores en cada cabezuela (arcoíris). Tolerancia extraordinaria al calor. Floración casi todo el año excepto heladas. Fruto negro tóxico para humanos, alimento para aves. Floración continua con mínimo esfuerzo.</div>
+        <div class="plant-uses">
+          <span class="use-tag">Monarca / mariposas</span>
+          <span class="use-tag">Borde</span>
+          <span class="use-tag">Taludes</span>
+          <span class="use-tag">Calor extremo</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 7: COMBINACIONES ──────────────────────── -->
+  <div class="section-header">
+    <span class="section-number">07</span>
+    <span class="section-title">Combinaciones por Tipo de Jardín</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="combo-grid">
+    <div class="combo-card">
+      <div class="combo-header">Jardín Xérico Moderno</div>
+      <div class="combo-body">
+        <div class="combo-row"><span class="combo-category">Árboles</span><span class="combo-plants">Retama · Anacahuita</span></div>
+        <div class="combo-row"><span class="combo-category">Medianos</span><span class="combo-plants">Cenizo · Ocotillo · Sotol</span></div>
+        <div class="combo-row"><span class="combo-category">Bases</span><span class="combo-plants">Agave cenizo · Nopal tapón · Candelilla</span></div>
+        <div class="combo-row"><span class="combo-category">Cobertura</span><span class="combo-plants">Verbena de lluvia · Gobernadora</span></div>
+        <div class="combo-row"><span class="combo-category">Pasto</span><span class="combo-plants">Zacate búfalo</span></div>
+      </div>
+    </div>
+
+    <div class="combo-card">
+      <div class="combo-header">Jardín Nativo con Sombra</div>
+      <div class="combo-body">
+        <div class="combo-row"><span class="combo-category">Árboles</span><span class="combo-plants">Mezquite · Encino · Fresno Coahuilteco</span></div>
+        <div class="combo-row"><span class="combo-category">Sotobosque</span><span class="combo-plants">Tepozán · Salvia Gregg · Hierba del burro</span></div>
+        <div class="combo-row"><span class="combo-category">Cobertura</span><span class="combo-plants">Verbena de lluvia · Helechos xéricos</span></div>
+      </div>
+    </div>
+
+    <div class="combo-card">
+      <div class="combo-header">Jardín Polinizador</div>
+      <div class="combo-body">
+        <div class="combo-row"><span class="combo-category">Arbustos</span><span class="combo-plants">Tepozán · Lantana · Hierba del burro</span></div>
+        <div class="combo-row"><span class="combo-category">Perennes</span><span class="combo-plants">Salvia Gregg · Salvia azul · Damiana</span></div>
+        <div class="combo-row"><span class="combo-category">Árboles</span><span class="combo-plants">Anacahuita · Huizache</span></div>
+        <div class="combo-row"><span class="combo-category">Cobertura</span><span class="combo-plants">Verbena de lluvia</span></div>
+      </div>
+    </div>
+
+    <div class="combo-card">
+      <div class="combo-header">Jardín Comestible Nativo</div>
+      <div class="combo-body">
+        <div class="combo-row"><span class="combo-category">Frutas</span><span class="combo-plants">Nopal (tunas) · Mezquite (vainas) · Yuca (flores)</span></div>
+        <div class="combo-row"><span class="combo-category">Aromáticas</span><span class="combo-plants">Oregano de monte · Damiana · Hierba del burro</span></div>
+        <div class="combo-row"><span class="combo-category">Medicinales</span><span class="combo-plants">Gobernadora · Salvia · Damiana</span></div>
+      </div>
+    </div>
+
+    <div class="combo-card">
+      <div class="combo-header">Jardín Urbano Bajo Consumo</div>
+      <div class="combo-body">
+        <div class="combo-row"><span class="combo-category">Árbol sombra</span><span class="combo-plants">Anacahuita o Fresno Coahuilteco</span></div>
+        <div class="combo-row"><span class="combo-category">Focal arbusto</span><span class="combo-plants">Cenizo plateado</span></div>
+        <div class="combo-row"><span class="combo-category">Agave</span><span class="combo-plants">Maguey cenizo o Agave variegado</span></div>
+        <div class="combo-row"><span class="combo-category">Palma</span><span class="combo-plants">Sotol</span></div>
+        <div class="combo-row"><span class="combo-category">Borde</span><span class="combo-plants">Salvia Gregg (3 colores)</span></div>
+        <div class="combo-row"><span class="combo-category">Pasto</span><span class="combo-plants">Zacate búfalo</span></div>
+      </div>
+    </div>
+
+    <div class="combo-card">
+      <div class="combo-header">Jardín de Colibríes y Mariposas</div>
+      <div class="combo-body">
+        <div class="combo-row"><span class="combo-category">Colibríes</span><span class="combo-plants">Salvia Gregg · Ocotillo · Anacahuita</span></div>
+        <div class="combo-row"><span class="combo-category">Mariposas</span><span class="combo-plants">Tepozán · Lantana · Hierba del burro</span></div>
+        <div class="combo-row"><span class="combo-category">Monarca</span><span class="combo-plants">Lantana nativa · Verbena</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 8: CLIMA ───────────────────────────────── -->
+  <div class="section-header">
+    <span class="section-number">08</span>
+    <span class="section-title">Clima Regional — Saltillo vs Monterrey</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="clima-grid">
+    <div class="clima-card">
+      <div class="clima-header">
+        <div class="clima-city">Saltillo</div>
+        <div class="clima-state">Coahuila de Zaragoza</div>
+      </div>
+      <div class="clima-body">
+        <div class="clima-stat"><span class="clima-stat-label">Altitud</span><span class="clima-stat-value">1,600 m.s.n.m.</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Clima Köppen</span><span class="clima-stat-value">BSk — Semiárido templado</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Precipitación</span><span class="clima-stat-value">350–400 mm/año</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Temp. media</span><span class="clima-stat-value">16–18°C anual</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Heladas</span><span class="clima-stat-value">Frecuentes nov–feb (hasta −10°C)</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Suelo</span><span class="clima-stat-value">Calizo-arcilloso, pH 7.5–8.5</span></div>
+        <div class="clima-plants">Favoritas: Maguey cenizo · Cenizo · Sotol · Cedro/Tascate · Palma china · Zacate búfalo · Fresno Coahuilteco · Salvia Gregg</div>
+      </div>
+    </div>
+
+    <div class="clima-card">
+      <div class="clima-header">
+        <div class="clima-city">Monterrey</div>
+        <div class="clima-state">Nuevo León</div>
+      </div>
+      <div class="clima-body">
+        <div class="clima-stat"><span class="clima-stat-label">Altitud</span><span class="clima-stat-value">540 m.s.n.m.</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Clima Köppen</span><span class="clima-stat-value">BSh — Semiárido cálido</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Precipitación</span><span class="clima-stat-value">600–700 mm/año</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Temp. media</span><span class="clima-stat-value">22–24°C anual</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Heladas</span><span class="clima-stat-value">Ocasionales y leves (−2 a −5°C)</span></div>
+        <div class="clima-stat"><span class="clima-stat-label">Viento</span><span class="clima-stat-value">Norte fuertes en invierno</span></div>
+        <div class="clima-plants">Favoritas: Anacahuita · Ébano · Retama · Lantana · Tepozán · Washingtonia · Huizache · Cenizo · Nopal · Ocotillo</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 9: TABLA RESUMEN ──────────────────────── -->
+  <div class="section-header">
+    <span class="section-number">09</span>
+    <span class="section-title">Tabla Resumen — 39 Especies</span>
+    <div class="section-line"></div>
+  </div>
+
+  <table class="summary-table">
+    <thead>
+      <tr>
+        <th>Nombre común</th>
+        <th>Nombre científico</th>
+        <th>Tipo</th>
+        <th>Luz</th>
+        <th>Riego</th>
+        <th>Altura</th>
+        <th>Heladas</th>
+        <th>Nativa</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Mezquite</td><td><em>Prosopis glandulosa</em></td><td>Árbol</td><td>☀</td><td>Escaso</td><td>5–10 m</td><td>❄ −10°C</td><td>Sí</td></tr>
+      <tr><td>Anacahuita</td><td><em>Cordia boissieri</em></td><td>Árbol</td><td>☀</td><td>Escaso</td><td>3–6 m</td><td>❄ −5°C</td><td>Sí</td></tr>
+      <tr><td>Ébano</td><td><em>Ebenopsis ebano</em></td><td>Árbol</td><td>☀</td><td>Moderado</td><td>8–15 m</td><td>Sensible</td><td>Sí</td></tr>
+      <tr><td>Huizache</td><td><em>Vachellia farnesiana</em></td><td>Árbol</td><td>☀</td><td>Muy escaso</td><td>3–8 m</td><td>❄ −8°C</td><td>Sí</td></tr>
+      <tr><td>Fresno Coahuilteco</td><td><em>Fraxinus greggii</em></td><td>Árbol</td><td>☀/🌤</td><td>Moderado</td><td>4–8 m</td><td>❄ resistente</td><td>Sí</td></tr>
+      <tr><td>Retama</td><td><em>Parkinsonia aculeata</em></td><td>Árbol</td><td>☀</td><td>Muy escaso</td><td>4–8 m</td><td>❄ moderadas</td><td>Sí</td></tr>
+      <tr><td>Encino Roble</td><td><em>Quercus polymorpha</em></td><td>Árbol</td><td>☀</td><td>Moderado (est.)</td><td>8–20 m</td><td>❄ muy resist.</td><td>Sí</td></tr>
+      <tr><td>Cedro / Tascate</td><td><em>Juniperus flaccida</em></td><td>Árbol</td><td>☀</td><td>Escaso</td><td>5–15 m</td><td>❄ muy resist.</td><td>Sí</td></tr>
+      <tr><td>Nogal Silvestre</td><td><em>Juglans microcarpa</em></td><td>Árbol</td><td>☀</td><td>Moderado</td><td>5–10 m</td><td>❄ muy resist.</td><td>Sí</td></tr>
+      <tr><td>Chaparro Prieto</td><td><em>Acacia rigidula</em></td><td>Arbusto</td><td>☀</td><td>Muy escaso</td><td>2–4 m</td><td>❄ resist.</td><td>Sí</td></tr>
+      <tr><td>Palma China / Yuca</td><td><em>Yucca filifera</em></td><td>Yuca</td><td>☀</td><td>Nulo (est.)</td><td>5–15 m</td><td>❄ −15°C</td><td>Sí</td></tr>
+      <tr><td>Palma Samandoca</td><td><em>Yucca carnerosana</em></td><td>Yuca</td><td>☀</td><td>Muy escaso</td><td>3–7 m</td><td>❄ resist.</td><td>Sí</td></tr>
+      <tr><td>Sotol / Cucharilla</td><td><em>Dasylirion wheeleri</em></td><td>Sotol</td><td>☀</td><td>Nulo</td><td>1–1.5 m ø</td><td>❄ −18°C</td><td>Sí</td></tr>
+      <tr><td>Washingtonia</td><td><em>Washingtonia robusta</em></td><td>Palma</td><td>☀</td><td>Moderado</td><td>15–25 m</td><td>Sensible</td><td>Adaptada</td></tr>
+      <tr><td>Maguey Verde</td><td><em>Agave salmiana</em></td><td>Agave</td><td>☀</td><td>Muy escaso</td><td>1.5–2 m ø</td><td>❄ −10°C</td><td>Sí</td></tr>
+      <tr><td>Lechuguilla</td><td><em>Agave lechuguilla</em></td><td>Agave</td><td>☀</td><td>Nulo</td><td>60 cm ø</td><td>❄ muy resist.</td><td>Sí</td></tr>
+      <tr><td>Maguey Cenizo</td><td><em>Agave scabra</em></td><td>Agave</td><td>☀</td><td>Muy escaso</td><td>1–1.5 m ø</td><td>❄ resist.</td><td>Sí</td></tr>
+      <tr><td>Agave Variegado</td><td><em>Agave americana marginata</em></td><td>Agave</td><td>☀</td><td>Escaso</td><td>2 m ø</td><td>❄ moderadas</td><td>Cultivar</td></tr>
+      <tr><td>Nopal</td><td><em>Opuntia spp.</em></td><td>Cactus</td><td>☀</td><td>Nulo</td><td>0.5–4 m</td><td>❄ muy resist.</td><td>Sí</td></tr>
+      <tr><td>Biznaga Barril</td><td><em>Ferocactus pilosus</em></td><td>Cactus</td><td>☀</td><td>Nulo</td><td>0.5–2 m</td><td>❄ moderadas</td><td>Sí</td></tr>
+      <tr><td>Candelilla</td><td><em>Euphorbia antisyphilitica</em></td><td>Suculenta</td><td>☀</td><td>Nulo</td><td>30–80 cm</td><td>❄ resist.</td><td>Sí</td></tr>
+      <tr><td>Ocotillo</td><td><em>Fouquieria splendens</em></td><td>Arbusto</td><td>☀</td><td>Muy escaso</td><td>2–6 m</td><td>❄ moderadas</td><td>Sí</td></tr>
+      <tr><td>Gobernadora</td><td><em>Larrea tridentata</em></td><td>Arbusto</td><td>☀</td><td>Nulo</td><td>1–2 m</td><td>❄ muy resist.</td><td>Sí</td></tr>
+      <tr><td>Cenizo / Salvia Texana</td><td><em>Leucophyllum frutescens</em></td><td>Arbusto</td><td>☀</td><td>Escaso</td><td>1–2.5 m</td><td>❄ −10°C</td><td>Sí</td></tr>
+      <tr><td>Tepozán</td><td><em>Buddleja cordata</em></td><td>Arbusto</td><td>☀/🌤</td><td>Moderado</td><td>3–8 m</td><td>❄ tolerante</td><td>Sí</td></tr>
+      <tr><td>Barreta</td><td><em>Helietta parvifolia</em></td><td>Arbusto</td><td>☀</td><td>Escaso</td><td>2–5 m</td><td>❄ resist.</td><td>Sí</td></tr>
+      <tr><td>Damiana</td><td><em>Turnera diffusa</em></td><td>Arbusto</td><td>☀</td><td>Escaso</td><td>0.5–1.5 m</td><td>Sensible</td><td>Sí</td></tr>
+      <tr><td>Sangre de Drago</td><td><em>Jatropha dioica</em></td><td>Arbusto</td><td>☀</td><td>Nulo</td><td>0.5–1.5 m</td><td>❄ moderadas</td><td>Sí</td></tr>
+      <tr><td>Oregano de Monte</td><td><em>Lippia graveolens</em></td><td>Arbusto</td><td>☀</td><td>Escaso</td><td>1–2 m</td><td>Sensible</td><td>Sí</td></tr>
+      <tr><td>Hierba del Burro</td><td><em>Aloysia gratissima</em></td><td>Arbusto</td><td>☀</td><td>Escaso</td><td>1–3 m</td><td>❄ tolerante</td><td>Sí</td></tr>
+      <tr><td>Salvia Azul</td><td><em>Salvia farinacea</em></td><td>Perenne</td><td>☀</td><td>Moderado</td><td>60–90 cm</td><td>❄ leves</td><td>Sí</td></tr>
+      <tr><td>Salvia Gregg</td><td><em>Salvia greggii</em></td><td>Perenne</td><td>☀</td><td>Escaso</td><td>60–120 cm</td><td>❄ tolerante</td><td>Sí</td></tr>
+      <tr><td>Zacate Búfalo</td><td><em>Bouteloua dactyloides</em></td><td>Pasto</td><td>☀</td><td>Muy escaso</td><td>5–15 cm</td><td>❄ muy resist.</td><td>Sí</td></tr>
+      <tr><td>Pasto Bandera</td><td><em>Bouteloua gracilis</em></td><td>Pasto</td><td>☀</td><td>Muy escaso</td><td>20–40 cm</td><td>❄ muy resist.</td><td>Sí</td></tr>
+      <tr><td>Verbena de Lluvia</td><td><em>Glandularia bipinnatifida</em></td><td>Perenne</td><td>☀</td><td>Escaso</td><td>20–40 cm</td><td>❄ leves</td><td>Sí</td></tr>
+      <tr><td>Lantana Nativa</td><td><em>Lantana achyranthifolia</em></td><td>Arbusto</td><td>☀</td><td>Escaso</td><td>50–150 cm</td><td>Sensible</td><td>Sí</td></tr>
+      <tr><td>Helechos Xéricos</td><td><em>Cheilanthes spp.</em></td><td>Helecho</td><td>🌤</td><td>Moderado</td><td>15–40 cm</td><td>❄ resist.</td><td>Sí</td></tr>
+      <tr><td>Begonia Silvestre</td><td><em>Begonia gracilis</em></td><td>Perenne</td><td>🌤</td><td>Moderado</td><td>30–60 cm</td><td>Sensible</td><td>Sí</td></tr>
+      <tr><td>Selaginela</td><td><em>Selaginella lepidophylla</em></td><td>Briofita</td><td>🌤</td><td>Moderado</td><td>10–20 cm</td><td>❄ resist.</td><td>Sí</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span class="footer-brand">Patrio · Jardines</span>
+    <span>Guía de Flora Regional del Noreste de México · Febrero 2026</span>
+    <span>patrio.mx</span>
+  </div>
+
+</div><!-- .page -->
+</body>
+</html>
