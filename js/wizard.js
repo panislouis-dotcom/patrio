@@ -2,7 +2,7 @@
    PATRIO — Wizard Logic
    ============================================ */
 
-const PAGU_WHATSAPP = '528444849359';
+const PAGU_WHATSAPP = '528442799436';
 
 /* ---- Wizard Type Detection ---- */
 const tipoParam = new URLSearchParams(window.location.search).get('tipo');
@@ -114,12 +114,42 @@ const ADMIN_UNIDADES_MAP = {
 };
 
 const ADMIN_TIPO_LABELS = {
-  depto_estudio:     'Departamentos o estudios',
-  casa_habitacion:   'Casa habitación',
-  local_comercial:   'Locales comerciales',
-  mixto:             'Desarrollo mixto',
-  nave_bodega:       'Naves o bodegas',
-  parque_industrial: 'Parque industrial'
+  residencial: 'Residencial (departamentos, estudios, casas)',
+  comercial:   'Comercial (locales, plazas)',
+  industrial:  'Industrial (naves, bodegas)',
+  mixto:       'Portafolio mixto'
+};
+
+const ADMIN_DOLOR_SOLUCIONES = {
+  morosidad:    { icono: 'ban',              texto: 'Cobramos rentas y gestionamos la morosidad directamente. Tú recibes tu ingreso sin perseguir a nadie.' },
+  mantenimiento:{ icono: 'wrench',           texto: 'Revisiones periódicas de estructura, tuberías, electricidad y equipos. Daños pequeños resueltos antes de volverse costosos.' },
+  tiempo:       { icono: 'clock',            texto: 'Nos hacemos cargo de llamadas, visitas y pendientes. Tu tiempo es tuyo.' },
+  vacancia:     { icono: 'door-open',        texto: 'Buscamos, filtramos y seleccionamos inquilinos para mantener tu inmueble trabajando.' },
+  conflictos:   { icono: 'message-square-x', texto: 'Atendemos directamente a inquilinos y resolvemos conflictos sin que tengas que involucrarte.' },
+  tramites:     { icono: 'clipboard-list',   texto: 'Predial, catastro, permisos municipales. Manejamos los trámites para que no tengas que hacerlo tú.' }
+};
+
+const ADMIN_DIAGNOSTICO_TEXTOS = {
+  residencial: {
+    lleno:   'Tienes un inmueble residencial ocupado. PATRIO puede mantener esa ocupancia y asegurar que el activo siga en buen estado año con año.',
+    parcial: 'Tienes un inmueble residencial con unidades vacías. PATRIO puede ayudarte a llenarlas y mantener la ocupancia estable.',
+    vacio:   'Tienes un inmueble residencial listo para arrancar. PATRIO puede encargarse de todo desde el primer inquilino.'
+  },
+  comercial: {
+    lleno:   'Tienes una propiedad comercial operando. PATRIO puede garantizar que los locatarios reciban la atención que necesitan y el inmueble conserve su valor.',
+    parcial: 'Tu plaza o local tiene espacio disponible. PATRIO puede apoyarte en la búsqueda de locatarios y la administración del día a día.',
+    vacio:   'Tienes un inmueble comercial por activar. PATRIO puede acompañarte desde la selección de locatarios hasta la operación completa.'
+  },
+  industrial: {
+    lleno:   'Tus naves están operando. PATRIO puede dar seguimiento continuo al estado de las instalaciones y a la relación con tus arrendatarios.',
+    parcial: 'Tienes capacidad industrial disponible. PATRIO puede apoyarte en la colocación y en la administración del activo.',
+    vacio:   'Tienes naves listas. PATRIO puede arrancar la operación contigo desde cero.'
+  },
+  mixto: {
+    lleno:   'Tienes un portafolio activo. PATRIO puede consolidar la administración de todos tus inmuebles en un solo lugar.',
+    parcial: 'Tu portafolio tiene oportunidad de mejora. PATRIO puede optimizar la ocupancia y simplificar la operación.',
+    vacio:   'Tu portafolio está por arrancar. PATRIO puede encargarse de la operación completa desde el inicio.'
+  }
 };
 
 const ADMIN_UNIDADES_LABELS = {
@@ -129,7 +159,7 @@ const ADMIN_UNIDADES_LABELS = {
 /* ---- State ---- */
 const wizardState = {
   currentStep: WIZARD_TYPE === 'jardines' ? 0 : 1,
-  totalSteps: WIZARD_TYPE === 'administracion' ? 5 : 8,
+  totalSteps: WIZARD_TYPE === 'administracion' ? 4 : 8,
   answers: {},
   photoFile: null
 };
@@ -167,8 +197,7 @@ function initWizard() {
   }
 
   if (WIZARD_TYPE === 'administracion') {
-    setupAdminIngresoToggle();
-    setupAdminIngresoInput();
+    setupAdminMultiselect();
     setupAdminContactForm();
   }
 
@@ -209,12 +238,11 @@ function showStep(n) {
   // Pre-fill results
   if (WIZARD_TYPE === 'inversion' && n === 6) populateResults();
   if (WIZARD_TYPE === 'jardines' && n === 7) populateJardinesResults();
-  if (WIZARD_TYPE === 'administracion' && n === 5) populateAdminResults();
+  if (WIZARD_TYPE === 'administracion' && n === 4) buildAdminResultado();
 
   // Pre-fill contact fields
   if (WIZARD_TYPE === 'inversion' && n === 8) populateContactAutofill();
   if (WIZARD_TYPE === 'jardines' && n === 8) populateJardinesContactAutofill();
-  if (WIZARD_TYPE === 'administracion' && n === 5) populateAdminContactAutofill();
 
   // Re-render lucide icons (for dynamically shown elements)
   if (window.lucide) lucide.createIcons();
@@ -227,10 +255,20 @@ function goNext() {
   if (wizardState.currentStep < wizardState.totalSteps) {
     if (WIZARD_TYPE === 'inversion') captureStep5Data();
 
-    // Admin step 1: "construir" redirects to investment wizard
-    if (WIZARD_TYPE === 'administracion' && wizardState.currentStep === 1 && wizardState.answers.step1 === 'construir') {
-      window.location.href = 'wizard.html';
-      return;
+    if (WIZARD_TYPE === 'administracion') {
+      const s = wizardState.currentStep;
+      if (s === 1) {
+        const sel = document.querySelector('.wizard__step[data-step="1"][data-wizard="administracion"] .option-card.selected');
+        if (sel) wizardState.answers.tipo_inmueble = sel.dataset.value;
+      } else if (s === 2) {
+        const ocupSel = document.querySelector('[data-field="ocupacion"].selected');
+        if (ocupSel) wizardState.answers.ocupacion = ocupSel.dataset.value;
+        const dolorSels = document.querySelectorAll('.option-card--multiselect.option-card--selected');
+        wizardState.answers.dolores = Array.from(dolorSels).map(c => c.dataset.value);
+      } else if (s === 3) {
+        const sel = document.querySelector('.wizard__step[data-step="3"][data-wizard="administracion"] .option-card.selected');
+        if (sel) wizardState.answers.tiempo = sel.dataset.value;
+      }
     }
 
     showStep(wizardState.currentStep + 1);
@@ -273,7 +311,7 @@ function updateStepLabel() {
    OPTION CARDS  (scoped per step)
    ============================================ */
 function setupOptionCards() {
-  document.querySelectorAll('.option-card').forEach(card => {
+  document.querySelectorAll('.option-card:not(.option-card--multiselect)').forEach(card => {
     card.addEventListener('click', () => {
       const step = card.closest('.wizard__step');
       const field = card.dataset.field; // e.g. "credito", "ayuda"
@@ -358,21 +396,11 @@ function refreshNextButton(stepNum) {
       enabled = true;
     }
   } else if (WIZARD_TYPE === 'administracion') {
-    if (stepNum === 1 || stepNum === 2) {
+    if (stepNum === 1 || stepNum === 3) {
       enabled = !!step.querySelector('.option-card:not([data-field]).selected');
-    } else if (stepNum === 3) {
-      // Both ciudad AND unidades must be selected
-      const hasCiudad = !!step.querySelector('.option-card[data-field="ciudad"].selected');
-      const hasUnidades = !!step.querySelector('.option-card[data-field="unidades"].selected');
-      enabled = hasCiudad && hasUnidades;
-    } else if (stepNum === 4) {
-      const conoce = wizardState.answers.conoce_ingreso;
-      if (conoce === 'no') {
-        enabled = true;
-      } else if (conoce === 'si') {
-        enabled = parseNumber(document.getElementById('admin-ingreso')?.value) > 0;
-      }
     }
+    // Step 2 handled by validateAdminStep2()
+    // Step 4 is the results/contact step — no next button
   } else {
     // Investment wizard
     if (stepNum >= 1 && stepNum <= 4) {
@@ -896,88 +924,71 @@ function refreshJardinesSubmitButton() {
 }
 
 /* ============================================
-   ADMIN WIZARD — Ingreso Toggle & Input
+   ADMIN WIZARD — Multiselect & Validation
    ============================================ */
-function setupAdminIngresoToggle() {
-  // Listen for conoce_ingreso card selection to show/hide input
-  document.querySelectorAll('.option-card[data-field="conoce_ingreso"]').forEach(card => {
+function setupAdminMultiselect() {
+  // Dolor cards — selección múltiple
+  document.querySelectorAll('.option-card--multiselect').forEach(card => {
     card.addEventListener('click', () => {
-      const group = document.querySelector('.admin-ingreso-group');
-      if (!group) return;
-      if (card.dataset.value === 'si') {
-        group.style.display = '';
-      } else {
-        group.style.display = 'none';
-        const input = document.getElementById('admin-ingreso');
-        if (input) input.value = '';
-      }
-      refreshNextButton(4);
+      card.classList.toggle('option-card--selected');
+      validateAdminStep2();
+    });
+  });
+
+  // Ocupación — selección única, validation via validateAdminStep2
+  document.querySelectorAll('[data-field="ocupacion"]').forEach(card => {
+    card.addEventListener('click', () => {
+      validateAdminStep2();
     });
   });
 }
 
-function setupAdminIngresoInput() {
-  const input = document.getElementById('admin-ingreso');
-  if (!input) return;
-  input.addEventListener('input', () => {
-    let raw = input.value.replace(/[^0-9]/g, '');
-    if (raw) {
-      input.value = Number(raw).toLocaleString('en-US');
-    }
-    refreshNextButton(4);
-  });
+function validateAdminStep2() {
+  const ocupacionSeleccionada = document.querySelector('[data-field="ocupacion"].selected');
+  const step2 = document.querySelector('.wizard__step[data-step="2"][data-wizard="administracion"]');
+  const nextBtn = step2 ? step2.querySelector('.wizard__next-btn') : null;
+  if (nextBtn) nextBtn.disabled = !ocupacionSeleccionada;
 }
 
 /* ============================================
-   ADMIN WIZARD — Results (Step 5)
+   ADMIN WIZARD — Result Builder (Step 4)
    ============================================ */
-function populateAdminResults() {
-  const tipoPropiedad = wizardState.answers.step2;
-  const ciudad = wizardState.answers.ciudad || 'monterrey';
-  const unidades = wizardState.answers.unidades || '1-4';
-  const conoce = wizardState.answers.conoce_ingreso;
+function buildAdminResultado() {
+  const tipo = wizardState.answers.tipo_inmueble || 'mixto';
+  const ocupacion = wizardState.answers.ocupacion || 'lleno';
+  const dolores = wizardState.answers.dolores || [];
 
-  let ingresoBruto = 0;
-  let esEstimado = false;
+  // Diagnóstico
+  const diagTexto = (ADMIN_DIAGNOSTICO_TEXTOS[tipo] && ADMIN_DIAGNOSTICO_TEXTOS[tipo][ocupacion])
+    ? ADMIN_DIAGNOSTICO_TEXTOS[tipo][ocupacion]
+    : 'PATRIO puede administrar tu inmueble para que tú no tengas que hacerlo.';
+  const diagEl = document.getElementById('admin-diagnostico-texto');
+  if (diagEl) diagEl.textContent = diagTexto;
 
-  if (conoce === 'si') {
-    ingresoBruto = parseNumber(document.getElementById('admin-ingreso')?.value);
-  } else {
-    // Estimate from data
-    const data = ADMIN_RENTA_DATA[tipoPropiedad] || ADMIN_RENTA_DATA.depto_estudio;
-    const numUnidades = ADMIN_UNIDADES_MAP[unidades] || 2.5;
-    ingresoBruto = Math.round(numUnidades * data.renta * data.ocupancia);
-    esEstimado = true;
+  // Soluciones personalizadas
+  const listaEl = document.getElementById('admin-soluciones-lista');
+  if (listaEl) {
+    listaEl.innerHTML = '';
+    const doloresToShow = dolores.length > 0 ? dolores.slice(0, 4) : ['tiempo', 'mantenimiento', 'morosidad'];
+    doloresToShow.forEach(dolor => {
+      const sol = ADMIN_DOLOR_SOLUCIONES[dolor];
+      if (!sol) return;
+      const item = document.createElement('div');
+      item.className = 'admin-solucion-item';
+      item.innerHTML = `
+        <i data-lucide="${sol.icono}" style="width:20px;height:20px;color:#6B8A5E;flex-shrink:0;margin-top:2px;"></i>
+        <span>${sol.texto}</span>
+      `;
+      listaEl.appendChild(item);
+    });
+    if (window.lucide) lucide.createIcons();
   }
 
-  const ingresoNeto = Math.round(ingresoBruto * 0.90);
-  const ingresoAnual = ingresoNeto * 12;
-
-  setText('admin-ingreso-bruto', formatCurrency(ingresoBruto));
-  setText('admin-ingreso-neto', formatCurrency(ingresoNeto));
-  setText('admin-ingreso-anual', formatCurrency(ingresoAnual));
-
-  // Show/hide estimation note
-  const nota = document.getElementById('admin-estimacion-nota');
-  if (nota) nota.style.display = esEstimado ? '' : 'none';
-
-  wizardState.adminComputed = {
-    ingresoBruto,
-    ingresoNeto,
-    ingresoAnual,
-    esEstimado,
-    tipoPropiedad,
-    ciudad,
-    unidades
-  };
-}
-
-function populateAdminContactAutofill() {
-  const c = wizardState.adminComputed || {};
-  setVal('admin-form-tipo-propiedad', ADMIN_TIPO_LABELS[c.tipoPropiedad] || '');
-  setVal('admin-form-ciudad', CITY_NAMES[c.ciudad] || '');
-  setVal('admin-form-unidades', ADMIN_UNIDADES_LABELS[c.unidades] || '');
-  setVal('admin-form-ingreso', c.ingresoBruto ? formatCurrency(c.ingresoBruto) : '');
+  // Poblar campos ocultos del formulario
+  setVal('admin-form-tipo',     ADMIN_TIPO_LABELS[tipo] || tipo);
+  setVal('admin-form-ocupacion', ocupacion);
+  setVal('admin-form-dolores',  dolores.join(', '));
+  setVal('admin-form-tiempo',   wizardState.answers.tiempo || '');
 }
 
 /* ============================================
@@ -1017,13 +1028,11 @@ function setupAdminContactForm() {
       success.style.display = '';
 
       const name = document.getElementById('admin-contact-name')?.value || '';
-      const c = wizardState.adminComputed || {};
-      const tipoLabel = ADMIN_TIPO_LABELS[c.tipoPropiedad] || '';
-      const ciudadLabel = CITY_NAMES[c.ciudad] || '';
-      const unidadesLabel = ADMIN_UNIDADES_LABELS[c.unidades] || '';
-      const ingresoLabel = c.ingresoBruto ? formatCurrency(c.ingresoBruto) : '';
+      const tipoLabel = ADMIN_TIPO_LABELS[wizardState.answers.tipo_inmueble] || '';
+      const ocupacion = wizardState.answers.ocupacion || '';
+      const dolores = (wizardState.answers.dolores || []).join(', ');
 
-      const msg = `Hola PATRIO, soy ${name}. Me interesa que PATRIO administre mi propiedad.\nTipo: ${tipoLabel}\nCiudad: ${ciudadLabel}\nUnidades: ${unidadesLabel}\nIngreso mensual: ${ingresoLabel}`;
+      const msg = `Hola PATRIO, soy ${name}. Me interesa que PATRIO administre mi inmueble.\nTipo: ${tipoLabel}\nOcupación: ${ocupacion}\nDolores: ${dolores}`;
 
       const waBtn = document.getElementById('admin-whatsapp-btn');
       if (waBtn) {

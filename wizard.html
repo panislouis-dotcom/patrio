@@ -1228,90 +1228,44 @@
            WIZARD DE ADMINISTRACIÓN
            =================================================== -->
 
-      <!-- ========== PASO 1: Punto de partida ========== -->
+      <!-- ========== PASO 1: Tipo de inmueble ========== -->
       <div class="wizard__step" data-step="1" data-wizard="administracion">
         <div class="wizard__content">
-          <h1 class="wizard__question fade-in-up">¿En qué etapa estás?</h1>
-          <p class="wizard__hint fade-in-up">Esto nos ayuda a dirigirte al lugar correcto.</p>
+          <h1 class="wizard__question fade-in-up">¿Qué inmueble o portafolio tienes?</h1>
+          <p class="wizard__hint fade-in-up">Selecciona el que mejor describe lo que administras.</p>
 
           <div class="wizard__options">
-            <div class="option-card fade-in-up" data-value="construir">
-              <div class="option-card__icon">
-                <i data-lucide="plus-circle" style="width:24px;height:24px;"></i>
-              </div>
-              <div class="option-card__text">
-                <div class="option-card__title">Quiero construir algo que genere rentas</div>
-                <div class="option-card__desc">Aún no tengo propiedad, busco invertir.</div>
-              </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
-            </div>
-
-            <div class="option-card fade-in-up" data-value="optimizar">
-              <div class="option-card__icon">
-                <i data-lucide="settings" style="width:24px;height:24px;"></i>
-              </div>
-              <div class="option-card__text">
-                <div class="option-card__title">Ya tengo una propiedad y quiero que trabaje mejor para mí</div>
-                <div class="option-card__desc">Quiero optimizar mi ingreso actual.</div>
-              </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
-            </div>
-          </div>
-
-          <div class="wizard__footer">
-            <button class="btn-primary wizard__next-btn" disabled>
-              Siguiente
-              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ========== PASO 2: Tipo de propiedad ========== -->
-      <div class="wizard__step" data-step="2" data-wizard="administracion">
-        <div class="wizard__content">
-          <h1 class="wizard__question fade-in-up">¿Qué tipo de propiedad tienes?</h1>
-          <p class="wizard__hint fade-in-up">Selecciona la opción que mejor describe tu inmueble.</p>
-
-          <div class="wizard__options">
-            <div class="option-card fade-in-up" data-value="depto_estudio">
+            <div class="option-card fade-in-up" data-value="residencial">
               <div class="option-card__icon">
                 <i data-lucide="building-2" style="width:24px;height:24px;"></i>
               </div>
               <div class="option-card__text">
-                <div class="option-card__title">Departamentos o estudios</div>
+                <div class="option-card__title">Residencial</div>
+                <div class="option-card__desc">Departamentos, estudios, casas en renta o Airbnb</div>
               </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
             </div>
 
-            <div class="option-card fade-in-up" data-value="casa_habitacion">
-              <div class="option-card__icon">
-                <i data-lucide="home" style="width:24px;height:24px;"></i>
-              </div>
-              <div class="option-card__text">
-                <div class="option-card__title">Casa habitación</div>
-              </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
-            </div>
-
-            <div class="option-card fade-in-up" data-value="local_comercial">
+            <div class="option-card fade-in-up" data-value="comercial">
               <div class="option-card__icon">
                 <i data-lucide="store" style="width:24px;height:24px;"></i>
               </div>
               <div class="option-card__text">
-                <div class="option-card__title">Locales comerciales</div>
+                <div class="option-card__title">Comercial</div>
+                <div class="option-card__desc">Locales, plazas comerciales, oficinas</div>
               </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
+            </div>
+
+            <div class="option-card fade-in-up" data-value="industrial">
+              <div class="option-card__icon">
+                <i data-lucide="warehouse" style="width:24px;height:24px;"></i>
               </div>
+              <div class="option-card__text">
+                <div class="option-card__title">Industrial</div>
+                <div class="option-card__desc">Naves o bodegas (hasta 2 inmuebles)</div>
+              </div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
             </div>
 
             <div class="option-card fade-in-up" data-value="mixto">
@@ -1319,35 +1273,88 @@
                 <i data-lucide="layers" style="width:24px;height:24px;"></i>
               </div>
               <div class="option-card__text">
-                <div class="option-card__title">Desarrollo mixto</div>
+                <div class="option-card__title">Portafolio mixto</div>
+                <div class="option-card__desc">Combinación de tipos de inmueble</div>
               </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button class="btn-primary wizard__next-btn" disabled>
+              Siguiente
+              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PASO 2: Situación y dolores ========== -->
+      <div class="wizard__step" data-step="2" data-wizard="administracion">
+        <div class="wizard__content">
+          <h1 class="wizard__question fade-in-up">¿Cuál es tu situación hoy?</h1>
+
+          <h3 class="wizard__sub-label fade-in-up">Ocupación actual</h3>
+          <div class="wizard__options fade-in-up">
+            <div class="option-card" data-value="lleno" data-field="ocupacion">
+              <div class="option-card__icon"><i data-lucide="check-circle" style="width:24px;height:24px;"></i></div>
+              <div class="option-card__text">
+                <div class="option-card__title">Lleno o casi lleno</div>
+                <div class="option-card__desc">La mayoría de unidades están ocupadas</div>
               </div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
             </div>
 
-            <div class="option-card fade-in-up" data-value="nave_bodega">
-              <div class="option-card__icon">
-                <i data-lucide="warehouse" style="width:24px;height:24px;"></i>
-              </div>
+            <div class="option-card" data-value="parcial" data-field="ocupacion">
+              <div class="option-card__icon"><i data-lucide="alert-circle" style="width:24px;height:24px;"></i></div>
               <div class="option-card__text">
-                <div class="option-card__title">Naves o bodegas</div>
+                <div class="option-card__title">Parcialmente ocupado</div>
+                <div class="option-card__desc">Tengo unidades vacías que quiero llenar</div>
               </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
             </div>
 
-            <div class="option-card fade-in-up" data-value="parque_industrial">
-              <div class="option-card__icon">
-                <i data-lucide="factory" style="width:24px;height:24px;"></i>
-              </div>
+            <div class="option-card" data-value="vacio" data-field="ocupacion">
+              <div class="option-card__icon"><i data-lucide="home" style="width:24px;height:24px;"></i></div>
               <div class="option-card__text">
-                <div class="option-card__title">Parque industrial</div>
+                <div class="option-card__title">Vacío o recién adquirido</div>
+                <div class="option-card__desc">Quiero arrancar bien desde el principio</div>
               </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
+            </div>
+          </div>
+
+          <h3 class="wizard__sub-label fade-in-up" style="margin-top: 32px;">¿Cuál es tu dolor principal? <span style="font-weight:400;color:#6B6B68;">(puedes elegir varios)</span></h3>
+          <div class="wizard__options admin-dolores-grid fade-in-up">
+            <div class="option-card option-card--multiselect" data-value="morosidad" data-field="dolor">
+              <div class="option-card__icon"><i data-lucide="ban" style="width:22px;height:22px;"></i></div>
+              <div class="option-card__text"><div class="option-card__title">Inquilinos que no pagan</div></div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
+            </div>
+            <div class="option-card option-card--multiselect" data-value="mantenimiento" data-field="dolor">
+              <div class="option-card__icon"><i data-lucide="wrench" style="width:22px;height:22px;"></i></div>
+              <div class="option-card__text"><div class="option-card__title">Mantenimiento descuidado</div></div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
+            </div>
+            <div class="option-card option-card--multiselect" data-value="tiempo" data-field="dolor">
+              <div class="option-card__icon"><i data-lucide="clock" style="width:22px;height:22px;"></i></div>
+              <div class="option-card__text"><div class="option-card__title">Demasiado tiempo invertido</div></div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
+            </div>
+            <div class="option-card option-card--multiselect" data-value="vacancia" data-field="dolor">
+              <div class="option-card__icon"><i data-lucide="door-open" style="width:22px;height:22px;"></i></div>
+              <div class="option-card__text"><div class="option-card__title">Unidades vacías por mucho tiempo</div></div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
+            </div>
+            <div class="option-card option-card--multiselect" data-value="conflictos" data-field="dolor">
+              <div class="option-card__icon"><i data-lucide="message-square-x" style="width:22px;height:22px;"></i></div>
+              <div class="option-card__text"><div class="option-card__title">Problemas con inquilinos</div></div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
+            </div>
+            <div class="option-card option-card--multiselect" data-value="tramites" data-field="dolor">
+              <div class="option-card__icon"><i data-lucide="clipboard-list" style="width:22px;height:22px;"></i></div>
+              <div class="option-card__text"><div class="option-card__title">Predial, catastro, trámites</div></div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
             </div>
           </div>
 
@@ -1364,133 +1371,44 @@
         </div>
       </div>
 
-      <!-- ========== PASO 3: Ubicación y tamaño ========== -->
+      <!-- ========== PASO 3: Tiempo dedicado ========== -->
       <div class="wizard__step" data-step="3" data-wizard="administracion">
         <div class="wizard__content">
-          <h1 class="wizard__question fade-in-up">¿Dónde está tu propiedad y de qué tamaño es?</h1>
-          <p class="wizard__hint fade-in-up">Por ahora atendemos Monterrey y Saltillo.</p>
-
-          <h3 class="wizard__sub-label fade-in-up">Ciudad</h3>
-          <div class="wizard__options wizard__options--inline fade-in-up">
-            <div class="option-card option-card--small" data-value="monterrey" data-field="ciudad">
-              <div class="option-card__icon">
-                <i data-lucide="building-2" style="width:24px;height:24px;"></i>
-              </div>
-              <div class="option-card__text">
-                <div class="option-card__title">Monterrey</div>
-              </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
-            </div>
-            <div class="option-card option-card--small" data-value="saltillo" data-field="ciudad">
-              <div class="option-card__icon">
-                <i data-lucide="mountain" style="width:24px;height:24px;"></i>
-              </div>
-              <div class="option-card__text">
-                <div class="option-card__title">Saltillo</div>
-              </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
-            </div>
-          </div>
-
-          <h3 class="wizard__sub-label fade-in-up">Número de unidades</h3>
-          <div class="wizard__options wizard__options--inline fade-in-up">
-            <div class="option-card option-card--small" data-value="1-4" data-field="unidades">
-              <div class="option-card__text">
-                <div class="option-card__title">1–4</div>
-              </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
-            </div>
-            <div class="option-card option-card--small" data-value="5-10" data-field="unidades">
-              <div class="option-card__text">
-                <div class="option-card__title">5–10</div>
-              </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
-            </div>
-            <div class="option-card option-card--small" data-value="11-20" data-field="unidades">
-              <div class="option-card__text">
-                <div class="option-card__title">11–20</div>
-              </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
-            </div>
-            <div class="option-card option-card--small" data-value="20+" data-field="unidades">
-              <div class="option-card__text">
-                <div class="option-card__title">Más de 20</div>
-              </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
-            </div>
-          </div>
-
-          <div class="wizard__footer">
-            <button class="btn-back wizard__back-btn">
-              <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
-              Atrás
-            </button>
-            <button class="btn-primary wizard__next-btn" disabled>
-              Siguiente
-              <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ========== PASO 4: Ingreso actual ========== -->
-      <div class="wizard__step" data-step="4" data-wizard="administracion">
-        <div class="wizard__content">
-          <h1 class="wizard__question fade-in-up">¿Sabes cuánto genera tu propiedad hoy?</h1>
-          <p class="wizard__hint fade-in-up">Si no estás seguro, PATRIO estima con datos de mercado.</p>
+          <h1 class="wizard__question fade-in-up">¿Cuánto tiempo le dedicas a tu inmueble hoy?</h1>
+          <p class="wizard__hint fade-in-up">Entre llamadas, visitas, trámites y pendientes.</p>
 
           <div class="wizard__options">
-            <div class="option-card fade-in-up" data-value="si" data-field="conoce_ingreso">
-              <div class="option-card__icon">
-                <i data-lucide="check-circle" style="width:24px;height:24px;"></i>
-              </div>
+            <div class="option-card fade-in-up" data-value="poco">
+              <div class="option-card__icon"><i data-lucide="coffee" style="width:24px;height:24px;"></i></div>
               <div class="option-card__text">
-                <div class="option-card__title">Sí, conozco mis números</div>
+                <div class="option-card__title">Menos de 2 horas a la semana</div>
+                <div class="option-card__desc">Está más o menos en piloto automático</div>
               </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
             </div>
-
-            <div class="option-card fade-in-up" data-value="no" data-field="conoce_ingreso">
-              <div class="option-card__icon">
-                <i data-lucide="help-circle" style="width:24px;height:24px;"></i>
-              </div>
+            <div class="option-card fade-in-up" data-value="moderado">
+              <div class="option-card__icon"><i data-lucide="clock" style="width:24px;height:24px;"></i></div>
               <div class="option-card__text">
-                <div class="option-card__title">No estoy seguro</div>
-                <div class="option-card__desc">PATRIO estima con datos de mercado según tu tipo de propiedad y ciudad.</div>
+                <div class="option-card__title">Entre 2 y 5 horas a la semana</div>
+                <div class="option-card__desc">Requiere atención constante pero manejable</div>
               </div>
-              <div class="option-card__check">
-                <i data-lucide="check" style="width:14px;height:14px;"></i>
-              </div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
             </div>
-          </div>
-
-          <div class="admin-ingreso-group fade-in-up" style="display: none;">
-            <div class="input-group">
-              <label class="input-label" for="admin-ingreso">Ingreso bruto mensual actual</label>
-              <div class="input-currency">
-                <span class="input-currency__symbol">$</span>
-                <input
-                  type="text"
-                  id="admin-ingreso"
-                  class="input-field"
-                  placeholder="0"
-                  inputmode="numeric"
-                >
+            <div class="option-card fade-in-up" data-value="mucho">
+              <div class="option-card__icon"><i data-lucide="flame" style="width:24px;height:24px;"></i></div>
+              <div class="option-card__text">
+                <div class="option-card__title">Más de 5 horas a la semana</div>
+                <div class="option-card__desc">Se siente como un segundo trabajo</div>
               </div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
+            </div>
+            <div class="option-card fade-in-up" data-value="demasiado">
+              <div class="option-card__icon"><i data-lucide="alert-triangle" style="width:24px;height:24px;"></i></div>
+              <div class="option-card__text">
+                <div class="option-card__title">Demasiado. Necesito salir de esto.</div>
+                <div class="option-card__desc">El inmueble me consume más de lo que me da</div>
+              </div>
+              <div class="option-card__check"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
             </div>
           </div>
 
@@ -1500,98 +1418,69 @@
               Atrás
             </button>
             <button class="btn-primary wizard__next-btn" disabled>
-              Ver resultados
+              Ver cómo PATRIO puede ayudarte
               <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- ========== PASO 5: Resultados y contacto ========== -->
-      <div class="wizard__step" data-step="5" data-wizard="administracion">
+      <!-- ========== PASO 4: Resultado personalizado ========== -->
+      <div class="wizard__step" data-step="4" data-wizard="administracion">
         <div class="wizard__content">
-          <h1 class="wizard__question fade-in-up">Así puede trabajar tu propiedad con PATRIO</h1>
+          <h1 class="wizard__question fade-in-up" id="admin-resultado-titulo">Entendemos lo que tienes. Aquí está lo que podemos hacer.</h1>
 
-          <div class="results-grid results-grid--admin fade-in-up">
-            <div class="results-metric results-metric--large">
-              <div class="results-metric__number" id="admin-ingreso-bruto">$0</div>
-              <div class="results-metric__label">Ingreso bruto mensual</div>
-            </div>
-            <div class="results-metric results-metric--large results-metric--highlight">
-              <div class="results-metric__number" id="admin-ingreso-neto">$0</div>
-              <div class="results-metric__label">Tu ingreso neto con PATRIO</div>
-            </div>
-            <div class="results-metric results-metric--large">
-              <div class="results-metric__number" id="admin-ingreso-anual">$0</div>
-              <div class="results-metric__label">Ingreso neto anual</div>
+          <!-- Diagnóstico personalizado -->
+          <div class="admin-diagnostico fade-in-up">
+            <p class="admin-diagnostico__texto" id="admin-diagnostico-texto"></p>
+          </div>
+
+          <!-- Lo que PATRIO resuelve (personalizado) -->
+          <div class="admin-soluciones fade-in-up">
+            <h3 class="admin-soluciones__titulo">Lo que PATRIO resuelve para ti</h3>
+            <div class="admin-soluciones__lista" id="admin-soluciones-lista">
+              <!-- Se llena dinámicamente en wizard.js -->
             </div>
           </div>
 
-          <p class="admin-estimacion-nota fade-in-up" id="admin-estimacion-nota" style="display: none;">
-            Estimado basado en propiedades similares en tu zona. En la primera reunión PATRIO analizará tu propiedad específica.
-          </p>
-
-          <div class="admin-upsell fade-in-up" style="background: #F8F7F4; border-radius: 12px; padding: 32px; margin: 32px 0;">
-            <h3 style="font-family: 'Playfair Display', serif; font-size: 1.25rem; margin-bottom: 20px;">¿Y si tu propiedad pudiera generar más?</h3>
-            <div class="admin-upsell__items">
-              <div class="admin-upsell__item">
-                <i data-lucide="trending-up" style="width:22px;height:22px;color:#6B8A5E;flex-shrink:0;"></i>
-                <span>Optimización de ocupancia y precios de renta</span>
-              </div>
-              <div class="admin-upsell__item">
-                <i data-lucide="leaf" style="width:22px;height:22px;color:#6B8A5E;flex-shrink:0;"></i>
-                <span>Mejoras de bajo costo y alto impacto — jardinería, acabados, iluminación</span>
-              </div>
-              <div class="admin-upsell__item">
-                <i data-lucide="repeat" style="width:22px;height:22px;color:#6B8A5E;flex-shrink:0;"></i>
-                <span>Reinversión inteligente hacia tu siguiente proyecto con PATRIO</span>
-              </div>
+          <!-- Dashboard gancho -->
+          <div class="admin-dashboard-gancho fade-in-up">
+            <div class="admin-dashboard-gancho__icono">
+              <i data-lucide="bar-chart-2" style="width:28px;height:28px;"></i>
+            </div>
+            <div class="admin-dashboard-gancho__texto">
+              <strong>Reporte mensual incluido.</strong>
+              <span>Cada mes recibes un informe completo de tu inmueble: cobros, incidencias, estado de unidades. Todo en un solo lugar, sin que tengas que preguntar.</span>
             </div>
           </div>
 
+          <!-- Formulario de contacto -->
           <form id="admin-contact-form" class="wizard__form fade-in-up" action="https://formspree.io/f/xwvnqzkj" method="POST">
             <div class="input-group">
               <label class="input-label" for="admin-contact-name">Nombre completo *</label>
-              <input
-                type="text"
-                id="admin-contact-name"
-                name="nombre"
-                class="input-field"
-                placeholder="Tu nombre"
-                autocomplete="name"
-                required
-              >
+              <input type="text" id="admin-contact-name" name="nombre" class="input-field" placeholder="Tu nombre" autocomplete="name" required>
             </div>
-
             <div class="input-group">
               <label class="input-label" for="admin-contact-phone">Teléfono / WhatsApp *</label>
-              <input
-                type="tel"
-                id="admin-contact-phone"
-                name="telefono"
-                class="input-field"
-                placeholder="844 484 9359"
-                autocomplete="tel"
-                required
-              >
+              <input type="tel" id="admin-contact-phone" name="telefono" class="input-field" placeholder="844 484 9359" autocomplete="tel" required>
             </div>
 
-            <!-- Hidden fields -->
+            <!-- Campos ocultos -->
             <input type="hidden" name="wizard_tipo" value="administracion">
-            <input type="hidden" name="tipo_propiedad" id="admin-form-tipo-propiedad">
-            <input type="hidden" name="ciudad" id="admin-form-ciudad">
-            <input type="hidden" name="unidades" id="admin-form-unidades">
-            <input type="hidden" name="ingreso_mensual" id="admin-form-ingreso">
+            <input type="hidden" name="tipo_inmueble" id="admin-form-tipo">
+            <input type="hidden" name="ocupacion" id="admin-form-ocupacion">
+            <input type="hidden" name="dolores" id="admin-form-dolores">
+            <input type="hidden" name="tiempo_dedicado" id="admin-form-tiempo">
 
-            <div class="wizard__footer fade-in-up" style="margin-top: 48px;">
+            <div class="wizard__footer fade-in-up" style="margin-top: 40px;">
               <button type="submit" class="btn-primary wizard__submit-btn">
                 <i data-lucide="send" style="width:18px;height:18px;"></i>
-                Quiero que me contacten
+                Quiero que PATRIO me ayude
               </button>
             </div>
           </form>
 
-          <!-- Success state -->
+          <!-- Estado de éxito -->
           <div class="admin-contact-success contact-success" style="display: none;">
             <div class="contact-success__icon">
               <i data-lucide="check-circle" style="width:48px;height:48px;"></i>
@@ -1603,6 +1492,7 @@
               Hablar ahora por WhatsApp
             </a>
           </div>
+
         </div>
       </div>
 

@@ -2481,3 +2481,226 @@ button {
     height: 120px;
   }
 }
+
+/* ============================================
+   ADMIN SERVICIO — Sección index.html
+   ============================================ */
+
+.admin-servicio {
+  background: var(--color-bg-alt, #F8F7F4);
+}
+
+.admin-servicio__header {
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto 64px;
+}
+
+.admin-servicio__eyebrow {
+  display: inline-block;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6B8A5E;
+  margin-bottom: 16px;
+}
+
+.admin-servicio__title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  color: #1A1A18;
+  margin-bottom: 16px;
+  line-height: 1.2;
+}
+
+.admin-servicio__subtitle {
+  font-size: 1.05rem;
+  color: #6B6B68;
+  line-height: 1.6;
+}
+
+/* Pilares */
+.admin-pilares {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 32px;
+  margin-bottom: 64px;
+}
+
+.admin-pilar {
+  background: #fff;
+  border: 1px solid #E8E5E0;
+  border-radius: 12px;
+  padding: 28px 24px;
+}
+
+.admin-pilar__icon {
+  width: 48px;
+  height: 48px;
+  background: #F0F4EE;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6B8A5E;
+  margin-bottom: 16px;
+}
+
+.admin-pilar__title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.05rem;
+  color: #1A1A18;
+  margin-bottom: 8px;
+}
+
+.admin-pilar__desc {
+  font-size: 0.9rem;
+  color: #6B6B68;
+  line-height: 1.6;
+}
+
+/* Para quién */
+.admin-para-quien {
+  background: #fff;
+  border: 1px solid #E8E5E0;
+  border-radius: 12px;
+  padding: 40px;
+  margin-bottom: 48px;
+}
+
+.admin-para-quien__title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.15rem;
+  color: #1A1A18;
+  margin-bottom: 24px;
+}
+
+.admin-ejemplos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.admin-ejemplo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #F8F7F4;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  color: #1A1A18;
+}
+
+.admin-ejemplo i {
+  color: #6B8A5E;
+  flex-shrink: 0;
+}
+
+/* CTA */
+.admin-servicio__cta {
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .admin-pilares {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-para-quien {
+    padding: 28px 20px;
+  }
+}
+
+/* ============================================
+   ADMIN WIZARD — Resultado personalizado (paso 4)
+   ============================================ */
+
+.admin-diagnostico {
+  background: #F0F4EE;
+  border-left: 3px solid #6B8A5E;
+  border-radius: 0 8px 8px 0;
+  padding: 20px 24px;
+  margin: 24px 0 32px;
+}
+
+.admin-diagnostico__texto {
+  font-size: 1rem;
+  color: #1A1A18;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.admin-soluciones {
+  margin-bottom: 32px;
+}
+
+.admin-soluciones__titulo {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.1rem;
+  color: #1A1A18;
+  margin-bottom: 16px;
+}
+
+.admin-solucion-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #E8E5E0;
+  font-size: 0.95rem;
+  color: #3A3A38;
+  line-height: 1.55;
+}
+
+.admin-solucion-item:last-child {
+  border-bottom: none;
+}
+
+.admin-dashboard-gancho {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: #1A1A18;
+  color: #F8F7F4;
+  border-radius: 12px;
+  padding: 24px 28px;
+  margin: 32px 0 40px;
+}
+
+.admin-dashboard-gancho__icono {
+  color: #6B8A5E;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.admin-dashboard-gancho__texto {
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.admin-dashboard-gancho__texto strong {
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 4px;
+  color: #fff;
+}
+
+.admin-dolores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.option-card--multiselect.option-card--selected {
+  border-color: #6B8A5E;
+  background: #F0F4EE;
+}
+
+@media (max-width: 600px) {
+  .admin-dolores-grid {
+    grid-template-columns: 1fr;
+  }
+}
