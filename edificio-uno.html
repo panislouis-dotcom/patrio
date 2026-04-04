@@ -721,13 +721,13 @@ function initCharts(){
 
   // Dashboard principal
   new Chart(document.getElementById('chartMain'),{
-    type:'bar',
+    type:'line',
     data:{
       labels:meses,
       datasets:[
-        {label:'Ingresos',data:ingresos,backgroundColor:'rgba(107,138,94,.2)',borderColor:'#6B8A5E',borderWidth:2,borderRadius:4},
-        {label:'Gastos',data:gastos,backgroundColor:'rgba(192,57,43,.15)',borderColor:'#C0392B',borderWidth:2,borderRadius:4},
-        {label:'Utilidad neta',data:utilidad,backgroundColor:'rgba(74,103,65,.9)',borderColor:'#4A6741',borderWidth:0,borderRadius:4},
+        {label:'Ingresos',data:ingresos,borderColor:'#6B8A5E',backgroundColor:'rgba(107,138,94,.06)',borderWidth:2,fill:true,tension:.35,pointRadius:5,pointHoverRadius:7},
+        {label:'Gastos',data:gastos,borderColor:'#C0392B',backgroundColor:'rgba(192,57,43,.04)',borderWidth:2,fill:true,tension:.35,pointRadius:5,pointHoverRadius:7},
+        {label:'Utilidad neta',data:utilidad,borderColor:'#4A6741',backgroundColor:'rgba(74,103,65,.08)',borderWidth:2.5,fill:true,tension:.35,pointRadius:6,pointHoverRadius:8},
       ]
     },
     options:{
