@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PATRIO — Edificio UNO</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#6B8A5E;--green-dark:#4A6741;--green-light:#F0F4EE;
+  --warm:#F8F7F4;--border:#E8E5E0;--text:#1A1A18;--muted:#6B6B68;
+  --red:#C0392B;--red-light:#FDECEA;--amber:#B7791F;--amber-light:#FEF3C7;
+  --fd:'Playfair Display',Georgia,serif;--fb:'DM Sans',system-ui,sans-serif;
+}
+body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:100vh}
+
+/* LOGIN */
+#ls{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1A1A18;padding:24px}
+.lc{background:#fff;border-radius:16px;padding:48px 40px;width:100%;max-width:400px}
+.ll{font-family:var(--fd);font-size:1.75rem;font-weight:700;color:var(--text);letter-spacing:.04em;margin-bottom:6px}
+.ls-sub{font-size:.875rem;color:var(--muted);margin-bottom:32px}
+.llb{font-size:.75rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px}
+.li{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:8px;font-family:var(--fb);font-size:.95rem;color:var(--text);background:#fff;outline:none;transition:border-color 200ms;margin-bottom:16px}
+.li:focus{border-color:var(--green)}
+.lb{width:100%;padding:13px;background:var(--green);color:#fff;border:none;border-radius:8px;font-family:var(--fb);font-size:.95rem;font-weight:500;cursor:pointer;transition:background 200ms}
+.lb:hover{background:var(--green-dark)}
+.lerr{font-size:.8rem;color:var(--red);margin-top:8px;display:none}
+
+/* APP */
+#app{display:none}
+.layout{display:flex;min-height:100vh}
+
+/* SIDEBAR */
+.sb{width:240px;flex-shrink:0;background:#1A1A18;padding:28px 0;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;z-index:100}
+.sb-logo{font-family:var(--fd);font-size:1.25rem;font-weight:700;color:#F8F7F4;padding:0 24px;margin-bottom:2px}
+.sb-cl{font-size:.72rem;color:#6B6B68;padding:0 24px;margin-bottom:8px}
+.sb-prop{font-size:.72rem;color:#9B9B98;padding:0 24px;margin-bottom:28px;line-height:1.4}
+.sb-sec{font-size:.62rem;font-weight:500;color:#444;text-transform:uppercase;letter-spacing:.12em;padding:0 24px;margin-bottom:8px;margin-top:20px}
+.sb-lk{display:flex;align-items:center;gap:10px;padding:10px 24px;font-size:.875rem;color:#9B9B98;cursor:pointer;transition:all 150ms;border-left:2px solid transparent}
+.sb-lk:hover{color:#F8F7F4;background:rgba(255,255,255,.04)}
+.sb-lk.active{color:#F8F7F4;border-left-color:var(--green);background:rgba(107,138,94,.12)}
+.sb-lk svg{width:15px;height:15px;flex-shrink:0}
+.lo-btn{margin:auto 16px 16px;padding:10px 14px;background:transparent;border:1px solid rgba(255,255,255,.1);color:#6B6B68;border-radius:8px;font-family:var(--fb);font-size:.8rem;cursor:pointer;transition:all 200ms;display:flex;align-items:center;gap:8px}
+.lo-btn:hover{color:#F8F7F4;border-color:rgba(255,255,255,.2)}
+
+/* MAIN */
+.main{margin-left:240px;flex:1;padding:32px 40px;max-width:calc(100% - 240px)}
+.pg{display:none}.pg.active{display:block}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.pt{font-family:var(--fd);font-size:1.6rem;font-weight:600}
+.badge{font-size:.78rem;font-weight:500;color:var(--green);background:var(--green-light);border-radius:20px;padding:6px 14px}
+.badge-amber{background:var(--amber-light);color:var(--amber)}
+
+/* ALERTS */
+.alert{border-radius:10px;padding:11px 15px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;font-size:.83rem}
+.alert-amber{background:var(--amber-light);border:1px solid #D97706;color:#92400E}
+.alert-red{background:var(--red-light);border:1px solid var(--red);color:var(--red)}
+
+/* CARD */
+.card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:18px}
+.card-title{font-size:.72rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px}
+
+/* KPI GRID */
+.kgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+.kgrid-2{grid-template-columns:repeat(2,1fr)}
+.kgrid-6{grid-template-columns:repeat(6,1fr)}
+.ki{background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px}
+.ki.hl{border-color:var(--green);background:var(--green-light)}
+.ki.hl .kv{color:var(--green-dark)}
+.kl{font-size:.65rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.kv{font-family:var(--fd);font-size:1.25rem;font-weight:600;color:var(--text)}
+.kd{font-size:.7rem;color:var(--muted);margin-top:3px}
+.kd.up{color:#2D7D46}.kd.dn{color:var(--red)}.kd.neu{color:var(--muted)}
+
+/* TOOLTIP */
+.tip{position:relative;cursor:help}
+.tip::after{content:attr(data-tip);position:absolute;bottom:calc(100%+8px);left:50%;transform:translateX(-50%);background:#1A1A18;color:#F8F7F4;font-family:var(--fb);font-size:.72rem;line-height:1.5;padding:10px 13px;border-radius:8px;width:220px;white-space:normal;pointer-events:none;opacity:0;transition:opacity 180ms;z-index:300;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.tip::before{content:'';position:absolute;bottom:calc(100%+2px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1A1A18;pointer-events:none;opacity:0;transition:opacity 180ms;z-index:300}
+.tip:hover::after,.tip:hover::before{opacity:1}
+.tip .kl::after{content:' ⓘ';font-size:.6rem;color:var(--green);opacity:.7}
+
+/* CHART */
+.chart-wrap{position:relative;height:220px}
+
+/* PATRIMONIO HERO */
+.pat-hero{background:#1A1A18;border-radius:12px;padding:26px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+.ph-l{font-size:.65rem;font-weight:500;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px}
+.ph-v{font-family:var(--fd);font-size:1.5rem;font-weight:600;color:#F8F7F4}
+.ph-d{font-size:.72rem;color:rgba(255,255,255,.35);margin-top:3px}
+
+/* FINANZAS TABLE */
+.ft{width:100%;border-collapse:collapse;font-size:.85rem}
+.ft th{font-size:.68rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+.ft td{padding:10px 12px;border-bottom:1px solid var(--border)}
+.ft tr:last-child td{border-bottom:none}
+.ft tr:hover td{background:var(--warm)}
+.fc-ing{color:#2D7D46;font-weight:500}
+.fc-gst{color:var(--red)}
+.fc-uti{color:var(--green-dark);font-weight:600}
+
+/* UNIDADES */
+.unit-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.unit-card{border:1px solid var(--border);border-radius:10px;padding:16px;background:#fff;cursor:pointer;transition:all 150ms}
+.unit-card:hover{border-color:var(--green);box-shadow:0 2px 8px rgba(107,138,94,.12)}
+.unit-card.vacant{background:var(--warm);opacity:.7}
+.unit-card.negotiating{border-color:var(--amber);background:var(--amber-light)}
+.unit-id{font-family:var(--fd);font-size:1rem;font-weight:600;margin-bottom:4px}
+.unit-tenant{font-size:.82rem;color:var(--text);margin-bottom:2px}
+.unit-rent{font-size:.78rem;color:var(--green-dark);font-weight:500}
+.unit-status{display:inline-block;font-size:.65rem;font-weight:500;padding:2px 8px;border-radius:10px;margin-top:6px}
+.st-ok{background:#E8F5E9;color:#2D7D46}
+.st-vac{background:var(--border);color:var(--muted)}
+.st-neg{background:var(--amber-light);color:var(--amber)}
+
+/* MODAL */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;padding:20px}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:16px;padding:32px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto}
+.modal-title{font-family:var(--fd);font-size:1.2rem;font-weight:600;margin-bottom:4px}
+.modal-sub{font-size:.78rem;color:var(--muted);margin-bottom:20px}
+.modal-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.modal-field label{font-size:.65rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:3px}
+.modal-field span{font-size:.88rem;color:var(--text)}
+.close-btn{float:right;background:none;border:none;font-size:1.2rem;color:var(--muted);cursor:pointer;margin-top:-8px}
+
+/* MANTENIMIENTO */
+.mant-table{width:100%;border-collapse:collapse;font-size:.82rem}
+.mant-table th{font-size:.65rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)}
+.mant-table td{padding:9px 10px;border-bottom:1px solid var(--border)}
+.mant-table tr:hover td{background:var(--warm)}
+.mant-ok{color:#2D7D46;font-size:.72rem;font-weight:500}
+.mant-pend{color:var(--amber);font-size:.72rem;font-weight:500}
+
+/* LEVANTAMIENTO */
+.lev-table{width:100%;border-collapse:collapse;font-size:.82rem}
+.lev-table th{font-size:.65rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);background:var(--warm)}
+.lev-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
+.tag{display:inline-block;font-size:.65rem;font-weight:500;padding:2px 7px;border-radius:8px}
+.tag-ok{background:#E8F5E9;color:#2D7D46}
+.tag-pend{background:var(--amber-light);color:var(--amber)}
+.tag-no{background:var(--red-light);color:var(--red)}
+
+@media(max-width:900px){
+  .sb{transform:translateX(-100%)}
+  .main{margin-left:0;max-width:100%;padding:20px}
+  .kgrid-6{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="ls">
+  <div class="lc">
+    <div class="ll">PATRIO</div>
+    <div class="ls-sub">Portal del Propietario · Edificio UNO</div>
+    <label class="llb" for="usr">Usuario</label>
+    <input class="li" type="text" id="usr" autocomplete="off">
+    <label class="llb" for="pwd">Contraseña</label>
+    <input class="li" type="password" id="pwd">
+    <button class="lb" onclick="doLogin()">Ingresar</button>
+    <div class="lerr" id="lerr">Usuario o contraseña incorrectos</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+<div class="layout">
+
+<!-- SIDEBAR -->
+<div class="sb">
+  <div class="sb-logo">PATRIO</div>
+  <div class="sb-cl">Portal del Propietario</div>
+  <div class="sb-prop">Edificio UNO<br>Modesto Arreola OTE 415<br>Centro, Monterrey</div>
+
+  <div class="sb-sec">Principal</div>
+  <div class="sb-lk active" onclick="showPage('dashboard',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    Dashboard
+  </div>
+  <div class="sb-lk" onclick="showPage('unidades',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Unidades
+  </div>
+  <div class="sb-lk" onclick="showPage('finanzas',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+    Ingresos y Gastos
+  </div>
+  <div class="sb-lk" onclick="showPage('patrimonio',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    Mi Patrimonio
+  </div>
+
+  <div class="sb-sec">Operación</div>
+  <div class="sb-lk" onclick="showPage('mantenimiento',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+    Mantenimiento
+  </div>
+  <div class="sb-lk" onclick="showPage('levantamiento',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    Levantamiento
+  </div>
+
+  <button class="lo-btn" onclick="doLogout()">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    Cerrar sesión
+  </button>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+<!-- ═══════════════════════════
+     DASHBOARD
+═══════════════════════════ -->
+<div id="pg-dashboard" class="pg active">
+  <div class="topbar">
+    <div class="pt">Dashboard</div>
+    <div class="badge">Marzo 2026</div>
+  </div>
+
+  <div class="alert alert-amber">
+    ⚠ <span><strong>Penthouse:</strong> Contrato vencido (mar 2026) — en negociación con el propietario. Se actualizará próximamente.</span>
+  </div>
+  <div class="alert alert-amber">
+    ⚠ <span><strong>Señalización pendiente:</strong> Instalación programada para el miércoles 8 de abril 2026. Costo estimado $400.</span>
+  </div>
+
+  <!-- KPIs mes actual -->
+  <div class="kgrid">
+    <div class="ki hl">
+      <div class="kl">Utilidad neta — Marzo</div>
+      <div class="kv">$144,893</div>
+      <div class="kd up">▲ 0.3% vs febrero</div>
+    </div>
+    <div class="ki">
+      <div class="kl">Ingresos brutos</div>
+      <div class="kv">$162,500</div>
+      <div class="kd neu">— sin cambio</div>
+    </div>
+    <div class="ki">
+      <div class="kl">Gastos operativos</div>
+      <div class="kv">$17,607</div>
+      <div class="kd up">▼ 2.2% vs febrero</div>
+    </div>
+    <div class="ki">
+      <div class="kl">Ocupación</div>
+      <div class="kv">84.6%</div>
+      <div class="kd neu">11 de 13 unidades activas</div>
+    </div>
+    <div class="ki tip" data-tip="Utilidad neta ÷ Ingresos. Qué porcentaje de lo que entra se convierte en ganancia. Por encima del 55% es saludable.">
+      <div class="kl">Rentabilidad</div>
+      <div class="kv">89.2%</div>
+      <div class="kd up">↑ Excelente</div>
+    </div>
+    <div class="ki tip" data-tip="NOI anualizado estimado ÷ Valor del inmueble. Rango sano en MTY/SLT: 7–10%.">
+      <div class="kl">Cap Rate est.</div>
+      <div class="kv">8.7%</div>
+      <div class="kd neu">— Saludable</div>
+    </div>
+  </div>
+
+  <!-- Gráfica -->
+  <div class="card">
+    <div class="card-title">Rendimiento mensual 2026</div>
+    <div class="chart-wrap">
+      <canvas id="chartMain"></canvas>
+    </div>
+  </div>
+
+  <!-- Resumen inquilinos -->
+  <div class="card">
+    <div class="card-title">Estado de inquilinos — Marzo 2026</div>
+    <table class="ft">
+      <thead><tr>
+        <th>Unidad</th><th>Inquilino</th><th>Renta</th><th>Estado</th><th>Notas</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>H1</td><td>Leonardo Miranda</td><td>$9,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Contrato indefinido</td></tr>
+        <tr><td>H2</td><td>Alfonso Bismark Ponce</td><td>$8,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Contrato indefinido</td></tr>
+        <tr><td>H3</td><td>Doroti Hernandez</td><td>$9,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Contrato indefinido</td></tr>
+        <tr><td>H4</td><td>Alejandro Salinas</td><td>$9,500</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Contrato indefinido</td></tr>
+        <tr><td>H5</td><td>Gerardo Pinzón</td><td>$9,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Contrato indefinido</td></tr>
+        <tr><td>H6</td><td>—</td><td>—</td><td><span class="tag tag-vac">No disponible</span></td><td style="font-size:.75rem;color:var(--muted)">Inhabilitada temporalmente</td></tr>
+        <tr><td>H7</td><td>—</td><td>—</td><td><span class="tag tag-vac">No disponible</span></td><td style="font-size:.75rem;color:var(--muted)">Inhabilitada temporalmente</td></tr>
+        <tr><td>Depa Esquina</td><td>Sergio Olivares</td><td>$18,500</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta mayo 2027</td></tr>
+        <tr><td>Parisino 1</td><td>Ricardo Gracia</td><td>$11,500</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta abril 2026</td></tr>
+        <tr><td>Parisino 2</td><td>Jorge Ramos</td><td>$10,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta oct 2026</td></tr>
+        <tr><td>Penthouse</td><td>Gustavo Gancino</td><td>$12,000</td><td><span class="tag tag-neg">En negociación</span></td><td style="font-size:.75rem;color:var(--amber)">Contrato vencido mar 2026</td></tr>
+        <tr><td>Local Esquina</td><td>Roberto Zapata</td><td>$40,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta nov 2027</td></tr>
+        <tr><td>Local Parisino</td><td>Julio Hernandez</td><td>$26,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta mar 2027</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     UNIDADES
+═══════════════════════════ -->
+<div id="pg-unidades" class="pg">
+  <div class="topbar">
+    <div class="pt">Unidades</div>
+    <div class="badge">13 unidades · 11 activas</div>
+  </div>
+
+  <div class="unit-grid">
+    <div class="unit-card" onclick="openModal('H1')">
+      <div class="unit-id">H1 — Habitación 1</div>
+      <div class="unit-tenant">Leonardo Miranda · 8181823159</div>
+      <div class="unit-rent">$9,000 / mes · Dep. $4,500 (Guillaume)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+    <div class="unit-card" onclick="openModal('H2')">
+      <div class="unit-id">H2 — Habitación 2</div>
+      <div class="unit-tenant">Alfonso Bismark Ponce · 8115302903</div>
+      <div class="unit-rent">$8,000 / mes · Dep. $4,000 (Louis)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+    <div class="unit-card" onclick="openModal('H3')">
+      <div class="unit-id">H3 — Habitación 3</div>
+      <div class="unit-tenant">Doroti Hernandez · 8180936045</div>
+      <div class="unit-rent">$9,000 / mes · Dep. $4,500 (Louis)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+    <div class="unit-card" onclick="openModal('H4')">
+      <div class="unit-id">H4 — Habitación 4</div>
+      <div class="unit-tenant">Alejandro Salinas · 8180747237</div>
+      <div class="unit-rent">$9,500 / mes · Dep. $4,500 (Louis)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+    <div class="unit-card" onclick="openModal('H5')">
+      <div class="unit-id">H5 — Habitación 5</div>
+      <div class="unit-tenant">Gerardo Pinzón · 5554370092</div>
+      <div class="unit-rent">$9,000 / mes · Dep. $4,500 (Guillaume)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+    <div class="unit-card vacant">
+      <div class="unit-id">H6 — Habitación 6</div>
+      <div class="unit-tenant" style="color:var(--muted)">Sin inquilino</div>
+      <div class="unit-rent" style="color:var(--muted)">Inhabilitada</div>
+      <span class="unit-status st-vac">No disponible</span>
+    </div>
+    <div class="unit-card vacant">
+      <div class="unit-id">H7 — Habitación 7</div>
+      <div class="unit-tenant" style="color:var(--muted)">Sin inquilino</div>
+      <div class="unit-rent" style="color:var(--muted)">Inhabilitada</div>
+      <span class="unit-status st-vac">No disponible</span>
+    </div>
+    <div class="unit-card" onclick="openModal('DEPA')">
+      <div class="unit-id">Depa Esquina</div>
+      <div class="unit-tenant">Sergio Olivares · 8135555148</div>
+      <div class="unit-rent">$18,500 / mes · Dep. $18,500 (Guillaume)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+    <div class="unit-card" onclick="openModal('PAR1')">
+      <div class="unit-id">Parisino 1</div>
+      <div class="unit-tenant">Ricardo Gracia · 8325133097</div>
+      <div class="unit-rent">$11,500 / mes · Dep. $11,500 (Guillaume)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+    <div class="unit-card" onclick="openModal('PAR2')">
+      <div class="unit-id">Parisino 2</div>
+      <div class="unit-tenant">Jorge Ramos · (pendiente)</div>
+      <div class="unit-rent">$10,000 / mes · Dep. $10,000 (Guillaume)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+    <div class="unit-card negotiating" onclick="openModal('PH')">
+      <div class="unit-id">Penthouse</div>
+      <div class="unit-tenant">Gustavo Gancino</div>
+      <div class="unit-rent">$12,000 / mes · Dep. (Guillaume)</div>
+      <span class="unit-status st-neg">En negociación</span>
+    </div>
+    <div class="unit-card" onclick="openModal('LOC1')">
+      <div class="unit-id">Local Esquina</div>
+      <div class="unit-tenant">Roberto Zapata · 8116006671</div>
+      <div class="unit-rent">$40,000 / mes · Dep. $40,000 (Guillaume)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+    <div class="unit-card" onclick="openModal('LOC2')">
+      <div class="unit-id">Local Parisino</div>
+      <div class="unit-tenant">Julio Hernandez · 5626162217</div>
+      <div class="unit-rent">$26,000 / mes · Dep. $26,000 (Guillaume)</div>
+      <span class="unit-status st-ok">Al corriente</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     FINANZAS
+═══════════════════════════ -->
+<div id="pg-finanzas" class="pg">
+  <div class="topbar">
+    <div class="pt">Ingresos y Gastos</div>
+    <div class="badge">Ene — Mar 2026</div>
+  </div>
+
+  <div class="kgrid">
+    <div class="ki hl">
+      <div class="kl">Utilidad acumulada</div>
+      <div class="kv">$417,742</div>
+      <div class="kd neu">Enero — Marzo 2026</div>
+    </div>
+    <div class="ki">
+      <div class="kl">Ingresos acumulados</div>
+      <div class="kv">$487,500</div>
+      <div class="kd neu">3 meses × $162,500</div>
+    </div>
+    <div class="ki">
+      <div class="kl">Gastos acumulados</div>
+      <div class="kv">$69,758</div>
+      <div class="kd neu">Operativos</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Historial mensual</div>
+    <table class="ft">
+      <thead><tr>
+        <th>Mes</th>
+        <th>Ingresos</th>
+        <th>Gasto Cozzy</th>
+        <th>Otros gastos</th>
+        <th>Total gastos</th>
+        <th>Utilidad neta</th>
+        <th>Rentabilidad</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Enero 2026</strong></td>
+          <td class="fc-ing">$162,500</td>
+          <td class="fc-gst">$13,342</td>
+          <td class="fc-gst">$20,799</td>
+          <td class="fc-gst">$34,141</td>
+          <td class="fc-uti">$128,359</td>
+          <td>79.0%</td>
+        </tr>
+        <tr>
+          <td><strong>Febrero 2026</strong></td>
+          <td class="fc-ing">$162,500</td>
+          <td class="fc-gst">$18,010</td>
+          <td class="fc-gst">$0</td>
+          <td class="fc-gst">$18,010</td>
+          <td class="fc-uti">$144,490</td>
+          <td>88.9%</td>
+        </tr>
+        <tr>
+          <td><strong>Marzo 2026</strong></td>
+          <td class="fc-ing">$162,500</td>
+          <td class="fc-gst">$11,087</td>
+          <td class="fc-gst">$6,520</td>
+          <td class="fc-gst">$17,607</td>
+          <td class="fc-uti">$144,893</td>
+          <td>89.2%</td>
+        </tr>
+        <tr style="background:var(--green-light)">
+          <td><strong>Total</strong></td>
+          <td class="fc-ing"><strong>$487,500</strong></td>
+          <td class="fc-gst"><strong>$42,439</strong></td>
+          <td class="fc-gst"><strong>$27,319</strong></td>
+          <td class="fc-gst"><strong>$69,758</strong></td>
+          <td class="fc-uti"><strong>$417,742</strong></td>
+          <td><strong>85.7%</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Evolución mensual</div>
+    <div class="chart-wrap">
+      <canvas id="chartFin"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Servicios contratados del inmueble</div>
+    <table class="ft">
+      <thead><tr><th>Servicio</th><th>Titular</th><th>No. Cuenta</th><th>Monto</th><th>Ciclo</th></tr></thead>
+      <tbody>
+        <tr><td>CFE — Electricidad (Cozzy)</td><td>Louis Albert Panis</td><td>379240702869</td><td class="fc-gst">~$4,000</td><td>Bimestral</td></tr>
+        <tr><td>Agua y Drenaje</td><td>Fidencio Hernandez</td><td>300929401</td><td class="fc-gst">$5,000</td><td>Mensual</td></tr>
+        <tr><td>Internet (áreas comunes)</td><td>—</td><td>Total Play 1GB</td><td class="fc-gst">$1,390</td><td>Mensual</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     PATRIMONIO
+═══════════════════════════ -->
+<div id="pg-patrimonio" class="pg">
+  <div class="topbar">
+    <div class="pt">Mi Patrimonio</div>
+    <div class="badge">Valuación PATRIO</div>
+  </div>
+
+  <div class="pat-hero">
+    <div class="tip" data-tip="Valuación estimada PATRIO basada en criterio del administrador y datos de mercado. No sustituye valuación profesional certificada.">
+      <div class="ph-l">Valuación estimada PATRIO</div>
+      <div class="ph-v">$19,000,000</div>
+      <div class="ph-d">Opinión de valor · abr 2026</div>
+    </div>
+    <div class="tip" data-tip="Valor estimado menos deuda pendiente. Sin crédito activo, el equity es igual al valor total del inmueble.">
+      <div class="ph-l">Equity total</div>
+      <div class="ph-v">$19,000,000</div>
+      <div class="ph-d">Sin deuda pendiente</div>
+    </div>
+    <div class="tip" data-tip="Suma de utilidades netas cobradas desde enero 2026, primer mes de operación PATRIO.">
+      <div class="ph-l">Flujo acumulado con PATRIO</div>
+      <div class="ph-v">$417,742</div>
+      <div class="ph-d">Ene — Mar 2026 · 3 meses</div>
+    </div>
+  </div>
+
+  <div class="kgrid">
+    <div class="ki hl tip" data-tip="(Flujo acumulado + Plusvalía estimada) ÷ Inversión total. Adquisición $4.5M + mejoras $5M = $9.5M invertidos. Valuación actual $19M.">
+      <div class="kl">Plusvalía generada</div>
+      <div class="kv">+$9,500,000</div>
+      <div class="kd up">▲ 100% sobre inversión total</div>
+    </div>
+    <div class="ki tip" data-tip="NOI anual estimado ÷ Valor del inmueble. NOI = ingresos menos gastos operativos, antes de impuestos. Rango sano MTY: 7–10%.">
+      <div class="kl">Cap Rate estimado</div>
+      <div class="kv">8.7%</div>
+      <div class="kd neu">NOI anual ÷ valor mercado · Saludable</div>
+    </div>
+    <div class="ki tip" data-tip="Promedio mensual de utilidad neta × 12. Es antes de deuda e ISR. Referencia de productividad del activo.">
+      <div class="kl">NOI anual estimado</div>
+      <div class="kv">$1,672,480</div>
+      <div class="kd neu">Basado en promedio 3 meses</div>
+    </div>
+    <div class="ki tip" data-tip="Valor del inmueble ÷ Renta bruta anual. $19M ÷ $1.95M = 9.7x. Menos de 20 es sano. Tu inmueble está bien rentado.">
+      <div class="kl">GRM</div>
+      <div class="kv">9.7x</div>
+      <div class="kd up">↓ Excelente · muy por debajo de 20</div>
+    </div>
+    <div class="ki tip" data-tip="Inversión total ($9.5M) ÷ utilidad neta mensual promedio ($139,247). A este ritmo, la inversión queda recuperada en aproximadamente 5.7 años desde el inicio.">
+      <div class="kl">Años para recuperar inv.</div>
+      <div class="kv">5.7 años</div>
+      <div class="kd neu">A ritmo actual · desde adquisición</div>
+    </div>
+    <div class="ki tip" data-tip="H6 y H7 inhabilitadas = 2 unidades de 13 sin ingreso. Cuando se reactiven, el ingreso bruto subirá aproximadamente $17,000–$18,500/mes adicionales.">
+      <div class="kl">Unidades sin ingreso</div>
+      <div class="kv">2 / 13</div>
+      <div class="kd neu">H6 y H7 — potencial sin explotar</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Datos de la inversión</div>
+    <table class="ft">
+      <thead><tr><th>Concepto</th><th>Valor</th><th>Notas</th></tr></thead>
+      <tbody>
+        <tr><td>Valor de adquisición</td><td>$4,500,000</td><td style="font-size:.78rem;color:var(--muted)">2021</td></tr>
+        <tr><td>Inversión en mejoras</td><td>$5,000,000</td><td style="font-size:.78rem;color:var(--muted)">Remodelación completa 2023</td></tr>
+        <tr><td><strong>Inversión total</strong></td><td><strong>$9,500,000</strong></td><td></td></tr>
+        <tr><td>Deuda pendiente</td><td>$0</td><td style="font-size:.78rem;color:var(--muted)">Sin crédito activo</td></tr>
+        <tr><td>Valuación estimada PATRIO</td><td style="color:var(--green-dark);font-weight:600">$19,000,000</td><td style="font-size:.78rem;color:var(--muted)">Abril 2026</td></tr>
+        <tr><td>Plusvalía estimada</td><td style="color:#2D7D46;font-weight:600">+$9,500,000</td><td style="font-size:.78rem;color:var(--muted)">100% de retorno sobre inversión total</td></tr>
+      </tbody>
+    </table>
+    <div style="font-size:.7rem;color:var(--muted);margin-top:12px;font-style:italic">La valuación estimada PATRIO es una opinión de valor basada en el criterio del administrador y datos de mercado. No sustituye una valuación profesional certificada.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     MANTENIMIENTO
+═══════════════════════════ -->
+<div id="pg-mantenimiento" class="pg">
+  <div class="topbar">
+    <div class="pt">Mantenimiento</div>
+    <div class="badge">Plan 2026</div>
+  </div>
+
+  <div class="alert alert-amber">
+    ⚠ <span>Próximo mantenimiento de A/C programado: <strong>Agosto 2026</strong> — todos los equipos. Planear con anticipación.</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Plan anual de mantenimiento preventivo</div>
+    <table class="mant-table">
+      <thead><tr>
+        <th>Equipo</th><th>Unidad</th><th>Marca / Modelo</th><th>Últ. mantenimiento</th><th>Próximo</th><th>Frecuencia</th><th>Estado</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>A/C</td><td>H1</td><td>Mirage Magnum Inverter 22</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C</td><td>H2</td><td>Mirage Magnum Inverter 22</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C</td><td>H3</td><td>Mirage Magnum Inverter 22</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C</td><td>H4</td><td>Mirage Magnum Inverter 22</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C</td><td>H5</td><td>Mirage Inverter 32</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C</td><td>H6</td><td>Mirage Magnum Inverter 22</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C</td><td>H7</td><td>Mirage Inverter XR32</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C (×2)</td><td>Depa Esquina</td><td>Mirage Inverter 32</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C</td><td>Parisino 1</td><td>Mirage Magnum Inverter 22</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C</td><td>Parisino 2</td><td>Mirage Inverter 32</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>A/C</td><td>Penthouse</td><td>Mirage Inverter 32</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr><td>Señalización</td><td>Edificio general</td><td>Etiquetas + impresión</td><td>—</td><td>8 abr 2026</td><td>Única vez</td><td><span class="mant-pend">Pendiente</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Observaciones del recorrido inicial</div>
+    <div style="font-size:.85rem;line-height:1.7;color:var(--text)">
+      <p>• Salidas de condensadores de A/C sin dirección definida — requiere atención.</p>
+      <p style="margin-top:6px">• Manijas de acceso se sienten sueltas — se anticipan fallas próximas, pendiente de reemplazar.</p>
+      <p style="margin-top:6px">• Losa en esquina crea charco en la salida — pendiente de revisión de impermeabilización.</p>
+      <p style="margin-top:6px">• Tinaco en techo PH no está operando actualmente.</p>
+      <p style="margin-top:6px">• Detalles eléctricos registrados en H2 (clima y luz con fallas previas) — sin incidencias en los últimos 6 meses.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     LEVANTAMIENTO
+═══════════════════════════ -->
+<div id="pg-levantamiento" class="pg">
+  <div class="topbar">
+    <div class="pt">Levantamiento</div>
+    <div class="badge">29 marzo 2026</div>
+  </div>
+
+  <div class="alert alert-amber">
+    ⚠ <span>Señalización pendiente de instalar: <strong>miércoles 8 abril 2026</strong>. Costo estimado: $400. Todos los sistemas requieren etiquetado.</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Sistema Hidráulico</div>
+    <table class="lev-table">
+      <thead><tr><th>Elemento</th><th>Ubicación</th><th>Foto</th><th>Señalizada</th><th>Estado</th><th>Notas</th></tr></thead>
+      <tbody>
+        <tr><td>Llave de paso general</td><td>Cubo luz puente sótano</td><td><span class="tag tag-ok">✓ Sí</span></td><td><span class="tag tag-pend">Pendiente</span></td><td>Funcionando</td><td>—</td></tr>
+        <tr><td>Medidor (Cozzy)</td><td>Alado puerta Cozzy</td><td><span class="tag tag-ok">✓ Sí</span></td><td><span class="tag tag-pend">Pendiente</span></td><td>Funcionando</td><td>Alimenta áreas comunes y lavandería</td></tr>
+        <tr><td>Tinaco</td><td>Techo PH</td><td><span class="tag tag-ok">✓ Sí</span></td><td><span class="tag tag-pend">Pendiente</span></td><td>Instalado</td><td>No está operando actualmente</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Sistema Eléctrico</div>
+    <table class="lev-table">
+      <thead><tr><th>Elemento</th><th>Ubicación</th><th>Foto</th><th>Señalizado</th><th>Estado</th><th>Notas</th></tr></thead>
+      <tbody>
+        <tr><td>Tablero Cozzy 1</td><td>Subiendo las escaleras</td><td><span class="tag tag-ok">✓ Sí</span></td><td><span class="tag tag-pend">Pendiente</span></td><td>Funcionando</td><td>11 pastillas</td></tr>
+        <tr><td>Tablero Cozzy 2</td><td>Cuarto de limpieza</td><td><span class="tag tag-ok">✓ Sí</span></td><td><span class="tag tag-no">✗ No</span></td><td>Funcionando</td><td>13 pastillas — sin señalizar · alimenta áreas comunes</td></tr>
+        <tr><td>Pastilla principal Depa Esquina</td><td>Inicio de escaleras lobby</td><td><span class="tag tag-ok">✓ Sí</span></td><td><span class="tag tag-no">✗ No</span></td><td>Funcionando</td><td>1 interruptor</td></tr>
+      </tbody>
+    </table>
+    <div style="font-size:.75rem;color:var(--muted);margin-top:10px;font-style:italic">Nota: El Tablero Cozzy 2 alimenta las áreas comunes del edificio y la lavandería. Todos los demás medidores son responsabilidad directa del inquilino correspondiente.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Señalización pendiente a instalar</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+      <span class="tag tag-pend">Llave de paso general</span>
+      <span class="tag tag-pend">Llaves de paso por piso</span>
+      <span class="tag tag-pend">Llaves de paso por unidad</span>
+      <span class="tag tag-pend">Tablero eléctrico general</span>
+      <span class="tag tag-pend">Breakers etiquetados</span>
+      <span class="tag tag-pend">Rutas de evacuación</span>
+      <span class="tag tag-pend">Cuarto de máquinas</span>
+    </div>
+    <div style="font-size:.85rem;color:var(--text)">
+      <strong>Costo estimado:</strong> $400 (etiquetas + impresión) ·
+      <strong>Fecha:</strong> Miércoles 8 de abril 2026
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+</div><!-- /layout -->
+</div><!-- /app -->
+
+<!-- MODAL UNIDAD -->
+<div class="modal-bg" id="modal-bg" onclick="closeModal(event)">
+  <div class="modal" id="modal-content">
+    <button class="close-btn" onclick="document.getElementById('modal-bg').classList.remove('open')">✕</button>
+    <div class="modal-title" id="m-title"></div>
+    <div class="modal-sub" id="m-sub"></div>
+    <div id="m-body"></div>
+  </div>
+</div>
+
+<script>
+// ── LOGIN ──
+function doLogin(){
+  const u=document.getElementById('usr').value.trim();
+  const p=document.getElementById('pwd').value.trim();
+  if(u==='PAGU Capital'&&p==='Modesto415'){
+    document.getElementById('ls').style.display='none';
+    document.getElementById('app').style.display='block';
+    initCharts();
+  } else {
+    document.getElementById('lerr').style.display='block';
+  }
+}
+document.getElementById('pwd').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+
+function doLogout(){
+  document.getElementById('app').style.display='none';
+  document.getElementById('ls').style.display='flex';
+  document.getElementById('usr').value='';
+  document.getElementById('pwd').value='';
+}
+
+// ── NAVEGACIÓN ──
+function showPage(id,el){
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.sb-lk').forEach(l=>l.classList.remove('active'));
+  document.getElementById('pg-'+id).classList.add('active');
+  el.classList.add('active');
+}
+
+// ── CHARTS ──
+function initCharts(){
+  const meses=['Ene','Feb','Mar'];
+  const ingresos=[162500,162500,162500];
+  const gastos=[34141,18010,17607];
+  const utilidad=[128359,144490,144893];
+
+  // Dashboard principal
+  new Chart(document.getElementById('chartMain'),{
+    type:'bar',
+    data:{
+      labels:meses,
+      datasets:[
+        {label:'Ingresos',data:ingresos,backgroundColor:'rgba(107,138,94,.2)',borderColor:'#6B8A5E',borderWidth:2,borderRadius:4},
+        {label:'Gastos',data:gastos,backgroundColor:'rgba(192,57,43,.15)',borderColor:'#C0392B',borderWidth:2,borderRadius:4},
+        {label:'Utilidad neta',data:utilidad,backgroundColor:'rgba(74,103,65,.9)',borderColor:'#4A6741',borderWidth:0,borderRadius:4},
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{font:{family:'DM Sans',size:11},color:'#6B6B68'}}},
+      scales:{
+        y:{ticks:{callback:v=>'$'+v.toLocaleString('es-MX'),font:{family:'DM Sans',size:10},color:'#6B6B68'},grid:{color:'rgba(0,0,0,.04)'}},
+        x:{ticks:{font:{family:'DM Sans',size:11},color:'#6B6B68'},grid:{display:false}}
+      }
+    }
+  });
+
+  // Finanzas
+  new Chart(document.getElementById('chartFin'),{
+    type:'line',
+    data:{
+      labels:meses,
+      datasets:[
+        {label:'Ingresos',data:ingresos,borderColor:'#6B8A5E',backgroundColor:'rgba(107,138,94,.06)',borderWidth:2,fill:true,tension:.3,pointRadius:4},
+        {label:'Gastos',data:gastos,borderColor:'#C0392B',backgroundColor:'rgba(192,57,43,.04)',borderWidth:2,fill:true,tension:.3,pointRadius:4},
+        {label:'Utilidad neta',data:utilidad,borderColor:'#4A6741',backgroundColor:'rgba(74,103,65,.08)',borderWidth:2.5,fill:true,tension:.3,pointRadius:5},
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{font:{family:'DM Sans',size:11},color:'#6B6B68'}}},
+      scales:{
+        y:{ticks:{callback:v=>'$'+v.toLocaleString('es-MX'),font:{family:'DM Sans',size:10},color:'#6B6B68'},grid:{color:'rgba(0,0,0,.04)'}},
+        x:{ticks:{font:{family:'DM Sans',size:11},color:'#6B6B68'},grid:{display:false}}
+      }
+    }
+  });
+}
+
+// ── MODALES UNIDADES ──
+const units={
+  H1:{title:'H1 — Habitación 1',sub:'Contrato indefinido · desde sep 2025',rows:[
+    ['Inquilino','Leonardo Miranda'],['Teléfono','8181823159'],
+    ['Renta mensual','$9,000'],['Depósito','$4,500 (en poder de Guillaume)'],
+    ['Inicio contrato','Septiembre 2025'],['Fin contrato','Indefinido (aviso 2 semanas)'],
+    ['Estado de pago','Al corriente'],['A/C','Mirage Magnum Inverter 22'],
+  ]},
+  H2:{title:'H2 — Habitación 2',sub:'Contrato indefinido · desde dic 2025',rows:[
+    ['Inquilino','Alfonso Bismark Ponce Carbajal'],['Teléfono','8115302903'],
+    ['Renta mensual','$8,000'],['Depósito','$4,000 (en poder de Louis)'],
+    ['Inicio contrato','Diciembre 2025'],['Fin contrato','Indefinido (aviso 2 semanas)'],
+    ['Estado de pago','Al corriente'],['A/C','Mirage Magnum Inverter 22'],
+    ['Nota','Fallas previas de clima y luz — sin incidencias en últimos 6 meses'],
+  ]},
+  H3:{title:'H3 — Habitación 3',sub:'Contrato indefinido · desde ene 2026',rows:[
+    ['Inquilino','Doroti Hernandez'],['Teléfono','8180936045'],
+    ['Renta mensual','$9,000'],['Depósito','$4,500 (en poder de Louis)'],
+    ['Inicio contrato','Enero 2026'],['Fin contrato','Indefinido (aviso 2 semanas)'],
+    ['Estado de pago','Al corriente'],['A/C','Mirage Magnum Inverter 22'],
+  ]},
+  H4:{title:'H4 — Habitación 4',sub:'Contrato indefinido · desde feb 2026',rows:[
+    ['Inquilino','Alejandro Salinas'],['Teléfono','8180747237'],
+    ['Renta mensual','$9,500'],['Depósito','$4,500 (en poder de Louis)'],
+    ['Inicio contrato','Febrero 2026'],['Fin contrato','Indefinido (aviso 2 semanas)'],
+    ['Estado de pago','Al corriente'],['A/C','Mirage Magnum Inverter 22'],
+    ['Nota','Vive con su novia'],
+  ]},
+  H5:{title:'H5 — Habitación 5',sub:'Contrato indefinido · desde sep 2025',rows:[
+    ['Inquilino','Gerardo Pinzón'],['Teléfono','5554370092'],
+    ['Renta mensual','$9,000'],['Depósito','$4,500 (en poder de Guillaume)'],
+    ['Inicio contrato','Septiembre 2025'],['Fin contrato','Indefinido (aviso 2 semanas)'],
+    ['Estado de pago','Al corriente'],['A/C','Mirage Inverter 32'],
+  ]},
+  DEPA:{title:'Depa Esquina',sub:'Hasta mayo 2027',rows:[
+    ['Inquilino','Sergio Olivares'],['Teléfono','8135555148'],
+    ['Renta mensual','$18,500'],['Depósito','$18,500 (en poder de Guillaume)'],
+    ['Inicio contrato','Mayo 2025'],['Fin contrato','Mayo 2027'],
+    ['Estado de pago','Al corriente'],['A/C','2× Mirage Inverter 32'],
+  ]},
+  PAR1:{title:'Parisino 1',sub:'Hasta abril 2026 — pendiente renovación',rows:[
+    ['Inquilino','Ricardo Gracia Morales'],['Teléfono','8325133097'],
+    ['Renta mensual','$11,500'],['Depósito','$11,500 (en poder de Guillaume)'],
+    ['Inicio contrato','Agosto 2025'],['Fin contrato','Abril 2026'],
+    ['Estado de pago','Al corriente'],['A/C','Mirage Magnum Inverter 22'],
+  ]},
+  PAR2:{title:'Parisino 2',sub:'Hasta octubre 2026',rows:[
+    ['Inquilino','Jorge Ramos'],['Teléfono','Pendiente de confirmar'],
+    ['Renta mensual','$10,000'],['Depósito','$10,000 (en poder de Guillaume)'],
+    ['Inicio contrato','Diciembre 2025'],['Fin contrato','Octubre 2026'],
+    ['Estado de pago','Al corriente'],['A/C','Mirage Inverter 32'],
+  ]},
+  PH:{title:'Penthouse',sub:'Contrato vencido — en negociación',rows:[
+    ['Inquilino','Gustavo Gancino'],['Teléfono','—'],
+    ['Renta mensual','$12,000'],['Depósito','En poder de Guillaume'],
+    ['Inicio contrato','Diciembre 2025'],['Fin contrato','Marzo 2026 (vencido)'],
+    ['Estado','En negociación — pendiente actualizar contrato'],['A/C','Mirage Inverter 32'],
+  ]},
+  LOC1:{title:'Local Esquina',sub:'Hasta noviembre 2027',rows:[
+    ['Inquilino','Roberto Sebastián Zapata'],['Teléfono','8116006671'],
+    ['Renta mensual','$40,000'],['Depósito','$40,000 (en poder de Guillaume)'],
+    ['Inicio contrato','Noviembre 2025'],['Fin contrato','Noviembre 2027'],
+    ['Estado de pago','Al corriente'],['A/C','No aplica — instala inquilino'],
+  ]},
+  LOC2:{title:'Local Parisino',sub:'Hasta marzo 2027',rows:[
+    ['Inquilino','Julio Hernandez'],['Teléfono','5626162217'],
+    ['Renta mensual','$26,000'],['Depósito','$26,000 (en poder de Guillaume)'],
+    ['Inicio contrato','Marzo 2026'],['Fin contrato','Marzo 2027'],
+    ['Estado de pago','Al corriente'],['A/C','No aplica — instala inquilino'],
+  ]},
+};
+
+function openModal(id){
+  const u=units[id]; if(!u)return;
+  document.getElementById('m-title').textContent=u.title;
+  document.getElementById('m-sub').textContent=u.sub;
+  let html='<div class="modal-row" style="display:block">';
+  u.rows.forEach(([l,v])=>{
+    const color=l==='Estado'&&v.includes('negociación')?'color:var(--amber);font-weight:500':
+                l==='Nota'?'color:var(--amber)':'';
+    html+=`<div style="display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:.68rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding-top:2px">${l}</div>
+      <div style="font-size:.88rem;${color}">${v}</div>
+    </div>`;
+  });
+  html+='</div>';
+  document.getElementById('m-body').innerHTML=html;
+  document.getElementById('modal-bg').classList.add('open');
+}
+
+function closeModal(e){
+  if(e.target===document.getElementById('modal-bg'))
+    document.getElementById('modal-bg').classList.remove('open');
+}
+</script>
+</body>
+</html>
