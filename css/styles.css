@@ -2710,8 +2710,14 @@ button {
    ============================================ */
 
 /* Hero oscuro */
+.hero--admin .hero__content {
+  position: relative;
+  z-index: 1;
+}
 .hero--admin .hero__headline,
-.hero--admin .hero__subheadline { color: #F8F7F4; }
+.hero--admin .hero__subheadline {
+  color: #F8F7F4;
+}
 
 /* Cómo funciona */
 .admin-proceso__header {
