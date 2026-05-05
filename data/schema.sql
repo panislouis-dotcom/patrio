@@ -5,11 +5,11 @@
 -- Prospect pipeline (pre-commitment deals being evaluated)
 CREATE TABLE IF NOT EXISTS prospects (
   id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-  name                     TEXT NOT NULL,
-  address                  TEXT NOT NULL,
-  city                     TEXT NOT NULL,
-  status                   TEXT NOT NULL,  -- evaluating | passed | converted
-  url                      TEXT NOT NULL,
+  name                     TEXT NOT NULL CHECK (name != ''),
+  address                  TEXT NOT NULL CHECK (address != ''),
+  city                     TEXT NOT NULL CHECK (city != ''),
+  status                   TEXT NOT NULL CHECK (status != ''),  -- evaluating | passed | converted
+  url                      TEXT NOT NULL CHECK (url != ''),
   latitude                 REAL NOT NULL,
   longitude                REAL NOT NULL,
   -- Size
@@ -24,11 +24,11 @@ CREATE TABLE IF NOT EXISTS prospects (
   construction_overhead    REAL NOT NULL,   -- IVA + indirectos (1.3 = +30%)
   -- Projected exit
   projected_sale           REAL NOT NULL,   -- Venta
-  investment_date          TEXT NOT NULL,   -- Fecha Inv. YYYY-MM-DD
-  sale_date                TEXT NOT NULL,   -- Fecha Venta YYYY-MM-DD
+  investment_date          TEXT NOT NULL CHECK (investment_date != ''),   -- Fecha Inv. YYYY-MM-DD
+  sale_date                TEXT NOT NULL CHECK (sale_date != ''),         -- Fecha Venta YYYY-MM-DD
   -- Income
   rent_monthly             REAL NOT NULL,   -- Renta mensual proyectada
-  notes                    TEXT NOT NULL,
+  notes                    TEXT NOT NULL CHECK (notes != ''),
   created_at               TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -74,23 +74,23 @@ FROM prospects;
 
 CREATE TABLE IF NOT EXISTS projects (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
-  name              TEXT NOT NULL,
-  type              TEXT NOT NULL,                  -- adaptive_reuse | ground_up | flip | land
-  address           TEXT NOT NULL,
-  city              TEXT NOT NULL,
-  status            TEXT NOT NULL,                  -- prospect | construction | stabilizing | operating | exited
+  name              TEXT NOT NULL CHECK (name != ''),
+  type              TEXT NOT NULL CHECK (type != ''),                  -- adaptive_reuse | ground_up | flip | land
+  address           TEXT NOT NULL CHECK (address != ''),
+  city              TEXT NOT NULL CHECK (city != ''),
+  status            TEXT NOT NULL CHECK (status != ''),                -- prospect | construction | stabilizing | operating | exited
   total_units       INTEGER NOT NULL,
-  acquisition_date  TEXT NOT NULL,                  -- YYYY-MM
-  first_rent_date   TEXT NOT NULL,                  -- YYYY-MM
+  acquisition_date  TEXT NOT NULL CHECK (acquisition_date != ''),      -- YYYY-MM
+  first_rent_date   TEXT NOT NULL CHECK (first_rent_date != ''),       -- YYYY-MM
   total_investment  REAL NOT NULL,
   current_valuation REAL NOT NULL,
-  valuation_date    TEXT NOT NULL,                  -- YYYY-MM
-  url               TEXT NOT NULL,
+  valuation_date    TEXT NOT NULL CHECK (valuation_date != ''),        -- YYYY-MM
+  url               TEXT NOT NULL CHECK (url != ''),
   latitude          REAL NOT NULL,
   longitude         REAL NOT NULL,
   -- JSON columns
-  milestones        TEXT NOT NULL,  -- {"2021-02":"Adquisición","2023-07":"Primera renta",...}
-  budget            TEXT NOT NULL,  -- {"Adquisición edificio":3225000,"Mano de obra":1729740,...}
-  notes             TEXT NOT NULL,
+  milestones        TEXT NOT NULL CHECK (milestones != ''),  -- {"2021-02":"Adquisición","2023-07":"Primera renta",...}
+  budget            TEXT NOT NULL CHECK (budget != ''),      -- {"Adquisición edificio":3225000,"Mano de obra":1729740,...}
+  notes             TEXT NOT NULL CHECK (notes != ''),
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
