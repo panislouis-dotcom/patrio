@@ -5,31 +5,31 @@
 -- Prospect pipeline (pre-commitment deals being evaluated)
 CREATE TABLE IF NOT EXISTS prospects (
   id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-  name                     TEXT,
-  address                  TEXT,
-  city                     TEXT DEFAULT 'Monterrey',
-  status                   TEXT DEFAULT 'evaluating',  -- evaluating | passed | converted
-  url                      TEXT,
-  latitude                 REAL,
-  longitude                REAL,
+  name                     TEXT NOT NULL,
+  address                  TEXT NOT NULL,
+  city                     TEXT NOT NULL,
+  status                   TEXT NOT NULL,  -- evaluating | passed | converted
+  url                      TEXT NOT NULL,
+  latitude                 REAL NOT NULL,
+  longitude                REAL NOT NULL,
   -- Size
-  sqm_land                 REAL,   -- m2 terreno
-  sqm_construction         REAL,   -- m2 construibles
+  sqm_land                 REAL NOT NULL,   -- m2 terreno
+  sqm_construction         REAL NOT NULL,   -- m2 construibles
   -- Cost inputs
-  land_price               REAL,   -- Terreno (precio de compra)
-  acquisition_cost_pct     REAL DEFAULT 0.065,  -- Costos de adquisición % (ISAI, honorarios, registro, avalúo, gestoría, imprevistos)
-  permits_cost             REAL,   -- Permisos
-  subdivision_cost         REAL,   -- Subdivisión
-  construction_cost_per_sqm REAL,  -- P/m2 construcción
-  construction_overhead    REAL DEFAULT 1.3,  -- IVA + indirectos (1.3 = +30%)
+  land_price               REAL NOT NULL,   -- Terreno (precio de compra)
+  acquisition_cost_pct     REAL NOT NULL,   -- Costos de adquisición % (ISAI, honorarios, registro, avalúo, gestoría, imprevistos)
+  permits_cost             REAL NOT NULL,   -- Permisos
+  subdivision_cost         REAL NOT NULL,   -- Subdivisión
+  construction_cost_per_sqm REAL NOT NULL,  -- P/m2 construcción
+  construction_overhead    REAL NOT NULL,   -- IVA + indirectos (1.3 = +30%)
   -- Projected exit
-  projected_sale           REAL,   -- Venta
-  investment_date          TEXT,   -- Fecha Inv. YYYY-MM-DD
-  sale_date                TEXT,   -- Fecha Venta YYYY-MM-DD
+  projected_sale           REAL NOT NULL,   -- Venta
+  investment_date          TEXT NOT NULL,   -- Fecha Inv. YYYY-MM-DD
+  sale_date                TEXT NOT NULL,   -- Fecha Venta YYYY-MM-DD
   -- Income
-  rent_monthly             REAL,   -- Renta mensual proyectada
-  notes                    TEXT,
-  created_at               TEXT DEFAULT (datetime('now'))
+  rent_monthly             REAL NOT NULL,   -- Renta mensual proyectada
+  notes                    TEXT NOT NULL,
+  created_at               TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Computed metrics view (all formula-driven — never store these)
@@ -75,22 +75,22 @@ FROM prospects;
 CREATE TABLE IF NOT EXISTS projects (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   name              TEXT NOT NULL,
-  type              TEXT DEFAULT 'adaptive_reuse',  -- adaptive_reuse | ground_up | flip | land
-  address           TEXT,
-  city              TEXT DEFAULT 'Monterrey',
-  status            TEXT DEFAULT 'stabilizing',     -- prospect | construction | stabilizing | operating | exited
-  total_units       INTEGER,
-  acquisition_date  TEXT,                           -- YYYY-MM
-  first_rent_date   TEXT,                           -- YYYY-MM
-  total_investment  REAL,
-  current_valuation REAL,
-  valuation_date    TEXT,                           -- YYYY-MM
-  url               TEXT,
-  latitude          REAL,
-  longitude         REAL,
+  type              TEXT NOT NULL,                  -- adaptive_reuse | ground_up | flip | land
+  address           TEXT NOT NULL,
+  city              TEXT NOT NULL,
+  status            TEXT NOT NULL,                  -- prospect | construction | stabilizing | operating | exited
+  total_units       INTEGER NOT NULL,
+  acquisition_date  TEXT NOT NULL,                  -- YYYY-MM
+  first_rent_date   TEXT NOT NULL,                  -- YYYY-MM
+  total_investment  REAL NOT NULL,
+  current_valuation REAL NOT NULL,
+  valuation_date    TEXT NOT NULL,                  -- YYYY-MM
+  url               TEXT NOT NULL,
+  latitude          REAL NOT NULL,
+  longitude         REAL NOT NULL,
   -- JSON columns
-  milestones        TEXT,  -- {"2021-02":"Adquisición","2023-07":"Primera renta",...}
-  budget            TEXT,  -- {"Adquisición edificio":3225000,"Mano de obra":1729740,...}
-  notes             TEXT,
-  created_at        TEXT DEFAULT (datetime('now'))
+  milestones        TEXT NOT NULL,  -- {"2021-02":"Adquisición","2023-07":"Primera renta",...}
+  budget            TEXT NOT NULL,  -- {"Adquisición edificio":3225000,"Mano de obra":1729740,...}
+  notes             TEXT NOT NULL,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
