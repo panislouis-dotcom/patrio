@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import type { CSSProperties } from 'react'
 import { updateProspect } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { EditableRow, ReadOnlyRow, rowStyle, inlineInputStyle } from './EditableRow'
 
 interface Props {
   prospect: Prospect | null
@@ -32,91 +32,6 @@ function monthsBetween(a: string, b: string): number {
   return (yb - ya) * 12 + (mb - ma)
 }
 
-const rowStyle: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '6px 0',
-  borderBottom: `1px solid ${colors.border}`,
-  fontFamily: fonts.sans,
-  fontSize: '12px',
-}
-
-const inlineInputStyle: CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  borderBottom: `1px solid ${colors.tertiary}`,
-  color: colors.neutral,
-  fontFamily: fonts.sans,
-  fontSize: '12px',
-  padding: '2px 0',
-  width: '140px',
-  outline: 'none',
-  textAlign: 'right',
-}
-
-interface EditableRowProps {
-  fieldKey: string
-  label: string
-  displayValue: string
-  isActive: boolean
-  inputType: 'text' | 'number' | 'date'
-  inputStep?: string
-  inputValue: string
-  issueBadge?: string
-  onActivate: () => void
-  onDeactivate: () => void
-  onChange: (raw: string) => void
-}
-
-function EditableRow({
-  label,
-  displayValue,
-  isActive,
-  inputType,
-  inputStep,
-  inputValue,
-  issueBadge,
-  onActivate,
-  onDeactivate,
-  onChange,
-}: EditableRowProps) {
-  return (
-    <div style={rowStyle}>
-      <span style={{ color: colors.secondary }}>
-        {label}{issueBadge ?? ''}
-      </span>
-      {isActive ? (
-        <input
-          type={inputType}
-          step={inputStep}
-          value={inputValue}
-          autoFocus
-          onChange={e => onChange(e.target.value)}
-          onBlur={onDeactivate}
-          onKeyDown={e => { if (e.key === 'Escape') onDeactivate() }}
-          style={inlineInputStyle}
-        />
-      ) : (
-        <span
-          style={{ color: colors.neutral, cursor: 'text' }}
-          onClick={onActivate}
-        >
-          {displayValue}
-        </span>
-      )}
-    </div>
-  )
-}
-
-function ReadOnlyRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={rowStyle}>
-      <span style={{ color: colors.secondary }}>{label}</span>
-      <span style={{ color: colors.neutral }}>{value}</span>
-    </div>
-  )
-}
 
 export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: Props) {
   const [activeField, setActiveField] = useState<string | null>(null)
