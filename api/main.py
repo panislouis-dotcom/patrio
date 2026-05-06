@@ -119,5 +119,7 @@ def patch_prospect(prospect_id: int, body: ProspectUpdate):
 @app.post("/api/prospects", status_code=201)
 def post_prospect(body: ProspectCreate):
     created = create_prospect(body.model_dump(exclude_none=False))
+    if created is None:
+        raise HTTPException(status_code=500, detail="Prospect created but not retrievable")
     all_prospects = get_prospects()
     return _with_checks({**created, "score": _score(created, all_prospects)})

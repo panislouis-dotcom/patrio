@@ -287,7 +287,7 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
               type="number"
               step="0.01"
               value={form.constructionOverhead ?? ''}
-              onChange={e => set('constructionOverhead', parseFloat(e.target.value) || 0)}
+              onChange={e => { const v = parseFloat(e.target.value); setForm(prev => ({ ...prev, constructionOverhead: isNaN(v) ? undefined : v })) }}
             />
           </div>
         </div>
