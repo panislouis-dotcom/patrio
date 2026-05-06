@@ -13,11 +13,11 @@ INSERT INTO prospects (
   'Monterrey',
   'evaluating',
   'https://www.inmuebles24.com/propiedades/clasificado/veclcain-casa-en-venta-en-el-centro-de-monterrey-nuevo-leon-149383453.html',
-  25.683534, -100.333397,
+  25.684780, -100.334218,
   110, 134,
   2800000, 11000, 0,
   6000, 1.0,
-  NULL, NULL, NULL,
-  NULL,
+  5000000, '2025-06-01', '2027-08-01',
+  20000,
   'Flip / residencial. Precio $2,800,000 MXN. Terreno 110 m², construcción 134 m² (124 m² según anuncio, 134 m² según comprador). 1 planta. 2 recámaras amplias, 2 baños completos, 1 medio baño. Patio. Buen estado. Libre de gravamen. Acepta crédito. Cerca escuelas, hospitales, metro, transporte público, zonas comerciales y parques.'
 );

@@ -1,6 +1,7 @@
 -- Prospect: Lote Centro Monterrey · Código 9811380
 INSERT INTO prospects (
   name, address, city, status, url,
+  latitude, longitude,
   sqm_land, sqm_construction,
   land_price, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
@@ -12,6 +13,7 @@ INSERT INTO prospects (
   'Monterrey',
   'evaluating',
   'https://leonyasociadosgrupoinmobiliario.com/lote-terreno-venta-centro-monterrey/9811380',
+  25.675119, -100.329326,
   210, 210,
   4000000, 1000000, 1000000,
   15000, 1.3,
