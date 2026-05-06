@@ -3,7 +3,7 @@ INSERT INTO prospects (
   name, address, city, status, url,
   latitude, longitude,
   sqm_land, sqm_construction,
-  land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
+  land_price, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
   projected_sale, investment_date, sale_date,
   rent_monthly, notes
@@ -15,7 +15,7 @@ INSERT INTO prospects (
   'https://www.pincali.com/inmueble/casa-en-venta-cerca-de-metro-edison-ideal-inversion-2-060-000',
   25.684780, -100.334218,
   93.5, 85,
-  2060000, 0.06, 11000, 0,
+  2060000, 11000, 0,
   6000, 1.0,
   3500000, '2025-06-01', '2027-02-01',
   20000,

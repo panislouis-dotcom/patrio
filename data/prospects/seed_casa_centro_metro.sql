@@ -3,7 +3,7 @@ INSERT INTO prospects (
   name, address, city, status, url,
   latitude, longitude,
   sqm_land, sqm_construction,
-  land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
+  land_price, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
   projected_sale, investment_date, sale_date,
   rent_monthly, notes
@@ -15,7 +15,7 @@ INSERT INTO prospects (
   'https://monopolio.com.mx/busqueda/propiedad/casa-en-el-corazon-de-monterrey-oportunidad-4',
   25.668222, -100.327551,
   120, 112,
-  2650000, 0.06, 11000, 0,
+  2650000, 11000, 0,
   6000, 1.0,
   5000000, '2025-06-01', '2027-02-01',
   17000,

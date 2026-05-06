@@ -3,7 +3,7 @@ INSERT INTO prospects (
   name, address, city, status, url,
   latitude, longitude,
   sqm_land, sqm_construction,
-  land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
+  land_price, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
   projected_sale, investment_date, sale_date,
   rent_monthly, notes
@@ -15,7 +15,7 @@ INSERT INTO prospects (
   'https://www.vivanuncios.com.mx/a-venta-casa/casco-urbano/casa-en-venta-en-casco-urbano-san-pedro/90192932',
   25.664912, -100.406576,
   194, 0,
-  5000000, 0.06, 11000, 0,
+  5000000, 11000, 0,
   6000, 1.0,
   10000000, '2025-06-01', '2027-11-01',
   0,
