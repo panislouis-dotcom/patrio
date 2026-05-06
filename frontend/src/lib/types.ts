@@ -53,3 +53,11 @@ export interface QualityEntry {
   name: string
   issues: Issue[]
 }
+
+export type RawFields = Pick<Prospect,
+  | 'name' | 'address' | 'city' | 'status' | 'url'
+  | 'latitude' | 'longitude' | 'sqmLand' | 'sqmConstruction'
+  | 'landPrice' | 'acquisitionCostPct' | 'permitsCost' | 'subdivisionCost'
+  | 'constructionCostPerSqm' | 'constructionOverhead'
+  | 'projectedSale' | 'rentMonthly' | 'investmentDate' | 'saleDate' | 'notes'
+>
