@@ -38,6 +38,8 @@ def run_checks(p: dict) -> list[Issue]:
         issues.append(Issue("rentMonthly", "Renta mensual proyectada es 0", "warning"))
     if (p.get("acquisitionCostPct") or 0) > 0.10:
         issues.append(Issue("acquisitionCostPct", f"Costos adquisición altos ({p['acquisitionCostPct']:.1%})", "warning"))
+    if inv and inv < date.today().isoformat():
+        issues.append(Issue("investmentDate", f"Fecha de inversión ya pasó ({inv})", "warning"))
     if (p.get("profit") or 0) < 500_000:
         issues.append(Issue("profit", f"Profit < $500k ({p.get('profit', 0):,.0f} MXN)", "warning"))
 

@@ -55,6 +55,10 @@ def test_warning_on_high_acquisition_cost():
     p = _base(); p["acquisitionCostPct"] = 0.12
     assert any(i.field == "acquisitionCostPct" and i.severity == "warning" for i in run_checks(p))
 
+def test_warning_on_past_investment_date():
+    p = _base(); p["investmentDate"] = "2020-01-01"
+    assert any(i.field == "investmentDate" and i.severity == "warning" for i in run_checks(p))
+
 def test_warning_on_low_profit():
     p = _base(); p["profit"] = 400000
     assert any(i.field == "profit" and i.severity == "warning" for i in run_checks(p))
