@@ -60,3 +60,35 @@ export type RawFields = Pick<Prospect,
   | 'constructionCostPerSqm' | 'constructionOverhead'
   | 'projectedSale' | 'rentMonthly' | 'holdMonths' | 'notes'
 >
+
+export interface Project {
+  id: number
+  name: string
+  type: string
+  address: string
+  city: string
+  status: string
+  totalUnits: number
+  acquisitionDate: string      // YYYY-MM
+  firstRentDate: string        // YYYY-MM
+  totalInvestment: number
+  currentValuation: number
+  valuationDate: string        // YYYY-MM
+  url: string
+  latitude: number
+  longitude: number
+  milestones: Record<string, string>   // {"YYYY-MM": "label"}
+  budget: Record<string, number>       // {"category": amount}
+  notes: string
+  unrealizedGain: number
+  unrealizedGainPct: number
+  holdMonthsActual: number
+}
+
+export type RawProjectFields = Pick<Project,
+  | 'name' | 'type' | 'address' | 'city' | 'status' | 'url'
+  | 'latitude' | 'longitude' | 'totalUnits'
+  | 'acquisitionDate' | 'firstRentDate'
+  | 'totalInvestment' | 'currentValuation' | 'valuationDate'
+  | 'notes'
+>
