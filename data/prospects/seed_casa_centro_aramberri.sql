@@ -1,6 +1,7 @@
 -- Prospect: Casa Centro Aramberri · Sobre Av. Aramberri, 2 niveles, 1975
 INSERT INTO prospects (
   name, address, city, status, url,
+  latitude, longitude,
   sqm_land, sqm_construction,
   land_price, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
@@ -12,10 +13,11 @@ INSERT INTO prospects (
   'Monterrey',
   'evaluating',
   'https://www.doorvel.com/home/propiedades/casas/en-venta/mexico/nuevo-leon/monterrey/450336',
+  25.676222, -100.314948,
   137, 156,
-  4500000, 0, 0,
-  0, 1.0,
-  NULL, NULL, NULL,
-  NULL,
+  4500000, 11000, 0,
+  6000, 1.0,
+  6000000, '2026-07-01', '2027-03-01',
+  35000,
   'Vivienda / comercial / Airbnb. Precio $4,500,000 MXN. Terreno 137 m², construcción 156 m², 2 niveles, año 1975. PB: cochera 1 auto, sala-comedor, cocina, 1 baño completo, 1 recámara, patio trasero. PA: 2 recámaras (1 con balcón a Aramberri), 1 baño completo, terraza, lavandería. Solo contado. Sobre Av. Aramberri, cerca Félix U. Gómez, Paseo Santa Lucía, Macroplaza, universidades, hospitales, transporte público.'
 );
