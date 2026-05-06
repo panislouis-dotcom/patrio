@@ -65,7 +65,15 @@ export function ProspectTable() {
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 49px)' }}>
       <div style={{ flex: 1, overflow: 'auto' }}>
-        <ScoreWeightsPanel weights={weights} onChange={setWeights} open={weightsOpen} onToggle={() => setWeightsOpen(o => !o)} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
+          <ScoreWeightsPanel weights={weights} onChange={setWeights} open={weightsOpen} onToggle={() => setWeightsOpen(o => !o)} />
+          <button
+            onClick={() => navigate('/tabla/nuevo')}
+            style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '11px', letterSpacing: '0.1em', padding: '7px 14px', flexShrink: 0 }}
+          >
+            + NUEVO
+          </button>
+        </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead style={{ position: 'sticky', top: 0, background: colors.dark, zIndex: 10 }}>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
