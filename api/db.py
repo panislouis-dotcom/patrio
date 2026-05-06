@@ -113,9 +113,7 @@ def update_prospect(prospect_id: int, data: dict) -> dict | None:
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(query, values)
-        conn.commit()
 
-    # Return updated prospect with computed metrics
     return get_prospect(prospect_id)
 
 
@@ -134,6 +132,9 @@ def create_prospect(data: dict) -> dict:
     # Filter to only raw fields
     filtered_data = {k: v for k, v in data.items() if k in RAW_FIELDS}
 
+    if not filtered_data:
+        raise ValueError("No valid fields provided for create_prospect")
+
     # Convert camelCase keys to snake_case
     snake_case_data = {_camel_to_snake(k): v for k, v in filtered_data.items()}
 
@@ -145,7 +146,6 @@ def create_prospect(data: dict) -> dict:
 
     with sqlite3.connect(DB_PATH) as conn:
         cur = conn.execute(query, values)
-        conn.commit()
         prospect_id = cur.lastrowid
 
     # Return created prospect with computed metrics
