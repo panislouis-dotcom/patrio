@@ -40,6 +40,7 @@ export function QuickCaptureModal({ onClose, onCreated }: Props) {
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('Monterrey')
   const [status, setStatus] = useState<'evaluating' | 'passed' | 'converted'>('evaluating')
+  const [rentMonthly, setRentMonthly] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -51,7 +52,8 @@ export function QuickCaptureModal({ onClose, onCreated }: Props) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
-  const canSave = !saving && name.trim() !== '' && address.trim() !== ''
+  const rentVal = parseFloat(rentMonthly) || 0
+  const canSave = !saving && name.trim() !== '' && address.trim() !== '' && rentVal > 0
 
   async function handleSave() {
     if (!canSave) return
@@ -74,7 +76,7 @@ export function QuickCaptureModal({ onClose, onCreated }: Props) {
         constructionCostPerSqm: 0,
         constructionOverhead: 1.3,
         projectedSale: 0,
-        rentMonthly: 0,
+        rentMonthly: rentVal,
         holdMonths: 12,
       })
       setSaving(false)
@@ -139,6 +141,17 @@ export function QuickCaptureModal({ onClose, onCreated }: Props) {
             value={city}
             onChange={e => setCity(e.target.value)}
             style={inputStyle}
+          />
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <FieldLabel>Renta mensual (MXN)</FieldLabel>
+          <input
+            type="number"
+            value={rentMonthly}
+            onChange={e => setRentMonthly(e.target.value)}
+            style={inputStyle}
+            placeholder="ej. 20000"
           />
         </div>
 

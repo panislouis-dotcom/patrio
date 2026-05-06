@@ -16,7 +16,7 @@ export function runChecks(p: Prospect): Issue[] {
   if (!p.constructionCostPerSqm)
     issues.push({ field: 'constructionCostPerSqm', message: 'Costo construcción/m² es 0', severity: 'warning' })
   if (!p.rentMonthly)
-    issues.push({ field: 'rentMonthly', message: 'Renta mensual proyectada es 0', severity: 'warning' })
+    issues.push({ field: 'rentMonthly', message: 'Renta mensual proyectada es 0', severity: 'error' })
   if (p.acquisitionCostPct > 0.10)
     issues.push({ field: 'acquisitionCostPct', message: `Costos adquisición altos (${(p.acquisitionCostPct * 100).toFixed(1)}%)`, severity: 'warning' })
   if (p.profit < 500_000)

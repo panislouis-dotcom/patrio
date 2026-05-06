@@ -5,7 +5,7 @@ INSERT INTO prospects (
   sqm_land, sqm_construction,
   land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
-  projected_sale, investment_date, sale_date,
+  projected_sale, hold_months,
   rent_monthly, notes
 ) VALUES (
   'Lote Centro MTY · 9811380',
@@ -17,7 +17,7 @@ INSERT INTO prospects (
   210, 210,
   4000000, 0.06, 1000000, 1000000,
   15000, 1.3,
-  22000000, '2027-01-01', '2028-01-01',
+  22000000, 12,
   165000,
   'Precio lista $3,885,000 MXN. Frente 10m x fondo 21m. Permiso de construcción vigente con proyecto de sótano. Referencias: Pino Suárez, V. Carranza, Constitución. Acceso pavimentado, cerca centros comerciales y restaurantes.'
 );

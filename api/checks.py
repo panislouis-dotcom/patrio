@@ -30,7 +30,7 @@ def run_checks(p: dict) -> list[Issue]:
     if not p.get("constructionCostPerSqm"):
         issues.append(Issue("constructionCostPerSqm", "Costo construcción/m² es 0", "warning"))
     if not p.get("rentMonthly"):
-        issues.append(Issue("rentMonthly", "Renta mensual proyectada es 0", "warning"))
+        issues.append(Issue("rentMonthly", "Renta mensual proyectada es 0", "error"))
     if (p.get("acquisitionCostPct") or 0) > 0.10:
         issues.append(Issue("acquisitionCostPct", f"Costos adquisición altos ({p['acquisitionCostPct']:.1%})", "warning"))
     if (p.get("profit") or 0) < 500_000:

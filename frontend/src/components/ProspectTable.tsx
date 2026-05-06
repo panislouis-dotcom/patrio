@@ -119,7 +119,14 @@ export function ProspectTable() {
                   <td style={{ padding: '10px 12px', textAlign: 'right', color: colors.neutral, fontFamily: fonts.label, fontSize: '12px' }}>{fmt(p.profit, 'mxn')}</td>
                   <td style={{ padding: '10px 12px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '12px' }}>{fmt(p.totalInvestment, 'mxn')}</td>
                   <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '13px' }}>
-                    {errors > 0 ? '🔴' : warnings > 0 ? '⚠️' : ''}
+                    {(errors > 0 || warnings > 0) && (
+                      <span
+                        title={p.issues.map(i => `${i.severity === 'error' ? '🔴' : '⚠️'} ${i.message}`).join('\n')}
+                        style={{ cursor: 'help' }}
+                      >
+                        {errors > 0 ? '🔴' : '⚠️'}
+                      </span>
+                    )}
                   </td>
                 </tr>
               )

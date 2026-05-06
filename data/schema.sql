@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   projected_sale           REAL NOT NULL,   -- Venta
   hold_months              INTEGER NOT NULL DEFAULT 12,  -- Plazo estimado en meses
   -- Income
-  rent_monthly             REAL NOT NULL,   -- Renta mensual proyectada
+  rent_monthly             REAL NOT NULL CHECK (rent_monthly > 0),  -- Renta mensual proyectada
   notes                    TEXT NOT NULL CHECK (notes != ''),
   created_at               TEXT NOT NULL DEFAULT (datetime('now'))
 );

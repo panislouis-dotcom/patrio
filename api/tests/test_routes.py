@@ -108,7 +108,8 @@ def test_post_creates_new_prospect(client):
         "address": "Calle Test 1",
         "city": "Monterrey",
         "status": "evaluating",
-        "holdMonths": 18
+        "holdMonths": 18,
+        "rentMonthly": 20000
     })
     assert r.status_code == 201
     data = r.json()
