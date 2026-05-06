@@ -4,7 +4,6 @@ import { colors, fonts } from '../lib/theme'
 const tabs = [
   { path: '/tabla', label: 'TABLA' },
   { path: '/mapa', label: 'MAPA' },
-  { path: '/calidad', label: 'CALIDAD' },
 ]
 
 export function TabBar() {

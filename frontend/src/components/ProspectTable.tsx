@@ -47,6 +47,9 @@ export function ProspectTable() {
     return sortAsc ? diff : -diff
   })
 
+  const totalErrors = prospects.flatMap(p => p.issues).filter(i => i.severity === 'error').length
+  const totalWarnings = prospects.flatMap(p => p.issues).filter(i => i.severity === 'warning').length
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(a => !a)
     else { setSortKey(key); setSortAsc(false) }
@@ -69,6 +72,12 @@ export function ProspectTable() {
       <div style={{ flex: 1, overflow: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
           <ScoreWeightsPanel weights={weights} onChange={setWeights} open={weightsOpen} onToggle={() => setWeightsOpen(o => !o)} />
+          {(totalErrors > 0 || totalWarnings > 0) && (
+            <div style={{ display: 'flex', gap: '10px', fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em' }}>
+              {totalErrors > 0 && <span style={{ color: 'tomato' }}>🔴 {totalErrors}</span>}
+              {totalWarnings > 0 && <span style={{ color: '#D4891A' }}>⚠️ {totalWarnings}</span>}
+            </div>
+          )}
           <button
             onClick={() => setShowCapture(true)}
             style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '11px', letterSpacing: '0.1em', padding: '7px 14px', flexShrink: 0 }}
@@ -127,7 +136,10 @@ export function ProspectTable() {
       {showCapture && (
         <QuickCaptureModal
           onClose={() => setShowCapture(false)}
-          onCreated={() => { setShowCapture(false); navigate('/calidad') }}
+          onCreated={() => {
+            setShowCapture(false)
+            fetchProspects().then(data => setProspects(computeScores(data, weights)))
+          }}
         />
       )}
     </div>
