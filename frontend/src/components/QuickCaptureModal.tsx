@@ -6,6 +6,12 @@ import { colors, fonts } from '../lib/theme'
 interface Props {
   onClose: () => void
   onCreated: () => void
+  initialValues?: {
+    name?: string
+    address?: string
+    city?: string
+    landPrice?: number
+  }
 }
 
 const inputStyle: CSSProperties = {
@@ -35,10 +41,11 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function QuickCaptureModal({ onClose, onCreated }: Props) {
-  const [name, setName] = useState('')
-  const [address, setAddress] = useState('')
-  const [city, setCity] = useState('Monterrey')
+export function QuickCaptureModal({ onClose, onCreated, initialValues }: Props) {
+  const [name, setName] = useState(initialValues?.name ?? '')
+  const [address, setAddress] = useState(initialValues?.address ?? '')
+  const [city, setCity] = useState(initialValues?.city ?? 'Monterrey')
+  const landPrice = initialValues?.landPrice ?? 0
   const [status, setStatus] = useState<'evaluating' | 'passed' | 'converted'>('evaluating')
   const [rentMonthly, setRentMonthly] = useState('')
   const [saving, setSaving] = useState(false)
@@ -69,7 +76,7 @@ export function QuickCaptureModal({ onClose, onCreated }: Props) {
         longitude: 0,
         sqmLand: 0,
         sqmConstruction: 0,
-        landPrice: 0,
+        landPrice,
         acquisitionCostPct: 0.065,
         permitsCost: 0,
         subdivisionCost: 0,

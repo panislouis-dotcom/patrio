@@ -92,3 +92,18 @@ export type RawProjectFields = Pick<Project,
   | 'totalInvestment' | 'currentValuation' | 'valuationDate'
   | 'notes'
 >
+
+export interface Signal {
+  id: number
+  portal: string
+  url: string
+  title: string
+  address: string
+  city: string
+  price: number
+  sqmLand: number
+  rawData: string
+  status: string       // new | dismissed | imported
+  prospectId: number | null
+  scrapedAt: string
+}
