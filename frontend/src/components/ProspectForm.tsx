@@ -157,7 +157,6 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
         </div>
         <div style={{ height: '300px', borderRadius: '2px', overflow: 'hidden', marginBottom: '16px' }}>
           <MapContainer
-            key={`${lat}-${lng}`}
             center={[lat, lng]}
             zoom={13}
             style={{ height: '100%', width: '100%' }}
@@ -243,7 +242,7 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
               type="number"
               step="0.1"
               value={form.acquisitionCostPct !== undefined ? +(form.acquisitionCostPct * 100).toFixed(4) : ''}
-              onChange={e => set('acquisitionCostPct', (parseFloat(e.target.value) || 0) / 100)}
+              onChange={e => { const v = parseFloat(e.target.value); setForm(prev => ({ ...prev, acquisitionCostPct: isNaN(v) ? undefined : v / 100 })) }}
             />
           </div>
         </div>
