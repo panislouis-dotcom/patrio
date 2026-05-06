@@ -6,6 +6,7 @@ import { fetchProspect, updateProspect, createProspect } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { ProspectForm } from './ProspectForm'
+import { EditableRow, rowStyle } from './EditableRow'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
   city: 'Monterrey',
@@ -25,31 +26,6 @@ export const DEFAULT_PROSPECT: Partial<RawFields> = {
   investmentDate: '',
   saleDate: '',
   notes: '',
-}
-
-function prospectToRawFields(p: Prospect): RawFields {
-  return {
-    name: p.name,
-    address: p.address,
-    city: p.city,
-    status: p.status,
-    url: p.url,
-    latitude: p.latitude,
-    longitude: p.longitude,
-    sqmLand: p.sqmLand,
-    sqmConstruction: p.sqmConstruction,
-    landPrice: p.landPrice,
-    acquisitionCostPct: p.acquisitionCostPct,
-    permitsCost: p.permitsCost,
-    subdivisionCost: p.subdivisionCost,
-    constructionCostPerSqm: p.constructionCostPerSqm,
-    constructionOverhead: p.constructionOverhead,
-    projectedSale: p.projectedSale,
-    rentMonthly: p.rentMonthly,
-    investmentDate: p.investmentDate,
-    saleDate: p.saleDate,
-    notes: p.notes,
-  }
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -99,9 +75,10 @@ export function ProspectDetailPage() {
   const [prospect, setProspect] = useState<Prospect | null>(null)
   const [loading, setLoading] = useState(!isNew)
   const [error, setError] = useState<string | null>(null)
-  const [editing, setEditing] = useState(isNew)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [activeField, setActiveField] = useState<string | null>(null)
+  const [edits, setEdits] = useState<Partial<RawFields>>({})
 
   useEffect(() => {
     if (isNew) {
@@ -114,24 +91,58 @@ export function ProspectDetailPage() {
       .finally(() => setLoading(false))
   }, [id, isNew])
 
-  async function handleSave(data: RawFields) {
+  async function handleFormSave(data: RawFields) {
     setSaving(true)
     setSaveError(null)
     try {
-      let result: Prospect
-      if (isNew) {
-        result = await createProspect(data)
-        navigate(`/tabla/${result.id}`, { replace: true })
-      } else {
-        result = await updateProspect(Number(id), data)
-        setProspect(result)
-        setEditing(false)
-      }
+      const result = await createProspect(data)
+      navigate(`/tabla/${result.id}`, { replace: true })
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleInlineSave() {
+    if (Object.keys(edits).length === 0 || !prospect) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const updated = await updateProspect(Number(id), edits)
+      setProspect(updated)
+      setEdits({})
+      setActiveField(null)
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleEdit(key: keyof RawFields, raw: string, inputType: 'number' | 'date' | 'text', isAcqPct = false) {
+    let value: string | number | undefined
+    if (inputType === 'number') {
+      if (raw === '') { value = undefined }
+      else { const parsed = parseFloat(raw); value = isAcqPct ? parsed / 100 : parsed }
+    } else { value = raw }
+    setEdits(prev => {
+      const next = { ...prev }
+      if (value === undefined) { delete (next as Record<string, unknown>)[key as string] }
+      else { (next as Record<string, unknown>)[key as string] = value }
+      return next
+    })
+  }
+
+  function currentEditValue(key: keyof RawFields, isAcqPct = false): string {
+    if (edits[key] !== undefined) {
+      const v = edits[key] as number | string
+      if (isAcqPct && typeof v === 'number') return (v * 100).toFixed(1)
+      return String(v)
+    }
+    const raw = prospect![key]
+    if (isAcqPct && typeof raw === 'number') return (raw * 100).toFixed(1)
+    return raw != null ? String(raw) : ''
   }
 
   if (!isNew && loading) return <div style={{ padding: '32px', color: colors.secondary }}>Cargando…</div>
@@ -145,25 +156,17 @@ export function ProspectDetailPage() {
       >
         ← PROSPECTOS
       </button>
-      {!isNew && !editing && (
-        <button
-          onClick={() => setEditing(true)}
-          style={{ background: 'none', border: `1px solid ${colors.primary}`, color: colors.primary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '11px', letterSpacing: '0.1em', padding: '6px 14px' }}
-        >
-          EDITAR
-        </button>
-      )}
     </div>
   )
 
-  if (editing) {
+  if (isNew) {
     return (
       <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 20px' }}>
         {header}
         <ProspectForm
-          initial={isNew ? DEFAULT_PROSPECT : prospectToRawFields(prospect!)}
-          onSave={handleSave}
-          onCancel={isNew ? undefined : () => setEditing(false)}
+          initial={DEFAULT_PROSPECT}
+          onSave={handleFormSave}
+          onCancel={undefined}
           saving={saving}
           saveError={saveError}
         />
@@ -171,7 +174,7 @@ export function ProspectDetailPage() {
     )
   }
 
-  // Read-only view — prospect is guaranteed non-null here (isNew=false and !editing)
+  // Read-only view with inline editing — prospect is guaranteed non-null here
   const p = prospect!
   const hasCoords = p.latitude !== 0 && p.longitude !== 0
   const errors = p.issues.filter(i => i.severity === 'error')
@@ -179,6 +182,12 @@ export function ProspectDetailPage() {
   const duration = p.investmentDate && p.saleDate
     ? monthsBetween(p.investmentDate, p.saleDate)
     : null
+
+  const issueMap = Object.fromEntries(p.issues.map(i => [i.field, i]))
+  function badge(field: string) {
+    const issue = issueMap[field]
+    return issue ? (issue.severity === 'error' ? ' 🔴' : ' ⚠️') : ''
+  }
 
   return (
     <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 20px' }}>
@@ -258,13 +267,93 @@ export function ProspectDetailPage() {
         </Section>
       )}
 
-      <Section title="Todos los campos">
-        {Object.entries(p)
-          .filter(([k]) => !['issues', 'score'].includes(k))
-          .map(([k, v]) => (
-            <Row key={k} label={k} value={String(v ?? '—')} />
-          ))}
+      <Section title="Campos">
+        {/* General */}
+        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '8px' }}>General</div>
+        <EditableRow fieldKey="name" label={`Nombre${badge('name')}`} displayValue={p.name || '—'} isActive={activeField === 'name'} inputType="text" inputValue={currentEditValue('name')} onActivate={() => setActiveField('name')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('name', r, 'text')} />
+        <EditableRow fieldKey="address" label={`Dirección${badge('address')}`} displayValue={p.address || '—'} isActive={activeField === 'address'} inputType="text" inputValue={currentEditValue('address')} onActivate={() => setActiveField('address')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('address', r, 'text')} />
+        <EditableRow fieldKey="city" label={`Ciudad${badge('city')}`} displayValue={p.city || '—'} isActive={activeField === 'city'} inputType="text" inputValue={currentEditValue('city')} onActivate={() => setActiveField('city')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('city', r, 'text')} />
+
+        {/* Status — select, handle inline */}
+        <div style={rowStyle}>
+          <span style={{ color: colors.secondary }}>Estado{badge('status')}</span>
+          {activeField === 'status' ? (
+            <select
+              value={(edits.status as string) ?? p.status}
+              autoFocus
+              onChange={e => setEdits(prev => ({ ...prev, status: e.target.value }))}
+              onBlur={() => setActiveField(null)}
+              onKeyDown={e => { if (e.key === 'Escape') setActiveField(null) }}
+              style={{ background: 'transparent', border: 'none', borderBottom: `1px solid ${colors.tertiary}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '13px', padding: '2px 0', width: '140px', outline: 'none', textAlign: 'right', cursor: 'pointer' }}
+            >
+              <option value="evaluating">evaluating</option>
+              <option value="passed">passed</option>
+              <option value="converted">converted</option>
+            </select>
+          ) : (
+            <span style={{ color: colors.neutral, cursor: 'text' }} onClick={() => setActiveField('status')}>{(edits.status as string) ?? p.status}</span>
+          )}
+        </div>
+
+        <EditableRow fieldKey="url" label={`URL${badge('url')}`} displayValue={p.url || '—'} isActive={activeField === 'url'} inputType="text" inputValue={currentEditValue('url')} onActivate={() => setActiveField('url')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('url', r, 'text')} />
+
+        {/* Tamaño */}
+        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Tamaño</div>
+        <EditableRow fieldKey="sqmLand" label={`m² Terreno${badge('sqmLand')}`} displayValue={p.sqmLand > 0 ? p.sqmLand.toLocaleString('es-MX') : '—'} isActive={activeField === 'sqmLand'} inputType="number" inputValue={currentEditValue('sqmLand')} onActivate={() => setActiveField('sqmLand')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('sqmLand', r, 'number')} />
+        <EditableRow fieldKey="sqmConstruction" label={`m² Construcción${badge('sqmConstruction')}`} displayValue={p.sqmConstruction > 0 ? p.sqmConstruction.toLocaleString('es-MX') : '—'} isActive={activeField === 'sqmConstruction'} inputType="number" inputValue={currentEditValue('sqmConstruction')} onActivate={() => setActiveField('sqmConstruction')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('sqmConstruction', r, 'number')} />
+
+        {/* Adquisición */}
+        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Adquisición</div>
+        <EditableRow fieldKey="landPrice" label={`Precio terreno${badge('landPrice')}`} displayValue={p.landPrice > 0 ? `$${p.landPrice.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'landPrice'} inputType="number" inputValue={currentEditValue('landPrice')} onActivate={() => setActiveField('landPrice')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('landPrice', r, 'number')} />
+        <EditableRow fieldKey="acquisitionCostPct" label={`Costos adquisición${badge('acquisitionCostPct')}`} displayValue={`${(p.acquisitionCostPct * 100).toFixed(1)}%`} isActive={activeField === 'acquisitionCostPct'} inputType="number" inputStep="0.1" inputValue={currentEditValue('acquisitionCostPct', true)} onActivate={() => setActiveField('acquisitionCostPct')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('acquisitionCostPct', r, 'number', true)} />
+        <EditableRow fieldKey="permitsCost" label={`Permisos${badge('permitsCost')}`} displayValue={p.permitsCost > 0 ? `$${p.permitsCost.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'permitsCost'} inputType="number" inputValue={currentEditValue('permitsCost')} onActivate={() => setActiveField('permitsCost')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('permitsCost', r, 'number')} />
+        <EditableRow fieldKey="subdivisionCost" label={`Subdivisión${badge('subdivisionCost')}`} displayValue={p.subdivisionCost > 0 ? `$${p.subdivisionCost.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'subdivisionCost'} inputType="number" inputValue={currentEditValue('subdivisionCost')} onActivate={() => setActiveField('subdivisionCost')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('subdivisionCost', r, 'number')} />
+
+        {/* Construcción */}
+        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Construcción</div>
+        <EditableRow fieldKey="constructionCostPerSqm" label={`Costo/m²${badge('constructionCostPerSqm')}`} displayValue={p.constructionCostPerSqm > 0 ? `$${p.constructionCostPerSqm.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'constructionCostPerSqm'} inputType="number" inputValue={currentEditValue('constructionCostPerSqm')} onActivate={() => setActiveField('constructionCostPerSqm')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('constructionCostPerSqm', r, 'number')} />
+        <EditableRow fieldKey="constructionOverhead" label={`Overhead${badge('constructionOverhead')}`} displayValue={String(p.constructionOverhead)} isActive={activeField === 'constructionOverhead'} inputType="number" inputStep="0.01" inputValue={currentEditValue('constructionOverhead')} onActivate={() => setActiveField('constructionOverhead')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('constructionOverhead', r, 'number')} />
+
+        {/* Proyección */}
+        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Proyección</div>
+        <EditableRow fieldKey="projectedSale" label={`Venta proyectada${badge('projectedSale')}`} displayValue={p.projectedSale > 0 ? `$${p.projectedSale.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'projectedSale'} inputType="number" inputValue={currentEditValue('projectedSale')} onActivate={() => setActiveField('projectedSale')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('projectedSale', r, 'number')} />
+        <EditableRow fieldKey="rentMonthly" label={`Renta mensual${badge('rentMonthly')}`} displayValue={p.rentMonthly > 0 ? `$${p.rentMonthly.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'rentMonthly'} inputType="number" inputValue={currentEditValue('rentMonthly')} onActivate={() => setActiveField('rentMonthly')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('rentMonthly', r, 'number')} />
+        <EditableRow fieldKey="investmentDate" label={`Fecha inversión${badge('investmentDate')}`} displayValue={p.investmentDate || '—'} isActive={activeField === 'investmentDate'} inputType="date" inputValue={currentEditValue('investmentDate')} onActivate={() => setActiveField('investmentDate')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('investmentDate', r, 'date')} />
+        <EditableRow fieldKey="saleDate" label={`Fecha venta${badge('saleDate')}`} displayValue={p.saleDate || '—'} isActive={activeField === 'saleDate'} inputType="date" inputValue={currentEditValue('saleDate')} onActivate={() => setActiveField('saleDate')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('saleDate', r, 'date')} />
+
+        {/* Ubicación */}
+        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Ubicación</div>
+        <EditableRow fieldKey="latitude" label={`Latitud${badge('latitude')}`} displayValue={p.latitude !== 0 ? String(p.latitude) : '—'} isActive={activeField === 'latitude'} inputType="number" inputStep="any" inputValue={currentEditValue('latitude')} onActivate={() => setActiveField('latitude')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('latitude', r, 'number')} />
+        <EditableRow fieldKey="longitude" label={`Longitud${badge('longitude')}`} displayValue={p.longitude !== 0 ? String(p.longitude) : '—'} isActive={activeField === 'longitude'} inputType="number" inputStep="any" inputValue={currentEditValue('longitude')} onActivate={() => setActiveField('longitude')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('longitude', r, 'number')} />
+
+        {/* Notas */}
+        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Notas</div>
+        <EditableRow fieldKey="notes" label="Notas" displayValue={p.notes && p.notes !== '-' ? p.notes : '—'} isActive={activeField === 'notes'} inputType="text" inputValue={currentEditValue('notes')} onActivate={() => setActiveField('notes')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('notes', r, 'text')} />
       </Section>
+
+      {saveError && (
+        <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: 'tomato', marginBottom: '12px' }}>{saveError}</div>
+      )}
+      {Object.keys(edits).length > 0 && (
+        <button
+          onClick={handleInlineSave}
+          disabled={saving}
+          style={{
+            background: saving ? colors.border : colors.primary,
+            color: colors.neutral,
+            border: 'none',
+            cursor: saving ? 'default' : 'pointer',
+            fontFamily: fonts.label,
+            fontSize: '11px',
+            letterSpacing: '0.1em',
+            padding: '10px 24px',
+            opacity: saving ? 0.6 : 1,
+            marginBottom: '32px',
+          }}
+        >
+          {saving ? 'Guardando…' : 'GUARDAR CAMBIOS ▸'}
+        </button>
+      )}
     </div>
   )
 }
