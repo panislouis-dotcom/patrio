@@ -151,6 +151,15 @@ export function QuickCaptureModal({ onClose, onCreated, initialValues }: Props) 
           />
         </div>
 
+        {initialValues?.landPrice ? (
+          <div style={{ marginBottom: '16px' }}>
+            <FieldLabel>Precio terreno (MXN)</FieldLabel>
+            <div style={{ ...inputStyle, color: colors.secondary, cursor: 'default', paddingTop: '6px' }}>
+              ${(initialValues.landPrice).toLocaleString('es-MX')}
+            </div>
+          </div>
+        ) : null}
+
         <div style={{ marginBottom: '16px' }}>
           <FieldLabel>Renta mensual (MXN)</FieldLabel>
           <input

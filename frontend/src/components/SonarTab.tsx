@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { fetchSignals, runSonarScan, dismissSignal } from '../lib/api'
+import { fetchSignals, runSonarScan, dismissSignal, importSignal } from '../lib/api'
 import type { Signal } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
-import { QuickCaptureModal } from './QuickCaptureModal'
 
 // Status filter tabs
 type StatusFilter = 'new' | 'dismissed' | 'imported' | 'all'
@@ -17,7 +16,6 @@ export function SonarTab() {
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<{ new: number; scanned: number } | null>(null)
-  const [importTarget, setImportTarget] = useState<Signal | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -53,9 +51,13 @@ export function SonarTab() {
     }
   }
 
-  function handleImportDone() {
-    setImportTarget(null)
-    refresh()
+  async function handleImport(signal: Signal) {
+    try {
+      await importSignal(signal.id)
+      refresh()
+    } catch {
+      setActionError('Error al importar la señal')
+    }
   }
 
   // Status filter tabs
@@ -182,7 +184,7 @@ export function SonarTab() {
                       {!isDismissed && !isImported && (
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                           <button
-                            onClick={() => setImportTarget(s)}
+                            onClick={() => handleImport(s)}
                             style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 8px' }}
                           >
                             IMPORTAR
@@ -207,19 +209,6 @@ export function SonarTab() {
         )}
       </div>
 
-      {/* QuickCaptureModal pre-filled from signal */}
-      {importTarget && (
-        <QuickCaptureModal
-          onClose={() => setImportTarget(null)}
-          onCreated={handleImportDone}
-          initialValues={{
-            name: importTarget.title,
-            address: importTarget.address,
-            city: importTarget.city,
-            landPrice: importTarget.price,
-          }}
-        />
-      )}
     </div>
   )
 }
