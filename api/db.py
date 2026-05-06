@@ -33,8 +33,7 @@ RAW_FIELDS = {
     "constructionOverhead",
     "projectedSale",
     "rentMonthly",
-    "investmentDate",
-    "saleDate",
+    "holdMonths",
     "notes",
 }
 

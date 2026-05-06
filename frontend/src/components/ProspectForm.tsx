@@ -317,21 +317,12 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
         </div>
         <div style={gridTwo}>
           <div>
-            <FieldLabel>Fecha de inversión</FieldLabel>
+            <FieldLabel>Plazo (meses)</FieldLabel>
             <input
               style={inputStyle}
-              type="date"
-              value={form.investmentDate ?? ''}
-              onChange={e => set('investmentDate', e.target.value)}
-            />
-          </div>
-          <div>
-            <FieldLabel>Fecha de venta</FieldLabel>
-            <input
-              style={inputStyle}
-              type="date"
-              value={form.saleDate ?? ''}
-              onChange={e => set('saleDate', e.target.value)}
+              type="number"
+              value={form.holdMonths ?? ''}
+              onChange={e => set('holdMonths', parseInt(e.target.value) || 0)}
             />
           </div>
         </div>

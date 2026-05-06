@@ -18,13 +18,5 @@ export function validateRaw(fields: Partial<RawFields>): Issue[] {
   if (fields.constructionOverhead !== undefined && fields.constructionOverhead < 1.0) {
     issues.push({ field: 'constructionOverhead', message: 'Factor de overhead debe ser ≥ 1.0', severity: 'error' })
   }
-  if (
-    fields.investmentDate &&
-    fields.saleDate &&
-    fields.saleDate <= fields.investmentDate
-  ) {
-    issues.push({ field: 'saleDate', message: 'Fecha de venta debe ser posterior a fecha de inversión', severity: 'error' })
-  }
-
   return issues
 }

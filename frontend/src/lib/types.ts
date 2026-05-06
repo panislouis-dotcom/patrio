@@ -35,8 +35,7 @@ export interface Prospect {
   investmentPerSqm: number
   rentMonthly: number
   rentAnnual: number
-  investmentDate: string
-  saleDate: string
+  holdMonths: number
   notes: string
   score: number
   issues: Issue[]
@@ -59,5 +58,5 @@ export type RawFields = Pick<Prospect,
   | 'latitude' | 'longitude' | 'sqmLand' | 'sqmConstruction'
   | 'landPrice' | 'acquisitionCostPct' | 'permitsCost' | 'subdivisionCost'
   | 'constructionCostPerSqm' | 'constructionOverhead'
-  | 'projectedSale' | 'rentMonthly' | 'investmentDate' | 'saleDate' | 'notes'
+  | 'projectedSale' | 'rentMonthly' | 'holdMonths' | 'notes'
 >

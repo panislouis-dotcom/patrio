@@ -1,0 +1,134 @@
+<h2>How do the table and map relate?</h2>
+<p class="subtitle">Three ways to combine them — each changes how you interact with the data.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1A2319;padding:12px;min-height:170px">
+      <div style="display:grid;grid-template-columns:1fr;gap:0;height:150px">
+        <!-- Top: KPI bar -->
+        <div style="background:#2a3a29;padding:6px 10px;display:flex;gap:20px;align-items:center;border-radius:2px 2px 0 0">
+          <div style="font-size:8px;color:#7A7260;text-transform:uppercase">11 prospectos</div>
+          <div style="font-size:8px;color:#A2571D">↑ Best ROI: 47%</div>
+          <div style="font-size:8px;color:#6B8A5E">⚠ 2 data issues</div>
+        </div>
+        <!-- Middle: split view -->
+        <div style="display:grid;grid-template-columns:3fr 2fr;flex:1;gap:0;height:110px">
+          <!-- Table -->
+          <div style="background:#111;padding:8px;overflow:hidden">
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:4px;color:#7A7260;font-size:8px;text-transform:uppercase;margin-bottom:6px">
+              <span>PROSPECTO</span><span>ROI</span><span>CAP</span>
+            </div>
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:4px;padding:4px 0;border-bottom:1px solid #2a3a29;background:rgba(162,87,29,.15)">
+              <span style="color:#F2F0EB;font-size:8px">Lote 9811380</span>
+              <span style="color:#A2571D;font-size:8px">47%</span>
+              <span style="color:#6B8A5E;font-size:8px">9%</span>
+            </div>
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:4px;padding:4px 0;border-bottom:1px solid #2a3a29">
+              <span style="color:#F2F0EB;font-size:8px">Aramberri</span>
+              <span style="color:#A2571D;font-size:8px">28%</span>
+              <span style="color:#6B8A5E;font-size:8px">7%</span>
+            </div>
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:4px;padding:4px 0;opacity:.5">
+              <span style="color:#F2F0EB;font-size:8px">Edison</span>
+              <span style="color:#7A7260;font-size:8px">22%</span>
+              <span style="color:#7A7260;font-size:8px">6.9%</span>
+            </div>
+          </div>
+          <!-- Map -->
+          <div style="background:#2a3a29;position:relative;display:flex;align-items:center;justify-content:center">
+            <div style="font-size:8px;color:#6B8A5E;text-transform:uppercase;letter-spacing:.08em">Mapa</div>
+            <div style="position:absolute;top:30%;left:45%;width:10px;height:10px;background:#A2571D;border-radius:50%;border:1.5px solid #F2F0EB"></div>
+            <div style="position:absolute;top:50%;left:55%;width:7px;height:7px;background:#6B8A5E;border-radius:50%;border:1.5px solid #F2F0EB"></div>
+            <div style="position:absolute;top:60%;left:40%;width:7px;height:7px;background:#6B8A5E;border-radius:50%;border:1.5px solid #F2F0EB"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Side by Side (always visible)</h3>
+      <p>Table left (60%) + map right (40%). Click a row → highlights pin. Click a pin → highlights row. Both visible at all times. Best for spatial + analytical work simultaneously.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1A2319;padding:12px;min-height:170px">
+      <div style="height:150px;display:flex;flex-direction:column">
+        <!-- Tab bar -->
+        <div style="display:flex;border-bottom:1px solid #2a3a29;background:#111">
+          <div style="padding:6px 14px;font-size:9px;color:#F2F0EB;border-bottom:2px solid #A2571D;text-transform:uppercase;letter-spacing:.06em">Tabla</div>
+          <div style="padding:6px 14px;font-size:9px;color:#7A7260;text-transform:uppercase;letter-spacing:.06em">Mapa</div>
+          <div style="padding:6px 14px;font-size:9px;color:#7A7260;text-transform:uppercase;letter-spacing:.06em">Calidad</div>
+        </div>
+        <!-- Table content -->
+        <div style="flex:1;background:#111;padding:10px;overflow:hidden">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:4px;color:#7A7260;font-size:8px;text-transform:uppercase;margin-bottom:8px">
+            <span>PROSPECTO</span><span>ROI</span><span>CAP</span><span>INV</span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:4px;padding:5px 0;border-bottom:1px solid #2a3a29">
+            <span style="color:#F2F0EB;font-size:8px">Lote 9811380</span>
+            <span style="color:#A2571D;font-size:8px">47%</span>
+            <span style="color:#6B8A5E;font-size:8px">9%</span>
+            <span style="color:#F2F0EB;font-size:8px">$7.3M</span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:4px;padding:5px 0;border-bottom:1px solid #2a3a29">
+            <span style="color:#F2F0EB;font-size:8px">Aramberri</span>
+            <span style="color:#A2571D;font-size:8px">28%</span>
+            <span style="color:#6B8A5E;font-size:8px">7%</span>
+            <span style="color:#F2F0EB;font-size:8px">$5.8M</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Tabs (switch views)</h3>
+      <p>One tab = full table, one tab = full map, one tab = data quality. Full screen real estate per view. Best for phone use — each screen has a clear job.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1A2319;padding:12px;min-height:170px">
+      <div style="height:150px;display:flex;flex-direction:column;gap:0">
+        <!-- Collapsed map strip -->
+        <div style="background:#2a3a29;padding:5px 10px;display:flex;justify-content:space-between;align-items:center;border-radius:2px 2px 0 0">
+          <div style="font-size:8px;color:#6B8A5E;text-transform:uppercase;letter-spacing:.08em">▼ Mapa (click para expandir)</div>
+          <div style="display:flex;gap:6px">
+            <div style="width:6px;height:6px;background:#A2571D;border-radius:50%"></div>
+            <div style="width:6px;height:6px;background:#6B8A5E;border-radius:50%"></div>
+            <div style="width:6px;height:6px;background:#6B8A5E;border-radius:50%"></div>
+          </div>
+        </div>
+        <!-- Full-width table below -->
+        <div style="flex:1;background:#111;padding:8px;overflow:hidden">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:4px;color:#7A7260;font-size:8px;text-transform:uppercase;margin-bottom:6px">
+            <span>PROSPECTO</span><span>ROI</span><span>CAP</span><span>INVERSIÓN</span><span>SCORE</span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:4px;padding:4px 0;border-bottom:1px solid #2a3a29">
+            <span style="color:#F2F0EB;font-size:8px">Lote 9811380</span>
+            <span style="color:#A2571D;font-size:8px">47%</span>
+            <span style="color:#6B8A5E;font-size:8px">9%</span>
+            <span style="color:#F2F0EB;font-size:8px">$7.3M</span>
+            <span style="color:#A2571D;font-size:8px">★★★★★</span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:4px;padding:4px 0;border-bottom:1px solid #2a3a29">
+            <span style="color:#F2F0EB;font-size:8px">Aramberri</span>
+            <span style="color:#A2571D;font-size:8px">28%</span>
+            <span style="color:#6B8A5E;font-size:8px">7%</span>
+            <span style="color:#F2F0EB;font-size:8px">$5.8M</span>
+            <span style="color:#A2571D;font-size:8px">★★★★☆</span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:4px;padding:4px 0;opacity:.5">
+            <span style="color:#F2F0EB;font-size:8px">Edison</span>
+            <span style="color:#7A7260;font-size:8px">22%</span>
+            <span style="color:#7A7260;font-size:8px">6.9%</span>
+            <span style="color:#F2F0EB;font-size:8px">$3.2M</span>
+            <span style="color:#7A7260;font-size:8px">★★★☆☆</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Map as collapsible panel</h3>
+      <p>Table is the default full-screen view. Map slides in from the top when toggled. Table gets full width for maximum data density. Good compromise for desktop + phone.</p>
+    </div>
+  </div>
+</div>

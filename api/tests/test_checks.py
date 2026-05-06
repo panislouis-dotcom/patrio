@@ -5,7 +5,7 @@ def _base() -> dict:
     return {
         "id": 1, "name": "Test", "latitude": 25.68, "longitude": -100.33,
         "landPrice": 3000000, "sqmLand": 100, "roi": 0.25,
-        "saleDate": "2028-01-01", "investmentDate": "2027-06-01",
+        "holdMonths": 18,
         "constructionOverhead": 1.3, "constructionCostPerSqm": 6000,
         "rentMonthly": 20000, "acquisitionCostPct": 0.06, "profit": 1000000,
     }
@@ -35,10 +35,6 @@ def test_error_on_negative_roi():
     p = _base(); p["roi"] = -0.05
     assert any(i.field == "roi" and i.severity == "error" for i in run_checks(p))
 
-def test_error_on_bad_date_order():
-    p = _base(); p["saleDate"] = "2024-01-01"; p["investmentDate"] = "2025-01-01"
-    assert any(i.field == "saleDate" and i.severity == "error" for i in run_checks(p))
-
 def test_error_on_low_overhead():
     p = _base(); p["constructionOverhead"] = 0.9
     assert any(i.field == "constructionOverhead" and i.severity == "error" for i in run_checks(p))
@@ -54,10 +50,6 @@ def test_warning_on_zero_rent():
 def test_warning_on_high_acquisition_cost():
     p = _base(); p["acquisitionCostPct"] = 0.12
     assert any(i.field == "acquisitionCostPct" and i.severity == "warning" for i in run_checks(p))
-
-def test_warning_on_past_investment_date():
-    p = _base(); p["investmentDate"] = "2020-01-01"
-    assert any(i.field == "investmentDate" and i.severity == "warning" for i in run_checks(p))
 
 def test_warning_on_low_profit():
     p = _base(); p["profit"] = 400000

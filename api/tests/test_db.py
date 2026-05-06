@@ -17,4 +17,5 @@ def test_raw_fields_contains_expected():
     assert "latitude" in RAW_FIELDS
     assert "landPrice" in RAW_FIELDS
     assert "constructionOverhead" in RAW_FIELDS
-    assert len(RAW_FIELDS) == 20
+    assert "holdMonths" in RAW_FIELDS
+    assert len(RAW_FIELDS) == 19

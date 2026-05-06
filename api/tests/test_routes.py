@@ -11,13 +11,13 @@ INSERT INTO prospects (
     latitude, longitude, sqm_land, sqm_construction,
     land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
     construction_cost_per_sqm, construction_overhead,
-    projected_sale, rent_monthly, investment_date, sale_date, notes
+    projected_sale, hold_months, rent_monthly, notes
 ) VALUES (
     'Lote Test', 'Calle Ejemplo 123', 'Monterrey', 'evaluating', 'https://refigan.mx',
     25.6866, -100.3161, 200, 400,
     5000000, 0.065, 50000, 30000,
     8000, 1.3,
-    22000000, 18000, '2027-01-01', '2028-01-01', 'Prospect de prueba'
+    22000000, 18, 18000, 'Prospect de prueba'
 )
 """
 
@@ -108,8 +108,7 @@ def test_post_creates_new_prospect(client):
         "address": "Calle Test 1",
         "city": "Monterrey",
         "status": "evaluating",
-        "investmentDate": "2027-01-01",
-        "saleDate": "2028-01-01"
+        "holdMonths": 18
     })
     assert r.status_code == 201
     data = r.json()

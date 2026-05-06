@@ -75,8 +75,7 @@ export function QuickCaptureModal({ onClose, onCreated }: Props) {
         constructionOverhead: 1.3,
         projectedSale: 0,
         rentMonthly: 0,
-        investmentDate: '2027-01-01',
-        saleDate: '2028-01-01',
+        holdMonths: 12,
       })
       setSaving(false)
       onCreated()

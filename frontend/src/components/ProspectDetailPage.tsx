@@ -23,8 +23,7 @@ export const DEFAULT_PROSPECT: Partial<RawFields> = {
   constructionCostPerSqm: 0,
   projectedSale: 0,
   rentMonthly: 0,
-  investmentDate: '',
-  saleDate: '',
+  holdMonths: 12,
   notes: '',
 }
 
@@ -61,11 +60,6 @@ function fmt(n: number, type: 'pct' | 'mxn') {
   return `$${n.toLocaleString('es-MX')} MXN`
 }
 
-function monthsBetween(a: string, b: string): number {
-  const [ya, ma] = a.split('-').map(Number)
-  const [yb, mb] = b.split('-').map(Number)
-  return (yb - ya) * 12 + (mb - ma)
-}
 
 export function ProspectDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -179,10 +173,6 @@ export function ProspectDetailPage() {
   const hasCoords = p.latitude !== 0 && p.longitude !== 0
   const errors = p.issues.filter(i => i.severity === 'error')
   const warnings = p.issues.filter(i => i.severity === 'warning')
-  const duration = p.investmentDate && p.saleDate
-    ? monthsBetween(p.investmentDate, p.saleDate)
-    : null
-
   const issueMap = Object.fromEntries(p.issues.map(i => [i.field, i]))
   function badge(field: string) {
     const issue = issueMap[field]
@@ -230,16 +220,12 @@ export function ProspectDetailPage() {
         </Section>
       )}
 
-      {p.investmentDate && p.saleDate && (
-        <Section title="Timeline">
+      {p.holdMonths > 0 && (
+        <Section title="Plazo">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontFamily: fonts.sans, fontSize: '13px' }}>
-            <span style={{ color: colors.neutral }}>{p.investmentDate}</span>
             <span style={{ flex: 1, borderTop: `1px solid ${colors.tertiary}`, position: 'relative' }}>
-              {duration !== null && (
-                <span style={{ position: 'absolute', top: '-18px', left: '50%', transform: 'translateX(-50%)', fontFamily: fonts.label, fontSize: '10px', color: colors.tertiary, whiteSpace: 'nowrap' }}>{duration} meses</span>
-              )}
+              <span style={{ position: 'absolute', top: '-18px', left: '50%', transform: 'translateX(-50%)', fontFamily: fonts.label, fontSize: '10px', color: colors.tertiary, whiteSpace: 'nowrap' }}>{p.holdMonths} meses</span>
             </span>
-            <span style={{ color: colors.neutral }}>{p.saleDate}</span>
           </div>
         </Section>
       )}
@@ -318,8 +304,7 @@ export function ProspectDetailPage() {
         <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Proyección</div>
         <EditableRow fieldKey="projectedSale" label={`Venta proyectada${badge('projectedSale')}`} displayValue={p.projectedSale > 0 ? `$${p.projectedSale.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'projectedSale'} inputType="number" inputValue={currentEditValue('projectedSale')} onActivate={() => setActiveField('projectedSale')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('projectedSale', r, 'number')} />
         <EditableRow fieldKey="rentMonthly" label={`Renta mensual${badge('rentMonthly')}`} displayValue={p.rentMonthly > 0 ? `$${p.rentMonthly.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'rentMonthly'} inputType="number" inputValue={currentEditValue('rentMonthly')} onActivate={() => setActiveField('rentMonthly')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('rentMonthly', r, 'number')} />
-        <EditableRow fieldKey="investmentDate" label={`Fecha inversión${badge('investmentDate')}`} displayValue={p.investmentDate || '—'} isActive={activeField === 'investmentDate'} inputType="date" inputValue={currentEditValue('investmentDate')} onActivate={() => setActiveField('investmentDate')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('investmentDate', r, 'date')} />
-        <EditableRow fieldKey="saleDate" label={`Fecha venta${badge('saleDate')}`} displayValue={p.saleDate || '—'} isActive={activeField === 'saleDate'} inputType="date" inputValue={currentEditValue('saleDate')} onActivate={() => setActiveField('saleDate')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('saleDate', r, 'date')} />
+        <EditableRow fieldKey="holdMonths" label={`Plazo (meses)${badge('holdMonths')}`} displayValue={p.holdMonths > 0 ? `${p.holdMonths} meses` : '—'} isActive={activeField === 'holdMonths'} inputType="number" inputValue={currentEditValue('holdMonths')} onActivate={() => setActiveField('holdMonths')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('holdMonths', r, 'number')} />
 
         {/* Ubicación */}
         <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Ubicación</div>

@@ -352,32 +352,18 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
             />
           )}
 
-          {/* Fecha inversión */}
+          {/* Plazo */}
           <EditableRow
-            fieldKey="investmentDate"
-            label="Fecha inversión"
-            displayValue={prospect.investmentDate || '—'}
-            isActive={activeField === 'investmentDate'}
-            inputType="date"
-            inputValue={currentEditValue('investmentDate')}
-            issueBadge={badge('investmentDate')}
-            onActivate={() => setActiveField('investmentDate')}
+            fieldKey="holdMonths"
+            label="Plazo (meses)"
+            displayValue={prospect.holdMonths > 0 ? `${prospect.holdMonths} meses` : '—'}
+            isActive={activeField === 'holdMonths'}
+            inputType="number"
+            inputValue={currentEditValue('holdMonths')}
+            issueBadge={badge('holdMonths')}
+            onActivate={() => setActiveField('holdMonths')}
             onDeactivate={() => setActiveField(null)}
-            onChange={raw => handleEdit('investmentDate', raw, 'date')}
-          />
-
-          {/* Fecha venta */}
-          <EditableRow
-            fieldKey="saleDate"
-            label="Fecha venta"
-            displayValue={prospect.saleDate || '—'}
-            isActive={activeField === 'saleDate'}
-            inputType="date"
-            inputValue={currentEditValue('saleDate')}
-            issueBadge={badge('saleDate')}
-            onActivate={() => setActiveField('saleDate')}
-            onDeactivate={() => setActiveField(null)}
-            onChange={raw => handleEdit('saleDate', raw, 'date')}
+            onChange={raw => handleEdit('holdMonths', raw, 'number')}
           />
 
           {/* Notas — hide if empty or "-" */}

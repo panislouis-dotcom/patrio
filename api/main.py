@@ -34,8 +34,7 @@ class ProspectUpdate(BaseModel):
     constructionOverhead: Optional[float] = None
     projectedSale: Optional[float] = None
     rentMonthly: Optional[float] = None
-    investmentDate: Optional[str] = None
-    saleDate: Optional[str] = None
+    holdMonths: Optional[int] = None
     notes: Optional[str] = None
 
 
@@ -44,8 +43,7 @@ class ProspectCreate(BaseModel):
     address: str
     city: str
     status: str
-    investmentDate: str
-    saleDate: str
+    holdMonths: int = 12
     url: str = "https://refigan.mx"
     latitude: float = 0.0
     longitude: float = 0.0

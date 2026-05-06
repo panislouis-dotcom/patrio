@@ -24,8 +24,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   construction_overhead    REAL NOT NULL,   -- IVA + indirectos (1.3 = +30%)
   -- Projected exit
   projected_sale           REAL NOT NULL,   -- Venta
-  investment_date          TEXT NOT NULL CHECK (investment_date != ''),   -- Fecha Inv. YYYY-MM-DD
-  sale_date                TEXT NOT NULL CHECK (sale_date != ''),         -- Fecha Venta YYYY-MM-DD
+  hold_months              INTEGER NOT NULL DEFAULT 12,  -- Plazo estimado en meses
   -- Income
   rent_monthly             REAL NOT NULL,   -- Renta mensual proyectada
   notes                    TEXT NOT NULL CHECK (notes != ''),
@@ -65,8 +64,7 @@ SELECT
         / sqm_land, 2)                            AS investment_per_sqm,
   rent_monthly,
   ROUND(rent_monthly * 12, 0)                    AS rent_annual,
-  investment_date,
-  sale_date,
+  hold_months,
   notes
 FROM prospects;
 

@@ -7,8 +7,7 @@ const VALID: Parameters<typeof validateRaw>[0] = {
   landPrice: 5_000_000,
   sqmLand: 200,
   constructionOverhead: 1.3,
-  investmentDate: '2027-01-01',
-  saleDate: '2028-01-01',
+  holdMonths: 18,
 }
 
 describe('validateRaw', () => {
@@ -43,11 +42,6 @@ describe('validateRaw', () => {
 
   it('does not error on constructionOverhead exactly 1.0', () => {
     expect(validateRaw({ ...VALID, constructionOverhead: 1.0 })).toHaveLength(0)
-  })
-
-  it('errors when saleDate <= investmentDate', () => {
-    const issues = validateRaw({ ...VALID, saleDate: '2027-01-01' })
-    expect(issues.some(i => i.field === 'saleDate' && i.severity === 'error')).toBe(true)
   })
 
   it('does not error on missing optional fields', () => {
