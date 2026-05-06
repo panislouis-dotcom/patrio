@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { fetchSignals, runSonarScan, dismissSignal } from '../lib/api'
 import type { Signal } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -17,15 +18,17 @@ export function SonarTab() {
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<{ new: number; scanned: number } | null>(null)
   const [importTarget, setImportTarget] = useState<Signal | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  function loadSignals(status: StatusFilter) {
+  function refresh() { setRefreshKey(k => k + 1) }
+
+  useEffect(() => {
     setLoading(true)
-    fetchSignals(status === 'all' ? undefined : status)
+    fetchSignals(statusFilter === 'all' ? undefined : statusFilter)
       .then(setSignals)
       .finally(() => setLoading(false))
-  }
-
-  useEffect(() => { loadSignals(statusFilter) }, [statusFilter])
+  }, [statusFilter, refreshKey])
 
   async function handleScan() {
     setScanning(true)
@@ -33,7 +36,7 @@ export function SonarTab() {
     try {
       const result = await runSonarScan()
       setScanResult({ new: result.new, scanned: result.scanned })
-      loadSignals(statusFilter)
+      refresh()
     } catch (_e) {
       // scan errors are shown per-portal in the result — fail silently here
     } finally {
@@ -42,13 +45,17 @@ export function SonarTab() {
   }
 
   async function handleDismiss(signal: Signal) {
-    await dismissSignal(signal.id)
-    setSignals(prev => prev.filter(s => s.id !== signal.id))
+    try {
+      await dismissSignal(signal.id)
+      setSignals(prev => prev.filter(s => s.id !== signal.id))
+    } catch {
+      setActionError('Error al descartar la señal')
+    }
   }
 
   function handleImportDone() {
     setImportTarget(null)
-    loadSignals(statusFilter)
+    refresh()
   }
 
   // Status filter tabs
@@ -59,16 +66,18 @@ export function SonarTab() {
     { key: 'all', label: 'TODAS' },
   ]
 
-  const tabStyle = (active: boolean) => ({
+  const tabStyle = (active: boolean): CSSProperties => ({
     padding: '8px 16px',
     fontFamily: fonts.label,
     fontSize: '10px',
     letterSpacing: '0.1em',
     color: active ? colors.neutral : colors.secondary,
+    borderTop: 'none',
+    borderLeft: 'none',
+    borderRight: 'none',
     borderBottom: active ? `2px solid ${colors.tertiary}` : '2px solid transparent',
     cursor: 'pointer',
     background: 'none',
-    border: 'none',
   })
 
   return (
@@ -102,6 +111,13 @@ export function SonarTab() {
           {scanning ? 'ESCANEANDO…' : 'EJECUTAR SCAN ▸'}
         </button>
       </div>
+
+      {actionError && (
+        <div style={{ padding: '6px 16px', background: 'tomato', color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px' }}>
+          {actionError}
+          <button onClick={() => setActionError(null)} style={{ marginLeft: '8px', background: 'none', border: 'none', color: colors.neutral, cursor: 'pointer' }}>✕</button>
+        </div>
+      )}
 
       {/* Status filter tabs */}
       <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}` }}>
