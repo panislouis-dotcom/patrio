@@ -22,7 +22,7 @@ export function runChecks(p: Prospect): Issue[] {
     issues.push({ field: 'rentMonthly', message: 'Renta mensual proyectada es 0', severity: 'warning' })
   if (p.acquisitionCostPct > 0.10)
     issues.push({ field: 'acquisitionCostPct', message: `Costos adquisición altos (${(p.acquisitionCostPct * 100).toFixed(1)}%)`, severity: 'warning' })
-  if (p.investmentDate < today)
+  if (p.investmentDate && p.investmentDate < today)
     issues.push({ field: 'investmentDate', message: `Fecha inversión ya pasó (${p.investmentDate})`, severity: 'warning' })
   if (p.profit < 500_000)
     issues.push({ field: 'profit', message: `Profit < $500k (${p.profit.toLocaleString('es-MX')} MXN)`, severity: 'warning' })

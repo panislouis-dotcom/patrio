@@ -30,7 +30,7 @@ def _score(p: dict, all_prospects: list[dict]) -> float:
         ties = sum(1 for x in values if x == v)
         pct = (below + 0.5 * ties) / len(values) if values else 0.5
         total += pct * weight
-    return round(total * 100, 1)
+    return round(total * 100)
 
 
 @app.get("/api/prospects")
