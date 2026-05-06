@@ -41,18 +41,16 @@ export function TabBar() {
           <NavLink
             key={path}
             to={path}
-            style={() => {
-              const isActive = location.pathname.startsWith(path)
-              return {
-                padding: '14px 20px',
-                fontFamily: fonts.label,
-                fontSize: '11px',
-                letterSpacing: '0.12em',
-                color: isActive ? colors.neutral : colors.secondary,
-                borderBottom: isActive ? `2px solid ${colors.tertiary}` : '2px solid transparent',
-                transition: 'color 0.15s',
-              }
-            }}
+            end={path === '/sonar'}
+            style={({ isActive }) => ({
+              padding: '14px 20px',
+              fontFamily: fonts.label,
+              fontSize: '11px',
+              letterSpacing: '0.12em',
+              color: isActive ? colors.neutral : colors.secondary,
+              borderBottom: isActive ? `2px solid ${colors.tertiary}` : '2px solid transparent',
+              transition: 'color 0.15s',
+            })}
           >
             {label}
           </NavLink>
