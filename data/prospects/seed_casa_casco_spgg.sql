@@ -18,6 +18,6 @@ INSERT INTO prospects (
   5000000, 0.06, 11000, 0,
   6000, 1.0,
   10000000, 29,
-  0,
+  45000,
   'Remodelación total o demolición. Precio $5,000,000 MXN. Terreno 194 m² (9m frente × 19m fondo aprox). Para remodelar al 100% o demoler. Uso de suelo habitacional unifamiliar. Cerca Av. Jiménez, Av. Vasconcelos, Av. Morones Prieto.'
 );
