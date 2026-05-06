@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchProspects, updateProspect } from '../lib/api'
 import { computeScores, DEFAULT_WEIGHTS } from '../lib/scoring'
@@ -64,7 +65,7 @@ const FIELD_INPUTS: Record<string, FieldGroup | null> = {
   },
 }
 
-const inputStyle: React.CSSProperties = {
+const inputStyle: CSSProperties = {
   background: 'transparent',
   border: 'none',
   borderBottom: `1px solid ${colors.border}`,
@@ -82,11 +83,13 @@ export function QualityTab() {
   const [edits, setEdits] = useState<Record<number, Partial<RawFields>>>({})
   const [saving, setSaving] = useState<Record<number, boolean>>({})
   const [saveErrors, setSaveErrors] = useState<Record<number, string | null>>({})
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchProspects()
       .then(data => setProspects(computeScores(data, DEFAULT_WEIGHTS)))
+      .catch(e => setFetchError(e instanceof Error ? e.message : 'Error al cargar'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -145,6 +148,7 @@ export function QualityTab() {
   }
 
   if (loading) return <div style={{ padding: '32px', color: colors.secondary }}>Cargando…</div>
+  if (fetchError) return <div style={{ padding: '32px', color: 'tomato' }}>{fetchError}</div>
 
   return (
     <div style={{ overflowY: 'auto', padding: '24px', height: 'calc(100vh - 49px)' }}>
@@ -218,7 +222,7 @@ export function QualityTab() {
                       type={field.type}
                       step={field.step}
                       placeholder={field.placeholder}
-                      defaultValue={p[field.key] != null ? String(p[field.key]) : ''}
+                      value={prospectEdits[field.key] !== undefined ? String(prospectEdits[field.key]) : (p[field.key] != null ? String(p[field.key]) : '')}
                       onChange={e => handleEdit(p.id, field.key, e.target.value, field.type)}
                       style={inputStyle}
                     />
