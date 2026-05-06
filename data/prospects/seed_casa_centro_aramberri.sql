@@ -3,7 +3,7 @@ INSERT INTO prospects (
   name, address, city, status, url,
   latitude, longitude,
   sqm_land, sqm_construction,
-  land_price, permits_cost, subdivision_cost,
+  land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
   projected_sale, investment_date, sale_date,
   rent_monthly, notes
@@ -15,7 +15,7 @@ INSERT INTO prospects (
   'https://www.doorvel.com/home/propiedades/casas/en-venta/mexico/nuevo-leon/monterrey/450336',
   25.676222, -100.314948,
   137, 156,
-  4500000, 11000, 0,
+  4500000, 0.06, 11000, 0,
   6000, 1.0,
   6000000, '2026-07-01', '2027-03-01',
   35000,

@@ -20,7 +20,7 @@ INSERT INTO projects (
   9500000,
   19000000,
   '2026-04',
-  NULL,       -- url
+  'https://refigan.mx/edificio-uno',  -- url (placeholder)
   25.6694,    -- latitude  (Centro Monterrey approx — update with exact coords)
   -100.3098,  -- longitude
 

@@ -21,7 +21,7 @@ INSERT INTO projects (
   3730000,
   6200000,
   '2026-04',
-  NULL,
+  'https://refigan.mx/casa-centro',  -- url (placeholder)
   25.6689,   -- approx, near Edificio Uno
   -100.3085,
 

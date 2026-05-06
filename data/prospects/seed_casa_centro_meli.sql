@@ -3,7 +3,7 @@ INSERT INTO prospects (
   name, address, city, status, url,
   latitude, longitude,
   sqm_land, sqm_construction,
-  land_price, permits_cost, subdivision_cost,
+  land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
   projected_sale, investment_date, sale_date,
   rent_monthly, notes
@@ -15,7 +15,7 @@ INSERT INTO prospects (
   'https://casa.mercadolibre.com.mx/MLM-5216898766-casa-en-venta-en-centro-monterrey-nuevo-leon-_JM',
   25.679135, -100.316260,
   100, 97,
-  3000000, 11000, 0,
+  3000000, 0.06, 11000, 0,
   6000, 1.0,
   5000000, '2025-07-01', '2026-06-01',
   21000,
