@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   sqm_construction         REAL NOT NULL,   -- m2 construibles
   -- Cost inputs
   land_price               REAL NOT NULL,   -- Terreno (precio de compra)
+  acquisition_cost_pct     REAL NOT NULL,   -- Costos de adquisición % (ISAI, honorarios, registro, avalúo, gestoría, imprevistos)
   permits_cost             REAL NOT NULL,   -- Permisos
   subdivision_cost         REAL NOT NULL,   -- Subdivisión
   construction_cost_per_sqm REAL NOT NULL,  -- P/m2 construcción
@@ -38,27 +39,28 @@ SELECT
   sqm_land,
   sqm_construction,
   land_price,
-  ROUND(land_price * 0.065, 0)                    AS acquisition_costs,  -- ISAI, honorarios, registro, avalúo, gestoría, imprevistos (6.5%)
-  ROUND(land_price * 1.065, 0)                    AS acquisition_total,  -- Precio + costos de adquisición
+  acquisition_cost_pct,
+  ROUND(land_price * acquisition_cost_pct, 0)    AS acquisition_costs,  -- ISAI, honorarios, registro, avalúo, gestoría, imprevistos
+  ROUND(land_price * (1 + acquisition_cost_pct), 0) AS acquisition_total, -- Precio + costos de adquisición
   permits_cost,
   subdivision_cost,
   ROUND(sqm_construction * construction_cost_per_sqm, 0)                          AS construction_base,
   ROUND(sqm_construction * construction_cost_per_sqm * construction_overhead, 0)  AS construction_total,
-  ROUND(land_price * 1.065 + permits_cost + subdivision_cost +
+  ROUND(land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
         sqm_construction * construction_cost_per_sqm * construction_overhead, 0)   AS total_investment,
   projected_sale,
   ROUND(projected_sale -
-       (land_price * 1.065 + permits_cost + subdivision_cost +
+       (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
         sqm_construction * construction_cost_per_sqm * construction_overhead), 0)  AS profit,
   ROUND((projected_sale -
-        (land_price * 1.065 + permits_cost + subdivision_cost +
+        (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
          sqm_construction * construction_cost_per_sqm * construction_overhead)) /
-        (land_price * 1.065 + permits_cost + subdivision_cost +
+        (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
          sqm_construction * construction_cost_per_sqm * construction_overhead), 4) AS roi,
   ROUND(rent_monthly * 12 / projected_sale, 4)   AS cap_rate,
   ROUND(land_price / sqm_land, 2)                AS land_price_per_sqm,
   ROUND(projected_sale / sqm_land, 2)            AS sale_per_sqm,
-  ROUND((land_price * 1.065 + permits_cost + subdivision_cost +
+  ROUND((land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
          sqm_construction * construction_cost_per_sqm * construction_overhead)
         / sqm_land, 2)                            AS investment_per_sqm,
   rent_monthly,

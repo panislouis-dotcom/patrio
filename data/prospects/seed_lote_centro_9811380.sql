@@ -3,7 +3,7 @@ INSERT INTO prospects (
   name, address, city, status, url,
   latitude, longitude,
   sqm_land, sqm_construction,
-  land_price, permits_cost, subdivision_cost,
+  land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
   projected_sale, investment_date, sale_date,
   rent_monthly, notes
@@ -15,7 +15,7 @@ INSERT INTO prospects (
   'https://leonyasociadosgrupoinmobiliario.com/lote-terreno-venta-centro-monterrey/9811380',
   25.675119, -100.329326,
   210, 210,
-  4000000, 1000000, 1000000,
+  4000000, 0.06, 1000000, 1000000,
   15000, 1.3,
   22000000, '2027-01-01', '2028-01-01',
   165000,
