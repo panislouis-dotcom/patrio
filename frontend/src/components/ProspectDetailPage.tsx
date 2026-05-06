@@ -163,7 +163,7 @@ export function ProspectDetailPage() {
         <ProspectForm
           initial={isNew ? DEFAULT_PROSPECT : prospectToRawFields(prospect!)}
           onSave={handleSave}
-          onCancel={isNew ? () => navigate('/tabla') : () => setEditing(false)}
+          onCancel={isNew ? undefined : () => setEditing(false)}
           saving={saving}
           saveError={saveError}
         />
