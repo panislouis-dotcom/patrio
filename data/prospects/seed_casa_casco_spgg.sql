@@ -13,8 +13,8 @@ INSERT INTO prospects (
   'evaluating',
   'https://www.vivanuncios.com.mx/a-venta-casa/casco-urbano/casa-en-venta-en-casco-urbano-san-pedro/90192932',
   194, 0,
-  5000000, 0, 0,
-  0, 1.0,
+  5000000, 11000, 0,
+  6000, 1.0,
   NULL, NULL, NULL,
   NULL,
   'Remodelación total o demolición. Precio $5,000,000 MXN. Terreno 194 m² (9m frente × 19m fondo aprox). Para remodelar al 100% o demoler. Uso de suelo habitacional unifamiliar. Cerca Av. Jiménez, Av. Vasconcelos, Av. Morones Prieto.'

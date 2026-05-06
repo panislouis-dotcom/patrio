@@ -13,8 +13,8 @@ INSERT INTO prospects (
   'evaluating',
   'https://www.doorvel.com/home/propiedades/casas/en-venta/mexico/nuevo-leon/monterrey/243233',
   110, 184,
-  3500000, 0, 0,
-  0, 1.0,
+  3500000, 11000, 0,
+  6000, 1.0,
   NULL, NULL, NULL,
   NULL,
   'Remodelación o proyecto vertical. Precio $3,500,000 MXN. Terreno 110 m², construcción 184 m². 3 habitaciones, 3 baños. Ideal para remodelar o crear proyecto vertical comercial o habitacional. Excelente ubicación en centro de Monterrey.'

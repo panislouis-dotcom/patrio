@@ -13,8 +13,8 @@ INSERT INTO prospects (
   'evaluating',
   'https://www.pincali.com/inmueble/casa-en-venta-cerca-de-metro-edison-ideal-inversion-2-060-000',
   93.5, 85,
-  2060000, 0, 0,
-  0, 1.0,
+  2060000, 11000, 0,
+  6000, 1.0,
   NULL, NULL, NULL,
   NULL,
   'Flip / renta. Precio $2,060,000 MXN. Terreno 5.5m frente × 17m fondo = 93.5 m². Construcción 85 m², 1 piso. 1 recámara con vestidor, 1 baño completo, cocina-comedor, patio, lavandería. Condición buena (mínimos ajustes). Orientación este, disposición exterior. A 2 cuadras de Estación Edison del Metro. Alta conectividad: principales avenidas, zonas comerciales, servicios y centros de trabajo. Ideal para renta tradicional, ejecutiva o modelo híbrido (Airbnb + largo plazo).'
