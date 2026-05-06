@@ -1,7 +1,6 @@
 import sqlite3
 import json
-import re
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "data" / "refigan.db"
@@ -132,8 +131,10 @@ def _parse_project(row: sqlite3.Row) -> dict:
     d = _row_to_dict(row)
 
     # Parse JSON fields
-    d["milestones"] = json.loads(d["milestones"]) if isinstance(d["milestones"], str) else d["milestones"]
-    d["budget"] = json.loads(d["budget"]) if isinstance(d["budget"], str) else d["budget"]
+    raw_milestones = d.get("milestones")
+    d["milestones"] = json.loads(raw_milestones) if isinstance(raw_milestones, str) and raw_milestones else {}
+    raw_budget = d.get("budget")
+    d["budget"] = json.loads(raw_budget) if isinstance(raw_budget, str) and raw_budget else {}
 
     # Computed fields
     total_investment = d.get("totalInvestment") or 0.0
@@ -141,10 +142,11 @@ def _parse_project(row: sqlite3.Row) -> dict:
     unrealized_gain = current_valuation - total_investment
     unrealized_gain_pct = round(unrealized_gain / total_investment, 4) if total_investment != 0 else 0
 
+    # acquisition_date stored as YYYY-MM
     acquisition_date_str = d.get("acquisitionDate", "")
     try:
         acq_year, acq_month = map(int, acquisition_date_str.split("-"))
-        today = datetime.today()
+        today = date.today()
         hold_months_actual = (today.year - acq_year) * 12 + (today.month - acq_month)
     except (ValueError, AttributeError):
         hold_months_actual = 0
@@ -189,12 +191,12 @@ def update_project(project_id: int, data: dict) -> dict | None:
     if not filtered_data:
         return get_project(project_id)
 
-    # Serialize JSON fields
-    for json_field in ("milestones", "budget"):
-        if json_field in filtered_data and isinstance(filtered_data[json_field], dict):
-            filtered_data[json_field] = json.dumps(filtered_data[json_field])
-
     snake_case_data = {_camel_to_snake(k): v for k, v in filtered_data.items()}
+
+    # Serialize JSON fields
+    for snake_field in ("milestones", "budget"):
+        if snake_field in snake_case_data and not isinstance(snake_case_data[snake_field], str):
+            snake_case_data[snake_field] = json.dumps(snake_case_data[snake_field])
 
     columns = ", ".join(f"{col} = ?" for col in snake_case_data.keys())
     values = list(snake_case_data.values()) + [project_id]
@@ -224,12 +226,12 @@ def create_project(data: dict) -> dict:
     if not filtered_data:
         raise ValueError("No valid fields provided for create_project")
 
-    # Serialize JSON fields
-    for json_field in ("milestones", "budget"):
-        if json_field in filtered_data and isinstance(filtered_data[json_field], dict):
-            filtered_data[json_field] = json.dumps(filtered_data[json_field])
-
     snake_case_data = {_camel_to_snake(k): v for k, v in filtered_data.items()}
+
+    # Serialize JSON fields
+    for snake_field in ("milestones", "budget"):
+        if snake_field in snake_case_data and not isinstance(snake_case_data[snake_field], str):
+            snake_case_data[snake_field] = json.dumps(snake_case_data[snake_field])
 
     columns = ", ".join(snake_case_data.keys())
     placeholders = ", ".join("?" * len(snake_case_data))

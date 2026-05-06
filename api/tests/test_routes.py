@@ -190,6 +190,11 @@ def test_patch_project_updates_field(client):
     assert data["name"] == "Patched"
 
 
+def test_patch_missing_project_returns_404(client):
+    r = client.patch("/api/projects/99999", json={"name": "ghost"})
+    assert r.status_code == 404
+
+
 def test_post_creates_new_project(client):
     r = client.post("/api/projects", json={
         "name": "Nuevo Proyecto",

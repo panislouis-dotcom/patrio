@@ -2,7 +2,7 @@ from dataclasses import asdict
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from api.db import (
     get_prospects, get_prospect, update_prospect, create_prospect,
     get_projects, get_project, update_project, create_project,
@@ -98,8 +98,8 @@ class ProjectCreate(BaseModel):
     url: str = "https://refigan.mx"
     latitude: float = 0.0
     longitude: float = 0.0
-    milestones: dict = {}
-    budget: dict = {}
+    milestones: dict = Field(default_factory=dict)
+    budget: dict = Field(default_factory=dict)
     notes: str = "-"
 
 
