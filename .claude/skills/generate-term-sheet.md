@@ -30,7 +30,7 @@ Read these before touching the DB or writing HTML:
 ## Step 2 — Query the DB
 
 ```bash
-sqlite3 data/real_estate.db "
+sqlite3 data/refigan.db "
 SELECT name, address, total_investment, projected_sale,
        investment_date, sale_date,
        ROUND(cap_rate*100,1) AS cap_rate

@@ -55,6 +55,6 @@ Can see open investments. In the future other funds can add investments. Website
 
 ## Stack
 
-- **Data**: SQLite (`data/real_estate.db`)
+- **Data**: SQLite (`data/refigan.db`)
 - **Documents**: Claude Code AI skills → Markdown
 - **UI**: Web app, phone-friendly, internal only
