@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet'
 import type { RawFields } from '../lib/types'
 import { validateRaw } from '../lib/validateRaw'
@@ -6,7 +7,7 @@ import { colors, fonts } from '../lib/theme'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section style={{ marginBottom: '32px' }}>
       <div style={{
@@ -26,7 +27,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
+function FieldLabel({ children }: { children: ReactNode }) {
   return (
     <div style={{
       fontFamily: fonts.label,
@@ -48,7 +49,7 @@ function MapClickHandler({ onPlace }: { onPlace: (lat: number, lng: number) => v
 
 // ── input style ───────────────────────────────────────────────────────────────
 
-const inputStyle: React.CSSProperties = {
+const inputStyle: CSSProperties = {
   background: 'transparent',
   border: 'none',
   borderBottom: `1px solid ${colors.border}`,
@@ -60,7 +61,7 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
 }
 
-const gridTwo: React.CSSProperties = {
+const gridTwo: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
   gap: '16px',
