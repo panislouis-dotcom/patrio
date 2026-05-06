@@ -91,7 +91,6 @@ export function ProjectDetailPage() {
   const p = project
   const hasCoords = p.latitude !== 0 && p.longitude !== 0
   const gainColor = p.unrealizedGain >= 0 ? colors.tertiary : 'tomato'
-  const gainPctColor = p.unrealizedGainPct >= 0 ? colors.tertiary : 'tomato'
 
   return (
     <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 20px' }}>
@@ -114,7 +113,7 @@ export function ProjectDetailPage() {
           <Hero label="Inversión" value={p.totalInvestment ? `$${(p.totalInvestment / 1_000_000).toFixed(1)}M` : '—'} valueColor={colors.neutral} />
           <Hero label="Valoración" value={p.currentValuation ? `$${(p.currentValuation / 1_000_000).toFixed(1)}M` : '—'} valueColor={colors.neutral} />
           <Hero label="Ganancia" value={p.unrealizedGain ? `$${(p.unrealizedGain / 1_000_000).toFixed(1)}M` : '—'} valueColor={gainColor} />
-          <Hero label="Ganancia%" value={p.unrealizedGainPct ? `${(p.unrealizedGainPct * 100).toFixed(1)}%` : '—'} valueColor={gainPctColor} />
+          <Hero label="Ganancia%" value={p.unrealizedGainPct !== 0 ? `${(p.unrealizedGainPct * 100).toFixed(1)}%` : '—'} valueColor={gainColor} />
         </div>
       </Section>
 

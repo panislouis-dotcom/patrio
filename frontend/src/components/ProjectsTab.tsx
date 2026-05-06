@@ -92,7 +92,6 @@ export function ProjectsTab() {
           <tbody>
             {sorted.map(p => {
               const gainColor = p.unrealizedGain >= 0 ? colors.tertiary : 'tomato'
-              const gainPctColor = p.unrealizedGainPct >= 0 ? colors.tertiary : 'tomato'
 
               return (
                 <tr
@@ -142,8 +141,8 @@ export function ProjectsTab() {
                   <td style={{ padding: '5px 10px', textAlign: 'right', color: gainColor, fontFamily: fonts.label, fontSize: '11px' }}>{fmtM(p.unrealizedGain)}</td>
 
                   {/* Ganancia% */}
-                  <td style={{ padding: '5px 10px', textAlign: 'right', color: gainPctColor, fontFamily: fonts.label, fontSize: '11px' }}>
-                    {p.unrealizedGainPct ? `${(p.unrealizedGainPct * 100).toFixed(1)}%` : '—'}
+                  <td style={{ padding: '5px 10px', textAlign: 'right', color: gainColor, fontFamily: fonts.label, fontSize: '11px' }}>
+                    {p.unrealizedGainPct !== 0 ? `${(p.unrealizedGainPct * 100).toFixed(1)}%` : '—'}
                   </td>
 
                   {/* Plazo */}
