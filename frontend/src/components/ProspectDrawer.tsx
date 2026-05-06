@@ -26,96 +26,136 @@ function fmt(n: number, type: 'pct' | 'mxn') {
   return `$${(n / 1_000_000).toFixed(1)}M`
 }
 
-interface FieldInput {
-  key: keyof RawFields
-  type: 'number' | 'date'
-  step?: string
-  placeholder?: string
-}
-interface FieldGroup {
-  label: string
-  severity: 'error' | 'warning'
-  fields: FieldInput[]
-}
-
-const FIELD_INPUTS: Record<string, FieldGroup | null> = {
-  latitude:  { label: 'Ubicación', severity: 'error', fields: [
-    { key: 'latitude',  type: 'number', step: 'any', placeholder: 'Latitud (ej. 25.6866)' },
-    { key: 'longitude', type: 'number', step: 'any', placeholder: 'Longitud (ej. -100.3161)' },
-  ]},
-  longitude: null,
-  landPrice: { label: 'Precio terreno',    severity: 'error',   fields: [{ key: 'landPrice',             type: 'number', placeholder: 'MXN'      }] },
-  sqmLand:   { label: 'Superficie terreno', severity: 'error',  fields: [{ key: 'sqmLand',               type: 'number', placeholder: 'm²'       }] },
-  constructionOverhead: { label: 'Overhead construcción', severity: 'error', fields: [{ key: 'constructionOverhead', type: 'number', step: '0.01', placeholder: '≥ 1.0 (ej. 1.3)' }] },
-  saleDate: { label: 'Fechas', severity: 'error', fields: [
-    { key: 'investmentDate', type: 'date' },
-    { key: 'saleDate',       type: 'date' },
-  ]},
-  investmentDate: null,
-  constructionCostPerSqm: { label: 'Costo construcción/m²', severity: 'warning', fields: [{ key: 'constructionCostPerSqm', type: 'number', placeholder: 'MXN/m²'   }] },
-  rentMonthly:            { label: 'Renta mensual',          severity: 'warning', fields: [{ key: 'rentMonthly',            type: 'number', placeholder: 'MXN/mes'  }] },
-  acquisitionCostPct: {
-    label: 'Costos adquisición (%)',
-    severity: 'warning' as const,
-    fields: [{ key: 'acquisitionCostPct' as keyof RawFields, type: 'number' as const, step: '0.001', placeholder: 'ej. 0.065 = 6.5%' }],
-  },
-  roi: null,
-  profit: null,
-}
-
-// Fields that are computed — cannot be edited inline; rendered as read-only hints
-const UNEDITABLE_FIELDS = new Set(['roi', 'profit'])
-
 function monthsBetween(a: string, b: string): number {
   const [ya, ma] = a.split('-').map(Number)
   const [yb, mb] = b.split('-').map(Number)
   return (yb - ya) * 12 + (mb - ma)
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+const rowStyle: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '6px 0',
+  borderBottom: `1px solid ${colors.border}`,
+  fontFamily: fonts.sans,
+  fontSize: '12px',
+}
+
+const inlineInputStyle: CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  borderBottom: `1px solid ${colors.tertiary}`,
+  color: colors.neutral,
+  fontFamily: fonts.sans,
+  fontSize: '12px',
+  padding: '2px 0',
+  width: '140px',
+  outline: 'none',
+  textAlign: 'right',
+}
+
+interface EditableRowProps {
+  fieldKey: string
+  label: string
+  displayValue: string
+  isActive: boolean
+  inputType: 'text' | 'number' | 'date'
+  inputStep?: string
+  inputValue: string
+  issueBadge?: string
+  onActivate: () => void
+  onDeactivate: () => void
+  onChange: (raw: string) => void
+}
+
+function EditableRow({
+  label,
+  displayValue,
+  isActive,
+  inputType,
+  inputStep,
+  inputValue,
+  issueBadge,
+  onActivate,
+  onDeactivate,
+  onChange,
+}: EditableRowProps) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${colors.border}`, fontFamily: fonts.sans, fontSize: '12px' }}>
+    <div style={rowStyle}>
+      <span style={{ color: colors.secondary }}>
+        {label}{issueBadge ?? ''}
+      </span>
+      {isActive ? (
+        <input
+          type={inputType}
+          step={inputStep}
+          value={inputValue}
+          autoFocus
+          onChange={e => onChange(e.target.value)}
+          onBlur={onDeactivate}
+          onKeyDown={e => { if (e.key === 'Escape') onDeactivate() }}
+          style={inlineInputStyle}
+        />
+      ) : (
+        <span
+          style={{ color: colors.neutral, cursor: 'text' }}
+          onClick={onActivate}
+        >
+          {displayValue}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function ReadOnlyRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={rowStyle}>
       <span style={{ color: colors.secondary }}>{label}</span>
       <span style={{ color: colors.neutral }}>{value}</span>
     </div>
   )
 }
 
-const inputStyle: CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  borderBottom: `1px solid ${colors.border}`,
-  color: colors.neutral,
-  fontFamily: fonts.sans,
-  fontSize: '12px',
-  padding: '4px 0',
-  width: '100%',
-  outline: 'none',
-}
-
 export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: Props) {
+  const [activeField, setActiveField] = useState<string | null>(null)
   const [edits, setEdits] = useState<Partial<RawFields>>({})
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // Reset edits when a different prospect is opened
+  // Reset when prospect changes
   const [lastId, setLastId] = useState<number | null>(null)
   if (prospect && prospect.id !== lastId) {
     setEdits({})
     setSaving(false)
     setSaveError(null)
+    setActiveField(null)
     setLastId(prospect.id)
   }
 
   if (!prospect) return null
 
-  const errors = prospect.issues.filter(i => i.severity === 'error')
-  const warnings = prospect.issues.filter(i => i.severity === 'warning')
+  const issueMap = Object.fromEntries(prospect.issues.map(i => [i.field, i]))
 
-  function handleEdit(key: keyof RawFields, raw: string, inputType: 'number' | 'date') {
-    const value = inputType === 'number'
-      ? (raw === '' ? undefined : parseFloat(raw))
-      : raw
+  function badge(field: string): string {
+    const issue = issueMap[field]
+    if (!issue) return ''
+    return issue.severity === 'error' ? ' 🔴' : ' ⚠️'
+  }
+
+  function handleEdit(key: keyof RawFields, raw: string, inputType: 'number' | 'date' | 'text', isAcqPct = false) {
+    let value: string | number | undefined
+    if (inputType === 'number') {
+      if (raw === '') {
+        value = undefined
+      } else {
+        const parsed = parseFloat(raw)
+        value = isAcqPct ? parsed / 100 : parsed
+      }
+    } else {
+      value = raw
+    }
     setEdits(prev => {
       const next = { ...prev }
       if (value === undefined) {
@@ -125,6 +165,17 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
       }
       return next
     })
+  }
+
+  function currentEditValue(key: keyof RawFields, isAcqPct = false): string {
+    if (edits[key] !== undefined) {
+      const v = edits[key] as number | string
+      if (isAcqPct && typeof v === 'number') return (v * 100).toFixed(1)
+      return String(v)
+    }
+    const raw = prospect![key]
+    if (isAcqPct && typeof raw === 'number') return (raw * 100).toFixed(1)
+    return raw != null ? String(raw) : ''
   }
 
   async function handleSave() {
@@ -142,6 +193,11 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
     }
   }
 
+  const hasPendingEdits = Object.keys(edits).length > 0
+
+  // Determine select display value
+  const statusValue = edits.status !== undefined ? (edits.status as string) : prospect.status
+
   return (
     <>
       <div
@@ -154,6 +210,7 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
         overflowY: 'auto', zIndex: 200, padding: '20px',
         display: 'flex', flexDirection: 'column', gap: '16px',
       }}>
+        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontFamily: fonts.serif, fontSize: '18px', color: colors.neutral, lineHeight: 1.2 }}>{prospect.name}</div>
@@ -162,10 +219,12 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>✕</button>
         </div>
 
+        {/* Score */}
         <div style={{ display: 'flex', gap: '8px' }}>
           <span style={{ background: colors.tertiary, color: colors.neutral, fontFamily: fonts.label, fontSize: '12px', padding: '3px 8px', borderRadius: '2px' }}>Score {prospect.score}</span>
         </div>
 
+        {/* Metric blocks */}
         <div style={{ display: 'flex', gap: '8px' }}>
           <MetricBlock label="ROI" value={fmt(prospect.roi, 'pct')} accent />
           <MetricBlock label="Cap Rate" value={fmt(prospect.capRate, 'pct')} />
@@ -175,119 +234,321 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
           <MetricBlock label="Inversión" value={fmt(prospect.totalInvestment, 'mxn')} />
         </div>
 
-        {/* ── Datos ──────────────────────────────────────────── */}
+        {/* Unified editable data section */}
         <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
-          <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
-            Datos
-          </div>
-          <Row label="Ciudad" value={prospect.city} />
-          <Row label="Estado" value={prospect.status} />
-          {prospect.sqmLand > 0 && <Row label="m² Terreno" value={prospect.sqmLand.toLocaleString('es-MX')} />}
-          {prospect.sqmConstruction > 0 && <Row label="m² Construcción" value={prospect.sqmConstruction.toLocaleString('es-MX')} />}
-          {prospect.landPrice > 0 && <Row label="Precio terreno" value={`$${(prospect.landPrice / 1_000_000).toFixed(1)}M`} />}
-          {prospect.projectedSale > 0 && <Row label="Venta proyectada" value={`$${(prospect.projectedSale / 1_000_000).toFixed(1)}M`} />}
-          {prospect.investmentPerSqm > 0 && <Row label="Inversión/m²" value={`$${prospect.investmentPerSqm.toLocaleString('es-MX')}`} />}
-          {prospect.salePerSqm > 0 && <Row label="Venta/m²" value={`$${prospect.salePerSqm.toLocaleString('es-MX')}`} />}
-          {prospect.investmentDate && prospect.saleDate && prospect.investmentDate !== '' && prospect.saleDate !== '' && (() => {
-            const months = monthsBetween(prospect.investmentDate, prospect.saleDate)
-            return (
-              <Row
-                label="Timeline"
-                value={`${prospect.investmentDate} → ${prospect.saleDate} (${months} meses)`}
-              />
-            )
-          })()}
-          {prospect.notes && prospect.notes !== '-' && prospect.notes.trim() !== '' && (
-            <div style={{ padding: '5px 0', fontFamily: fonts.sans, fontSize: '12px', color: colors.secondary }}>
-              <span style={{ color: colors.secondary }}>Notas · </span>
-              <span style={{ color: colors.neutral }}>
-                {prospect.notes.length > 80 ? prospect.notes.slice(0, 80) + '…' : prospect.notes}
+
+          {/* Ciudad */}
+          <EditableRow
+            fieldKey="city"
+            label="Ciudad"
+            displayValue={prospect.city || '—'}
+            isActive={activeField === 'city'}
+            inputType="text"
+            inputValue={currentEditValue('city')}
+            issueBadge={badge('city')}
+            onActivate={() => setActiveField('city')}
+            onDeactivate={() => setActiveField(null)}
+            onChange={raw => handleEdit('city', raw, 'text')}
+          />
+
+          {/* Estado (select) */}
+          <div style={rowStyle}>
+            <span style={{ color: colors.secondary }}>Estado{badge('status')}</span>
+            {activeField === 'status' ? (
+              <select
+                value={statusValue}
+                autoFocus
+                onChange={e => {
+                  setEdits(prev => ({ ...prev, status: e.target.value }))
+                }}
+                onBlur={() => setActiveField(null)}
+                onKeyDown={e => { if (e.key === 'Escape') setActiveField(null) }}
+                style={{ ...inlineInputStyle, cursor: 'pointer' }}
+              >
+                <option value="evaluating">evaluating</option>
+                <option value="passed">passed</option>
+                <option value="converted">converted</option>
+              </select>
+            ) : (
+              <span
+                style={{ color: colors.neutral, cursor: 'text' }}
+                onClick={() => setActiveField('status')}
+              >
+                {statusValue || '—'}
               </span>
-            </div>
+            )}
+          </div>
+
+          {/* m² Terreno — hide if 0 and no issue */}
+          {(prospect.sqmLand > 0 || issueMap['sqmLand']) && (
+            <EditableRow
+              fieldKey="sqmLand"
+              label="m² Terreno"
+              displayValue={prospect.sqmLand > 0 ? prospect.sqmLand.toLocaleString('es-MX') : '—'}
+              isActive={activeField === 'sqmLand'}
+              inputType="number"
+              inputValue={currentEditValue('sqmLand')}
+              issueBadge={badge('sqmLand')}
+              onActivate={() => setActiveField('sqmLand')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('sqmLand', raw, 'number')}
+            />
+          )}
+
+          {/* m² Construcción — hide if 0 and no issue */}
+          {(prospect.sqmConstruction > 0 || issueMap['sqmConstruction']) && (
+            <EditableRow
+              fieldKey="sqmConstruction"
+              label="m² Construcción"
+              displayValue={prospect.sqmConstruction > 0 ? prospect.sqmConstruction.toLocaleString('es-MX') : '—'}
+              isActive={activeField === 'sqmConstruction'}
+              inputType="number"
+              inputValue={currentEditValue('sqmConstruction')}
+              issueBadge={badge('sqmConstruction')}
+              onActivate={() => setActiveField('sqmConstruction')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('sqmConstruction', raw, 'number')}
+            />
+          )}
+
+          {/* Precio terreno — hide if 0 and no issue */}
+          {(prospect.landPrice > 0 || issueMap['landPrice']) && (
+            <EditableRow
+              fieldKey="landPrice"
+              label="Precio terreno"
+              displayValue={prospect.landPrice > 0 ? `$${(prospect.landPrice / 1_000_000).toFixed(1)}M` : '—'}
+              isActive={activeField === 'landPrice'}
+              inputType="number"
+              inputValue={currentEditValue('landPrice')}
+              issueBadge={badge('landPrice')}
+              onActivate={() => setActiveField('landPrice')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('landPrice', raw, 'number')}
+            />
+          )}
+
+          {/* Venta proyectada — hide if 0 and no issue */}
+          {(prospect.projectedSale > 0 || issueMap['projectedSale']) && (
+            <EditableRow
+              fieldKey="projectedSale"
+              label="Venta proyectada"
+              displayValue={prospect.projectedSale > 0 ? `$${(prospect.projectedSale / 1_000_000).toFixed(1)}M` : '—'}
+              isActive={activeField === 'projectedSale'}
+              inputType="number"
+              inputValue={currentEditValue('projectedSale')}
+              issueBadge={badge('projectedSale')}
+              onActivate={() => setActiveField('projectedSale')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('projectedSale', raw, 'number')}
+            />
+          )}
+
+          {/* Costo adquisición % — always show */}
+          <EditableRow
+            fieldKey="acquisitionCostPct"
+            label="Costo adquisición"
+            displayValue={prospect.acquisitionCostPct > 0 ? `${(prospect.acquisitionCostPct * 100).toFixed(1)}%` : '—'}
+            isActive={activeField === 'acquisitionCostPct'}
+            inputType="number"
+            inputStep="0.001"
+            inputValue={currentEditValue('acquisitionCostPct', true)}
+            issueBadge={badge('acquisitionCostPct')}
+            onActivate={() => setActiveField('acquisitionCostPct')}
+            onDeactivate={() => setActiveField(null)}
+            onChange={raw => handleEdit('acquisitionCostPct', raw, 'number', true)}
+          />
+
+          {/* Construcción/m² — hide if 0 and no issue */}
+          {(prospect.constructionCostPerSqm > 0 || issueMap['constructionCostPerSqm']) && (
+            <EditableRow
+              fieldKey="constructionCostPerSqm"
+              label="Construcción/m²"
+              displayValue={prospect.constructionCostPerSqm > 0 ? `$${prospect.constructionCostPerSqm.toLocaleString('es-MX')}` : '—'}
+              isActive={activeField === 'constructionCostPerSqm'}
+              inputType="number"
+              inputValue={currentEditValue('constructionCostPerSqm')}
+              issueBadge={badge('constructionCostPerSqm')}
+              onActivate={() => setActiveField('constructionCostPerSqm')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('constructionCostPerSqm', raw, 'number')}
+            />
+          )}
+
+          {/* Overhead — always show */}
+          <EditableRow
+            fieldKey="constructionOverhead"
+            label="Overhead"
+            displayValue={prospect.constructionOverhead > 0 ? String(prospect.constructionOverhead) : '—'}
+            isActive={activeField === 'constructionOverhead'}
+            inputType="number"
+            inputStep="0.01"
+            inputValue={currentEditValue('constructionOverhead')}
+            issueBadge={badge('constructionOverhead')}
+            onActivate={() => setActiveField('constructionOverhead')}
+            onDeactivate={() => setActiveField(null)}
+            onChange={raw => handleEdit('constructionOverhead', raw, 'number')}
+          />
+
+          {/* Renta mensual — hide if 0 and no issue */}
+          {(prospect.rentMonthly > 0 || issueMap['rentMonthly']) && (
+            <EditableRow
+              fieldKey="rentMonthly"
+              label="Renta mensual"
+              displayValue={prospect.rentMonthly > 0 ? `$${prospect.rentMonthly.toLocaleString('es-MX')}` : '—'}
+              isActive={activeField === 'rentMonthly'}
+              inputType="number"
+              inputValue={currentEditValue('rentMonthly')}
+              issueBadge={badge('rentMonthly')}
+              onActivate={() => setActiveField('rentMonthly')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('rentMonthly', raw, 'number')}
+            />
+          )}
+
+          {/* Latitud — hide if 0 and no issue */}
+          {(prospect.latitude !== 0 || issueMap['latitude']) && (
+            <EditableRow
+              fieldKey="latitude"
+              label="Latitud"
+              displayValue={prospect.latitude !== 0 ? String(prospect.latitude) : '—'}
+              isActive={activeField === 'latitude'}
+              inputType="number"
+              inputStep="any"
+              inputValue={currentEditValue('latitude')}
+              issueBadge={badge('latitude')}
+              onActivate={() => setActiveField('latitude')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('latitude', raw, 'number')}
+            />
+          )}
+
+          {/* Longitud — hide if 0 and no issue */}
+          {(prospect.longitude !== 0 || issueMap['longitude']) && (
+            <EditableRow
+              fieldKey="longitude"
+              label="Longitud"
+              displayValue={prospect.longitude !== 0 ? String(prospect.longitude) : '—'}
+              isActive={activeField === 'longitude'}
+              inputType="number"
+              inputStep="any"
+              inputValue={currentEditValue('longitude')}
+              issueBadge={badge('longitude')}
+              onActivate={() => setActiveField('longitude')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('longitude', raw, 'number')}
+            />
+          )}
+
+          {/* Fecha inversión */}
+          <EditableRow
+            fieldKey="investmentDate"
+            label="Fecha inversión"
+            displayValue={prospect.investmentDate || '—'}
+            isActive={activeField === 'investmentDate'}
+            inputType="date"
+            inputValue={currentEditValue('investmentDate')}
+            issueBadge={badge('investmentDate')}
+            onActivate={() => setActiveField('investmentDate')}
+            onDeactivate={() => setActiveField(null)}
+            onChange={raw => handleEdit('investmentDate', raw, 'date')}
+          />
+
+          {/* Fecha venta */}
+          <EditableRow
+            fieldKey="saleDate"
+            label="Fecha venta"
+            displayValue={prospect.saleDate || '—'}
+            isActive={activeField === 'saleDate'}
+            inputType="date"
+            inputValue={currentEditValue('saleDate')}
+            issueBadge={badge('saleDate')}
+            onActivate={() => setActiveField('saleDate')}
+            onDeactivate={() => setActiveField(null)}
+            onChange={raw => handleEdit('saleDate', raw, 'date')}
+          />
+
+          {/* Notas — hide if empty or "-" */}
+          {prospect.notes && prospect.notes !== '-' && prospect.notes.trim() !== '' && (
+            <EditableRow
+              fieldKey="notes"
+              label="Notas"
+              displayValue={prospect.notes.length > 60 ? prospect.notes.slice(0, 60) + '…' : prospect.notes}
+              isActive={activeField === 'notes'}
+              inputType="text"
+              inputValue={currentEditValue('notes')}
+              issueBadge={badge('notes')}
+              onActivate={() => setActiveField('notes')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('notes', raw, 'text')}
+            />
+          )}
+
+          {/* Read-only computed rows */}
+          {prospect.totalInvestment > 0 && (
+            <ReadOnlyRow label="Inversión total" value={`$${(prospect.totalInvestment / 1_000_000).toFixed(1)}M`} />
+          )}
+          {prospect.investmentPerSqm > 0 && (
+            <ReadOnlyRow label="Inversión/m²" value={`$${prospect.investmentPerSqm.toLocaleString('es-MX')}`} />
+          )}
+          {prospect.salePerSqm > 0 && (
+            <ReadOnlyRow label="Venta/m²" value={`$${prospect.salePerSqm.toLocaleString('es-MX')}`} />
+          )}
+          {prospect.roi > 0 && (
+            <ReadOnlyRow label="ROI" value={`${(prospect.roi * 100).toFixed(1)}%`} />
+          )}
+          {prospect.capRate > 0 && (
+            <ReadOnlyRow label="Cap Rate" value={`${(prospect.capRate * 100).toFixed(1)}%`} />
+          )}
+
+          {/* Timeline row — only when both dates set */}
+          {prospect.investmentDate && prospect.saleDate && prospect.investmentDate !== '' && prospect.saleDate !== '' && (
+            <ReadOnlyRow
+              label="Timeline"
+              value={`${prospect.investmentDate} → ${prospect.saleDate} (${monthsBetween(prospect.investmentDate, prospect.saleDate)} meses)`}
+            />
           )}
         </div>
 
-        {(errors.length > 0 || warnings.length > 0) && (() => {
-          const uniqueGroups = prospect.issues
-            .map(i => FIELD_INPUTS[i.field])
-            .filter((g): g is FieldGroup => g !== null && g !== undefined)
-            .filter((g, idx, arr) => arr.findIndex(x => x.label === g.label) === idx)
+        {/* Save error */}
+        {saveError && (
+          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: 'tomato' }}>{saveError}</div>
+        )}
 
-          return (
-            <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '12px' }}>
-                Calidad de datos
-              </div>
+        {/* Save button */}
+        {hasPendingEdits && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              width: '100%',
+              padding: '8px',
+              background: saving ? colors.border : colors.primary,
+              color: colors.neutral,
+              border: 'none',
+              borderRadius: '2px',
+              cursor: saving ? 'default' : 'pointer',
+              fontFamily: fonts.label,
+              fontSize: '11px',
+              letterSpacing: '0.08em',
+              opacity: saving ? 0.6 : 1,
+            }}
+          >
+            {saving ? 'Guardando…' : 'GUARDAR CAMBIOS ▸'}
+          </button>
+        )}
 
-              {uniqueGroups.map(group => (
-                <div key={group.label} style={{ marginBottom: '14px' }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '10px', color: group.severity === 'error' ? colors.neutral : colors.secondary, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>
-                    {group.severity === 'error' ? '🔴' : '⚠️'} {group.label}
-                  </div>
-                  {group.fields.map(field => (
-                    <div key={field.key as string} style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, minWidth: '80px', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
-                        {field.placeholder ?? String(field.key)}
-                      </span>
-                      <input
-                        type={field.type}
-                        step={field.step}
-                        placeholder={field.placeholder}
-                        value={edits[field.key] !== undefined ? String(edits[field.key]) : (prospect[field.key] != null ? String(prospect[field.key]) : '')}
-                        onChange={e => handleEdit(field.key, e.target.value, field.type)}
-                        style={inputStyle}
-                      />
-                    </div>
-                  ))}
-                </div>
-              ))}
-
-              {saveError && (
-                <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: 'tomato', marginBottom: '8px' }}>{saveError}</div>
-              )}
-
-              {Object.keys(edits).length > 0 && (
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    background: saving ? colors.border : colors.primary,
-                    color: colors.neutral,
-                    border: 'none',
-                    borderRadius: '2px',
-                    cursor: saving ? 'default' : 'pointer',
-                    fontFamily: fonts.label,
-                    fontSize: '11px',
-                    letterSpacing: '0.08em',
-                    opacity: saving ? 0.6 : 1,
-                    marginBottom: '8px',
-                  }}
-                >
-                  {saving ? 'Guardando…' : 'GUARDAR CAMBIOS ▸'}
-                </button>
-              )}
-
-              {/* Read-only hints for computed-field warnings */}
-              {prospect.issues
-                .filter(i => UNEDITABLE_FIELDS.has(i.field))
-                .map((issue, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '12px', opacity: 0.75 }}>
-                    <span>{issue.severity === 'error' ? '🔴' : '⚠️'}</span>
-                    <div>
-                      <div style={{ color: colors.neutral }}>{issue.message}</div>
-                      <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, marginTop: '2px', letterSpacing: '0.04em' }}>
-                        Campo calculado — ajusta en ABRIR DETALLE
-                      </div>
-                    </div>
-                  </div>
-                ))
-              }
+        {/* Computed-field warnings (roi, profit) */}
+        {(['roi', 'profit'] as const).flatMap(f => issueMap[f] ? [issueMap[f]] : []).map((issue, i) => (
+          <div key={i} style={{ display: 'flex', gap: '8px', padding: '5px 0', fontSize: '12px', opacity: 0.7 }}>
+            <span>{issue.severity === 'error' ? '🔴' : '⚠️'}</span>
+            <div>
+              <div style={{ color: colors.neutral }}>{issue.message}</div>
+              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, marginTop: '2px' }}>Campo calculado — ajusta en ABRIR DETALLE</div>
             </div>
-          )
-        })()}
+          </div>
+        ))}
 
+        {/* Open detail */}
         <button
           onClick={() => onOpenDetail(prospect.id)}
           style={{
