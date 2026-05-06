@@ -6,6 +6,7 @@ import type { Prospect, ScoreWeights } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { ScoreWeights as ScoreWeightsPanel } from './ScoreWeights'
 import { ProspectDrawer } from './ProspectDrawer'
+import { QuickCaptureModal } from './QuickCaptureModal'
 
 type SortKey = 'score' | 'roi' | 'capRate' | 'profit' | 'totalInvestment'
 
@@ -23,6 +24,7 @@ export function ProspectTable() {
   const [weightsOpen, setWeightsOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showCapture, setShowCapture] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
 
@@ -68,7 +70,7 @@ export function ProspectTable() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
           <ScoreWeightsPanel weights={weights} onChange={setWeights} open={weightsOpen} onToggle={() => setWeightsOpen(o => !o)} />
           <button
-            onClick={() => navigate('/tabla/nuevo')}
+            onClick={() => setShowCapture(true)}
             style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '11px', letterSpacing: '0.1em', padding: '7px 14px', flexShrink: 0 }}
           >
             + NUEVO
@@ -121,6 +123,12 @@ export function ProspectTable() {
         onClose={() => setSearchParams({})}
         onOpenDetail={id => navigate(`/tabla/${id}`)}
       />
+      {showCapture && (
+        <QuickCaptureModal
+          onClose={() => setShowCapture(false)}
+          onCreated={() => { setShowCapture(false); navigate('/calidad') }}
+        />
+      )}
     </div>
   )
 }

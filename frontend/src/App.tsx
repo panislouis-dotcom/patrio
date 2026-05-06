@@ -15,7 +15,6 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/tabla" replace />} />
           <Route path="/tabla" element={<ProspectTable />} />
-          <Route path="/tabla/nuevo" element={<ProspectDetailPage />} />
           <Route path="/tabla/:id" element={<ProspectDetailPage />} />
           <Route path="/mapa" element={<ProspectMap />} />
           <Route path="/calidad" element={<QualityTab />} />
