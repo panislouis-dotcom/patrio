@@ -19,13 +19,13 @@ Read these two files before touching anything else:
 ## Step 2 — Query the DB
 
 ```bash
-sqlite3 data/real_estate.db "
+sqlite3 data/refigan.db "
 SELECT name, address, total_investment, current_valuation,
        total_units, acquisition_date, milestones, budget
 FROM projects WHERE status IN ('operating','exited')
 ORDER BY acquisition_date;"
 
-sqlite3 data/real_estate.db "
+sqlite3 data/refigan.db "
 SELECT name, address,
        total_investment, projected_sale, profit,
        ROUND(roi*100,1) AS roi,

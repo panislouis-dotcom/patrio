@@ -3,7 +3,7 @@ INSERT INTO prospects (
   name, address, city, status, url,
   latitude, longitude,
   sqm_land, sqm_construction,
-  land_price, permits_cost, subdivision_cost,
+  land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
   projected_sale, investment_date, sale_date,
   rent_monthly, notes
@@ -15,7 +15,7 @@ INSERT INTO prospects (
   'https://www.inmuebles24.com/propiedades/clasificado/veclcain-casa-en-venta-en-el-centro-de-monterrey-nuevo-leon-149383453.html',
   25.684780, -100.334218,
   110, 134,
-  2800000, 11000, 0,
+  2800000, 0.06, 11000, 0,
   6000, 1.0,
   5000000, '2025-06-01', '2027-08-01',
   20000,
