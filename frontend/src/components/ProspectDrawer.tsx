@@ -54,6 +54,31 @@ const FIELD_INPUTS: Record<string, FieldGroup | null> = {
   investmentDate: null,
   constructionCostPerSqm: { label: 'Costo construcción/m²', severity: 'warning', fields: [{ key: 'constructionCostPerSqm', type: 'number', placeholder: 'MXN/m²'   }] },
   rentMonthly:            { label: 'Renta mensual',          severity: 'warning', fields: [{ key: 'rentMonthly',            type: 'number', placeholder: 'MXN/mes'  }] },
+  acquisitionCostPct: {
+    label: 'Costos adquisición (%)',
+    severity: 'warning' as const,
+    fields: [{ key: 'acquisitionCostPct' as keyof RawFields, type: 'number' as const, step: '0.001', placeholder: 'ej. 0.065 = 6.5%' }],
+  },
+  roi: null,
+  profit: null,
+}
+
+// Fields that are computed — cannot be edited inline; rendered as read-only hints
+const UNEDITABLE_FIELDS = new Set(['roi', 'profit'])
+
+function monthsBetween(a: string, b: string): number {
+  const [ya, ma] = a.split('-').map(Number)
+  const [yb, mb] = b.split('-').map(Number)
+  return (yb - ya) * 12 + (mb - ma)
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${colors.border}`, fontFamily: fonts.sans, fontSize: '12px' }}>
+      <span style={{ color: colors.secondary }}>{label}</span>
+      <span style={{ color: colors.neutral }}>{value}</span>
+    </div>
+  )
 }
 
 const inputStyle: CSSProperties = {
@@ -150,6 +175,38 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
           <MetricBlock label="Inversión" value={fmt(prospect.totalInvestment, 'mxn')} />
         </div>
 
+        {/* ── Datos ──────────────────────────────────────────── */}
+        <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
+          <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+            Datos
+          </div>
+          <Row label="Ciudad" value={prospect.city} />
+          <Row label="Estado" value={prospect.status} />
+          {prospect.sqmLand > 0 && <Row label="m² Terreno" value={prospect.sqmLand.toLocaleString('es-MX')} />}
+          {prospect.sqmConstruction > 0 && <Row label="m² Construcción" value={prospect.sqmConstruction.toLocaleString('es-MX')} />}
+          {prospect.landPrice > 0 && <Row label="Precio terreno" value={`$${(prospect.landPrice / 1_000_000).toFixed(1)}M`} />}
+          {prospect.projectedSale > 0 && <Row label="Venta proyectada" value={`$${(prospect.projectedSale / 1_000_000).toFixed(1)}M`} />}
+          {prospect.investmentPerSqm > 0 && <Row label="Inversión/m²" value={`$${prospect.investmentPerSqm.toLocaleString('es-MX')}`} />}
+          {prospect.salePerSqm > 0 && <Row label="Venta/m²" value={`$${prospect.salePerSqm.toLocaleString('es-MX')}`} />}
+          {prospect.investmentDate && prospect.saleDate && prospect.investmentDate !== '' && prospect.saleDate !== '' && (() => {
+            const months = monthsBetween(prospect.investmentDate, prospect.saleDate)
+            return (
+              <Row
+                label="Timeline"
+                value={`${prospect.investmentDate} → ${prospect.saleDate} (${months} meses)`}
+              />
+            )
+          })()}
+          {prospect.notes && prospect.notes !== '-' && prospect.notes.trim() !== '' && (
+            <div style={{ padding: '5px 0', fontFamily: fonts.sans, fontSize: '12px', color: colors.secondary }}>
+              <span style={{ color: colors.secondary }}>Notas · </span>
+              <span style={{ color: colors.neutral }}>
+                {prospect.notes.length > 80 ? prospect.notes.slice(0, 80) + '…' : prospect.notes}
+              </span>
+            </div>
+          )}
+        </div>
+
         {(errors.length > 0 || warnings.length > 0) && (() => {
           const uniqueGroups = prospect.issues
             .map(i => FIELD_INPUTS[i.field])
@@ -211,6 +268,22 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
                   {saving ? 'Guardando…' : 'GUARDAR CAMBIOS ▸'}
                 </button>
               )}
+
+              {/* Read-only hints for computed-field warnings */}
+              {prospect.issues
+                .filter(i => UNEDITABLE_FIELDS.has(i.field))
+                .map((issue, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '12px', opacity: 0.75 }}>
+                    <span>{issue.severity === 'error' ? '🔴' : '⚠️'}</span>
+                    <div>
+                      <div style={{ color: colors.neutral }}>{issue.message}</div>
+                      <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, marginTop: '2px', letterSpacing: '0.04em' }}>
+                        Campo calculado — ajusta en ABRIR DETALLE
+                      </div>
+                    </div>
+                  </div>
+                ))
+              }
             </div>
           )
         })()}
