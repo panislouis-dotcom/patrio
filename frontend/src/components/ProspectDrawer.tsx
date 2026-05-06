@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { updateProspect } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
-import { EditableRow, ReadOnlyRow, rowStyle, inlineInputStyle } from './EditableRow'
+import { EditableRow, rowStyle, inlineInputStyle } from './EditableRow'
 
 interface Props {
   prospect: Prospect | null
@@ -24,12 +24,6 @@ function fmt(n: number, type: 'pct' | 'mxn') {
   if (!n) return '—'
   if (type === 'pct') return `${(n * 100).toFixed(1)}%`
   return `$${(n / 1_000_000).toFixed(1)}M`
-}
-
-function monthsBetween(a: string, b: string): number {
-  const [ya, ma] = a.split('-').map(Number)
-  const [yb, mb] = b.split('-').map(Number)
-  return (yb - ya) * 12 + (mb - ma)
 }
 
 
@@ -258,20 +252,22 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
             />
           )}
 
-          {/* Costo adquisición % — always show */}
-          <EditableRow
-            fieldKey="acquisitionCostPct"
-            label="Costo adquisición"
-            displayValue={prospect.acquisitionCostPct > 0 ? `${(prospect.acquisitionCostPct * 100).toFixed(1)}%` : '—'}
-            isActive={activeField === 'acquisitionCostPct'}
-            inputType="number"
-            inputStep="0.001"
-            inputValue={currentEditValue('acquisitionCostPct', true)}
-            issueBadge={badge('acquisitionCostPct')}
-            onActivate={() => setActiveField('acquisitionCostPct')}
-            onDeactivate={() => setActiveField(null)}
-            onChange={raw => handleEdit('acquisitionCostPct', raw, 'number', true)}
-          />
+          {/* Costo adquisición % — hide if 0 and no issue */}
+          {(prospect.acquisitionCostPct !== 0 || issueMap['acquisitionCostPct']) && (
+            <EditableRow
+              fieldKey="acquisitionCostPct"
+              label="Costo adquisición"
+              displayValue={prospect.acquisitionCostPct > 0 ? `${(prospect.acquisitionCostPct * 100).toFixed(1)}%` : '—'}
+              isActive={activeField === 'acquisitionCostPct'}
+              inputType="number"
+              inputStep="0.001"
+              inputValue={currentEditValue('acquisitionCostPct', true)}
+              issueBadge={badge('acquisitionCostPct')}
+              onActivate={() => setActiveField('acquisitionCostPct')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('acquisitionCostPct', raw, 'number', true)}
+            />
+          )}
 
           {/* Construcción/m² — hide if 0 and no issue */}
           {(prospect.constructionCostPerSqm > 0 || issueMap['constructionCostPerSqm']) && (
@@ -289,20 +285,22 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
             />
           )}
 
-          {/* Overhead — always show */}
-          <EditableRow
-            fieldKey="constructionOverhead"
-            label="Overhead"
-            displayValue={prospect.constructionOverhead > 0 ? String(prospect.constructionOverhead) : '—'}
-            isActive={activeField === 'constructionOverhead'}
-            inputType="number"
-            inputStep="0.01"
-            inputValue={currentEditValue('constructionOverhead')}
-            issueBadge={badge('constructionOverhead')}
-            onActivate={() => setActiveField('constructionOverhead')}
-            onDeactivate={() => setActiveField(null)}
-            onChange={raw => handleEdit('constructionOverhead', raw, 'number')}
-          />
+          {/* Overhead — hide if 0 and no issue */}
+          {(prospect.constructionOverhead !== 0 || issueMap['constructionOverhead']) && (
+            <EditableRow
+              fieldKey="constructionOverhead"
+              label="Overhead"
+              displayValue={prospect.constructionOverhead > 0 ? String(prospect.constructionOverhead) : '—'}
+              isActive={activeField === 'constructionOverhead'}
+              inputType="number"
+              inputStep="0.01"
+              inputValue={currentEditValue('constructionOverhead')}
+              issueBadge={badge('constructionOverhead')}
+              onActivate={() => setActiveField('constructionOverhead')}
+              onDeactivate={() => setActiveField(null)}
+              onChange={raw => handleEdit('constructionOverhead', raw, 'number')}
+            />
+          )}
 
           {/* Renta mensual — hide if 0 and no issue */}
           {(prospect.rentMonthly > 0 || issueMap['rentMonthly']) && (
@@ -398,30 +396,6 @@ export function ProspectDrawer({ prospect, onClose, onOpenDetail, onUpdated }: P
             />
           )}
 
-          {/* Read-only computed rows */}
-          {prospect.totalInvestment > 0 && (
-            <ReadOnlyRow label="Inversión total" value={`$${(prospect.totalInvestment / 1_000_000).toFixed(1)}M`} />
-          )}
-          {prospect.investmentPerSqm > 0 && (
-            <ReadOnlyRow label="Inversión/m²" value={`$${prospect.investmentPerSqm.toLocaleString('es-MX')}`} />
-          )}
-          {prospect.salePerSqm > 0 && (
-            <ReadOnlyRow label="Venta/m²" value={`$${prospect.salePerSqm.toLocaleString('es-MX')}`} />
-          )}
-          {prospect.roi > 0 && (
-            <ReadOnlyRow label="ROI" value={`${(prospect.roi * 100).toFixed(1)}%`} />
-          )}
-          {prospect.capRate > 0 && (
-            <ReadOnlyRow label="Cap Rate" value={`${(prospect.capRate * 100).toFixed(1)}%`} />
-          )}
-
-          {/* Timeline row — only when both dates set */}
-          {prospect.investmentDate && prospect.saleDate && prospect.investmentDate !== '' && prospect.saleDate !== '' && (
-            <ReadOnlyRow
-              label="Timeline"
-              value={`${prospect.investmentDate} → ${prospect.saleDate} (${monthsBetween(prospect.investmentDate, prospect.saleDate)} meses)`}
-            />
-          )}
         </div>
 
         {/* Save error */}
