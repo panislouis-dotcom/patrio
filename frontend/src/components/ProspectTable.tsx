@@ -122,6 +122,7 @@ export function ProspectTable() {
         prospect={selected}
         onClose={() => setSearchParams({})}
         onOpenDetail={id => navigate(`/tabla/${id}`)}
+        onUpdated={updated => setProspects(prev => computeScores(prev.map(p => p.id === updated.id ? updated : p), weights))}
       />
       {showCapture && (
         <QuickCaptureModal
