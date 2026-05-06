@@ -80,6 +80,8 @@ export function ProjectsTab() {
           <thead style={{ position: 'sticky', top: 0, background: colors.dark, zIndex: 10 }}>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
               <th style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.12em', textAlign: 'left', whiteSpace: 'nowrap' }}>PROYECTO</th>
+              <th style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.12em', textAlign: 'right', whiteSpace: 'nowrap' }}>ESTADO</th>
+              <th style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.12em', textAlign: 'right', whiteSpace: 'nowrap' }}>UNIDADES</th>
               {th('totalInvestment', 'INVERSIÓN')}
               {th('currentValuation', 'VALORACIÓN')}
               {th('unrealizedGain', 'GANANCIA')}
@@ -89,7 +91,6 @@ export function ProjectsTab() {
           </thead>
           <tbody>
             {sorted.map(p => {
-              const statusDot = STATUS_COLOR[p.status] ?? colors.secondary
               const gainColor = p.unrealizedGain >= 0 ? colors.tertiary : 'tomato'
               const gainPctColor = p.unrealizedGainPct >= 0 ? colors.tertiary : 'tomato'
 
@@ -101,18 +102,34 @@ export function ProjectsTab() {
                   onMouseEnter={e => (e.currentTarget.style.background = `${colors.border}55`)}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
-                  {/* Name + type + status dot */}
+                  {/* Name + type (without status dot) */}
                   <td style={{ padding: '5px 10px', maxWidth: '240px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                      <span
-                        style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusDot, flexShrink: 0 }}
-                        title={p.status}
-                      />
                       <div style={{ overflow: 'hidden' }}>
                         <div style={{ color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                         <div style={{ color: colors.secondary, fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.04em', marginTop: '1px' }}>{p.type}</div>
                       </div>
                     </div>
+                  </td>
+
+                  {/* Estado badge */}
+                  <td style={{ padding: '5px 10px', textAlign: 'right' }}>
+                    <span style={{
+                      background: STATUS_COLOR[p.status] ?? colors.secondary,
+                      color: colors.neutral,
+                      fontFamily: fonts.label,
+                      fontSize: '9px',
+                      padding: '2px 6px',
+                      borderRadius: '2px',
+                      letterSpacing: '0.08em',
+                    }}>
+                      {p.status.toUpperCase()}
+                    </span>
+                  </td>
+
+                  {/* Unidades */}
+                  <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>
+                    {p.totalUnits > 0 ? p.totalUnits : '—'}
                   </td>
 
                   {/* Inversión */}
