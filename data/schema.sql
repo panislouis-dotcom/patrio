@@ -92,3 +92,20 @@ CREATE TABLE IF NOT EXISTS projects (
   notes             TEXT NOT NULL CHECK (notes != ''),
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ─────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS signals (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  portal        TEXT NOT NULL,
+  url           TEXT NOT NULL UNIQUE,
+  title         TEXT NOT NULL,
+  address       TEXT NOT NULL DEFAULT '',
+  city          TEXT NOT NULL DEFAULT 'Monterrey',
+  price         REAL NOT NULL DEFAULT 0,
+  sqm_land      REAL NOT NULL DEFAULT 0,
+  raw_data      TEXT NOT NULL DEFAULT '',
+  status        TEXT NOT NULL DEFAULT 'new',  -- new | dismissed | imported
+  prospect_id   INTEGER REFERENCES prospects(id),
+  scraped_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);

@@ -6,8 +6,10 @@ from pydantic import BaseModel, Field
 from api.db import (
     get_prospects, get_prospect, update_prospect, create_prospect,
     get_projects, get_project, update_project, create_project,
+    get_signals, create_signal, dismiss_signal, import_signal,
 )
 from api.checks import run_checks
+from scraper import mercadolibre, pincali, inmuebles24, doorvel, nuroa
 
 app = FastAPI(title="Refigan API")
 
@@ -194,3 +196,49 @@ def post_project(body: ProjectCreate):
     if created is None:
         raise HTTPException(status_code=500, detail="Project created but not retrievable")
     return created
+
+
+@app.post("/api/sonar/scan")
+def sonar_scan():
+    scrapers = [mercadolibre, pincali, inmuebles24, doorvel, nuroa]
+    total_new = 0
+    errors = []
+    for scraper in scrapers:
+        try:
+            signals = scraper.scrape(city="Monterrey")
+            for s in signals:
+                inserted = create_signal({
+                    "portal": s.portal,
+                    "url": s.url,
+                    "title": s.title,
+                    "address": s.address,
+                    "city": s.city,
+                    "price": s.price,
+                    "sqm_land": s.sqm_land,
+                })
+                if inserted:
+                    total_new += 1
+        except Exception as e:
+            errors.append({"portal": scraper.PORTAL_NAME, "error": str(e)})
+    return {"scanned": len(scrapers), "new": total_new, "errors": errors}
+
+
+@app.get("/api/sonar/signals")
+def list_signals(status: str | None = None, portal: str | None = None):
+    return get_signals(status=status, portal=portal)
+
+
+@app.patch("/api/sonar/signals/{signal_id}")
+def patch_signal(signal_id: int):
+    updated = dismiss_signal(signal_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Signal not found")
+    return updated
+
+
+@app.post("/api/sonar/signals/{signal_id}/import", status_code=201)
+def import_signal_route(signal_id: int):
+    signal, prospect = import_signal(signal_id)
+    if signal is None:
+        raise HTTPException(status_code=404, detail="Signal not found")
+    return {"signal": signal, "prospect": prospect}

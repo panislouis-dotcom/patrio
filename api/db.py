@@ -285,3 +285,88 @@ def create_prospect(data: dict) -> dict:
 
     # Return created prospect with computed metrics
     return get_prospect(prospect_id)
+
+
+# ─── Sonar signals ───────────────────────────────
+
+def get_signals(status: str | None = None, portal: str | None = None) -> list[dict]:
+    query = "SELECT * FROM signals"
+    conditions, params = [], []
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    if portal:
+        conditions.append("portal = ?")
+        params.append(portal)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY scraped_at DESC"
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def create_signal(data: dict) -> bool:
+    """Insert a signal. Returns True if inserted, False if duplicate (url UNIQUE)."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO signals (portal, url, title, address, city, price, sqm_land)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (data["portal"], data["url"], data["title"],
+             data.get("address", ""), data.get("city", "Monterrey"),
+             data.get("price", 0), data.get("sqm_land", 0))
+        )
+        return cur.rowcount > 0
+
+
+def dismiss_signal(signal_id: int) -> dict | None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE signals SET status = 'dismissed' WHERE id = ?", (signal_id,)
+        )
+    return _get_signal(signal_id)
+
+
+def import_signal(signal_id: int) -> tuple[dict | None, dict | None]:
+    """Import a signal as a prospect. Returns (signal, prospect) or (None, None) if not found."""
+    signal = _get_signal(signal_id)
+    if signal is None:
+        return None, None
+    # Create a prospect from signal fields with all required fields populated
+    prospect = create_prospect({
+        "name": signal["title"],
+        "address": signal["address"] or signal["title"],
+        "city": signal["city"],
+        "status": "evaluating",
+        "url": signal["url"],
+        "latitude": 0.0,
+        "longitude": 0.0,
+        "sqmLand": signal.get("sqmLand") or 0.0,
+        "sqmConstruction": 0.0,
+        "landPrice": signal.get("price") or 0.0,
+        "acquisitionCostPct": 0.065,
+        "permitsCost": 0.0,
+        "subdivisionCost": 0.0,
+        "constructionCostPerSqm": 0.0,
+        "constructionOverhead": 1.3,
+        "projectedSale": 0.0,
+        "holdMonths": 12,
+        "rentMonthly": 1,  # placeholder — will trigger check but satisfies schema
+        "notes": "-",
+    })
+    # Mark signal as imported
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE signals SET status = 'imported', prospect_id = ? WHERE id = ?",
+            (prospect["id"], signal_id)
+        )
+    updated_signal = _get_signal(signal_id)
+    return updated_signal, prospect
+
+
+def _get_signal(signal_id: int) -> dict | None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
+    return _row_to_dict(row) if row else None
