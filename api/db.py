@@ -132,9 +132,16 @@ def _parse_project(row: sqlite3.Row) -> dict:
 
     # Parse JSON fields
     raw_milestones = d.get("milestones")
-    d["milestones"] = json.loads(raw_milestones) if isinstance(raw_milestones, str) and raw_milestones else {}
+    try:
+        d["milestones"] = json.loads(raw_milestones) if isinstance(raw_milestones, str) and raw_milestones else {}
+    except json.JSONDecodeError:
+        d["milestones"] = {}
+
     raw_budget = d.get("budget")
-    d["budget"] = json.loads(raw_budget) if isinstance(raw_budget, str) and raw_budget else {}
+    try:
+        d["budget"] = json.loads(raw_budget) if isinstance(raw_budget, str) and raw_budget else {}
+    except json.JSONDecodeError:
+        d["budget"] = {}
 
     # Computed fields
     total_investment = d.get("totalInvestment") or 0.0
