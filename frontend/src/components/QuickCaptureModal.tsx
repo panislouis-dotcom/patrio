@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { createProspect } from '../lib/api'
 import { colors, fonts } from '../lib/theme'
@@ -43,6 +43,14 @@ export function QuickCaptureModal({ onClose, onCreated }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
   const canSave = !saving && name.trim() !== '' && address.trim() !== ''
 
   async function handleSave() {
@@ -70,6 +78,7 @@ export function QuickCaptureModal({ onClose, onCreated }: Props) {
         investmentDate: '2027-01-01',
         saleDate: '2028-01-01',
       })
+      setSaving(false)
       onCreated()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al guardar')
