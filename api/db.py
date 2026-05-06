@@ -1,5 +1,7 @@
 import sqlite3
+import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "data" / "refigan.db"
@@ -114,6 +116,131 @@ def update_prospect(prospect_id: int, data: dict) -> dict | None:
         conn.execute(query, values)
 
     return get_prospect(prospect_id)
+
+
+PROJECTS_RAW_FIELDS = {
+    "name", "type", "address", "city", "status", "url",
+    "latitude", "longitude", "totalUnits",
+    "acquisitionDate", "firstRentDate",
+    "totalInvestment", "currentValuation", "valuationDate",
+    "milestones", "budget", "notes",
+}
+
+
+def _parse_project(row: sqlite3.Row) -> dict:
+    """Convert a projects row into a camelCase dict with computed fields."""
+    d = _row_to_dict(row)
+
+    # Parse JSON fields
+    d["milestones"] = json.loads(d["milestones"]) if isinstance(d["milestones"], str) else d["milestones"]
+    d["budget"] = json.loads(d["budget"]) if isinstance(d["budget"], str) else d["budget"]
+
+    # Computed fields
+    total_investment = d.get("totalInvestment") or 0.0
+    current_valuation = d.get("currentValuation") or 0.0
+    unrealized_gain = current_valuation - total_investment
+    unrealized_gain_pct = round(unrealized_gain / total_investment, 4) if total_investment != 0 else 0
+
+    acquisition_date_str = d.get("acquisitionDate", "")
+    try:
+        acq_year, acq_month = map(int, acquisition_date_str.split("-"))
+        today = datetime.today()
+        hold_months_actual = (today.year - acq_year) * 12 + (today.month - acq_month)
+    except (ValueError, AttributeError):
+        hold_months_actual = 0
+
+    d["unrealizedGain"] = unrealized_gain
+    d["unrealizedGainPct"] = unrealized_gain_pct
+    d["holdMonthsActual"] = hold_months_actual
+
+    return d
+
+
+def get_projects() -> list[dict]:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM projects ORDER BY acquisition_date DESC").fetchall()
+    return [_parse_project(r) for r in rows]
+
+
+def get_project(project_id: int) -> dict | None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    return _parse_project(row) if row else None
+
+
+def update_project(project_id: int, data: dict) -> dict | None:
+    """Update a project record with the provided data.
+
+    Only fields in PROJECTS_RAW_FIELDS are updated. All other keys are ignored.
+    Field names are converted from camelCase to snake_case before updating.
+    JSON fields (milestones, budget) are serialized if passed as dicts.
+
+    Args:
+        project_id: The ID of the project to update
+        data: Dictionary of fields to update (camelCase keys)
+
+    Returns:
+        The updated project or None if not found
+    """
+    filtered_data = {k: v for k, v in data.items() if k in PROJECTS_RAW_FIELDS}
+
+    if not filtered_data:
+        return get_project(project_id)
+
+    # Serialize JSON fields
+    for json_field in ("milestones", "budget"):
+        if json_field in filtered_data and isinstance(filtered_data[json_field], dict):
+            filtered_data[json_field] = json.dumps(filtered_data[json_field])
+
+    snake_case_data = {_camel_to_snake(k): v for k, v in filtered_data.items()}
+
+    columns = ", ".join(f"{col} = ?" for col in snake_case_data.keys())
+    values = list(snake_case_data.values()) + [project_id]
+    query = f"UPDATE projects SET {columns} WHERE id = ?"
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(query, values)
+
+    return get_project(project_id)
+
+
+def create_project(data: dict) -> dict:
+    """Create a new project record.
+
+    Only fields in PROJECTS_RAW_FIELDS are inserted. All other keys are ignored.
+    Field names are converted from camelCase to snake_case before inserting.
+    JSON fields (milestones, budget) are serialized if passed as dicts.
+
+    Args:
+        data: Dictionary of fields for the new project (camelCase keys)
+
+    Returns:
+        The created project
+    """
+    filtered_data = {k: v for k, v in data.items() if k in PROJECTS_RAW_FIELDS}
+
+    if not filtered_data:
+        raise ValueError("No valid fields provided for create_project")
+
+    # Serialize JSON fields
+    for json_field in ("milestones", "budget"):
+        if json_field in filtered_data and isinstance(filtered_data[json_field], dict):
+            filtered_data[json_field] = json.dumps(filtered_data[json_field])
+
+    snake_case_data = {_camel_to_snake(k): v for k, v in filtered_data.items()}
+
+    columns = ", ".join(snake_case_data.keys())
+    placeholders = ", ".join("?" * len(snake_case_data))
+    values = list(snake_case_data.values())
+    query = f"INSERT INTO projects ({columns}) VALUES ({placeholders})"
+
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute(query, values)
+        project_id = cur.lastrowid
+
+    return get_project(project_id)
 
 
 def create_prospect(data: dict) -> dict:

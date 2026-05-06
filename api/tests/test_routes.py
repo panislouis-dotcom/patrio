@@ -5,6 +5,24 @@ from fastapi.testclient import TestClient
 
 SCHEMA_PATH = Path(__file__).parent.parent.parent / "data" / "schema.sql"
 
+SEED_PROJECT = """
+INSERT INTO projects (
+    name, type, address, city, status, total_units,
+    acquisition_date, first_rent_date,
+    total_investment, current_valuation, valuation_date,
+    url, latitude, longitude,
+    milestones, budget, notes
+) VALUES (
+    'Edificio Test', 'adaptive_reuse', 'Centro, Monterrey', 'Monterrey', 'operating', 5,
+    '2022-01', '2023-06',
+    5000000, 9000000, '2026-04',
+    'https://refigan.mx', 25.6694, -100.3098,
+    '{"2022-01":"Adquisición","2023-06":"Primera renta"}',
+    '{"Adquisición":4000000,"Obra":1000000}',
+    'Proyecto de prueba'
+)
+"""
+
 SEED_PROSPECT = """
 INSERT INTO prospects (
     name, address, city, status, url,
@@ -29,6 +47,7 @@ def tmp_db(monkeypatch, tmp_path):
     with sqlite3.connect(db) as conn:
         conn.executescript(schema)
         conn.execute(SEED_PROSPECT)
+        conn.execute(SEED_PROJECT)
     import api.db
     monkeypatch.setattr(api.db, "DB_PATH", db)
     return db
@@ -117,3 +136,75 @@ def test_post_creates_new_prospect(client):
     assert "id" in data
     assert "score" in data
     assert "issues" in data
+
+
+# ── Projects ──────────────────────────────────────────────────────────────────
+
+def test_get_projects_returns_list(client):
+    r = client.get("/api/projects")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+
+
+def test_project_has_required_fields(client):
+    r = client.get("/api/projects")
+    p = r.json()[0]
+    for field in [
+        "id", "name", "type", "totalInvestment", "currentValuation",
+        "unrealizedGain", "unrealizedGainPct", "holdMonthsActual",
+        "milestones", "budget",
+    ]:
+        assert field in p, f"Missing field: {field}"
+
+
+def test_project_milestones_parsed_as_dict(client):
+    r = client.get("/api/projects")
+    p = r.json()[0]
+    assert isinstance(p["milestones"], dict), "milestones should be a dict, not a string"
+
+
+def test_project_budget_parsed_as_dict(client):
+    r = client.get("/api/projects")
+    p = r.json()[0]
+    assert isinstance(p["budget"], dict), "budget should be a dict, not a string"
+
+
+def test_get_single_project(client):
+    r = client.get("/api/projects/1")
+    assert r.status_code == 200
+    p = r.json()
+    assert p["id"] == 1
+
+
+def test_get_missing_project_returns_404(client):
+    r = client.get("/api/projects/99999")
+    assert r.status_code == 404
+
+
+def test_patch_project_updates_field(client):
+    r = client.patch("/api/projects/1", json={"name": "Patched"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["name"] == "Patched"
+
+
+def test_post_creates_new_project(client):
+    r = client.post("/api/projects", json={
+        "name": "Nuevo Proyecto",
+        "type": "ground_up",
+        "address": "Av. Constitución 100",
+        "city": "Monterrey",
+        "status": "construction",
+        "totalUnits": 10,
+        "acquisitionDate": "2025-01",
+        "firstRentDate": "2026-06",
+        "totalInvestment": 8000000,
+        "currentValuation": 8000000,
+        "valuationDate": "2026-01",
+    })
+    assert r.status_code == 201
+    data = r.json()
+    assert data["name"] == "Nuevo Proyecto"
+    assert "id" in data
