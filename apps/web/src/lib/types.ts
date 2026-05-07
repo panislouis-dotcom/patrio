@@ -139,9 +139,18 @@ export interface TemplateNode {
   createdAt: string
 }
 
+export interface InstanceFile {
+  id: number
+  instanceId: number
+  filePath: string
+  fileName: string
+  contentType: string
+  uploadedAt: string
+}
+
 export interface ProcessInstance {
   id: number
-  templateId: number
+  templateId: number | null
   templateName: string | null
   projectId: number | null
   projectName: string | null

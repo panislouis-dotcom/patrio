@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, NodeFile, NodeComment, NodeDetail } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail } from './types'
 
 const BASE = 'http://localhost:8000'
 
@@ -220,7 +220,7 @@ export async function fetchInstances(projectId?: number): Promise<ProcessInstanc
 export async function createInstance(data: {
   name: string
   startDate: string
-  templateId: number
+  templateId?: number | null
   projectId?: number | null
   ownerId?: number | null
   frequencyDays?: number | null
@@ -256,10 +256,28 @@ export async function updateInstance(iid: number, data: Partial<{
   return res.json()
 }
 
-export async function fetchInstanceDetail(iid: number): Promise<InstanceDetail> {
+export async function fetchInstanceDetail(iid: number): Promise<InstanceDetail & { files: InstanceFile[] }> {
   const res = await fetch(`${BASE}/api/process/instances/${iid}`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
+}
+
+// ─── Instance files ───────────────────────────────────────────────────────────
+
+export async function fetchInstanceFiles(iid: number): Promise<InstanceFile[]> {
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/files`)
+  return res.json()
+}
+
+export async function uploadInstanceFile(iid: number, file: File): Promise<InstanceFile> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/files`, { method: 'POST', body: form })
+  return res.json()
+}
+
+export async function deleteInstanceFile(fid: number): Promise<void> {
+  await fetch(`${BASE}/api/process/instance-files/${fid}`, { method: 'DELETE' })
 }
 
 // ─── Node states ──────────────────────────────────

@@ -59,12 +59,12 @@ export function ProcesoInstanceList() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!newName.trim() || !newTemplateId) return
+    if (!newName.trim()) return
     setCreating(true)
     try {
       const inst = await createInstance({
         name: newName.trim(),
-        templateId: Number(newTemplateId),
+        templateId: newTemplateId ? Number(newTemplateId) : null,
         projectId: newProjectId ? Number(newProjectId) : null,
         ownerId: newOwnerId ? Number(newOwnerId) : null,
         startDate: newStartDate,
@@ -146,7 +146,7 @@ export function ProcesoInstanceList() {
             style={{ ...inputStyle, minWidth: '180px' }}
           />
           <select value={newTemplateId} onChange={e => setNewTemplateId(e.target.value)} style={inputStyle}>
-            <option value="">— Selecciona proceso</option>
+            <option value="">Sin proceso</option>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} style={inputStyle}>
@@ -179,9 +179,9 @@ export function ProcesoInstanceList() {
           />
           <button
             type="submit"
-            disabled={creating || !newName.trim() || !newTemplateId}
+            disabled={creating || !newName.trim()}
             style={{
-              background: (creating || !newName.trim() || !newTemplateId) ? colors.border : colors.primary,
+              background: (creating || !newName.trim()) ? colors.border : colors.primary,
               border: 'none',
               color: colors.neutral,
               cursor: creating ? 'not-allowed' : 'pointer',
