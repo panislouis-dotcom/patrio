@@ -7,7 +7,15 @@ from api.db import (
     get_prospects, get_prospect, update_prospect, create_prospect,
     get_projects, get_project, update_project, create_project,
     get_signals, create_signal, dismiss_signal, import_signal,
+    get_team_members, get_team_member, create_team_member, update_team_member, delete_team_member,
 )
+from api.process_db import (
+    get_templates, get_template, create_template, update_template, delete_template,
+    get_template_nodes, get_node, create_node, update_node, delete_node,
+    get_instances, get_instance, create_instance, update_instance,
+    upsert_node_state, get_instance_states,
+)
+from api.gantt import compute_gantt
 from api.checks import run_checks
 from scraper import mercadolibre, pincali, inmuebles24, doorvel, nuroa
 
@@ -16,7 +24,7 @@ app = FastAPI(title="Refigan API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
-    allow_methods=["GET", "POST", "PATCH"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -103,6 +111,65 @@ class ProjectCreate(BaseModel):
     milestones: dict = Field(default_factory=dict)
     budget: dict = Field(default_factory=dict)
     notes: str = "-"
+
+
+class TeamMemberCreate(BaseModel):
+    name: str
+    role: str
+    managerId: Optional[int] = None
+    notes: str = ""
+
+
+class TeamMemberUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    managerId: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class TemplateCreate(BaseModel):
+    name: str
+    description: str = ""
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+class NodeCreate(BaseModel):
+    name: str
+    description: str = ""
+    sortOrder: int = 0
+    parentId: Optional[int] = None
+    dependsOnId: Optional[int] = None
+    durationDays: Optional[int] = None
+
+class NodeUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    sortOrder: Optional[int] = None
+    dependsOnId: Optional[int] = None
+    durationDays: Optional[int] = None
+
+class InstanceCreate(BaseModel):
+    name: str
+    templateId: int
+    startDate: str
+    projectId: Optional[int] = None
+    notes: str = ""
+    status: str = "active"
+
+class InstanceUpdate(BaseModel):
+    name: Optional[str] = None
+    startDate: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+class NodeStateUpdate(BaseModel):
+    status: Optional[str] = None
+    assigneeId: Optional[int] = None
+    actualStart: Optional[str] = None
+    actualEnd: Optional[str] = None
+    notes: Optional[str] = None
 
 
 def _with_checks(p: dict) -> dict:
@@ -242,3 +309,114 @@ def import_signal_route(signal_id: int):
     if signal is None:
         raise HTTPException(status_code=404, detail="Signal not found")
     return {"signal": signal, "prospect": prospect}
+
+
+@app.get("/api/team")
+def list_team():
+    return get_team_members()
+
+
+@app.post("/api/team", status_code=201)
+def post_team_member(body: TeamMemberCreate):
+    return create_team_member(body.model_dump(exclude_none=False))
+
+
+@app.patch("/api/team/{member_id}")
+def patch_team_member(member_id: int, body: TeamMemberUpdate):
+    payload = body.model_dump(exclude_none=True)
+    updated = update_team_member(member_id, payload)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    return updated
+
+
+@app.delete("/api/team/{member_id}", status_code=204)
+def delete_team_member_route(member_id: int):
+    member = get_team_member(member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    delete_team_member(member_id)
+
+
+# ─── Process templates ────────────────────────────
+
+@app.get("/api/process/templates")
+def list_templates():
+    return get_templates()
+
+@app.post("/api/process/templates", status_code=201)
+def post_template(body: TemplateCreate):
+    return create_template(body.model_dump())
+
+@app.patch("/api/process/templates/{tid}")
+def patch_template(tid: int, body: TemplateUpdate):
+    updated = update_template(tid, body.model_dump(exclude_none=True))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return updated
+
+@app.delete("/api/process/templates/{tid}", status_code=204)
+def delete_template_route(tid: int):
+    t = get_template(tid)
+    if t is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    delete_template(tid)
+
+# ─── Template nodes ───────────────────────────────
+
+@app.get("/api/process/templates/{tid}/nodes")
+def list_template_nodes(tid: int):
+    return get_template_nodes(tid)
+
+@app.post("/api/process/templates/{tid}/nodes", status_code=201)
+def post_node(tid: int, body: NodeCreate):
+    data = body.model_dump()
+    data["templateId"] = tid
+    return create_node(data)
+
+@app.patch("/api/process/nodes/{nid}")
+def patch_node(nid: int, body: NodeUpdate):
+    updated = update_node(nid, body.model_dump(exclude_none=True))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return updated
+
+@app.delete("/api/process/nodes/{nid}", status_code=204)
+def delete_node_route(nid: int):
+    n = get_node(nid)
+    if n is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+    delete_node(nid)
+
+# ─── Process instances ────────────────────────────
+
+@app.get("/api/process/instances")
+def list_instances(project_id: Optional[int] = None):
+    return get_instances(project_id=project_id)
+
+@app.post("/api/process/instances", status_code=201)
+def post_instance(body: InstanceCreate):
+    return create_instance(body.model_dump())
+
+@app.patch("/api/process/instances/{iid}")
+def patch_instance(iid: int, body: InstanceUpdate):
+    updated = update_instance(iid, body.model_dump(exclude_none=True))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    return updated
+
+@app.get("/api/process/instances/{iid}")
+def get_instance_detail(iid: int):
+    instance = get_instance(iid)
+    if instance is None:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    nodes = get_template_nodes(instance["templateId"])
+    compute_gantt(nodes)
+    states = get_instance_states(iid)
+    return {"instance": instance, "nodes": nodes, "states": states}
+
+# ─── Node states ──────────────────────────────────
+
+@app.patch("/api/process/instances/{iid}/nodes/{nid}/state")
+def patch_node_state(iid: int, nid: int, body: NodeStateUpdate):
+    return upsert_node_state(iid, nid, body.model_dump(exclude_none=True))
