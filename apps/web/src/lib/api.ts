@@ -220,14 +220,12 @@ export async function fetchInstances(projectId?: number): Promise<ProcessInstanc
 export async function createInstance(data: {
   name: string
   startDate: string
-  taskType?: string
-  templateId?: number | null
+  templateId: number
   projectId?: number | null
   ownerId?: number | null
   frequencyDays?: number | null
   dueDate?: string | null
   notes?: string
-  status?: string
 }): Promise<ProcessInstance> {
   const res = await fetch(`${BASE}/api/process/instances`, {
     method: 'POST',
@@ -294,12 +292,10 @@ export async function fetchNodeFiles(nid: number, instanceId?: number): Promise<
 export async function uploadNodeFile(
   nid: number,
   file: File,
-  fileType: 'reference' | 'evidence',
   instanceId?: number,
 ): Promise<NodeFile> {
   const form = new FormData()
   form.append('file', file)
-  form.append('file_type', fileType)
   if (instanceId != null) form.append('instance_id', String(instanceId))
   const res = await fetch(`${BASE}/api/process/nodes/${nid}/files`, { method: 'POST', body: form })
   if (!res.ok) throw new Error('Upload failed')

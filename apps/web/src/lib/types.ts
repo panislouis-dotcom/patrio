@@ -83,6 +83,7 @@ export interface Project {
   unrealizedGain: number
   unrealizedGainPct: number
   holdMonthsActual: number
+  prospectId: number | null
 }
 
 export type RawProjectFields = Pick<Project,
@@ -140,7 +141,7 @@ export interface TemplateNode {
 
 export interface ProcessInstance {
   id: number
-  templateId: number | null
+  templateId: number
   templateName: string | null
   projectId: number | null
   projectName: string | null
