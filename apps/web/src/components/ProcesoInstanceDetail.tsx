@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchInstanceDetail, updateNodeState, fetchTeam } from '../lib/api'
+import { fetchInstanceDetail, updateNodeState, fetchTeam, updateInstance } from '../lib/api'
 import type { InstanceDetail, GanttNode, NodeState, TeamMember } from '../lib/types'
 import { GanttChart } from './GanttChart'
 import { colors, fonts } from '../lib/theme'
@@ -19,6 +19,8 @@ export function ProcesoInstanceDetail() {
   const [states, setStates] = useState<NodeState[]>([])
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+  const [localOwnerId, setLocalOwnerId] = useState<number | null>(null)
+  const [nextInstanceDate, setNextInstanceDate] = useState<string | null>(null)
 
   const toggleCollapse = (id: number) =>
     setCollapsed(prev => {
@@ -32,6 +34,7 @@ export function ProcesoInstanceDetail() {
       setDetail(d)
       setStates(d.states)
       setTeam(t)
+      setLocalOwnerId(d.instance.ownerId ?? null)
       setLoading(false)
     })
   }, [instanceId])
@@ -79,6 +82,11 @@ export function ProcesoInstanceDetail() {
     detail ? computeDepths(detail.nodes) : new Map<number, number>(),
     [detail?.nodes]
   )
+
+  async function handleOwnerChange(ownerId: number | null) {
+    setLocalOwnerId(ownerId)
+    await updateInstance(instanceId, { ownerId })
+  }
 
   async function handleStateChange(nodeId: number, field: string, value: string | number | null) {
     const allNodes = detail?.nodes ?? []
@@ -155,146 +163,200 @@ export function ProcesoInstanceDetail() {
             </>
           )}
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+          <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.08em' }}>DUEÑO</span>
+          <select
+            value={localOwnerId ?? ''}
+            onChange={e => handleOwnerChange(e.target.value ? Number(e.target.value) : null)}
+            style={{ background: 'transparent', border: 'none', color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', outline: 'none', cursor: 'pointer' }}
+          >
+            <option value="">— Sin asignar</option>
+            {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
       </div>
 
-      {/* Gantt */}
-      <div>
-        <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
-          CRONOGRAMA
+      {nextInstanceDate && (
+        <div style={{ background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderLeft: `3px solid ${colors.tertiary}`, padding: '10px 16px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
+          ✓ Siguiente instancia periódica creada — inicio: <strong>{nextInstanceDate}</strong>
         </div>
-        <GanttChart nodes={nodes} totalDays={totalDays} states={states} />
-      </div>
+      )}
 
-      {/* Estado table */}
-      <div>
-        <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
-          ESTADO DE TAREAS
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {['TAREA', 'ESTADO', 'RESPONSABLE', 'INICIO REAL', 'FIN REAL'].map(h => (
-                <th key={h} style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'left', letterSpacing: '0.1em' }}>
-                  {h}
-                </th>
+      {instance.templateId === null ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Status */}
+          <div>
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>ESTADO</div>
+            <select
+              value={instance.status}
+              onChange={async e => {
+                const { instance: updated, nextInstance } = await updateInstance(instanceId, { status: e.target.value })
+                setDetail(prev => prev ? { ...prev, instance: updated } : prev)
+                if (nextInstance) setNextInstanceDate(nextInstance.startDate)
+              }}
+              style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 6px', outline: 'none' }}
+            >
+              {['active', 'completed', 'skipped'].map(s => (
+                <option key={s} value={s}>{s === 'active' ? 'ACTIVA' : s === 'completed' ? 'COMPLETADA' : 'OMITIDA'}</option>
               ))}
-              <th style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '10px', color: colors.secondary }}>DÍ/INST</th>
-            </tr>
-          </thead>
-          <tbody>
-            {nodes.filter(n => !isAncestorCollapsed(n, nodes)).map(n => {
-              const s = getState(n.id)
-              const currentStatus = s?.status ?? 'pending'
-              const isRoot = n.parentId === null
-              const depth = depths.get(n.id) ?? 0
-              const indent = depth * 16
-              return (
-                <tr key={n.id} style={{
-                  borderBottom: `1px solid ${colors.border}`,
-                  background: isRoot ? colors.surfaceAlt : 'transparent',
-                  borderLeft: isRoot ? `2px solid ${colors.primary}` : '2px solid transparent',
-                }}>
-                    <td style={{ padding: '5px 10px', paddingLeft: `${10 + indent}px` }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {hasChildren(n.id) && (
-                          <button
-                            onClick={() => toggleCollapse(n.id)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: colors.secondary,
-                              cursor: 'pointer',
-                              padding: '0 2px',
-                              fontSize: '10px',
-                              fontFamily: fonts.label,
-                            }}
-                          >
-                            {collapsed.has(n.id) ? '▶' : '▼'}
-                          </button>
-                        )}
-                        {!hasChildren(n.id) && <span style={{ width: 16 }} />}
-                        <span
-                          onClick={() => navigate(`/procesos/tareas/${detail.instance.id}/nodos/${n.id}`)}
-                          style={{ cursor: 'pointer', color: colors.neutral, textDecoration: 'underline dotted' }}
-                        >
-                          {n.name}
-                        </span>
-                        {hasChildren(n.id) && (
-                          <span style={{ fontSize: '10px', color: colors.secondary, marginLeft: 4 }}>
-                            {getProgress(n.id, nodes)}%
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <select
-                        value={currentStatus}
-                        onChange={e => handleStateChange(n.id, 'status', e.target.value)}
-                        style={{ ...inputStyle, color: PROCESS_STATUS_COLOR[currentStatus] ?? colors.neutral }}
-                      >
-                        {STATUS_OPTIONS.map(opt => (
-                          <option key={opt} value={opt}>{PROCESS_STATUS_LABEL[opt]}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <select
-                        value={s?.assigneeId ?? ''}
-                        onChange={e => handleStateChange(n.id, 'assigneeId', e.target.value ? Number(e.target.value) : null)}
-                        style={inputStyle}
-                      >
-                        <option value="">— Sin asignar</option>
-                        {team.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <input
-                        type="date"
-                        value={s?.actualStart ?? ''}
-                        onChange={e => handleStateChange(n.id, 'actualStart', e.target.value || null)}
-                        style={inputStyle}
-                      />
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <input
-                        type="date"
-                        value={s?.actualEnd ?? ''}
-                        onChange={e => handleStateChange(n.id, 'actualEnd', e.target.value || null)}
-                        style={inputStyle}
-                      />
-                    </td>
-                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>
-                      {!hasChildren(n.id) && (
-                        <input
-                          type="number"
-                          min={1}
-                          placeholder={n.durationDays != null ? String(n.durationDays) : '?'}
-                          value={s?.durationOverrideDays ?? ''}
-                          onChange={e => {
-                            const val = e.target.value === '' ? null : Number(e.target.value)
-                            handleStateChange(n.id, 'durationOverrideDays', val)
-                          }}
-                          style={{
-                            width: 48,
-                            background: 'transparent',
-                            border: `1px solid ${colors.border}`,
-                            color: colors.neutral,
-                            fontFamily: fonts.label,
-                            fontSize: '11px',
-                            padding: '2px 4px',
-                            textAlign: 'right',
-                          }}
-                        />
-                      )}
-                    </td>
+            </select>
+          </div>
+          {instance.dueDate && (
+            <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>
+              Fecha límite: <span style={{ color: colors.neutral }}>{instance.dueDate}</span>
+            </div>
+          )}
+          <div>
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>NOTAS</div>
+            <textarea
+              defaultValue={instance.notes}
+              onBlur={async e => { await updateInstance(instanceId, { notes: e.target.value }) }}
+              style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '6px 8px', outline: 'none', width: '100%', minHeight: '80px', resize: 'vertical', boxSizing: 'border-box' }}
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Gantt */}
+          <div>
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
+              CRONOGRAMA
+            </div>
+            <GanttChart nodes={nodes} totalDays={totalDays} states={states} />
+          </div>
+
+          {/* Estado table */}
+          <div>
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
+              ESTADO DE TAREAS
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  {['TAREA', 'ESTADO', 'RESPONSABLE', 'INICIO REAL', 'FIN REAL'].map(h => (
+                    <th key={h} style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'left', letterSpacing: '0.1em' }}>
+                      {h}
+                    </th>
+                  ))}
+                  <th style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '10px', color: colors.secondary }}>DÍ/INST</th>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {nodes.filter(n => !isAncestorCollapsed(n, nodes)).map(n => {
+                  const s = getState(n.id)
+                  const currentStatus = s?.status ?? 'pending'
+                  const isRoot = n.parentId === null
+                  const depth = depths.get(n.id) ?? 0
+                  const indent = depth * 16
+                  return (
+                    <tr key={n.id} style={{
+                      borderBottom: `1px solid ${colors.border}`,
+                      background: isRoot ? colors.surfaceAlt : 'transparent',
+                      borderLeft: isRoot ? `2px solid ${colors.primary}` : '2px solid transparent',
+                    }}>
+                        <td style={{ padding: '5px 10px', paddingLeft: `${10 + indent}px` }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {hasChildren(n.id) && (
+                              <button
+                                onClick={() => toggleCollapse(n.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: colors.secondary,
+                                  cursor: 'pointer',
+                                  padding: '0 2px',
+                                  fontSize: '10px',
+                                  fontFamily: fonts.label,
+                                }}
+                              >
+                                {collapsed.has(n.id) ? '▶' : '▼'}
+                              </button>
+                            )}
+                            {!hasChildren(n.id) && <span style={{ width: 16 }} />}
+                            <span
+                              onClick={() => navigate(`/procesos/tareas/${detail.instance.id}/nodos/${n.id}`)}
+                              style={{ cursor: 'pointer', color: colors.neutral, textDecoration: 'underline dotted' }}
+                            >
+                              {n.name}
+                            </span>
+                            {hasChildren(n.id) && (
+                              <span style={{ fontSize: '10px', color: colors.secondary, marginLeft: 4 }}>
+                                {getProgress(n.id, nodes)}%
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '6px 10px' }}>
+                          <select
+                            value={currentStatus}
+                            onChange={e => handleStateChange(n.id, 'status', e.target.value)}
+                            style={{ ...inputStyle, color: PROCESS_STATUS_COLOR[currentStatus] ?? colors.neutral }}
+                          >
+                            {STATUS_OPTIONS.map(opt => (
+                              <option key={opt} value={opt}>{PROCESS_STATUS_LABEL[opt]}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: '6px 10px' }}>
+                          <select
+                            value={s?.assigneeId ?? ''}
+                            onChange={e => handleStateChange(n.id, 'assigneeId', e.target.value ? Number(e.target.value) : null)}
+                            style={inputStyle}
+                          >
+                            <option value="">— Sin asignar</option>
+                            {team.map(m => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: '6px 10px' }}>
+                          <input
+                            type="date"
+                            value={s?.actualStart ?? ''}
+                            onChange={e => handleStateChange(n.id, 'actualStart', e.target.value || null)}
+                            style={inputStyle}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 10px' }}>
+                          <input
+                            type="date"
+                            value={s?.actualEnd ?? ''}
+                            onChange={e => handleStateChange(n.id, 'actualEnd', e.target.value || null)}
+                            style={inputStyle}
+                          />
+                        </td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right' }}>
+                          {!hasChildren(n.id) && (
+                            <input
+                              type="number"
+                              min={1}
+                              placeholder={n.durationDays != null ? String(n.durationDays) : '?'}
+                              value={s?.durationOverrideDays ?? ''}
+                              onChange={e => {
+                                const val = e.target.value === '' ? null : Number(e.target.value)
+                                handleStateChange(n.id, 'durationOverrideDays', val)
+                              }}
+                              style={{
+                                width: 48,
+                                background: 'transparent',
+                                border: `1px solid ${colors.border}`,
+                                color: colors.neutral,
+                                fontFamily: fonts.label,
+                                fontSize: '11px',
+                                padding: '2px 4px',
+                                textAlign: 'right',
+                              }}
+                            />
+                          )}
+                        </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   )
 }
