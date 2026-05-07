@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS projects (
   url               TEXT NOT NULL CHECK (url != ''),
   latitude          REAL NOT NULL,
   longitude         REAL NOT NULL,
+  prospect_id       INTEGER REFERENCES prospects(id),
   -- JSON columns
   milestones        TEXT NOT NULL CHECK (milestones != ''),  -- {"2021-02":"Adquisición","2023-07":"Primera renta",...}
   budget            TEXT NOT NULL CHECK (budget != ''),      -- {"Adquisición edificio":3225000,"Mano de obra":1729740,...}
@@ -146,10 +147,9 @@ CREATE TABLE IF NOT EXISTS template_nodes (
 
 CREATE TABLE IF NOT EXISTS process_instances (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  template_id    INTEGER REFERENCES process_templates(id) ON DELETE CASCADE,
+  template_id    INTEGER NOT NULL REFERENCES process_templates(id) ON DELETE CASCADE,
   project_id     INTEGER REFERENCES projects(id),
   owner_id       INTEGER REFERENCES team_members(id),
-  task_type      TEXT NOT NULL DEFAULT 'one_time' CHECK (task_type IN ('proyecto', 'periodica', 'one_time')),
   name           TEXT NOT NULL CHECK (name != ''),
   start_date     TEXT NOT NULL,
   due_date       TEXT,
@@ -182,7 +182,6 @@ CREATE TABLE IF NOT EXISTS node_files (
   file_path        TEXT NOT NULL,
   file_name        TEXT NOT NULL,
   content_type     TEXT NOT NULL,
-  type             TEXT NOT NULL CHECK (type IN ('reference', 'evidence')),
   uploaded_at      TEXT DEFAULT (datetime('now'))
 );
 
