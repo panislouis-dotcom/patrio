@@ -159,6 +159,7 @@ export interface NodeState {
   actualEnd: string | null
   notes: string
   updatedAt: string
+  durationOverrideDays: number | null
 }
 
 export interface GanttNode extends TemplateNode {
@@ -171,4 +172,33 @@ export interface InstanceDetail {
   instance: ProcessInstance
   nodes: GanttNode[]
   states: NodeState[]
+}
+
+export interface NodeFile {
+  id: number
+  templateNodeId: number
+  instanceId: number | null
+  filePath: string
+  fileName: string
+  contentType: string
+  type: 'reference' | 'evidence'
+  uploadedAt: string
+}
+
+export interface NodeComment {
+  id: number
+  instanceId: number
+  templateNodeId: number
+  body: string
+  author: string
+  createdAt: string
+}
+
+export interface NodeDetail {
+  instance: ProcessInstance
+  node: TemplateNode
+  allNodes: GanttNode[]
+  states: NodeState[]
+  files: NodeFile[]
+  comments: NodeComment[]
 }

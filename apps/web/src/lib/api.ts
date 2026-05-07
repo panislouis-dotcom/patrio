@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, NodeFile, NodeComment, NodeDetail } from './types'
 
 const BASE = 'http://localhost:8000'
 
@@ -265,5 +265,70 @@ export async function updateNodeState(iid: number, nid: number, data: {
     body: JSON.stringify(data),
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+// ─── Node files ──────────────────────────────────────────────────────────────
+
+export async function fetchNodeFiles(nid: number, instanceId?: number): Promise<NodeFile[]> {
+  const qs = instanceId != null ? `?instance_id=${instanceId}` : ''
+  const res = await fetch(`${BASE}/api/process/nodes/${nid}/files${qs}`)
+  if (!res.ok) throw new Error('Failed to fetch files')
+  return res.json()
+}
+
+export async function uploadNodeFile(
+  nid: number,
+  file: File,
+  fileType: 'reference' | 'evidence',
+  instanceId?: number,
+): Promise<NodeFile> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('file_type', fileType)
+  if (instanceId != null) form.append('instance_id', String(instanceId))
+  const res = await fetch(`${BASE}/api/process/nodes/${nid}/files`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error('Upload failed')
+  return res.json()
+}
+
+export async function deleteNodeFile(fid: number): Promise<void> {
+  const res = await fetch(`${BASE}/api/process/files/${fid}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Delete failed')
+}
+
+// ─── Node comments ───────────────────────────────────────────────────────────
+
+export async function fetchNodeComments(iid: number, nid: number): Promise<NodeComment[]> {
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}/comments`)
+  if (!res.ok) throw new Error('Failed to fetch comments')
+  return res.json()
+}
+
+export async function createNodeComment(
+  iid: number,
+  nid: number,
+  body: string,
+  author: string,
+): Promise<NodeComment> {
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body, author }),
+  })
+  if (!res.ok) throw new Error('Failed to create comment')
+  return res.json()
+}
+
+export async function deleteNodeComment(cid: number): Promise<void> {
+  const res = await fetch(`${BASE}/api/process/comments/${cid}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Delete failed')
+}
+
+// ─── Node detail ─────────────────────────────────────────────────────────────
+
+export async function fetchNodeDetail(iid: number, nid: number): Promise<NodeDetail> {
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}`)
+  if (!res.ok) throw new Error('Failed to fetch node detail')
   return res.json()
 }
