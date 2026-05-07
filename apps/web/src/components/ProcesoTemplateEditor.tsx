@@ -4,7 +4,6 @@ import { fetchTemplatePreview, createNode, updateNode, deleteNode } from '../lib
 import type { ProcessTemplate, TemplateNode, GanttNode } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 
-// ─── Cycle detection helper ───────────────────────
 function wouldCreateCycle(candidateId: number, currentId: number, allNodes: TemplateNode[]): boolean {
   const visited = new Set<number>()
   let cursor: number | null = candidateId
@@ -17,15 +16,14 @@ function wouldCreateCycle(candidateId: number, currentId: number, allNodes: Temp
   return false
 }
 
-// ─── Add node form ────────────────────────────────
 function AddNodeForm({
-  templateId, parentId, sortOrder, siblingNodes, onCreated, onCancel,
+  templateId, parentId, sortOrder, siblingNodes, onDone, onCancel,
 }: {
   templateId: number
   parentId: number | null
   sortOrder: number
   siblingNodes: TemplateNode[]
-  onCreated: (n: TemplateNode) => void
+  onDone: () => void
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
@@ -38,16 +36,14 @@ function AddNodeForm({
     if (!name.trim()) return
     setSaving(true)
     try {
-      const n = await createNode(templateId, {
+      await createNode(templateId, {
         name: name.trim(),
         parentId,
         sortOrder,
         durationDays: durationDays !== '' ? Number(durationDays) : null,
         dependsOnId,
       })
-      onCreated(n)
-      setName('')
-      setDurationDays('')
+      onDone()
     } finally {
       setSaving(false)
     }
@@ -85,7 +81,6 @@ function AddNodeForm({
           value={dependsOnId ?? ''}
           onChange={e => setDependsOnId(e.target.value ? Number(e.target.value) : null)}
           style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 6px', outline: 'none' }}
-          title="Después de"
         >
           <option value="">Paralelo</option>
           {siblingNodes.map(s => (
@@ -111,18 +106,14 @@ function AddNodeForm({
   )
 }
 
-// ─── Tree node renderer ───────────────────────────
 function TreeNode({
-  node, nodes, templateId, depth,
-  onUpdated, onDeleted, onCreated,
+  node, nodes, templateId, depth, onRefresh,
 }: {
   node: TemplateNode
   nodes: TemplateNode[]
   templateId: number
   depth: number
-  onUpdated: (n: TemplateNode) => void
-  onDeleted: (id: number) => void
-  onCreated: (n: TemplateNode) => void
+  onRefresh: () => void
 }) {
   const children = nodes.filter(n => n.parentId === node.id).sort((a, b) => a.sortOrder - b.sortOrder)
   const isLeaf = children.length === 0
@@ -141,13 +132,13 @@ function TreeNode({
   async function saveEdit() {
     setSaving(true)
     try {
-      const updated = await updateNode(node.id, {
+      await updateNode(node.id, {
         name: editName.trim(),
         durationDays: isLeaf ? (editDur !== '' ? Number(editDur) : null) : node.durationDays,
         dependsOnId: editDepOn,
       })
-      onUpdated(updated)
       setEditing(false)
+      onRefresh()
     } finally {
       setSaving(false)
     }
@@ -157,7 +148,7 @@ function TreeNode({
     setDeleting(true)
     try {
       await deleteNode(node.id)
-      onDeleted(node.id)
+      onRefresh()
     } finally {
       setDeleting(false)
     }
@@ -167,7 +158,6 @@ function TreeNode({
 
   return (
     <div>
-      {/* Node row */}
       <div style={{
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
@@ -197,7 +187,7 @@ function TreeNode({
                 onChange={e => setEditDepOn(e.target.value ? Number(e.target.value) : null)}
                 style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 6px', outline: 'none' }}
               >
-                <option value="">Sin dependencia</option>
+                <option value="">Paralelo</option>
                 {validDeps.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             )}
@@ -225,11 +215,11 @@ function TreeNode({
                 ? `→ ${nodes.find(n => n.id === node.dependsOnId)?.name ?? '?'}`
                 : '‖'}
             </span>
-            {isLeaf ? (
+            {isLeaf && (
               <span style={{ fontFamily: fonts.label, fontSize: '9px', color: isDefinir ? colors.tertiary : colors.secondary }}>
                 {isDefinir ? '?' : `${node.durationDays}d`}
               </span>
-            ) : null}
+            )}
             <div style={{ display: 'flex', gap: '4px' }}>
               <button onClick={() => setAddingChild(true)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
                 + HIJO
@@ -254,13 +244,12 @@ function TreeNode({
               parentId={node.id}
               sortOrder={children.length}
               siblingNodes={children}
-              onCreated={n => { onCreated(n); setAddingChild(false) }}
+              onDone={() => { setAddingChild(false); onRefresh() }}
               onCancel={() => setAddingChild(false)}
             />
           </div>
         )}
       </div>
-      {/* Children */}
       {children.map(child => (
         <TreeNode
           key={child.id}
@@ -268,42 +257,39 @@ function TreeNode({
           nodes={nodes}
           templateId={templateId}
           depth={depth + 1}
-          onUpdated={onUpdated}
-          onDeleted={onDeleted}
-          onCreated={onCreated}
+          onRefresh={onRefresh}
         />
       ))}
     </div>
   )
 }
 
-// ─── Main component ───────────────────────────────
 export function ProcesoTemplateEditor() {
   const { tid } = useParams<{ tid: string }>()
   const navigate = useNavigate()
   const templateId = Number(tid)
 
   const [template, setTemplate] = useState<ProcessTemplate | null>(null)
-  const [nodes, setNodes] = useState<TemplateNode[]>([])
-  const [ganttNodes, setGanttNodes] = useState<GanttNode[]>([])
+  const [nodes, setNodes] = useState<GanttNode[]>([])
   const [loading, setLoading] = useState(true)
   const [addingRoot, setAddingRoot] = useState(false)
+
+  const refresh = useCallback(() => {
+    fetchTemplatePreview(templateId).then(({ template: t, nodes: n }) => {
+      setTemplate(t)
+      setNodes(n)
+    })
+  }, [templateId])
 
   useEffect(() => {
     fetchTemplatePreview(templateId).then(({ template: t, nodes: n }) => {
       setTemplate(t)
       setNodes(n)
-      setGanttNodes(n)
       setLoading(false)
     })
   }, [templateId])
 
-  const refreshPreview = useCallback(() => {
-    fetchTemplatePreview(templateId).then(({ nodes: n }) => setGanttNodes(n))
-  }, [templateId])
-
-  const totalDays = Math.max(1, ...ganttNodes.map(n => n.ganttStart + n.ganttDuration))
-
+  const totalDays = Math.max(1, ...nodes.map(n => n.ganttStart + n.ganttDuration))
   const roots = nodes.filter(n => n.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder)
 
   if (loading) {
@@ -318,7 +304,6 @@ export function ProcesoTemplateEditor() {
     <div style={{ display: 'flex', height: '100%' }}>
       {/* Left: tree editor */}
       <div style={{ width: '420px', flexShrink: 0, borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Header */}
         <div style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             onClick={() => navigate('/procesos/plantillas')}
@@ -329,7 +314,6 @@ export function ProcesoTemplateEditor() {
           <span style={{ color: colors.border }}>·</span>
           <span style={{ fontFamily: fonts.sans, fontSize: '13px', color: colors.neutral }}>{template?.name ?? '…'}</span>
         </div>
-        {/* Tree */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {roots.map(root => (
             <TreeNode
@@ -338,9 +322,7 @@ export function ProcesoTemplateEditor() {
               nodes={nodes}
               templateId={templateId}
               depth={0}
-              onUpdated={updated => { setNodes(prev => prev.map(n => n.id === updated.id ? updated : n)); refreshPreview() }}
-              onDeleted={id => { setNodes(prev => prev.filter(n => n.id !== id)); refreshPreview() }}
-              onCreated={n => { setNodes(prev => [...prev, n]); refreshPreview() }}
+              onRefresh={refresh}
             />
           ))}
           {addingRoot && (
@@ -350,13 +332,12 @@ export function ProcesoTemplateEditor() {
                 parentId={null}
                 sortOrder={roots.length}
                 siblingNodes={roots}
-                onCreated={n => { setNodes(prev => [...prev, n]); setAddingRoot(false); refreshPreview() }}
+                onDone={() => { setAddingRoot(false); refresh() }}
                 onCancel={() => setAddingRoot(false)}
               />
             </div>
           )}
         </div>
-        {/* Footer */}
         <div style={{ padding: '10px 16px', borderTop: `1px solid ${colors.border}` }}>
           <button
             onClick={() => setAddingRoot(true)}
@@ -372,7 +353,7 @@ export function ProcesoTemplateEditor() {
         <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '16px' }}>
           VISTA PREVIA DEL PROCESO (HIPOTÉTICA)
         </div>
-        {ganttNodes.length === 0 ? (
+        {nodes.length === 0 ? (
           <div style={{ color: colors.secondary, fontFamily: fonts.sans, fontSize: '11px' }}>
             Agrega nodos para ver la vista previa.
           </div>
@@ -380,36 +361,36 @@ export function ProcesoTemplateEditor() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {(() => {
               const depthMap: Record<number, number> = {}
-              for (const n of ganttNodes) {
+              for (const n of nodes) {
                 depthMap[n.id] = n.parentId === null ? 0 : (depthMap[n.parentId] ?? 0) + 1
               }
-              return ganttNodes.map(n => {
-              const leftPct = totalDays > 0 ? (n.ganttStart / totalDays) * 100 : 0
-              const widthPct = totalDays > 0 ? Math.max(0.5, (n.ganttDuration / totalDays) * 100) : 0.5
-              const depth = depthMap[n.id] ?? 0
-              return (
-                <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: `${depth * 12}px`, flexShrink: 0 }} />
-                  <div style={{ width: '140px', flexShrink: 0, fontFamily: fonts.sans, fontSize: '10px', color: n.isDefinir ? colors.tertiary : colors.neutral, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {n.name}
+              return nodes.map(n => {
+                const leftPct = totalDays > 0 ? (n.ganttStart / totalDays) * 100 : 0
+                const widthPct = totalDays > 0 ? Math.max(0.5, (n.ganttDuration / totalDays) * 100) : 0.5
+                const depth = depthMap[n.id] ?? 0
+                return (
+                  <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: `${depth * 12}px`, flexShrink: 0 }} />
+                    <div style={{ width: '140px', flexShrink: 0, fontFamily: fonts.sans, fontSize: '10px', color: n.isDefinir ? colors.tertiary : colors.neutral, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {n.name}
+                    </div>
+                    <div style={{ flex: 1, position: 'relative', height: '16px', background: colors.surfaceAlt, border: `1px solid ${colors.border}` }}>
+                      <div style={{
+                        position: 'absolute',
+                        left: `${leftPct}%`,
+                        width: `${widthPct}%`,
+                        height: '100%',
+                        background: n.isDefinir ? 'transparent' : (n.parentId === null ? colors.primary : colors.secondary),
+                        border: n.isDefinir ? `1px dashed ${colors.tertiary}` : 'none',
+                        opacity: 0.7,
+                      }} />
+                    </div>
+                    <div style={{ width: '40px', flexShrink: 0, fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>
+                      {n.isDefinir ? '?' : `${n.ganttDuration}d`}
+                    </div>
                   </div>
-                  <div style={{ flex: 1, position: 'relative', height: '16px', background: colors.surfaceAlt, border: `1px solid ${colors.border}` }}>
-                    <div style={{
-                      position: 'absolute',
-                      left: `${leftPct}%`,
-                      width: `${widthPct}%`,
-                      height: '100%',
-                      background: n.isDefinir ? 'transparent' : (n.parentId === null ? colors.primary : colors.secondary),
-                      border: n.isDefinir ? `1px dashed ${colors.tertiary}` : 'none',
-                      opacity: 0.7,
-                    }} />
-                  </div>
-                  <div style={{ width: '40px', flexShrink: 0, fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>
-                    {n.isDefinir ? '?' : `${n.ganttDuration}d`}
-                  </div>
-                </div>
-              )
-            })
+                )
+              })
             })()}
           </div>
         )}

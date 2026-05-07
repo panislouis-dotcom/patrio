@@ -110,7 +110,7 @@ def post_node(tid: int, body: NodeCreate):
 
 @router.patch("/api/process/nodes/{nid}")
 def patch_node(nid: int, body: NodeUpdate):
-    updated = update_node(nid, body.model_dump(exclude_none=True))
+    updated = update_node(nid, body.model_dump(exclude_unset=True))
     if updated is None:
         raise HTTPException(status_code=404, detail="Node not found")
     return updated
@@ -143,7 +143,7 @@ def post_instance(body: InstanceCreate):
 @router.patch("/api/process/instances/{iid}")
 def patch_instance(iid: int, body: InstanceUpdate):
     from datetime import datetime
-    data = body.model_dump(exclude_none=True)
+    data = body.model_dump(exclude_unset=True)
 
     # Record completion time for periodic auto-scheduling
     if data.get("status") == "completed":
@@ -208,7 +208,7 @@ def patch_node_state(iid: int, nid: int, body: NodeStateUpdate):
     node = get_node(nid)
     if node is None or node["templateId"] != instance["templateId"]:
         raise HTTPException(status_code=404, detail="Node not found in this instance's template")
-    return upsert_node_state(iid, nid, body.model_dump(exclude_none=True))
+    return upsert_node_state(iid, nid, body.model_dump(exclude_unset=True))
 
 # ─── Node files ───────────────────────────────────
 
