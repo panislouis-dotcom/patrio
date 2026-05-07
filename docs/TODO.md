@@ -6,7 +6,6 @@
 - inversiones* relacionados a un client y a un proyecto
     - interes, compsomiso, inversion.
     - como diferencias prospectos de propiedades y de inversionistas
-- mejorar directory strucutre para long term mono repo
 - estados de cuenta? PNL? Finanzas?
     - como seria el cierre del mes?
 - reportes
