@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
-SCHEMA_PATH = Path(__file__).parent.parent.parent / "data" / "schema.sql"
+SCHEMA_PATH = Path(__file__).parent.parent.parent.parent / "data" / "schema.sql"
 
 
 @pytest.fixture

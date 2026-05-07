@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
 
-SCHEMA_PATH = Path(__file__).parent.parent.parent / "data" / "schema.sql"
+SCHEMA_PATH = Path(__file__).parent.parent.parent.parent / "data" / "schema.sql"
 
 SEED_PROJECT = """
 INSERT INTO projects (
