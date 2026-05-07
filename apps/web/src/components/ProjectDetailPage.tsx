@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
 import { fetchProject, updateProject } from '../lib/api'
 import type { Project } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { fieldInput } from '../lib/styles'
 import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL } from '../lib/status'
 
 function fmt(n: number): string {
@@ -77,18 +78,6 @@ export function ProjectDetailPage() {
   const lat = project.latitude as number | null
   const lng = project.longitude as number | null
   const hasMap = lat && lng
-
-  const fieldInput: React.CSSProperties = {
-    background: 'transparent',
-    border: 'none',
-    borderBottom: `1px solid ${colors.border}`,
-    color: colors.neutral,
-    fontFamily: fonts.sans,
-    fontSize: '11px',
-    outline: 'none',
-    padding: '2px 0',
-    width: '100%',
-  }
 
   const divider = (label: string) => (
     <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, padding: '12px 0 6px', borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '4px' }}>
