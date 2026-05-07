@@ -388,6 +388,16 @@ def delete_node_route(nid: int):
         raise HTTPException(status_code=404, detail="Node not found")
     delete_node(nid)
 
+
+@app.get("/api/process/templates/{tid}/preview")
+def get_template_preview(tid: int):
+    template = get_template(tid)
+    if template is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    nodes = get_template_nodes(tid)
+    compute_gantt(nodes)
+    return {"template": template, "nodes": nodes}
+
 # ─── Process instances ────────────────────────────
 
 @app.get("/api/process/instances")

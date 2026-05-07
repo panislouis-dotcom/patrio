@@ -1,79 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchTemplates, fetchTemplateNodes, createNode, updateNode, deleteNode } from '../lib/api'
-import type { ProcessTemplate, TemplateNode } from '../lib/types'
+import { fetchTemplatePreview, createNode, updateNode, deleteNode } from '../lib/api'
+import type { ProcessTemplate, TemplateNode, GanttNode } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
-
-// ─── Gantt preview helper (Kahn's topological sort, mirrors backend api/gantt.py) ───
-function buildGanttPreview(nodes: TemplateNode[]): Array<TemplateNode & { ganttStart: number; ganttDuration: number; isDefinir: boolean; depth: number }> {
-  const childrenMap: Record<string, TemplateNode[]> = {}
-  for (const n of nodes) {
-    const key = n.parentId !== null ? String(n.parentId) : 'root'
-    if (!childrenMap[key]) childrenMap[key] = []
-    childrenMap[key].push(n)
-  }
-  for (const key in childrenMap) {
-    childrenMap[key].sort((a, b) => a.sortOrder - b.sortOrder)
-  }
-
-  const gStart: Record<number, number> = {}
-  const gDur: Record<number, number> = {}
-  const gDefinir: Record<number, boolean> = {}
-
-  function processGroup(siblings: TemplateNode[], parentStart: number): void {
-    if (siblings.length === 0) return
-    const sibIds = new Set(siblings.map(n => n.id))
-    const inDeg: Record<number, number> = {}
-    const deps: Record<number, number[]> = {}
-    for (const n of siblings) { inDeg[n.id] = 0; deps[n.id] = [] }
-    for (const n of siblings) {
-      if (n.dependsOnId !== null && n.dependsOnId !== undefined && sibIds.has(n.dependsOnId)) {
-        inDeg[n.id]++
-        deps[n.dependsOnId].push(n.id)
-      }
-    }
-    const idMap: Record<number, TemplateNode> = {}
-    for (const n of siblings) idMap[n.id] = n
-    const queue = siblings.filter(n => inDeg[n.id] === 0)
-    const topo: TemplateNode[] = []
-    while (queue.length) {
-      const node = queue.shift()!
-      topo.push(node)
-      for (const d of (deps[node.id] ?? [])) { if (--inDeg[d] === 0) queue.push(idMap[d]) }
-    }
-    const processed = new Set(topo.map(n => n.id))
-    for (const n of siblings) { if (!processed.has(n.id)) topo.push(n) }
-
-    const nodeEnd: Record<number, number> = {}
-    for (const node of topo) {
-      const dep = node.dependsOnId
-      gStart[node.id] = (dep !== null && dep !== undefined && nodeEnd[dep] !== undefined) ? nodeEnd[dep] : parentStart
-      const children = childrenMap[String(node.id)] ?? []
-      if (children.length > 0) {
-        processGroup(children, gStart[node.id])
-        const maxEnd = Math.max(...children.map(c => gStart[c.id] + gDur[c.id]))
-        gDur[node.id] = Math.max(0, maxEnd - gStart[node.id])
-        gDefinir[node.id] = false
-      } else {
-        gDefinir[node.id] = node.durationDays === null
-        gDur[node.id] = node.durationDays ?? 0
-      }
-      nodeEnd[node.id] = gStart[node.id] + gDur[node.id]
-    }
-  }
-
-  processGroup(childrenMap['root'] ?? [], 0)
-
-  const result: Array<TemplateNode & { ganttStart: number; ganttDuration: number; isDefinir: boolean; depth: number }> = []
-  function walk(list: TemplateNode[], depth: number): void {
-    for (const n of list) {
-      result.push({ ...n, ganttStart: gStart[n.id] ?? 0, ganttDuration: gDur[n.id] ?? 0, isDefinir: gDefinir[n.id] ?? false, depth })
-      walk(childrenMap[String(n.id)] ?? [], depth + 1)
-    }
-  }
-  walk(childrenMap['root'] ?? [], 0)
-  return result
-}
 
 // ─── Cycle detection helper ───────────────────────
 function wouldCreateCycle(candidateId: number, currentId: number, allNodes: TemplateNode[]): boolean {
@@ -345,21 +274,23 @@ export function ProcesoTemplateEditor() {
 
   const [template, setTemplate] = useState<ProcessTemplate | null>(null)
   const [nodes, setNodes] = useState<TemplateNode[]>([])
+  const [ganttNodes, setGanttNodes] = useState<GanttNode[]>([])
   const [loading, setLoading] = useState(true)
   const [addingRoot, setAddingRoot] = useState(false)
 
   useEffect(() => {
-    Promise.all([
-      fetchTemplates(),
-      fetchTemplateNodes(templateId),
-    ]).then(([templates, templateNodes]) => {
-      setTemplate(templates.find(t => t.id === templateId) ?? null)
-      setNodes(templateNodes)
+    fetchTemplatePreview(templateId).then(({ template: t, nodes: n }) => {
+      setTemplate(t)
+      setNodes(n)
+      setGanttNodes(n)
       setLoading(false)
     })
   }, [templateId])
 
-  const ganttNodes = buildGanttPreview(nodes)
+  const refreshPreview = useCallback(() => {
+    fetchTemplatePreview(templateId).then(({ nodes: n }) => setGanttNodes(n))
+  }, [templateId])
+
   const totalDays = Math.max(1, ...ganttNodes.map(n => n.ganttStart + n.ganttDuration))
 
   const roots = nodes.filter(n => n.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder)
@@ -396,9 +327,9 @@ export function ProcesoTemplateEditor() {
               nodes={nodes}
               templateId={templateId}
               depth={0}
-              onUpdated={updated => setNodes(prev => prev.map(n => n.id === updated.id ? updated : n))}
-              onDeleted={id => setNodes(prev => prev.filter(n => n.id !== id))}
-              onCreated={n => setNodes(prev => [...prev, n])}
+              onUpdated={updated => { setNodes(prev => prev.map(n => n.id === updated.id ? updated : n)); refreshPreview() }}
+              onDeleted={id => { setNodes(prev => prev.filter(n => n.id !== id)); refreshPreview() }}
+              onCreated={n => { setNodes(prev => [...prev, n]); refreshPreview() }}
             />
           ))}
           {addingRoot && (
@@ -408,7 +339,7 @@ export function ProcesoTemplateEditor() {
                 parentId={null}
                 sortOrder={roots.length}
                 siblings={roots}
-                onCreated={n => { setNodes(prev => [...prev, n]); setAddingRoot(false) }}
+                onCreated={n => { setNodes(prev => [...prev, n]); setAddingRoot(false); refreshPreview() }}
                 onCancel={() => setAddingRoot(false)}
               />
             </div>
@@ -436,12 +367,18 @@ export function ProcesoTemplateEditor() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {ganttNodes.map(n => {
+            {(() => {
+              const depthMap: Record<number, number> = {}
+              for (const n of ganttNodes) {
+                depthMap[n.id] = n.parentId === null ? 0 : (depthMap[n.parentId] ?? 0) + 1
+              }
+              return ganttNodes.map(n => {
               const leftPct = totalDays > 0 ? (n.ganttStart / totalDays) * 100 : 0
               const widthPct = totalDays > 0 ? Math.max(0.5, (n.ganttDuration / totalDays) * 100) : 0.5
+              const depth = depthMap[n.id] ?? 0
               return (
                 <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: `${n.depth * 12}px`, flexShrink: 0 }} />
+                  <div style={{ width: `${depth * 12}px`, flexShrink: 0 }} />
                   <div style={{ width: '140px', flexShrink: 0, fontFamily: fonts.sans, fontSize: '10px', color: n.isDefinir ? colors.tertiary : colors.neutral, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {n.name}
                   </div>
@@ -461,7 +398,8 @@ export function ProcesoTemplateEditor() {
                   </div>
                 </div>
               )
-            })}
+            })
+            })()}
           </div>
         )}
       </div>

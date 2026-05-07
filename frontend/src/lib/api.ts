@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, ProcessInstance, NodeState, InstanceDetail } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail } from './types'
 
 const BASE = 'http://localhost:8000'
 
@@ -152,6 +152,12 @@ export async function updateTemplate(id: number, data: Partial<Pick<ProcessTempl
 export async function deleteTemplate(id: number): Promise<void> {
   const res = await fetch(`${BASE}/api/process/templates/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
+}
+
+export async function fetchTemplatePreview(tid: number): Promise<{ template: ProcessTemplate; nodes: GanttNode[] }> {
+  const res = await fetch(`${BASE}/api/process/templates/${tid}/preview`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
 }
 
 // ─── Template nodes ───────────────────────────────

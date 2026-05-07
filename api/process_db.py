@@ -67,7 +67,19 @@ def get_template_nodes(tid: int) -> list[dict]:
             "SELECT * FROM template_nodes WHERE template_id = ? ORDER BY sort_order, id",
             (tid,),
         ).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    nodes = [_row_to_dict(r) for r in rows]
+    # Return in DFS order so tree rendering is correct (parent immediately before its children)
+    from collections import defaultdict
+    by_parent: dict = defaultdict(list)
+    for n in nodes:
+        by_parent[n["parentId"]].append(n)
+    result: list = []
+    def dfs(pid):
+        for n in by_parent[pid]:
+            result.append(n)
+            dfs(n["id"])
+    dfs(None)
+    return result
 
 
 def get_node(nid: int) -> Optional[dict]:
