@@ -14,3 +14,4 @@
 - poder subir oportunidades facil
 - deploy to vm
 - fix sonar
+- add auth, user types and user type based experience
