@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchInstanceDetail, updateNodeState, fetchTeam, updateInstance } from '../lib/api'
-import type { InstanceDetail, GanttNode, NodeState, TeamMember } from '../lib/types'
+import { fetchInstanceDetail, updateNodeState, fetchTeam, updateInstance, uploadInstanceFile, deleteInstanceFile } from '../lib/api'
+import type { InstanceDetail, GanttNode, NodeState, TeamMember, InstanceFile } from '../lib/types'
 import { GanttChart } from './GanttChart'
 import { colors, fonts } from '../lib/theme'
 import { PROCESS_STATUS_COLOR, PROCESS_STATUS_LABEL } from '../lib/status'
@@ -21,6 +21,8 @@ export function ProcesoInstanceDetail() {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
   const [localOwnerId, setLocalOwnerId] = useState<number | null>(null)
   const [focusNodeId, setFocusNodeId] = useState<number | null>(null)
+  const [notes, setNotes] = useState('')
+  const [files, setFiles] = useState<InstanceFile[]>([])
 
   const toggleCollapse = (id: number) =>
     setCollapsed(prev => {
@@ -38,6 +40,12 @@ export function ProcesoInstanceDetail() {
       setLoading(false)
     })
   }, [instanceId])
+
+  useEffect(() => {
+    if (!detail) return
+    setNotes(detail.instance.notes ?? '')
+    setFiles((detail as InstanceDetail & { files: InstanceFile[] }).files ?? [])
+  }, [detail?.instance.id])
 
   const getState = useCallback((nodeId: number): NodeState | undefined => {
     return states.find(s => s.templateNodeId === nodeId)
@@ -148,6 +156,82 @@ export function ProcesoInstanceDetail() {
     outline: 'none',
   }
 
+  const notesAndFilesSection = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Notes */}
+      <div>
+        <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>NOTAS</div>
+        <textarea
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          onBlur={async () => {
+            if (!detail || notes === detail.instance.notes) return
+            await updateInstance(detail.instance.id, { notes })
+          }}
+          placeholder="Notas, contexto, decisiones…"
+          rows={4}
+          style={{
+            width: '100%',
+            background: colors.surface,
+            border: `1px solid ${colors.border}`,
+            color: colors.neutral,
+            fontFamily: fonts.sans,
+            fontSize: '12px',
+            padding: '8px',
+            outline: 'none',
+            resize: 'vertical',
+            lineHeight: 1.5,
+            boxSizing: 'border-box' as const,
+          }}
+        />
+      </div>
+      {/* Files */}
+      <div>
+        <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>ARCHIVOS</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          {files.map(f => (
+            <div key={f.id} style={{ position: 'relative', width: 80, height: 80 }}>
+              {f.contentType.startsWith('image/') ? (
+                <img
+                  src={`http://localhost:8000/files/${f.filePath}`}
+                  alt={f.fileName}
+                  style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }}
+                />
+              ) : (
+                <div style={{ width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.border, borderRadius: 2, fontSize: '9px', color: colors.secondary, fontFamily: fonts.label, padding: 4, textAlign: 'center' }}>
+                  {f.fileName}
+                </div>
+              )}
+              <button
+                onClick={async () => {
+                  await deleteInstanceFile(f.id)
+                  setFiles(prev => prev.filter(x => x.id !== f.id))
+                }}
+                style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', borderRadius: '50%', width: 18, height: 18, cursor: 'pointer', fontSize: '10px', lineHeight: '18px', textAlign: 'center', padding: 0 }}
+              >×</button>
+            </div>
+          ))}
+        </div>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em', padding: '6px 12px', cursor: 'pointer' }}>
+          + SUBIR ARCHIVO
+          <input
+            type="file"
+            style={{ display: 'none' }}
+            onChange={async e => {
+              const file = e.target.files?.[0]
+              if (!file || !detail) return
+              const created = await uploadInstanceFile(detail.instance.id, file)
+              setFiles(prev => [...prev, created])
+              e.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+    </div>
+  )
+
+  const hasTemplate = instance.templateId !== null && nodes.length > 0
+
   return (
     <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* Header */}
@@ -195,185 +279,191 @@ export function ProcesoInstanceDetail() {
         </div>
       </div>
 
-<>
-        {/* Gantt */}
-        <div>
-          <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
-            CRONOGRAMA
-          </div>
-          <GanttChart nodes={nodes} totalDays={totalDays} states={states} />
-        </div>
+      {/* Notes + Files — always visible */}
+      {notesAndFilesSection}
 
-        {/* Focus breadcrumb */}
-        {focusNodeId && (
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', paddingBottom: '8px', borderBottom: `1px solid ${colors.border}` }}>
-            <button
-              onClick={() => setFocusNodeId(null)}
-              style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: 0 }}
-            >
-              ← TODAS LAS TAREAS
-            </button>
-            {focusPath.map((n, i) => (
-              <span key={n.id} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <span style={{ color: colors.border, fontSize: '9px' }}>›</span>
-                {i < focusPath.length - 1 ? (
-                  <button
-                    onClick={() => setFocusNodeId(n.id)}
-                    style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}
-                  >
-                    {n.name}
-                  </button>
-                ) : (
-                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.neutral }}>{n.name}</span>
-                )}
-              </span>
-            ))}
+      {/* Template path: Gantt + task table */}
+      {hasTemplate && (
+        <>
+          {/* Gantt */}
+          <div>
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
+              CRONOGRAMA
+            </div>
+            <GanttChart nodes={nodes} totalDays={totalDays} states={states} />
           </div>
-        )}
 
-        {/* Estado table */}
-        <div>
-          <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
-            ESTADO DE TAREAS
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                {['TAREA', 'ESTADO', 'RESPONSABLE', 'INICIO REAL', 'FIN REAL'].map(h => (
-                  <th key={h} style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'left', letterSpacing: '0.1em' }}>
-                    {h}
-                  </th>
-                ))}
-                <th style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '10px', color: colors.secondary }}>DÍ/INST</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(() => {
-                const base = focusNodeId ? getSubtree(focusNodeId, detail.nodes) : detail.nodes
-                return base.filter(n => !isAncestorCollapsed(n, base))
-              })().map(n => {
-                const s = getState(n.id)
-                const currentStatus = s?.status ?? 'pending'
-                const isRoot = n.parentId === null
-                const depth = depths.get(n.id) ?? 0
-                const indent = depth * 16
-                return (
-                  <tr key={n.id} style={{
-                    borderBottom: `1px solid ${colors.border}`,
-                    background: isRoot ? colors.surfaceAlt : 'transparent',
-                    borderLeft: isRoot ? `2px solid ${colors.primary}` : '2px solid transparent',
-                  }}>
-                    <td style={{ padding: '5px 10px', paddingLeft: `${10 + indent}px` }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {hasChildren(n.id) && (
-                          <button
-                            onClick={() => toggleCollapse(n.id)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: colors.secondary,
-                              cursor: 'pointer',
-                              padding: '0 2px',
-                              fontSize: '10px',
-                              fontFamily: fonts.label,
-                            }}
+          {/* Focus breadcrumb */}
+          {focusNodeId && (
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', paddingBottom: '8px', borderBottom: `1px solid ${colors.border}` }}>
+              <button
+                onClick={() => setFocusNodeId(null)}
+                style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: 0 }}
+              >
+                ← TODAS LAS TAREAS
+              </button>
+              {focusPath.map((n, i) => (
+                <span key={n.id} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <span style={{ color: colors.border, fontSize: '9px' }}>›</span>
+                  {i < focusPath.length - 1 ? (
+                    <button
+                      onClick={() => setFocusNodeId(n.id)}
+                      style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}
+                    >
+                      {n.name}
+                    </button>
+                  ) : (
+                    <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.neutral }}>{n.name}</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Estado table */}
+          <div>
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
+              ESTADO DE TAREAS
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  {['TAREA', 'ESTADO', 'RESPONSABLE', 'INICIO REAL', 'FIN REAL'].map(h => (
+                    <th key={h} style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'left', letterSpacing: '0.1em' }}>
+                      {h}
+                    </th>
+                  ))}
+                  <th style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '10px', color: colors.secondary }}>DÍ/INST</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const base = focusNodeId ? getSubtree(focusNodeId, detail.nodes) : detail.nodes
+                  return base.filter(n => !isAncestorCollapsed(n, base))
+                })().map(n => {
+                  const s = getState(n.id)
+                  const currentStatus = s?.status ?? 'pending'
+                  const isRoot = n.parentId === null
+                  const depth = depths.get(n.id) ?? 0
+                  const indent = depth * 16
+                  return (
+                    <tr key={n.id} style={{
+                      borderBottom: `1px solid ${colors.border}`,
+                      background: isRoot ? colors.surfaceAlt : 'transparent',
+                      borderLeft: isRoot ? `2px solid ${colors.primary}` : '2px solid transparent',
+                    }}>
+                      <td style={{ padding: '5px 10px', paddingLeft: `${10 + indent}px` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {hasChildren(n.id) && (
+                            <button
+                              onClick={() => toggleCollapse(n.id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: colors.secondary,
+                                cursor: 'pointer',
+                                padding: '0 2px',
+                                fontSize: '10px',
+                                fontFamily: fonts.label,
+                              }}
+                            >
+                              {collapsed.has(n.id) ? '▶' : '▼'}
+                            </button>
+                          )}
+                          {!hasChildren(n.id) && <span style={{ width: 16 }} />}
+                          <span
+                            onClick={() => navigate(`/procesos/tareas/${detail.instance.id}/nodos/${n.id}`)}
+                            style={{ cursor: 'pointer', color: colors.neutral, textDecoration: 'underline dotted' }}
                           >
-                            {collapsed.has(n.id) ? '▶' : '▼'}
-                          </button>
-                        )}
-                        {!hasChildren(n.id) && <span style={{ width: 16 }} />}
-                        <span
-                          onClick={() => navigate(`/procesos/tareas/${detail.instance.id}/nodos/${n.id}`)}
-                          style={{ cursor: 'pointer', color: colors.neutral, textDecoration: 'underline dotted' }}
-                        >
-                          {n.name}
-                        </span>
-                        {hasChildren(n.id) && (
-                          <span style={{ fontSize: '10px', color: colors.secondary, marginLeft: 4 }}>
-                            {getProgress(n.id, nodes)}%
+                            {n.name}
                           </span>
-                        )}
-                        {hasChildren(n.id) && (
-                          <button
-                            onClick={e => { e.stopPropagation(); setFocusNodeId(n.id) }}
-                            title="Enfocar subtareas"
-                            style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '13px', padding: '0 2px', lineHeight: 1, marginLeft: 2 }}
-                          >
-                            ›
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <select
-                        value={currentStatus}
-                        onChange={e => handleStateChange(n.id, 'status', e.target.value)}
-                        style={{ ...inputStyle, color: PROCESS_STATUS_COLOR[currentStatus] ?? colors.neutral }}
-                      >
-                        {STATUS_OPTIONS.map(opt => (
-                          <option key={opt} value={opt}>{PROCESS_STATUS_LABEL[opt]}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <select
-                        value={s?.assigneeId ?? ''}
-                        onChange={e => handleStateChange(n.id, 'assigneeId', e.target.value ? Number(e.target.value) : null)}
-                        style={inputStyle}
-                      >
-                        <option value="">— Sin asignar</option>
-                        {team.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <input
-                        type="date"
-                        value={s?.actualStart ?? ''}
-                        onChange={e => handleStateChange(n.id, 'actualStart', e.target.value || null)}
-                        style={inputStyle}
-                      />
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <input
-                        type="date"
-                        value={s?.actualEnd ?? ''}
-                        onChange={e => handleStateChange(n.id, 'actualEnd', e.target.value || null)}
-                        style={inputStyle}
-                      />
-                    </td>
-                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>
-                      {!hasChildren(n.id) && (
+                          {hasChildren(n.id) && (
+                            <span style={{ fontSize: '10px', color: colors.secondary, marginLeft: 4 }}>
+                              {getProgress(n.id, nodes)}%
+                            </span>
+                          )}
+                          {hasChildren(n.id) && (
+                            <button
+                              onClick={e => { e.stopPropagation(); setFocusNodeId(n.id) }}
+                              title="Enfocar subtareas"
+                              style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '13px', padding: '0 2px', lineHeight: 1, marginLeft: 2 }}
+                            >
+                              ›
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ padding: '6px 10px' }}>
+                        <select
+                          value={currentStatus}
+                          onChange={e => handleStateChange(n.id, 'status', e.target.value)}
+                          style={{ ...inputStyle, color: PROCESS_STATUS_COLOR[currentStatus] ?? colors.neutral }}
+                        >
+                          {STATUS_OPTIONS.map(opt => (
+                            <option key={opt} value={opt}>{PROCESS_STATUS_LABEL[opt]}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ padding: '6px 10px' }}>
+                        <select
+                          value={s?.assigneeId ?? ''}
+                          onChange={e => handleStateChange(n.id, 'assigneeId', e.target.value ? Number(e.target.value) : null)}
+                          style={inputStyle}
+                        >
+                          <option value="">— Sin asignar</option>
+                          {team.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ padding: '6px 10px' }}>
                         <input
-                          type="number"
-                          min={1}
-                          placeholder={n.durationDays != null ? String(n.durationDays) : '?'}
-                          value={s?.durationOverrideDays ?? ''}
-                          onChange={e => {
-                            const val = e.target.value === '' ? null : Number(e.target.value)
-                            handleStateChange(n.id, 'durationOverrideDays', val)
-                          }}
-                          style={{
-                            width: 48,
-                            background: 'transparent',
-                            border: `1px solid ${colors.border}`,
-                            color: colors.neutral,
-                            fontFamily: fonts.label,
-                            fontSize: '11px',
-                            padding: '2px 4px',
-                            textAlign: 'right',
-                          }}
+                          type="date"
+                          value={s?.actualStart ?? ''}
+                          onChange={e => handleStateChange(n.id, 'actualStart', e.target.value || null)}
+                          style={inputStyle}
                         />
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </>
+                      </td>
+                      <td style={{ padding: '6px 10px' }}>
+                        <input
+                          type="date"
+                          value={s?.actualEnd ?? ''}
+                          onChange={e => handleStateChange(n.id, 'actualEnd', e.target.value || null)}
+                          style={inputStyle}
+                        />
+                      </td>
+                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>
+                        {!hasChildren(n.id) && (
+                          <input
+                            type="number"
+                            min={1}
+                            placeholder={n.durationDays != null ? String(n.durationDays) : '?'}
+                            value={s?.durationOverrideDays ?? ''}
+                            onChange={e => {
+                              const val = e.target.value === '' ? null : Number(e.target.value)
+                              handleStateChange(n.id, 'durationOverrideDays', val)
+                            }}
+                            style={{
+                              width: 48,
+                              background: 'transparent',
+                              border: `1px solid ${colors.border}`,
+                              color: colors.neutral,
+                              fontFamily: fonts.label,
+                              fontSize: '11px',
+                              padding: '2px 4px',
+                              textAlign: 'right',
+                            }}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   )
 }
