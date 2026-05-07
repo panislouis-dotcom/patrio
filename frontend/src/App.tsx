@@ -22,6 +22,7 @@ export default function App() {
         <TabBar />
         <Routes>
           <Route path="/" element={<Navigate to="/prospectos/tabla" replace />} />
+          <Route path="/prospectos" element={<Navigate to="/prospectos/tabla" replace />} />
           <Route path="/prospectos/tabla" element={<ProspectTable />} />
           <Route path="/prospectos/tabla/:id" element={<ProspectDetailPage />} />
           <Route path="/prospectos/mapa" element={<ProspectMap />} />
