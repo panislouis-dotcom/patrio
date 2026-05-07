@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchTemplatePreview, createNode, updateNode, deleteNode } from '../lib/api'
-import type { ProcessTemplate, TemplateNode, GanttNode } from '../lib/types'
+import { fetchTemplatePreview, createNode, updateNode, deleteNode, fetchNodeFiles, uploadNodeFile, deleteNodeFile } from '../lib/api'
+import type { ProcessTemplate, TemplateNode, GanttNode, NodeFile } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { GanttChart } from './GanttChart'
+import { getSubtree } from '../lib/treeUtils'
 
 function wouldCreateCycle(candidateId: number, currentId: number, allNodes: TemplateNode[]): boolean {
   const visited = new Set<number>()
@@ -108,13 +109,14 @@ function AddNodeForm({
 }
 
 function TreeNode({
-  node, nodes, templateId, depth, onRefresh,
+  node, nodes, templateId, depth, onRefresh, onFocus,
 }: {
   node: GanttNode
   nodes: GanttNode[]
   templateId: number
   depth: number
   onRefresh: () => void
+  onFocus: (id: number) => void
 }) {
   const children = nodes.filter(n => n.parentId === node.id).sort((a, b) => a.sortOrder - b.sortOrder)
   const isLeaf = children.length === 0
@@ -170,12 +172,16 @@ function TreeNode({
 
   return (
     <div>
-      <div style={{
-        borderBottom: `1px solid ${colors.border}`,
-        display: 'flex',
-        flexDirection: 'column',
-        padding: `6px 12px 6px ${indent + 12}px`,
-      }}>
+      <div
+        onClick={() => onFocus(node.id)}
+        style={{
+          borderBottom: `1px solid ${colors.border}`,
+          display: 'flex',
+          flexDirection: 'column',
+          padding: `6px 12px 6px ${indent + 12}px`,
+          cursor: 'pointer',
+        }}
+      >
         {editing ? (
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <input
@@ -203,10 +209,10 @@ function TreeNode({
                 {validDeps.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             )}
-            <button onClick={saveEdit} disabled={saving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '3px 8px' }}>
+            <button onClick={e => { e.stopPropagation(); saveEdit() }} disabled={saving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '3px 8px' }}>
               {saving ? '…' : 'OK'}
             </button>
-            <button onClick={() => setEditing(false)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '3px 6px' }}>
+            <button onClick={e => { e.stopPropagation(); setEditing(false) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '3px 6px' }}>
               ✕
             </button>
           </div>
@@ -231,14 +237,14 @@ function TreeNode({
               {isDefinir ? '?' : `${node.ganttDuration}d`}
             </span>
             <div style={{ display: 'flex', gap: '4px' }}>
-              <button onClick={() => setAddingChild(true)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
+              <button onClick={e => { e.stopPropagation(); setAddingChild(true) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
                 + HIJO
               </button>
-              <button onClick={() => setEditing(true)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
+              <button onClick={e => { e.stopPropagation(); setEditing(true) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
                 EDITAR
               </button>
               <button
-                onClick={handleDelete}
+                onClick={e => { e.stopPropagation(); handleDelete() }}
                 disabled={deleting}
                 style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: 'tomato', cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px', opacity: deleting ? 0.5 : 1 }}
               >
@@ -268,6 +274,7 @@ function TreeNode({
           templateId={templateId}
           depth={depth + 1}
           onRefresh={onRefresh}
+          onFocus={onFocus}
         />
       ))}
     </div>
@@ -283,6 +290,9 @@ export function ProcesoTemplateEditor() {
   const [nodes, setNodes] = useState<GanttNode[]>([])
   const [loading, setLoading] = useState(true)
   const [addingRoot, setAddingRoot] = useState(false)
+  const [focusNodeId, setFocusNodeId] = useState<number | null>(null)
+  const [focusDescription, setFocusDescription] = useState('')
+  const [focusFiles, setFocusFiles] = useState<NodeFile[]>([])
 
   const refresh = useCallback(() => {
     fetchTemplatePreview(templateId).then(({ template: t, nodes: n }) => {
@@ -290,6 +300,13 @@ export function ProcesoTemplateEditor() {
       setNodes(n)
     })
   }, [templateId])
+
+  useEffect(() => {
+    if (!focusNodeId) { setFocusFiles([]); return }
+    const n = nodes.find(n => n.id === focusNodeId)
+    setFocusDescription(n?.description ?? '')
+    fetchNodeFiles(focusNodeId).then(setFocusFiles)
+  }, [focusNodeId])
 
   useEffect(() => {
     fetchTemplatePreview(templateId).then(({ template: t, nodes: n }) => {
@@ -301,6 +318,23 @@ export function ProcesoTemplateEditor() {
 
   const totalDays = Math.max(1, ...nodes.map(n => n.ganttStart + n.ganttDuration))
   const roots = nodes.filter(n => n.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder)
+
+  // Breadcrumb path from root to focused node
+  const focusPath = useMemo(() => {
+    if (!focusNodeId) return []
+    const path: GanttNode[] = []
+    let cursor: GanttNode | undefined = nodes.find(n => n.id === focusNodeId)
+    while (cursor) {
+      path.unshift(cursor)
+      cursor = cursor.parentId != null ? nodes.find(n => n.id === cursor!.parentId) : undefined
+    }
+    return path
+  }, [focusNodeId, nodes])
+
+  // What to show as roots in the left tree panel
+  const displayRoots = focusNodeId
+    ? nodes.filter(n => n.id === focusNodeId)
+    : roots
 
   if (loading) {
     return (
@@ -324,8 +358,27 @@ export function ProcesoTemplateEditor() {
           <span style={{ color: colors.border }}>·</span>
           <span style={{ fontFamily: fonts.sans, fontSize: '13px', color: colors.neutral }}>{template?.name ?? '…'}</span>
         </div>
+        {focusNodeId && (
+          <div style={{ padding: '6px 12px', borderBottom: `1px solid ${colors.border}`, display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => setFocusNodeId(null)} style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}>
+              ← TODOS
+            </button>
+            {focusPath.map((n, i) => (
+              <span key={n.id} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ color: colors.border, fontSize: '9px' }}>›</span>
+                {i < focusPath.length - 1 ? (
+                  <button onClick={() => setFocusNodeId(n.id)} style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}>
+                    {n.name}
+                  </button>
+                ) : (
+                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.neutral }}>{n.name}</span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {roots.map(root => (
+          {displayRoots.map(root => (
             <TreeNode
               key={root.id}
               node={root}
@@ -333,6 +386,7 @@ export function ProcesoTemplateEditor() {
               templateId={templateId}
               depth={0}
               onRefresh={refresh}
+              onFocus={setFocusNodeId}
             />
           ))}
           {addingRoot && (
@@ -363,7 +417,72 @@ export function ProcesoTemplateEditor() {
         <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '16px' }}>
           VISTA PREVIA DEL PROCESO (HIPOTÉTICA)
         </div>
-        {nodes.length === 0 ? (
+        {focusNodeId ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Description */}
+            <div>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>DESCRIPCIÓN</div>
+              <textarea
+                value={focusDescription}
+                onChange={e => setFocusDescription(e.target.value)}
+                onBlur={async () => {
+                  const n = nodes.find(n => n.id === focusNodeId)
+                  if (n && focusDescription !== n.description) {
+                    await updateNode(focusNodeId, { description: focusDescription })
+                  }
+                }}
+                placeholder="Instrucciones, contexto, criterios de éxito…"
+                rows={5}
+                style={{ width: '100%', background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', padding: '8px', outline: 'none', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box' as const }}
+              />
+            </div>
+            {/* Reference photos */}
+            <div>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>FOTOS DE REFERENCIA</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                {focusFiles.map(f => (
+                  <div key={f.id} style={{ position: 'relative', width: 80, height: 80 }}>
+                    {f.contentType.startsWith('image/') ? (
+                      <img src={`http://localhost:8000/files/${f.filePath}`} alt={f.fileName} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }} />
+                    ) : (
+                      <div style={{ width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.border, borderRadius: 2, fontSize: '10px', color: colors.secondary, fontFamily: fonts.label, padding: 4, textAlign: 'center' }}>{f.fileName}</div>
+                    )}
+                    <button
+                      onClick={async () => {
+                        await deleteNodeFile(f.id)
+                        fetchNodeFiles(focusNodeId).then(setFocusFiles)
+                      }}
+                      style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', borderRadius: '50%', width: 18, height: 18, cursor: 'pointer', fontSize: '10px', lineHeight: '18px', textAlign: 'center', padding: 0 }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em', padding: '8px 14px', cursor: 'pointer' }}>
+                + SUBIR REFERENCIA
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  await uploadNodeFile(focusNodeId, file, 'reference')
+                  fetchNodeFiles(focusNodeId).then(setFocusFiles)
+                  e.target.value = ''
+                }} />
+              </label>
+            </div>
+            {/* Subtree Gantt */}
+            {(() => {
+              const sub = getSubtree(focusNodeId, nodes)
+              const rootStart = sub.find(n => n.id === focusNodeId)?.ganttStart ?? 0
+              const normalized = sub.map(n => ({ ...n, ganttStart: n.ganttStart - rootStart }))
+              const total = Math.max(...normalized.map(n => n.ganttStart + n.ganttDuration), 1)
+              return normalized.length > 0 ? (
+                <div>
+                  <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>CRONOGRAMA DEL NODO</div>
+                  <GanttChart nodes={normalized} totalDays={total} />
+                </div>
+              ) : null
+            })()}
+          </div>
+        ) : nodes.length === 0 ? (
           <div style={{ color: colors.secondary, fontFamily: fonts.sans, fontSize: '11px' }}>
             Agrega nodos para ver la vista previa.
           </div>
