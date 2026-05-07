@@ -7,8 +7,14 @@ NODE_RAW_FIELDS = {"name", "description", "sortOrder", "dependsOnId", "durationD
 INSTANCE_RAW_FIELDS = {
     "name", "startDate", "status", "notes",
     "templateId", "projectId", "ownerId",
-    "taskType", "frequencyDays", "dueDate", "completedAt",
+    "frequencyDays", "dueDate", "completedAt",
 }
+
+
+def _derive_task_type(row: dict) -> str:
+    if row.get('projectId'): return 'proyecto'
+    if row.get('frequencyDays'): return 'periodica'
+    return 'one_time'
 STATE_RAW_FIELDS = {"status", "assigneeId", "actualStart", "actualEnd", "notes", "durationOverrideDays"}
 
 
@@ -146,7 +152,10 @@ def get_instances(project_id: Optional[int] = None) -> list[dict]:
     query += " ORDER BY pi.created_at DESC"
     with get_db() as conn:
         rows = conn.execute(query, params).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    result = [_row_to_dict(r) for r in rows]
+    for row in result:
+        row['taskType'] = _derive_task_type(row)
+    return result
 
 
 def get_instance(iid: int) -> Optional[dict]:
@@ -154,7 +163,11 @@ def get_instance(iid: int) -> Optional[dict]:
         row = conn.execute(
             f"{_INSTANCE_SELECT} WHERE pi.id = ?", (iid,)
         ).fetchone()
-    return _row_to_dict(row) if row else None
+    if row is None:
+        return None
+    result = _row_to_dict(row)
+    result['taskType'] = _derive_task_type(result)
+    return result
 
 
 def create_instance(data: dict) -> Optional[dict]:
@@ -195,7 +208,7 @@ def create_next_periodic_instance(iid: int) -> Optional[dict]:
     instance = get_instance(iid)
     if not instance:
         return None
-    if instance.get("taskType") != "periodica":
+    if not instance.get('frequencyDays'):
         return None
     freq = instance.get("frequencyDays")
     completed = instance.get("completedAt")
@@ -208,7 +221,6 @@ def create_next_periodic_instance(iid: int) -> Optional[dict]:
     next_start = (base + timedelta(days=freq)).isoformat()
     new_data = {
         "name": instance["name"],
-        "taskType": "periodica",
         "templateId": instance.get("templateId"),
         "projectId": instance.get("projectId"),
         "ownerId": instance.get("ownerId"),
@@ -284,9 +296,9 @@ def create_node_file(
     with get_db() as conn:
         cur = conn.execute(
             """INSERT INTO node_files
-               (template_node_id, instance_id, file_path, file_name, content_type, type)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (template_node_id, instance_id, rel_path, file_name, content_type, file_type),
+               (template_node_id, instance_id, file_path, file_name, content_type)
+               VALUES (?, ?, ?, ?, ?)""",
+            (template_node_id, instance_id, rel_path, file_name, content_type),
         )
         fid = cur.lastrowid
     return get_node_file(fid)
@@ -302,7 +314,8 @@ def get_node_files(template_node_id: int, instance_id: int | None = None) -> lis
     with get_db() as conn:
         if instance_id is not None:
             rows = conn.execute(
-                """SELECT * FROM node_files
+                """SELECT *, CASE WHEN instance_id IS NULL THEN 'reference' ELSE 'evidence' END as type
+                   FROM node_files
                    WHERE template_node_id = ?
                      AND (instance_id IS NULL OR instance_id = ?)
                    ORDER BY uploaded_at""",
@@ -310,7 +323,8 @@ def get_node_files(template_node_id: int, instance_id: int | None = None) -> lis
             ).fetchall()
         else:
             rows = conn.execute(
-                """SELECT * FROM node_files
+                """SELECT *, CASE WHEN instance_id IS NULL THEN 'reference' ELSE 'evidence' END as type
+                   FROM node_files
                    WHERE template_node_id = ? AND instance_id IS NULL
                    ORDER BY uploaded_at""",
                 (template_node_id,),

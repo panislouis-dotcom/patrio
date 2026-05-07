@@ -41,8 +41,7 @@ class NodeUpdate(BaseModel):
 class InstanceCreate(BaseModel):
     name: str
     startDate: str
-    taskType: str = "one_time"
-    templateId: Optional[int] = None
+    templateId: int
     projectId: Optional[int] = None
     ownerId: Optional[int] = None
     frequencyDays: Optional[int] = None
@@ -57,7 +56,6 @@ class InstanceUpdate(BaseModel):
     notes: Optional[str] = None
     projectId: Optional[int] = None
     ownerId: Optional[int] = None
-    taskType: Optional[str] = None
     dueDate: Optional[str] = None
     frequencyDays: Optional[int] = None
 
@@ -155,7 +153,7 @@ def patch_instance(iid: int, body: InstanceUpdate):
 
     # Auto-create next periodic instance on completion
     next_inst = None
-    if data.get("status") == "completed" and updated.get("taskType") == "periodica":
+    if data.get("status") == "completed" and updated.get("frequencyDays"):
         next_inst = create_next_periodic_instance(iid)
 
     return {"instance": updated, "nextInstance": next_inst}
@@ -221,10 +219,8 @@ async def upload_node_file(
     nid: int,
     file: UploadFile = File(...),
     instance_id: Optional[int] = Form(None),
-    file_type: str = Form("reference"),
 ):
-    if file_type not in ("reference", "evidence"):
-        raise HTTPException(status_code=400, detail="file_type must be 'reference' or 'evidence'")
+    file_type = 'evidence' if instance_id is not None else 'reference'
     content = await file.read()
     return create_node_file(
         template_node_id=nid,
