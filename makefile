@@ -46,6 +46,9 @@ api: ## Start FastAPI backend (port 8000)
 dev: ## Start React frontend (port 5173)
 	cd apps/web && npm run dev
 
+test: ## Run Python test suite
+	PYTHONPATH=.:apps pytest apps/api/tests/ -v
+
 app: ## Start both API and frontend
 	PYTHONPATH=.:apps uvicorn api.main:app --reload &
 	cd apps/web && npm run dev
