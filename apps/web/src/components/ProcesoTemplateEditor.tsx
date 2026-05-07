@@ -199,6 +199,17 @@ function TreeNode({
             <span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral, flex: 1 }}>
               {node.name}
             </span>
+            <span style={{
+              fontFamily: fonts.label,
+              fontSize: '8px',
+              letterSpacing: '0.06em',
+              color: node.dependsOnId != null ? colors.tertiary : colors.border,
+              marginLeft: 4,
+            }}>
+              {node.dependsOnId != null
+                ? `→ ${nodes.find(n => n.id === node.dependsOnId)?.name ?? '?'}`
+                : '‖'}
+            </span>
             {isLeaf ? (
               <span style={{ fontFamily: fonts.label, fontSize: '9px', color: isDefinir ? colors.tertiary : colors.secondary }}>
                 {isDefinir ? '?' : `${node.durationDays}d`}
