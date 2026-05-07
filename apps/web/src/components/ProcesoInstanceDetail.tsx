@@ -110,6 +110,13 @@ export function ProcesoInstanceDetail() {
       }
       return next
     })
+
+    // Duration overrides change Gantt bar positions — refetch to get recomputed layout.
+    if (field === 'durationOverrideDays') {
+      const refreshed = await fetchInstanceDetail(instanceId)
+      setDetail(prev => prev ? { ...prev, nodes: refreshed.nodes } : prev)
+      setStates(refreshed.states)
+    }
   }
 
   if (loading || !detail) {
