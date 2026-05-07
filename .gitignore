@@ -3,3 +3,4 @@
 *.db-wal
 00Tree.html
 files/.superpowers/
+.playwright-mcp/
