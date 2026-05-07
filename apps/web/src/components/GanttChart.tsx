@@ -21,6 +21,13 @@ export function GanttChart({ nodes, totalDays, states = [] }: GanttChartProps) {
   const stateByNode = Object.fromEntries(states.map(s => [s.templateNodeId, s]))
   const depths = computeDepths(nodes)
 
+  const nodeEndPct = new Map<number, number>()
+  const nodeStartPct = new Map<number, number>()
+  nodes.forEach(n => {
+    nodeEndPct.set(n.id, ((n.ganttStart + n.ganttDuration) / total) * 100)
+    nodeStartPct.set(n.id, (n.ganttStart / total) * 100)
+  })
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
       {nodes.map(n => {
@@ -62,6 +69,41 @@ export function GanttChart({ nodes, totalDays, states = [] }: GanttChartProps) {
                 opacity: status === 'skipped' ? 0.4 : 0.75,
                 transition: 'background 0.2s',
               }} />
+              {n.dependsOnId != null && nodeEndPct.has(n.dependsOnId) && (() => {
+                const predEnd = nodeEndPct.get(n.dependsOnId)!
+                const curStart = nodeStartPct.get(n.id)!
+                const connWidth = Math.max(0, curStart - predEnd)
+                if (connWidth <= 0) return null
+                return (
+                  <div style={{
+                    position: 'absolute',
+                    left: `${predEnd}%`,
+                    width: `${connWidth}%`,
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    pointerEvents: 'none',
+                  }}>
+                    <div style={{
+                      width: '100%',
+                      height: '1px',
+                      background: colors.border,
+                      position: 'relative',
+                    }}>
+                      <div style={{
+                        position: 'absolute',
+                        right: 0,
+                        top: -3,
+                        width: 0,
+                        height: 0,
+                        borderTop: '3px solid transparent',
+                        borderBottom: '3px solid transparent',
+                        borderLeft: `4px solid ${colors.border}`,
+                      }} />
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
             <div style={{ width: '36px', flexShrink: 0, fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>
               {n.isDefinir ? '?' : `${n.ganttDuration}d`}
