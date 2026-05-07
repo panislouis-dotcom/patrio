@@ -219,9 +219,13 @@ export async function fetchInstances(projectId?: number): Promise<ProcessInstanc
 
 export async function createInstance(data: {
   name: string
-  templateId: number
   startDate: string
+  taskType?: string
+  templateId?: number | null
   projectId?: number | null
+  ownerId?: number | null
+  frequencyDays?: number | null
+  dueDate?: string | null
   notes?: string
   status?: string
 }): Promise<ProcessInstance> {
@@ -234,7 +238,17 @@ export async function createInstance(data: {
   return res.json()
 }
 
-export async function updateInstance(iid: number, data: Partial<Pick<ProcessInstance, 'name' | 'startDate' | 'status' | 'notes'>>): Promise<ProcessInstance> {
+export async function updateInstance(iid: number, data: Partial<{
+  name: string
+  startDate: string
+  status: string
+  notes: string
+  projectId: number | null
+  ownerId: number | null
+  taskType: string
+  dueDate: string | null
+  frequencyDays: number | null
+}>): Promise<{ instance: ProcessInstance; nextInstance: ProcessInstance | null }> {
   const res = await fetch(`${BASE}/api/process/instances/${iid}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

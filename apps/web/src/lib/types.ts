@@ -140,12 +140,18 @@ export interface TemplateNode {
 
 export interface ProcessInstance {
   id: number
-  templateId: number
-  templateName: string
+  templateId: number | null
+  templateName: string | null
   projectId: number | null
   projectName: string | null
+  ownerId: number | null
+  ownerName: string | null
+  taskType: 'proyecto' | 'periodica' | 'one_time'
   name: string
   startDate: string
+  dueDate: string | null
+  frequencyDays: number | null
+  completedAt: string | null
   status: string
   notes: string
   createdAt: string
