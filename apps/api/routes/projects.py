@@ -24,6 +24,7 @@ class ProjectUpdate(BaseModel):
     milestones: Optional[dict] = None
     budget: Optional[dict] = None
     notes: Optional[str] = None
+    prospectId: Optional[int] = None
 
 
 class ProjectCreate(BaseModel):
@@ -44,6 +45,7 @@ class ProjectCreate(BaseModel):
     milestones: dict = Field(default_factory=dict)
     budget: dict = Field(default_factory=dict)
     notes: str = "-"
+    prospectId: Optional[int] = None
 
 
 @router.get("/api/projects")

@@ -133,7 +133,7 @@ PROJECTS_RAW_FIELDS = {
     "latitude", "longitude", "totalUnits",
     "acquisitionDate", "firstRentDate",
     "totalInvestment", "currentValuation", "valuationDate",
-    "milestones", "budget", "notes",
+    "milestones", "budget", "notes", "prospectId",
 }
 
 
