@@ -2,7 +2,7 @@ import copy
 from collections import defaultdict
 
 
-def compute_gantt(nodes: list[dict]) -> list[dict]:
+def compute_gantt(nodes: list[dict], states: list[dict] | None = None) -> list[dict]:
     """
     Returns new annotated copies of nodes with ganttStart, ganttDuration, isDefinir.
     Returns the same list.
@@ -19,6 +19,13 @@ def compute_gantt(nodes: list[dict]) -> list[dict]:
         return nodes
 
     nodes = copy.deepcopy(nodes)
+
+    # Build duration override map: templateNodeId -> overridden duration
+    override_map: dict[int, int] = {}
+    if states:
+        for s in states:
+            if s.get('durationOverrideDays') is not None:
+                override_map[s['templateNodeId']] = s['durationOverrideDays']
 
     children: dict = defaultdict(list)
     for n in nodes:
@@ -72,8 +79,9 @@ def compute_gantt(nodes: list[dict]) -> list[dict]:
                 node['ganttDuration'] = max(0, child_max_end - node['ganttStart'])
                 node['isDefinir'] = False
             else:
-                node['isDefinir'] = node.get('durationDays') is None
-                node['ganttDuration'] = 0 if node['isDefinir'] else (node.get('durationDays') or 0)
+                effective_duration = override_map.get(node['id'], node.get('durationDays'))
+                node['isDefinir'] = effective_duration is None
+                node['ganttDuration'] = 0 if node['isDefinir'] else (effective_duration or 0)
 
             node_end[node['id']] = node['ganttStart'] + node['ganttDuration']
 

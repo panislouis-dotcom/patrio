@@ -137,9 +137,9 @@ def get_instance_detail(iid: int):
     if instance is None:
         raise HTTPException(status_code=404, detail="Instance not found")
     nodes = get_template_nodes(instance["templateId"])
-    compute_gantt(nodes)
     states = get_instance_states(iid)
-    return {"instance": instance, "nodes": nodes, "states": states}
+    annotated = compute_gantt(nodes, states)
+    return {"instance": instance, "nodes": annotated, "states": states}
 
 # ─── Node states ──────────────────────────────────
 
