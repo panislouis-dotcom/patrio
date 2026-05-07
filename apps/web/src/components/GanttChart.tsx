@@ -1,5 +1,6 @@
 import type { GanttNode, NodeState } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { computeDepths } from '../lib/treeUtils'
 
 const STATUS_BAR_COLOR: Record<string, string> = {
   pending: colors.secondary,
@@ -18,6 +19,7 @@ export function GanttChart({ nodes, totalDays, states = [] }: GanttChartProps) {
   if (nodes.length === 0) return null
   const total = Math.max(1, totalDays)
   const stateByNode = Object.fromEntries(states.map(s => [s.templateNodeId, s]))
+  const depths = computeDepths(nodes)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
@@ -25,6 +27,8 @@ export function GanttChart({ nodes, totalDays, states = [] }: GanttChartProps) {
         const leftPct = (n.ganttStart / total) * 100
         const widthPct = Math.max(0.3, (n.ganttDuration / total) * 100)
         const isRoot = n.parentId === null
+        const depth = depths.get(n.id) ?? 0
+        const indent = depth * 12
         const status = stateByNode[n.id]?.status
         const barColor = n.isDefinir
           ? 'transparent'
@@ -43,7 +47,7 @@ export function GanttChart({ nodes, totalDays, states = [] }: GanttChartProps) {
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              paddingLeft: isRoot ? '0' : '12px',
+              paddingLeft: `${indent}px`,
             }}>
               {n.name}
             </div>
