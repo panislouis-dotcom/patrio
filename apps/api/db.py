@@ -352,7 +352,7 @@ def import_signal(signal_id: int) -> tuple[dict | None, dict | None]:
         "constructionOverhead": 1.3,
         "projectedSale": 0.0,
         "holdMonths": 12,
-        "rentMonthly": 1,  # placeholder — will trigger check but satisfies schema
+        "rentMonthly": 0,  # placeholder — zero allowed now that constraint is >= 0
         "notes": "-",
     })
     # Mark signal as imported

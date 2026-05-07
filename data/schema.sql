@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   projected_sale           REAL NOT NULL,   -- Venta
   hold_months              INTEGER NOT NULL DEFAULT 12,  -- Plazo estimado en meses
   -- Income
-  rent_monthly             REAL NOT NULL CHECK (rent_monthly > 0),  -- Renta mensual proyectada
+  rent_monthly             REAL NOT NULL CHECK (rent_monthly >= 0),  -- Renta mensual proyectada
   notes                    TEXT NOT NULL CHECK (notes != ''),
   created_at               TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -167,3 +167,14 @@ CREATE TABLE IF NOT EXISTS instance_node_states (
   updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(instance_id, template_node_id)
 );
+
+-- Performance indexes on FK and filter columns
+CREATE INDEX IF NOT EXISTS idx_signals_status    ON signals(status);
+CREATE INDEX IF NOT EXISTS idx_node_template     ON template_nodes(template_id);
+CREATE INDEX IF NOT EXISTS idx_node_depends      ON template_nodes(depends_on_id);
+CREATE INDEX IF NOT EXISTS idx_instance_template ON process_instances(template_id);
+CREATE INDEX IF NOT EXISTS idx_instance_project  ON process_instances(project_id);
+CREATE INDEX IF NOT EXISTS idx_node_state_inst   ON instance_node_states(instance_id);
+CREATE INDEX IF NOT EXISTS idx_node_state_node   ON instance_node_states(template_node_id);
+CREATE INDEX IF NOT EXISTS idx_team_manager      ON team_members(manager_id);
+CREATE INDEX IF NOT EXISTS idx_signals_prospect  ON signals(prospect_id);
