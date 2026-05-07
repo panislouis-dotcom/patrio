@@ -348,20 +348,21 @@ export function ProcesoTemplateEditor() {
     <div style={{ display: 'flex', height: '100%' }}>
       {/* Left: tree editor */}
       <div style={{ width: '420px', flexShrink: 0, borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center' }}>
           <button
             onClick={() => navigate('/procesos/plantillas')}
-            style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px' }}
+            style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}
           >
             ← PLANTILLAS
           </button>
-          <span style={{ color: colors.border }}>·</span>
+        </div>
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, borderLeft: `3px solid ${colors.primary}`, background: colors.surfaceAlt }}>
           <span style={{ fontFamily: fonts.sans, fontSize: '13px', color: colors.neutral }}>{template?.name ?? '…'}</span>
         </div>
         {focusNodeId && (
           <div style={{ padding: '6px 12px', borderBottom: `1px solid ${colors.border}`, display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => setFocusNodeId(null)} style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}>
-              ← TODOS
+              ← {template?.name ?? 'PLANTILLA'}
             </button>
             {focusPath.map((n, i) => (
               <span key={n.id} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -384,7 +385,7 @@ export function ProcesoTemplateEditor() {
               node={root}
               nodes={nodes}
               templateId={templateId}
-              depth={0}
+              depth={focusNodeId ? 0 : 1}
               onRefresh={refresh}
               onFocus={setFocusNodeId}
             />
@@ -407,7 +408,7 @@ export function ProcesoTemplateEditor() {
             onClick={() => setAddingRoot(true)}
             style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em', padding: '6px 14px' }}
           >
-            + AGREGAR NODO RAÍZ
+            + AGREGAR SECCIÓN
           </button>
         </div>
       </div>
