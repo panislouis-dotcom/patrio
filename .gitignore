@@ -21,6 +21,10 @@ venv/
 .superpowers/
 files/.superpowers/
 
+# Uploaded files
+data/files/**
+!data/files/.gitkeep
+
 # OS
 .DS_Store
 00Tree.html
