@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
 import { fetchProspect, updateProspect, createProspect } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { fmtMXN } from '../lib/fmt'
 import { ProspectForm } from './ProspectForm'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
@@ -36,14 +37,6 @@ const STATUS_LABEL: Record<string, string> = {
   converted: 'CONVERTIDO',
 }
 
-function fmtMXN(n: number): string {
-  if (!n) return '—'
-  const abs = Math.abs(n)
-  const sign = n < 0 ? '-' : ''
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`
-  return `${sign}$${abs.toLocaleString('es-MX')}`
-}
 
 export function ProspectDetailPage() {
   const { id } = useParams<{ id: string }>()

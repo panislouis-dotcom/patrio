@@ -4,13 +4,11 @@ import { fetchProspects } from '../lib/api'
 import { computeScores, DEFAULT_WEIGHTS } from '../lib/scoring'
 import type { Prospect, ScoreWeights } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { fmtPct, fmtM } from '../lib/fmt'
 import { ScoreWeights as ScoreWeightsPanel } from './ScoreWeights'
 import { QuickCaptureModal } from './QuickCaptureModal'
 
 type SortKey = 'score' | 'roi' | 'capRate' | 'profit' | 'totalInvestment' | 'projectedSale' | 'holdMonths'
-
-function fmtPct(n: number) { return n ? `${(n * 100).toFixed(1)}%` : '—' }
-function fmtM(n: number) { return n ? `$${(n / 1_000_000).toFixed(1)}M` : '—' }
 
 const STATUS_COLOR: Record<string, string> = {
   evaluating: '#D4891A',

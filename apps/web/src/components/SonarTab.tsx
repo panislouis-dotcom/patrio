@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { fetchSignals, runSonarScan, dismissSignal, importSignal } from '../lib/api'
 import type { Signal } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { fmtM } from '../lib/fmt'
 
-function fmtM(n: number) { return n ? `$${(n / 1_000_000).toFixed(1)}M` : '—' }
 function fmtK(n: number) { return n ? `$${(n / 1_000).toFixed(0)}k` : '—' }
 
 export function SonarTab() {

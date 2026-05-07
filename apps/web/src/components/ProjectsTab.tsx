@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { fetchProjects } from '../lib/api'
 import type { Project } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { fmtM } from '../lib/fmt'
 
 type SortKey = 'unrealizedGainPct' | 'unrealizedGain' | 'totalInvestment' | 'currentValuation' | 'holdMonthsActual'
-
-function fmtM(n: number) { return n ? `$${(n / 1_000_000).toFixed(1)}M` : '—' }
 
 const STATUS_COLOR: Record<string, string> = {
   construction: '#D4891A',
