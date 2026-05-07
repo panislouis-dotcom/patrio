@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { fetchTemplatePreview, createNode, updateNode, deleteNode } from '../lib/api'
 import type { ProcessTemplate, TemplateNode, GanttNode } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { GanttChart } from './GanttChart'
 
 function wouldCreateCycle(candidateId: number, currentId: number, allNodes: TemplateNode[]): boolean {
   const visited = new Set<number>()
@@ -109,8 +110,8 @@ function AddNodeForm({
 function TreeNode({
   node, nodes, templateId, depth, onRefresh,
 }: {
-  node: TemplateNode
-  nodes: TemplateNode[]
+  node: GanttNode
+  nodes: GanttNode[]
   templateId: number
   depth: number
   onRefresh: () => void
@@ -226,11 +227,9 @@ function TreeNode({
                 ? `→ ${nodes.find(n => n.id === node.dependsOnId)?.name ?? '?'}`
                 : '‖'}
             </span>
-            {isLeaf && (
-              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: isDefinir ? colors.tertiary : colors.secondary }}>
-                {isDefinir ? '?' : `${node.durationDays}d`}
-              </span>
-            )}
+            <span style={{ fontFamily: fonts.label, fontSize: '9px', color: isDefinir ? colors.tertiary : colors.secondary }}>
+              {isDefinir ? '?' : `${node.ganttDuration}d`}
+            </span>
             <div style={{ display: 'flex', gap: '4px' }}>
               <button onClick={() => setAddingChild(true)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
                 + HIJO
@@ -369,41 +368,7 @@ export function ProcesoTemplateEditor() {
             Agrega nodos para ver la vista previa.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {(() => {
-              const depthMap: Record<number, number> = {}
-              for (const n of nodes) {
-                depthMap[n.id] = n.parentId === null ? 0 : (depthMap[n.parentId] ?? 0) + 1
-              }
-              return nodes.map(n => {
-                const leftPct = totalDays > 0 ? (n.ganttStart / totalDays) * 100 : 0
-                const widthPct = totalDays > 0 ? Math.max(0.5, (n.ganttDuration / totalDays) * 100) : 0.5
-                const depth = depthMap[n.id] ?? 0
-                return (
-                  <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: `${depth * 12}px`, flexShrink: 0 }} />
-                    <div style={{ width: '140px', flexShrink: 0, fontFamily: fonts.sans, fontSize: '10px', color: n.isDefinir ? colors.tertiary : colors.neutral, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {n.name}
-                    </div>
-                    <div style={{ flex: 1, position: 'relative', height: '16px', background: colors.surfaceAlt, border: `1px solid ${colors.border}` }}>
-                      <div style={{
-                        position: 'absolute',
-                        left: `${leftPct}%`,
-                        width: `${widthPct}%`,
-                        height: '100%',
-                        background: n.isDefinir ? 'transparent' : (n.parentId === null ? colors.primary : colors.secondary),
-                        border: n.isDefinir ? `1px dashed ${colors.tertiary}` : 'none',
-                        opacity: 0.7,
-                      }} />
-                    </div>
-                    <div style={{ width: '40px', flexShrink: 0, fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>
-                      {n.isDefinir ? '?' : `${n.ganttDuration}d`}
-                    </div>
-                  </div>
-                )
-              })
-            })()}
-          </div>
+          <GanttChart nodes={nodes} totalDays={totalDays} />
         )}
       </div>
     </div>
