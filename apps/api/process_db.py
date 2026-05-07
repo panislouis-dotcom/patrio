@@ -5,7 +5,7 @@ from api.db import get_db, DB_PATH, _row_to_dict, _camel_to_snake
 TEMPLATE_RAW_FIELDS = {"name", "description"}
 NODE_RAW_FIELDS = {"name", "description", "sortOrder", "dependsOnId", "durationDays", "parentId"}
 INSTANCE_RAW_FIELDS = {"name", "startDate", "status", "notes", "templateId", "projectId"}
-STATE_RAW_FIELDS = {"status", "assigneeId", "actualStart", "actualEnd", "notes"}
+STATE_RAW_FIELDS = {"status", "assigneeId", "actualStart", "actualEnd", "notes", "durationOverrideDays"}
 
 
 # ─── Templates ────────────────────────────────────
@@ -203,3 +203,105 @@ def get_instance_states(iid: int) -> list[dict]:
             (iid,),
         ).fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+# ─── Node files ───────────────────────────────────────────────────────────────
+
+from pathlib import Path as _Path
+
+_NODE_FILES_DIR = _Path(__file__).parent.parent.parent / "data" / "files"
+
+
+def create_node_file(
+    template_node_id: int,
+    instance_id: int | None,
+    file_name: str,
+    content_type: str,
+    file_type: str,
+    content: bytes,
+) -> dict:
+    if instance_id is not None:
+        rel_path = f"nodes/{template_node_id}/instances/{instance_id}/{file_name}"
+    else:
+        rel_path = f"nodes/{template_node_id}/reference/{file_name}"
+    full_path = _NODE_FILES_DIR / rel_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(content)
+    with get_db() as conn:
+        cur = conn.execute(
+            """INSERT INTO node_files
+               (template_node_id, instance_id, file_path, file_name, content_type, type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (template_node_id, instance_id, rel_path, file_name, content_type, file_type),
+        )
+        fid = cur.lastrowid
+    return get_node_file(fid)
+
+
+def get_node_file(fid: int) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM node_files WHERE id = ?", (fid,)).fetchone()
+    return _row_to_dict(row) if row else None
+
+
+def get_node_files(template_node_id: int, instance_id: int | None = None) -> list[dict]:
+    with get_db() as conn:
+        if instance_id is not None:
+            rows = conn.execute(
+                """SELECT * FROM node_files
+                   WHERE template_node_id = ?
+                     AND (instance_id IS NULL OR instance_id = ?)
+                   ORDER BY uploaded_at""",
+                (template_node_id, instance_id),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT * FROM node_files
+                   WHERE template_node_id = ? AND instance_id IS NULL
+                   ORDER BY uploaded_at""",
+                (template_node_id,),
+            ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def delete_node_file(fid: int) -> None:
+    record = get_node_file(fid)
+    if record:
+        full_path = _NODE_FILES_DIR / record["filePath"]
+        if full_path.exists():
+            full_path.unlink()
+    with get_db() as conn:
+        conn.execute("DELETE FROM node_files WHERE id = ?", (fid,))
+
+
+# ─── Node comments ────────────────────────────────────────────────────────────
+
+
+def get_node_comments(instance_id: int, template_node_id: int) -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT * FROM node_comments
+               WHERE instance_id = ? AND template_node_id = ?
+               ORDER BY created_at""",
+            (instance_id, template_node_id),
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def create_node_comment(
+    instance_id: int, template_node_id: int, body: str, author: str
+) -> dict:
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO node_comments (instance_id, template_node_id, body, author) VALUES (?, ?, ?, ?)",
+            (instance_id, template_node_id, body, author),
+        )
+        cid = cur.lastrowid
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM node_comments WHERE id = ?", (cid,)).fetchone()
+    return _row_to_dict(row)
+
+
+def delete_node_comment(cid: int) -> None:
+    with get_db() as conn:
+        conn.execute("DELETE FROM node_comments WHERE id = ?", (cid,))
