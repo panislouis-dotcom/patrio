@@ -1,11 +1,13 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from api.process_db import (
     get_templates, get_template, create_template, update_template, delete_template,
     get_template_nodes, get_node, create_node, update_node, delete_node,
     get_instances, get_instance, create_instance, update_instance,
     upsert_node_state, get_instance_states,
+    get_node_files, create_node_file, delete_node_file,
+    get_node_comments, create_node_comment, delete_node_comment,
 )
 from api.gantt import compute_gantt
 
@@ -55,6 +57,10 @@ class NodeStateUpdate(BaseModel):
     actualStart: Optional[str] = None
     actualEnd: Optional[str] = None
     notes: Optional[str] = None
+
+class CommentCreate(BaseModel):
+    body: str
+    author: str = ""
 
 
 # ─── Templates ────────────────────────────────────
@@ -141,6 +147,30 @@ def get_instance_detail(iid: int):
     annotated = compute_gantt(nodes, states)
     return {"instance": instance, "nodes": annotated, "states": states}
 
+# ─── Node detail (subtree) ────────────────────────
+
+@router.get("/api/process/instances/{iid}/nodes/{nid}")
+def get_node_detail(iid: int, nid: int):
+    instance = get_instance(iid)
+    if instance is None:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    node = get_node(nid)
+    if node is None or node["templateId"] != instance["templateId"]:
+        raise HTTPException(status_code=404, detail="Node not found in this instance")
+    all_nodes = get_template_nodes(instance["templateId"])
+    all_states = get_instance_states(iid)
+    annotated = compute_gantt(all_nodes, all_states)
+    files = get_node_files(nid, iid)
+    comments = get_node_comments(iid, nid)
+    return {
+        "instance": instance,
+        "node": node,
+        "allNodes": annotated,
+        "states": all_states,
+        "files": files,
+        "comments": comments,
+    }
+
 # ─── Node states ──────────────────────────────────
 
 @router.patch("/api/process/instances/{iid}/nodes/{nid}/state")
@@ -152,3 +182,49 @@ def patch_node_state(iid: int, nid: int, body: NodeStateUpdate):
     if node is None or node["templateId"] != instance["templateId"]:
         raise HTTPException(status_code=404, detail="Node not found in this instance's template")
     return upsert_node_state(iid, nid, body.model_dump(exclude_none=True))
+
+# ─── Node files ───────────────────────────────────
+
+@router.get("/api/process/nodes/{nid}/files")
+def list_node_files(nid: int, instance_id: Optional[int] = None):
+    return get_node_files(nid, instance_id)
+
+@router.post("/api/process/nodes/{nid}/files", status_code=201)
+async def upload_node_file(
+    nid: int,
+    file: UploadFile = File(...),
+    instance_id: Optional[int] = Form(None),
+    file_type: str = Form("reference"),
+):
+    if file_type not in ("reference", "evidence"):
+        raise HTTPException(status_code=400, detail="file_type must be 'reference' or 'evidence'")
+    content = await file.read()
+    return create_node_file(
+        template_node_id=nid,
+        instance_id=instance_id,
+        file_name=file.filename or "upload",
+        content_type=file.content_type or "application/octet-stream",
+        file_type=file_type,
+        content=content,
+    )
+
+@router.delete("/api/process/files/{fid}", status_code=204)
+def delete_file_route(fid: int):
+    delete_node_file(fid)
+
+# ─── Node comments ────────────────────────────────
+
+@router.get("/api/process/instances/{iid}/nodes/{nid}/comments")
+def list_comments(iid: int, nid: int):
+    return get_node_comments(iid, nid)
+
+@router.post("/api/process/instances/{iid}/nodes/{nid}/comments", status_code=201)
+def post_comment(iid: int, nid: int, body: CommentCreate):
+    instance = get_instance(iid)
+    if instance is None:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    return create_node_comment(iid, nid, body.body, body.author)
+
+@router.delete("/api/process/comments/{cid}", status_code=204)
+def delete_comment_route(cid: int):
+    delete_node_comment(cid)
