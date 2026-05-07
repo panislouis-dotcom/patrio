@@ -182,7 +182,7 @@ export function ProcesoNodeDetail() {
   ) => {
     const file = e.target.files?.[0]
     if (!file || !detail) return
-    await uploadNodeFile(nidNum, file, type, type === 'evidence' ? detail.instance.id : undefined)
+    await uploadNodeFile(nidNum, file, type === 'evidence' ? detail.instance.id : undefined)
     const refreshed = await fetchNodeDetail(detail.instance.id, nidNum)
     setDetail(refreshed)
     e.target.value = ''

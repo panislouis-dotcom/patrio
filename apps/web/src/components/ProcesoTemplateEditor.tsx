@@ -463,7 +463,7 @@ export function ProcesoTemplateEditor() {
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
                   const file = e.target.files?.[0]
                   if (!file) return
-                  await uploadNodeFile(focusNodeId, file, 'reference')
+                  await uploadNodeFile(focusNodeId, file)
                   fetchNodeFiles(focusNodeId).then(setFocusFiles)
                   e.target.value = ''
                 }} />

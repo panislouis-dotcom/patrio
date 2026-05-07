@@ -32,7 +32,6 @@ export function ProcesoInstanceList() {
 
   // Form fields
   const [newName, setNewName] = useState('')
-  const [newTaskType, setNewTaskType] = useState<string>('one_time')
   const [newTemplateId, setNewTemplateId] = useState<string>('')
   const [newProjectId, setNewProjectId] = useState<string>('')
   const [newOwnerId, setNewOwnerId] = useState<string>('')
@@ -55,20 +54,17 @@ export function ProcesoInstanceList() {
   // Pre-fill form from URL params (e.g. from ProjectDetailPage "+ NUEVA TAREA")
   useEffect(() => {
     const pId = searchParams.get('proyecto')
-    const tipo = searchParams.get('tipo')
     if (pId) { setNewProjectId(pId); setShowForm(true) }
-    if (tipo) setNewTaskType(tipo)
   }, [])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!newName.trim()) return
+    if (!newName.trim() || !newTemplateId) return
     setCreating(true)
     try {
       const inst = await createInstance({
         name: newName.trim(),
-        taskType: newTaskType,
-        templateId: newTemplateId ? Number(newTemplateId) : null,
+        templateId: Number(newTemplateId),
         projectId: newProjectId ? Number(newProjectId) : null,
         ownerId: newOwnerId ? Number(newOwnerId) : null,
         startDate: newStartDate,
@@ -142,11 +138,6 @@ export function ProcesoInstanceList() {
           onSubmit={handleCreate}
           style={{ background: colors.surfaceAlt, border: `1px solid ${colors.border}`, padding: '16px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}
         >
-          <select value={newTaskType} onChange={e => setNewTaskType(e.target.value)} style={inputStyle}>
-            <option value="one_time">Una vez</option>
-            <option value="proyecto">Proyecto</option>
-            <option value="periodica">Periódica</option>
-          </select>
           <input
             value={newName}
             onChange={e => setNewName(e.target.value)}
@@ -155,33 +146,27 @@ export function ProcesoInstanceList() {
             style={{ ...inputStyle, minWidth: '180px' }}
           />
           <select value={newTemplateId} onChange={e => setNewTemplateId(e.target.value)} style={inputStyle}>
-            {newTaskType !== 'proyecto' && <option value="">Sin proceso</option>}
+            <option value="">— Selecciona proceso</option>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-          {(newTaskType === 'proyecto' || newTaskType === 'periodica') && (
-            <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} style={inputStyle}>
-              <option value="">{newTaskType === 'proyecto' ? '— Selecciona proyecto' : '— Sin proyecto'}</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          )}
-          {newTaskType === 'periodica' && (
-            <input
-              type="number"
-              min="1"
-              placeholder="Cada X días"
-              value={newFrequencyDays}
-              onChange={e => setNewFrequencyDays(e.target.value)}
-              style={{ ...inputStyle, width: '110px' }}
-            />
-          )}
-          {newTaskType === 'one_time' && (
-            <input
-              type="date"
-              value={newDueDate}
-              onChange={e => setNewDueDate(e.target.value)}
-              style={inputStyle}
-            />
-          )}
+          <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} style={inputStyle}>
+            <option value="">— Sin proyecto</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <input
+            type="number"
+            min="1"
+            placeholder="Cada X días"
+            value={newFrequencyDays}
+            onChange={e => setNewFrequencyDays(e.target.value)}
+            style={{ ...inputStyle, width: '110px' }}
+          />
+          <input
+            type="date"
+            value={newDueDate}
+            onChange={e => setNewDueDate(e.target.value)}
+            style={inputStyle}
+          />
           <select value={newOwnerId} onChange={e => setNewOwnerId(e.target.value)} style={inputStyle}>
             <option value="">— Sin dueño</option>
             {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -194,9 +179,9 @@ export function ProcesoInstanceList() {
           />
           <button
             type="submit"
-            disabled={creating || !newName.trim() || (newTaskType === 'proyecto' && !newProjectId)}
+            disabled={creating || !newName.trim() || !newTemplateId}
             style={{
-              background: (creating || !newName.trim()) ? colors.border : colors.primary,
+              background: (creating || !newName.trim() || !newTemplateId) ? colors.border : colors.primary,
               border: 'none',
               color: colors.neutral,
               cursor: creating ? 'not-allowed' : 'pointer',
