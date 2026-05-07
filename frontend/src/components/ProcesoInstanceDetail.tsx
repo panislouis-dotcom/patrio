@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchInstanceDetail, updateNodeState, fetchTeam } from '../lib/api'
-import type { InstanceDetail, NodeState, TeamMember } from '../lib/types'
+import type { InstanceDetail, GanttNode, NodeState, TeamMember } from '../lib/types'
 import { GanttChart } from './GanttChart'
 import { colors, fonts } from '../lib/theme'
 
@@ -36,12 +36,32 @@ export function ProcesoInstanceDetail() {
     return states.find(s => s.templateNodeId === nodeId)
   }, [states])
 
+  function getDescendants(nodeId: number, allNodes: GanttNode[]): number[] {
+    const children = allNodes.filter(n => n.parentId === nodeId)
+    return children.flatMap(c => [c.id, ...getDescendants(c.id, allNodes)])
+  }
+
   async function handleStateChange(nodeId: number, field: string, value: string | number | null) {
-    const updated = await updateNodeState(instanceId, nodeId, { [field]: value })
+    const allNodes = detail?.nodes ?? []
+    const targets = field === 'status'
+      ? [nodeId, ...getDescendants(nodeId, allNodes)]
+      : [nodeId]
+
+    const results = await Promise.all(
+      targets.map(id => updateNodeState(instanceId, id, { [field]: value }))
+    )
+
     setStates(prev => {
-      const exists = prev.find(s => s.templateNodeId === nodeId)
-      if (exists) return prev.map(s => s.templateNodeId === nodeId ? updated : s)
-      return [...prev, updated]
+      let next = [...prev]
+      for (const updated of results) {
+        const exists = next.find(s => s.templateNodeId === updated.templateNodeId)
+        if (exists) {
+          next = next.map(s => s.templateNodeId === updated.templateNodeId ? updated : s)
+        } else {
+          next = [...next, updated]
+        }
+      }
+      return next
     })
   }
 
@@ -91,7 +111,7 @@ export function ProcesoInstanceDetail() {
         <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
           CRONOGRAMA
         </div>
-        <GanttChart nodes={nodes} totalDays={totalDays} />
+        <GanttChart nodes={nodes} totalDays={totalDays} states={states} />
       </div>
 
       {/* Estado table */}

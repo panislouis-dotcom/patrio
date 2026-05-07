@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, ProcessInstance, NodeState, GanttNode, InstanceDetail } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, ProcessInstance, NodeState, InstanceDetail } from './types'
 
 const BASE = 'http://localhost:8000'
 
