@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProject, updateProject } from '../lib/api'
-import type { Project } from '../lib/types'
+import { fetchProject, updateProject, fetchInstances } from '../lib/api'
+import type { Project, ProcessInstance } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
-import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL } from '../lib/status'
+import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL, PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
 
 function fmt(n: number): string {
   const abs = Math.abs(n)
@@ -26,6 +26,7 @@ export function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
+  const [instances, setInstances] = useState<ProcessInstance[]>([])
 
   useEffect(() => {
     fetchProject(projectId).then(p => {
@@ -33,6 +34,7 @@ export function ProjectDetailPage() {
       setTimeout(() => setMounted(true), 40)
       setTimeout(() => setBarsReady(true), 420)
     })
+    fetchInstances(projectId).then(setInstances)
   }, [projectId])
 
   const field = (key: keyof Project) => (edits as Record<string, unknown>)[key] ?? (project ? (project as unknown as Record<string, unknown>)[key] : undefined)
@@ -397,6 +399,48 @@ export function ProjectDetailPage() {
               </a>
             </div>
           )}
+
+          {/* TAREAS */}
+          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '24px', marginTop: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em' }}>TAREAS</span>
+              <button
+                onClick={() => navigate(`/procesos/tareas?proyecto=${project.id}&tipo=proyecto`)}
+                style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 10px' }}
+              >
+                + NUEVA TAREA
+              </button>
+            </div>
+            {instances.length === 0 ? (
+              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Sin tareas ligadas a este proyecto.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    {['NOMBRE', 'TIPO', 'ESTADO', 'INICIO'].map(h => (
+                      <th key={h} style={{ padding: '5px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'left', letterSpacing: '0.1em' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {instances.map(inst => (
+                    <tr
+                      key={inst.id}
+                      onClick={() => navigate(`/procesos/tareas/${inst.id}`)}
+                      style={{ borderBottom: `1px solid ${colors.border}`, cursor: 'pointer' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = colors.surfaceAlt)}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <td style={{ padding: '6px 10px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{inst.name}</td>
+                      <td style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.06em' }}>{inst.taskType.toUpperCase().replace('_', ' ')}</td>
+                      <td style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.06em', color: PROCESS_INSTANCE_STATUS_COLOR[inst.status] ?? colors.secondary }}>{inst.status.toUpperCase()}</td>
+                      <td style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{inst.startDate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
     </div>
