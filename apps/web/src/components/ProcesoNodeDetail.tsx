@@ -285,6 +285,16 @@ export function ProcesoNodeDetail() {
         </div>
       </div>
 
+      {/* ── Descripción ───────────────────────────────────────────────────── */}
+      {detail.node.description && (
+        <div>
+          <div style={sectionLabel}>DESCRIPCIÓN</div>
+          <p style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral, lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>
+            {detail.node.description}
+          </p>
+        </div>
+      )}
+
       {/* ── Subtree Gantt ──────────────────────────────────────────────────── */}
       {normalizedNodes.length > 0 && (
         <div>
@@ -434,54 +444,32 @@ export function ProcesoNodeDetail() {
         />
       </div>
 
-      {/* ── Fotos de referencia ────────────────────────────────────────────── */}
-      <div>
-        <div style={sectionLabel}>FOTOS DE REFERENCIA</div>
-        <div
-          style={{
-            fontFamily: fonts.label,
-            fontSize: '9px',
-            color: colors.secondary,
-            marginBottom: 8,
-          }}
-        >
-          Para el template — usadas como referencia
+      {/* ── Fotos de referencia (read-only) ─────────────────────────────────── */}
+      {referenceFiles.length > 0 && (
+        <div>
+          <div style={sectionLabel}>FOTOS DE REFERENCIA</div>
+          <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, marginBottom: 8 }}>
+            Del proceso — solo lectura
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {referenceFiles.map(f => (
+              <div key={f.id} style={{ width: 80, height: 80 }}>
+                {f.contentType.startsWith('image/') ? (
+                  <img
+                    src={`http://localhost:8000/files/${f.filePath}`}
+                    alt={f.fileName}
+                    style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }}
+                  />
+                ) : (
+                  <div style={{ width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.border, borderRadius: 2, fontSize: '10px', color: colors.secondary, fontFamily: fonts.label, padding: 4, textAlign: 'center' }}>
+                    {f.fileName}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-          {referenceFiles.map(f => (
-            <FileThumb
-              key={f.id}
-              f={f}
-              onDelete={() => handleDeleteFile(f.id)}
-            />
-          ))}
-        </div>
-        <label
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            background: colors.surfaceAlt,
-            border: `1px solid ${colors.border}`,
-            color: colors.neutral,
-            fontFamily: fonts.label,
-            fontSize: '10px',
-            letterSpacing: '0.08em',
-            padding: '10px 16px',
-            cursor: 'pointer',
-            minHeight: 44,
-            minWidth: 44,
-          }}
-        >
-          + SUBIR REFERENCIA
-          <input
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={e => handleUpload(e, 'reference')}
-          />
-        </label>
-      </div>
+      )}
 
       {/* ── Evidencias ─────────────────────────────────────────────────────── */}
       <div>
