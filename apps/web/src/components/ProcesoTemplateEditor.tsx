@@ -19,16 +19,18 @@ function wouldCreateCycle(candidateId: number, currentId: number, allNodes: Temp
 
 // ─── Add node form ────────────────────────────────
 function AddNodeForm({
-  templateId, parentId, sortOrder, onCreated, onCancel,
+  templateId, parentId, sortOrder, siblingNodes, onCreated, onCancel,
 }: {
   templateId: number
   parentId: number | null
   sortOrder: number
+  siblingNodes: TemplateNode[]
   onCreated: (n: TemplateNode) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
   const [durationDays, setDurationDays] = useState<string>('')
+  const [dependsOnId, setDependsOnId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -41,7 +43,7 @@ function AddNodeForm({
         parentId,
         sortOrder,
         durationDays: durationDays !== '' ? Number(durationDays) : null,
-        dependsOnId: null,
+        dependsOnId,
       })
       onCreated(n)
       setName('')
@@ -78,6 +80,19 @@ function AddNodeForm({
         min="1"
         style={{ ...inputStyle, width: '140px' }}
       />
+      {siblingNodes.length > 0 && (
+        <select
+          value={dependsOnId ?? ''}
+          onChange={e => setDependsOnId(e.target.value ? Number(e.target.value) : null)}
+          style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 6px', outline: 'none' }}
+          title="Después de"
+        >
+          <option value="">Paralelo</option>
+          {siblingNodes.map(s => (
+            <option key={s.id} value={s.id}>Después de: {s.name}</option>
+          ))}
+        </select>
+      )}
       <button
         type="submit"
         disabled={saving || !name.trim()}
@@ -238,6 +253,7 @@ function TreeNode({
               templateId={templateId}
               parentId={node.id}
               sortOrder={children.length}
+              siblingNodes={children}
               onCreated={n => { onCreated(n); setAddingChild(false) }}
               onCancel={() => setAddingChild(false)}
             />
@@ -333,6 +349,7 @@ export function ProcesoTemplateEditor() {
                 templateId={templateId}
                 parentId={null}
                 sortOrder={roots.length}
+                siblingNodes={roots}
                 onCreated={n => { setNodes(prev => [...prev, n]); setAddingRoot(false); refreshPreview() }}
                 onCancel={() => setAddingRoot(false)}
               />
