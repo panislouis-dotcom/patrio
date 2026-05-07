@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
 import { fetchProspect, updateProspect, createProspect } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { ProspectForm } from './ProspectForm'
-import { EditableRow, rowStyle } from './EditableRow'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
   city: 'Monterrey',
@@ -27,39 +25,25 @@ export const DEFAULT_PROSPECT: Partial<RawFields> = {
   notes: '',
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section style={{ marginBottom: '32px' }}>
-      <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '12px', borderBottom: `1px solid ${colors.border}`, paddingBottom: '8px' }}>{title}</div>
-      {children}
-    </section>
-  )
+const STATUS_COLOR: Record<string, string> = {
+  evaluating: colors.tertiary,
+  passed: colors.primary,
+  converted: '#654F6F',
+}
+const STATUS_LABEL: Record<string, string> = {
+  evaluating: 'EVALUANDO',
+  passed: 'APROBADO',
+  converted: 'CONVERTIDO',
 }
 
-function Hero({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontFamily: fonts.serif, fontSize: '36px', color: colors.tertiary, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: '6px' }}>{label}</div>
-    </div>
-  )
-}
-
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${colors.border}`, fontFamily: fonts.sans, fontSize: '13px' }}>
-      <span style={{ color: colors.secondary }}>{label}</span>
-      <span style={{ color: colors.neutral, fontWeight: bold ? 600 : 400 }}>{value}</span>
-    </div>
-  )
-}
-
-function fmt(n: number, type: 'pct' | 'mxn') {
+function fmtMXN(n: number): string {
   if (!n) return '—'
-  if (type === 'pct') return `${(n * 100).toFixed(1)}%`
-  return `$${n.toLocaleString('es-MX')} MXN`
+  const abs = Math.abs(n)
+  const sign = n < 0 ? '-' : ''
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`
+  return `${sign}$${abs.toLocaleString('es-MX')}`
 }
-
 
 export function ProspectDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -71,16 +55,18 @@ export function ProspectDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [activeField, setActiveField] = useState<string | null>(null)
   const [edits, setEdits] = useState<Partial<RawFields>>({})
+  const [mounted, setMounted] = useState(false)
+  const [barsReady, setBarsReady] = useState(false)
 
   useEffect(() => {
-    if (isNew) {
-      setLoading(false)
-      return
-    }
+    if (isNew) { setLoading(false); return }
     fetchProspect(Number(id))
-      .then(setProspect)
+      .then(p => {
+        setProspect(p)
+        setTimeout(() => setMounted(true), 40)
+        setTimeout(() => setBarsReady(true), 420)
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [id, isNew])
@@ -90,7 +76,7 @@ export function ProspectDetailPage() {
     setSaveError(null)
     try {
       const result = await createProspect(data)
-      navigate(`/tabla/${result.id}`, { replace: true })
+      navigate(`/prospectos/tabla/${result.id}`, { replace: true })
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
@@ -106,7 +92,6 @@ export function ProspectDetailPage() {
       const updated = await updateProspect(Number(id), edits)
       setProspect(updated)
       setEdits({})
-      setActiveField(null)
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
@@ -114,7 +99,7 @@ export function ProspectDetailPage() {
     }
   }
 
-  function handleEdit(key: keyof RawFields, raw: string, inputType: 'number' | 'date' | 'text', isAcqPct = false) {
+  function handleEdit(key: keyof RawFields, raw: string, inputType: 'number' | 'text', isAcqPct = false) {
     let value: string | number | undefined
     if (inputType === 'number') {
       if (raw === '') { value = undefined }
@@ -128,7 +113,7 @@ export function ProspectDetailPage() {
     })
   }
 
-  function currentEditValue(key: keyof RawFields, isAcqPct = false): string {
+  function cv(key: keyof RawFields, isAcqPct = false): string {
     if (edits[key] !== undefined) {
       const v = edits[key] as number | string
       if (isAcqPct && typeof v === 'number') return (v * 100).toFixed(1)
@@ -139,206 +124,383 @@ export function ProspectDetailPage() {
     return raw != null ? String(raw) : ''
   }
 
-  if (!isNew && loading) return <div style={{ padding: '32px', color: colors.secondary }}>Cargando…</div>
-  if (!isNew && (error || !prospect)) return <div style={{ padding: '32px', color: 'tomato' }}>{error ?? 'No encontrado'}</div>
+  const fade = (delay = 0): React.CSSProperties => ({
+    opacity: mounted ? 1 : 0,
+    transform: mounted ? 'translateY(0)' : 'translateY(12px)',
+    transition: `opacity 0.5s ease ${delay}ms, transform 0.5s ease ${delay}ms`,
+  })
 
-  const header = (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-      <button
-        onClick={() => navigate('/tabla')}
-        style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '11px', letterSpacing: '0.1em', padding: 0 }}
-      >
-        ← PROSPECTOS
-      </button>
-    </div>
-  )
-
-  if (isNew) {
+  if (!isNew && loading) {
     return (
-      <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 20px' }}>
-        {header}
-        <ProspectForm
-          initial={DEFAULT_PROSPECT}
-          onSave={handleFormSave}
-          onCancel={undefined}
-          saving={saving}
-          saveError={saveError}
-        />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>
+        Cargando…
+      </div>
+    )
+  }
+  if (!isNew && (error || !prospect)) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: 'tomato', fontFamily: fonts.sans, fontSize: '13px' }}>
+        {error ?? 'No encontrado'}
       </div>
     )
   }
 
-  // Read-only view with inline editing — prospect is guaranteed non-null here
-  const p = prospect!
-  const hasCoords = p.latitude !== 0 && p.longitude !== 0
-  const errors = p.issues.filter(i => i.severity === 'error')
-  const warnings = p.issues.filter(i => i.severity === 'warning')
-  const issueMap = Object.fromEntries(p.issues.map(i => [i.field, i]))
-  function badge(field: string) {
-    const issue = issueMap[field]
-    return issue ? (issue.severity === 'error' ? ' 🔴' : ' ⚠️') : ''
+  if (isNew) {
+    return (
+      <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
+          <button
+            onClick={() => navigate('/prospectos/tabla')}
+            style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '11px', letterSpacing: '0.1em', padding: 0 }}
+          >
+            ← PROSPECTOS
+          </button>
+        </div>
+        <ProspectForm initial={DEFAULT_PROSPECT} onSave={handleFormSave} onCancel={undefined} saving={saving} saveError={saveError} />
+      </div>
+    )
   }
 
+  const p = prospect!
+  const hasCoords = p.latitude !== 0 && p.longitude !== 0
+  const roi = p.roi ?? 0
+  const roiColor = roi > 0.5 ? colors.primary : roi > 0.25 ? colors.tertiary : '#c0392b'
+  const hasEdits = Object.keys(edits).length > 0
+  const errors = p.issues.filter(i => i.severity === 'error')
+  const warnings = p.issues.filter(i => i.severity === 'warning')
+
+  const fieldInput: React.CSSProperties = {
+    background: 'transparent',
+    border: 'none',
+    borderBottom: `1px solid ${colors.border}`,
+    color: colors.neutral,
+    fontFamily: fonts.sans,
+    fontSize: '11px',
+    outline: 'none',
+    padding: '2px 0',
+    width: '100%',
+  }
+
+  const divider = (label: string) => (
+    <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, padding: '12px 0 6px', borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '4px' }}>
+      {label}
+    </div>
+  )
+
+  const stat = (label: string, value: React.ReactNode) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
+      <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>{label}</span>
+      <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{value}</span>
+    </div>
+  )
+
+  const investmentItems = [
+    { label: 'Precio terreno', amount: p.landPrice },
+    { label: 'Costos adq.', amount: p.acquisitionCosts },
+    { label: 'Permisos', amount: p.permitsCost },
+    { label: 'Subdivisión', amount: p.subdivisionCost },
+    { label: 'Construcción', amount: p.constructionTotal },
+  ].filter(item => item.amount > 0)
+
+  const barColors = [colors.primary, '#654F6F', '#5C5D8D', colors.tertiary, colors.secondary]
+
   return (
-    <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 20px' }}>
-      {header}
+    <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
 
-      <h1 style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '8px' }}>{p.name}</h1>
-      <div style={{ fontFamily: fonts.sans, fontSize: '13px', color: colors.secondary, marginBottom: '32px' }}>{p.address} · {p.sqmLand} m²</div>
+      {/* ── HEADER ── */}
+      <div style={{
+        ...fade(0),
+        flexShrink: 0,
+        height: '52px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '16px',
+        padding: '0 24px',
+        borderBottom: `1px solid ${colors.border}`,
+        background: colors.dark,
+      }}>
+        <button
+          onClick={() => navigate('/prospectos/tabla')}
+          style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: 0, flexShrink: 0 }}
+        >
+          ← PROSPECTOS
+        </button>
+        <span style={{ color: colors.border }}>·</span>
+        <span style={{ fontFamily: fonts.serif, fontSize: '20px', color: colors.neutral, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {p.name}
+        </span>
+        <span style={{
+          fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.12em',
+          padding: '3px 10px', flexShrink: 0,
+          background: STATUS_COLOR[p.status] ?? colors.border,
+          color: colors.neutral,
+        }}>
+          {STATUS_LABEL[p.status] ?? p.status.toUpperCase()}
+        </span>
+        {hasEdits && (
+          <button
+            onClick={handleInlineSave}
+            disabled={saving}
+            style={{
+              background: colors.primary, border: 'none', color: colors.neutral,
+              cursor: saving ? 'not-allowed' : 'pointer',
+              fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em',
+              padding: '6px 16px', opacity: saving ? 0.7 : 1,
+              transition: 'opacity 0.2s', flexShrink: 0,
+            }}
+          >
+            {saving ? 'GUARDANDO…' : 'GUARDAR ▸'}
+          </button>
+        )}
+      </div>
 
-      <Section title="Métricas clave">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', background: colors.surfaceAlt, padding: '24px', borderRadius: '2px' }}>
-          <Hero label="ROI" value={fmt(p.roi, 'pct')} />
-          <Hero label="Profit" value={`$${(p.profit / 1_000_000).toFixed(1)}M`} />
-          <Hero label="Cap Rate" value={fmt(p.capRate, 'pct')} />
-          <Hero label="Score" value={String(p.score ?? '—')} />
-        </div>
-      </Section>
+      {/* ── MAIN 3-COLUMN GRID ── */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '290px 1fr 310px', overflow: 'hidden' }}>
 
-      <Section title="Desglose de inversión">
-        <Row label="Precio terreno" value={fmt(p.landPrice, 'mxn')} />
-        <Row label={`Costos adquisición (${(p.acquisitionCostPct * 100).toFixed(1)}%)`} value={fmt(p.acquisitionCosts, 'mxn')} />
-        <Row label="Permisos" value={fmt(p.permitsCost, 'mxn')} />
-        <Row label="Subdivisión" value={fmt(p.subdivisionCost, 'mxn')} />
-        <Row label={`Construcción (${p.constructionCostPerSqm?.toLocaleString('es-MX')}/m² × ${p.sqmConstruction} m²)`} value={fmt(p.constructionBase, 'mxn')} />
-        <Row label={`+ IVA/indirectos (×${p.constructionOverhead})`} value={fmt(p.constructionTotal, 'mxn')} />
-        <Row label="INVERSIÓN TOTAL" value={fmt(p.totalInvestment, 'mxn')} bold />
-        <Row label="Venta proyectada" value={fmt(p.projectedSale, 'mxn')} />
-        <Row label="PROFIT" value={fmt(p.profit, 'mxn')} bold />
-      </Section>
-
-      {hasCoords && (
-        <Section title="Ubicación">
-          <div style={{ height: '320px', borderRadius: '2px', overflow: 'hidden' }}>
-            <MapContainer center={[p.latitude, p.longitude]} zoom={15} style={{ height: '100%', width: '100%' }}>
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
-              <CircleMarker center={[p.latitude, p.longitude]} radius={10} pathOptions={{ color: colors.tertiary, fillColor: colors.tertiary, fillOpacity: 1 }}>
-                <Popup>{p.name}</Popup>
-              </CircleMarker>
-            </MapContainer>
-          </div>
-        </Section>
-      )}
-
-      {p.holdMonths > 0 && (
-        <Section title="Plazo">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontFamily: fonts.sans, fontSize: '13px' }}>
-            <span style={{ flex: 1, borderTop: `1px solid ${colors.tertiary}`, position: 'relative' }}>
-              <span style={{ position: 'absolute', top: '-18px', left: '50%', transform: 'translateX(-50%)', fontFamily: fonts.label, fontSize: '10px', color: colors.tertiary, whiteSpace: 'nowrap' }}>{p.holdMonths} meses</span>
-            </span>
-          </div>
-        </Section>
-      )}
-
-      {(errors.length > 0 || warnings.length > 0) && (
-        <Section title="Calidad de datos">
-          {errors.map((issue, i) => (
-            <div key={i} style={{ display: 'flex', gap: '10px', padding: '8px 0', borderBottom: `1px solid ${colors.border}`, fontSize: '13px' }}>
-              <span>🔴</span>
-              <div>
-                <span style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{issue.field}</span>
-                <div style={{ color: colors.neutral, marginTop: '2px' }}>{issue.message}</div>
+        {/* ── LEFT: Métricas + Edición ── */}
+        <div style={{
+          ...fade(80),
+          borderRight: `1px solid ${colors.border}`,
+          overflowY: 'auto',
+          padding: '20px',
+          scrollbarWidth: 'none',
+        }}>
+          {/* Hero ROI */}
+          <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI</div>
+            <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roiColor, lineHeight: 1 }}>
+              {roi > 0 ? `+${(roi * 100).toFixed(1)}%` : '—'}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+              <div style={{ flex: 1, height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: barsReady ? `${Math.min(100, roi * 100)}%` : '0%',
+                  background: roiColor,
+                  transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                }} />
               </div>
+              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, flexShrink: 0 }}>
+                Score {p.score ?? '—'}
+              </span>
+            </div>
+          </div>
+
+          {stat('PROFIT', fmtMXN(p.profit))}
+          {stat('CAP RATE', p.capRate > 0 ? `${(p.capRate * 100).toFixed(1)}%` : '—')}
+          {stat('INVERSIÓN', fmtMXN(p.totalInvestment))}
+          {stat('VENTA', fmtMXN(p.projectedSale))}
+          {p.holdMonths > 0 ? stat('PLAZO', `${p.holdMonths} meses`) : null}
+          {p.rentMonthly > 0 ? stat('RENTA/MES', fmtMXN(p.rentMonthly)) : null}
+          {stat('TERRENO', `${p.sqmLand} m²`)}
+          {stat('CONSTRUCCIÓN', `${p.sqmConstruction} m²`)}
+
+          {divider('UBICACIÓN')}
+          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{p.address || '—'}</div>
+          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>{p.city}</div>
+
+          {divider('EDITAR')}
+          {([
+            { key: 'name', label: 'Nombre', type: 'text' },
+            { key: 'address', label: 'Dirección', type: 'text' },
+            { key: 'city', label: 'Ciudad', type: 'text' },
+            { key: 'url', label: 'URL', type: 'text' },
+          ] as const).map(({ key, label, type }) => (
+            <div key={key} style={{ marginBottom: '8px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+              <input value={cv(key)} onChange={e => handleEdit(key, e.target.value, 'text')} type={type} style={fieldInput} />
             </div>
           ))}
-          {warnings.map((issue, i) => (
-            <div key={i} style={{ display: 'flex', gap: '10px', padding: '8px 0', borderBottom: `1px solid ${colors.border}`, fontSize: '13px' }}>
-              <span>⚠️</span>
-              <div>
-                <span style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{issue.field}</span>
-                <div style={{ color: colors.secondary, marginTop: '2px' }}>{issue.message}</div>
-              </div>
-            </div>
-          ))}
-        </Section>
-      )}
 
-      <Section title="Campos">
-        {/* General */}
-        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '8px' }}>General</div>
-        <EditableRow fieldKey="name" label={`Nombre${badge('name')}`} displayValue={p.name || '—'} isActive={activeField === 'name'} inputType="text" inputValue={currentEditValue('name')} onActivate={() => setActiveField('name')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('name', r, 'text')} />
-        <EditableRow fieldKey="address" label={`Dirección${badge('address')}`} displayValue={p.address || '—'} isActive={activeField === 'address'} inputType="text" inputValue={currentEditValue('address')} onActivate={() => setActiveField('address')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('address', r, 'text')} />
-        <EditableRow fieldKey="city" label={`Ciudad${badge('city')}`} displayValue={p.city || '—'} isActive={activeField === 'city'} inputType="text" inputValue={currentEditValue('city')} onActivate={() => setActiveField('city')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('city', r, 'text')} />
-
-        {/* Status — select, handle inline */}
-        <div style={rowStyle}>
-          <span style={{ color: colors.secondary }}>Estado{badge('status')}</span>
-          {activeField === 'status' ? (
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>ESTADO</div>
             <select
               value={(edits.status as string) ?? p.status}
-              autoFocus
               onChange={e => setEdits(prev => ({ ...prev, status: e.target.value }))}
-              onBlur={() => setActiveField(null)}
-              onKeyDown={e => { if (e.key === 'Escape') setActiveField(null) }}
-              style={{ background: 'transparent', border: 'none', borderBottom: `1px solid ${colors.tertiary}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '13px', padding: '2px 0', width: '140px', outline: 'none', textAlign: 'right', cursor: 'pointer' }}
+              style={{ ...fieldInput, cursor: 'pointer' }}
             >
-              <option value="evaluating">evaluating</option>
-              <option value="passed">passed</option>
-              <option value="converted">converted</option>
+              {Object.entries(STATUS_LABEL).map(([val, lbl]) => (
+                <option key={val} value={val}>{lbl}</option>
+              ))}
             </select>
-          ) : (
-            <span style={{ color: colors.neutral, cursor: 'text' }} onClick={() => setActiveField('status')}>{(edits.status as string) ?? p.status}</span>
+          </div>
+
+          {([
+            { key: 'landPrice', label: 'Precio terreno ($)' },
+            { key: 'permitsCost', label: 'Permisos ($)' },
+            { key: 'subdivisionCost', label: 'Subdivisión ($)' },
+            { key: 'sqmLand', label: 'm² Terreno' },
+            { key: 'sqmConstruction', label: 'm² Construcción' },
+            { key: 'constructionCostPerSqm', label: 'Costo/m² ($)' },
+            { key: 'projectedSale', label: 'Venta proyectada ($)' },
+            { key: 'rentMonthly', label: 'Renta mensual ($)' },
+            { key: 'holdMonths', label: 'Plazo (meses)' },
+          ] as const).map(({ key, label }) => (
+            <div key={key} style={{ marginBottom: '8px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+              <input value={cv(key)} onChange={e => handleEdit(key, e.target.value, 'number')} type="number" style={fieldInput} />
+            </div>
+          ))}
+
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>COSTOS ADQ. (%)</div>
+            <input value={cv('acquisitionCostPct', true)} onChange={e => handleEdit('acquisitionCostPct', e.target.value, 'number', true)} type="number" step="0.1" style={fieldInput} />
+          </div>
+
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>OVERHEAD CONSTRUCCIÓN</div>
+            <input value={cv('constructionOverhead')} onChange={e => handleEdit('constructionOverhead', e.target.value, 'number')} type="number" step="0.01" style={fieldInput} />
+          </div>
+
+          {([
+            { key: 'latitude', label: 'Latitud' },
+            { key: 'longitude', label: 'Longitud' },
+          ] as const).map(({ key, label }) => (
+            <div key={key} style={{ marginBottom: '8px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+              <input value={cv(key)} onChange={e => handleEdit(key, e.target.value, 'number')} type="number" step="any" style={fieldInput} />
+            </div>
+          ))}
+
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
+            <textarea value={cv('notes')} onChange={e => handleEdit('notes', e.target.value, 'text')} rows={3} style={{ ...fieldInput, resize: 'vertical' }} />
+          </div>
+
+          {saveError && (
+            <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginTop: '8px' }}>{saveError}</div>
           )}
         </div>
 
-        <EditableRow fieldKey="url" label={`URL${badge('url')}`} displayValue={p.url || '—'} isActive={activeField === 'url'} inputType="text" inputValue={currentEditValue('url')} onActivate={() => setActiveField('url')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('url', r, 'text')} />
+        {/* ── CENTER: Mapa ── */}
+        <div style={{ ...fade(160), position: 'relative', overflow: 'hidden' }}>
+          {hasCoords ? (
+            <MapContainer
+              center={[p.latitude, p.longitude]}
+              zoom={15}
+              style={{ height: '100%', width: '100%' }}
+              scrollWheelZoom={false}
+            >
+              <TileLayer
+                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+              />
+              <CircleMarker
+                center={[p.latitude, p.longitude]}
+                radius={12}
+                pathOptions={{ color: roiColor, fillColor: roiColor, fillOpacity: 0.7, weight: 2 }}
+              />
+            </MapContainer>
+          ) : (
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
+              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
+            </div>
+          )}
+        </div>
 
-        {/* Tamaño */}
-        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Tamaño</div>
-        <EditableRow fieldKey="sqmLand" label={`m² Terreno${badge('sqmLand')}`} displayValue={p.sqmLand > 0 ? p.sqmLand.toLocaleString('es-MX') : '—'} isActive={activeField === 'sqmLand'} inputType="number" inputValue={currentEditValue('sqmLand')} onActivate={() => setActiveField('sqmLand')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('sqmLand', r, 'number')} />
-        <EditableRow fieldKey="sqmConstruction" label={`m² Construcción${badge('sqmConstruction')}`} displayValue={p.sqmConstruction > 0 ? p.sqmConstruction.toLocaleString('es-MX') : '—'} isActive={activeField === 'sqmConstruction'} inputType="number" inputValue={currentEditValue('sqmConstruction')} onActivate={() => setActiveField('sqmConstruction')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('sqmConstruction', r, 'number')} />
+        {/* ── RIGHT: Inversión + Calidad + Notas ── */}
+        <div style={{
+          ...fade(240),
+          borderLeft: `1px solid ${colors.border}`,
+          overflowY: 'auto',
+          padding: '20px',
+          scrollbarWidth: 'none',
+        }}>
+          {/* Investment breakdown bars */}
+          {investmentItems.length > 0 && (
+            <>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '6px' }}>INVERSIÓN TOTAL</div>
+              <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>{fmtMXN(p.totalInvestment)}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {investmentItems.map(({ label, amount }, i) => {
+                  const pct = p.totalInvestment > 0 ? (amount / p.totalInvestment) * 100 : 0
+                  return (
+                    <div key={label}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                        <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>
+                          {label.toUpperCase()}
+                        </span>
+                        <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(amount)}</span>
+                      </div>
+                      <div style={{ height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%',
+                          width: barsReady ? `${pct}%` : '0%',
+                          background: barColors[i % barColors.length],
+                          borderRadius: '2px',
+                          transition: `width 0.9s cubic-bezier(0.4, 0, 0.2, 1) ${i * 70}ms`,
+                        }} />
+                      </div>
+                      <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.border, marginTop: '3px', textAlign: 'right' }}>
+                        {pct.toFixed(0)}%
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
 
-        {/* Adquisición */}
-        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Adquisición</div>
-        <EditableRow fieldKey="landPrice" label={`Precio terreno${badge('landPrice')}`} displayValue={p.landPrice > 0 ? `$${p.landPrice.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'landPrice'} inputType="number" inputValue={currentEditValue('landPrice')} onActivate={() => setActiveField('landPrice')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('landPrice', r, 'number')} />
-        <EditableRow fieldKey="acquisitionCostPct" label={`Costos adquisición${badge('acquisitionCostPct')}`} displayValue={`${(p.acquisitionCostPct * 100).toFixed(1)}%`} isActive={activeField === 'acquisitionCostPct'} inputType="number" inputStep="0.1" inputValue={currentEditValue('acquisitionCostPct', true)} onActivate={() => setActiveField('acquisitionCostPct')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('acquisitionCostPct', r, 'number', true)} />
-        <EditableRow fieldKey="permitsCost" label={`Permisos${badge('permitsCost')}`} displayValue={p.permitsCost > 0 ? `$${p.permitsCost.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'permitsCost'} inputType="number" inputValue={currentEditValue('permitsCost')} onActivate={() => setActiveField('permitsCost')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('permitsCost', r, 'number')} />
-        <EditableRow fieldKey="subdivisionCost" label={`Subdivisión${badge('subdivisionCost')}`} displayValue={p.subdivisionCost > 0 ? `$${p.subdivisionCost.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'subdivisionCost'} inputType="number" inputValue={currentEditValue('subdivisionCost')} onActivate={() => setActiveField('subdivisionCost')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('subdivisionCost', r, 'number')} />
+          {/* Venta + Profit summary */}
+          <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>VENTA PROYECTADA</span>
+                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(p.projectedSale)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>PROFIT</span>
+                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: roi > 0 ? colors.primary : colors.secondary }}>{fmtMXN(p.profit)}</span>
+              </div>
+            </div>
+          </div>
 
-        {/* Construcción */}
-        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Construcción</div>
-        <EditableRow fieldKey="constructionCostPerSqm" label={`Costo/m²${badge('constructionCostPerSqm')}`} displayValue={p.constructionCostPerSqm > 0 ? `$${p.constructionCostPerSqm.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'constructionCostPerSqm'} inputType="number" inputValue={currentEditValue('constructionCostPerSqm')} onActivate={() => setActiveField('constructionCostPerSqm')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('constructionCostPerSqm', r, 'number')} />
-        <EditableRow fieldKey="constructionOverhead" label={`Overhead${badge('constructionOverhead')}`} displayValue={String(p.constructionOverhead)} isActive={activeField === 'constructionOverhead'} inputType="number" inputStep="0.01" inputValue={currentEditValue('constructionOverhead')} onActivate={() => setActiveField('constructionOverhead')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('constructionOverhead', r, 'number')} />
+          {/* Data quality issues */}
+          {(errors.length > 0 || warnings.length > 0) && (
+            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '12px' }}>CALIDAD DE DATOS</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[...errors, ...warnings].map((issue, i) => (
+                  <div key={i} style={{
+                    display: 'flex', gap: '8px', padding: '8px',
+                    background: colors.surfaceAlt,
+                    border: `1px solid ${issue.severity === 'error' ? '#c0392b44' : colors.border}`,
+                  }}>
+                    <span style={{ fontSize: '11px', flexShrink: 0 }}>{issue.severity === 'error' ? '🔴' : '⚠️'}</span>
+                    <div>
+                      <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>{issue.field.toUpperCase()}</div>
+                      <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: issue.severity === 'error' ? colors.neutral : colors.secondary, marginTop: '2px' }}>{issue.message}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-        {/* Proyección */}
-        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Proyección</div>
-        <EditableRow fieldKey="projectedSale" label={`Venta proyectada${badge('projectedSale')}`} displayValue={p.projectedSale > 0 ? `$${p.projectedSale.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'projectedSale'} inputType="number" inputValue={currentEditValue('projectedSale')} onActivate={() => setActiveField('projectedSale')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('projectedSale', r, 'number')} />
-        <EditableRow fieldKey="rentMonthly" label={`Renta mensual${badge('rentMonthly')}`} displayValue={p.rentMonthly > 0 ? `$${p.rentMonthly.toLocaleString('es-MX')}` : '—'} isActive={activeField === 'rentMonthly'} inputType="number" inputValue={currentEditValue('rentMonthly')} onActivate={() => setActiveField('rentMonthly')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('rentMonthly', r, 'number')} />
-        <EditableRow fieldKey="holdMonths" label={`Plazo (meses)${badge('holdMonths')}`} displayValue={p.holdMonths > 0 ? `${p.holdMonths} meses` : '—'} isActive={activeField === 'holdMonths'} inputType="number" inputValue={currentEditValue('holdMonths')} onActivate={() => setActiveField('holdMonths')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('holdMonths', r, 'number')} />
+          {/* Notes */}
+          {p.notes && p.notes !== '-' && (
+            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>NOTAS</div>
+              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>{p.notes}</div>
+            </div>
+          )}
 
-        {/* Ubicación */}
-        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Ubicación</div>
-        <EditableRow fieldKey="latitude" label={`Latitud${badge('latitude')}`} displayValue={p.latitude !== 0 ? String(p.latitude) : '—'} isActive={activeField === 'latitude'} inputType="number" inputStep="any" inputValue={currentEditValue('latitude')} onActivate={() => setActiveField('latitude')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('latitude', r, 'number')} />
-        <EditableRow fieldKey="longitude" label={`Longitud${badge('longitude')}`} displayValue={p.longitude !== 0 ? String(p.longitude) : '—'} isActive={activeField === 'longitude'} inputType="number" inputStep="any" inputValue={currentEditValue('longitude')} onActivate={() => setActiveField('longitude')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('longitude', r, 'number')} />
-
-        {/* Notas */}
-        <div style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', marginTop: '16px' }}>Notas</div>
-        <EditableRow fieldKey="notes" label="Notas" displayValue={p.notes && p.notes !== '-' ? p.notes : '—'} isActive={activeField === 'notes'} inputType="text" inputValue={currentEditValue('notes')} onActivate={() => setActiveField('notes')} onDeactivate={() => setActiveField(null)} onChange={r => handleEdit('notes', r, 'text')} />
-      </Section>
-
-      {saveError && (
-        <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: 'tomato', marginBottom: '12px' }}>{saveError}</div>
-      )}
-      {Object.keys(edits).length > 0 && (
-        <button
-          onClick={handleInlineSave}
-          disabled={saving}
-          style={{
-            background: saving ? colors.border : colors.primary,
-            color: colors.neutral,
-            border: 'none',
-            cursor: saving ? 'default' : 'pointer',
-            fontFamily: fonts.label,
-            fontSize: '11px',
-            letterSpacing: '0.1em',
-            padding: '10px 24px',
-            opacity: saving ? 0.6 : 1,
-            marginBottom: '32px',
-          }}
-        >
-          {saving ? 'Guardando…' : 'GUARDAR CAMBIOS ▸'}
-        </button>
-      )}
+          {/* URL */}
+          {p.url && (
+            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+              <a
+                href={p.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary, textDecoration: 'none' }}
+              >
+                VER FUENTE ↗
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
