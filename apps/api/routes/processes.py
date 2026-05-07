@@ -9,6 +9,7 @@ from api.process_db import (
     get_node_files, create_node_file, delete_node_file,
     get_node_comments, create_node_comment, delete_node_comment,
     get_instance_files, create_instance_file, delete_instance_file,
+    _template_references,
 )
 from api.gantt import compute_gantt
 
@@ -30,6 +31,7 @@ class NodeCreate(BaseModel):
     parentId: Optional[int] = None
     dependsOnId: Optional[int] = None
     durationDays: Optional[int] = None
+    sourceTemplateId: Optional[int] = None
 
 class NodeUpdate(BaseModel):
     name: Optional[str] = None
@@ -37,6 +39,7 @@ class NodeUpdate(BaseModel):
     sortOrder: Optional[int] = None
     dependsOnId: Optional[int] = None
     durationDays: Optional[int] = None
+    sourceTemplateId: Optional[int] = None
 
 class InstanceCreate(BaseModel):
     name: str
@@ -104,6 +107,14 @@ def list_template_nodes(tid: int):
 @router.post("/api/process/templates/{tid}/nodes", status_code=201)
 def post_node(tid: int, body: NodeCreate):
     data = body.model_dump()
+    src = data.get('sourceTemplateId')
+    if src is not None:
+        # Validate source template exists
+        if get_template(src) is None:
+            raise HTTPException(status_code=404, detail="Source template not found")
+        # Validate no cycle: current template must not be reachable from source
+        if tid in _template_references(src):
+            raise HTTPException(status_code=400, detail="Cycle detected: source template references this template")
     data["templateId"] = tid
     return create_node(data)
 

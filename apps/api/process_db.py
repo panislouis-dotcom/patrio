@@ -3,7 +3,7 @@ from typing import Optional
 from api.db import get_db, DB_PATH, _row_to_dict, _camel_to_snake
 
 TEMPLATE_RAW_FIELDS = {"name", "description"}
-NODE_RAW_FIELDS = {"name", "description", "sortOrder", "dependsOnId", "durationDays", "parentId"}
+NODE_RAW_FIELDS = {"name", "description", "sortOrder", "dependsOnId", "durationDays", "parentId", "sourceTemplateId"}
 INSTANCE_RAW_FIELDS = {
     "name", "startDate", "status", "notes",
     "templateId", "projectId", "ownerId",
@@ -68,6 +68,24 @@ def delete_template(tid: int) -> None:
 
 # ─── Template nodes ───────────────────────────────
 
+def _template_references(tid: int, visited: set | None = None) -> set:
+    """Return set of all template IDs reachable from tid via source_template_id references."""
+    if visited is None:
+        visited = set()
+    if tid in visited:
+        return visited
+    visited.add(tid)
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT source_template_id FROM template_nodes "
+            "WHERE template_id = ? AND source_template_id IS NOT NULL",
+            (tid,)
+        ).fetchall()
+    for r in rows:
+        _template_references(r[0], visited)
+    return visited
+
+
 def get_template_nodes(tid: int) -> list[dict]:
     with get_db() as conn:
         rows = conn.execute(
@@ -75,10 +93,29 @@ def get_template_nodes(tid: int) -> list[dict]:
             (tid,),
         ).fetchall()
     nodes = [_row_to_dict(r) for r in rows]
+
+    # Expand source_template_id references (one level only)
+    expanded = []
+    for node in nodes:
+        expanded.append(node)
+        src_tid = node.get('sourceTemplateId')
+        if src_tid and src_tid != tid:
+            with get_db() as conn:
+                sub_rows = conn.execute(
+                    "SELECT * FROM template_nodes WHERE template_id = ? ORDER BY sort_order, id",
+                    (src_tid,)
+                ).fetchall()
+            for sub_row in sub_rows:
+                sub = dict(_row_to_dict(sub_row))
+                # Re-parent top-level sub-nodes under the reference node
+                if sub['parentId'] is None:
+                    sub['parentId'] = node['id']
+                expanded.append(sub)
+
     # Return in DFS order so tree rendering is correct (parent immediately before its children)
     from collections import defaultdict
     by_parent: dict = defaultdict(list)
-    for n in nodes:
+    for n in expanded:
         by_parent[n["parentId"]].append(n)
     result: list = []
     def dfs(pid):
