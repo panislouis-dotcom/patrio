@@ -1,9 +1,10 @@
+import copy
 from collections import defaultdict
 
 
 def compute_gantt(nodes: list[dict]) -> list[dict]:
     """
-    Annotates each node in-place with ganttStart, ganttDuration, isDefinir.
+    Returns new annotated copies of nodes with ganttStart, ganttDuration, isDefinir.
     Returns the same list.
 
     Input: flat list of template_node dicts with camelCase keys:
@@ -16,6 +17,8 @@ def compute_gantt(nodes: list[dict]) -> list[dict]:
     """
     if not nodes:
         return nodes
+
+    nodes = copy.deepcopy(nodes)
 
     children: dict = defaultdict(list)
     for n in nodes:
