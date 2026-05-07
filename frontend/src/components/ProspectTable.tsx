@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { fetchProspects } from '../lib/api'
 import { computeScores, DEFAULT_WEIGHTS } from '../lib/scoring'
 import type { Prospect, ScoreWeights } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { ScoreWeights as ScoreWeightsPanel } from './ScoreWeights'
-import { ProspectDrawer } from './ProspectDrawer'
 import { QuickCaptureModal } from './QuickCaptureModal'
 
 type SortKey = 'score' | 'roi' | 'capRate' | 'profit' | 'totalInvestment' | 'projectedSale' | 'holdMonths'
@@ -28,11 +27,7 @@ export function ProspectTable() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCapture, setShowCapture] = useState(false)
-  const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-
-  const selectedId = searchParams.get('id') ? Number(searchParams.get('id')) : null
-  const selected = prospects.find(p => p.id === selectedId) ?? null
 
   useEffect(() => {
     fetchProspects()
@@ -111,17 +106,16 @@ export function ProspectTable() {
             {sorted.map(p => {
               const errors = p.issues.filter(i => i.severity === 'error').length
               const warnings = p.issues.filter(i => i.severity === 'warning').length
-              const isSelected = p.id === selectedId
               const roiColor = p.roi < 0 ? 'tomato' : p.roi > 0.15 ? colors.tertiary : colors.neutral
               const statusDot = STATUS_COLOR[p.status] ?? colors.secondary
 
               return (
                 <tr
                   key={p.id}
-                  onClick={() => setSearchParams({ id: String(p.id) })}
-                  style={{ borderBottom: `1px solid ${colors.border}`, cursor: 'pointer', background: isSelected ? `${colors.tertiary}18` : 'transparent' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = isSelected ? `${colors.tertiary}18` : `${colors.border}55`)}
-                  onMouseLeave={e => (e.currentTarget.style.background = isSelected ? `${colors.tertiary}18` : 'transparent')}
+                  onClick={() => navigate(`/prospectos/tabla/${p.id}`)}
+                  style={{ borderBottom: `1px solid ${colors.border}`, cursor: 'pointer', background: 'transparent' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = `${colors.border}55`)}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
                   {/* Name + city + status dot */}
                   <td style={{ padding: '5px 10px', maxWidth: '200px' }}>
@@ -177,13 +171,6 @@ export function ProspectTable() {
           </tbody>
         </table>
       </div>
-
-      <ProspectDrawer
-        prospect={selected}
-        onClose={() => setSearchParams({})}
-        onOpenDetail={id => navigate(`/prospectos/tabla/${id}`)}
-        onUpdated={updated => setProspects(prev => computeScores(prev.map(p => p.id === updated.id ? updated : p), weights))}
-      />
 
       {showCapture && (
         <QuickCaptureModal

@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
 import { fetchProspects } from '../lib/api'
 import { computeScores, DEFAULT_WEIGHTS } from '../lib/scoring'
 import type { Prospect } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
-import { ProspectDrawer } from './ProspectDrawer'
 
 function pinColor(score: number): string {
   if (score >= 75) return colors.tertiary   // top quartile — terracotta
@@ -17,11 +16,7 @@ function pinColor(score: number): string {
 export function ProspectMap() {
   const [prospects, setProspects] = useState<Prospect[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-
-  const selectedId = searchParams.get('id') ? Number(searchParams.get('id')) : null
-  const selected = prospects.find(p => p.id === selectedId) ?? null
 
   useEffect(() => {
     fetchProspects()
@@ -47,14 +42,14 @@ export function ProspectMap() {
             <CircleMarker
               key={p.id}
               center={[p.latitude, p.longitude]}
-              radius={p.id === selectedId ? 14 : 10}
+              radius={10}
               pathOptions={{
                 color: colors.dark,
                 weight: 2,
                 fillColor: pinColor(p.score),
                 fillOpacity: 0.9,
               }}
-              eventHandlers={{ click: () => setSearchParams({ id: String(p.id) }) }}
+              eventHandlers={{ click: () => navigate(`/prospectos/tabla/${p.id}`) }}
             >
               <Popup>
                 <strong>{p.name}</strong><br />
@@ -69,12 +64,6 @@ export function ProspectMap() {
           ⚠️ {noCoords.length} prospecto{noCoords.length > 1 ? 's' : ''} sin coordenadas: {noCoords.map(p => p.name).join(', ')}
         </div>
       )}
-      <ProspectDrawer
-        prospect={selected}
-        onClose={() => setSearchParams({})}
-        onOpenDetail={id => navigate(`/tabla/${id}`)}
-        onUpdated={updated => setProspects(prev => computeScores(prev.map(p => p.id === updated.id ? updated : p), DEFAULT_WEIGHTS))}
-      />
     </div>
   )
 }

@@ -1,18 +1,13 @@
 import { useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
 import { fetchSignals, runSonarScan, dismissSignal, importSignal } from '../lib/api'
 import type { Signal } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
-
-// Status filter tabs
-type StatusFilter = 'new' | 'dismissed' | 'imported' | 'all'
 
 function fmtM(n: number) { return n ? `$${(n / 1_000_000).toFixed(1)}M` : '—' }
 function fmtK(n: number) { return n ? `$${(n / 1_000).toFixed(0)}k` : '—' }
 
 export function SonarTab() {
   const [signals, setSignals] = useState<Signal[]>([])
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('new')
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<{ new: number; scanned: number } | null>(null)
@@ -23,10 +18,10 @@ export function SonarTab() {
 
   useEffect(() => {
     setLoading(true)
-    fetchSignals(statusFilter === 'all' ? undefined : statusFilter)
+    fetchSignals()
       .then(setSignals)
       .finally(() => setLoading(false))
-  }, [statusFilter, refreshKey])
+  }, [refreshKey])
 
   async function handleScan() {
     setScanning(true)
@@ -59,28 +54,6 @@ export function SonarTab() {
       setActionError('Error al importar la señal')
     }
   }
-
-  // Status filter tabs
-  const STATUS_TABS: { key: StatusFilter; label: string }[] = [
-    { key: 'new', label: 'NUEVAS' },
-    { key: 'imported', label: 'IMPORTADAS' },
-    { key: 'dismissed', label: 'DESCARTADAS' },
-    { key: 'all', label: 'TODAS' },
-  ]
-
-  const tabStyle = (active: boolean): CSSProperties => ({
-    padding: '8px 16px',
-    fontFamily: fonts.label,
-    fontSize: '10px',
-    letterSpacing: '0.1em',
-    color: active ? colors.neutral : colors.secondary,
-    borderTop: 'none',
-    borderLeft: 'none',
-    borderRight: 'none',
-    borderBottom: active ? `2px solid ${colors.tertiary}` : '2px solid transparent',
-    cursor: 'pointer',
-    background: 'none',
-  })
 
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column' }}>
@@ -121,21 +94,12 @@ export function SonarTab() {
         </div>
       )}
 
-      {/* Status filter tabs */}
-      <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}` }}>
-        {STATUS_TABS.map(({ key, label }) => (
-          <button key={key} onClick={() => setStatusFilter(key)} style={tabStyle(statusFilter === key)}>
-            {label}
-          </button>
-        ))}
-      </div>
-
       {/* Signals table */}
       <div style={{ flex: 1, overflow: 'auto' }}>
         {loading ? (
           <div style={{ padding: '32px', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>Cargando…</div>
         ) : signals.length === 0 ? (
-          <div style={{ padding: '32px', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>Sin señales{statusFilter !== 'all' ? ` en estado "${statusFilter}"` : ''}.</div>
+          <div style={{ padding: '32px', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>Sin señales. Ejecuta un scan para buscar nuevas propiedades.</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead style={{ position: 'sticky', top: 0, background: colors.dark, zIndex: 10 }}>
@@ -187,7 +151,7 @@ export function SonarTab() {
                             onClick={() => handleImport(s)}
                             style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 8px' }}
                           >
-                            IMPORTAR
+                            AGREGAR A PROSPECTOS
                           </button>
                           <button
                             onClick={() => handleDismiss(s)}

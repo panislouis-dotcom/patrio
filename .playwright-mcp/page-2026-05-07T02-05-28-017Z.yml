@@ -1,0 +1,206 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: REFIGAN
+      - link "PROSPECTOS" [ref=e7] [cursor=pointer]:
+        - /url: /prospectos
+      - link "PROYECTOS" [ref=e8] [cursor=pointer]:
+        - /url: /proyectos
+      - link "SONAR" [ref=e9] [cursor=pointer]:
+        - /url: /sonar
+      - link "PROCESOS" [ref=e10] [cursor=pointer]:
+        - /url: /procesos
+      - link "EQUIPO" [ref=e11] [cursor=pointer]:
+        - /url: /equipo
+  - generic [ref=e64]:
+    - generic [ref=e65]:
+      - button "← PROYECTOS" [ref=e66] [cursor=pointer]
+      - generic [ref=e67]: ·
+      - generic [ref=e68]: Edificio Uno
+      - generic [ref=e69]: OPERANDO
+    - generic [ref=e70]:
+      - generic [ref=e71]:
+        - generic [ref=e72]:
+          - generic [ref=e73]: GANANCIA NO REALIZADA
+          - generic [ref=e74]: +$9.5M
+          - generic [ref=e78]: +100.0%
+        - generic [ref=e79]:
+          - generic [ref=e80]: INVERSIÓN
+          - generic [ref=e81]: $9.5M
+        - generic [ref=e82]:
+          - generic [ref=e83]: VALORACIÓN
+          - generic [ref=e84]: $19.0M
+        - generic [ref=e85]:
+          - generic [ref=e86]: UNIDADES
+          - generic [ref=e87]: "13"
+        - generic [ref=e88]:
+          - generic [ref=e89]: TIPO
+          - generic [ref=e90]: adaptive_reuse
+        - generic [ref=e91]:
+          - generic [ref=e92]: HOLD
+          - generic [ref=e93]: 63 meses
+        - generic [ref=e94]: FECHAS
+        - generic [ref=e95]:
+          - generic [ref=e96]: ADQUISICIÓN
+          - generic [ref=e97]: 2021-02
+        - generic [ref=e98]:
+          - generic [ref=e99]: PRIMERA RENTA
+          - generic [ref=e100]: 2023-07
+        - generic [ref=e101]:
+          - generic [ref=e102]: VALUACIÓN
+          - generic [ref=e103]: 2026-04
+        - generic [ref=e104]: UBICACIÓN
+        - generic [ref=e105]: Centro, Monterrey
+        - generic [ref=e106]: Monterrey
+        - generic [ref=e107]: EDITAR
+        - generic [ref=e108]:
+          - generic [ref=e109]: NOMBRE
+          - textbox [ref=e110]: Edificio Uno
+        - generic [ref=e111]:
+          - generic [ref=e112]: DIRECCIÓN
+          - textbox [ref=e113]: Centro, Monterrey
+        - generic [ref=e114]:
+          - generic [ref=e115]: CIUDAD
+          - textbox [ref=e116]: Monterrey
+        - generic [ref=e117]:
+          - generic [ref=e118]: TIPO
+          - textbox [ref=e119]: adaptive_reuse
+        - generic [ref=e120]:
+          - generic [ref=e121]: ESTADO
+          - combobox [ref=e122] [cursor=pointer]:
+            - option "CONSTRUCCIÓN"
+            - option "ESTABILIZANDO"
+            - option "OPERANDO" [selected]
+            - option "VENDIDO"
+        - generic [ref=e123]:
+          - generic [ref=e124]: INVERSIÓN ($)
+          - spinbutton [ref=e125]: "9500000"
+        - generic [ref=e126]:
+          - generic [ref=e127]: VALORACIÓN ($)
+          - spinbutton [ref=e128]: "19000000"
+        - generic [ref=e129]:
+          - generic [ref=e130]: UNIDADES
+          - spinbutton [ref=e131]: "13"
+        - generic [ref=e132]:
+          - generic [ref=e133]: ADQUISICIÓN (YYYY-MM)
+          - textbox "YYYY-MM" [ref=e134]: 2021-02
+        - generic [ref=e135]:
+          - generic [ref=e136]: PRIMERA RENTA (YYYY-MM)
+          - textbox "YYYY-MM" [ref=e137]: 2023-07
+        - generic [ref=e138]:
+          - generic [ref=e139]: VALUACIÓN (YYYY-MM)
+          - textbox "YYYY-MM" [ref=e140]: 2026-04
+        - generic [ref=e141]:
+          - generic [ref=e142]: NOTAS
+          - textbox [ref=e143]: "6 unidades: 4 departamentos + 2 locales. H6/H7 sin activar, previstas jun 2026 renta corta Mundial."
+      - generic [ref=e145]:
+        - generic:
+          - generic:
+            - img
+        - generic:
+          - generic [ref=e147]:
+            - button "Zoom in" [ref=e148] [cursor=pointer]: +
+            - button "Zoom out" [ref=e149] [cursor=pointer]: −
+          - generic [ref=e150]:
+            - link "Leaflet" [ref=e151] [cursor=pointer]:
+              - /url: https://leafletjs.com
+              - img [ref=e152]
+              - text: Leaflet
+            - text: "| ©"
+            - link "CARTO" [ref=e156] [cursor=pointer]:
+              - /url: https://carto.com/
+      - generic [ref=e157]:
+        - generic [ref=e158]: PRESUPUESTO
+        - generic [ref=e159]: $7.2M
+        - generic [ref=e160]:
+          - generic [ref=e161]:
+            - generic [ref=e162]:
+              - generic [ref=e163]: ADQUISICIÓN EDIFICIO (PROPORCIONAL)
+              - generic [ref=e164]: $3.2M
+            - generic [ref=e167]: 45%
+          - generic [ref=e168]:
+            - generic [ref=e169]:
+              - generic [ref=e170]: MANO DE OBRA
+              - generic [ref=e171]: $1.7M
+            - generic [ref=e174]: 24%
+          - generic [ref=e175]:
+            - generic [ref=e176]:
+              - generic [ref=e177]: MATERIALES
+              - generic [ref=e178]: $1.1M
+            - generic [ref=e181]: 16%
+          - generic [ref=e182]:
+            - generic [ref=e183]:
+              - generic [ref=e184]: NOTARIALES, ISAI, AVALÚO
+              - generic [ref=e185]: $203K
+            - generic [ref=e188]: 3%
+          - generic [ref=e189]:
+            - generic [ref=e190]:
+              - generic [ref=e191]: HERRAMIENTA
+              - generic [ref=e192]: $195K
+            - generic [ref=e195]: 3%
+          - generic [ref=e196]:
+            - generic [ref=e197]:
+              - generic [ref=e198]: SERVICIOS PÚBLICOS DURANTE OBRA
+              - generic [ref=e199]: $183K
+            - generic [ref=e202]: 3%
+          - generic [ref=e203]:
+            - generic [ref=e204]:
+              - generic [ref=e205]: MOBILIARIO Y EQUIPAMIENTO
+              - generic [ref=e206]: $173K
+            - generic [ref=e209]: 2%
+          - generic [ref=e210]:
+            - generic [ref=e211]:
+              - generic [ref=e212]: INGENIERÍA CIVIL Y SUPERVISIÓN
+              - generic [ref=e213]: $138K
+            - generic [ref=e216]: 2%
+          - generic [ref=e217]:
+            - generic [ref=e218]:
+              - generic [ref=e219]: ACARREO DE ESCOMBRO
+              - generic [ref=e220]: $124K
+            - generic [ref=e223]: 2%
+          - generic [ref=e224]:
+            - generic [ref=e225]:
+              - generic [ref=e226]: COMBUSTIBLES Y LOGÍSTICA
+              - generic [ref=e227]: $55K
+            - generic [ref=e230]: 1%
+          - generic [ref=e231]:
+            - generic [ref=e232]:
+              - generic [ref=e233]: PREDIAL DURANTE OBRA
+              - generic [ref=e234]: $42K
+            - generic [ref=e237]: 1%
+          - generic [ref=e238]:
+            - generic [ref=e239]:
+              - generic [ref=e240]: IMPUESTOS DURANTE OBRA
+              - generic [ref=e241]: $21K
+            - generic [ref=e244]: 0%
+          - generic [ref=e245]:
+            - generic [ref=e246]:
+              - generic [ref=e247]: OTROS GASTOS VARIOS
+              - generic [ref=e248]: $15K
+            - generic [ref=e251]: 0%
+        - generic [ref=e252]:
+          - generic [ref=e253]: HITOS
+          - generic [ref=e254]:
+            - generic [ref=e259]:
+              - generic [ref=e260]: 2021-02
+              - generic [ref=e261]: Adquisición del inmueble — edificio histórico + casa adyacente
+            - generic [ref=e266]:
+              - generic [ref=e267]: 2021-06
+              - generic [ref=e268]: Inicio de obra — rescate estructural, sillar expuesto, patio central
+            - generic [ref=e273]:
+              - generic [ref=e274]: 2023-07
+              - generic [ref=e275]: Primera renta — 30 meses desde adquisición, obra integral en histórico
+            - generic [ref=e280]:
+              - generic [ref=e281]: 2024-01
+              - generic [ref=e282]: Estabilización — ocupación creciente durante 2024–2025
+            - generic [ref=e287]:
+              - generic [ref=e288]: 2026-01
+              - generic [ref=e289]: Operación plena — 11 de 13 unidades activas
+            - generic [ref=e293]:
+              - generic [ref=e294]: 2026-04
+              - generic [ref=e295]: Valuación actualizada — $19M, 2x sobre inversión de $9.5M
+        - generic [ref=e296]:
+          - generic [ref=e297]: NOTAS
+          - generic [ref=e298]: "6 unidades: 4 departamentos + 2 locales. H6/H7 sin activar, previstas jun 2026 renta corta Mundial."
+        - link "VER FUENTE ↗" [ref=e300] [cursor=pointer]:
+          - /url: https://refigan.mx/edificio-uno

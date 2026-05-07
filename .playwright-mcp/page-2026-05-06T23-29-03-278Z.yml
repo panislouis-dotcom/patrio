@@ -1,0 +1,108 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: REFIGAN
+      - link "PROSPECTOS" [ref=e7] [cursor=pointer]:
+        - /url: /prospectos
+      - link "PROYECTOS" [ref=e8] [cursor=pointer]:
+        - /url: /proyectos
+      - link "SONAR" [ref=e9] [cursor=pointer]:
+        - /url: /sonar
+      - link "EQUIPO" [ref=e10] [cursor=pointer]:
+        - /url: /equipo
+  - generic [ref=e11]:
+    - generic [ref=e12]:
+      - generic [ref=e13]: EQUIPO
+      - generic [ref=e14]: 4 miembros
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - generic [ref=e25]: Director
+            - generic [ref=e26]: Visión estratégica, decisiones de inversión, relación con inversionistas
+          - generic [ref=e27]:
+            - generic [ref=e28]: Responsable de Proyecto
+            - generic [ref=e29]: Ownership completo del proyecto, presupuesto y timelines
+          - generic [ref=e30]:
+            - generic [ref=e31]: Líder de Proyecto
+            - generic [ref=e32]: Coordinación de equipo en campo, supervisión de obra
+          - generic [ref=e33]:
+            - generic [ref=e34]: Miembro de Equipo
+            - generic [ref=e35]: Ejecución de tareas específicas dentro del proyecto
+        - table [ref=e37]:
+          - rowgroup [ref=e38]:
+            - row "NOMBRE ROL" [ref=e39]:
+              - columnheader "NOMBRE" [ref=e40]
+              - columnheader "ROL" [ref=e41]
+              - columnheader [ref=e42]
+          - rowgroup [ref=e43]:
+            - row "Louis Panis Director — Sin manager OK BORRAR ✕" [ref=e44]:
+              - cell "Louis Panis" [ref=e45]:
+                - generic [ref=e46]: Louis Panis
+              - cell "Director — Sin manager" [ref=e47]:
+                - generic [ref=e48]:
+                  - combobox [ref=e49]:
+                    - option "Director" [selected]
+                    - option "Responsable de Proyecto"
+                    - option "Líder de Proyecto"
+                    - option "Miembro de Equipo"
+                  - combobox [ref=e50]:
+                    - option "— Sin manager" [selected]
+                    - option "Eduardo de la Garza"
+                    - option "Yierba Cantú"
+                    - option "test"
+              - cell "OK BORRAR ✕" [ref=e51]:
+                - generic [ref=e52]:
+                  - button "OK" [ref=e53] [cursor=pointer]
+                  - button "BORRAR" [ref=e54] [cursor=pointer]
+                  - button "✕" [ref=e55] [cursor=pointer]
+            - row "Eduardo de la Garza — Director EDITAR" [ref=e56]:
+              - cell "Eduardo de la Garza —" [ref=e57]:
+                - generic [ref=e58]: Eduardo de la Garza
+                - generic [ref=e59]: —
+              - cell "Director" [ref=e60]
+              - cell "EDITAR" [ref=e61]:
+                - button "EDITAR" [ref=e62] [cursor=pointer]
+            - row "Yierba Cantú Louis Panis Líder de Proyecto EDITAR" [ref=e63]:
+              - cell "Yierba Cantú Louis Panis" [ref=e64]:
+                - generic [ref=e65]: Yierba Cantú
+                - generic [ref=e66]: Louis Panis
+              - cell "Líder de Proyecto" [ref=e67]
+              - cell "EDITAR" [ref=e68]:
+                - button "EDITAR" [ref=e69] [cursor=pointer]
+            - row "test Louis Panis Miembro de Equipo EDITAR" [ref=e70]:
+              - cell "test Louis Panis" [ref=e71]:
+                - generic [ref=e72]: test
+                - generic [ref=e73]: Louis Panis
+              - cell "Miembro de Equipo" [ref=e74]
+              - cell "EDITAR" [ref=e75]:
+                - button "EDITAR" [ref=e76] [cursor=pointer]
+      - generic [ref=e77]:
+        - generic [ref=e78]:
+          - generic [ref=e79]:
+            - generic [ref=e80]: Louis Panis
+            - text: Director
+          - generic [ref=e82]:
+            - generic [ref=e86]:
+              - generic [ref=e87]: Yierba Cantú
+              - text: Líder de Proyecto
+            - generic [ref=e91]:
+              - generic [ref=e92]: test
+              - text: Miembro de Equipo
+        - generic [ref=e94]:
+          - generic [ref=e95]: Eduardo de la Garza
+          - text: Director
+    - generic [ref=e18]:
+      - textbox "Nombre" [ref=e19]
+      - combobox [ref=e20]:
+        - option "Director"
+        - option "Responsable de Proyecto"
+        - option "Líder de Proyecto"
+        - option "Miembro de Equipo" [selected]
+      - combobox [ref=e21]:
+        - option "— Sin manager" [selected]
+        - option "Louis Panis"
+        - option "Eduardo de la Garza"
+        - option "Yierba Cantú"
+        - option "test"
+      - button "+ AGREGAR" [disabled] [ref=e22] [cursor=pointer]

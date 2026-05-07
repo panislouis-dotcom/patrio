@@ -370,3 +370,49 @@ def _get_signal(signal_id: int) -> dict | None:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
     return _row_to_dict(row) if row else None
+
+
+# ─── Team members ─────────────────────────────────
+
+TEAM_RAW_FIELDS = {"name", "role", "managerId", "notes"}
+
+
+def get_team_members() -> list[dict]:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM team_members ORDER BY id").fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_team_member(member_id: int) -> dict | None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM team_members WHERE id = ?", (member_id,)).fetchone()
+    return _row_to_dict(row) if row else None
+
+
+def create_team_member(data: dict) -> dict:
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute(
+            "INSERT INTO team_members (name, role, manager_id, notes) VALUES (?, ?, ?, ?)",
+            (data["name"], data["role"], data.get("managerId"), data.get("notes", ""))
+        )
+        member_id = cur.lastrowid
+    return get_team_member(member_id)
+
+
+def delete_team_member(member_id: int) -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM team_members WHERE id = ?", (member_id,))
+
+
+def update_team_member(member_id: int, data: dict) -> dict | None:
+    filtered = {k: v for k, v in data.items() if k in TEAM_RAW_FIELDS}
+    if not filtered:
+        return get_team_member(member_id)
+    snake = {_camel_to_snake(k): v for k, v in filtered.items()}
+    columns = ", ".join(f"{col} = ?" for col in snake.keys())
+    values = list(snake.values()) + [member_id]
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(f"UPDATE team_members SET {columns} WHERE id = ?", values)
+    return get_team_member(member_id)
