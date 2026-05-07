@@ -127,7 +127,7 @@ def get_template_preview(tid: int):
     if template is None:
         raise HTTPException(status_code=404, detail="Template not found")
     nodes = get_template_nodes(tid)
-    compute_gantt(nodes)
+    nodes = compute_gantt(nodes)
     return {"template": template, "nodes": nodes}
 
 # ─── Instances ────────────────────────────────────
