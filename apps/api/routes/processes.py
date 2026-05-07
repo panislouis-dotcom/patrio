@@ -8,6 +8,7 @@ from api.process_db import (
     upsert_node_state, get_instance_states,
     get_node_files, create_node_file, delete_node_file,
     get_node_comments, create_node_comment, delete_node_comment,
+    create_next_periodic_instance,
 )
 from api.gantt import compute_gantt
 
@@ -39,9 +40,13 @@ class NodeUpdate(BaseModel):
 
 class InstanceCreate(BaseModel):
     name: str
-    templateId: int
     startDate: str
+    taskType: str = "one_time"
+    templateId: Optional[int] = None
     projectId: Optional[int] = None
+    ownerId: Optional[int] = None
+    frequencyDays: Optional[int] = None
+    dueDate: Optional[str] = None
     notes: str = ""
     status: str = "active"
 
@@ -50,6 +55,11 @@ class InstanceUpdate(BaseModel):
     startDate: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    projectId: Optional[int] = None
+    ownerId: Optional[int] = None
+    taskType: Optional[str] = None
+    dueDate: Optional[str] = None
+    frequencyDays: Optional[int] = None
 
 class NodeStateUpdate(BaseModel):
     status: Optional[str] = None
@@ -132,16 +142,33 @@ def post_instance(body: InstanceCreate):
 
 @router.patch("/api/process/instances/{iid}")
 def patch_instance(iid: int, body: InstanceUpdate):
-    updated = update_instance(iid, body.model_dump(exclude_none=True))
+    from datetime import datetime
+    data = body.model_dump(exclude_none=True)
+
+    # Record completion time for periodic auto-scheduling
+    if data.get("status") == "completed":
+        data["completedAt"] = datetime.utcnow().strftime("%Y-%m-%d")
+
+    updated = update_instance(iid, data)
     if updated is None:
         raise HTTPException(status_code=404, detail="Instance not found")
-    return updated
+
+    # Auto-create next periodic instance on completion
+    next_inst = None
+    if data.get("status") == "completed" and updated.get("taskType") == "periodica":
+        next_inst = create_next_periodic_instance(iid)
+
+    return {"instance": updated, "nextInstance": next_inst}
 
 @router.get("/api/process/instances/{iid}")
 def get_instance_detail(iid: int):
     instance = get_instance(iid)
     if instance is None:
-        raise HTTPException(status_code=404, detail="Instance not found")
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if instance.get("templateId") is None:
+        return {"instance": instance, "nodes": [], "states": []}
+
     nodes = get_template_nodes(instance["templateId"])
     states = get_instance_states(iid)
     annotated = compute_gantt(nodes, states)
