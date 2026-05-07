@@ -43,7 +43,7 @@ export function ProcesoInstanceDetail() {
 
   async function handleStateChange(nodeId: number, field: string, value: string | number | null) {
     const allNodes = detail?.nodes ?? []
-    const targets = field === 'status'
+    const targets = field === 'status' || field === 'assigneeId'
       ? [nodeId, ...getDescendants(nodeId, allNodes)]
       : [nodeId]
 
