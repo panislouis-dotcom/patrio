@@ -75,18 +75,33 @@ function buildGanttPreview(nodes: TemplateNode[]): Array<TemplateNode & { ganttS
   return result
 }
 
+// ─── Cycle detection helper ───────────────────────
+function wouldCreateCycle(candidateId: number, currentId: number, allNodes: TemplateNode[]): boolean {
+  const visited = new Set<number>()
+  let cursor: number | null = candidateId
+  while (cursor !== null) {
+    if (cursor === currentId) return true
+    if (visited.has(cursor)) break
+    visited.add(cursor)
+    cursor = allNodes.find(n => n.id === cursor)?.dependsOnId ?? null
+  }
+  return false
+}
+
 // ─── Add node form ────────────────────────────────
 function AddNodeForm({
-  templateId, parentId, sortOrder, onCreated, onCancel,
+  templateId, parentId, sortOrder, siblings, onCreated, onCancel,
 }: {
   templateId: number
   parentId: number | null
   sortOrder: number
+  siblings: TemplateNode[]
   onCreated: (n: TemplateNode) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
   const [durationDays, setDurationDays] = useState<string>('')
+  const [depId, setDepId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -99,8 +114,12 @@ function AddNodeForm({
         parentId,
         sortOrder,
         durationDays: durationDays !== '' ? Number(durationDays) : null,
+        dependsOnId: depId,
       })
       onCreated(n)
+      setName('')
+      setDurationDays('')
+      setDepId(null)
     } finally {
       setSaving(false)
     }
@@ -133,6 +152,16 @@ function AddNodeForm({
         min="1"
         style={{ ...inputStyle, width: '140px' }}
       />
+      {siblings.length > 0 && (
+        <select
+          value={depId ?? ''}
+          onChange={e => setDepId(e.target.value ? Number(e.target.value) : null)}
+          style={inputStyle}
+        >
+          <option value="">Sin dependencia</option>
+          {siblings.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      )}
       <button
         type="submit"
         disabled={saving || !name.trim()}
@@ -171,9 +200,12 @@ function TreeNode({
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(node.name)
   const [editDur, setEditDur] = useState<string>(node.durationDays !== null ? String(node.durationDays) : '')
+  const [editDepOn, setEditDepOn] = useState<number | null>(node.dependsOnId)
   const [saving, setSaving] = useState(false)
   const [addingChild, setAddingChild] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  const validDeps = nodes.filter(n => n.parentId === node.parentId && n.id !== node.id && !wouldCreateCycle(n.id, node.id, nodes))
 
   async function saveEdit() {
     setSaving(true)
@@ -181,6 +213,7 @@ function TreeNode({
       const updated = await updateNode(node.id, {
         name: editName.trim(),
         durationDays: isLeaf ? (editDur !== '' ? Number(editDur) : null) : node.durationDays,
+        dependsOnId: editDepOn,
       })
       onUpdated(updated)
       setEditing(false)
@@ -227,6 +260,16 @@ function TreeNode({
                 style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 7px', outline: 'none', width: '80px' }}
               />
             )}
+            {validDeps.length > 0 && (
+              <select
+                value={editDepOn ?? ''}
+                onChange={e => setEditDepOn(e.target.value ? Number(e.target.value) : null)}
+                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 6px', outline: 'none' }}
+              >
+                <option value="">Sin dependencia</option>
+                {validDeps.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
             <button onClick={saveEdit} disabled={saving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '3px 8px' }}>
               {saving ? '…' : 'OK'}
             </button>
@@ -270,6 +313,7 @@ function TreeNode({
               templateId={templateId}
               parentId={node.id}
               sortOrder={children.length}
+              siblings={children}
               onCreated={n => { onCreated(n); setAddingChild(false) }}
               onCancel={() => setAddingChild(false)}
             />
@@ -363,6 +407,7 @@ export function ProcesoTemplateEditor() {
                 templateId={templateId}
                 parentId={null}
                 sortOrder={roots.length}
+                siblings={roots}
                 onCreated={n => { setNodes(prev => [...prev, n]); setAddingRoot(false) }}
                 onCancel={() => setAddingRoot(false)}
               />
