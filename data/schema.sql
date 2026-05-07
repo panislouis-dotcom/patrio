@@ -145,14 +145,19 @@ CREATE TABLE IF NOT EXISTS template_nodes (
 );
 
 CREATE TABLE IF NOT EXISTS process_instances (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  template_id INTEGER NOT NULL REFERENCES process_templates(id) ON DELETE CASCADE,
-  project_id  INTEGER REFERENCES projects(id),
-  name        TEXT NOT NULL CHECK (name != ''),
-  start_date  TEXT NOT NULL,
-  status      TEXT NOT NULL DEFAULT 'active',
-  notes       TEXT NOT NULL DEFAULT '',
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_id    INTEGER REFERENCES process_templates(id) ON DELETE CASCADE,
+  project_id     INTEGER REFERENCES projects(id),
+  owner_id       INTEGER REFERENCES team_members(id),
+  task_type      TEXT NOT NULL DEFAULT 'one_time' CHECK (task_type IN ('proyecto', 'periodica', 'one_time')),
+  name           TEXT NOT NULL CHECK (name != ''),
+  start_date     TEXT NOT NULL,
+  due_date       TEXT,
+  frequency_days INTEGER,
+  completed_at   TEXT,
+  status         TEXT NOT NULL DEFAULT 'active',
+  notes          TEXT NOT NULL DEFAULT '',
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS instance_node_states (
@@ -197,6 +202,7 @@ CREATE INDEX IF NOT EXISTS idx_node_template     ON template_nodes(template_id);
 CREATE INDEX IF NOT EXISTS idx_node_depends      ON template_nodes(depends_on_id);
 CREATE INDEX IF NOT EXISTS idx_instance_template ON process_instances(template_id);
 CREATE INDEX IF NOT EXISTS idx_instance_project  ON process_instances(project_id);
+CREATE INDEX IF NOT EXISTS idx_instance_owner   ON process_instances(owner_id);
 CREATE INDEX IF NOT EXISTS idx_node_state_inst   ON instance_node_states(instance_id);
 CREATE INDEX IF NOT EXISTS idx_node_state_node   ON instance_node_states(template_node_id);
 CREATE INDEX IF NOT EXISTS idx_team_manager      ON team_members(manager_id);
