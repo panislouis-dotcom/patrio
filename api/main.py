@@ -419,4 +419,10 @@ def get_instance_detail(iid: int):
 
 @app.patch("/api/process/instances/{iid}/nodes/{nid}/state")
 def patch_node_state(iid: int, nid: int, body: NodeStateUpdate):
+    instance = get_instance(iid)
+    if instance is None:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    node = get_node(nid)
+    if node is None or node["templateId"] != instance["templateId"]:
+        raise HTTPException(status_code=404, detail="Node not found in this instance's template")
     return upsert_node_state(iid, nid, body.model_dump(exclude_none=True))
