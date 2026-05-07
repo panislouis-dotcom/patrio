@@ -19,18 +19,16 @@ function wouldCreateCycle(candidateId: number, currentId: number, allNodes: Temp
 
 // ─── Add node form ────────────────────────────────
 function AddNodeForm({
-  templateId, parentId, sortOrder, siblings, onCreated, onCancel,
+  templateId, parentId, sortOrder, onCreated, onCancel,
 }: {
   templateId: number
   parentId: number | null
   sortOrder: number
-  siblings: TemplateNode[]
   onCreated: (n: TemplateNode) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
   const [durationDays, setDurationDays] = useState<string>('')
-  const [depId, setDepId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -43,12 +41,11 @@ function AddNodeForm({
         parentId,
         sortOrder,
         durationDays: durationDays !== '' ? Number(durationDays) : null,
-        dependsOnId: depId,
+        dependsOnId: null,
       })
       onCreated(n)
       setName('')
       setDurationDays('')
-      setDepId(null)
     } finally {
       setSaving(false)
     }
@@ -81,16 +78,6 @@ function AddNodeForm({
         min="1"
         style={{ ...inputStyle, width: '140px' }}
       />
-      {siblings.length > 0 && (
-        <select
-          value={depId ?? ''}
-          onChange={e => setDepId(e.target.value ? Number(e.target.value) : null)}
-          style={inputStyle}
-        >
-          <option value="">Sin dependencia</option>
-          {siblings.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      )}
       <button
         type="submit"
         disabled={saving || !name.trim()}
@@ -212,15 +199,10 @@ function TreeNode({
             <span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral, flex: 1 }}>
               {node.name}
             </span>
-            {isDefinir ? (
-              <button
-                onClick={() => setAddingChild(true)}
-                style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.tertiary, letterSpacing: '0.08em', border: `1px dashed ${colors.tertiary}`, padding: '1px 6px', background: 'transparent', cursor: 'pointer' }}
-              >
-                DEFINIR ▸
-              </button>
-            ) : isLeaf ? (
-              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{node.durationDays}d</span>
+            {isLeaf ? (
+              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: isDefinir ? colors.tertiary : colors.secondary }}>
+                {isDefinir ? '?' : `${node.durationDays}d`}
+              </span>
             ) : null}
             <div style={{ display: 'flex', gap: '4px' }}>
               <button onClick={() => setAddingChild(true)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
@@ -245,7 +227,6 @@ function TreeNode({
               templateId={templateId}
               parentId={node.id}
               sortOrder={children.length}
-              siblings={children}
               onCreated={n => { onCreated(n); setAddingChild(false) }}
               onCancel={() => setAddingChild(false)}
             />
@@ -341,7 +322,6 @@ export function ProcesoTemplateEditor() {
                 templateId={templateId}
                 parentId={null}
                 sortOrder={roots.length}
-                siblings={roots}
                 onCreated={n => { setNodes(prev => [...prev, n]); setAddingRoot(false); refreshPreview() }}
                 onCancel={() => setAddingRoot(false)}
               />

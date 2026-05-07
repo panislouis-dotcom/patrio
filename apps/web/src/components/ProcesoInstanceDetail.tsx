@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchInstanceDetail, updateNodeState, fetchTeam, createNode } from '../lib/api'
+import { fetchInstanceDetail, updateNodeState, fetchTeam } from '../lib/api'
 import type { InstanceDetail, GanttNode, NodeState, TeamMember } from '../lib/types'
 import { GanttChart } from './GanttChart'
 import { colors, fonts } from '../lib/theme'
@@ -18,11 +18,6 @@ export function ProcesoInstanceDetail() {
   const [team, setTeam] = useState<TeamMember[]>([])
   const [states, setStates] = useState<NodeState[]>([])
   const [loading, setLoading] = useState(true)
-  const [definingNodeId, setDefiningNodeId] = useState<number | null>(null)
-  const [defName, setDefName] = useState('')
-  const [defDays, setDefDays] = useState('')
-  const [defDepOn, setDefDepOn] = useState<string>('')
-  const [defSaving, setDefSaving] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
 
   const toggleCollapse = (id: number) =>
@@ -109,29 +104,6 @@ export function ProcesoInstanceDetail() {
     })
   }
 
-  async function handleDefine(nodeId: number, templateId: number, siblings: GanttNode[]) {
-    if (!defName.trim()) return
-    setDefSaving(true)
-    try {
-      await createNode(templateId, {
-        name: defName.trim(),
-        durationDays: defDays !== '' ? Number(defDays) : null,
-        parentId: nodeId,
-        sortOrder: siblings.length,
-        dependsOnId: defDepOn ? Number(defDepOn) : null,
-      })
-      const refreshed = await fetchInstanceDetail(instanceId)
-      setDetail(refreshed)
-      setStates(refreshed.states)
-      setDefiningNodeId(null)
-      setDefName('')
-      setDefDays('')
-      setDefDepOn('')
-    } finally {
-      setDefSaving(false)
-    }
-  }
-
   if (loading || !detail) {
     return <div style={{ padding: '24px', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>Cargando…</div>
   }
@@ -202,16 +174,14 @@ export function ProcesoInstanceDetail() {
               const s = getState(n.id)
               const currentStatus = s?.status ?? 'pending'
               const isRoot = n.parentId === null
-              const existingChildren = nodes.filter(c => c.parentId === n.id)
               const depth = depths.get(n.id) ?? 0
               const indent = depth * 16
               return (
-                <Fragment key={n.id}>
-                  <tr style={{
-                    borderBottom: `1px solid ${colors.border}`,
-                    background: isRoot ? colors.surfaceAlt : 'transparent',
-                    borderLeft: isRoot ? `2px solid ${colors.primary}` : '2px solid transparent',
-                  }}>
+                <tr key={n.id} style={{
+                  borderBottom: `1px solid ${colors.border}`,
+                  background: isRoot ? colors.surfaceAlt : 'transparent',
+                  borderLeft: isRoot ? `2px solid ${colors.primary}` : '2px solid transparent',
+                }}>
                     <td style={{ padding: '5px 10px', paddingLeft: `${10 + indent}px` }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         {hasChildren(n.id) && (
@@ -241,14 +211,6 @@ export function ProcesoInstanceDetail() {
                           <span style={{ fontSize: '10px', color: colors.secondary, marginLeft: 4 }}>
                             {getProgress(n.id, nodes)}%
                           </span>
-                        )}
-                        {n.isDefinir && (
-                          <button
-                            onClick={() => { setDefiningNodeId(n.id); setDefName(''); setDefDays(''); setDefDepOn('') }}
-                            style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.tertiary, letterSpacing: '0.08em', border: `1px dashed ${colors.tertiary}`, padding: '1px 6px', background: 'transparent', cursor: 'pointer', flexShrink: 0 }}
-                          >
-                            DEFINIR ▸
-                          </button>
                         )}
                       </div>
                     </td>
@@ -315,50 +277,7 @@ export function ProcesoInstanceDetail() {
                         />
                       )}
                     </td>
-                  </tr>
-                  {definingNodeId === n.id && (
-                    <tr>
-                      <td colSpan={6} style={{ padding: '8px 16px', background: colors.surfaceAlt, borderBottom: `1px solid ${colors.border}` }}>
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <input
-                            placeholder="Nombre de la sub-tarea"
-                            value={defName}
-                            onChange={e => setDefName(e.target.value)}
-                            autoFocus
-                            style={{ ...inputStyle, minWidth: '160px' }}
-                          />
-                          <input
-                            placeholder="Días"
-                            type="number"
-                            min="1"
-                            value={defDays}
-                            onChange={e => setDefDays(e.target.value)}
-                            style={{ ...inputStyle, width: '70px' }}
-                          />
-                          {existingChildren.length > 0 && (
-                            <select value={defDepOn} onChange={e => setDefDepOn(e.target.value)} style={inputStyle}>
-                              <option value="">Sin dependencia</option>
-                              {existingChildren.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                          )}
-                          <button
-                            onClick={() => handleDefine(n.id, n.templateId, existingChildren)}
-                            disabled={defSaving || !defName.trim()}
-                            style={{ background: defSaving || !defName.trim() ? colors.border : colors.primary, border: 'none', color: colors.neutral, cursor: defSaving ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '4px 10px', opacity: defSaving ? 0.6 : 1 }}
-                          >
-                            {defSaving ? '…' : 'AGREGAR'}
-                          </button>
-                          <button
-                            onClick={() => setDefiningNodeId(null)}
-                            style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '4px 8px' }}
-                          >
-                            CANCELAR
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                </tr>
               )
             })}
           </tbody>
