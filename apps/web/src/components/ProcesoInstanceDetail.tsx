@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback, Fragment } from 'react'
+import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchInstanceDetail, updateNodeState, fetchTeam, createNode } from '../lib/api'
 import type { InstanceDetail, GanttNode, NodeState, TeamMember } from '../lib/types'
 import { GanttChart } from './GanttChart'
 import { colors, fonts } from '../lib/theme'
 import { PROCESS_STATUS_COLOR, PROCESS_STATUS_LABEL } from '../lib/status'
+import { computeDepths, getDescendantIds } from '../lib/treeUtils'
 
 const STATUS_OPTIONS = ['pending', 'in_progress', 'done', 'skipped'] as const
 
@@ -22,6 +23,14 @@ export function ProcesoInstanceDetail() {
   const [defDays, setDefDays] = useState('')
   const [defDepOn, setDefDepOn] = useState<string>('')
   const [defSaving, setDefSaving] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+
+  const toggleCollapse = (id: number) =>
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
 
   useEffect(() => {
     Promise.all([fetchInstanceDetail(instanceId), fetchTeam()]).then(([d, t]) => {
@@ -40,6 +49,41 @@ export function ProcesoInstanceDetail() {
     const children = allNodes.filter(n => n.parentId === nodeId)
     return children.flatMap(c => [c.id, ...getDescendants(c.id, allNodes)])
   }
+
+  const childMap = useMemo(() => {
+    const m = new Map<number | null, number[]>()
+    detail?.nodes.forEach(n => {
+      const arr = m.get(n.parentId) ?? []
+      arr.push(n.id)
+      m.set(n.parentId, arr)
+    })
+    return m
+  }, [detail?.nodes])
+
+  const hasChildren = (id: number) => (childMap.get(id)?.length ?? 0) > 0
+
+  function isAncestorCollapsed(node: GanttNode, nodes: GanttNode[]): boolean {
+    let pid = node.parentId
+    while (pid !== null) {
+      if (collapsed.has(pid)) return true
+      const parent = nodes.find(n => n.id === pid)
+      pid = parent?.parentId ?? null
+    }
+    return false
+  }
+
+  function getProgress(nodeId: number, nodes: GanttNode[]): number {
+    const descIds = getDescendantIds(nodeId, nodes)
+    const leaves = descIds.filter(id => !hasChildren(id))
+    if (leaves.length === 0) return 0
+    const done = leaves.filter(id => getState(id)?.status === 'done').length
+    return Math.round(done / leaves.length * 100)
+  }
+
+  const depths = useMemo(() =>
+    detail ? computeDepths(detail.nodes) : new Map<number, number>(),
+    [detail?.nodes]
+  )
 
   async function handleStateChange(nodeId: number, field: string, value: string | number | null) {
     const allNodes = detail?.nodes ?? []
@@ -150,14 +194,17 @@ export function ProcesoInstanceDetail() {
                   {h}
                 </th>
               ))}
+              <th style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '10px', color: colors.secondary }}>DÍ/INST</th>
             </tr>
           </thead>
           <tbody>
-            {nodes.map(n => {
+            {nodes.filter(n => !isAncestorCollapsed(n, nodes)).map(n => {
               const s = getState(n.id)
               const currentStatus = s?.status ?? 'pending'
               const isRoot = n.parentId === null
               const existingChildren = nodes.filter(c => c.parentId === n.id)
+              const depth = depths.get(n.id) ?? 0
+              const indent = depth * 16
               return (
                 <Fragment key={n.id}>
                   <tr style={{
@@ -165,9 +212,36 @@ export function ProcesoInstanceDetail() {
                     background: isRoot ? colors.surfaceAlt : 'transparent',
                     borderLeft: isRoot ? `2px solid ${colors.primary}` : '2px solid transparent',
                   }}>
-                    <td style={{ padding: '6px 10px' }}>
-                      <div style={{ fontFamily: fonts.sans, fontSize: isRoot ? '12px' : '11px', color: n.isDefinir ? colors.tertiary : (isRoot ? colors.neutral : colors.secondary), paddingLeft: isRoot ? '0' : '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {n.name}
+                    <td style={{ padding: '5px 10px', paddingLeft: `${10 + indent}px` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {hasChildren(n.id) && (
+                          <button
+                            onClick={() => toggleCollapse(n.id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: colors.secondary,
+                              cursor: 'pointer',
+                              padding: '0 2px',
+                              fontSize: '10px',
+                              fontFamily: fonts.label,
+                            }}
+                          >
+                            {collapsed.has(n.id) ? '▶' : '▼'}
+                          </button>
+                        )}
+                        {!hasChildren(n.id) && <span style={{ width: 16 }} />}
+                        <span
+                          onClick={() => navigate(`/procesos/tareas/${detail.instance.id}/nodos/${n.id}`)}
+                          style={{ cursor: 'pointer', color: colors.neutral, textDecoration: 'underline dotted' }}
+                        >
+                          {n.name}
+                        </span>
+                        {hasChildren(n.id) && (
+                          <span style={{ fontSize: '10px', color: colors.secondary, marginLeft: 4 }}>
+                            {getProgress(n.id, nodes)}%
+                          </span>
+                        )}
                         {n.isDefinir && (
                           <button
                             onClick={() => { setDefiningNodeId(n.id); setDefName(''); setDefDays(''); setDefDepOn('') }}
@@ -217,10 +291,34 @@ export function ProcesoInstanceDetail() {
                         style={inputStyle}
                       />
                     </td>
+                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>
+                      {!hasChildren(n.id) && (
+                        <input
+                          type="number"
+                          min={1}
+                          placeholder={n.durationDays != null ? String(n.durationDays) : '?'}
+                          value={s?.durationOverrideDays ?? ''}
+                          onChange={e => {
+                            const val = e.target.value === '' ? null : Number(e.target.value)
+                            handleStateChange(n.id, 'durationOverrideDays', val)
+                          }}
+                          style={{
+                            width: 48,
+                            background: 'transparent',
+                            border: `1px solid ${colors.border}`,
+                            color: colors.neutral,
+                            fontFamily: fonts.label,
+                            fontSize: '11px',
+                            padding: '2px 4px',
+                            textAlign: 'right',
+                          }}
+                        />
+                      )}
+                    </td>
                   </tr>
                   {definingNodeId === n.id && (
                     <tr>
-                      <td colSpan={5} style={{ padding: '8px 16px', background: colors.surfaceAlt, borderBottom: `1px solid ${colors.border}` }}>
+                      <td colSpan={6} style={{ padding: '8px 16px', background: colors.surfaceAlt, borderBottom: `1px solid ${colors.border}` }}>
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                           <input
                             placeholder="Nombre de la sub-tarea"
