@@ -145,7 +145,11 @@ export function ProcesoInstanceDetail() {
   }
 
   const { instance, nodes } = detail
-  const totalDays = Math.max(1, ...nodes.map(n => n.ganttStart + n.ganttDuration))
+  const instanceAnchorMs = new Date(instance.startDate).getTime()
+  const actualMaxDays = (detail.states ?? [])
+    .filter(s => s.actualEnd)
+    .map(s => Math.ceil((new Date(s.actualEnd!).getTime() - instanceAnchorMs) / 86400000))
+  const totalDays = Math.max(1, ...nodes.map(n => n.ganttStart + n.ganttDuration), ...actualMaxDays)
 
   const inputStyle: React.CSSProperties = {
     background: colors.surface,

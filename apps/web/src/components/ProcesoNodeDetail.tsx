@@ -127,16 +127,33 @@ export function ProcesoNodeDetail() {
     return getSubtree(nidNum, detail.allNodes)
   }, [detail, nidNum])
 
+  const rootStart = useMemo(
+    () => subtreeNodes.find(n => n.id === nidNum)?.ganttStart ?? 0,
+    [subtreeNodes, nidNum],
+  )
+
   const normalizedNodes = useMemo(() => {
     if (!subtreeNodes.length) return []
-    const rootStart = subtreeNodes.find(n => n.id === nidNum)?.ganttStart ?? 0
     return subtreeNodes.map(n => ({ ...n, ganttStart: n.ganttStart - rootStart }))
-  }, [subtreeNodes, nidNum])
+  }, [subtreeNodes, rootStart])
 
-  const totalDays = useMemo(
-    () => Math.max(...normalizedNodes.map(n => n.ganttStart + n.ganttDuration), 1),
-    [normalizedNodes],
-  )
+  // Shift the instance anchor by rootStart so actual bar positions align with normalized planned bars
+  const normalizedInstanceStartDate = useMemo(() => {
+    if (!detail?.instance.startDate) return undefined
+    const d = new Date(detail.instance.startDate)
+    d.setDate(d.getDate() + rootStart)
+    return d.toISOString().slice(0, 10)
+  }, [detail?.instance.startDate, rootStart])
+
+  const totalDays = useMemo(() => {
+    const planMax = Math.max(...normalizedNodes.map(n => n.ganttStart + n.ganttDuration), 1)
+    if (!normalizedInstanceStartDate) return planMax
+    const anchorMs = new Date(normalizedInstanceStartDate).getTime()
+    const actualMax = (detail?.states ?? [])
+      .filter(s => s.actualEnd)
+      .map(s => Math.max(0, Math.ceil((new Date(s.actualEnd!).getTime() - anchorMs) / 86400000)))
+    return Math.max(planMax, ...actualMax, 1)
+  }, [normalizedNodes, normalizedInstanceStartDate, detail?.states])
 
   const depths = useMemo(
     () => (detail ? computeDepths(detail.allNodes) : new Map<number, number>()),
@@ -303,7 +320,7 @@ export function ProcesoNodeDetail() {
             nodes={normalizedNodes}
             totalDays={totalDays}
             states={detail.states}
-            instanceStartDate={detail.instance.startDate}
+            instanceStartDate={normalizedInstanceStartDate}
           />
         </div>
       )}

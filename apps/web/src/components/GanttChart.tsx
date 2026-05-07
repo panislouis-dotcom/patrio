@@ -16,11 +16,35 @@ interface GanttChartProps {
   instanceStartDate?: string
 }
 
+function buildChildrenMap(nodes: GanttNode[]): Map<number, number[]> {
+  const map = new Map<number, number[]>()
+  nodes.forEach(n => {
+    if (n.parentId !== null) {
+      const arr = map.get(n.parentId) ?? []
+      arr.push(n.id)
+      map.set(n.parentId, arr)
+    }
+  })
+  return map
+}
+
+function getDescendantIds(nid: number, childrenOf: Map<number, number[]>): number[] {
+  const result: number[] = []
+  const queue = [...(childrenOf.get(nid) ?? [])]
+  while (queue.length) {
+    const curr = queue.shift()!
+    result.push(curr)
+    queue.push(...(childrenOf.get(curr) ?? []))
+  }
+  return result
+}
+
 export function GanttChart({ nodes, totalDays, states = [], instanceStartDate }: GanttChartProps) {
   if (nodes.length === 0) return null
   const total = Math.max(1, totalDays)
   const stateByNode = Object.fromEntries(states.map(s => [s.templateNodeId, s]))
   const depths = computeDepths(nodes)
+  const childrenOf = buildChildrenMap(nodes)
 
   const nodeEndPct = new Map<number, number>()
   const nodeStartPct = new Map<number, number>()
@@ -45,13 +69,28 @@ export function GanttChart({ nodes, totalDays, states = [], instanceStartDate }:
             ? STATUS_BAR_COLOR[status] ?? colors.secondary
             : isRoot ? colors.primary : colors.secondary
 
+        // Derive actual dates: for parent nodes, aggregate from all descendants
+        const descendants = getDescendantIds(n.id, childrenOf)
+        const isParent = descendants.length > 0
+        let effectiveActualStart: string | null = null
+        let effectiveActualEnd: string | null = null
+        if (isParent) {
+          const starts = descendants.map(did => stateByNode[did]?.actualStart).filter(Boolean) as string[]
+          const ends = descendants.map(did => stateByNode[did]?.actualEnd).filter(Boolean) as string[]
+          effectiveActualStart = starts.length ? [...starts].sort()[0] : null
+          effectiveActualEnd = ends.length ? [...ends].sort().slice(-1)[0] : null
+        } else {
+          effectiveActualStart = state?.actualStart ?? null
+          effectiveActualEnd = state?.actualEnd ?? null
+        }
+
         let actualLeftPct: number | null = null
         let actualWidthPct: number | null = null
 
-        if (state?.actualStart && instanceStartDate) {
+        if (effectiveActualStart && instanceStartDate) {
           const anchor = new Date(instanceStartDate)
-          const aStart = new Date(state.actualStart)
-          const aEnd = state.actualEnd ? new Date(state.actualEnd) : aStart
+          const aStart = new Date(effectiveActualStart)
+          const aEnd = effectiveActualEnd ? new Date(effectiveActualEnd) : aStart
           const startOffset = Math.max(0, (aStart.getTime() - anchor.getTime()) / 86400000)
           const duration = Math.max(1, (aEnd.getTime() - aStart.getTime()) / 86400000)
           actualLeftPct = (startOffset / total) * 100
