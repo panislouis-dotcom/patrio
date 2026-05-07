@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchInstances, createInstance, fetchTemplates } from '../lib/api'
-import type { ProcessInstance, ProcessTemplate } from '../lib/types'
+import { fetchInstances, createInstance, fetchTemplates, fetchProjects } from '../lib/api'
+import type { ProcessInstance, ProcessTemplate, Project } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
 
@@ -9,17 +9,20 @@ export function ProcesoInstanceList() {
   const navigate = useNavigate()
   const [instances, setInstances] = useState<ProcessInstance[]>([])
   const [templates, setTemplates] = useState<ProcessTemplate[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newTemplateId, setNewTemplateId] = useState<string>('')
+  const [newProjectId, setNewProjectId] = useState<string>('')
   const [newStartDate, setNewStartDate] = useState(new Date().toISOString().slice(0, 10))
 
   useEffect(() => {
-    Promise.all([fetchInstances(), fetchTemplates()]).then(([insts, tmps]) => {
+    Promise.all([fetchInstances(), fetchTemplates(), fetchProjects()]).then(([insts, tmps, projs]) => {
       setInstances(insts)
       setTemplates(tmps)
+      setProjects(projs)
       if (tmps.length > 0) setNewTemplateId(String(tmps[0].id))
       setLoading(false)
     })
@@ -34,6 +37,7 @@ export function ProcesoInstanceList() {
         name: newName.trim(),
         templateId: Number(newTemplateId),
         startDate: newStartDate,
+        projectId: newProjectId ? Number(newProjectId) : null,
       })
       setInstances(prev => [inst, ...prev])
       setNewName('')
@@ -68,6 +72,10 @@ export function ProcesoInstanceList() {
           <select value={newTemplateId} onChange={e => setNewTemplateId(e.target.value)} style={inputStyle}>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
+          <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} style={inputStyle}>
+            <option value="">— Sin proyecto</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
           <input type="date" value={newStartDate} onChange={e => setNewStartDate(e.target.value)} style={inputStyle} />
           <button
             type="submit"
@@ -87,7 +95,7 @@ export function ProcesoInstanceList() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {['NOMBRE', 'ESTADO', 'INICIO', 'CREADA'].map(h => (
+              {['NOMBRE', 'PLANTILLA', 'PROYECTO', 'ESTADO', 'INICIO'].map(h => (
                 <th key={h} style={{ padding: '6px 12px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'left', letterSpacing: '0.12em' }}>{h}</th>
               ))}
             </tr>
@@ -102,13 +110,25 @@ export function ProcesoInstanceList() {
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
                 <td style={{ padding: '8px 12px', fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral }}>{inst.name}</td>
+                <td style={{ padding: '8px 12px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.06em' }}>{inst.templateName}</td>
+                <td style={{ padding: '8px 12px', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em' }}>
+                  {inst.projectName ? (
+                    <span
+                      onClick={e => { e.stopPropagation(); navigate(`/proyectos/${inst.projectId}`) }}
+                      style={{ color: colors.tertiary, cursor: 'pointer', textDecoration: 'underline dotted' }}
+                    >
+                      {inst.projectName}
+                    </span>
+                  ) : (
+                    <span style={{ color: colors.border }}>—</span>
+                  )}
+                </td>
                 <td style={{ padding: '8px 12px' }}>
                   <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: PROCESS_INSTANCE_STATUS_COLOR[inst.status] ?? colors.secondary, textTransform: 'uppercase' }}>
                     {inst.status}
                   </span>
                 </td>
                 <td style={{ padding: '8px 12px', fontFamily: fonts.label, fontSize: '10px', color: colors.secondary }}>{inst.startDate}</td>
-                <td style={{ padding: '8px 12px', fontFamily: fonts.label, fontSize: '10px', color: colors.secondary }}>{inst.createdAt?.slice(0, 10)}</td>
               </tr>
             ))}
           </tbody>

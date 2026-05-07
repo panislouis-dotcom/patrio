@@ -139,9 +139,21 @@ export function ProcesoInstanceDetail() {
             {instance.status.toUpperCase()}
           </span>
         </div>
-        <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '4px' }}>
-          Inicio: {instance.startDate}
-          {instance.projectId && ` · Proyecto #${instance.projectId}`}
+        <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <span>Inicio: {instance.startDate}</span>
+          <span style={{ color: colors.border }}>·</span>
+          <span style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', color: colors.secondary }}>{instance.templateName}</span>
+          {instance.projectName && (
+            <>
+              <span style={{ color: colors.border }}>·</span>
+              <span
+                onClick={() => navigate(`/proyectos/${instance.projectId}`)}
+                style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', color: colors.tertiary, cursor: 'pointer', textDecoration: 'underline dotted' }}
+              >
+                {instance.projectName}
+              </span>
+            </>
+          )}
         </div>
       </div>
 

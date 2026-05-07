@@ -120,13 +120,24 @@ def delete_node(nid: int) -> None:
 
 # ─── Instances ────────────────────────────────────
 
+_INSTANCE_SELECT = """
+    SELECT
+        pi.*,
+        pt.name  AS template_name,
+        pr.name  AS project_name
+    FROM process_instances pi
+    JOIN process_templates pt ON pt.id = pi.template_id
+    LEFT JOIN projects pr     ON pr.id = pi.project_id
+"""
+
+
 def get_instances(project_id: Optional[int] = None) -> list[dict]:
-    query = "SELECT * FROM process_instances"
+    query = _INSTANCE_SELECT
     params: list = []
     if project_id is not None:
-        query += " WHERE project_id = ?"
+        query += " WHERE pi.project_id = ?"
         params.append(project_id)
-    query += " ORDER BY created_at DESC"
+    query += " ORDER BY pi.created_at DESC"
     with get_db() as conn:
         rows = conn.execute(query, params).fetchall()
     return [_row_to_dict(r) for r in rows]
@@ -134,7 +145,9 @@ def get_instances(project_id: Optional[int] = None) -> list[dict]:
 
 def get_instance(iid: int) -> Optional[dict]:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM process_instances WHERE id = ?", (iid,)).fetchone()
+        row = conn.execute(
+            f"{_INSTANCE_SELECT} WHERE pi.id = ?", (iid,)
+        ).fetchone()
     return _row_to_dict(row) if row else None
 
 

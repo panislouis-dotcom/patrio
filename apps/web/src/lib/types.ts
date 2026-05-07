@@ -141,7 +141,9 @@ export interface TemplateNode {
 export interface ProcessInstance {
   id: number
   templateId: number
+  templateName: string
   projectId: number | null
+  projectName: string | null
   name: string
   startDate: string
   status: string
