@@ -353,6 +353,54 @@ def delete_node_file(fid: int) -> None:
         conn.execute("DELETE FROM node_files WHERE id = ?", (fid,))
 
 
+# ─── Instance files ───────────────────────────────────────────────────────────
+
+def get_instance_files(instance_id: int) -> list:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM instance_files WHERE instance_id = ? ORDER BY uploaded_at",
+            (instance_id,),
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def create_instance_file(
+    instance_id: int,
+    file_name: str,
+    content_type: str,
+    content: bytes,
+) -> dict:
+    from uuid import uuid4
+    import mimetypes
+    ext = _Path(file_name).suffix or (mimetypes.guess_extension(content_type) or "")
+    rel_path = f"instance/{instance_id}/{uuid4().hex}{ext}"
+    full_path = _NODE_FILES_DIR / rel_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(content)
+    with get_db() as conn:
+        cur = conn.execute(
+            """INSERT INTO instance_files
+               (instance_id, file_path, file_name, content_type)
+               VALUES (?, ?, ?, ?)""",
+            (instance_id, rel_path, file_name, content_type),
+        )
+        fid = cur.lastrowid
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM instance_files WHERE id = ?", (fid,)).fetchone()
+    return _row_to_dict(row)
+
+
+def delete_instance_file(fid: int) -> None:
+    with get_db() as conn:
+        row = conn.execute("SELECT file_path FROM instance_files WHERE id = ?", (fid,)).fetchone()
+    if row:
+        full_path = _NODE_FILES_DIR / row["file_path"]
+        if full_path.exists():
+            full_path.unlink()
+    with get_db() as conn:
+        conn.execute("DELETE FROM instance_files WHERE id = ?", (fid,))
+
+
 # ─── Node comments ────────────────────────────────────────────────────────────
 
 
