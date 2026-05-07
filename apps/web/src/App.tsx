@@ -11,6 +11,7 @@ import { ProcesoTemplateList } from './components/ProcesoTemplateList'
 import { ProcesoInstanceList } from './components/ProcesoInstanceList'
 import { ProcesoTemplateEditor } from './components/ProcesoTemplateEditor'
 import { ProcesoInstanceDetail } from './components/ProcesoInstanceDetail'
+import { ProcesoNodeDetail } from './components/ProcesoNodeDetail'
 import { OrgTab } from './components/OrgTab'
 import { globalStyles, colors } from './lib/theme'
 
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="plantillas/:tid" element={<ProcesoTemplateEditor />} />
             <Route path="tareas" element={<ProcesoInstanceList />} />
             <Route path="tareas/:iid" element={<ProcesoInstanceDetail />} />
+            <Route path="tareas/:iid/nodos/:nid" element={<ProcesoNodeDetail />} />
           </Route>
           <Route path="/equipo" element={<OrgTab />} />
           <Route path="/tabla" element={<Navigate to="/prospectos/tabla" replace />} />
