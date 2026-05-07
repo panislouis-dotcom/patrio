@@ -1,13 +1,31 @@
-DB  = data/real_estate.db
+DB  = data/refigan.db
 SQL = data
 
 reset: ## Nuke and rebuild DB from scratch
 	rm -f $(DB)
 	sqlite3 $(DB) < $(SQL)/schema.sql
-	find $(SQL) -name "seed_*.sql" | sort | while read f; do sqlite3 $(DB) < "$$f"; done
+	@for f in $$(find $(SQL) -name "seed_*.sql" | sort); do \
+		printf "  ▸ %-60s" "$$f"; \
+		if out=$$(sqlite3 $(DB) < "$$f" 2>&1); then \
+			echo "✓"; \
+		else \
+			echo "✗  FAILED"; \
+			echo "     $$out"; \
+			exit 1; \
+		fi; \
+	done
 
 seed: ## Apply all seed files (additive, no drop)
-	find $(SQL) -name "seed_*.sql" | sort | while read f; do sqlite3 $(DB) < "$$f"; done
+	@for f in $$(find $(SQL) -name "seed_*.sql" | sort); do \
+		printf "  ▸ %-60s" "$$f"; \
+		if out=$$(sqlite3 $(DB) < "$$f" 2>&1); then \
+			echo "✓"; \
+		else \
+			echo "✗  FAILED"; \
+			echo "     $$out"; \
+			exit 1; \
+		fi; \
+	done
 
 shell: ## Open interactive SQLite shell
 	sqlite3 $(DB)
@@ -20,6 +38,19 @@ prospectus-data: ## Dump raw data used by the prospectus skill
 	@sqlite3 -column -header $(DB) "SELECT name, total_investment, current_valuation, valuation_date, total_units, acquisition_date FROM projects WHERE status IN ('operating','exited');"
 	@echo ""
 	@echo "=== PROSPECTS ==="
-	@sqlite3 -column -header $(DB) "SELECT name, total_investment, projected_sale, profit, roi, cap_rate, rent_monthly, investment_date, sale_date FROM prospect_metrics WHERE status='evaluating';"
+	@sqlite3 -column -header $(DB) "SELECT name, total_investment, projected_sale, profit, roi, cap_rate, rent_monthly, hold_months FROM prospect_metrics WHERE status='evaluating';"
+
+api: ## Start FastAPI backend (port 8000)
+	PYTHONPATH=.:apps uvicorn api.main:app --reload
+
+dev: ## Start React frontend (port 5173)
+	cd apps/web && npm run dev
+
+test: ## Run Python test suite
+	PYTHONPATH=.:apps pytest apps/api/tests/ -v
+
+app: ## Start both API and frontend
+	PYTHONPATH=.:apps uvicorn api.main:app --reload &
+	cd apps/web && npm run dev
 
 .DEFAULT_GOAL := reset

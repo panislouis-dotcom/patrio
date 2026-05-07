@@ -5,7 +5,7 @@ INSERT INTO prospects (
   sqm_land, sqm_construction,
   land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
-  projected_sale, investment_date, sale_date,
+  projected_sale, hold_months,
   rent_monthly, notes
 ) VALUES (
   'Casa Casco Urbano SPGG',
@@ -17,7 +17,7 @@ INSERT INTO prospects (
   194, 0,
   5000000, 0.06, 11000, 0,
   6000, 1.0,
-  10000000, '2025-06-01', '2027-11-01',
-  0,
+  10000000, 29,
+  45000,
   'Remodelación total o demolición. Precio $5,000,000 MXN. Terreno 194 m² (9m frente × 19m fondo aprox). Para remodelar al 100% o demoler. Uso de suelo habitacional unifamiliar. Cerca Av. Jiménez, Av. Vasconcelos, Av. Morones Prieto.'
 );
