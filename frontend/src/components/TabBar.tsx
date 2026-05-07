@@ -5,6 +5,8 @@ const topTabs = [
   { path: '/prospectos', label: 'PROSPECTOS' },
   { path: '/proyectos', label: 'PROYECTOS' },
   { path: '/sonar', label: 'SONAR' },
+  { path: '/procesos', label: 'PROCESOS' },
+  { path: '/equipo', label: 'EQUIPO' },
 ]
 
 const prospectoSubTabs = [
@@ -41,7 +43,7 @@ export function TabBar() {
           <NavLink
             key={path}
             to={path}
-            end={path === '/sonar'}
+            end={path === '/sonar' || path === '/equipo' || path === '/procesos'}
             style={({ isActive }) => ({
               padding: '14px 20px',
               fontFamily: fonts.label,

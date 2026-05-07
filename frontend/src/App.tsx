@@ -6,6 +6,12 @@ import { ProspectMap } from './components/ProspectMap'
 import { ProjectsTab } from './components/ProjectsTab'
 import { ProjectDetailPage } from './components/ProjectDetailPage'
 import { SonarTab } from './components/SonarTab'
+import { ProcesosTab } from './components/ProcesosTab'
+import { ProcesoTemplateList } from './components/ProcesoTemplateList'
+import { ProcesoInstanceList } from './components/ProcesoInstanceList'
+import { ProcesoTemplateEditor } from './components/ProcesoTemplateEditor'
+import { ProcesoInstanceDetail } from './components/ProcesoInstanceDetail'
+import { OrgTab } from './components/OrgTab'
 import { globalStyles, colors } from './lib/theme'
 
 export default function App() {
@@ -22,6 +28,14 @@ export default function App() {
           <Route path="/proyectos" element={<ProjectsTab />} />
           <Route path="/proyectos/:id" element={<ProjectDetailPage />} />
           <Route path="/sonar" element={<SonarTab />} />
+          <Route path="/procesos" element={<ProcesosTab />}>
+            <Route index element={<Navigate to="plantillas" replace />} />
+            <Route path="plantillas" element={<ProcesoTemplateList />} />
+            <Route path="plantillas/:tid" element={<ProcesoTemplateEditor />} />
+            <Route path="instancias" element={<ProcesoInstanceList />} />
+            <Route path="instancias/:iid" element={<ProcesoInstanceDetail />} />
+          </Route>
+          <Route path="/equipo" element={<OrgTab />} />
           <Route path="/tabla" element={<Navigate to="/prospectos/tabla" replace />} />
           <Route path="/mapa" element={<Navigate to="/prospectos/mapa" replace />} />
         </Routes>
