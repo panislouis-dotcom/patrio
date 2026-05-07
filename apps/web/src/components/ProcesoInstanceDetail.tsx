@@ -23,6 +23,7 @@ export function ProcesoInstanceDetail() {
   const [focusNodeId, setFocusNodeId] = useState<number | null>(null)
   const [notes, setNotes] = useState('')
   const [files, setFiles] = useState<InstanceFile[]>([])
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const toggleCollapse = (id: number) =>
     setCollapsed(prev => {
@@ -39,7 +40,7 @@ export function ProcesoInstanceDetail() {
       setLocalOwnerId(d.instance.ownerId ?? null)
       setLoading(false)
     })
-  }, [instanceId])
+  }, [instanceId, refreshKey])
 
   useEffect(() => {
     if (!detail) return
@@ -251,7 +252,28 @@ export function ProcesoInstanceDetail() {
           </span>
         </div>
         <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span>Inicio: {instance.startDate}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            Inicio:
+            <input
+              type="date"
+              value={detail.instance.startDate}
+              onChange={async e => {
+                if (!e.target.value) return
+                await updateInstance(detail.instance.id, { startDate: e.target.value })
+                setRefreshKey(k => k + 1)
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                borderBottom: `1px solid ${colors.border}`,
+                color: colors.secondary,
+                fontFamily: fonts.label,
+                fontSize: '10px',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            />
+          </span>
           <span style={{ color: colors.border }}>·</span>
           <span style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', color: colors.secondary }}>{instance.templateName}</span>
           {instance.projectName && (
@@ -290,7 +312,7 @@ export function ProcesoInstanceDetail() {
             <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
               CRONOGRAMA
             </div>
-            <GanttChart nodes={nodes} totalDays={totalDays} states={states} />
+            <GanttChart nodes={nodes} totalDays={totalDays} states={states} instanceStartDate={detail.instance.startDate} />
           </div>
 
           {/* Focus breadcrumb */}

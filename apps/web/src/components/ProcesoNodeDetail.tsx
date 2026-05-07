@@ -303,6 +303,7 @@ export function ProcesoNodeDetail() {
             nodes={normalizedNodes}
             totalDays={totalDays}
             states={detail.states}
+            instanceStartDate={detail.instance.startDate}
           />
         </div>
       )}

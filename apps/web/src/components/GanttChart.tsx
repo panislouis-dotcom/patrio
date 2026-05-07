@@ -13,9 +13,10 @@ interface GanttChartProps {
   nodes: GanttNode[]
   totalDays: number
   states?: NodeState[]
+  instanceStartDate?: string
 }
 
-export function GanttChart({ nodes, totalDays, states = [] }: GanttChartProps) {
+export function GanttChart({ nodes, totalDays, states = [], instanceStartDate }: GanttChartProps) {
   if (nodes.length === 0) return null
   const total = Math.max(1, totalDays)
   const stateByNode = Object.fromEntries(states.map(s => [s.templateNodeId, s]))
@@ -36,12 +37,26 @@ export function GanttChart({ nodes, totalDays, states = [] }: GanttChartProps) {
         const isRoot = n.parentId === null
         const depth = depths.get(n.id) ?? 0
         const indent = depth * 12
-        const status = stateByNode[n.id]?.status
+        const state = stateByNode[n.id]
+        const status = state?.status
         const barColor = n.isDefinir
           ? 'transparent'
           : status
             ? STATUS_BAR_COLOR[status] ?? colors.secondary
             : isRoot ? colors.primary : colors.secondary
+
+        let actualLeftPct: number | null = null
+        let actualWidthPct: number | null = null
+
+        if (state?.actualStart && instanceStartDate) {
+          const anchor = new Date(instanceStartDate)
+          const aStart = new Date(state.actualStart)
+          const aEnd = state.actualEnd ? new Date(state.actualEnd) : aStart
+          const startOffset = Math.max(0, (aStart.getTime() - anchor.getTime()) / 86400000)
+          const duration = Math.max(1, (aEnd.getTime() - aStart.getTime()) / 86400000)
+          actualLeftPct = (startOffset / total) * 100
+          actualWidthPct = Math.max(0.5, (duration / total) * 100)
+        }
 
         return (
           <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -59,16 +74,30 @@ export function GanttChart({ nodes, totalDays, states = [] }: GanttChartProps) {
               {n.name}
             </div>
             <div style={{ flex: 1, position: 'relative', height: '14px', background: colors.surfaceAlt, border: `1px solid ${colors.border}` }}>
+              {/* Planned bar */}
               <div style={{
                 position: 'absolute',
                 left: `${leftPct}%`,
                 width: `${widthPct}%`,
-                height: '100%',
+                top: 0,
+                height: actualLeftPct !== null ? '50%' : '100%',
                 background: barColor,
                 border: n.isDefinir ? `1px dashed ${colors.tertiary}` : 'none',
-                opacity: status === 'skipped' ? 0.4 : 0.75,
+                opacity: status === 'skipped' ? 0.4 : 0.55,
                 transition: 'background 0.2s',
               }} />
+              {/* Actual bar */}
+              {actualLeftPct !== null && (
+                <div style={{
+                  position: 'absolute',
+                  left: `${actualLeftPct}%`,
+                  width: `${actualWidthPct}%`,
+                  top: '50%',
+                  height: '50%',
+                  background: colors.tertiary,
+                  opacity: 0.85,
+                }} />
+              )}
               {n.dependsOnId != null && nodeEndPct.has(n.dependsOnId) && (() => {
                 const predEnd = nodeEndPct.get(n.dependsOnId)!
                 const curStart = nodeStartPct.get(n.id)!
