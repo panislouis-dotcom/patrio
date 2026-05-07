@@ -75,10 +75,14 @@ export function GanttChart({ nodes, totalDays, states = [], instanceStartDate }:
         let effectiveActualStart: string | null = null
         let effectiveActualEnd: string | null = null
         if (isParent) {
-          const starts = descendants.map(did => stateByNode[did]?.actualStart).filter(Boolean) as string[]
-          const ends = descendants.map(did => stateByNode[did]?.actualEnd).filter(Boolean) as string[]
-          effectiveActualStart = starts.length ? [...starts].sort()[0] : null
-          effectiveActualEnd = ends.length ? [...ends].sort().slice(-1)[0] : null
+          const leafDescendants = descendants.filter(did => !childrenOf.has(did))
+          const allLeavesComplete = leafDescendants.length > 0 && leafDescendants.every(did => stateByNode[did]?.actualEnd)
+          if (allLeavesComplete) {
+            const starts = leafDescendants.map(did => stateByNode[did]?.actualStart).filter(Boolean) as string[]
+            const ends = leafDescendants.map(did => stateByNode[did]?.actualEnd).filter(Boolean) as string[]
+            effectiveActualStart = starts.length ? [...starts].sort()[0] : null
+            effectiveActualEnd = ends.length ? [...ends].sort().slice(-1)[0] : null
+          }
         } else {
           effectiveActualStart = state?.actualStart ?? null
           effectiveActualEnd = state?.actualEnd ?? null
