@@ -5,7 +5,7 @@ import type { InstanceDetail, GanttNode, NodeState, TeamMember } from '../lib/ty
 import { GanttChart } from './GanttChart'
 import { colors, fonts } from '../lib/theme'
 import { PROCESS_STATUS_COLOR, PROCESS_STATUS_LABEL } from '../lib/status'
-import { computeDepths, getDescendantIds } from '../lib/treeUtils'
+import { computeDepths, getDescendantIds, getSubtree } from '../lib/treeUtils'
 
 const STATUS_OPTIONS = ['pending', 'in_progress', 'done', 'skipped'] as const
 
@@ -21,6 +21,7 @@ export function ProcesoInstanceDetail() {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
   const [localOwnerId, setLocalOwnerId] = useState<number | null>(null)
   const [nextInstanceDate, setNextInstanceDate] = useState<string | null>(null)
+  const [focusNodeId, setFocusNodeId] = useState<number | null>(null)
 
   const toggleCollapse = (id: number) =>
     setCollapsed(prev => {
@@ -60,12 +61,13 @@ export function ProcesoInstanceDetail() {
 
   const hasChildren = (id: number) => (childMap.get(id)?.length ?? 0) > 0
 
-  function isAncestorCollapsed(node: GanttNode, nodes: GanttNode[]): boolean {
+  function isAncestorCollapsed(node: GanttNode, list: GanttNode[]): boolean {
     let pid = node.parentId
     while (pid !== null) {
       if (collapsed.has(pid)) return true
-      const parent = nodes.find(n => n.id === pid)
-      pid = parent?.parentId ?? null
+      const parent = list.find(n => n.id === pid)
+      if (!parent) break  // stop at boundary (don't walk above subtree root when focused)
+      pid = parent.parentId ?? null
     }
     return false
   }
@@ -82,6 +84,17 @@ export function ProcesoInstanceDetail() {
     detail ? computeDepths(detail.nodes) : new Map<number, number>(),
     [detail?.nodes]
   )
+
+  const focusPath = useMemo(() => {
+    if (!focusNodeId || !detail) return []
+    const path: GanttNode[] = []
+    let cursor: GanttNode | undefined = detail.nodes.find(n => n.id === focusNodeId)
+    while (cursor) {
+      path.unshift(cursor)
+      cursor = cursor.parentId != null ? detail.nodes.find(n => n.id === cursor!.parentId) : undefined
+    }
+    return path
+  }, [focusNodeId, detail])
 
   async function handleOwnerChange(ownerId: number | null) {
     setLocalOwnerId(ownerId)
@@ -232,6 +245,33 @@ export function ProcesoInstanceDetail() {
             <GanttChart nodes={nodes} totalDays={totalDays} states={states} />
           </div>
 
+          {/* Focus breadcrumb */}
+          {focusNodeId && (
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', paddingBottom: '8px', borderBottom: `1px solid ${colors.border}` }}>
+              <button
+                onClick={() => setFocusNodeId(null)}
+                style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: 0 }}
+              >
+                ← TODAS LAS TAREAS
+              </button>
+              {focusPath.map((n, i) => (
+                <span key={n.id} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <span style={{ color: colors.border, fontSize: '9px' }}>›</span>
+                  {i < focusPath.length - 1 ? (
+                    <button
+                      onClick={() => setFocusNodeId(n.id)}
+                      style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}
+                    >
+                      {n.name}
+                    </button>
+                  ) : (
+                    <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.neutral }}>{n.name}</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Estado table */}
           <div>
             <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
@@ -249,7 +289,10 @@ export function ProcesoInstanceDetail() {
                 </tr>
               </thead>
               <tbody>
-                {nodes.filter(n => !isAncestorCollapsed(n, nodes)).map(n => {
+                {(() => {
+                  const base = focusNodeId ? getSubtree(focusNodeId, detail.nodes) : detail.nodes
+                  return base.filter(n => !isAncestorCollapsed(n, base))
+                })().map(n => {
                   const s = getState(n.id)
                   const currentStatus = s?.status ?? 'pending'
                   const isRoot = n.parentId === null
@@ -290,6 +333,15 @@ export function ProcesoInstanceDetail() {
                               <span style={{ fontSize: '10px', color: colors.secondary, marginLeft: 4 }}>
                                 {getProgress(n.id, nodes)}%
                               </span>
+                            )}
+                            {hasChildren(n.id) && (
+                              <button
+                                onClick={e => { e.stopPropagation(); setFocusNodeId(n.id) }}
+                                title="Enfocar subtareas"
+                                style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '13px', padding: '0 2px', lineHeight: 1, marginLeft: 2 }}
+                              >
+                                ›
+                              </button>
                             )}
                           </div>
                         </td>
