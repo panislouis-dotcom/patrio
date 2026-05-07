@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchTemplatePreview, createNode, updateNode, deleteNode, fetchNodeFiles, uploadNodeFile, deleteNodeFile } from '../lib/api'
+import { fetchTemplatePreview, fetchTemplates, createNode, updateNode, deleteNode, fetchNodeFiles, uploadNodeFile, deleteNodeFile } from '../lib/api'
 import type { ProcessTemplate, TemplateNode, GanttNode, NodeFile } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { GanttChart } from './GanttChart'
@@ -32,19 +32,38 @@ function AddNodeForm({
   const [durationDays, setDurationDays] = useState<string>('')
   const [dependsOnId, setDependsOnId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
+  const [mode, setMode] = useState<'node' | 'template'>('node')
+  const [sourceTemplateId, setSourceTemplateId] = useState<number | null>(null)
+  const [availableTemplates, setAvailableTemplates] = useState<ProcessTemplate[]>([])
+
+  useEffect(() => {
+    if (mode === 'template') {
+      fetchTemplates().then(setAvailableTemplates)
+    }
+  }, [mode])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return
     setSaving(true)
     try {
-      await createNode(templateId, {
-        name: name.trim(),
-        parentId,
-        sortOrder,
-        durationDays: durationDays !== '' ? Number(durationDays) : null,
-        dependsOnId,
-      })
+      if (mode === 'template' && sourceTemplateId) {
+        const tpl = availableTemplates.find(t => t.id === sourceTemplateId)
+        await createNode(templateId, {
+          name: tpl?.name ?? 'Plantilla',
+          parentId,
+          sortOrder,
+          sourceTemplateId,
+        })
+      } else {
+        if (!name.trim()) return
+        await createNode(templateId, {
+          name: name.trim(),
+          parentId,
+          sortOrder,
+          durationDays: durationDays !== '' ? Number(durationDays) : null,
+          dependsOnId,
+        })
+      }
       onDone()
     } finally {
       setSaving(false)
@@ -61,46 +80,71 @@ function AddNodeForm({
     outline: 'none',
   }
 
+  const isSubmitDisabled = saving || (mode === 'node' ? !name.trim() : !sourceTemplateId)
+
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px' }}>
-      <input
-        value={name}
-        onChange={e => setName(e.target.value)}
-        placeholder="Nombre"
-        autoFocus
-        style={{ ...inputStyle, width: '160px' }}
-      />
-      <input
-        value={durationDays}
-        onChange={e => setDurationDays(e.target.value)}
-        placeholder="Días (vacío=DEFINIR)"
-        type="number"
-        min="1"
-        style={{ ...inputStyle, width: '140px' }}
-      />
-      {siblingNodes.length > 0 && (
+    <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px', minWidth: 0 }}>
+      <button
+        type="button"
+        onClick={() => setMode(m => m === 'node' ? 'template' : 'node')}
+        style={{ background: mode === 'template' ? colors.tertiary : 'transparent', border: `1px solid ${colors.border}`, color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '3px 6px', flexShrink: 0 }}
+      >
+        {mode === 'node' ? 'NODO' : 'PLANTILLA'}
+      </button>
+      {mode === 'template' ? (
         <select
-          value={dependsOnId ?? ''}
-          onChange={e => setDependsOnId(e.target.value ? Number(e.target.value) : null)}
-          style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 6px', outline: 'none' }}
+          value={sourceTemplateId ?? ''}
+          onChange={e => setSourceTemplateId(e.target.value ? Number(e.target.value) : null)}
+          style={{ ...inputStyle, flex: 1, minWidth: '80px' }}
         >
-          <option value="">Paralelo</option>
-          {siblingNodes.map(s => (
-            <option key={s.id} value={s.id}>Después de: {s.name}</option>
-          ))}
+          <option value="">— Selecciona plantilla</option>
+          {availableTemplates
+            .filter(t => t.id !== templateId)
+            .map(t => <option key={t.id} value={t.id}>{t.name}</option>)
+          }
         </select>
+      ) : (
+        <>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Nombre"
+            autoFocus
+            style={{ ...inputStyle, flex: 1, minWidth: '60px' }}
+          />
+          <input
+            value={durationDays}
+            onChange={e => setDurationDays(e.target.value)}
+            placeholder="Días"
+            type="number"
+            min="1"
+            style={{ ...inputStyle, width: '60px', flexShrink: 0 }}
+          />
+          {siblingNodes.length > 0 && (
+            <select
+              value={dependsOnId ?? ''}
+              onChange={e => setDependsOnId(e.target.value ? Number(e.target.value) : null)}
+              style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 4px', outline: 'none', maxWidth: '100px', flexShrink: 1 }}
+            >
+              <option value="">‖ Par.</option>
+              {siblingNodes.map(s => (
+                <option key={s.id} value={s.id}>→ {s.name}</option>
+              ))}
+            </select>
+          )}
+        </>
       )}
       <button
         type="submit"
-        disabled={saving || !name.trim()}
-        style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '4px 10px' }}
+        disabled={isSubmitDisabled}
+        style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '4px 8px', flexShrink: 0 }}
       >
         {saving ? '…' : 'OK'}
       </button>
       <button
         type="button"
         onClick={onCancel}
-        style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '4px 8px' }}
+        style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '4px 6px', flexShrink: 0 }}
       >
         ✕
       </button>
@@ -121,6 +165,7 @@ function TreeNode({
   const children = nodes.filter(n => n.parentId === node.id).sort((a, b) => a.sortOrder - b.sortOrder)
   const isLeaf = children.length === 0
   const isDefinir = isLeaf && node.durationDays === null
+  const isSubTemplateNode = node.templateId !== templateId
 
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(node.name)
@@ -173,21 +218,19 @@ function TreeNode({
   return (
     <div>
       <div
-        onClick={() => onFocus(node.id)}
         style={{
           borderBottom: `1px solid ${colors.border}`,
           display: 'flex',
           flexDirection: 'column',
           padding: `6px 12px 6px ${indent + 12}px`,
-          cursor: 'pointer',
         }}
       >
         {editing ? (
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', minWidth: 0 }}>
             <input
               value={editName}
               onChange={e => setEditName(e.target.value)}
-              style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 7px', outline: 'none', width: '160px' }}
+              style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 7px', outline: 'none', flex: 1, minWidth: '60px' }}
             />
             {isLeaf && (
               <input
@@ -196,30 +239,38 @@ function TreeNode({
                 placeholder="Días"
                 type="number"
                 min="1"
-                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 7px', outline: 'none', width: '80px' }}
+                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 7px', outline: 'none', width: '60px', flexShrink: 0 }}
               />
             )}
             {validDeps.length > 0 && (
               <select
                 value={editDepOn ?? ''}
                 onChange={e => setEditDepOn(e.target.value ? Number(e.target.value) : null)}
-                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 6px', outline: 'none' }}
+                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 4px', outline: 'none', maxWidth: '90px', flexShrink: 1 }}
               >
-                <option value="">Paralelo</option>
-                {validDeps.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                <option value="">‖ Par.</option>
+                {validDeps.map(s => <option key={s.id} value={s.id}>→ {s.name}</option>)}
               </select>
             )}
-            <button onClick={e => { e.stopPropagation(); saveEdit() }} disabled={saving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '3px 8px' }}>
+            <button onClick={e => { e.stopPropagation(); saveEdit() }} disabled={saving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '3px 8px', flexShrink: 0 }}>
               {saving ? '…' : 'OK'}
             </button>
-            <button onClick={e => { e.stopPropagation(); setEditing(false) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '3px 6px' }}>
+            <button onClick={e => { e.stopPropagation(); setEditing(false) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '3px 6px', flexShrink: 0 }}>
               ✕
             </button>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {depth > 0 && <span style={{ color: colors.border, fontSize: '10px' }}>└</span>}
-            <span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral, flex: 1 }}>
+            {node.sourceTemplateId != null && (
+              <span style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.tertiary, letterSpacing: '0.08em', marginRight: 4 }}>
+                [T]
+              </span>
+            )}
+            <span
+              onClick={() => onFocus(node.id)}
+              style={{ fontFamily: fonts.sans, fontSize: '12px', color: isSubTemplateNode ? colors.tertiary : colors.neutral, flex: 1, cursor: 'pointer' }}
+            >
               {node.name}
             </span>
             <span style={{
@@ -236,21 +287,23 @@ function TreeNode({
             <span style={{ fontFamily: fonts.label, fontSize: '9px', color: isDefinir ? colors.tertiary : colors.secondary }}>
               {isDefinir ? '?' : `${node.ganttDuration}d`}
             </span>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button onClick={e => { e.stopPropagation(); setAddingChild(true) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
-                + HIJO
-              </button>
-              <button onClick={e => { e.stopPropagation(); setEditing(true) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
-                EDITAR
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); handleDelete() }}
-                disabled={deleting}
-                style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: 'tomato', cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px', opacity: deleting ? 0.5 : 1 }}
-              >
-                BORRAR
-              </button>
-            </div>
+            {!isSubTemplateNode && (
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button onClick={e => { e.stopPropagation(); setAddingChild(true) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
+                  + HIJO
+                </button>
+                <button onClick={e => { e.stopPropagation(); setEditing(true) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
+                  EDITAR
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); handleDelete() }}
+                  disabled={deleting}
+                  style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: 'tomato', cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px', opacity: deleting ? 0.5 : 1 }}
+                >
+                  BORRAR
+                </button>
+              </div>
+            )}
           </div>
         )}
         {addingChild && (

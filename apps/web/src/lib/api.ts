@@ -175,6 +175,7 @@ export async function createNode(tid: number, data: {
   parentId?: number | null
   dependsOnId?: number | null
   durationDays?: number | null
+  sourceTemplateId?: number | null
 }): Promise<TemplateNode> {
   const res = await fetch(`${BASE}/api/process/templates/${tid}/nodes`, {
     method: 'POST',

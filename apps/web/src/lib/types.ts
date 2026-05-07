@@ -136,6 +136,7 @@ export interface TemplateNode {
   sortOrder: number
   dependsOnId: number | null
   durationDays: number | null
+  sourceTemplateId: number | null
   createdAt: string
 }
 
