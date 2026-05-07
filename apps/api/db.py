@@ -1,9 +1,22 @@
 import sqlite3
 import json
+from contextlib import contextmanager
 from datetime import datetime, date
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "refigan.db"
+
+
+@contextmanager
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
 
 PROSPECTS_QUERY = """
 SELECT
@@ -68,15 +81,13 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
 
 
 def get_prospects() -> list[dict]:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db() as conn:
         rows = conn.execute(PROSPECTS_QUERY).fetchall()
     return [_row_to_dict(r) for r in rows]
 
 
 def get_prospect(prospect_id: int) -> dict | None:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db() as conn:
         row = conn.execute(
             f"{PROSPECTS_QUERY} WHERE pm.id = ?", (prospect_id,)
         ).fetchone()
@@ -111,7 +122,7 @@ def update_prospect(prospect_id: int, data: dict) -> dict | None:
     values = list(snake_case_data.values()) + [prospect_id]
     query = f"UPDATE prospects SET {columns} WHERE id = ?"
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.execute(query, values)
 
     return get_prospect(prospect_id)
@@ -166,15 +177,13 @@ def _parse_project(row: sqlite3.Row) -> dict:
 
 
 def get_projects() -> list[dict]:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db() as conn:
         rows = conn.execute("SELECT * FROM projects ORDER BY acquisition_date DESC").fetchall()
     return [_parse_project(r) for r in rows]
 
 
 def get_project(project_id: int) -> dict | None:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db() as conn:
         row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
     return _parse_project(row) if row else None
 
@@ -209,7 +218,7 @@ def update_project(project_id: int, data: dict) -> dict | None:
     values = list(snake_case_data.values()) + [project_id]
     query = f"UPDATE projects SET {columns} WHERE id = ?"
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.execute(query, values)
 
     return get_project(project_id)
@@ -245,7 +254,7 @@ def create_project(data: dict) -> dict:
     values = list(snake_case_data.values())
     query = f"INSERT INTO projects ({columns}) VALUES ({placeholders})"
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         cur = conn.execute(query, values)
         project_id = cur.lastrowid
 
@@ -279,7 +288,7 @@ def create_prospect(data: dict) -> dict:
     values = list(snake_case_data.values())
     query = f"INSERT INTO prospects ({columns}) VALUES ({placeholders})"
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         cur = conn.execute(query, values)
         prospect_id = cur.lastrowid
 
@@ -301,15 +310,14 @@ def get_signals(status: str | None = None, portal: str | None = None) -> list[di
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY scraped_at DESC"
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db() as conn:
         rows = conn.execute(query, params).fetchall()
     return [_row_to_dict(r) for r in rows]
 
 
 def create_signal(data: dict) -> bool:
     """Insert a signal. Returns True if inserted, False if duplicate (url UNIQUE)."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         cur = conn.execute(
             """INSERT OR IGNORE INTO signals (portal, url, title, address, city, price, sqm_land)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -321,7 +329,7 @@ def create_signal(data: dict) -> bool:
 
 
 def dismiss_signal(signal_id: int) -> dict | None:
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.execute(
             "UPDATE signals SET status = 'dismissed' WHERE id = ?", (signal_id,)
         )
@@ -356,7 +364,7 @@ def import_signal(signal_id: int) -> tuple[dict | None, dict | None]:
         "notes": "-",
     })
     # Mark signal as imported
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.execute(
             "UPDATE signals SET status = 'imported', prospect_id = ? WHERE id = ?",
             (prospect["id"], signal_id)
@@ -366,8 +374,7 @@ def import_signal(signal_id: int) -> tuple[dict | None, dict | None]:
 
 
 def _get_signal(signal_id: int) -> dict | None:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db() as conn:
         row = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
     return _row_to_dict(row) if row else None
 
@@ -378,21 +385,19 @@ TEAM_RAW_FIELDS = {"name", "role", "managerId", "notes"}
 
 
 def get_team_members() -> list[dict]:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db() as conn:
         rows = conn.execute("SELECT * FROM team_members ORDER BY id").fetchall()
     return [_row_to_dict(r) for r in rows]
 
 
 def get_team_member(member_id: int) -> dict | None:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
+    with get_db() as conn:
         row = conn.execute("SELECT * FROM team_members WHERE id = ?", (member_id,)).fetchone()
     return _row_to_dict(row) if row else None
 
 
 def create_team_member(data: dict) -> dict:
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         cur = conn.execute(
             "INSERT INTO team_members (name, role, manager_id, notes) VALUES (?, ?, ?, ?)",
             (data["name"], data["role"], data.get("managerId"), data.get("notes", ""))
@@ -402,7 +407,7 @@ def create_team_member(data: dict) -> dict:
 
 
 def delete_team_member(member_id: int) -> None:
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.execute("DELETE FROM team_members WHERE id = ?", (member_id,))
 
 
@@ -413,6 +418,6 @@ def update_team_member(member_id: int, data: dict) -> dict | None:
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
     columns = ", ".join(f"{col} = ?" for col in snake.keys())
     values = list(snake.values()) + [member_id]
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.execute(f"UPDATE team_members SET {columns} WHERE id = ?", values)
     return get_team_member(member_id)
