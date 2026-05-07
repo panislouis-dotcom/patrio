@@ -213,9 +213,12 @@ function TreeNode({
               {node.name}
             </span>
             {isDefinir ? (
-              <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.tertiary, letterSpacing: '0.08em', border: `1px dashed ${colors.tertiary}`, padding: '1px 6px' }}>
-                DEFINIR
-              </span>
+              <button
+                onClick={() => setAddingChild(true)}
+                style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.tertiary, letterSpacing: '0.08em', border: `1px dashed ${colors.tertiary}`, padding: '1px 6px', background: 'transparent', cursor: 'pointer' }}
+              >
+                DEFINIR ▸
+              </button>
             ) : isLeaf ? (
               <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{node.durationDays}d</span>
             ) : null}
