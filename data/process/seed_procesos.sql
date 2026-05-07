@@ -38,6 +38,15 @@ UPDATE template_nodes SET depends_on_id = (SELECT id FROM template_nodes WHERE n
 UPDATE template_nodes SET depends_on_id = (SELECT id FROM template_nodes WHERE name = 'Avalúo final' AND template_id = 1)
   WHERE name = 'Venta' AND template_id = 1;
 
+-- Root phases: sequential ordering (Adquisicion -> Construccion -> Salida)
+UPDATE template_nodes
+  SET depends_on_id = (SELECT id FROM template_nodes WHERE name = 'Adquisición' AND template_id = 1)
+  WHERE name = 'Construcción' AND template_id = 1;
+
+UPDATE template_nodes
+  SET depends_on_id = (SELECT id FROM template_nodes WHERE name = 'Construcción' AND template_id = 1)
+  WHERE name = 'Salida' AND template_id = 1;
+
 -- Template 2: Análisis de Mercado (flat, no children)
 INSERT INTO template_nodes (template_id, parent_id, name, sort_order, duration_days) VALUES
   (2, NULL, 'Recolección de datos', 0, 2),
