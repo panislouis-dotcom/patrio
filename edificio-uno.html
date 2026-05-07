@@ -218,32 +218,35 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
 <div id="pg-dashboard" class="pg active">
   <div class="topbar">
     <div class="pt">Dashboard</div>
-    <div class="badge">Marzo 2026</div>
+    <div class="badge">Abril 2026</div>
   </div>
 
   <div class="alert alert-amber">
-    ⚠ <span><strong>Penthouse:</strong> Contrato vencido (mar 2026) — en negociación con el propietario. Se actualizará próximamente.</span>
+    ⚠ <span><strong>Cozzy:</strong> Se desocupó una habitación — se trabajará en Airbnb.</span>
   </div>
   <div class="alert alert-amber">
-    ⚠ <span><strong>Señalización pendiente:</strong> Instalación programada para el miércoles 8 de abril 2026. Costo estimado $400.</span>
+    ⚠ <span><strong>Sótano:</strong> Empezó remodelación.</span>
+  </div>
+  <div class="alert alert-amber">
+    ⚠ <span><strong>Señalización:</strong> Sigue pendiente de instalar.</span>
   </div>
 
   <!-- KPIs mes actual -->
   <div class="kgrid">
     <div class="ki hl">
-      <div class="kl">Utilidad neta — Marzo</div>
-      <div class="kv">$144,893</div>
-      <div class="kd up">▲ 0.3% vs febrero</div>
+      <div class="kl">Utilidad neta — Abril</div>
+      <div class="kv">$94,093</div>
+      <div class="kd down">▼ 35.1% vs marzo</div>
     </div>
     <div class="ki">
       <div class="kl">Ingresos brutos</div>
-      <div class="kv">$162,500</div>
-      <div class="kd neu">— sin cambio</div>
+      <div class="kv">$140,824</div>
+      <div class="kd down">▼ 13.3% vs marzo</div>
     </div>
     <div class="ki">
       <div class="kl">Gastos operativos</div>
-      <div class="kv">$17,607</div>
-      <div class="kd up">▼ 2.2% vs febrero</div>
+      <div class="kv">$46,731</div>
+      <div class="kd down">▲ 165% vs marzo</div>
     </div>
     <div class="ki">
       <div class="kl">Ocupación</div>
@@ -252,12 +255,12 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
     </div>
     <div class="ki tip" data-tip="Utilidad neta ÷ Ingresos. Qué porcentaje de lo que entra se convierte en ganancia. Por encima del 55% es saludable.">
       <div class="kl">Rentabilidad</div>
-      <div class="kv">89.2%</div>
-      <div class="kd up">↑ Excelente</div>
+      <div class="kv">66.8%</div>
+      <div class="kd neu">↓ Mes atípico por gastos</div>
     </div>
     <div class="ki tip" data-tip="NOI anualizado estimado ÷ Valor del inmueble. Rango sano en MTY/SLT: 7–10%.">
       <div class="kl">Cap Rate est.</div>
-      <div class="kv">8.7%</div>
+      <div class="kv">8.1%</div>
       <div class="kd neu">— Saludable</div>
     </div>
   </div>
@@ -272,7 +275,7 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
 
   <!-- Resumen inquilinos -->
   <div class="card">
-    <div class="card-title">Estado de inquilinos — Marzo 2026</div>
+    <div class="card-title">Estado de inquilinos — Abril 2026</div>
     <table class="ft">
       <thead><tr>
         <th>Unidad</th><th>Inquilino</th><th>Renta</th><th>Estado</th><th>Notas</th>
@@ -285,12 +288,12 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
         <tr><td>H5</td><td>Gerardo Pinzón</td><td>$9,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Contrato indefinido</td></tr>
         <tr><td>H6</td><td>—</td><td>—</td><td><span class="tag tag-vac">No disponible</span></td><td style="font-size:.75rem;color:var(--muted)">Inhabilitada temporalmente</td></tr>
         <tr><td>H7</td><td>—</td><td>—</td><td><span class="tag tag-vac">No disponible</span></td><td style="font-size:.75rem;color:var(--muted)">Inhabilitada temporalmente</td></tr>
-        <tr><td>Depa Esquina</td><td>Sergio Olivares</td><td>$18,500</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta mayo 2027</td></tr>
-        <tr><td>Parisino 1</td><td>Ricardo Gracia</td><td>$11,500</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta abril 2026</td></tr>
+        <tr><td>Depa Esquina</td><td>Sergio Olivares</td><td>$19,250</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta mayo 2027</td></tr>
+        <tr><td>Parisino 1</td><td>Ricardo Gracia</td><td>$11,500</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Pendiente renovación</td></tr>
         <tr><td>Parisino 2</td><td>Jorge Ramos</td><td>$10,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta oct 2026</td></tr>
-        <tr><td>Penthouse</td><td>Gustavo Gancino</td><td>$12,000</td><td><span class="tag tag-neg">En negociación</span></td><td style="font-size:.75rem;color:var(--amber)">Contrato vencido mar 2026</td></tr>
+        <tr><td>Penthouse</td><td>Gustavo Gancino</td><td>$12,500</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Contrato renovado abr 2026</td></tr>
         <tr><td>Local Esquina</td><td>Roberto Zapata</td><td>$40,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta nov 2027</td></tr>
-        <tr><td>Local Parisino</td><td>Julio Hernandez</td><td>$26,000</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta mar 2027</td></tr>
+        <tr><td>Local Parisino</td><td>Julio Hernandez</td><td>$27,061</td><td><span class="tag tag-ok">Al corriente</span></td><td style="font-size:.75rem;color:var(--muted)">Hasta mar 2027</td></tr>
       </tbody>
     </table>
   </div>
@@ -366,11 +369,11 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
       <div class="unit-rent">$10,000 / mes · Dep. $10,000 (Guillaume)</div>
       <span class="unit-status st-ok">Al corriente</span>
     </div>
-    <div class="unit-card negotiating" onclick="openModal('PH')">
+    <div class="unit-card" onclick="openModal('PH')">
       <div class="unit-id">Penthouse</div>
       <div class="unit-tenant">Gustavo Gancino</div>
-      <div class="unit-rent">$12,000 / mes · Dep. (Guillaume)</div>
-      <span class="unit-status st-neg">En negociación</span>
+      <div class="unit-rent">$12,500 / mes · Dep. (Guillaume)</div>
+      <span class="unit-status st-ok">Al corriente</span>
     </div>
     <div class="unit-card" onclick="openModal('LOC1')">
       <div class="unit-id">Local Esquina</div>
@@ -393,23 +396,23 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
 <div id="pg-finanzas" class="pg">
   <div class="topbar">
     <div class="pt">Ingresos y Gastos</div>
-    <div class="badge">Ene — Mar 2026</div>
+    <div class="badge">Ene — Abr 2026</div>
   </div>
 
   <div class="kgrid">
     <div class="ki hl">
       <div class="kl">Utilidad acumulada</div>
-      <div class="kv">$417,742</div>
-      <div class="kd neu">Enero — Marzo 2026</div>
+      <div class="kv">$511,835</div>
+      <div class="kd neu">Enero — Abril 2026</div>
     </div>
     <div class="ki">
       <div class="kl">Ingresos acumulados</div>
-      <div class="kv">$487,500</div>
-      <div class="kd neu">3 meses × $162,500</div>
+      <div class="kv">$628,324</div>
+      <div class="kd neu">4 meses</div>
     </div>
     <div class="ki">
       <div class="kl">Gastos acumulados</div>
-      <div class="kv">$69,758</div>
+      <div class="kv">$116,489</div>
       <div class="kd neu">Operativos</div>
     </div>
   </div>
@@ -454,14 +457,23 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
           <td class="fc-uti">$144,893</td>
           <td>89.2%</td>
         </tr>
+        <tr>
+          <td><strong>Abril 2026</strong></td>
+          <td class="fc-ing">$140,824</td>
+          <td class="fc-gst">$23,987</td>
+          <td class="fc-gst">$22,744</td>
+          <td class="fc-gst">$46,731</td>
+          <td class="fc-uti">$94,093</td>
+          <td>66.8%</td>
+        </tr>
         <tr style="background:var(--green-light)">
           <td><strong>Total</strong></td>
-          <td class="fc-ing"><strong>$487,500</strong></td>
-          <td class="fc-gst"><strong>$42,439</strong></td>
-          <td class="fc-gst"><strong>$27,319</strong></td>
-          <td class="fc-gst"><strong>$69,758</strong></td>
-          <td class="fc-uti"><strong>$417,742</strong></td>
-          <td><strong>85.7%</strong></td>
+          <td class="fc-ing"><strong>$628,324</strong></td>
+          <td class="fc-gst"><strong>$66,426</strong></td>
+          <td class="fc-gst"><strong>$50,063</strong></td>
+          <td class="fc-gst"><strong>$116,489</strong></td>
+          <td class="fc-uti"><strong>$511,835</strong></td>
+          <td><strong>81.5%</strong></td>
         </tr>
       </tbody>
     </table>
@@ -509,8 +521,8 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
     </div>
     <div class="tip" data-tip="Suma de utilidades netas cobradas desde enero 2026, primer mes de operación PATRIO.">
       <div class="ph-l">Flujo acumulado con PATRIO</div>
-      <div class="ph-v">$417,742</div>
-      <div class="ph-d">Ene — Mar 2026 · 3 meses</div>
+      <div class="ph-v">$511,835</div>
+      <div class="ph-d">Ene — Abr 2026 · 4 meses</div>
     </div>
   </div>
 
@@ -522,22 +534,22 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
     </div>
     <div class="ki tip" data-tip="NOI anual estimado ÷ Valor del inmueble. NOI = ingresos menos gastos operativos, antes de impuestos. Rango sano MTY: 7–10%.">
       <div class="kl">Cap Rate estimado</div>
-      <div class="kv">8.7%</div>
+      <div class="kv">8.1%</div>
       <div class="kd neu">NOI anual ÷ valor mercado · Saludable</div>
     </div>
     <div class="ki tip" data-tip="Promedio mensual de utilidad neta × 12. Es antes de deuda e ISR. Referencia de productividad del activo.">
       <div class="kl">NOI anual estimado</div>
-      <div class="kv">$1,672,480</div>
-      <div class="kd neu">Basado en promedio 3 meses</div>
+      <div class="kv">$1,535,508</div>
+      <div class="kd neu">Basado en promedio 4 meses</div>
     </div>
-    <div class="ki tip" data-tip="Valor del inmueble ÷ Renta bruta anual. $19M ÷ $1.95M = 9.7x. Menos de 20 es sano. Tu inmueble está bien rentado.">
+    <div class="ki tip" data-tip="Valor del inmueble ÷ Renta bruta anual. $19M ÷ $1.88M = 10.1x. Menos de 20 es sano. Tu inmueble está bien rentado.">
       <div class="kl">GRM</div>
-      <div class="kv">9.7x</div>
+      <div class="kv">10.1x</div>
       <div class="kd up">↓ Excelente · muy por debajo de 20</div>
     </div>
-    <div class="ki tip" data-tip="Inversión total ($9.5M) ÷ utilidad neta mensual promedio ($139,247). A este ritmo, la inversión queda recuperada en aproximadamente 5.7 años desde el inicio.">
+    <div class="ki tip" data-tip="Inversión total ($9.5M) ÷ utilidad neta mensual promedio ($127,959). A este ritmo, la inversión queda recuperada en aproximadamente 6.2 años desde el inicio.">
       <div class="kl">Años para recuperar inv.</div>
-      <div class="kv">5.7 años</div>
+      <div class="kv">6.2 años</div>
       <div class="kd neu">A ritmo actual · desde adquisición</div>
     </div>
     <div class="ki tip" data-tip="H6 y H7 inhabilitadas = 2 unidades de 13 sin ingreso. Cuando se reactiven, el ingreso bruto subirá aproximadamente $17,000–$18,500/mes adicionales.">
@@ -622,7 +634,7 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
   </div>
 
   <div class="alert alert-amber">
-    ⚠ <span>Señalización pendiente de instalar: <strong>miércoles 8 abril 2026</strong>. Costo estimado: $400. Todos los sistemas requieren etiquetado.</span>
+    ⚠ <span>Señalización <strong>sigue pendiente</strong> de instalar. Costo estimado: $400. Todos los sistemas requieren etiquetado.</span>
   </div>
 
   <div class="card">
@@ -714,10 +726,10 @@ function showPage(id,el){
 
 // ── CHARTS ──
 function initCharts(){
-  const meses=['Ene','Feb','Mar'];
-  const ingresos=[162500,162500,162500];
-  const gastos=[34141,18010,17607];
-  const utilidad=[128359,144490,144893];
+  const meses=['Ene','Feb','Mar','Abr'];
+  const ingresos=[162500,162500,162500,140824];
+  const gastos=[34141,18010,17607,46731];
+  const utilidad=[128359,144490,144893,94093];
 
   // Dashboard principal
   new Chart(document.getElementById('chartMain'),{
@@ -814,11 +826,11 @@ const units={
     ['Inicio contrato','Diciembre 2025'],['Fin contrato','Octubre 2026'],
     ['Estado de pago','Al corriente'],['A/C','Mirage Inverter 32'],
   ]},
-  PH:{title:'Penthouse',sub:'Contrato vencido — en negociación',rows:[
+  PH:{title:'Penthouse',sub:'Contrato renovado · abr 2026',rows:[
     ['Inquilino','Gustavo Gancino'],['Teléfono','—'],
-    ['Renta mensual','$12,000'],['Depósito','En poder de Guillaume'],
-    ['Inicio contrato','Diciembre 2025'],['Fin contrato','Marzo 2026 (vencido)'],
-    ['Estado','En negociación — pendiente actualizar contrato'],['A/C','Mirage Inverter 32'],
+    ['Renta mensual','$12,500'],['Depósito','En poder de Guillaume'],
+    ['Inicio contrato','Abril 2026'],['Fin contrato','Por confirmar'],
+    ['Estado de pago','Al corriente'],['A/C','Mirage Inverter 32'],
   ]},
   LOC1:{title:'Local Esquina',sub:'Hasta noviembre 2027',rows:[
     ['Inquilino','Roberto Sebastián Zapata'],['Teléfono','8116006671'],
