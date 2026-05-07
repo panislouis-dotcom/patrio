@@ -1,6 +1,26 @@
+# Database
 *.db
 *.db-shm
 *.db-wal
-00Tree.html
-files/.superpowers/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Tool artifacts
 .playwright-mcp/
+.superpowers/
+files/.superpowers/
+
+# OS
+.DS_Store
+00Tree.html
