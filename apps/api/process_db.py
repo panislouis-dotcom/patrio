@@ -8,6 +8,7 @@ INSTANCE_RAW_FIELDS = {
     "name", "startDate", "status", "notes",
     "templateId", "projectId", "ownerId",
     "frequencyDays", "dueDate", "completedAt",
+    "originInstanceId",
 }
 
 
@@ -143,7 +144,51 @@ _INSTANCE_SELECT = """
 """
 
 
+def sync_periodic_series():
+    from datetime import date, timedelta
+    today = date.today()
+    with get_db() as conn:
+        origins = conn.execute(
+            "SELECT * FROM process_instances WHERE frequency_days IS NOT NULL AND origin_instance_id IS NULL"
+        ).fetchall()
+    for row in origins:
+        origin = _row_to_dict(row)
+        freq = origin.get('frequencyDays')
+        if not freq or freq <= 0:
+            continue
+        try:
+            anchor = date.fromisoformat(origin['startDate'][:10])
+        except (ValueError, TypeError):
+            continue
+        if anchor > today:
+            continue
+        delta = (today - anchor).days
+        n = delta // freq
+        current_start = anchor + timedelta(days=n * freq)
+        if current_start == anchor:
+            continue
+        with get_db() as conn:
+            existing = conn.execute(
+                "SELECT id FROM process_instances WHERE origin_instance_id = ? AND start_date = ?",
+                (origin['id'], current_start.isoformat())
+            ).fetchone()
+        if existing:
+            continue
+        create_instance({
+            'name': origin['name'],
+            'templateId': origin.get('templateId'),
+            'projectId': origin.get('projectId'),
+            'ownerId': origin.get('ownerId'),
+            'frequencyDays': freq,
+            'startDate': current_start.isoformat(),
+            'originInstanceId': origin['id'],
+            'status': 'active',
+            'notes': '',
+        })
+
+
 def get_instances(project_id: Optional[int] = None) -> list[dict]:
+    sync_periodic_series()
     query = _INSTANCE_SELECT
     params: list = []
     if project_id is not None:
@@ -196,40 +241,6 @@ def update_instance(iid: int, data: dict) -> Optional[dict]:
             list(snake.values()) + [iid],
         )
     return get_instance(iid)
-
-
-def create_next_periodic_instance(iid: int) -> Optional[dict]:
-    """When a periodica instance completes, create the next one.
-
-    Next start_date = completed_at + frequency_days.
-    Returns the new instance or None if conditions not met.
-    """
-    from datetime import date, timedelta
-    instance = get_instance(iid)
-    if not instance:
-        return None
-    if not instance.get('frequencyDays'):
-        return None
-    freq = instance.get("frequencyDays")
-    completed = instance.get("completedAt")
-    if not freq or not completed:
-        return None
-    try:
-        base = date.fromisoformat(completed[:10])
-    except ValueError:
-        return None
-    next_start = (base + timedelta(days=freq)).isoformat()
-    new_data = {
-        "name": instance["name"],
-        "templateId": instance.get("templateId"),
-        "projectId": instance.get("projectId"),
-        "ownerId": instance.get("ownerId"),
-        "frequencyDays": freq,
-        "startDate": next_start,
-        "status": "active",
-        "notes": "",
-    }
-    return create_instance(new_data)
 
 
 # ─── Instance node states ─────────────────────────
