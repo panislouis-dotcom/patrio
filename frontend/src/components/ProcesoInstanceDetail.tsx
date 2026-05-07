@@ -133,10 +133,15 @@ export function ProcesoInstanceDetail() {
             {nodes.map(n => {
               const s = getState(n.id)
               const currentStatus = s?.status ?? 'pending'
+              const isRoot = n.parentId === null
               return (
-                <tr key={n.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                <tr key={n.id} style={{
+                  borderBottom: `1px solid ${colors.border}`,
+                  background: isRoot ? colors.surfaceAlt : 'transparent',
+                  borderLeft: isRoot ? `2px solid ${colors.primary}` : '2px solid transparent',
+                }}>
                   <td style={{ padding: '6px 10px' }}>
-                    <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: n.isDefinir ? colors.tertiary : colors.neutral, paddingLeft: n.parentId !== null ? '12px' : '0' }}>
+                    <div style={{ fontFamily: fonts.sans, fontSize: isRoot ? '12px' : '11px', color: n.isDefinir ? colors.tertiary : (isRoot ? colors.neutral : colors.secondary), paddingLeft: isRoot ? '0' : '16px' }}>
                       {n.name}
                     </div>
                   </td>
