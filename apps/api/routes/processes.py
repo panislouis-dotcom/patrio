@@ -8,7 +8,6 @@ from api.process_db import (
     upsert_node_state, get_instance_states,
     get_node_files, create_node_file, delete_node_file,
     get_node_comments, create_node_comment, delete_node_comment,
-    create_next_periodic_instance,
 )
 from api.gantt import compute_gantt
 
@@ -48,6 +47,7 @@ class InstanceCreate(BaseModel):
     dueDate: Optional[str] = None
     notes: str = ""
     status: str = "active"
+    originInstanceId: Optional[int] = None
 
 class InstanceUpdate(BaseModel):
     name: Optional[str] = None
@@ -151,12 +151,7 @@ def patch_instance(iid: int, body: InstanceUpdate):
     if updated is None:
         raise HTTPException(status_code=404, detail="Instance not found")
 
-    # Auto-create next periodic instance on completion
-    next_inst = None
-    if data.get("status") == "completed" and updated.get("frequencyDays"):
-        next_inst = create_next_periodic_instance(iid)
-
-    return {"instance": updated, "nextInstance": next_inst}
+    return {"instance": updated}
 
 @router.get("/api/process/instances/{iid}")
 def get_instance_detail(iid: int):

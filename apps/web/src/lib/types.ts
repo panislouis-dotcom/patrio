@@ -153,6 +153,7 @@ export interface ProcessInstance {
   dueDate: string | null
   frequencyDays: number | null
   completedAt: string | null
+  originInstanceId: number | null
   status: string
   notes: string
   createdAt: string
