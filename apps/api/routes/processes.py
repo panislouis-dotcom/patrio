@@ -8,6 +8,7 @@ from api.process_db import (
     upsert_node_state, get_instance_states,
     get_node_files, create_node_file, delete_node_file,
     get_node_comments, create_node_comment, delete_node_comment,
+    get_instance_files, create_instance_file, delete_instance_file,
 )
 from api.gantt import compute_gantt
 
@@ -40,7 +41,7 @@ class NodeUpdate(BaseModel):
 class InstanceCreate(BaseModel):
     name: str
     startDate: str
-    templateId: int
+    templateId: Optional[int] = None
     projectId: Optional[int] = None
     ownerId: Optional[int] = None
     frequencyDays: Optional[int] = None
@@ -159,13 +160,15 @@ def get_instance_detail(iid: int):
     if instance is None:
         raise HTTPException(status_code=404, detail="Not found")
 
+    files = get_instance_files(iid)
+
     if instance.get("templateId") is None:
-        return {"instance": instance, "nodes": [], "states": []}
+        return {"instance": instance, "nodes": [], "states": [], "files": files}
 
     nodes = get_template_nodes(instance["templateId"])
     states = get_instance_states(iid)
     annotated = compute_gantt(nodes, states)
-    return {"instance": instance, "nodes": annotated, "states": states}
+    return {"instance": instance, "nodes": annotated, "states": states, "files": files}
 
 # ─── Node detail (subtree) ────────────────────────
 
@@ -229,6 +232,29 @@ async def upload_node_file(
 @router.delete("/api/process/files/{fid}", status_code=204)
 def delete_file_route(fid: int):
     delete_node_file(fid)
+
+# ─── Instance files ───────────────────────────────────────────
+
+@router.get("/api/process/instances/{iid}/files")
+def list_instance_files(iid: int):
+    return get_instance_files(iid)
+
+@router.post("/api/process/instances/{iid}/files", status_code=201)
+async def upload_instance_file_route(
+    iid: int,
+    file: UploadFile = File(...),
+):
+    content = await file.read()
+    return create_instance_file(
+        instance_id=iid,
+        file_name=file.filename or "upload",
+        content_type=file.content_type or "application/octet-stream",
+        content=content,
+    )
+
+@router.delete("/api/process/instance-files/{fid}", status_code=204)
+def delete_instance_file_route(fid: int):
+    delete_instance_file(fid)
 
 # ─── Node comments ────────────────────────────────
 
