@@ -4,9 +4,9 @@ import { fetchTemplates, fetchTemplateNodes, createNode, updateNode, deleteNode 
 import type { ProcessTemplate, TemplateNode } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 
-// ─── Gantt preview helper (client-side, simplified) ───
+// ─── Gantt preview helper (Kahn's topological sort, mirrors backend api/gantt.py) ───
 function buildGanttPreview(nodes: TemplateNode[]): Array<TemplateNode & { ganttStart: number; ganttDuration: number; isDefinir: boolean; depth: number }> {
-  const childrenMap: Record<string, TemplateNode[]> = { root: [] }
+  const childrenMap: Record<string, TemplateNode[]> = {}
   for (const n of nodes) {
     const key = n.parentId !== null ? String(n.parentId) : 'root'
     if (!childrenMap[key]) childrenMap[key] = []
@@ -16,38 +16,62 @@ function buildGanttPreview(nodes: TemplateNode[]): Array<TemplateNode & { ganttS
     childrenMap[key].sort((a, b) => a.sortOrder - b.sortOrder)
   }
 
-  const durCache: Record<number, number> = {}
-  function effectiveDur(id: number): number {
-    if (id in durCache) return durCache[id]
-    const children = childrenMap[String(id)] ?? []
-    if (children.length === 0) {
-      const node = nodes.find(n => n.id === id)!
-      const d = node.durationDays === null ? 0 : node.durationDays
-      durCache[id] = d
-      return d
+  const gStart: Record<number, number> = {}
+  const gDur: Record<number, number> = {}
+  const gDefinir: Record<number, boolean> = {}
+
+  function processGroup(siblings: TemplateNode[], parentStart: number): void {
+    if (siblings.length === 0) return
+    const sibIds = new Set(siblings.map(n => n.id))
+    const inDeg: Record<number, number> = {}
+    const deps: Record<number, number[]> = {}
+    for (const n of siblings) { inDeg[n.id] = 0; deps[n.id] = [] }
+    for (const n of siblings) {
+      if (n.dependsOnId !== null && n.dependsOnId !== undefined && sibIds.has(n.dependsOnId)) {
+        inDeg[n.id]++
+        deps[n.dependsOnId].push(n.id)
+      }
     }
-    // Sum children (simplified: sequential)
-    const total = children.reduce((acc, c) => acc + effectiveDur(c.id), 0)
-    durCache[id] = total
-    return total
+    const idMap: Record<number, TemplateNode> = {}
+    for (const n of siblings) idMap[n.id] = n
+    const queue = siblings.filter(n => inDeg[n.id] === 0)
+    const topo: TemplateNode[] = []
+    while (queue.length) {
+      const node = queue.shift()!
+      topo.push(node)
+      for (const d of (deps[node.id] ?? [])) { if (--inDeg[d] === 0) queue.push(idMap[d]) }
+    }
+    const processed = new Set(topo.map(n => n.id))
+    for (const n of siblings) { if (!processed.has(n.id)) topo.push(n) }
+
+    const nodeEnd: Record<number, number> = {}
+    for (const node of topo) {
+      const dep = node.dependsOnId
+      gStart[node.id] = (dep !== null && dep !== undefined && nodeEnd[dep] !== undefined) ? nodeEnd[dep] : parentStart
+      const children = childrenMap[String(node.id)] ?? []
+      if (children.length > 0) {
+        processGroup(children, gStart[node.id])
+        const maxEnd = Math.max(...children.map(c => gStart[c.id] + gDur[c.id]))
+        gDur[node.id] = Math.max(0, maxEnd - gStart[node.id])
+        gDefinir[node.id] = false
+      } else {
+        gDefinir[node.id] = node.durationDays === null
+        gDur[node.id] = node.durationDays ?? 0
+      }
+      nodeEnd[node.id] = gStart[node.id] + gDur[node.id]
+    }
   }
+
+  processGroup(childrenMap['root'] ?? [], 0)
 
   const result: Array<TemplateNode & { ganttStart: number; ganttDuration: number; isDefinir: boolean; depth: number }> = []
-
-  function walk(nodeList: TemplateNode[], parentStart: number, depth: number) {
-    let cursor = parentStart
-    for (const n of nodeList) {
-      const children = childrenMap[String(n.id)] ?? []
-      const isLeaf = children.length === 0
-      const isDefinir = isLeaf && n.durationDays === null
-      const dur = effectiveDur(n.id)
-      result.push({ ...n, ganttStart: cursor, ganttDuration: dur, isDefinir, depth })
-      walk(children, cursor, depth + 1)
-      cursor += dur
+  function walk(list: TemplateNode[], depth: number): void {
+    for (const n of list) {
+      result.push({ ...n, ganttStart: gStart[n.id] ?? 0, ganttDuration: gDur[n.id] ?? 0, isDefinir: gDefinir[n.id] ?? false, depth })
+      walk(childrenMap[String(n.id)] ?? [], depth + 1)
     }
   }
-
-  walk(childrenMap['root'] ?? [], 0, 0)
+  walk(childrenMap['root'] ?? [], 0)
   return result
 }
 
