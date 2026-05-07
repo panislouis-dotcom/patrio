@@ -164,8 +164,31 @@ CREATE TABLE IF NOT EXISTS instance_node_states (
   actual_start     TEXT,
   actual_end       TEXT,
   notes            TEXT NOT NULL DEFAULT '',
+  duration_override_days INTEGER,         -- overrides template node's duration_days for this instance
   updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(instance_id, template_node_id)
+);
+
+-- ── Node files (reference photos on template; evidence on instance) ──────────
+CREATE TABLE IF NOT EXISTS node_files (
+  id               INTEGER PRIMARY KEY,
+  template_node_id INTEGER NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
+  instance_id      INTEGER REFERENCES process_instances(id) ON DELETE CASCADE,
+  file_path        TEXT NOT NULL,
+  file_name        TEXT NOT NULL,
+  content_type     TEXT NOT NULL,
+  type             TEXT NOT NULL CHECK (type IN ('reference', 'evidence')),
+  uploaded_at      TEXT DEFAULT (datetime('now'))
+);
+
+-- ── Node comments (per instance per node) ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS node_comments (
+  id               INTEGER PRIMARY KEY,
+  instance_id      INTEGER NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+  template_node_id INTEGER NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
+  body             TEXT NOT NULL,
+  author           TEXT NOT NULL DEFAULT '',
+  created_at       TEXT DEFAULT (datetime('now'))
 );
 
 -- Performance indexes on FK and filter columns
@@ -178,3 +201,6 @@ CREATE INDEX IF NOT EXISTS idx_node_state_inst   ON instance_node_states(instanc
 CREATE INDEX IF NOT EXISTS idx_node_state_node   ON instance_node_states(template_node_id);
 CREATE INDEX IF NOT EXISTS idx_team_manager      ON team_members(manager_id);
 CREATE INDEX IF NOT EXISTS idx_signals_prospect  ON signals(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_node_files_node     ON node_files(template_node_id);
+CREATE INDEX IF NOT EXISTS idx_node_files_instance ON node_files(instance_id);
+CREATE INDEX IF NOT EXISTS idx_comments_node       ON node_comments(template_node_id, instance_id);
