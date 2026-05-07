@@ -1,0 +1,54 @@
+import type { GanttNode } from '../lib/types'
+import { colors, fonts } from '../lib/theme'
+
+interface GanttChartProps {
+  nodes: GanttNode[]
+  totalDays: number
+}
+
+export function GanttChart({ nodes, totalDays }: GanttChartProps) {
+  if (nodes.length === 0) return null
+  const total = Math.max(1, totalDays)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      {nodes.map(n => {
+        const leftPct = (n.ganttStart / total) * 100
+        const widthPct = Math.max(0.3, (n.ganttDuration / total) * 100)
+        const isRoot = n.parentId === null
+
+        return (
+          <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{
+              width: '160px',
+              flexShrink: 0,
+              fontFamily: fonts.sans,
+              fontSize: '10px',
+              color: n.isDefinir ? colors.tertiary : (isRoot ? colors.neutral : colors.secondary),
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              paddingLeft: isRoot ? '0' : '12px',
+            }}>
+              {n.name}
+            </div>
+            <div style={{ flex: 1, position: 'relative', height: '14px', background: colors.surfaceAlt, border: `1px solid ${colors.border}` }}>
+              <div style={{
+                position: 'absolute',
+                left: `${leftPct}%`,
+                width: `${widthPct}%`,
+                height: '100%',
+                background: n.isDefinir ? 'transparent' : (isRoot ? colors.primary : colors.secondary),
+                border: n.isDefinir ? `1px dashed ${colors.tertiary}` : 'none',
+                opacity: 0.75,
+              }} />
+            </div>
+            <div style={{ width: '36px', flexShrink: 0, fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>
+              {n.isDefinir ? '?' : `${n.ganttDuration}d`}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
