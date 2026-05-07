@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS template_nodes (
 
 CREATE TABLE IF NOT EXISTS process_instances (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  template_id    INTEGER NOT NULL REFERENCES process_templates(id) ON DELETE CASCADE,
+  template_id    INTEGER REFERENCES process_templates(id) ON DELETE CASCADE,
   project_id     INTEGER REFERENCES projects(id),
   owner_id       INTEGER REFERENCES team_members(id),
   name           TEXT NOT NULL CHECK (name != ''),
@@ -194,6 +194,15 @@ CREATE TABLE IF NOT EXISTS node_comments (
   body             TEXT NOT NULL,
   author           TEXT NOT NULL DEFAULT '',
   created_at       TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS instance_files (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  instance_id  INTEGER NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+  file_path    TEXT NOT NULL,
+  file_name    TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  uploaded_at  TEXT DEFAULT (datetime('now'))
 );
 
 -- Performance indexes on FK and filter columns
