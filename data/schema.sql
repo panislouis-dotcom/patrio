@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS template_nodes (
   description   TEXT NOT NULL DEFAULT '',
   sort_order    INTEGER NOT NULL DEFAULT 0,
   depends_on_id INTEGER REFERENCES template_nodes(id) ON DELETE SET NULL,
+  source_template_id INTEGER REFERENCES process_templates(id),
   duration_days INTEGER,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
