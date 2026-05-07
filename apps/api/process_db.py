@@ -4,7 +4,11 @@ from api.db import get_db, DB_PATH, _row_to_dict, _camel_to_snake
 
 TEMPLATE_RAW_FIELDS = {"name", "description"}
 NODE_RAW_FIELDS = {"name", "description", "sortOrder", "dependsOnId", "durationDays", "parentId"}
-INSTANCE_RAW_FIELDS = {"name", "startDate", "status", "notes", "templateId", "projectId"}
+INSTANCE_RAW_FIELDS = {
+    "name", "startDate", "status", "notes",
+    "templateId", "projectId", "ownerId",
+    "taskType", "frequencyDays", "dueDate", "completedAt",
+}
 STATE_RAW_FIELDS = {"status", "assigneeId", "actualStart", "actualEnd", "notes", "durationOverrideDays"}
 
 
@@ -124,10 +128,12 @@ _INSTANCE_SELECT = """
     SELECT
         pi.*,
         pt.name  AS template_name,
-        pr.name  AS project_name
+        pr.name  AS project_name,
+        tm.name  AS owner_name
     FROM process_instances pi
-    JOIN process_templates pt ON pt.id = pi.template_id
-    LEFT JOIN projects pr     ON pr.id = pi.project_id
+    LEFT JOIN process_templates pt ON pt.id = pi.template_id
+    LEFT JOIN projects pr          ON pr.id = pi.project_id
+    LEFT JOIN team_members tm      ON tm.id = pi.owner_id
 """
 
 
@@ -177,6 +183,41 @@ def update_instance(iid: int, data: dict) -> Optional[dict]:
             list(snake.values()) + [iid],
         )
     return get_instance(iid)
+
+
+def create_next_periodic_instance(iid: int) -> Optional[dict]:
+    """When a periodica instance completes, create the next one.
+
+    Next start_date = completed_at + frequency_days.
+    Returns the new instance or None if conditions not met.
+    """
+    from datetime import date, timedelta
+    instance = get_instance(iid)
+    if not instance:
+        return None
+    if instance.get("taskType") != "periodica":
+        return None
+    freq = instance.get("frequencyDays")
+    completed = instance.get("completedAt")
+    if not freq or not completed:
+        return None
+    try:
+        base = date.fromisoformat(completed[:10])
+    except ValueError:
+        return None
+    next_start = (base + timedelta(days=freq)).isoformat()
+    new_data = {
+        "name": instance["name"],
+        "taskType": "periodica",
+        "templateId": instance.get("templateId"),
+        "projectId": instance.get("projectId"),
+        "ownerId": instance.get("ownerId"),
+        "frequencyDays": freq,
+        "startDate": next_start,
+        "status": "active",
+        "notes": "",
+    }
+    return create_instance(new_data)
 
 
 # ─── Instance node states ─────────────────────────
