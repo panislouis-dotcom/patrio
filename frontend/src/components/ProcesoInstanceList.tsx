@@ -41,7 +41,7 @@ export function ProcesoInstanceList() {
       setInstances(prev => [inst, ...prev])
       setNewName('')
       setShowForm(false)
-      navigate(`/procesos/instancias/${inst.id}`)
+      navigate(`/procesos/tareas/${inst.id}`)
     } finally {
       setCreating(false)
     }
@@ -56,18 +56,18 @@ export function ProcesoInstanceList() {
   return (
     <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontFamily: fonts.label, fontSize: '11px', color: colors.neutral, letterSpacing: '0.1em' }}>INSTANCIAS DE PROCESO</span>
+        <span style={{ fontFamily: fonts.label, fontSize: '11px', color: colors.neutral, letterSpacing: '0.1em' }}>TAREAS</span>
         <button
           onClick={() => setShowForm(v => !v)}
           style={{ background: showForm ? colors.border : colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em', padding: '6px 14px' }}
         >
-          {showForm ? 'CANCELAR' : '+ NUEVA INSTANCIA'}
+          {showForm ? 'CANCELAR' : '+ NUEVA TAREA'}
         </button>
       </div>
 
       {showForm && (
         <form onSubmit={handleCreate} style={{ background: colors.surfaceAlt, border: `1px solid ${colors.border}`, padding: '16px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nombre de la instancia" autoFocus style={{ ...inputStyle, minWidth: '200px' }} />
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nombre de la tarea" autoFocus style={{ ...inputStyle, minWidth: '200px' }} />
           <select value={newTemplateId} onChange={e => setNewTemplateId(e.target.value)} style={inputStyle}>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
@@ -85,7 +85,7 @@ export function ProcesoInstanceList() {
       {loading ? (
         <div style={{ color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>Cargando…</div>
       ) : instances.length === 0 ? (
-        <div style={{ color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>Sin instancias. Crea una desde una plantilla.</div>
+        <div style={{ color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>Sin tareas. Crea una desde una plantilla.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -99,7 +99,7 @@ export function ProcesoInstanceList() {
             {instances.map(inst => (
               <tr
                 key={inst.id}
-                onClick={() => navigate(`/procesos/instancias/${inst.id}`)}
+                onClick={() => navigate(`/procesos/tareas/${inst.id}`)}
                 style={{ borderBottom: `1px solid ${colors.border}`, cursor: 'pointer' }}
                 onMouseEnter={e => (e.currentTarget.style.background = colors.surfaceAlt)}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}

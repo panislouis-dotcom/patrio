@@ -86,8 +86,8 @@ export function ProcesoInstanceDetail() {
     <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* Header */}
       <div>
-        <button onClick={() => navigate('/procesos/instancias')} style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', marginBottom: '8px', padding: 0 }}>
-          ← INSTANCIAS
+        <button onClick={() => navigate('/procesos/tareas')} style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', marginBottom: '8px', padding: 0 }}>
+          ← TAREAS
         </button>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
           <span style={{ fontFamily: fonts.sans, fontSize: '18px', color: colors.neutral }}>{instance.name}</span>

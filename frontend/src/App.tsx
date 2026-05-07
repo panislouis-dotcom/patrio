@@ -33,8 +33,8 @@ export default function App() {
             <Route index element={<Navigate to="plantillas" replace />} />
             <Route path="plantillas" element={<ProcesoTemplateList />} />
             <Route path="plantillas/:tid" element={<ProcesoTemplateEditor />} />
-            <Route path="instancias" element={<ProcesoInstanceList />} />
-            <Route path="instancias/:iid" element={<ProcesoInstanceDetail />} />
+            <Route path="tareas" element={<ProcesoInstanceList />} />
+            <Route path="tareas/:iid" element={<ProcesoInstanceDetail />} />
           </Route>
           <Route path="/equipo" element={<OrgTab />} />
           <Route path="/tabla" element={<Navigate to="/prospectos/tabla" replace />} />

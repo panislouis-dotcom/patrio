@@ -3,7 +3,7 @@ import { colors, fonts } from '../lib/theme'
 
 const subTabs = [
   { path: '/procesos/plantillas', label: 'PLANTILLAS' },
-  { path: '/procesos/instancias', label: 'INSTANCIAS' },
+  { path: '/procesos/tareas', label: 'TAREAS' },
 ]
 
 export function ProcesosTab() {
