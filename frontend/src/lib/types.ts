@@ -93,6 +93,17 @@ export type RawProjectFields = Pick<Project,
   | 'notes'
 >
 
+export type MemberRole = 'director' | 'responsable_proyecto' | 'lider_proyecto' | 'maestro' | 'ayudante'
+
+export interface TeamMember {
+  id: number
+  name: string
+  role: MemberRole
+  managerId: number | null
+  notes: string
+  createdAt: string
+}
+
 export interface Signal {
   id: number
   portal: string
@@ -106,4 +117,58 @@ export interface Signal {
   status: string       // new | dismissed | imported
   prospectId: number | null
   scrapedAt: string
+}
+
+export interface ProcessTemplate {
+  id: number
+  name: string
+  description: string
+  createdAt: string
+}
+
+export interface TemplateNode {
+  id: number
+  templateId: number
+  parentId: number | null
+  name: string
+  description: string
+  sortOrder: number
+  dependsOnId: number | null
+  durationDays: number | null
+  createdAt: string
+}
+
+export interface ProcessInstance {
+  id: number
+  templateId: number
+  projectId: number | null
+  name: string
+  startDate: string
+  status: string
+  notes: string
+  createdAt: string
+}
+
+export interface NodeState {
+  id: number
+  instanceId: number
+  templateNodeId: number
+  status: 'pending' | 'in_progress' | 'done' | 'skipped'
+  assigneeId: number | null
+  actualStart: string | null
+  actualEnd: string | null
+  notes: string
+  updatedAt: string
+}
+
+export interface GanttNode extends TemplateNode {
+  ganttStart: number
+  ganttDuration: number
+  isDefinir: boolean
+}
+
+export interface InstanceDetail {
+  instance: ProcessInstance
+  nodes: GanttNode[]
+  states: NodeState[]
 }
