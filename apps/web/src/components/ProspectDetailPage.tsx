@@ -6,6 +6,7 @@ import type { Prospect, RawFields } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtMXN } from '../lib/fmt'
 import { ProspectForm } from './ProspectForm'
+import { PROSPECT_STATUS_COLOR, PROSPECT_STATUS_LABEL } from '../lib/status'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
   city: 'Monterrey',
@@ -24,17 +25,6 @@ export const DEFAULT_PROSPECT: Partial<RawFields> = {
   rentMonthly: 0,
   holdMonths: 12,
   notes: '',
-}
-
-const STATUS_COLOR: Record<string, string> = {
-  evaluating: colors.tertiary,
-  passed: colors.primary,
-  converted: '#654F6F',
-}
-const STATUS_LABEL: Record<string, string> = {
-  evaluating: 'EVALUANDO',
-  passed: 'APROBADO',
-  converted: 'CONVERTIDO',
 }
 
 
@@ -225,10 +215,10 @@ export function ProspectDetailPage() {
         <span style={{
           fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.12em',
           padding: '3px 10px', flexShrink: 0,
-          background: STATUS_COLOR[p.status] ?? colors.border,
+          background: PROSPECT_STATUS_COLOR[p.status] ?? colors.border,
           color: colors.neutral,
         }}>
-          {STATUS_LABEL[p.status] ?? p.status.toUpperCase()}
+          {PROSPECT_STATUS_LABEL[p.status] ?? p.status.toUpperCase()}
         </span>
         {hasEdits && (
           <button
@@ -312,7 +302,7 @@ export function ProspectDetailPage() {
               onChange={e => setEdits(prev => ({ ...prev, status: e.target.value }))}
               style={{ ...fieldInput, cursor: 'pointer' }}
             >
-              {Object.entries(STATUS_LABEL).map(([val, lbl]) => (
+              {Object.entries(PROSPECT_STATUS_LABEL).map(([val, lbl]) => (
                 <option key={val} value={val}>{lbl}</option>
               ))}
             </select>

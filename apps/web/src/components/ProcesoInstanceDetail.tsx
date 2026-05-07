@@ -4,14 +4,9 @@ import { fetchInstanceDetail, updateNodeState, fetchTeam, createNode } from '../
 import type { InstanceDetail, GanttNode, NodeState, TeamMember } from '../lib/types'
 import { GanttChart } from './GanttChart'
 import { colors, fonts } from '../lib/theme'
+import { PROCESS_STATUS_COLOR, PROCESS_STATUS_LABEL } from '../lib/status'
 
 const STATUS_OPTIONS = ['pending', 'in_progress', 'done', 'skipped'] as const
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Pendiente', in_progress: 'En progreso', done: 'Completado', skipped: 'Omitido'
-}
-const STATUS_COLOR: Record<string, string> = {
-  pending: colors.secondary, in_progress: colors.tertiary, done: colors.primary, skipped: colors.border
-}
 
 export function ProcesoInstanceDetail() {
   const { iid } = useParams<{ iid: string }>()
@@ -187,10 +182,10 @@ export function ProcesoInstanceDetail() {
                       <select
                         value={currentStatus}
                         onChange={e => handleStateChange(n.id, 'status', e.target.value)}
-                        style={{ ...inputStyle, color: STATUS_COLOR[currentStatus] ?? colors.neutral }}
+                        style={{ ...inputStyle, color: PROCESS_STATUS_COLOR[currentStatus] ?? colors.neutral }}
                       >
                         {STATUS_OPTIONS.map(opt => (
-                          <option key={opt} value={opt}>{STATUS_LABEL[opt]}</option>
+                          <option key={opt} value={opt}>{PROCESS_STATUS_LABEL[opt]}</option>
                         ))}
                       </select>
                     </td>

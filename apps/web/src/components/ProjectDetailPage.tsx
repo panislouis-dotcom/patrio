@@ -4,19 +4,7 @@ import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
 import { fetchProject, updateProject } from '../lib/api'
 import type { Project } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
-
-const STATUS_COLOR: Record<string, string> = {
-  construction: '#D4891A',
-  stabilizing: '#654F6F',
-  operating: colors.primary,
-  exited: colors.secondary,
-}
-const STATUS_LABEL: Record<string, string> = {
-  construction: 'CONSTRUCCIÓN',
-  stabilizing: 'ESTABILIZANDO',
-  operating: 'OPERANDO',
-  exited: 'VENDIDO',
-}
+import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL } from '../lib/status'
 
 function fmt(n: number): string {
   const abs = Math.abs(n)
@@ -145,10 +133,10 @@ export function ProjectDetailPage() {
         <span style={{
           fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.12em',
           padding: '3px 10px', flexShrink: 0,
-          background: STATUS_COLOR[field('status') as string] ?? colors.border,
+          background: PROJECT_STATUS_COLOR[field('status') as string] ?? colors.border,
           color: colors.neutral,
         }}>
-          {STATUS_LABEL[field('status') as string] ?? String(field('status') ?? '').toUpperCase()}
+          {PROJECT_STATUS_LABEL[field('status') as string] ?? String(field('status') ?? '').toUpperCase()}
         </span>
         {hasEdits && (
           <button
@@ -242,7 +230,7 @@ export function ProjectDetailPage() {
               onChange={e => setField('status', e.target.value)}
               style={{ ...fieldInput, cursor: 'pointer' }}
             >
-              {Object.entries(STATUS_LABEL).map(([val, lbl]) => (
+              {Object.entries(PROJECT_STATUS_LABEL).map(([val, lbl]) => (
                 <option key={val} value={val}>{lbl}</option>
               ))}
             </select>

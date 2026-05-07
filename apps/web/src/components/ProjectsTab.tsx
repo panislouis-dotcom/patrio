@@ -4,15 +4,9 @@ import { fetchProjects } from '../lib/api'
 import type { Project } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtM } from '../lib/fmt'
+import { PROJECT_STATUS_COLOR } from '../lib/status'
 
 type SortKey = 'unrealizedGainPct' | 'unrealizedGain' | 'totalInvestment' | 'currentValuation' | 'holdMonthsActual'
-
-const STATUS_COLOR: Record<string, string> = {
-  construction: '#D4891A',
-  stabilizing: colors.accent1,
-  operating: colors.primary,
-  exited: colors.secondary,
-}
 
 export function ProjectsTab() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -113,7 +107,7 @@ export function ProjectsTab() {
                   {/* Estado badge */}
                   <td style={{ padding: '5px 10px', textAlign: 'right' }}>
                     <span style={{
-                      background: STATUS_COLOR[p.status] ?? colors.secondary,
+                      background: PROJECT_STATUS_COLOR[p.status] ?? colors.secondary,
                       color: colors.neutral,
                       fontFamily: fonts.label,
                       fontSize: '9px',

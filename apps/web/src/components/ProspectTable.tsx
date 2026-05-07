@@ -7,14 +7,9 @@ import { colors, fonts } from '../lib/theme'
 import { fmtPct, fmtM } from '../lib/fmt'
 import { ScoreWeights as ScoreWeightsPanel } from './ScoreWeights'
 import { QuickCaptureModal } from './QuickCaptureModal'
+import { PROSPECT_STATUS_COLOR } from '../lib/status'
 
 type SortKey = 'score' | 'roi' | 'capRate' | 'profit' | 'totalInvestment' | 'projectedSale' | 'holdMonths'
-
-const STATUS_COLOR: Record<string, string> = {
-  evaluating: '#D4891A',
-  passed: colors.secondary,
-  converted: colors.primary,
-}
 
 export function ProspectTable() {
   const [prospects, setProspects] = useState<Prospect[]>([])
@@ -105,7 +100,7 @@ export function ProspectTable() {
               const errors = p.issues.filter(i => i.severity === 'error').length
               const warnings = p.issues.filter(i => i.severity === 'warning').length
               const roiColor = p.roi < 0 ? 'tomato' : p.roi > 0.15 ? colors.tertiary : colors.neutral
-              const statusDot = STATUS_COLOR[p.status] ?? colors.secondary
+              const statusDot = PROSPECT_STATUS_COLOR[p.status] ?? colors.secondary
 
               return (
                 <tr

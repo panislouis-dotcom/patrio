@@ -3,10 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { fetchInstances, createInstance, fetchTemplates } from '../lib/api'
 import type { ProcessInstance, ProcessTemplate } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
-
-const STATUS_COLOR: Record<string, string> = {
-  active: colors.primary, completed: colors.secondary, cancelled: colors.border
-}
+import { PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
 
 export function ProcesoInstanceList() {
   const navigate = useNavigate()
@@ -106,7 +103,7 @@ export function ProcesoInstanceList() {
               >
                 <td style={{ padding: '8px 12px', fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral }}>{inst.name}</td>
                 <td style={{ padding: '8px 12px' }}>
-                  <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: STATUS_COLOR[inst.status] ?? colors.secondary, textTransform: 'uppercase' }}>
+                  <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: PROCESS_INSTANCE_STATUS_COLOR[inst.status] ?? colors.secondary, textTransform: 'uppercase' }}>
                     {inst.status}
                   </span>
                 </td>
