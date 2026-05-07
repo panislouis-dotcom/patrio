@@ -95,6 +95,19 @@ CREATE TABLE IF NOT EXISTS projects (
 
 -- ─────────────────────────────────────────────────
 
+-- ─────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS team_members (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL CHECK (name != ''),
+  role        TEXT NOT NULL CHECK (role IN ('director', 'responsable_proyecto', 'lider_proyecto', 'maestro', 'ayudante')),
+  manager_id  INTEGER REFERENCES team_members(id),
+  notes       TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ─────────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS signals (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   portal        TEXT NOT NULL,
@@ -108,4 +121,49 @@ CREATE TABLE IF NOT EXISTS signals (
   status        TEXT NOT NULL DEFAULT 'new',  -- new | dismissed | imported
   prospect_id   INTEGER REFERENCES prospects(id),
   scraped_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ─────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS process_templates (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL CHECK (name != ''),
+  description TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS template_nodes (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_id   INTEGER NOT NULL REFERENCES process_templates(id) ON DELETE CASCADE,
+  parent_id     INTEGER REFERENCES template_nodes(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL CHECK (name != ''),
+  description   TEXT NOT NULL DEFAULT '',
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  depends_on_id INTEGER REFERENCES template_nodes(id),
+  duration_days INTEGER,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS process_instances (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_id INTEGER NOT NULL REFERENCES process_templates(id),
+  project_id  INTEGER REFERENCES projects(id),
+  name        TEXT NOT NULL CHECK (name != ''),
+  start_date  TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'active',
+  notes       TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS instance_node_states (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  instance_id      INTEGER NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+  template_node_id INTEGER NOT NULL REFERENCES template_nodes(id),
+  status           TEXT NOT NULL DEFAULT 'pending',
+  assignee_id      INTEGER REFERENCES team_members(id),
+  actual_start     TEXT,
+  actual_end       TEXT,
+  notes            TEXT NOT NULL DEFAULT '',
+  updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(instance_id, template_node_id)
 );
