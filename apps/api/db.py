@@ -3,7 +3,7 @@ import json
 from datetime import datetime, date
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "data" / "refigan.db"
+DB_PATH = Path(__file__).parent.parent.parent / "data" / "refigan.db"
 
 PROSPECTS_QUERY = """
 SELECT
