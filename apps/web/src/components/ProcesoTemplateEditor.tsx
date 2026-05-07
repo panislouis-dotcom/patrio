@@ -127,6 +127,15 @@ function TreeNode({
   const [addingChild, setAddingChild] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Re-sync edit fields when server data changes after a refresh.
+  useEffect(() => {
+    if (!editing) {
+      setEditName(node.name)
+      setEditDur(node.durationDays !== null ? String(node.durationDays) : '')
+      setEditDepOn(node.dependsOnId)
+    }
+  }, [node.name, node.durationDays, node.dependsOnId, editing])
+
   const validDeps = nodes.filter(n => n.parentId === node.parentId && n.id !== node.id && !wouldCreateCycle(n.id, node.id, nodes))
 
   async function saveEdit() {
@@ -139,6 +148,8 @@ function TreeNode({
       })
       setEditing(false)
       onRefresh()
+    } catch {
+      // leave form open so user can retry
     } finally {
       setSaving(false)
     }
