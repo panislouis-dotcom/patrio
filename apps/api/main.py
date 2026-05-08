@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from api.routes import prospects, projects, sonar, team, processes, profit
+from api.routes import prospects, projects, sonar, team, processes, profit, investors
 
 app = FastAPI(title="Refigan API")
 
@@ -23,3 +23,4 @@ app.include_router(sonar.router)
 app.include_router(team.router)
 app.include_router(processes.router)
 app.include_router(profit.router)
+app.include_router(investors.router)
