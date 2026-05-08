@@ -28,6 +28,8 @@ class ProfitConfigUpdate(BaseModel):
     liderMemberId: Optional[int] = None
     maestroMemberIds: Optional[list[int]] = None
     ayudanteMemberIds: Optional[list[int]] = None
+    maestroCount: Optional[int] = None
+    ayudanteCount: Optional[int] = None
     plannedEndDate: Optional[str] = None
     actualEndDate: Optional[str] = None
     bufferDays: Optional[int] = None

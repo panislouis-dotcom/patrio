@@ -48,6 +48,12 @@ const selectStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
+const smallInputStyle: React.CSSProperties = {
+  ...inputStyle,
+  width: '80px',
+  textAlign: 'right',
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -83,6 +89,8 @@ export function ProjectProfitSection({ projectId, team }: Props) {
   const [liderMemberId, setLiderMemberId] = useState<string>('')
   const [maestroMemberIds, setMaestroMemberIds] = useState<number[]>([])
   const [ayudanteMemberIds, setAyudanteMemberIds] = useState<number[]>([])
+  const [maestroCount, setMaestroCount] = useState<string>('')
+  const [ayudanteCount, setAyudanteCount] = useState<string>('')
   const [plannedEndDate, setPlannedEndDate] = useState<string>('')
   const [actualEndDate, setActualEndDate] = useState<string>('')
   const [bufferDays, setBufferDays] = useState<string>('0')
@@ -109,6 +117,8 @@ export function ProjectProfitSection({ projectId, team }: Props) {
       setLiderMemberId(config.liderMemberId != null ? String(config.liderMemberId) : '')
       setMaestroMemberIds(config.maestroMemberIds)
       setAyudanteMemberIds(config.ayudanteMemberIds)
+      setMaestroCount(config.maestroCount != null ? String(config.maestroCount) : '')
+      setAyudanteCount(config.ayudanteCount != null ? String(config.ayudanteCount) : '')
       setPlannedEndDate(config.plannedEndDate ?? '')
       setActualEndDate(config.actualEndDate ?? '')
       setBufferDays(String(config.bufferDays ?? 0))
@@ -139,6 +149,8 @@ export function ProjectProfitSection({ projectId, team }: Props) {
         liderMemberId: liderMemberId ? Number(liderMemberId) : null,
         maestroMemberIds,
         ayudanteMemberIds,
+        maestroCount: maestroCount ? Number(maestroCount) : null,
+        ayudanteCount: ayudanteCount ? Number(ayudanteCount) : null,
         plannedEndDate: plannedEndDate || null,
         actualEndDate: actualEndDate || null,
         bufferDays: Number(bufferDays),
@@ -189,7 +201,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
 
   // ─── Role-filtered member lists ────────────────────────────────────────────
 
-  const responsableMembers = team.filter(m => m.role === 'responsable_proyecto')
+  const responsableMembers = team.filter(m => m.role === 'responsable_proyecto' || m.role === 'director')
   const liderMembers = team.filter(m => m.role === 'lider_proyecto')
   const maestroMembers = team.filter(m => m.role === 'maestro')
   const ayudanteMembers = team.filter(m => m.role === 'ayudante')
@@ -476,6 +488,14 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                 style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
               />
               <span style={{ ...labelStyle }}>%</span>
+              <input
+                type="number"
+                min="0"
+                placeholder="# personas"
+                value={maestroCount}
+                onChange={e => setMaestroCount(e.target.value)}
+                style={{ ...smallInputStyle, width: '80px' }}
+              />
               <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
                 {fmt(splitTotal('Maestro'))}
               </span>
@@ -510,6 +530,14 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                 style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
               />
               <span style={{ ...labelStyle }}>%</span>
+              <input
+                type="number"
+                min="0"
+                placeholder="# personas"
+                value={ayudanteCount}
+                onChange={e => setAyudanteCount(e.target.value)}
+                style={{ ...smallInputStyle, width: '80px' }}
+              />
               <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
                 {fmt(splitTotal('Ayudante'))}
               </span>
@@ -567,8 +595,8 @@ export function ProjectProfitSection({ projectId, team }: Props) {
             </div>
 
             {/* Rows */}
-            {waterfall.splits.map(split => (
-              <div key={`${split.label}-${split.id}`} style={{
+            {waterfall.splits.map((split, idx) => (
+              <div key={`${split.label}-${split.id ?? 'anon'}-${idx}`} style={{
                 display: 'grid',
                 gridTemplateColumns: '1fr auto auto auto',
                 gap: '8px',

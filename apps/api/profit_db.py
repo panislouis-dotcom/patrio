@@ -8,6 +8,7 @@ PROFIT_RAW_FIELDS = {
     "finderFeePct", "directorPct", "responsablePct", "liderPct", "maestroPct", "ayudantePct",
     "finderMemberId", "responsableMemberId", "liderMemberId",
     "maestroMemberIds", "ayudanteMemberIds",
+    "maestroCount", "ayudanteCount",
     "plannedEndDate", "actualEndDate", "bufferDays", "notes",
 }
 
@@ -21,6 +22,7 @@ def _template_defaults() -> dict:
         "liderPct": 0.0, "maestroPct": 0.0, "ayudantePct": 0.0,
         "finderMemberId": None, "responsableMemberId": None, "liderMemberId": None,
         "maestroMemberIds": [], "ayudanteMemberIds": [],
+        "maestroCount": None, "ayudanteCount": None,
         "plannedEndDate": None, "actualEndDate": None, "bufferDays": 0, "notes": "",
     }
 
@@ -245,31 +247,51 @@ def compute_waterfall(project: dict, config: dict, team: list[dict]) -> dict:
 
     # Maestros
     maestro_ids = config.get("maestroMemberIds") or []
-    if maestro_ids:
-        n = len(maestro_ids)
-        per_base = maestro_pool / n
-        per_bonus = bonus_maestro / n
+    mc = config.get('maestroCount')
+    m_count = max(1, mc if (mc is not None and mc > 0) else (len(maestro_ids) or 1))
+    m_count = max(m_count, len(maestro_ids))
+    mc_val = config.get('maestroCount')
+    if maestro_ids or (mc_val is not None and mc_val > 0):
+        per_base = maestro_pool / m_count
+        per_bonus = bonus_maestro / m_count
         for mid in maestro_ids:
             splits.append(_entry(
                 "Maestro", mid,
-                (config.get("maestroPct") or 0) / n,
+                (config.get("maestroPct") or 0) / m_count,
                 per_base,
                 per_bonus,
             ))
+        named_m = len(maestro_ids)
+        if m_count > named_m:
+            for _ in range(m_count - named_m):
+                splits.append({'label': 'Maestro', 'pct': (config.get('maestroPct') or 0) / m_count,
+                               'id': None, 'name': '—', 'role': 'maestro',
+                               'base': maestro_pool / m_count, 'bonus': bonus_maestro / m_count,
+                               'total': (maestro_pool + bonus_maestro) / m_count})
 
     # Ayudantes
     ayudante_ids = config.get("ayudanteMemberIds") or []
-    if ayudante_ids:
-        n = len(ayudante_ids)
-        per_base = ayudante_pool / n
-        per_bonus = bonus_ayudante / n
+    ac = config.get('ayudanteCount')
+    a_count = max(1, ac if (ac is not None and ac > 0) else (len(ayudante_ids) or 1))
+    a_count = max(a_count, len(ayudante_ids))
+    ac_val = config.get('ayudanteCount')
+    if ayudante_ids or (ac_val is not None and ac_val > 0):
+        per_base = ayudante_pool / a_count
+        per_bonus = bonus_ayudante / a_count
         for aid in ayudante_ids:
             splits.append(_entry(
                 "Ayudante", aid,
-                (config.get("ayudantePct") or 0) / n,
+                (config.get("ayudantePct") or 0) / a_count,
                 per_base,
                 per_bonus,
             ))
+        named_a = len(ayudante_ids)
+        if a_count > named_a:
+            for _ in range(a_count - named_a):
+                splits.append({'label': 'Ayudante', 'pct': (config.get('ayudantePct') or 0) / a_count,
+                               'id': None, 'name': '—', 'role': 'ayudante',
+                               'base': ayudante_pool / a_count, 'bonus': bonus_ayudante / a_count,
+                               'total': (ayudante_pool + bonus_ayudante) / a_count})
 
     return {
         "exitPrice": exit_price,

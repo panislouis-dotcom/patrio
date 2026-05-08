@@ -243,6 +243,8 @@ export interface ProfitSplitConfig {
   liderMemberId: number | null
   maestroMemberIds: number[]
   ayudanteMemberIds: number[]
+  maestroCount: number | null
+  ayudanteCount: number | null
   plannedEndDate: string | null
   actualEndDate: string | null
   bufferDays: number
@@ -251,7 +253,7 @@ export interface ProfitSplitConfig {
 
 export interface ProfitSplit {
   label: string
-  id: number
+  id: number | null
   name: string
   role: string | null
   pct: number

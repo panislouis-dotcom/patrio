@@ -245,6 +245,8 @@ CREATE TABLE IF NOT EXISTS profit_split_config (
   lider_member_id       INTEGER REFERENCES team_members(id),
   maestro_member_ids    TEXT NOT NULL DEFAULT '[]',        -- JSON array of IDs
   ayudante_member_ids   TEXT NOT NULL DEFAULT '[]',
+  maestro_count         INTEGER,                              -- overrides len(maestro_member_ids) for per-person calc
+  ayudante_count        INTEGER,
   -- Colchón (time buffer for bonus)
   planned_end_date      TEXT,                              -- YYYY-MM-DD expected completion
   actual_end_date       TEXT,                              -- YYYY-MM-DD when project actually finished
