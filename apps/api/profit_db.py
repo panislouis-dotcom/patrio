@@ -72,6 +72,7 @@ def get_project_profit(project_id: int) -> dict:
             merged[k] = v
 
     merged["projectId"] = project_id
+    merged["id"] = config.get("id")  # None when project row not yet inserted
     return merged
 
 
@@ -131,7 +132,7 @@ def compute_bonus_tier(config: dict) -> float:
     planned = config.get("plannedEndDate")
     actual = config.get("actualEndDate")
     buffer = config.get("bufferDays") or 0
-    if not planned or not actual or not buffer:
+    if not planned or not actual or buffer == 0:
         return 0.0
     p = date.fromisoformat(planned)
     a = date.fromisoformat(actual)
@@ -171,7 +172,7 @@ def compute_waterfall(project: dict, config: dict, team: list[dict]) -> dict:
         finder_amount + director_amount + responsable_amount
         + lider_amount + maestro_pool + ayudante_pool
     )
-    residual = distributable - allocated
+    residual = max(0.0, distributable - allocated)
 
     bonus_tier = compute_bonus_tier(config)
     bonus_director = director_amount * bonus_tier
