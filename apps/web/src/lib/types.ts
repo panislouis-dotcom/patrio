@@ -223,3 +223,54 @@ export interface NodeDetail {
   files: NodeFile[]
   comments: NodeComment[]
 }
+
+export interface ProfitSplitConfig {
+  id: number | null
+  projectId: number | null
+  exitPrice: number | null
+  investorCapital: number | null
+  investorRateAnnual: number
+  investorMonths: number | null
+  isrRate: number
+  finderFeePct: number
+  directorPct: number
+  responsablePct: number
+  liderPct: number
+  maestroPct: number
+  ayudantePct: number
+  finderMemberId: number | null
+  responsableMemberId: number | null
+  liderMemberId: number | null
+  maestroMemberIds: number[]
+  ayudanteMemberIds: number[]
+  plannedEndDate: string | null
+  actualEndDate: string | null
+  bufferDays: number
+  notes: string
+}
+
+export interface ProfitSplit {
+  label: string
+  id: number
+  name: string
+  role: string | null
+  pct: number
+  base: number
+  bonus: number
+  total: number
+}
+
+export interface ProfitWaterfall {
+  exitPrice: number
+  investment: number
+  grossProfit: number
+  investorCuota: number
+  operatorGross: number
+  isr: number
+  netProfit: number
+  distributable: number
+  bonusTier: number
+  splits: ProfitSplit[]
+  companyResidual: number
+  totalAllocated: number
+}

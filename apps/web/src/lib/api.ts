@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall } from './types'
 
 const BASE = 'http://localhost:8000'
 
@@ -361,5 +361,39 @@ export async function deleteNodeComment(cid: number): Promise<void> {
 export async function fetchNodeDetail(iid: number, nid: number): Promise<NodeDetail> {
   const res = await fetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}`)
   if (!res.ok) throw new Error('Failed to fetch node detail')
+  return res.json()
+}
+
+// ─── Profit split ─────────────────────────────────────────────────────────────
+
+export async function fetchProfitTemplate(): Promise<ProfitSplitConfig> {
+  const res = await fetch(`${BASE}/api/profit/template`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function updateProfitTemplate(data: Partial<ProfitSplitConfig>): Promise<ProfitSplitConfig> {
+  const res = await fetch(`${BASE}/api/profit/template`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchProjectProfit(pid: number): Promise<{ config: ProfitSplitConfig; waterfall: ProfitWaterfall }> {
+  const res = await fetch(`${BASE}/api/projects/${pid}/profit`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function updateProjectProfit(pid: number, data: Partial<ProfitSplitConfig>): Promise<{ config: ProfitSplitConfig; waterfall: ProfitWaterfall }> {
+  const res = await fetch(`${BASE}/api/projects/${pid}/profit`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
