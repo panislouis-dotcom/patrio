@@ -1,5 +1,4 @@
 # TODO
-- en procesos, tab de mis tareas. puede solo ser un filtro adicional
 - agregar mi equipo. Todos los que estan bajo de ti en organigrama. sub filtro por proyecto o persona
 - desglose de distribucion de ganancias
     - finders fee, responsable de proyecto, lider de equipo, maestro, ayudante
