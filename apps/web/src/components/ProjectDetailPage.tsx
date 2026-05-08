@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProject, updateProject, fetchInstances } from '../lib/api'
-import type { Project, ProcessInstance } from '../lib/types'
+import { fetchProject, updateProject, fetchInstances, fetchTeam } from '../lib/api'
+import type { Project, ProcessInstance, TeamMember } from '../lib/types'
+import { ProjectProfitSection } from './ProjectProfitSection'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL, PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
@@ -27,6 +28,7 @@ export function ProjectDetailPage() {
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
   const [instances, setInstances] = useState<ProcessInstance[]>([])
+  const [team, setTeam] = useState<TeamMember[]>([])
 
   useEffect(() => {
     fetchProject(projectId).then(p => {
@@ -35,6 +37,7 @@ export function ProjectDetailPage() {
       setTimeout(() => setBarsReady(true), 420)
     })
     fetchInstances(projectId).then(setInstances)
+    fetchTeam().then(setTeam)
   }, [projectId])
 
   const field = (key: keyof Project) => (edits as Record<string, unknown>)[key] ?? (project ? (project as unknown as Record<string, unknown>)[key] : undefined)
@@ -399,6 +402,9 @@ export function ProjectDetailPage() {
               </a>
             </div>
           )}
+
+          {/* GANANCIA / PROFIT */}
+          <ProjectProfitSection projectId={project.id} team={team} />
 
           {/* TAREAS */}
           <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '24px', marginTop: '20px' }}>
