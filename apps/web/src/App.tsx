@@ -13,6 +13,8 @@ import { ProcesoTemplateEditor } from './components/ProcesoTemplateEditor'
 import { ProcesoInstanceDetail } from './components/ProcesoInstanceDetail'
 import { ProcesoNodeDetail } from './components/ProcesoNodeDetail'
 import { OrgTab } from './components/OrgTab'
+import { InversoresTab } from './components/InversoresTab'
+import { InversorDetailPage } from './components/InversorDetailPage'
 import { globalStyles, colors } from './lib/theme'
 
 export default function App() {
@@ -38,6 +40,8 @@ export default function App() {
             <Route path="tareas/:iid" element={<ProcesoInstanceDetail />} />
             <Route path="tareas/:iid/nodos/:nid" element={<ProcesoNodeDetail />} />
           </Route>
+          <Route path="/inversionistas" element={<InversoresTab />} />
+          <Route path="/inversionistas/:id" element={<InversorDetailPage />} />
           <Route path="/equipo" element={<OrgTab />} />
           <Route path="/tabla" element={<Navigate to="/prospectos/tabla" replace />} />
           <Route path="/mapa" element={<Navigate to="/prospectos/mapa" replace />} />
