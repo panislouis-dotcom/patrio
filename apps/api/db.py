@@ -124,7 +124,7 @@ def get_prospects() -> list[dict]:
 def get_prospect(prospect_id: int) -> dict | None:
     with get_db() as conn:
         row = conn.execute(
-            f"{PROSPECTS_QUERY} WHERE pm.id = ?", (prospect_id,)
+            f"{PROSPECTS_QUERY} WHERE pm.id = %s", (prospect_id,)
         ).fetchone()
     return _row_to_dict(row) if row else None
 
@@ -153,9 +153,9 @@ def update_prospect(prospect_id: int, data: dict) -> dict | None:
     snake_case_data = {_camel_to_snake(k): v for k, v in filtered_data.items()}
 
     # Build UPDATE statement
-    columns = ", ".join(f"{col} = ?" for col in snake_case_data.keys())
+    columns = ", ".join(f"{col} = %s" for col in snake_case_data.keys())
     values = list(snake_case_data.values()) + [prospect_id]
-    query = f"UPDATE prospects SET {columns} WHERE id = ?"
+    query = f"UPDATE prospects SET {columns} WHERE id = %s"
 
     with get_db() as conn:
         conn.execute(query, values)
@@ -219,7 +219,7 @@ def get_projects() -> list[dict]:
 
 def get_project(project_id: int) -> dict | None:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        row = conn.execute("SELECT * FROM projects WHERE id = %s", (project_id,)).fetchone()
     return _parse_project(row) if row else None
 
 
@@ -249,9 +249,9 @@ def update_project(project_id: int, data: dict) -> dict | None:
         if snake_field in snake_case_data and not isinstance(snake_case_data[snake_field], str):
             snake_case_data[snake_field] = json.dumps(snake_case_data[snake_field])
 
-    columns = ", ".join(f"{col} = ?" for col in snake_case_data.keys())
+    columns = ", ".join(f"{col} = %s" for col in snake_case_data.keys())
     values = list(snake_case_data.values()) + [project_id]
-    query = f"UPDATE projects SET {columns} WHERE id = ?"
+    query = f"UPDATE projects SET {columns} WHERE id = %s"
 
     with get_db() as conn:
         conn.execute(query, values)
@@ -285,13 +285,13 @@ def create_project(data: dict) -> dict:
             snake_case_data[snake_field] = json.dumps(snake_case_data[snake_field])
 
     columns = ", ".join(snake_case_data.keys())
-    placeholders = ", ".join("?" * len(snake_case_data))
+    placeholders = ", ".join(["%s"] * len(snake_case_data))
     values = list(snake_case_data.values())
-    query = f"INSERT INTO projects ({columns}) VALUES ({placeholders})"
+    query = f"INSERT INTO projects ({columns}) VALUES ({placeholders}) RETURNING id"
 
     with get_db() as conn:
         cur = conn.execute(query, values)
-        project_id = cur.lastrowid
+        project_id = cur.fetchone()["id"]
 
     return get_project(project_id)
 
@@ -319,13 +319,13 @@ def create_prospect(data: dict) -> dict:
 
     # Build INSERT statement
     columns = ", ".join(snake_case_data.keys())
-    placeholders = ", ".join("?" * len(snake_case_data))
+    placeholders = ", ".join(["%s"] * len(snake_case_data))
     values = list(snake_case_data.values())
-    query = f"INSERT INTO prospects ({columns}) VALUES ({placeholders})"
+    query = f"INSERT INTO prospects ({columns}) VALUES ({placeholders}) RETURNING id"
 
     with get_db() as conn:
         cur = conn.execute(query, values)
-        prospect_id = cur.lastrowid
+        prospect_id = cur.fetchone()["id"]
 
     # Return created prospect with computed metrics
     return get_prospect(prospect_id)
@@ -337,10 +337,10 @@ def get_signals(status: str | None = None, portal: str | None = None) -> list[di
     query = "SELECT * FROM signals"
     conditions, params = [], []
     if status:
-        conditions.append("status = ?")
+        conditions.append("status = %s")
         params.append(status)
     if portal:
-        conditions.append("portal = ?")
+        conditions.append("portal = %s")
         params.append(portal)
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -354,8 +354,8 @@ def create_signal(data: dict) -> bool:
     """Insert a signal. Returns True if inserted, False if duplicate (url UNIQUE)."""
     with get_db() as conn:
         cur = conn.execute(
-            """INSERT OR IGNORE INTO signals (portal, url, title, address, city, price, sqm_land)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO signals (portal, url, title, address, city, price, sqm_land)
+               VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (url) DO NOTHING""",
             (data["portal"], data["url"], data["title"],
              data.get("address", ""), data.get("city", "Monterrey"),
              data.get("price", 0), data.get("sqm_land", 0))
@@ -366,7 +366,7 @@ def create_signal(data: dict) -> bool:
 def dismiss_signal(signal_id: int) -> dict | None:
     with get_db() as conn:
         conn.execute(
-            "UPDATE signals SET status = 'dismissed' WHERE id = ?", (signal_id,)
+            "UPDATE signals SET status = 'dismissed' WHERE id = %s", (signal_id,)
         )
     return _get_signal(signal_id)
 
@@ -401,7 +401,7 @@ def import_signal(signal_id: int) -> tuple[dict | None, dict | None]:
     # Mark signal as imported
     with get_db() as conn:
         conn.execute(
-            "UPDATE signals SET status = 'imported', prospect_id = ? WHERE id = ?",
+            "UPDATE signals SET status = 'imported', prospect_id = %s WHERE id = %s",
             (prospect["id"], signal_id)
         )
     updated_signal = _get_signal(signal_id)
@@ -410,7 +410,7 @@ def import_signal(signal_id: int) -> tuple[dict | None, dict | None]:
 
 def _get_signal(signal_id: int) -> dict | None:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
+        row = conn.execute("SELECT * FROM signals WHERE id = %s", (signal_id,)).fetchone()
     return _row_to_dict(row) if row else None
 
 
@@ -427,23 +427,23 @@ def get_team_members() -> list[dict]:
 
 def get_team_member(member_id: int) -> dict | None:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM team_members WHERE id = ?", (member_id,)).fetchone()
+        row = conn.execute("SELECT * FROM team_members WHERE id = %s", (member_id,)).fetchone()
     return _row_to_dict(row) if row else None
 
 
 def create_team_member(data: dict) -> dict:
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO team_members (name, role, manager_id, email, notes) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO team_members (name, role, manager_id, email, notes) VALUES (%s, %s, %s, %s, %s) RETURNING id",
             (data["name"], data["role"], data.get("managerId"), data.get("email", ""), data.get("notes", ""))
         )
-        member_id = cur.lastrowid
+        member_id = cur.fetchone()["id"]
     return get_team_member(member_id)
 
 
 def delete_team_member(member_id: int) -> None:
     with get_db() as conn:
-        conn.execute("DELETE FROM team_members WHERE id = ?", (member_id,))
+        conn.execute("DELETE FROM team_members WHERE id = %s", (member_id,))
 
 
 def update_team_member(member_id: int, data: dict) -> dict | None:
@@ -451,8 +451,8 @@ def update_team_member(member_id: int, data: dict) -> dict | None:
     if not filtered:
         return get_team_member(member_id)
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
-    columns = ", ".join(f"{col} = ?" for col in snake.keys())
+    columns = ", ".join(f"{col} = %s" for col in snake.keys())
     values = list(snake.values()) + [member_id]
     with get_db() as conn:
-        conn.execute(f"UPDATE team_members SET {columns} WHERE id = ?", values)
+        conn.execute(f"UPDATE team_members SET {columns} WHERE id = %s", values)
     return get_team_member(member_id)
