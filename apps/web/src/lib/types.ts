@@ -94,7 +94,7 @@ export type RawProjectFields = Pick<Project,
   | 'notes'
 >
 
-export type MemberRole = 'director' | 'responsable_proyecto' | 'lider_proyecto' | 'maestro' | 'ayudante'
+export type MemberRole = 'director' | 'responsable_proyecto' | 'lider_proyecto' | 'maestro' | 'ayudante' | 'finder'
 
 export interface TeamMember {
   id: number

@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS team_members (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL CHECK (name != ''),
-  role        TEXT NOT NULL CHECK (role IN ('director', 'responsable_proyecto', 'lider_proyecto', 'maestro', 'ayudante')),
+  role        TEXT NOT NULL CHECK (role IN ('director', 'responsable_proyecto', 'lider_proyecto', 'maestro', 'ayudante', 'finder')),
   manager_id  INTEGER REFERENCES team_members(id),
   notes       TEXT NOT NULL DEFAULT '',
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
