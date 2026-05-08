@@ -33,7 +33,7 @@ def get_investor(investor_id: int) -> dict | None:
     """
     with get_db() as conn:
         investor_row = conn.execute(
-            "SELECT * FROM investors WHERE id = ?", (investor_id,)
+            "SELECT * FROM investors WHERE id = %s", (investor_id,)
         ).fetchone()
         if investor_row is None:
             return None
@@ -42,7 +42,7 @@ def get_investor(investor_id: int) -> dict | None:
             SELECT pi.*, p.name AS project_name
             FROM project_investors pi
             JOIN projects p ON p.id = pi.project_id
-            WHERE pi.investor_id = ?
+            WHERE pi.investor_id = %s
             ORDER BY pi.created_at DESC
             """,
             (investor_id,),
@@ -63,17 +63,17 @@ def create_investor(data: dict) -> dict:
 
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
     columns = ", ".join(snake.keys())
-    placeholders = ", ".join("?" * len(snake))
+    placeholders = ", ".join("%s" * len(snake))
     values = list(snake.values())
 
     with get_db() as conn:
         cur = conn.execute(
-            f"INSERT INTO investors ({columns}) VALUES ({placeholders})", values
+            f"INSERT INTO investors ({columns}) VALUES ({placeholders}) RETURNING id", values
         )
-        investor_id = cur.lastrowid
+        investor_id = cur.fetchone()["id"]
 
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM investors WHERE id = ?", (investor_id,)).fetchone()
+        row = conn.execute("SELECT * FROM investors WHERE id = %s", (investor_id,)).fetchone()
     return {_snake_to_camel(k): v for k, v in dict(row).items()}
 
 
@@ -83,24 +83,24 @@ def update_investor(investor_id: int, data: dict) -> dict:
     if not filtered:
         with get_db() as conn:
             row = conn.execute(
-                "SELECT * FROM investors WHERE id = ?", (investor_id,)
+                "SELECT * FROM investors WHERE id = %s", (investor_id,)
             ).fetchone()
         return {_snake_to_camel(k): v for k, v in dict(row).items()}
 
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
-    columns = ", ".join(f"{col} = ?" for col in snake.keys())
+    columns = ", ".join(f"{col} = %s" for col in snake.keys())
     values = list(snake.values()) + [investor_id]
 
     with get_db() as conn:
-        conn.execute(f"UPDATE investors SET {columns} WHERE id = ?", values)
-        row = conn.execute("SELECT * FROM investors WHERE id = ?", (investor_id,)).fetchone()
+        conn.execute(f"UPDATE investors SET {columns} WHERE id = %s", values)
+        row = conn.execute("SELECT * FROM investors WHERE id = %s", (investor_id,)).fetchone()
     return {_snake_to_camel(k): v for k, v in dict(row).items()}
 
 
 def delete_investor(investor_id: int) -> None:
     """Delete investor (cascades to project_investors)."""
     with get_db() as conn:
-        conn.execute("DELETE FROM investors WHERE id = ?", (investor_id,))
+        conn.execute("DELETE FROM investors WHERE id = %s", (investor_id,))
 
 
 def get_project_investors(project_id: int) -> list[dict]:
@@ -112,7 +112,7 @@ def get_project_investors(project_id: int) -> list[dict]:
     SELECT pi.*, i.name AS investor_name
     FROM project_investors pi
     JOIN investors i ON i.id = pi.investor_id
-    WHERE pi.project_id = ?
+    WHERE pi.project_id = %s
     ORDER BY
       CASE pi.status WHEN 'fondeado' THEN 0 WHEN 'comprometido' THEN 1 ELSE 2 END,
       i.name
@@ -141,10 +141,17 @@ def upsert_project_investor(project_id: int, investor_id: int, data: dict) -> di
     with get_db() as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO project_investors
+            INSERT INTO project_investors
               (project_id, investor_id, status, interested_amount, committed_amount,
                funded_amount, interest_rate_annual, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (project_id, investor_id) DO UPDATE SET
+              status               = EXCLUDED.status,
+              interested_amount    = EXCLUDED.interested_amount,
+              committed_amount     = EXCLUDED.committed_amount,
+              funded_amount        = EXCLUDED.funded_amount,
+              interest_rate_annual = EXCLUDED.interest_rate_annual,
+              notes                = EXCLUDED.notes
             """,
             (project_id, investor_id, status, interested_amount, committed_amount,
              funded_amount, interest_rate_annual, notes),
@@ -157,7 +164,7 @@ def upsert_project_investor(project_id: int, investor_id: int, data: dict) -> di
             SELECT pi.*, i.name AS investor_name
             FROM project_investors pi
             JOIN investors i ON i.id = pi.investor_id
-            WHERE pi.project_id = ? AND pi.investor_id = ?
+            WHERE pi.project_id = %s AND pi.investor_id = %s
             """,
             (project_id, investor_id),
         ).fetchone()
@@ -168,6 +175,6 @@ def delete_project_investor(project_id: int, investor_id: int) -> None:
     """Delete a project-investor position."""
     with get_db() as conn:
         conn.execute(
-            "DELETE FROM project_investors WHERE project_id = ? AND investor_id = ?",
+            "DELETE FROM project_investors WHERE project_id = %s AND investor_id = %s",
             (project_id, investor_id),
         )

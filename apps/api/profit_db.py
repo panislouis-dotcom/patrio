@@ -57,7 +57,7 @@ def get_profit_template() -> dict:
 def get_project_profit(project_id: int) -> dict:
     with get_db() as conn:
         row = conn.execute(
-            "SELECT * FROM profit_split_config WHERE project_id = ?", (project_id,)
+            "SELECT * FROM profit_split_config WHERE project_id = %s", (project_id,)
         ).fetchone()
 
     if row:
@@ -101,23 +101,23 @@ def _upsert(project_id, data: dict) -> dict:
     with get_db() as conn:
         # 4. Check if row exists
         existing = conn.execute(
-            "SELECT id FROM profit_split_config WHERE project_id IS ?", (project_id,)
+            "SELECT id FROM profit_split_config WHERE project_id IS NOT DISTINCT FROM %s", (project_id,)
         ).fetchone()
 
         if existing:
             # 5. UPDATE
             if snake_data:
-                columns = ", ".join(f"{col} = ?" for col in snake_data.keys())
+                columns = ", ".join(f"{col} = %s" for col in snake_data.keys())
                 values = list(snake_data.values()) + [project_id]
                 conn.execute(
-                    f"UPDATE profit_split_config SET {columns} WHERE project_id IS ?",
+                    f"UPDATE profit_split_config SET {columns} WHERE project_id IS NOT DISTINCT FROM %s",
                     values,
                 )
         else:
             # 6. INSERT
             insert_data = {"project_id": project_id, **snake_data}
             columns = ", ".join(insert_data.keys())
-            placeholders = ", ".join("?" * len(insert_data))
+            placeholders = ", ".join("%s" * len(insert_data))
             values = list(insert_data.values())
             conn.execute(
                 f"INSERT INTO profit_split_config ({columns}) VALUES ({placeholders})",
