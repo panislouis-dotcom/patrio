@@ -1,6 +1,6 @@
 from typing import Optional
 
-from api.db import get_db, DB_PATH, _row_to_dict, _camel_to_snake
+from api.db import get_db, _row_to_dict, _camel_to_snake
 
 TEMPLATE_RAW_FIELDS = {"name", "description"}
 NODE_RAW_FIELDS = {"name", "description", "sortOrder", "dependsOnId", "durationDays", "parentId", "sourceTemplateId"}
@@ -29,7 +29,7 @@ def get_templates() -> list[dict]:
 
 def get_template(tid: int) -> Optional[dict]:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM process_templates WHERE id = ?", (tid,)).fetchone()
+        row = conn.execute("SELECT * FROM process_templates WHERE id = %s", (tid,)).fetchone()
     return _row_to_dict(row) if row else None
 
 
@@ -37,13 +37,13 @@ def create_template(data: dict) -> Optional[dict]:
     filtered = {k: v for k, v in data.items() if k in TEMPLATE_RAW_FIELDS}
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
     columns = ", ".join(snake.keys())
-    placeholders = ", ".join("?" * len(snake))
+    placeholders = ", ".join(["%s"] * len(snake))
     with get_db() as conn:
         cur = conn.execute(
-            f"INSERT INTO process_templates ({columns}) VALUES ({placeholders})",
+            f"INSERT INTO process_templates ({columns}) VALUES ({placeholders}) RETURNING id",
             list(snake.values()),
         )
-        tid = cur.lastrowid
+        tid = cur.fetchone()["id"]
     return get_template(tid)
 
 
@@ -52,10 +52,10 @@ def update_template(tid: int, data: dict) -> Optional[dict]:
     if not filtered:
         return get_template(tid)
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
-    columns = ", ".join(f"{col} = ?" for col in snake.keys())
+    columns = ", ".join(f"{col} = %s" for col in snake.keys())
     with get_db() as conn:
         conn.execute(
-            f"UPDATE process_templates SET {columns} WHERE id = ?",
+            f"UPDATE process_templates SET {columns} WHERE id = %s",
             list(snake.values()) + [tid],
         )
     return get_template(tid)
@@ -63,7 +63,7 @@ def update_template(tid: int, data: dict) -> Optional[dict]:
 
 def delete_template(tid: int) -> None:
     with get_db() as conn:
-        conn.execute("DELETE FROM process_templates WHERE id = ?", (tid,))
+        conn.execute("DELETE FROM process_templates WHERE id = %s", (tid,))
 
 
 # ─── Template nodes ───────────────────────────────
@@ -78,7 +78,7 @@ def _template_references(tid: int, visited: set | None = None) -> set:
     with get_db() as conn:
         rows = conn.execute(
             "SELECT DISTINCT source_template_id FROM template_nodes "
-            "WHERE template_id = ? AND source_template_id IS NOT NULL",
+            "WHERE template_id = %s AND source_template_id IS NOT NULL",
             (tid,)
         ).fetchall()
     for r in rows:
@@ -89,7 +89,7 @@ def _template_references(tid: int, visited: set | None = None) -> set:
 def get_template_nodes(tid: int) -> list[dict]:
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM template_nodes WHERE template_id = ? ORDER BY sort_order, id",
+            "SELECT * FROM template_nodes WHERE template_id = %s ORDER BY sort_order, id",
             (tid,),
         ).fetchall()
     nodes = [_row_to_dict(r) for r in rows]
@@ -102,7 +102,7 @@ def get_template_nodes(tid: int) -> list[dict]:
         if src_tid and src_tid != tid:
             with get_db() as conn:
                 sub_rows = conn.execute(
-                    "SELECT * FROM template_nodes WHERE template_id = ? ORDER BY sort_order, id",
+                    "SELECT * FROM template_nodes WHERE template_id = %s ORDER BY sort_order, id",
                     (src_tid,)
                 ).fetchall()
             for sub_row in sub_rows:
@@ -128,7 +128,7 @@ def get_template_nodes(tid: int) -> list[dict]:
 
 def get_node(nid: int) -> Optional[dict]:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM template_nodes WHERE id = ?", (nid,)).fetchone()
+        row = conn.execute("SELECT * FROM template_nodes WHERE id = %s", (nid,)).fetchone()
     return _row_to_dict(row) if row else None
 
 
@@ -137,13 +137,13 @@ def create_node(data: dict) -> Optional[dict]:
     filtered = {k: v for k, v in data.items() if k in allowed}
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
     columns = ", ".join(snake.keys())
-    placeholders = ", ".join("?" * len(snake))
+    placeholders = ", ".join(["%s"] * len(snake))
     with get_db() as conn:
         cur = conn.execute(
-            f"INSERT INTO template_nodes ({columns}) VALUES ({placeholders})",
+            f"INSERT INTO template_nodes ({columns}) VALUES ({placeholders}) RETURNING id",
             list(snake.values()),
         )
-        nid = cur.lastrowid
+        nid = cur.fetchone()["id"]
     return get_node(nid)
 
 
@@ -152,10 +152,10 @@ def update_node(nid: int, data: dict) -> Optional[dict]:
     if not filtered:
         return get_node(nid)
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
-    columns = ", ".join(f"{col} = ?" for col in snake.keys())
+    columns = ", ".join(f"{col} = %s" for col in snake.keys())
     with get_db() as conn:
         conn.execute(
-            f"UPDATE template_nodes SET {columns} WHERE id = ?",
+            f"UPDATE template_nodes SET {columns} WHERE id = %s",
             list(snake.values()) + [nid],
         )
     return get_node(nid)
@@ -163,7 +163,7 @@ def update_node(nid: int, data: dict) -> Optional[dict]:
 
 def delete_node(nid: int) -> None:
     with get_db() as conn:
-        conn.execute("DELETE FROM template_nodes WHERE id = ?", (nid,))
+        conn.execute("DELETE FROM template_nodes WHERE id = %s", (nid,))
 
 
 # ─── Instances ────────────────────────────────────
@@ -206,7 +206,7 @@ def sync_periodic_series():
             continue
         with get_db() as conn:
             existing = conn.execute(
-                "SELECT id FROM process_instances WHERE origin_instance_id = ? AND start_date = ?",
+                "SELECT id FROM process_instances WHERE origin_instance_id = %s AND start_date = %s",
                 (origin['id'], current_start.isoformat())
             ).fetchone()
         if existing:
@@ -229,7 +229,7 @@ def get_instances(project_id: Optional[int] = None) -> list[dict]:
     query = _INSTANCE_SELECT
     params: list = []
     if project_id is not None:
-        query += " WHERE pi.project_id = ?"
+        query += " WHERE pi.project_id = %s"
         params.append(project_id)
     query += " ORDER BY pi.created_at DESC"
     with get_db() as conn:
@@ -243,7 +243,7 @@ def get_instances(project_id: Optional[int] = None) -> list[dict]:
 def get_instance(iid: int) -> Optional[dict]:
     with get_db() as conn:
         row = conn.execute(
-            f"{_INSTANCE_SELECT} WHERE pi.id = ?", (iid,)
+            f"{_INSTANCE_SELECT} WHERE pi.id = %s", (iid,)
         ).fetchone()
     if row is None:
         return None
@@ -256,13 +256,13 @@ def create_instance(data: dict) -> Optional[dict]:
     filtered = {k: v for k, v in data.items() if k in INSTANCE_RAW_FIELDS}
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
     columns = ", ".join(snake.keys())
-    placeholders = ", ".join("?" * len(snake))
+    placeholders = ", ".join(["%s"] * len(snake))
     with get_db() as conn:
         cur = conn.execute(
-            f"INSERT INTO process_instances ({columns}) VALUES ({placeholders})",
+            f"INSERT INTO process_instances ({columns}) VALUES ({placeholders}) RETURNING id",
             list(snake.values()),
         )
-        iid = cur.lastrowid
+        iid = cur.fetchone()["id"]
     return get_instance(iid)
 
 
@@ -271,10 +271,10 @@ def update_instance(iid: int, data: dict) -> Optional[dict]:
     if not filtered:
         return get_instance(iid)
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
-    columns = ", ".join(f"{col} = ?" for col in snake.keys())
+    columns = ", ".join(f"{col} = %s" for col in snake.keys())
     with get_db() as conn:
         conn.execute(
-            f"UPDATE process_instances SET {columns} WHERE id = ?",
+            f"UPDATE process_instances SET {columns} WHERE id = %s",
             list(snake.values()) + [iid],
         )
     return get_instance(iid)
@@ -287,9 +287,9 @@ def upsert_node_state(instance_id: int, template_node_id: int, data: dict) -> di
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
 
     col_names = ", ".join(snake.keys())
-    col_placeholders = ", ".join("?" * len(snake))
-    set_parts = [f"{col} = ?" for col in snake.keys()]
-    set_parts.append("updated_at = datetime('now')")
+    col_placeholders = ", ".join(["%s"] * len(snake))
+    set_parts = [f"{col} = %s" for col in snake.keys()]
+    set_parts.append("updated_at = NOW()")
     set_clause = ", ".join(set_parts)
     values = list(snake.values())
 
@@ -297,14 +297,14 @@ def upsert_node_state(instance_id: int, template_node_id: int, data: dict) -> di
         conn.execute(
             f"""INSERT INTO instance_node_states
                     (instance_id, template_node_id, {col_names})
-                VALUES (?, ?, {col_placeholders})
+                VALUES (%s, %s, {col_placeholders})
                 ON CONFLICT(instance_id, template_node_id) DO UPDATE SET {set_clause}""",
             [instance_id, template_node_id] + values + values,
         )
 
     with get_db() as conn:
         row = conn.execute(
-            "SELECT * FROM instance_node_states WHERE instance_id = ? AND template_node_id = ?",
+            "SELECT * FROM instance_node_states WHERE instance_id = %s AND template_node_id = %s",
             (instance_id, template_node_id),
         ).fetchone()
     return _row_to_dict(row)
@@ -313,7 +313,7 @@ def upsert_node_state(instance_id: int, template_node_id: int, data: dict) -> di
 def get_instance_states(iid: int) -> list[dict]:
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM instance_node_states WHERE instance_id = ? ORDER BY id",
+            "SELECT * FROM instance_node_states WHERE instance_id = %s ORDER BY id",
             (iid,),
         ).fetchall()
     return [_row_to_dict(r) for r in rows]
@@ -345,16 +345,16 @@ def create_node_file(
         cur = conn.execute(
             """INSERT INTO node_files
                (template_node_id, instance_id, file_path, file_name, content_type)
-               VALUES (?, ?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
             (template_node_id, instance_id, rel_path, file_name, content_type),
         )
-        fid = cur.lastrowid
+        fid = cur.fetchone()["id"]
     return get_node_file(fid)
 
 
 def get_node_file(fid: int) -> dict | None:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM node_files WHERE id = ?", (fid,)).fetchone()
+        row = conn.execute("SELECT * FROM node_files WHERE id = %s", (fid,)).fetchone()
     return _row_to_dict(row) if row else None
 
 
@@ -364,8 +364,8 @@ def get_node_files(template_node_id: int, instance_id: int | None = None) -> lis
             rows = conn.execute(
                 """SELECT *, CASE WHEN instance_id IS NULL THEN 'reference' ELSE 'evidence' END as type
                    FROM node_files
-                   WHERE template_node_id = ?
-                     AND (instance_id IS NULL OR instance_id = ?)
+                   WHERE template_node_id = %s
+                     AND (instance_id IS NULL OR instance_id = %s)
                    ORDER BY uploaded_at""",
                 (template_node_id, instance_id),
             ).fetchall()
@@ -373,7 +373,7 @@ def get_node_files(template_node_id: int, instance_id: int | None = None) -> lis
             rows = conn.execute(
                 """SELECT *, CASE WHEN instance_id IS NULL THEN 'reference' ELSE 'evidence' END as type
                    FROM node_files
-                   WHERE template_node_id = ? AND instance_id IS NULL
+                   WHERE template_node_id = %s AND instance_id IS NULL
                    ORDER BY uploaded_at""",
                 (template_node_id,),
             ).fetchall()
@@ -387,7 +387,7 @@ def delete_node_file(fid: int) -> None:
         if full_path.exists():
             full_path.unlink()
     with get_db() as conn:
-        conn.execute("DELETE FROM node_files WHERE id = ?", (fid,))
+        conn.execute("DELETE FROM node_files WHERE id = %s", (fid,))
 
 
 # ─── Instance files ───────────────────────────────────────────────────────────
@@ -395,7 +395,7 @@ def delete_node_file(fid: int) -> None:
 def get_instance_files(instance_id: int) -> list:
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM instance_files WHERE instance_id = ? ORDER BY uploaded_at",
+            "SELECT * FROM instance_files WHERE instance_id = %s ORDER BY uploaded_at",
             (instance_id,),
         ).fetchall()
     return [_row_to_dict(r) for r in rows]
@@ -418,24 +418,24 @@ def create_instance_file(
         cur = conn.execute(
             """INSERT INTO instance_files
                (instance_id, file_path, file_name, content_type)
-               VALUES (?, ?, ?, ?)""",
+               VALUES (%s, %s, %s, %s) RETURNING id""",
             (instance_id, rel_path, file_name, content_type),
         )
-        fid = cur.lastrowid
+        fid = cur.fetchone()["id"]
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM instance_files WHERE id = ?", (fid,)).fetchone()
+        row = conn.execute("SELECT * FROM instance_files WHERE id = %s", (fid,)).fetchone()
     return _row_to_dict(row)
 
 
 def delete_instance_file(fid: int) -> None:
     with get_db() as conn:
-        row = conn.execute("SELECT file_path FROM instance_files WHERE id = ?", (fid,)).fetchone()
+        row = conn.execute("SELECT file_path FROM instance_files WHERE id = %s", (fid,)).fetchone()
     if row:
         full_path = _NODE_FILES_DIR / row["file_path"]
         if full_path.exists():
             full_path.unlink()
     with get_db() as conn:
-        conn.execute("DELETE FROM instance_files WHERE id = ?", (fid,))
+        conn.execute("DELETE FROM instance_files WHERE id = %s", (fid,))
 
 
 # ─── Node comments ────────────────────────────────────────────────────────────
@@ -445,7 +445,7 @@ def get_node_comments(instance_id: int, template_node_id: int) -> list[dict]:
     with get_db() as conn:
         rows = conn.execute(
             """SELECT * FROM node_comments
-               WHERE instance_id = ? AND template_node_id = ?
+               WHERE instance_id = %s AND template_node_id = %s
                ORDER BY created_at""",
             (instance_id, template_node_id),
         ).fetchall()
@@ -457,15 +457,15 @@ def create_node_comment(
 ) -> dict:
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO node_comments (instance_id, template_node_id, body, author) VALUES (?, ?, ?, ?)",
+            "INSERT INTO node_comments (instance_id, template_node_id, body, author) VALUES (%s, %s, %s, %s) RETURNING id",
             (instance_id, template_node_id, body, author),
         )
-        cid = cur.lastrowid
+        cid = cur.fetchone()["id"]
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM node_comments WHERE id = ?", (cid,)).fetchone()
+        row = conn.execute("SELECT * FROM node_comments WHERE id = %s", (cid,)).fetchone()
     return _row_to_dict(row)
 
 
 def delete_node_comment(cid: int) -> None:
     with get_db() as conn:
-        conn.execute("DELETE FROM node_comments WHERE id = ?", (cid,))
+        conn.execute("DELETE FROM node_comments WHERE id = %s", (cid,))
