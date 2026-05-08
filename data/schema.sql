@@ -1,116 +1,97 @@
 -- ─────────────────────────────────────────────────
--- PATRIO · Real Estate Knowledge Base
+-- PATRIO · Real Estate Knowledge Base  (PostgreSQL)
 -- ─────────────────────────────────────────────────
 
--- Prospect pipeline (pre-commitment deals being evaluated)
 CREATE TABLE IF NOT EXISTS prospects (
-  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-  name                     TEXT NOT NULL CHECK (name != ''),
-  address                  TEXT NOT NULL CHECK (address != ''),
-  city                     TEXT NOT NULL CHECK (city != ''),
-  status                   TEXT NOT NULL CHECK (status != ''),  -- evaluating | passed | converted
-  url                      TEXT NOT NULL CHECK (url != ''),
-  latitude                 REAL NOT NULL,
-  longitude                REAL NOT NULL,
-  -- Size
-  sqm_land                 REAL NOT NULL,   -- m2 terreno
-  sqm_construction         REAL NOT NULL,   -- m2 construibles
-  -- Cost inputs
-  land_price               REAL NOT NULL,   -- Terreno (precio de compra)
-  acquisition_cost_pct     REAL NOT NULL,   -- Costos de adquisición % (ISAI, honorarios, registro, avalúo, gestoría, imprevistos)
-  permits_cost             REAL NOT NULL,   -- Permisos
-  subdivision_cost         REAL NOT NULL,   -- Subdivisión
-  construction_cost_per_sqm REAL NOT NULL,  -- P/m2 construcción
-  construction_overhead    REAL NOT NULL,   -- IVA + indirectos (1.3 = +30%)
-  -- Projected exit
-  projected_sale           REAL NOT NULL,   -- Venta
-  hold_months              INTEGER NOT NULL DEFAULT 12,  -- Plazo estimado en meses
-  -- Income
-  rent_monthly             REAL NOT NULL CHECK (rent_monthly >= 0),  -- Renta mensual proyectada
-  notes                    TEXT NOT NULL CHECK (notes != ''),
-  created_at               TEXT NOT NULL DEFAULT (datetime('now'))
+  id                        BIGSERIAL PRIMARY KEY,
+  name                      TEXT NOT NULL CHECK (name != ''),
+  address                   TEXT NOT NULL CHECK (address != ''),
+  city                      TEXT NOT NULL CHECK (city != ''),
+  status                    TEXT NOT NULL CHECK (status != ''),
+  url                       TEXT NOT NULL CHECK (url != ''),
+  latitude                  REAL NOT NULL,
+  longitude                 REAL NOT NULL,
+  sqm_land                  REAL NOT NULL,
+  sqm_construction          REAL NOT NULL,
+  land_price                REAL NOT NULL,
+  acquisition_cost_pct      REAL NOT NULL,
+  permits_cost              REAL NOT NULL,
+  subdivision_cost          REAL NOT NULL,
+  construction_cost_per_sqm REAL NOT NULL,
+  construction_overhead     REAL NOT NULL,
+  projected_sale            REAL NOT NULL,
+  hold_months               INTEGER NOT NULL DEFAULT 12,
+  rent_monthly              REAL NOT NULL CHECK (rent_monthly >= 0),
+  notes                     TEXT NOT NULL DEFAULT '',
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Computed metrics view (all formula-driven — never store these)
-CREATE VIEW IF NOT EXISTS prospect_metrics AS
+CREATE OR REPLACE VIEW prospect_metrics AS
 SELECT
   id, name, address, city, status, url,
-  sqm_land,
-  sqm_construction,
-  land_price,
-  acquisition_cost_pct,
-  ROUND(land_price * acquisition_cost_pct, 0)    AS acquisition_costs,  -- ISAI, honorarios, registro, avalúo, gestoría, imprevistos
-  ROUND(land_price * (1 + acquisition_cost_pct), 0) AS acquisition_total, -- Precio + costos de adquisición
-  permits_cost,
-  subdivision_cost,
-  ROUND(sqm_construction * construction_cost_per_sqm, 0)                          AS construction_base,
-  ROUND(sqm_construction * construction_cost_per_sqm * construction_overhead, 0)  AS construction_total,
-  ROUND(land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
-        sqm_construction * construction_cost_per_sqm * construction_overhead, 0)   AS total_investment,
+  sqm_land, sqm_construction, land_price, acquisition_cost_pct,
+  ROUND((land_price * acquisition_cost_pct)::numeric, 0)    AS acquisition_costs,
+  ROUND((land_price * (1 + acquisition_cost_pct))::numeric, 0) AS acquisition_total,
+  permits_cost, subdivision_cost,
+  ROUND((sqm_construction * construction_cost_per_sqm)::numeric, 0)                          AS construction_base,
+  ROUND((sqm_construction * construction_cost_per_sqm * construction_overhead)::numeric, 0)  AS construction_total,
+  ROUND((land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
+        sqm_construction * construction_cost_per_sqm * construction_overhead)::numeric, 0)   AS total_investment,
   projected_sale,
-  ROUND(projected_sale -
-       (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
-        sqm_construction * construction_cost_per_sqm * construction_overhead), 0)  AS profit,
   ROUND((projected_sale -
+       (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
+        sqm_construction * construction_cost_per_sqm * construction_overhead))::numeric, 0)  AS profit,
+  ROUND(((projected_sale -
         (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
          sqm_construction * construction_cost_per_sqm * construction_overhead)) /
-        (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
-         sqm_construction * construction_cost_per_sqm * construction_overhead), 4) AS roi,
-  ROUND(rent_monthly * 12 / projected_sale, 4)   AS cap_rate,
-  ROUND(land_price / sqm_land, 2)                AS land_price_per_sqm,
-  ROUND(projected_sale / sqm_land, 2)            AS sale_per_sqm,
-  ROUND((land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
+        NULLIF(land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
+         sqm_construction * construction_cost_per_sqm * construction_overhead, 0))::numeric, 4) AS roi,
+  ROUND((rent_monthly * 12 / NULLIF(projected_sale, 0))::numeric, 4)   AS cap_rate,
+  ROUND((land_price / NULLIF(sqm_land, 0))::numeric, 2)                AS land_price_per_sqm,
+  ROUND((projected_sale / NULLIF(sqm_land, 0))::numeric, 2)            AS sale_per_sqm,
+  ROUND(((land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
          sqm_construction * construction_cost_per_sqm * construction_overhead)
-        / sqm_land, 2)                            AS investment_per_sqm,
+        / NULLIF(sqm_land, 0))::numeric, 2)                            AS investment_per_sqm,
   rent_monthly,
-  ROUND(rent_monthly * 12, 0)                    AS rent_annual,
-  hold_months,
-  notes
+  ROUND((rent_monthly * 12)::numeric, 0)                    AS rent_annual,
+  hold_months, notes
 FROM prospects;
 
--- ─────────────────────────────────────────────────
-
 CREATE TABLE IF NOT EXISTS projects (
-  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  id                BIGSERIAL PRIMARY KEY,
   name              TEXT NOT NULL CHECK (name != ''),
-  type              TEXT NOT NULL CHECK (type != ''),                  -- adaptive_reuse | ground_up | flip | land
+  type              TEXT NOT NULL CHECK (type != ''),
   address           TEXT NOT NULL CHECK (address != ''),
   city              TEXT NOT NULL CHECK (city != ''),
-  status            TEXT NOT NULL CHECK (status != ''),                -- prospect | construction | stabilizing | operating | exited
+  status            TEXT NOT NULL CHECK (status != ''),
   total_units       INTEGER NOT NULL,
-  acquisition_date  TEXT NOT NULL CHECK (acquisition_date != ''),      -- YYYY-MM
-  conclusion_date   TEXT NOT NULL CHECK (conclusion_date != ''),       -- YYYY-MM (primera renta o venta)
+  acquisition_date  TEXT NOT NULL CHECK (acquisition_date != ''),
+  conclusion_date   TEXT NOT NULL CHECK (conclusion_date != ''),
   total_investment  REAL NOT NULL,
   current_valuation REAL NOT NULL,
-  valuation_date    TEXT NOT NULL CHECK (valuation_date != ''),        -- YYYY-MM
+  valuation_date    TEXT NOT NULL CHECK (valuation_date != ''),
   url               TEXT NOT NULL CHECK (url != ''),
   latitude          REAL NOT NULL,
   longitude         REAL NOT NULL,
-  prospect_id       INTEGER REFERENCES prospects(id),
-  -- JSON columns
-  milestones        TEXT NOT NULL CHECK (milestones != ''),  -- {"2021-02":"Adquisición","2023-07":"Primera renta",...}
-  budget            TEXT NOT NULL CHECK (budget != ''),      -- {"Adquisición edificio":3225000,"Mano de obra":1729740,...}
-  notes             TEXT NOT NULL CHECK (notes != ''),
-  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+  prospect_id       BIGINT REFERENCES prospects(id),
+  milestones        TEXT NOT NULL DEFAULT '{}',
+  budget            TEXT NOT NULL DEFAULT '{}',
+  notes             TEXT NOT NULL DEFAULT '',
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
--- ─────────────────────────────────────────────────
-
--- ─────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS team_members (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  id          BIGSERIAL PRIMARY KEY,
   name        TEXT NOT NULL CHECK (name != ''),
-  role        TEXT NOT NULL CHECK (role IN ('director', 'responsable_proyecto', 'lider_proyecto', 'maestro', 'ayudante', 'finder')),
-  manager_id  INTEGER REFERENCES team_members(id),
+  role        TEXT NOT NULL CHECK (role IN ('director','responsable_proyecto','lider_proyecto','maestro','ayudante','finder')),
+  manager_id  BIGINT REFERENCES team_members(id),
+  email       TEXT NOT NULL DEFAULT '',
   notes       TEXT NOT NULL DEFAULT '',
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ─────────────────────────────────────────────────
-
 CREATE TABLE IF NOT EXISTS signals (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  id            BIGSERIAL PRIMARY KEY,
   portal        TEXT NOT NULL,
   url           TEXT NOT NULL UNIQUE,
   title         TEXT NOT NULL,
@@ -119,169 +100,167 @@ CREATE TABLE IF NOT EXISTS signals (
   price         REAL NOT NULL DEFAULT 0,
   sqm_land      REAL NOT NULL DEFAULT 0,
   raw_data      TEXT NOT NULL DEFAULT '',
-  status        TEXT NOT NULL DEFAULT 'new',  -- new | dismissed | imported
-  prospect_id   INTEGER REFERENCES prospects(id),
-  scraped_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  status        TEXT NOT NULL DEFAULT 'new',
+  prospect_id   BIGINT REFERENCES prospects(id),
+  scraped_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ─────────────────────────────────────────────────
-
 CREATE TABLE IF NOT EXISTS process_templates (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  id          BIGSERIAL PRIMARY KEY,
   name        TEXT NOT NULL CHECK (name != ''),
   description TEXT NOT NULL DEFAULT '',
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS template_nodes (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  template_id   INTEGER NOT NULL REFERENCES process_templates(id) ON DELETE CASCADE,
-  parent_id     INTEGER REFERENCES template_nodes(id) ON DELETE CASCADE,
-  name          TEXT NOT NULL CHECK (name != ''),
-  description   TEXT NOT NULL DEFAULT '',
-  sort_order    INTEGER NOT NULL DEFAULT 0,
-  depends_on_id INTEGER REFERENCES template_nodes(id) ON DELETE SET NULL,
-  source_template_id INTEGER REFERENCES process_templates(id),
-  duration_days INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  id                 BIGSERIAL PRIMARY KEY,
+  template_id        BIGINT NOT NULL REFERENCES process_templates(id) ON DELETE CASCADE,
+  parent_id          BIGINT REFERENCES template_nodes(id) ON DELETE CASCADE,
+  name               TEXT NOT NULL CHECK (name != ''),
+  description        TEXT NOT NULL DEFAULT '',
+  sort_order         INTEGER NOT NULL DEFAULT 0,
+  depends_on_id      BIGINT REFERENCES template_nodes(id) ON DELETE SET NULL,
+  source_template_id BIGINT REFERENCES process_templates(id),
+  duration_days      INTEGER,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS process_instances (
-  id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  template_id    INTEGER REFERENCES process_templates(id) ON DELETE CASCADE,
-  project_id     INTEGER REFERENCES projects(id),
-  owner_id       INTEGER REFERENCES team_members(id),
-  name           TEXT NOT NULL CHECK (name != ''),
-  start_date     TEXT NOT NULL,
-  due_date       TEXT,
-  frequency_days INTEGER,
-  origin_instance_id  INTEGER REFERENCES process_instances(id),
+  id                  BIGSERIAL PRIMARY KEY,
+  template_id         BIGINT REFERENCES process_templates(id) ON DELETE CASCADE,
+  project_id          BIGINT REFERENCES projects(id),
+  owner_id            BIGINT REFERENCES team_members(id),
+  task_type           TEXT NOT NULL DEFAULT 'proyecto',
+  name                TEXT NOT NULL CHECK (name != ''),
+  start_date          TEXT NOT NULL,
+  due_date            TEXT,
+  frequency_days      INTEGER,
+  origin_instance_id  BIGINT REFERENCES process_instances(id),
   completed_at        TEXT,
   duration_locked_at  TEXT,
   status              TEXT NOT NULL DEFAULT 'active',
   notes               TEXT NOT NULL DEFAULT '',
-  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS instance_node_states (
-  id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  instance_id      INTEGER NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
-  template_node_id INTEGER NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
-  status           TEXT NOT NULL DEFAULT 'pending',
-  assignee_id      INTEGER REFERENCES team_members(id),
-  actual_start     TEXT,
-  actual_end       TEXT,
-  notes            TEXT NOT NULL DEFAULT '',
-  duration_override_days INTEGER,         -- overrides template node's duration_days for this instance
-  updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  id                     BIGSERIAL PRIMARY KEY,
+  instance_id            BIGINT NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+  template_node_id       BIGINT NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
+  status                 TEXT NOT NULL DEFAULT 'pending',
+  assignee_id            BIGINT REFERENCES team_members(id),
+  actual_start           TEXT,
+  actual_end             TEXT,
+  notes                  TEXT NOT NULL DEFAULT '',
+  duration_override_days INTEGER,
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(instance_id, template_node_id)
 );
 
--- ── Node files (reference photos on template; evidence on instance) ──────────
 CREATE TABLE IF NOT EXISTS node_files (
-  id               INTEGER PRIMARY KEY,
-  template_node_id INTEGER NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
-  instance_id      INTEGER REFERENCES process_instances(id) ON DELETE CASCADE,
+  id               BIGSERIAL PRIMARY KEY,
+  template_node_id BIGINT NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
+  instance_id      BIGINT REFERENCES process_instances(id) ON DELETE CASCADE,
   file_path        TEXT NOT NULL,
   file_name        TEXT NOT NULL,
   content_type     TEXT NOT NULL,
-  uploaded_at      TEXT DEFAULT (datetime('now'))
+  type             TEXT NOT NULL DEFAULT 'reference',
+  uploaded_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── Node comments (per instance per node) ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS node_comments (
-  id               INTEGER PRIMARY KEY,
-  instance_id      INTEGER NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
-  template_node_id INTEGER NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
+  id               BIGSERIAL PRIMARY KEY,
+  instance_id      BIGINT NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+  template_node_id BIGINT NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
   body             TEXT NOT NULL,
   author           TEXT NOT NULL DEFAULT '',
-  created_at       TEXT DEFAULT (datetime('now'))
+  created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS instance_files (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  instance_id  INTEGER NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+  id           BIGSERIAL PRIMARY KEY,
+  instance_id  BIGINT NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
   file_path    TEXT NOT NULL,
   file_name    TEXT NOT NULL,
   content_type TEXT NOT NULL,
-  uploaded_at  TEXT DEFAULT (datetime('now'))
+  uploaded_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Performance indexes on FK and filter columns
-CREATE INDEX IF NOT EXISTS idx_signals_status    ON signals(status);
-CREATE INDEX IF NOT EXISTS idx_node_template     ON template_nodes(template_id);
-CREATE INDEX IF NOT EXISTS idx_node_depends      ON template_nodes(depends_on_id);
-CREATE INDEX IF NOT EXISTS idx_instance_template ON process_instances(template_id);
-CREATE INDEX IF NOT EXISTS idx_instance_project  ON process_instances(project_id);
-CREATE INDEX IF NOT EXISTS idx_instance_owner   ON process_instances(owner_id);
-CREATE INDEX IF NOT EXISTS idx_node_state_inst   ON instance_node_states(instance_id);
-CREATE INDEX IF NOT EXISTS idx_node_state_node   ON instance_node_states(template_node_id);
-CREATE INDEX IF NOT EXISTS idx_team_manager      ON team_members(manager_id);
-CREATE INDEX IF NOT EXISTS idx_signals_prospect  ON signals(prospect_id);
-CREATE INDEX IF NOT EXISTS idx_node_files_node     ON node_files(template_node_id);
-CREATE INDEX IF NOT EXISTS idx_node_files_instance ON node_files(instance_id);
-CREATE INDEX IF NOT EXISTS idx_comments_node       ON node_comments(template_node_id, instance_id);
-
--- Profit split configuration (NULL project_id = global template)
 CREATE TABLE IF NOT EXISTS profit_split_config (
-  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id            INTEGER REFERENCES projects(id),   -- NULL = global template
-  -- Waterfall inputs
+  id                    BIGSERIAL PRIMARY KEY,
+  project_id            BIGINT REFERENCES projects(id),
   exit_price            REAL,
   investor_capital      REAL,
   investor_rate_annual  REAL NOT NULL DEFAULT 0.12,
-  investor_months       REAL,                              -- NULL → use actual project hold duration
+  investor_months       REAL,
   isr_rate              REAL NOT NULL DEFAULT 0.30,
-  -- Split percentages (0.0–1.0, of utilidad neta distribuible)
   finder_fee_pct        REAL NOT NULL DEFAULT 0.0,
   director_pct          REAL NOT NULL DEFAULT 0.0,
   responsable_pct       REAL NOT NULL DEFAULT 0.0,
   lider_pct             REAL NOT NULL DEFAULT 0.0,
   maestro_pct           REAL NOT NULL DEFAULT 0.0,
   ayudante_pct          REAL NOT NULL DEFAULT 0.0,
-  -- Team assignments (project-level config only)
-  finder_member_id      INTEGER REFERENCES team_members(id),
-  responsable_member_id INTEGER REFERENCES team_members(id),
-  lider_member_id       INTEGER REFERENCES team_members(id),
-  maestro_member_ids    TEXT NOT NULL DEFAULT '[]',        -- JSON array of IDs
+  finder_member_id      BIGINT REFERENCES team_members(id),
+  responsable_member_id BIGINT REFERENCES team_members(id),
+  lider_member_id       BIGINT REFERENCES team_members(id),
+  maestro_member_ids    TEXT NOT NULL DEFAULT '[]',
   ayudante_member_ids   TEXT NOT NULL DEFAULT '[]',
-  maestro_count         INTEGER,                              -- overrides len(maestro_member_ids) for per-person calc
+  maestro_count         INTEGER,
   ayudante_count        INTEGER,
-  -- Colchón (time buffer for bonus)
-  planned_end_date      TEXT,                              -- YYYY-MM-DD expected completion
-  actual_end_date       TEXT,                              -- YYYY-MM-DD when project actually finished
-  buffer_days           INTEGER NOT NULL DEFAULT 0,        -- days of time buffer
+  planned_end_date      TEXT,
+  actual_end_date       TEXT,
+  buffer_days           INTEGER NOT NULL DEFAULT 0,
   notes                 TEXT NOT NULL DEFAULT '',
-  created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_profit_split_project
   ON profit_split_config(project_id) WHERE project_id IS NOT NULL;
 
--- ─────────────────────────────────────────────────
-
 CREATE TABLE IF NOT EXISTS investors (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  id         BIGSERIAL PRIMARY KEY,
   name       TEXT NOT NULL CHECK (name != ''),
   email      TEXT NOT NULL DEFAULT '',
   phone      TEXT NOT NULL DEFAULT '',
   notes      TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS project_investors (
-  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  investor_id          INTEGER NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
+  id                   BIGSERIAL PRIMARY KEY,
+  project_id           BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  investor_id          BIGINT NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
   status               TEXT NOT NULL DEFAULT 'interesado'
-                         CHECK (status IN ('interesado', 'comprometido', 'fondeado')),
+                         CHECK (status IN ('interesado','comprometido','fondeado')),
   interested_amount    REAL NOT NULL DEFAULT 0,
   committed_amount     REAL NOT NULL DEFAULT 0,
   funded_amount        REAL NOT NULL DEFAULT 0,
   interest_rate_annual REAL NOT NULL DEFAULT 0.12,
   notes                TEXT NOT NULL DEFAULT '',
-  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(project_id, investor_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_project_investors_project  ON project_investors(project_id);
-CREATE INDEX IF NOT EXISTS idx_project_investors_investor ON project_investors(investor_id);
+CREATE TABLE IF NOT EXISTS users (
+  id              BIGSERIAL PRIMARY KEY,
+  email           TEXT NOT NULL UNIQUE,
+  hashed_password TEXT NOT NULL,
+  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_signals_status      ON signals(status);
+CREATE INDEX IF NOT EXISTS idx_signals_prospect    ON signals(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_node_template       ON template_nodes(template_id);
+CREATE INDEX IF NOT EXISTS idx_node_depends        ON template_nodes(depends_on_id);
+CREATE INDEX IF NOT EXISTS idx_instance_template   ON process_instances(template_id);
+CREATE INDEX IF NOT EXISTS idx_instance_project    ON process_instances(project_id);
+CREATE INDEX IF NOT EXISTS idx_instance_owner      ON process_instances(owner_id);
+CREATE INDEX IF NOT EXISTS idx_node_state_inst     ON instance_node_states(instance_id);
+CREATE INDEX IF NOT EXISTS idx_node_state_node     ON instance_node_states(template_node_id);
+CREATE INDEX IF NOT EXISTS idx_team_manager        ON team_members(manager_id);
+CREATE INDEX IF NOT EXISTS idx_node_files_node     ON node_files(template_node_id);
+CREATE INDEX IF NOT EXISTS idx_node_files_instance ON node_files(instance_id);
+CREATE INDEX IF NOT EXISTS idx_comments_node       ON node_comments(template_node_id, instance_id);
+CREATE INDEX IF NOT EXISTS idx_pi_project          ON project_investors(project_id);
+CREATE INDEX IF NOT EXISTS idx_pi_investor         ON project_investors(investor_id);
