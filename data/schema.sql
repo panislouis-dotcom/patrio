@@ -221,3 +221,36 @@ CREATE INDEX IF NOT EXISTS idx_signals_prospect  ON signals(prospect_id);
 CREATE INDEX IF NOT EXISTS idx_node_files_node     ON node_files(template_node_id);
 CREATE INDEX IF NOT EXISTS idx_node_files_instance ON node_files(instance_id);
 CREATE INDEX IF NOT EXISTS idx_comments_node       ON node_comments(template_node_id, instance_id);
+
+-- Profit split configuration (NULL project_id = global template)
+CREATE TABLE IF NOT EXISTS profit_split_config (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id            INTEGER REFERENCES projects(id),   -- NULL = global template
+  -- Waterfall inputs
+  exit_price            REAL,
+  investor_capital      REAL,
+  investor_rate_annual  REAL NOT NULL DEFAULT 0.12,
+  investor_months       REAL,                              -- NULL → use project holdMonthsActual
+  isr_rate              REAL NOT NULL DEFAULT 0.30,
+  -- Split percentages (0.0–1.0, of utilidad neta distribuible)
+  finder_fee_pct        REAL NOT NULL DEFAULT 0.0,
+  director_pct          REAL NOT NULL DEFAULT 0.0,
+  responsable_pct       REAL NOT NULL DEFAULT 0.0,
+  lider_pct             REAL NOT NULL DEFAULT 0.0,
+  maestro_pct           REAL NOT NULL DEFAULT 0.0,
+  ayudante_pct          REAL NOT NULL DEFAULT 0.0,
+  -- Team assignments (project-level config only)
+  finder_member_id      INTEGER REFERENCES team_members(id),
+  responsable_member_id INTEGER REFERENCES team_members(id),
+  lider_member_id       INTEGER REFERENCES team_members(id),
+  maestro_member_ids    TEXT NOT NULL DEFAULT '[]',        -- JSON array of IDs
+  ayudante_member_ids   TEXT NOT NULL DEFAULT '[]',
+  -- Colchón (time buffer for bonus)
+  planned_end_date      TEXT,                              -- YYYY-MM-DD expected completion
+  actual_end_date       TEXT,                              -- YYYY-MM-DD when project actually finished
+  buffer_days           INTEGER NOT NULL DEFAULT 0,        -- days of time buffer
+  notes                 TEXT NOT NULL DEFAULT '',
+  created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_profit_split_project
+  ON profit_split_config(project_id) WHERE project_id IS NOT NULL;
