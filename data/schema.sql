@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS projects (
   status            TEXT NOT NULL CHECK (status != ''),                -- prospect | construction | stabilizing | operating | exited
   total_units       INTEGER NOT NULL,
   acquisition_date  TEXT NOT NULL CHECK (acquisition_date != ''),      -- YYYY-MM
-  first_rent_date   TEXT NOT NULL CHECK (first_rent_date != ''),       -- YYYY-MM
+  conclusion_date   TEXT NOT NULL CHECK (conclusion_date != ''),       -- YYYY-MM (primera renta o venta)
   total_investment  REAL NOT NULL,
   current_valuation REAL NOT NULL,
   valuation_date    TEXT NOT NULL CHECK (valuation_date != ''),        -- YYYY-MM
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS team_members (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL CHECK (name != ''),
-  role        TEXT NOT NULL CHECK (role IN ('director', 'responsable_proyecto', 'lider_proyecto', 'maestro', 'ayudante')),
+  role        TEXT NOT NULL CHECK (role IN ('director', 'responsable_proyecto', 'lider_proyecto', 'maestro', 'ayudante', 'finder')),
   manager_id  INTEGER REFERENCES team_members(id),
   notes       TEXT NOT NULL DEFAULT '',
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
@@ -221,3 +221,67 @@ CREATE INDEX IF NOT EXISTS idx_signals_prospect  ON signals(prospect_id);
 CREATE INDEX IF NOT EXISTS idx_node_files_node     ON node_files(template_node_id);
 CREATE INDEX IF NOT EXISTS idx_node_files_instance ON node_files(instance_id);
 CREATE INDEX IF NOT EXISTS idx_comments_node       ON node_comments(template_node_id, instance_id);
+
+-- Profit split configuration (NULL project_id = global template)
+CREATE TABLE IF NOT EXISTS profit_split_config (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id            INTEGER REFERENCES projects(id),   -- NULL = global template
+  -- Waterfall inputs
+  exit_price            REAL,
+  investor_capital      REAL,
+  investor_rate_annual  REAL NOT NULL DEFAULT 0.12,
+  investor_months       REAL,                              -- NULL → use actual project hold duration
+  isr_rate              REAL NOT NULL DEFAULT 0.30,
+  -- Split percentages (0.0–1.0, of utilidad neta distribuible)
+  finder_fee_pct        REAL NOT NULL DEFAULT 0.0,
+  director_pct          REAL NOT NULL DEFAULT 0.0,
+  responsable_pct       REAL NOT NULL DEFAULT 0.0,
+  lider_pct             REAL NOT NULL DEFAULT 0.0,
+  maestro_pct           REAL NOT NULL DEFAULT 0.0,
+  ayudante_pct          REAL NOT NULL DEFAULT 0.0,
+  -- Team assignments (project-level config only)
+  finder_member_id      INTEGER REFERENCES team_members(id),
+  responsable_member_id INTEGER REFERENCES team_members(id),
+  lider_member_id       INTEGER REFERENCES team_members(id),
+  maestro_member_ids    TEXT NOT NULL DEFAULT '[]',        -- JSON array of IDs
+  ayudante_member_ids   TEXT NOT NULL DEFAULT '[]',
+  maestro_count         INTEGER,                              -- overrides len(maestro_member_ids) for per-person calc
+  ayudante_count        INTEGER,
+  -- Colchón (time buffer for bonus)
+  planned_end_date      TEXT,                              -- YYYY-MM-DD expected completion
+  actual_end_date       TEXT,                              -- YYYY-MM-DD when project actually finished
+  buffer_days           INTEGER NOT NULL DEFAULT 0,        -- days of time buffer
+  notes                 TEXT NOT NULL DEFAULT '',
+  created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_profit_split_project
+  ON profit_split_config(project_id) WHERE project_id IS NOT NULL;
+
+-- ─────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS investors (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL CHECK (name != ''),
+  email      TEXT NOT NULL DEFAULT '',
+  phone      TEXT NOT NULL DEFAULT '',
+  notes      TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_investors (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  investor_id          INTEGER NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
+  status               TEXT NOT NULL DEFAULT 'interesado'
+                         CHECK (status IN ('interesado', 'comprometido', 'fondeado')),
+  interested_amount    REAL NOT NULL DEFAULT 0,
+  committed_amount     REAL NOT NULL DEFAULT 0,
+  funded_amount        REAL NOT NULL DEFAULT 0,
+  interest_rate_annual REAL NOT NULL DEFAULT 0.12,
+  notes                TEXT NOT NULL DEFAULT '',
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(project_id, investor_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_investors_project  ON project_investors(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_investors_investor ON project_investors(investor_id);

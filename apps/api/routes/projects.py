@@ -17,7 +17,7 @@ class ProjectUpdate(BaseModel):
     longitude: Optional[float] = None
     totalUnits: Optional[int] = None
     acquisitionDate: Optional[str] = None
-    firstRentDate: Optional[str] = None
+    conclusionDate: Optional[str] = None
     totalInvestment: Optional[float] = None
     currentValuation: Optional[float] = None
     valuationDate: Optional[str] = None
@@ -35,7 +35,7 @@ class ProjectCreate(BaseModel):
     status: str
     totalUnits: int
     acquisitionDate: str
-    firstRentDate: str
+    conclusionDate: str
     totalInvestment: float
     currentValuation: float
     valuationDate: str

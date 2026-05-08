@@ -4,6 +4,7 @@ import { colors, fonts } from '../lib/theme'
 const topTabs = [
   { path: '/prospectos', label: 'PROSPECTOS' },
   { path: '/proyectos', label: 'PROYECTOS' },
+  { path: '/inversionistas', label: 'INVERSIONISTAS' },
   { path: '/sonar', label: 'SONAR' },
   { path: '/procesos', label: 'PROCESOS' },
   { path: '/equipo', label: 'EQUIPO' },

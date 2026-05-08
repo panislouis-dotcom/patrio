@@ -70,7 +70,7 @@ export interface Project {
   status: string
   totalUnits: number
   acquisitionDate: string      // YYYY-MM
-  firstRentDate: string        // YYYY-MM
+  conclusionDate: string       // YYYY-MM (primera renta o venta)
   totalInvestment: number
   currentValuation: number
   valuationDate: string        // YYYY-MM
@@ -89,12 +89,12 @@ export interface Project {
 export type RawProjectFields = Pick<Project,
   | 'name' | 'type' | 'address' | 'city' | 'status' | 'url'
   | 'latitude' | 'longitude' | 'totalUnits'
-  | 'acquisitionDate' | 'firstRentDate'
+  | 'acquisitionDate' | 'conclusionDate'
   | 'totalInvestment' | 'currentValuation' | 'valuationDate'
   | 'notes'
 >
 
-export type MemberRole = 'director' | 'responsable_proyecto' | 'lider_proyecto' | 'maestro' | 'ayudante'
+export type MemberRole = 'director' | 'responsable_proyecto' | 'lider_proyecto' | 'maestro' | 'ayudante' | 'finder'
 
 export interface TeamMember {
   id: number
@@ -222,4 +222,102 @@ export interface NodeDetail {
   states: NodeState[]
   files: NodeFile[]
   comments: NodeComment[]
+}
+
+export interface ProfitSplitConfig {
+  id: number | null
+  projectId: number | null
+  exitPrice: number | null
+  investorCapital: number | null
+  investorRateAnnual: number
+  investorMonths: number | null
+  isrRate: number
+  finderFeePct: number
+  directorPct: number
+  responsablePct: number
+  liderPct: number
+  maestroPct: number
+  ayudantePct: number
+  finderMemberId: number | null
+  responsableMemberId: number | null
+  liderMemberId: number | null
+  maestroMemberIds: number[]
+  ayudanteMemberIds: number[]
+  maestroCount: number | null
+  ayudanteCount: number | null
+  plannedEndDate: string | null
+  actualEndDate: string | null
+  bufferDays: number
+  notes: string
+}
+
+export interface ProfitSplit {
+  label: string
+  id: number | null
+  name: string
+  role: string | null
+  pct: number
+  base: number
+  bonus: number
+  total: number
+}
+
+export interface ProfitScenario {
+  splits: ProfitSplit[]
+  companyResidual: number
+}
+
+export interface InvestorBreakdownEntry {
+  investorId: number | null
+  name: string
+  fundedAmount: number
+  interestRateAnnual: number
+  cuota: number
+  totalReturn: number
+}
+
+export interface ProfitWaterfall {
+  exitPrice: number
+  investment: number
+  grossProfit: number
+  investorCuota: number
+  operatorGross: number
+  isr: number
+  netProfit: number
+  distributable: number
+  activeTier: number | null    // null = not concluded yet; 0 | 0.25 | 0.50 when concluded
+  months: number
+  investorBreakdown: InvestorBreakdownEntry[]
+  scenarios: {
+    sin_bono: ProfitScenario
+    bono_25: ProfitScenario
+    bono_50: ProfitScenario
+  }
+}
+
+export interface Investor {
+  id: number
+  name: string
+  email: string
+  phone: string
+  notes: string
+  createdAt: string
+  totalInterested: number
+  totalCommitted: number
+  totalFunded: number
+}
+
+export interface ProjectInvestor {
+  id: number
+  projectId: number
+  investorId: number
+  investorName: string
+  projectName?: string
+  status: 'interesado' | 'comprometido' | 'fondeado'
+  interestedAmount: number
+  committedAmount: number
+  fundedAmount: number
+  interestRateAnnual: number
+  notes: string
+  createdAt: string
 }

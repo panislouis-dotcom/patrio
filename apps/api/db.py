@@ -131,7 +131,7 @@ def update_prospect(prospect_id: int, data: dict) -> dict | None:
 PROJECTS_RAW_FIELDS = {
     "name", "type", "address", "city", "status", "url",
     "latitude", "longitude", "totalUnits",
-    "acquisitionDate", "firstRentDate",
+    "acquisitionDate", "conclusionDate",
     "totalInvestment", "currentValuation", "valuationDate",
     "milestones", "budget", "notes", "prospectId",
 }

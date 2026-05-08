@@ -9,6 +9,7 @@ const ROLE_LABEL: Record<MemberRole, string> = {
   lider_proyecto: 'Líder de Proyecto',
   maestro: 'Maestro',
   ayudante: 'Ayudante',
+  finder: 'Finder',
 }
 
 const ROLE_DESC: Record<MemberRole, string> = {
@@ -17,6 +18,7 @@ const ROLE_DESC: Record<MemberRole, string> = {
   lider_proyecto: 'Coordinación de equipo en campo, supervisión de obra',
   maestro: 'Ejecución de obra especializada, gestión de cuadrilla',
   ayudante: 'Apoyo en actividades de campo y obra',
+  finder: 'Prospección y captación de inversionistas para el fondo',
 }
 
 const ROLE_COLOR: Record<MemberRole, string> = {
@@ -25,9 +27,10 @@ const ROLE_COLOR: Record<MemberRole, string> = {
   lider_proyecto: colors.accent1,
   maestro: colors.accent2,
   ayudante: colors.secondary,
+  finder: colors.neutral,
 }
 
-const ROLE_ORDER: MemberRole[] = ['director', 'responsable_proyecto', 'lider_proyecto', 'maestro', 'ayudante']
+const ROLE_ORDER: MemberRole[] = ['director', 'responsable_proyecto', 'lider_proyecto', 'maestro', 'ayudante', 'finder']
 
 function RoleBadge({ role }: { role: MemberRole }) {
   return (
