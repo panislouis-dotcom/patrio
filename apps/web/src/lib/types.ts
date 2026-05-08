@@ -70,7 +70,7 @@ export interface Project {
   status: string
   totalUnits: number
   acquisitionDate: string      // YYYY-MM
-  firstRentDate: string        // YYYY-MM
+  conclusionDate: string       // YYYY-MM (primera renta o venta)
   totalInvestment: number
   currentValuation: number
   valuationDate: string        // YYYY-MM
@@ -89,7 +89,7 @@ export interface Project {
 export type RawProjectFields = Pick<Project,
   | 'name' | 'type' | 'address' | 'city' | 'status' | 'url'
   | 'latitude' | 'longitude' | 'totalUnits'
-  | 'acquisitionDate' | 'firstRentDate'
+  | 'acquisitionDate' | 'conclusionDate'
   | 'totalInvestment' | 'currentValuation' | 'valuationDate'
   | 'notes'
 >
@@ -262,6 +262,11 @@ export interface ProfitSplit {
   total: number
 }
 
+export interface ProfitScenario {
+  splits: ProfitSplit[]
+  companyResidual: number
+}
+
 export interface ProfitWaterfall {
   exitPrice: number
   investment: number
@@ -271,8 +276,10 @@ export interface ProfitWaterfall {
   isr: number
   netProfit: number
   distributable: number
-  bonusTier: number
-  splits: ProfitSplit[]
-  companyResidual: number
-  totalAllocated: number
+  activeTier: number | null    // null = not concluded yet; 0 | 0.25 | 0.50 when concluded
+  scenarios: {
+    sin_bono: ProfitScenario
+    bono_25: ProfitScenario
+    bono_50: ProfitScenario
+  }
 }
