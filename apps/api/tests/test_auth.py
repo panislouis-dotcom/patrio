@@ -78,3 +78,18 @@ def test_me_with_valid_token():
 def test_me_without_token_returns_401():
     res = client.get("/api/auth/me")
     assert res.status_code == 401
+
+
+def test_protected_route_without_token_returns_401():
+    """Any previously open route must now require auth."""
+    res = client.get("/api/team")
+    assert res.status_code == 401
+
+
+def test_protected_route_with_valid_token_returns_200():
+    token = client.post(
+        "/api/auth/login",
+        json={"email": TEST_EMAIL, "password": TEST_PW}
+    ).json()["access_token"]
+    res = client.get("/api/team", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
