@@ -17,6 +17,19 @@ const TIPO_LABEL: Record<string, string> = {
   one_time: 'UNA VEZ',
 }
 
+const PERSON_FILTER_KEY = 'procesoCurrentUserId'
+
+function getReportIds(managerId: number, team: TeamMember[]): number[] {
+  const result: number[] = []
+  const queue = team.filter(m => m.managerId === managerId).map(m => m.id)
+  while (queue.length) {
+    const id = queue.shift()!
+    result.push(id)
+    team.filter(m => m.managerId === id).forEach(m => queue.push(m.id))
+  }
+  return result
+}
+
 export function ProcesoInstanceList() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -27,6 +40,11 @@ export function ProcesoInstanceList() {
   const [team, setTeam] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [personFilter, setPersonFilter] = useState<'mine' | 'team' | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<number | null>(() => {
+    const stored = localStorage.getItem(PERSON_FILTER_KEY)
+    return stored ? Number(stored) : null
+  })
   const [showForm, setShowForm] = useState(false)
   const [creating, setCreating] = useState(false)
 
@@ -90,7 +108,24 @@ export function ProcesoInstanceList() {
     outline: 'none',
   }
 
-  const filtered = typeFilter === 'all' ? instances : instances.filter(i => i.taskType === typeFilter)
+  function handleUserChange(id: number | null) {
+    setCurrentUserId(id)
+    if (id === null) {
+      localStorage.removeItem(PERSON_FILTER_KEY)
+      setPersonFilter(null)
+    } else {
+      localStorage.setItem(PERSON_FILTER_KEY, String(id))
+    }
+  }
+
+  const reportIds = currentUserId !== null ? getReportIds(currentUserId, team) : []
+
+  const filtered = instances.filter(i => {
+    if (typeFilter !== 'all' && i.taskType !== typeFilter) return false
+    if (personFilter === 'mine') return i.ownerId === currentUserId
+    if (personFilter === 'team') return i.ownerId !== null && reportIds.includes(i.ownerId)
+    return true
+  })
 
   return (
     <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -130,6 +165,44 @@ export function ProcesoInstanceList() {
             {f.label}
           </button>
         ))}
+      </div>
+
+      {/* Person filter bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.08em' }}>SOY:</span>
+        <select
+          value={currentUserId ?? ''}
+          onChange={e => handleUserChange(e.target.value ? Number(e.target.value) : null)}
+          style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 6px', outline: 'none' }}
+        >
+          <option value="">— Seleccionar</option>
+          {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        {currentUserId !== null && (
+          <>
+            {[
+              { key: 'mine' as const, label: 'MIS TAREAS' },
+              { key: 'team' as const, label: 'MI EQUIPO' },
+            ].map(f => (
+              <button
+                key={f.key}
+                onClick={() => setPersonFilter(prev => prev === f.key ? null : f.key)}
+                style={{
+                  background: personFilter === f.key ? colors.tertiary : 'transparent',
+                  border: `1px solid ${personFilter === f.key ? colors.tertiary : colors.border}`,
+                  color: personFilter === f.key ? colors.neutral : colors.secondary,
+                  cursor: 'pointer',
+                  fontFamily: fonts.label,
+                  fontSize: '9px',
+                  letterSpacing: '0.08em',
+                  padding: '3px 10px',
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Create form */}

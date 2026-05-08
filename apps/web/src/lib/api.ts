@@ -247,6 +247,7 @@ export async function updateInstance(iid: number, data: Partial<{
   taskType: string
   dueDate: string | null
   frequencyDays: number | null
+  durationLockedAt: string | null
 }>): Promise<{ instance: ProcessInstance; nextInstance: ProcessInstance | null }> {
   const res = await fetch(`${BASE}/api/process/instances/${iid}`, {
     method: 'PATCH',
@@ -289,6 +290,7 @@ export async function updateNodeState(iid: number, nid: number, data: {
   actualStart?: string | null
   actualEnd?: string | null
   notes?: string
+  durationOverrideDays?: number | null
 }): Promise<NodeState> {
   const res = await fetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}/state`, {
     method: 'PATCH',

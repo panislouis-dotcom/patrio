@@ -53,8 +53,60 @@ export function GanttChart({ nodes, totalDays, states = [], instanceStartDate }:
     nodeStartPct.set(n.id, (n.ganttStart / total) * 100)
   })
 
+  // Synthetic TOTAL row when there are multiple root nodes
+  const rootNodes = nodes.filter(n => n.parentId === null)
+  const allLeaves = nodes.filter(n => !childrenOf.has(n.id))
+  const allLeavesHaveDates = allLeaves.length > 0 &&
+    allLeaves.every(n => stateByNode[n.id]?.actualStart && stateByNode[n.id]?.actualEnd)
+
+  let totalActualLeftPct: number | null = null
+  let totalActualWidthPct: number | null = null
+  if (allLeavesHaveDates && instanceStartDate) {
+    const anchor = new Date(instanceStartDate)
+    const starts = allLeaves.map(n => stateByNode[n.id]!.actualStart!)
+    const ends = allLeaves.map(n => stateByNode[n.id]!.actualEnd!)
+    const aStart = new Date([...starts].sort()[0])
+    const aEnd = new Date([...ends].sort().slice(-1)[0])
+    const startOffset = Math.max(0, (aStart.getTime() - anchor.getTime()) / 86400000)
+    const duration = Math.max(1, (aEnd.getTime() - aStart.getTime()) / 86400000)
+    totalActualLeftPct = (startOffset / total) * 100
+    totalActualWidthPct = Math.max(0.5, (duration / total) * 100)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      {rootNodes.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px', paddingBottom: '5px', borderBottom: `1px solid ${colors.border}` }}>
+          <div style={{ width: '160px', flexShrink: 0, fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', color: colors.primary }}>
+            TOTAL
+          </div>
+          <div style={{ flex: 1, position: 'relative', height: '14px', background: colors.surfaceAlt, border: `1px solid ${colors.border}` }}>
+            <div style={{
+              position: 'absolute',
+              left: 0,
+              width: '100%',
+              top: 0,
+              height: totalActualLeftPct !== null ? '50%' : '100%',
+              background: colors.primary,
+              opacity: 0.45,
+            }} />
+            {totalActualLeftPct !== null && (
+              <div style={{
+                position: 'absolute',
+                left: `${totalActualLeftPct}%`,
+                width: `${totalActualWidthPct}%`,
+                top: '50%',
+                height: '50%',
+                background: colors.tertiary,
+                opacity: 0.85,
+              }} />
+            )}
+          </div>
+          <div style={{ width: '36px', flexShrink: 0, fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>
+            {total}d
+          </div>
+        </div>
+      )}
       {nodes.map(n => {
         const leftPct = (n.ganttStart / total) * 100
         const widthPct = Math.max(0.3, (n.ganttDuration / total) * 100)
@@ -76,12 +128,13 @@ export function GanttChart({ nodes, totalDays, states = [], instanceStartDate }:
         let effectiveActualEnd: string | null = null
         if (isParent) {
           const leafDescendants = descendants.filter(did => !childrenOf.has(did))
-          const allLeavesComplete = leafDescendants.length > 0 && leafDescendants.every(did => stateByNode[did]?.actualEnd)
+          const allLeavesComplete = leafDescendants.length > 0 &&
+            leafDescendants.every(did => stateByNode[did]?.actualStart && stateByNode[did]?.actualEnd)
           if (allLeavesComplete) {
-            const starts = leafDescendants.map(did => stateByNode[did]?.actualStart).filter(Boolean) as string[]
-            const ends = leafDescendants.map(did => stateByNode[did]?.actualEnd).filter(Boolean) as string[]
-            effectiveActualStart = starts.length ? [...starts].sort()[0] : null
-            effectiveActualEnd = ends.length ? [...ends].sort().slice(-1)[0] : null
+            const starts = leafDescendants.map(did => stateByNode[did]!.actualStart!)
+            const ends = leafDescendants.map(did => stateByNode[did]!.actualEnd!)
+            effectiveActualStart = [...starts].sort()[0]
+            effectiveActualEnd = [...ends].sort().slice(-1)[0]
           }
         } else {
           effectiveActualStart = state?.actualStart ?? null

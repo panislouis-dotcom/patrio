@@ -8,7 +8,7 @@ INSTANCE_RAW_FIELDS = {
     "name", "startDate", "status", "notes",
     "templateId", "projectId", "ownerId",
     "frequencyDays", "dueDate", "completedAt",
-    "originInstanceId",
+    "originInstanceId", "durationLockedAt",
 }
 
 

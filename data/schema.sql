@@ -155,11 +155,12 @@ CREATE TABLE IF NOT EXISTS process_instances (
   start_date     TEXT NOT NULL,
   due_date       TEXT,
   frequency_days INTEGER,
-  origin_instance_id INTEGER REFERENCES process_instances(id),
-  completed_at   TEXT,
-  status         TEXT NOT NULL DEFAULT 'active',
-  notes          TEXT NOT NULL DEFAULT '',
-  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  origin_instance_id  INTEGER REFERENCES process_instances(id),
+  completed_at        TEXT,
+  duration_locked_at  TEXT,
+  status              TEXT NOT NULL DEFAULT 'active',
+  notes               TEXT NOT NULL DEFAULT '',
+  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS instance_node_states (

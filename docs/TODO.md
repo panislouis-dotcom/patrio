@@ -1,17 +1,34 @@
 # TODO
-- ciclos / tareas
-    poner cosas que hacemos periodicamente no asignadas a un proyecto
-- procesos
+- en procesos, tab de mis tareas. puede solo ser un filtro adicional
+- agregar mi equipo. Todos los que estan bajo de ti en organigrama. sub filtro por proyecto o persona
+- desglose de distribucion de ganancias
+    - finders fee, responsable de proyecto, lider de equipo, maestro, ayudante
+    - bonos: extra 50% si no se usa colchon extra 25% si se usa menos de medio colchon
 - inversionistas
 - inversiones* relacionados a un client y a un proyecto
     - interes, compsomiso, inversion.
     - como diferencias prospectos de propiedades y de inversionistas
+- add auth, user types and user type based experience
+    - team and investors automatically have account.
+    - eduardo and panis seeded
+- poder subir oportunidades facil
+- change to postgres
+- deploy to vm
+- fix sonar
+    - sonar tab de prospects
 - estados de cuenta? PNL? Finanzas?
     - como seria el cierre del mes?
+    - numero de oprtunidades, proyectos y nuevas
 - reportes
     - Se pueden enviar a inversionistas y a equipo
 - home. resumen de todo
-- poder subir oportunidades facil
-- deploy to vm
-- fix sonar
-- add auth, user types and user type based experience
+
+- poder ligar tarea de proyecto no solo crear
+- como considerar colchon en todo esto?
+    - tal vez una tarea de COLCHON? que puedes sumar o restar dias
+    - Si cambio colchon deberian de cambiar datos, metricas, profit split en proeycto automaticamente
+- pagina para equipo administrar trabajo
+    - director hace login y dashboard con nombres de equipo aparecen
+    - team puede picar nombre y con pin ver dashboard con su info
+    - have favorites in that session that sort up for easy access
+    - it could be a tareas view that is simpler

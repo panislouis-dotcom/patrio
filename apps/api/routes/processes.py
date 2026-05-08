@@ -62,6 +62,7 @@ class InstanceUpdate(BaseModel):
     ownerId: Optional[int] = None
     dueDate: Optional[str] = None
     frequencyDays: Optional[int] = None
+    durationLockedAt: Optional[str] = None
 
 class NodeStateUpdate(BaseModel):
     status: Optional[str] = None
@@ -69,6 +70,7 @@ class NodeStateUpdate(BaseModel):
     actualStart: Optional[str] = None
     actualEnd: Optional[str] = None
     notes: Optional[str] = None
+    durationOverrideDays: Optional[int] = None
 
 class CommentCreate(BaseModel):
     body: str

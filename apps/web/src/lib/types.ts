@@ -164,6 +164,7 @@ export interface ProcessInstance {
   frequencyDays: number | null
   completedAt: string | null
   originInstanceId: number | null
+  durationLockedAt: string | null
   status: string
   notes: string
   createdAt: string

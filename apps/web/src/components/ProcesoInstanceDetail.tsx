@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchInstanceDetail, updateNodeState, fetchTeam, updateInstance, uploadInstanceFile, deleteInstanceFile } from '../lib/api'
 import type { InstanceDetail, GanttNode, NodeState, TeamMember, InstanceFile } from '../lib/types'
@@ -16,7 +16,6 @@ export function ProcesoInstanceDetail() {
 
   const [detail, setDetail] = useState<InstanceDetail | null>(null)
   const [team, setTeam] = useState<TeamMember[]>([])
-  const [states, setStates] = useState<NodeState[]>([])
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
   const [localOwnerId, setLocalOwnerId] = useState<number | null>(null)
@@ -35,7 +34,6 @@ export function ProcesoInstanceDetail() {
   useEffect(() => {
     Promise.all([fetchInstanceDetail(instanceId), fetchTeam()]).then(([d, t]) => {
       setDetail(d)
-      setStates(d.states)
       setTeam(t)
       setLocalOwnerId(d.instance.ownerId ?? null)
       setLoading(false)
@@ -48,13 +46,8 @@ export function ProcesoInstanceDetail() {
     setFiles((detail as InstanceDetail & { files: InstanceFile[] }).files ?? [])
   }, [detail?.instance.id])
 
-  const getState = useCallback((nodeId: number): NodeState | undefined => {
-    return states.find(s => s.templateNodeId === nodeId)
-  }, [states])
-
-  function getDescendants(nodeId: number, allNodes: GanttNode[]): number[] {
-    const children = allNodes.filter(n => n.parentId === nodeId)
-    return children.flatMap(c => [c.id, ...getDescendants(c.id, allNodes)])
+  function getState(nodeId: number): NodeState | undefined {
+    return detail?.states.find(s => s.templateNodeId === nodeId)
   }
 
   const childMap = useMemo(() => {
@@ -109,34 +102,42 @@ export function ProcesoInstanceDetail() {
     await updateInstance(instanceId, { ownerId })
   }
 
+  async function toggleDurationLock() {
+    if (!detail) return
+    const newVal = detail.instance.durationLockedAt
+      ? null
+      : new Date().toISOString().slice(0, 10)
+    const result = await updateInstance(instanceId, { durationLockedAt: newVal })
+    setDetail(prev => prev ? { ...prev, instance: result.instance } : prev)
+  }
+
   async function handleStateChange(nodeId: number, field: string, value: string | number | null) {
     const allNodes = detail?.nodes ?? []
     const targets = field === 'status' || field === 'assigneeId'
-      ? [nodeId, ...getDescendants(nodeId, allNodes)]
+      ? [nodeId, ...getDescendantIds(nodeId, allNodes)]
       : [nodeId]
 
     const results = await Promise.all(
       targets.map(id => updateNodeState(instanceId, id, { [field]: value }))
     )
 
-    setStates(prev => {
-      let next = [...prev]
+    // Optimistic: patch detail.states in place so GanttChart re-renders immediately
+    setDetail(prev => {
+      if (!prev) return prev
+      let states = [...prev.states]
       for (const updated of results) {
-        const exists = next.find(s => s.templateNodeId === updated.templateNodeId)
-        if (exists) {
-          next = next.map(s => s.templateNodeId === updated.templateNodeId ? updated : s)
-        } else {
-          next = [...next, updated]
-        }
+        const idx = states.findIndex(s => s.templateNodeId === updated.templateNodeId)
+        states = idx >= 0
+          ? states.map((s, i) => i === idx ? updated : s)
+          : [...states, updated]
       }
-      return next
+      return { ...prev, states }
     })
 
-    // Duration overrides change Gantt bar positions — refetch to get recomputed layout.
-    if (field === 'durationOverrideDays') {
+    // For fields that shift Gantt bar positions, refetch server-recomputed nodes + states
+    if (field === 'durationOverrideDays' || field === 'actualEnd' || field === 'actualStart') {
       const refreshed = await fetchInstanceDetail(instanceId)
-      setDetail(prev => prev ? { ...prev, nodes: refreshed.nodes } : prev)
-      setStates(refreshed.states)
+      setDetail(prev => prev ? { ...prev, nodes: refreshed.nodes, states: refreshed.states } : prev)
     }
   }
 
@@ -279,6 +280,28 @@ export function ProcesoInstanceDetail() {
             />
           </span>
           <span style={{ color: colors.border }}>·</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            Vence:
+            <input
+              type="date"
+              value={detail.instance.dueDate ?? ''}
+              onChange={async e => {
+                const result = await updateInstance(detail.instance.id, { dueDate: e.target.value || null })
+                setDetail(prev => prev ? { ...prev, instance: result.instance } : prev)
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                borderBottom: `1px solid ${colors.border}`,
+                color: colors.secondary,
+                fontFamily: fonts.label,
+                fontSize: '10px',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            />
+          </span>
+          <span style={{ color: colors.border }}>·</span>
           <span style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', color: colors.secondary }}>{instance.templateName}</span>
           {instance.projectName && (
             <>
@@ -316,7 +339,7 @@ export function ProcesoInstanceDetail() {
             <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '12px' }}>
               CRONOGRAMA
             </div>
-            <GanttChart nodes={nodes} totalDays={totalDays} states={states} instanceStartDate={detail.instance.startDate} />
+            <GanttChart nodes={nodes} totalDays={totalDays} states={detail.states} instanceStartDate={detail.instance.startDate} />
           </div>
 
           {/* Focus breadcrumb */}
@@ -359,7 +382,25 @@ export function ProcesoInstanceDetail() {
                       {h}
                     </th>
                   ))}
-                  <th style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '10px', color: colors.secondary }}>DÍ/INST</th>
+                  <th style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                          onClick={toggleDurationLock}
+                          title={detail.instance.durationLockedAt ? 'Desbloquear duraciones' : 'Bloquear duraciones'}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: detail.instance.durationLockedAt ? colors.primary : colors.secondary, fontSize: '11px', lineHeight: 1 }}
+                        >
+                          {detail.instance.durationLockedAt ? '🔒' : '🔓'}
+                        </button>
+                        DÍ/INST
+                      </div>
+                      {detail.instance.durationLockedAt && (
+                        <div style={{ fontSize: '8px', color: colors.secondary, letterSpacing: '0.04em' }}>
+                          {detail.instance.durationLockedAt}
+                        </div>
+                      )}
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -465,6 +506,7 @@ export function ProcesoInstanceDetail() {
                             min={1}
                             placeholder={n.durationDays != null ? String(n.durationDays) : '?'}
                             value={s?.durationOverrideDays ?? ''}
+                            disabled={!!detail.instance.durationLockedAt}
                             onChange={e => {
                               const val = e.target.value === '' ? null : Number(e.target.value)
                               handleStateChange(n.id, 'durationOverrideDays', val)
@@ -478,6 +520,8 @@ export function ProcesoInstanceDetail() {
                               fontSize: '11px',
                               padding: '2px 4px',
                               textAlign: 'right',
+                              opacity: detail.instance.durationLockedAt ? 0.4 : 1,
+                              cursor: detail.instance.durationLockedAt ? 'not-allowed' : 'auto',
                             }}
                           />
                         )}
