@@ -15,7 +15,11 @@ const prospectoSubTabs = [
   { path: '/prospectos/mapa', label: 'MAPA' },
 ]
 
-export function TabBar() {
+interface TabBarProps {
+  onLogout?: () => void
+}
+
+export function TabBar({ onLogout }: TabBarProps) {
   const location = useLocation()
   const inProspectos = location.pathname.startsWith('/prospectos')
 
@@ -58,6 +62,25 @@ export function TabBar() {
             {label}
           </NavLink>
         ))}
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            style={{
+              marginLeft: 'auto',
+              background: 'transparent',
+              border: 'none',
+              color: colors.secondary,
+              cursor: 'pointer',
+              fontFamily: fonts.label,
+              fontSize: '9px',
+              letterSpacing: '0.1em',
+              padding: '0 16px',
+              transition: 'color 0.15s',
+            }}
+          >
+            SALIR
+          </button>
+        )}
       </div>
       {inProspectos && (
         <div style={{
