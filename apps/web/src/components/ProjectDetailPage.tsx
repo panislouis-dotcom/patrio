@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProject, updateProject, fetchInstances, fetchTeam, fetchProjectInvestors, fetchInvestors, upsertProjectInvestor, deleteProjectInvestor } from '../lib/api'
-import type { Project, ProcessInstance, TeamMember, ProjectInvestor, Investor } from '../lib/types'
+import { fetchProject, updateProject, fetchInstances, fetchTeam, fetchProjectInvestors, fetchInvestors, upsertProjectInvestor, deleteProjectInvestor, fetchProjectProfit } from '../lib/api'
+import type { Project, ProcessInstance, TeamMember, ProjectInvestor, Investor, ProfitWaterfall } from '../lib/types'
 import { ProjectProfitSection } from './ProjectProfitSection'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
@@ -44,6 +44,8 @@ export function ProjectDetailPage() {
   const [editFunded, setEditFunded] = useState<string>('')
   const [editRate, setEditRate] = useState<string>('12')
   const [savingInvestorId, setSavingInvestorId] = useState<number | null>(null)
+  const [rightTab, setRightTab] = useState<'proyecto' | 'finanzas'>('proyecto')
+  const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
 
   useEffect(() => {
     fetchProject(projectId).then(p => {
@@ -55,6 +57,7 @@ export function ProjectDetailPage() {
     fetchTeam().then(setTeam)
     fetchProjectInvestors(projectId).then(setProjectInvestors)
     fetchInvestors().then(setAllInvestors)
+    fetchProjectProfit(projectId).then(({ waterfall }) => { setWaterfall(waterfall) })
   }, [projectId])
 
   const field = (key: keyof Project) => (edits as Record<string, unknown>)[key] ?? (project ? (project as unknown as Record<string, unknown>)[key] : undefined)
@@ -398,14 +401,35 @@ export function ProjectDetailPage() {
           )}
         </div>
 
-        {/* ── RIGHT: Presupuesto + Hitos + Notas ── */}
+        {/* ── RIGHT: Tabbed (PROYECTO / FINANZAS) ── */}
         <div style={{
           ...fade(240),
           borderLeft: `1px solid ${colors.border}`,
-          overflowY: 'auto',
-          padding: '20px',
-          scrollbarWidth: 'none',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         }}>
+
+          {/* Tab bar */}
+          <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
+            {(['proyecto', 'finanzas'] as const).map(tab => (
+              <button key={tab} onClick={() => setRightTab(tab)} style={{
+                background: 'transparent', border: 'none',
+                borderBottom: rightTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
+                color: rightTab === tab ? colors.neutral : colors.secondary,
+                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
+                letterSpacing: '0.12em', padding: '10px 16px 8px', marginBottom: '-1px',
+              }}>
+                {tab.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* Scrollable content */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
+
+          {/* ── PROYECTO tab ── */}
+          {rightTab === 'proyecto' && (<>
 
           {/* Presupuesto */}
           {Object.keys(budget).length > 0 && (
@@ -496,118 +520,6 @@ export function ProjectDetailPage() {
             </div>
           )}
 
-          {/* INVERSIONISTAS */}
-          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '20px', marginTop: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em' }}>INVERSIONISTAS</span>
-              <button
-                onClick={() => { setShowAddInvestor(v => !v); setEditingInvestorId(null) }}
-                style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: '2px 8px' }}
-              >
-                {showAddInvestor ? '✕' : '+ AGREGAR'}
-              </button>
-            </div>
-
-            {/* Summary strip */}
-            {projectInvestors.length > 0 && (
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '10px', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em' }}>
-                <span style={{ color: colors.secondary }}>INT <span style={{ color: colors.neutral }}>{fmt(projectInvestors.reduce((s, p) => s + p.interestedAmount, 0))}</span></span>
-                <span style={{ color: colors.secondary }}>COMP <span style={{ color: colors.tertiary }}>{fmt(projectInvestors.reduce((s, p) => s + p.committedAmount, 0))}</span></span>
-                <span style={{ color: colors.secondary }}>FOND <span style={{ color: colors.primary }}>{fmt(projectInvestors.reduce((s, p) => s + p.fundedAmount, 0))}</span></span>
-              </div>
-            )}
-
-            {/* Add form */}
-            {showAddInvestor && (() => {
-              const iStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 6px', outline: 'none' }
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px', padding: '10px', background: colors.surface, border: `1px solid ${colors.border}` }}>
-                  <select value={addInvestorId} onChange={e => setAddInvestorId(e.target.value)} style={iStyle}>
-                    <option value="">— seleccionar inversionista —</option>
-                    {allInvestors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
-                  </select>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 60px', gap: '6px' }}>
-                    {([['Interesado', addInterested, setAddInterested], ['Comprometido', addCommitted, setAddCommitted], ['Fondeado', addFunded, setAddFunded]] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
-                      <div key={label}>
-                        <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-                        <input type="number" value={val} onChange={e => setter(e.target.value)} placeholder="0" style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
-                      </div>
-                    ))}
-                    <div>
-                      <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>TASA %</div>
-                      <input type="number" value={addRate} onChange={e => setAddRate(e.target.value)} style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleAddInvestor}
-                    disabled={!addInvestorId || addingInvestor}
-                    style={{ background: !addInvestorId ? colors.border : colors.primary, border: 'none', color: colors.neutral, cursor: !addInvestorId ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '5px 12px', opacity: addingInvestor ? 0.6 : 1 }}
-                  >
-                    {addingInvestor ? 'GUARDANDO…' : 'AGREGAR'}
-                  </button>
-                </div>
-              )
-            })()}
-
-            {/* Investors table */}
-            {projectInvestors.length === 0 && !showAddInvestor ? (
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Sin inversionistas registrados.</div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                    {(['NOMBRE', 'INTERESADO', 'COMPROMETIDO', 'FONDEADO', 'TASA', ''] as string[]).map(h => (
-                      <th key={h} style={{ padding: '4px 6px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, textAlign: h === 'NOMBRE' ? 'left' : 'right', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {projectInvestors.map(pi => {
-                    const isEditing = editingInvestorId === pi.investorId
-                    const isSaving = savingInvestorId === pi.investorId
-                    const eStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 5px', outline: 'none', width: '72px', textAlign: 'right' }
-                    return (
-                      <tr key={pi.investorId} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                        <td style={{ padding: '5px 6px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{pi.investorName}</td>
-                        {isEditing ? (
-                          <>
-                            <td style={{ padding: '5px 6px', textAlign: 'right' }}><input type="number" value={editInterested} onChange={e => setEditInterested(e.target.value)} style={eStyle} /></td>
-                            <td style={{ padding: '5px 6px', textAlign: 'right' }}><input type="number" value={editCommitted} onChange={e => setEditCommitted(e.target.value)} style={eStyle} /></td>
-                            <td style={{ padding: '5px 6px', textAlign: 'right' }}><input type="number" value={editFunded} onChange={e => setEditFunded(e.target.value)} style={eStyle} /></td>
-                            <td style={{ padding: '5px 6px', textAlign: 'right' }}><input type="number" value={editRate} onChange={e => setEditRate(e.target.value)} style={{ ...eStyle, width: '44px' }} /></td>
-                            <td style={{ padding: '5px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              <button onClick={() => handleSaveEditInvestor(pi.investorId)} disabled={isSaving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 7px', marginRight: '3px', opacity: isSaving ? 0.6 : 1 }}>{isSaving ? '…' : 'OK'}</button>
-                              <button onClick={() => setEditingInvestorId(null)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '2px 5px' }}>✕</button>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td style={{ padding: '5px 6px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.interestedAmount ? fmt(pi.interestedAmount) : '—'}</td>
-                            <td style={{ padding: '5px 6px', fontFamily: fonts.sans, fontSize: '11px', color: pi.committedAmount ? colors.tertiary : colors.secondary, textAlign: 'right' }}>{pi.committedAmount ? fmt(pi.committedAmount) : '—'}</td>
-                            <td style={{ padding: '5px 6px', fontFamily: fonts.sans, fontSize: '11px', color: pi.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? fmt(pi.fundedAmount) : '—'}</td>
-                            <td style={{ padding: '5px 6px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{Math.round(pi.interestRateAnnual * 100)}%</td>
-                            <td style={{ padding: '5px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              <button onClick={() => startEditInvestor(pi)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.05em', padding: '2px 7px', marginRight: '3px' }}>EDITAR</button>
-                              <button
-                            onClick={() => handleRemoveInvestor(pi.investorId)}
-                            style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '0 2px' }}
-                          >
-                            ✕
-                          </button>
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* GANANCIA / PROFIT */}
-          <ProjectProfitSection projectId={project.id} team={team} />
-
           {/* TAREAS */}
           <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '24px', marginTop: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -649,8 +561,148 @@ export function ProjectDetailPage() {
               </table>
             )}
           </div>
-        </div>
+
+          </>)}
+
+          {/* ── FINANZAS tab ── */}
+          {rightTab === 'finanzas' && (<>
+
+          {/* FLUJO FINANCIERO */}
+          {waterfall && (() => {
+            const isrPct = waterfall.operatorGross > 0 ? Math.round(waterfall.isr / waterfall.operatorGross * 100) : 0
+            const rowS: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${colors.border}` }
+            const lblS: React.CSSProperties = { fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }
+            const valS: React.CSSProperties = { fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }
+            const totLblS: React.CSSProperties = { fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.neutral }
+            const totValS: React.CSSProperties = { fontFamily: fonts.sans, fontSize: '12px', color: colors.primary, fontWeight: 700 }
+            return (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>FLUJO FINANCIERO</div>
+                <div style={rowS}><span style={lblS}>PRECIO DE SALIDA</span><span style={valS}>{fmt(waterfall.exitPrice)}</span></div>
+                <div style={rowS}><span style={lblS}>− INVERSIÓN TOTAL</span><span style={valS}>{fmt(waterfall.investment)}</span></div>
+                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA BRUTA</span><span style={valS}>{fmt(waterfall.grossProfit)}</span></div>
+                <div style={rowS}><span style={lblS}>− CUOTA INVERSORES</span><span style={valS}>{fmt(waterfall.investorCuota)}</span></div>
+                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA OPERADOR</span><span style={valS}>{fmt(waterfall.operatorGross)}</span></div>
+                <div style={rowS}><span style={lblS}>− ISR ({isrPct}%)</span><span style={valS}>{fmt(waterfall.isr)}</span></div>
+                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px', borderBottom: 'none' }}><span style={totLblS}>DISTRIBUIBLE</span><span style={totValS}>{fmt(waterfall.distributable)}</span></div>
+              </div>
+            )
+          })()}
+
+          {/* INVERSIONISTAS */}
+          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em' }}>
+                INVERSIONISTAS{waterfall ? ` (${waterfall.months} meses)` : ''}
+              </span>
+              <button
+                onClick={() => { setShowAddInvestor(v => !v); setEditingInvestorId(null) }}
+                style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: '2px 8px' }}
+              >
+                {showAddInvestor ? '✕' : '+ AGREGAR'}
+              </button>
+            </div>
+
+            {/* Add form */}
+            {showAddInvestor && (() => {
+              const iStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 6px', outline: 'none' }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px', padding: '10px', background: colors.surface, border: `1px solid ${colors.border}` }}>
+                  <select value={addInvestorId} onChange={e => setAddInvestorId(e.target.value)} style={iStyle}>
+                    <option value="">— seleccionar inversionista —</option>
+                    {allInvestors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+                  </select>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 60px', gap: '6px' }}>
+                    {([['Fondeado', addFunded, setAddFunded], ['Interesado', addInterested, setAddInterested]] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
+                      <div key={label}>
+                        <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+                        <input type="number" value={val} onChange={e => setter(e.target.value)} placeholder="0" style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
+                      </div>
+                    ))}
+                    <div>
+                      <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>TASA %</div>
+                      <input type="number" value={addRate} onChange={e => setAddRate(e.target.value)} style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleAddInvestor}
+                    disabled={!addInvestorId || addingInvestor}
+                    style={{ background: !addInvestorId ? colors.border : colors.primary, border: 'none', color: colors.neutral, cursor: !addInvestorId ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '5px 12px', opacity: addingInvestor ? 0.6 : 1 }}
+                  >
+                    {addingInvestor ? 'GUARDANDO…' : 'AGREGAR'}
+                  </button>
+                </div>
+              )
+            })()}
+
+            {/* Investors table: NOMBRE | FONDEADO | TASA | CUOTA | TOTAL | actions */}
+            {projectInvestors.length === 0 && !showAddInvestor ? (
+              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Sin inversionistas registrados.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    {(['NOMBRE', 'FONDEADO', 'TASA', 'CUOTA', 'TOTAL', ''] as string[]).map(h => (
+                      <th key={h} style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, textAlign: h === 'NOMBRE' ? 'left' : 'right', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectInvestors.map(pi => {
+                    const isEditing = editingInvestorId === pi.investorId
+                    const isSaving = savingInvestorId === pi.investorId
+                    const months = waterfall?.months ?? project.holdMonthsActual ?? 12
+                    const cuota = pi.fundedAmount * pi.interestRateAnnual * (months / 12)
+                    const total = pi.fundedAmount + cuota
+                    const eStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 5px', outline: 'none', width: '60px', textAlign: 'right' }
+                    return (
+                      <tr key={pi.investorId} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                        <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, whiteSpace: 'nowrap' }}>{pi.investorName}</td>
+                        {isEditing ? (
+                          <>
+                            <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editFunded} onChange={e => setEditFunded(e.target.value)} style={eStyle} /></td>
+                            <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editRate} onChange={e => setEditRate(e.target.value)} style={{ ...eStyle, width: '44px' }} /></td>
+                            <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
+                            <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
+                            <td style={{ padding: '4px 5px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <button onClick={() => handleSaveEditInvestor(pi.investorId)} disabled={isSaving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 7px', marginRight: '3px', opacity: isSaving ? 0.6 : 1 }}>{isSaving ? '…' : 'OK'}</button>
+                              <button onClick={() => setEditingInvestorId(null)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '2px 5px' }}>✕</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? fmt(pi.fundedAmount) : '—'}</td>
+                            <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{Math.round(pi.interestRateAnnual * 100)}%</td>
+                            <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmt(cuota) : '—'}</td>
+                            <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmt(total) : '—'}</td>
+                            <td style={{ padding: '5px 5px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <button onClick={() => startEditInvestor(pi)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.05em', padding: '2px 6px', marginRight: '3px' }}>EDITAR</button>
+                              <button onClick={() => handleRemoveInvestor(pi.investorId)} style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '0 2px' }}>✕</button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* GANANCIA / PROFIT */}
+          <ProjectProfitSection
+            projectId={project.id}
+            team={team}
+            showWaterfall={false}
+            showInvestorBreakdown={false}
+            onWaterfallChange={w => setWaterfall(w)}
+          />
+
+          </>)}
+
+          </div>
       </div>
     </div>
+  </div>
   )
 }

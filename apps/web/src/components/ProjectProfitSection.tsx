@@ -53,11 +53,14 @@ const selectStyle: React.CSSProperties = {
 interface Props {
   projectId: number
   team: TeamMember[]
+  showWaterfall?: boolean
+  showInvestorBreakdown?: boolean
+  onWaterfallChange?: (w: ProfitWaterfall) => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ProjectProfitSection({ projectId, team }: Props) {
+export function ProjectProfitSection({ projectId, team, showWaterfall = true, showInvestorBreakdown = true, onWaterfallChange }: Props) {
   const [config, setConfig] = useState<ProfitSplitConfig | null>(null)
   const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
   const [loading, setLoading] = useState(true)
@@ -86,6 +89,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
     fetchProjectProfit(projectId).then(({ config, waterfall }) => {
       setConfig(config)
       setWaterfall(waterfall)
+      onWaterfallChange?.(waterfall)
       setFinderFeePct(String(Math.round(config.finderFeePct * 100)))
       setDirectorPct(String(Math.round(config.directorPct * 100)))
       setResponsablePct(String(Math.round(config.responsablePct * 100)))
@@ -127,6 +131,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
       const result = await updateProjectProfit(projectId, draft)
       setConfig(result.config)
       setWaterfall(result.waterfall)
+      onWaterfallChange?.(result.waterfall)
       setSaveError(null)
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Error al guardar')
@@ -172,7 +177,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
     <div style={{ padding: '0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
       {/* ── FLUJO FINANCIERO ─────────────────────────────────────────────────── */}
-      <div>
+      {showWaterfall && <div>
         {sectionDivider('FLUJO FINANCIERO')}
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <tbody>
@@ -196,10 +201,10 @@ export function ProjectProfitSection({ projectId, team }: Props) {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       {/* ── PAGOS A INVERSORES ───────────────────────────────────────────────── */}
-      {waterfall.investorBreakdown.length > 0 && (
+      {showInvestorBreakdown && waterfall.investorBreakdown.length > 0 && (
         <div>
           {sectionDivider(`PAGOS A INVERSORES (${waterfall.months} meses)`)}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
