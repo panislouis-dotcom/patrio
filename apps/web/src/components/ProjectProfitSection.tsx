@@ -103,15 +103,15 @@ export function ProjectProfitSection({ projectId, team }: Props) {
       setWaterfall(waterfall)
       setExitPrice(config.exitPrice != null ? String(config.exitPrice) : '')
       setInvestorCapital(config.investorCapital != null ? String(config.investorCapital) : '')
-      setInvestorRateAnnual(String((config.investorRateAnnual * 100).toFixed(2)))
+      setInvestorRateAnnual(String(Math.round(config.investorRateAnnual * 100)))
       setInvestorMonths(config.investorMonths != null ? String(config.investorMonths) : '')
-      setIsrRate(String((config.isrRate * 100).toFixed(0)))
-      setFinderFeePct(String((config.finderFeePct * 100).toFixed(2)))
-      setDirectorPct(String((config.directorPct * 100).toFixed(2)))
-      setResponsablePct(String((config.responsablePct * 100).toFixed(2)))
-      setLiderPct(String((config.liderPct * 100).toFixed(2)))
-      setMaestroPct(String((config.maestroPct * 100).toFixed(2)))
-      setAyudantePct(String((config.ayudantePct * 100).toFixed(2)))
+      setIsrRate(String(Math.round(config.isrRate * 100)))
+      setFinderFeePct(String(Math.round(config.finderFeePct * 100)))
+      setDirectorPct(String(Math.round(config.directorPct * 100)))
+      setResponsablePct(String(Math.round(config.responsablePct * 100)))
+      setLiderPct(String(Math.round(config.liderPct * 100)))
+      setMaestroPct(String(Math.round(config.maestroPct * 100)))
+      setAyudantePct(String(Math.round(config.ayudantePct * 100)))
       setFinderMemberId(config.finderMemberId != null ? String(config.finderMemberId) : '')
       setResponsableMemberId(config.responsableMemberId != null ? String(config.responsableMemberId) : '')
       setLiderMemberId(config.liderMemberId != null ? String(config.liderMemberId) : '')
@@ -264,7 +264,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
               value={investorRateAnnual}
               onChange={e => setInvestorRateAnnual(e.target.value)}
               placeholder="12.00"
-              step="0.01"
+              step="1"
               style={inputStyle}
             />
           </div>
@@ -384,7 +384,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                 type="number"
                 value={finderFeePct}
                 onChange={e => setFinderFeePct(e.target.value)}
-                step="0.01"
+                step="1"
                 style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
               />
               <span style={{ ...labelStyle }}>%</span>
@@ -411,7 +411,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
               type="number"
               value={directorPct}
               onChange={e => setDirectorPct(e.target.value)}
-              step="0.01"
+              step="1"
               style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
             />
             <span style={{ ...labelStyle }}>%</span>
@@ -428,7 +428,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                 type="number"
                 value={responsablePct}
                 onChange={e => setResponsablePct(e.target.value)}
-                step="0.01"
+                step="1"
                 style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
               />
               <span style={{ ...labelStyle }}>%</span>
@@ -456,7 +456,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                 type="number"
                 value={liderPct}
                 onChange={e => setLiderPct(e.target.value)}
-                step="0.01"
+                step="1"
                 style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
               />
               <span style={{ ...labelStyle }}>%</span>
@@ -484,7 +484,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                 type="number"
                 value={maestroPct}
                 onChange={e => setMaestroPct(e.target.value)}
-                step="0.01"
+                step="1"
                 style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
               />
               <span style={{ ...labelStyle }}>%</span>
@@ -526,7 +526,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                 type="number"
                 value={ayudantePct}
                 onChange={e => setAyudantePct(e.target.value)}
-                step="0.01"
+                step="1"
                 style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
               />
               <span style={{ ...labelStyle }}>%</span>
