@@ -1,5 +1,4 @@
 # TODO
-- agregar mi equipo. Todos los que estan bajo de ti en organigrama. sub filtro por proyecto o persona
 - desglose de distribucion de ganancias
     - finders fee, responsable de proyecto, lider de equipo, maestro, ayudante
     - bonos: extra 50% si no se usa colchon extra 25% si se usa menos de medio colchon
