@@ -1,21 +1,54 @@
-import sqlite3
 import json
+import os
 from contextlib import contextmanager
 from datetime import datetime, date
-from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent.parent / "data" / "refigan.db"
+import psycopg2
+import psycopg2.extras
+from psycopg2.pool import ThreadedConnectionPool
+from dotenv import load_dotenv
+
+load_dotenv()
+
+_pool: ThreadedConnectionPool | None = None
+
+
+def _get_pool() -> ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = ThreadedConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=os.environ["DATABASE_URL"],
+        )
+    return _pool
+
+
+class _ConnProxy:
+    """Mimics sqlite3 connection.execute() so all db functions work unchanged."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql: str, params=None):
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, params or ())
+        return cur
 
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
-        yield conn
+        conn.autocommit = False
+        yield _ConnProxy(conn)
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-        conn.close()
+        pool.putconn(conn)
 
 
 PROSPECTS_QUERY = """
@@ -76,7 +109,9 @@ def _camel_to_snake(name: str) -> str:
     return "".join(result)
 
 
-def _row_to_dict(row: sqlite3.Row) -> dict:
+def _row_to_dict(row) -> dict | None:
+    if row is None:
+        return None
     return {_snake_to_camel(k): v for k, v in dict(row).items()}
 
 
@@ -137,7 +172,7 @@ PROJECTS_RAW_FIELDS = {
 }
 
 
-def _parse_project(row: sqlite3.Row) -> dict:
+def _parse_project(row) -> dict:
     """Convert a projects row into a camelCase dict with computed fields."""
     d = _row_to_dict(row)
 
@@ -381,7 +416,7 @@ def _get_signal(signal_id: int) -> dict | None:
 
 # ─── Team members ─────────────────────────────────
 
-TEAM_RAW_FIELDS = {"name", "role", "managerId", "notes"}
+TEAM_RAW_FIELDS = {"name", "role", "managerId", "email", "notes"}
 
 
 def get_team_members() -> list[dict]:
@@ -399,8 +434,8 @@ def get_team_member(member_id: int) -> dict | None:
 def create_team_member(data: dict) -> dict:
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO team_members (name, role, manager_id, notes) VALUES (?, ?, ?, ?)",
-            (data["name"], data["role"], data.get("managerId"), data.get("notes", ""))
+            "INSERT INTO team_members (name, role, manager_id, email, notes) VALUES (?, ?, ?, ?, ?)",
+            (data["name"], data["role"], data.get("managerId"), data.get("email", ""), data.get("notes", ""))
         )
         member_id = cur.lastrowid
     return get_team_member(member_id)
