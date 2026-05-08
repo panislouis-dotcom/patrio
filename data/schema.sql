@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS projects (
   status            TEXT NOT NULL CHECK (status != ''),                -- prospect | construction | stabilizing | operating | exited
   total_units       INTEGER NOT NULL,
   acquisition_date  TEXT NOT NULL CHECK (acquisition_date != ''),      -- YYYY-MM
-  first_rent_date   TEXT NOT NULL CHECK (first_rent_date != ''),       -- YYYY-MM
+  conclusion_date   TEXT NOT NULL CHECK (conclusion_date != ''),       -- YYYY-MM (primera renta o venta)
   total_investment  REAL NOT NULL,
   current_valuation REAL NOT NULL,
   valuation_date    TEXT NOT NULL CHECK (valuation_date != ''),        -- YYYY-MM
