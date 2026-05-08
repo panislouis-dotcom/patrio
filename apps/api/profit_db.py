@@ -271,15 +271,29 @@ def _compute_splits_for_tier(
     return {"splits": splits, "companyResidual": company_residual}
 
 
-def compute_waterfall(project: dict, config: dict, team: list[dict]) -> dict:
+def compute_waterfall(project: dict, config: dict, team: list[dict], project_investors: list[dict] = None) -> dict:
     investment = project.get("totalInvestment") or 0
     exit_price = config.get("exitPrice") or project.get("currentValuation") or 0
     months = config.get("investorMonths") or project.get("holdMonthsActual") or 12
-    investor_capital = config.get("investorCapital") or investment
-    rate = config.get("investorRateAnnual") or 0.12
     isr_rate = config.get("isrRate") or 0.30
 
-    investor_cuota = investor_capital * rate * (months / 12)
+    # Investor cuota: use manual override if set; otherwise sum from fondeado project_investors
+    if config.get("investorCapital"):
+        investor_capital = config["investorCapital"]
+        rate = config.get("investorRateAnnual") or 0.12
+        investor_cuota = investor_capital * rate * (months / 12)
+    else:
+        fondeados = [pi for pi in (project_investors or []) if pi.get("status") == "fondeado"]
+        investor_capital = sum(pi.get("fundedAmount", 0) for pi in fondeados)
+        investor_cuota = sum(
+            pi.get("fundedAmount", 0) * pi.get("interestRateAnnual", 0.12) * (months / 12)
+            for pi in fondeados
+        )
+        if not fondeados:
+            # fallback: use investment as capital with default rate (original behavior)
+            investor_capital = investment
+            rate = config.get("investorRateAnnual") or 0.12
+            investor_cuota = investor_capital * rate * (months / 12)
     gross_profit = exit_price - investment
     operator_gross = gross_profit - investor_cuota
     isr = max(0, operator_gross * isr_rate)

@@ -7,6 +7,7 @@ from api.profit_db import (
     compute_waterfall,
 )
 from api.db import get_project, get_team_members
+from api.investor_db import get_project_investors
 
 router = APIRouter()
 
@@ -53,7 +54,8 @@ def get_project_profit_route(project_id: int):
         raise HTTPException(status_code=404, detail="Project not found")
     team = get_team_members()
     config = get_project_profit(project_id)
-    waterfall = compute_waterfall(project, config, team)
+    project_investors_data = get_project_investors(project_id)
+    waterfall = compute_waterfall(project, config, team, project_investors_data)
     return {"config": config, "waterfall": waterfall}
 
 
@@ -64,5 +66,6 @@ def update_project_profit_route(project_id: int, body: ProfitConfigUpdate):
         raise HTTPException(status_code=404, detail="Project not found")
     config = upsert_project_profit(project_id, body.model_dump(exclude_unset=True))
     team = get_team_members()
-    waterfall = compute_waterfall(project, config, team)
+    project_investors_data = get_project_investors(project_id)
+    waterfall = compute_waterfall(project, config, team, project_investors_data)
     return {"config": config, "waterfall": waterfall}
