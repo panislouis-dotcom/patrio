@@ -407,7 +407,7 @@ export function ProjectDetailPage() {
           )}
 
           {/* GANANCIA / PROFIT */}
-          <ProjectProfitSection projectId={project.id} team={team} conclusionDate={project.conclusionDate ?? null} />
+          <ProjectProfitSection projectId={project.id} team={team} />
 
           {/* TAREAS */}
           <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '24px', marginTop: '20px' }}>
