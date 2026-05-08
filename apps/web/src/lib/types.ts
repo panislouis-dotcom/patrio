@@ -283,3 +283,29 @@ export interface ProfitWaterfall {
     bono_50: ProfitScenario
   }
 }
+
+export interface Investor {
+  id: number
+  name: string
+  email: string
+  phone: string
+  notes: string
+  createdAt: string
+  totalInterested: number
+  totalCommitted: number
+  totalFunded: number
+}
+
+export interface ProjectInvestor {
+  id: number
+  projectId: number
+  investorId: number
+  investorName: string
+  status: 'interesado' | 'comprometido' | 'fondeado'
+  interestedAmount: number
+  committedAmount: number
+  fundedAmount: number
+  interestRateAnnual: number
+  notes: string
+  createdAt: string
+}

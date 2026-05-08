@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor } from './types'
 
 const BASE = 'http://localhost:8000'
 
@@ -396,4 +396,81 @@ export async function updateProjectProfit(pid: number, data: Partial<ProfitSplit
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
+}
+
+// ─── Investors ────────────────────────────────────────────────────────────────
+
+export async function fetchInvestors(): Promise<Investor[]> {
+  const res = await fetch(`${BASE}/api/investors`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchInvestor(id: number): Promise<Investor & { positions: ProjectInvestor[] }> {
+  const res = await fetch(`${BASE}/api/investors/${id}`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function createInvestor(data: Omit<Investor, 'id' | 'createdAt' | 'totalInterested' | 'totalCommitted' | 'totalFunded'>): Promise<Investor> {
+  const res = await fetch(`${BASE}/api/investors`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function updateInvestor(id: number, data: Partial<Pick<Investor, 'name' | 'email' | 'phone' | 'notes'>>): Promise<Investor> {
+  const res = await fetch(`${BASE}/api/investors/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function deleteInvestor(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/api/investors/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+}
+
+export async function fetchProjectInvestors(projectId: number): Promise<ProjectInvestor[]> {
+  const res = await fetch(`${BASE}/api/projects/${projectId}/investors`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function upsertProjectInvestor(
+  projectId: number,
+  data: { investorId: number; status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; notes: string }
+): Promise<ProjectInvestor> {
+  const res = await fetch(`${BASE}/api/projects/${projectId}/investors`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function updateProjectInvestor(
+  projectId: number,
+  investorId: number,
+  data: Partial<{ status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; notes: string }>
+): Promise<ProjectInvestor> {
+  const res = await fetch(`${BASE}/api/projects/${projectId}/investors/${investorId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function deleteProjectInvestor(projectId: number, investorId: number): Promise<void> {
+  const res = await fetch(`${BASE}/api/projects/${projectId}/investors/${investorId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
 }
