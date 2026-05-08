@@ -131,7 +131,7 @@ def compute_bonus_tier(config: dict) -> float:
     planned = config.get("plannedEndDate")
     actual = config.get("actualEndDate")
     buffer = config.get("bufferDays") or 0
-    if not planned or not actual or buffer <= 0:
+    if not planned or not actual or not buffer:
         return 0.0
     p = date.fromisoformat(planned)
     a = date.fromisoformat(actual)
