@@ -1,12 +1,20 @@
-DB  = data/refigan.db
-SQL = data
+DB_URL     ?= $(shell grep DATABASE_URL .env | cut -d= -f2-)
+PG_CTR     ?= refigan-postgres
+PG_USER    ?= postgres
+PG_DB      ?= refigan
+PSQL        = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(PG_DB) --set=ON_ERROR_STOP=on
 
-reset: ## Nuke and rebuild DB from scratch
-	rm -f $(DB)
-	sqlite3 $(DB) < $(SQL)/schema.sql
-	@for f in $$(find $(SQL) -name "seed_*.sql" | sort); do \
+init-db: ## Apply schema to existing database
+	$(PSQL) -f - < data/schema.sql
+
+reset-db: ## Drop and recreate schema
+	$(PSQL) -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+	$(PSQL) -f - < data/schema.sql
+
+seed-db: ## Apply all seed_*.sql files
+	@for f in $$(find data -name "seed_*.sql" | sort); do \
 		printf "  ▸ %-60s" "$$f"; \
-		if out=$$(sqlite3 $(DB) < "$$f" 2>&1); then \
+		if out=$$($(PSQL) -f - < "$$f" 2>&1); then \
 			echo "✓"; \
 		else \
 			echo "✗  FAILED"; \
@@ -15,30 +23,12 @@ reset: ## Nuke and rebuild DB from scratch
 		fi; \
 	done
 
-seed: ## Apply all seed files (additive, no drop)
-	@for f in $$(find $(SQL) -name "seed_*.sql" | sort); do \
-		printf "  ▸ %-60s" "$$f"; \
-		if out=$$(sqlite3 $(DB) < "$$f" 2>&1); then \
-			echo "✓"; \
-		else \
-			echo "✗  FAILED"; \
-			echo "     $$out"; \
-			exit 1; \
-		fi; \
-	done
+create-user: ## Create a user (prompts for email and password)
+	@read -p "Email: " email; read -s -p "Password: " pw; echo; \
+	DATABASE_URL="$(DB_URL)" PYTHONPATH=.:apps python -m api.create_user "$$email" "$$pw"
 
-shell: ## Open interactive SQLite shell
-	sqlite3 $(DB)
-
-show: ## Quick dump of all projects
-	sqlite3 -column -header $(DB) "SELECT id, name, status, total_investment, current_valuation FROM projects;"
-
-prospectus-data: ## Dump raw data used by the prospectus skill
-	@echo "=== PROJECTS ==="
-	@sqlite3 -column -header $(DB) "SELECT name, total_investment, current_valuation, valuation_date, total_units, acquisition_date FROM projects WHERE status IN ('operating','exited');"
-	@echo ""
-	@echo "=== PROSPECTS ==="
-	@sqlite3 -column -header $(DB) "SELECT name, total_investment, projected_sale, profit, roi, cap_rate, rent_monthly, hold_months FROM prospect_metrics WHERE status='evaluating';"
+shell: ## Open psql shell
+	docker exec -it $(PG_CTR) psql -U $(PG_USER) -d $(PG_DB)
 
 api: ## Start FastAPI backend (port 8000)
 	PYTHONPATH=.:apps uvicorn api.main:app --reload
@@ -50,7 +40,6 @@ test: ## Run Python test suite
 	PYTHONPATH=.:apps pytest apps/api/tests/ -v
 
 app: ## Start both API and frontend
-	PYTHONPATH=.:apps uvicorn api.main:app --reload &
-	cd apps/web && npm run dev
+	make -j2 api dev
 
-.DEFAULT_GOAL := reset
+.DEFAULT_GOAL := reset-db
