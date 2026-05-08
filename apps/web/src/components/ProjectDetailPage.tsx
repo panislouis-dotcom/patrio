@@ -192,7 +192,10 @@ export function ProjectDetailPage() {
 
           {divider('FECHAS')}
           {stat('ADQUISICIÓN', field('acquisitionDate') as React.ReactNode)}
-          {project.firstRentDate ? stat('PRIMERA RENTA', field('firstRentDate') as React.ReactNode) : null}
+          {project.conclusionDate ? stat(
+            ['flip', 'land'].includes(project.type) ? 'FECHA DE VENTA' : 'PRIMERA RENTA',
+            field('conclusionDate') as React.ReactNode
+          ) : null}
           {project.valuationDate ? stat('VALUACIÓN', field('valuationDate') as React.ReactNode) : null}
 
           {divider('UBICACIÓN')}
@@ -247,15 +250,15 @@ export function ProjectDetailPage() {
           ))}
 
           {([
-            { key: 'acquisitionDate', label: 'Adquisición (YYYY-MM)' },
-            { key: 'firstRentDate', label: 'Primera renta (YYYY-MM)' },
-            { key: 'valuationDate', label: 'Valuación (YYYY-MM)' },
-          ] as const).map(({ key, label }) => (
+            { key: 'acquisitionDate' as keyof Project, label: 'Adquisición (YYYY-MM)' },
+            { key: 'conclusionDate' as keyof Project, label: (['flip', 'land'].includes(field('type') as string) ? 'Fecha de venta (YYYY-MM)' : 'Primera renta (YYYY-MM)') },
+            { key: 'valuationDate' as keyof Project, label: 'Valuación (YYYY-MM)' },
+          ]).map(({ key, label }) => (
             <div key={key} style={{ marginBottom: '8px' }}>
               <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
               <input
-                value={(field(key as keyof Project) as string) ?? ''}
-                onChange={e => setField(key as keyof Project, e.target.value)}
+                value={(field(key) as string) ?? ''}
+                onChange={e => setField(key, e.target.value)}
                 type="text"
                 placeholder="YYYY-MM"
                 style={fieldInput}
@@ -404,7 +407,7 @@ export function ProjectDetailPage() {
           )}
 
           {/* GANANCIA / PROFIT */}
-          <ProjectProfitSection projectId={project.id} team={team} />
+          <ProjectProfitSection projectId={project.id} team={team} conclusionDate={project.conclusionDate ?? null} />
 
           {/* TAREAS */}
           <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '24px', marginTop: '20px' }}>
