@@ -230,7 +230,7 @@ CREATE TABLE IF NOT EXISTS profit_split_config (
   exit_price            REAL,
   investor_capital      REAL,
   investor_rate_annual  REAL NOT NULL DEFAULT 0.12,
-  investor_months       REAL,                              -- NULL → use project holdMonthsActual
+  investor_months       REAL,                              -- NULL → use actual project hold duration
   isr_rate              REAL NOT NULL DEFAULT 0.30,
   -- Split percentages (0.0–1.0, of utilidad neta distribuible)
   finder_fee_pct        REAL NOT NULL DEFAULT 0.0,
