@@ -301,6 +301,7 @@ export interface ProjectInvestor {
   projectId: number
   investorId: number
   investorName: string
+  projectName?: string
   status: 'interesado' | 'comprometido' | 'fondeado'
   interestedAmount: number
   committedAmount: number
