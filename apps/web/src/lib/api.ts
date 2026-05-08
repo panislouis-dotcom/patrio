@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail } from './types'
 
 const BASE = 'http://localhost:8000'
 
@@ -175,6 +175,7 @@ export async function createNode(tid: number, data: {
   parentId?: number | null
   dependsOnId?: number | null
   durationDays?: number | null
+  sourceTemplateId?: number | null
 }): Promise<TemplateNode> {
   const res = await fetch(`${BASE}/api/process/templates/${tid}/nodes`, {
     method: 'POST',
@@ -219,11 +220,13 @@ export async function fetchInstances(projectId?: number): Promise<ProcessInstanc
 
 export async function createInstance(data: {
   name: string
-  templateId: number
   startDate: string
+  templateId?: number | null
   projectId?: number | null
+  ownerId?: number | null
+  frequencyDays?: number | null
+  dueDate?: string | null
   notes?: string
-  status?: string
 }): Promise<ProcessInstance> {
   const res = await fetch(`${BASE}/api/process/instances`, {
     method: 'POST',
@@ -234,7 +237,18 @@ export async function createInstance(data: {
   return res.json()
 }
 
-export async function updateInstance(iid: number, data: Partial<Pick<ProcessInstance, 'name' | 'startDate' | 'status' | 'notes'>>): Promise<ProcessInstance> {
+export async function updateInstance(iid: number, data: Partial<{
+  name: string
+  startDate: string
+  status: string
+  notes: string
+  projectId: number | null
+  ownerId: number | null
+  taskType: string
+  dueDate: string | null
+  frequencyDays: number | null
+  durationLockedAt: string | null
+}>): Promise<{ instance: ProcessInstance; nextInstance: ProcessInstance | null }> {
   const res = await fetch(`${BASE}/api/process/instances/${iid}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -244,10 +258,28 @@ export async function updateInstance(iid: number, data: Partial<Pick<ProcessInst
   return res.json()
 }
 
-export async function fetchInstanceDetail(iid: number): Promise<InstanceDetail> {
+export async function fetchInstanceDetail(iid: number): Promise<InstanceDetail & { files: InstanceFile[] }> {
   const res = await fetch(`${BASE}/api/process/instances/${iid}`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
+}
+
+// ─── Instance files ───────────────────────────────────────────────────────────
+
+export async function fetchInstanceFiles(iid: number): Promise<InstanceFile[]> {
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/files`)
+  return res.json()
+}
+
+export async function uploadInstanceFile(iid: number, file: File): Promise<InstanceFile> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/files`, { method: 'POST', body: form })
+  return res.json()
+}
+
+export async function deleteInstanceFile(fid: number): Promise<void> {
+  await fetch(`${BASE}/api/process/instance-files/${fid}`, { method: 'DELETE' })
 }
 
 // ─── Node states ──────────────────────────────────
@@ -258,6 +290,7 @@ export async function updateNodeState(iid: number, nid: number, data: {
   actualStart?: string | null
   actualEnd?: string | null
   notes?: string
+  durationOverrideDays?: number | null
 }): Promise<NodeState> {
   const res = await fetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}/state`, {
     method: 'PATCH',
@@ -265,5 +298,68 @@ export async function updateNodeState(iid: number, nid: number, data: {
     body: JSON.stringify(data),
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+// ─── Node files ──────────────────────────────────────────────────────────────
+
+export async function fetchNodeFiles(nid: number, instanceId?: number): Promise<NodeFile[]> {
+  const qs = instanceId != null ? `?instance_id=${instanceId}` : ''
+  const res = await fetch(`${BASE}/api/process/nodes/${nid}/files${qs}`)
+  if (!res.ok) throw new Error('Failed to fetch files')
+  return res.json()
+}
+
+export async function uploadNodeFile(
+  nid: number,
+  file: File,
+  instanceId?: number,
+): Promise<NodeFile> {
+  const form = new FormData()
+  form.append('file', file)
+  if (instanceId != null) form.append('instance_id', String(instanceId))
+  const res = await fetch(`${BASE}/api/process/nodes/${nid}/files`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error('Upload failed')
+  return res.json()
+}
+
+export async function deleteNodeFile(fid: number): Promise<void> {
+  const res = await fetch(`${BASE}/api/process/files/${fid}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Delete failed')
+}
+
+// ─── Node comments ───────────────────────────────────────────────────────────
+
+export async function fetchNodeComments(iid: number, nid: number): Promise<NodeComment[]> {
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}/comments`)
+  if (!res.ok) throw new Error('Failed to fetch comments')
+  return res.json()
+}
+
+export async function createNodeComment(
+  iid: number,
+  nid: number,
+  body: string,
+  author: string,
+): Promise<NodeComment> {
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body, author }),
+  })
+  if (!res.ok) throw new Error('Failed to create comment')
+  return res.json()
+}
+
+export async function deleteNodeComment(cid: number): Promise<void> {
+  const res = await fetch(`${BASE}/api/process/comments/${cid}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Delete failed')
+}
+
+// ─── Node detail ─────────────────────────────────────────────────────────────
+
+export async function fetchNodeDetail(iid: number, nid: number): Promise<NodeDetail> {
+  const res = await fetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}`)
+  if (!res.ok) throw new Error('Failed to fetch node detail')
   return res.json()
 }

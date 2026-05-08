@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchTemplatePreview, createNode, updateNode, deleteNode } from '../lib/api'
-import type { ProcessTemplate, TemplateNode, GanttNode } from '../lib/types'
+import { fetchTemplatePreview, fetchTemplates, createNode, updateNode, deleteNode, fetchNodeFiles, uploadNodeFile, deleteNodeFile } from '../lib/api'
+import type { ProcessTemplate, TemplateNode, GanttNode, NodeFile } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { GanttChart } from './GanttChart'
+import { getSubtree } from '../lib/treeUtils'
 
-// ─── Cycle detection helper ───────────────────────
 function wouldCreateCycle(candidateId: number, currentId: number, allNodes: TemplateNode[]): boolean {
   const visited = new Set<number>()
   let cursor: number | null = candidateId
@@ -17,38 +18,53 @@ function wouldCreateCycle(candidateId: number, currentId: number, allNodes: Temp
   return false
 }
 
-// ─── Add node form ────────────────────────────────
 function AddNodeForm({
-  templateId, parentId, sortOrder, siblings, onCreated, onCancel,
+  templateId, parentId, sortOrder, siblingNodes, onDone, onCancel,
 }: {
   templateId: number
   parentId: number | null
   sortOrder: number
-  siblings: TemplateNode[]
-  onCreated: (n: TemplateNode) => void
+  siblingNodes: TemplateNode[]
+  onDone: () => void
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
   const [durationDays, setDurationDays] = useState<string>('')
-  const [depId, setDepId] = useState<number | null>(null)
+  const [dependsOnId, setDependsOnId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
+  const [mode, setMode] = useState<'node' | 'template'>('node')
+  const [sourceTemplateId, setSourceTemplateId] = useState<number | null>(null)
+  const [availableTemplates, setAvailableTemplates] = useState<ProcessTemplate[]>([])
+
+  useEffect(() => {
+    if (mode === 'template') {
+      fetchTemplates().then(setAvailableTemplates)
+    }
+  }, [mode])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return
     setSaving(true)
     try {
-      const n = await createNode(templateId, {
-        name: name.trim(),
-        parentId,
-        sortOrder,
-        durationDays: durationDays !== '' ? Number(durationDays) : null,
-        dependsOnId: depId,
-      })
-      onCreated(n)
-      setName('')
-      setDurationDays('')
-      setDepId(null)
+      if (mode === 'template' && sourceTemplateId) {
+        const tpl = availableTemplates.find(t => t.id === sourceTemplateId)
+        await createNode(templateId, {
+          name: tpl?.name ?? 'Plantilla',
+          parentId,
+          sortOrder,
+          sourceTemplateId,
+        })
+      } else {
+        if (!name.trim()) return
+        await createNode(templateId, {
+          name: name.trim(),
+          parentId,
+          sortOrder,
+          durationDays: durationDays !== '' ? Number(durationDays) : null,
+          dependsOnId,
+        })
+      }
+      onDone()
     } finally {
       setSaving(false)
     }
@@ -64,44 +80,71 @@ function AddNodeForm({
     outline: 'none',
   }
 
+  const isSubmitDisabled = saving || (mode === 'node' ? !name.trim() : !sourceTemplateId)
+
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px' }}>
-      <input
-        value={name}
-        onChange={e => setName(e.target.value)}
-        placeholder="Nombre"
-        autoFocus
-        style={{ ...inputStyle, width: '160px' }}
-      />
-      <input
-        value={durationDays}
-        onChange={e => setDurationDays(e.target.value)}
-        placeholder="Días (vacío=DEFINIR)"
-        type="number"
-        min="1"
-        style={{ ...inputStyle, width: '140px' }}
-      />
-      {siblings.length > 0 && (
+    <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px', minWidth: 0 }}>
+      <button
+        type="button"
+        onClick={() => setMode(m => m === 'node' ? 'template' : 'node')}
+        style={{ background: mode === 'template' ? colors.tertiary : 'transparent', border: `1px solid ${colors.border}`, color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '3px 6px', flexShrink: 0 }}
+      >
+        {mode === 'node' ? 'NODO' : 'PLANTILLA'}
+      </button>
+      {mode === 'template' ? (
         <select
-          value={depId ?? ''}
-          onChange={e => setDepId(e.target.value ? Number(e.target.value) : null)}
-          style={inputStyle}
+          value={sourceTemplateId ?? ''}
+          onChange={e => setSourceTemplateId(e.target.value ? Number(e.target.value) : null)}
+          style={{ ...inputStyle, flex: 1, minWidth: '80px' }}
         >
-          <option value="">Sin dependencia</option>
-          {siblings.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <option value="">— Selecciona plantilla</option>
+          {availableTemplates
+            .filter(t => t.id !== templateId)
+            .map(t => <option key={t.id} value={t.id}>{t.name}</option>)
+          }
         </select>
+      ) : (
+        <>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Nombre"
+            autoFocus
+            style={{ ...inputStyle, flex: 1, minWidth: '60px' }}
+          />
+          <input
+            value={durationDays}
+            onChange={e => setDurationDays(e.target.value)}
+            placeholder="Días"
+            type="number"
+            min="1"
+            style={{ ...inputStyle, width: '60px', flexShrink: 0 }}
+          />
+          {siblingNodes.length > 0 && (
+            <select
+              value={dependsOnId ?? ''}
+              onChange={e => setDependsOnId(e.target.value ? Number(e.target.value) : null)}
+              style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 4px', outline: 'none', maxWidth: '100px', flexShrink: 1 }}
+            >
+              <option value="">‖ Par.</option>
+              {siblingNodes.map(s => (
+                <option key={s.id} value={s.id}>→ {s.name}</option>
+              ))}
+            </select>
+          )}
+        </>
       )}
       <button
         type="submit"
-        disabled={saving || !name.trim()}
-        style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '4px 10px' }}
+        disabled={isSubmitDisabled}
+        style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '4px 8px', flexShrink: 0 }}
       >
         {saving ? '…' : 'OK'}
       </button>
       <button
         type="button"
         onClick={onCancel}
-        style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '4px 8px' }}
+        style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '4px 6px', flexShrink: 0 }}
       >
         ✕
       </button>
@@ -109,22 +152,20 @@ function AddNodeForm({
   )
 }
 
-// ─── Tree node renderer ───────────────────────────
 function TreeNode({
-  node, nodes, templateId, depth,
-  onUpdated, onDeleted, onCreated,
+  node, nodes, templateId, depth, onRefresh, onFocus,
 }: {
-  node: TemplateNode
-  nodes: TemplateNode[]
+  node: GanttNode
+  nodes: GanttNode[]
   templateId: number
   depth: number
-  onUpdated: (n: TemplateNode) => void
-  onDeleted: (id: number) => void
-  onCreated: (n: TemplateNode) => void
+  onRefresh: () => void
+  onFocus: (id: number) => void
 }) {
   const children = nodes.filter(n => n.parentId === node.id).sort((a, b) => a.sortOrder - b.sortOrder)
   const isLeaf = children.length === 0
   const isDefinir = isLeaf && node.durationDays === null
+  const isSubTemplateNode = node.templateId !== templateId
 
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(node.name)
@@ -134,18 +175,29 @@ function TreeNode({
   const [addingChild, setAddingChild] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Re-sync edit fields when server data changes after a refresh.
+  useEffect(() => {
+    if (!editing) {
+      setEditName(node.name)
+      setEditDur(node.durationDays !== null ? String(node.durationDays) : '')
+      setEditDepOn(node.dependsOnId)
+    }
+  }, [node.name, node.durationDays, node.dependsOnId, editing])
+
   const validDeps = nodes.filter(n => n.parentId === node.parentId && n.id !== node.id && !wouldCreateCycle(n.id, node.id, nodes))
 
   async function saveEdit() {
     setSaving(true)
     try {
-      const updated = await updateNode(node.id, {
+      await updateNode(node.id, {
         name: editName.trim(),
         durationDays: isLeaf ? (editDur !== '' ? Number(editDur) : null) : node.durationDays,
         dependsOnId: editDepOn,
       })
-      onUpdated(updated)
       setEditing(false)
+      onRefresh()
+    } catch {
+      // leave form open so user can retry
     } finally {
       setSaving(false)
     }
@@ -155,7 +207,7 @@ function TreeNode({
     setDeleting(true)
     try {
       await deleteNode(node.id)
-      onDeleted(node.id)
+      onRefresh()
     } finally {
       setDeleting(false)
     }
@@ -165,19 +217,20 @@ function TreeNode({
 
   return (
     <div>
-      {/* Node row */}
-      <div style={{
-        borderBottom: `1px solid ${colors.border}`,
-        display: 'flex',
-        flexDirection: 'column',
-        padding: `6px 12px 6px ${indent + 12}px`,
-      }}>
+      <div
+        style={{
+          borderBottom: `1px solid ${colors.border}`,
+          display: 'flex',
+          flexDirection: 'column',
+          padding: `6px 12px 6px ${indent + 12}px`,
+        }}
+      >
         {editing ? (
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', minWidth: 0 }}>
             <input
               value={editName}
               onChange={e => setEditName(e.target.value)}
-              style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 7px', outline: 'none', width: '160px' }}
+              style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 7px', outline: 'none', flex: 1, minWidth: '60px' }}
             />
             {isLeaf && (
               <input
@@ -186,57 +239,71 @@ function TreeNode({
                 placeholder="Días"
                 type="number"
                 min="1"
-                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 7px', outline: 'none', width: '80px' }}
+                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 7px', outline: 'none', width: '60px', flexShrink: 0 }}
               />
             )}
             {validDeps.length > 0 && (
               <select
                 value={editDepOn ?? ''}
                 onChange={e => setEditDepOn(e.target.value ? Number(e.target.value) : null)}
-                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 6px', outline: 'none' }}
+                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 4px', outline: 'none', maxWidth: '90px', flexShrink: 1 }}
               >
-                <option value="">Sin dependencia</option>
-                {validDeps.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                <option value="">‖ Par.</option>
+                {validDeps.map(s => <option key={s.id} value={s.id}>→ {s.name}</option>)}
               </select>
             )}
-            <button onClick={saveEdit} disabled={saving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '3px 8px' }}>
+            <button onClick={e => { e.stopPropagation(); saveEdit() }} disabled={saving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '3px 8px', flexShrink: 0 }}>
               {saving ? '…' : 'OK'}
             </button>
-            <button onClick={() => setEditing(false)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '3px 6px' }}>
+            <button onClick={e => { e.stopPropagation(); setEditing(false) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', padding: '3px 6px', flexShrink: 0 }}>
               ✕
             </button>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {depth > 0 && <span style={{ color: colors.border, fontSize: '10px' }}>└</span>}
-            <span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral, flex: 1 }}>
+            {node.sourceTemplateId != null && (
+              <span style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.tertiary, letterSpacing: '0.08em', marginRight: 4 }}>
+                [T]
+              </span>
+            )}
+            <span
+              onClick={() => onFocus(node.id)}
+              style={{ fontFamily: fonts.sans, fontSize: '12px', color: isSubTemplateNode ? colors.tertiary : colors.neutral, flex: 1, cursor: 'pointer' }}
+            >
               {node.name}
             </span>
-            {isDefinir ? (
-              <button
-                onClick={() => setAddingChild(true)}
-                style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.tertiary, letterSpacing: '0.08em', border: `1px dashed ${colors.tertiary}`, padding: '1px 6px', background: 'transparent', cursor: 'pointer' }}
-              >
-                DEFINIR ▸
-              </button>
-            ) : isLeaf ? (
-              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{node.durationDays}d</span>
-            ) : null}
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button onClick={() => setAddingChild(true)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
-                + HIJO
-              </button>
-              <button onClick={() => setEditing(true)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
-                EDITAR
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: 'tomato', cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px', opacity: deleting ? 0.5 : 1 }}
-              >
-                BORRAR
-              </button>
-            </div>
+            <span style={{
+              fontFamily: fonts.label,
+              fontSize: '8px',
+              letterSpacing: '0.06em',
+              color: node.dependsOnId != null ? colors.tertiary : colors.border,
+              marginLeft: 4,
+            }}>
+              {node.dependsOnId != null
+                ? `→ ${nodes.find(n => n.id === node.dependsOnId)?.name ?? '?'}`
+                : '‖'}
+            </span>
+            <span style={{ fontFamily: fonts.label, fontSize: '9px', color: isDefinir ? colors.tertiary : colors.secondary }}>
+              {isDefinir ? '?' : `${node.ganttDuration}d`}
+            </span>
+            {!isSubTemplateNode && (
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button onClick={e => { e.stopPropagation(); setAddingChild(true) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
+                  + HIJO
+                </button>
+                <button onClick={e => { e.stopPropagation(); setEditing(true) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
+                  EDITAR
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); handleDelete() }}
+                  disabled={deleting}
+                  style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: 'tomato', cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px', opacity: deleting ? 0.5 : 1 }}
+                >
+                  BORRAR
+                </button>
+              </div>
+            )}
           </div>
         )}
         {addingChild && (
@@ -245,14 +312,13 @@ function TreeNode({
               templateId={templateId}
               parentId={node.id}
               sortOrder={children.length}
-              siblings={children}
-              onCreated={n => { onCreated(n); setAddingChild(false) }}
+              siblingNodes={children}
+              onDone={() => { setAddingChild(false); onRefresh() }}
               onCancel={() => setAddingChild(false)}
             />
           </div>
         )}
       </div>
-      {/* Children */}
       {children.map(child => (
         <TreeNode
           key={child.id}
@@ -260,43 +326,68 @@ function TreeNode({
           nodes={nodes}
           templateId={templateId}
           depth={depth + 1}
-          onUpdated={onUpdated}
-          onDeleted={onDeleted}
-          onCreated={onCreated}
+          onRefresh={onRefresh}
+          onFocus={onFocus}
         />
       ))}
     </div>
   )
 }
 
-// ─── Main component ───────────────────────────────
 export function ProcesoTemplateEditor() {
   const { tid } = useParams<{ tid: string }>()
   const navigate = useNavigate()
   const templateId = Number(tid)
 
   const [template, setTemplate] = useState<ProcessTemplate | null>(null)
-  const [nodes, setNodes] = useState<TemplateNode[]>([])
-  const [ganttNodes, setGanttNodes] = useState<GanttNode[]>([])
+  const [nodes, setNodes] = useState<GanttNode[]>([])
   const [loading, setLoading] = useState(true)
   const [addingRoot, setAddingRoot] = useState(false)
+  const [focusNodeId, setFocusNodeId] = useState<number | null>(null)
+  const [focusDescription, setFocusDescription] = useState('')
+  const [focusFiles, setFocusFiles] = useState<NodeFile[]>([])
+
+  const refresh = useCallback(() => {
+    fetchTemplatePreview(templateId).then(({ template: t, nodes: n }) => {
+      setTemplate(t)
+      setNodes(n)
+    })
+  }, [templateId])
+
+  useEffect(() => {
+    if (!focusNodeId) { setFocusFiles([]); return }
+    const n = nodes.find(n => n.id === focusNodeId)
+    setFocusDescription(n?.description ?? '')
+    fetchNodeFiles(focusNodeId).then(setFocusFiles)
+  }, [focusNodeId])
 
   useEffect(() => {
     fetchTemplatePreview(templateId).then(({ template: t, nodes: n }) => {
       setTemplate(t)
       setNodes(n)
-      setGanttNodes(n)
       setLoading(false)
     })
   }, [templateId])
 
-  const refreshPreview = useCallback(() => {
-    fetchTemplatePreview(templateId).then(({ nodes: n }) => setGanttNodes(n))
-  }, [templateId])
-
-  const totalDays = Math.max(1, ...ganttNodes.map(n => n.ganttStart + n.ganttDuration))
-
+  const totalDays = Math.max(1, ...nodes.map(n => n.ganttStart + n.ganttDuration))
   const roots = nodes.filter(n => n.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder)
+
+  // Breadcrumb path from root to focused node
+  const focusPath = useMemo(() => {
+    if (!focusNodeId) return []
+    const path: GanttNode[] = []
+    let cursor: GanttNode | undefined = nodes.find(n => n.id === focusNodeId)
+    while (cursor) {
+      path.unshift(cursor)
+      cursor = cursor.parentId != null ? nodes.find(n => n.id === cursor!.parentId) : undefined
+    }
+    return path
+  }, [focusNodeId, nodes])
+
+  // What to show as roots in the left tree panel
+  const displayRoots = focusNodeId
+    ? nodes.filter(n => n.id === focusNodeId)
+    : roots
 
   if (loading) {
     return (
@@ -310,29 +401,46 @@ export function ProcesoTemplateEditor() {
     <div style={{ display: 'flex', height: '100%' }}>
       {/* Left: tree editor */}
       <div style={{ width: '420px', flexShrink: 0, borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Header */}
-        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center' }}>
           <button
             onClick={() => navigate('/procesos/plantillas')}
-            style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px' }}
+            style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}
           >
             ← PLANTILLAS
           </button>
-          <span style={{ color: colors.border }}>·</span>
+        </div>
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, borderLeft: `3px solid ${colors.primary}`, background: colors.surfaceAlt }}>
           <span style={{ fontFamily: fonts.sans, fontSize: '13px', color: colors.neutral }}>{template?.name ?? '…'}</span>
         </div>
-        {/* Tree */}
+        {focusNodeId && (
+          <div style={{ padding: '6px 12px', borderBottom: `1px solid ${colors.border}`, display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => setFocusNodeId(null)} style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}>
+              ← {template?.name ?? 'PLANTILLA'}
+            </button>
+            {focusPath.map((n, i) => (
+              <span key={n.id} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ color: colors.border, fontSize: '9px' }}>›</span>
+                {i < focusPath.length - 1 ? (
+                  <button onClick={() => setFocusNodeId(n.id)} style={{ background: 'none', border: 'none', color: colors.tertiary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: 0 }}>
+                    {n.name}
+                  </button>
+                ) : (
+                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.neutral }}>{n.name}</span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {roots.map(root => (
+          {displayRoots.map(root => (
             <TreeNode
               key={root.id}
               node={root}
               nodes={nodes}
               templateId={templateId}
-              depth={0}
-              onUpdated={updated => { setNodes(prev => prev.map(n => n.id === updated.id ? updated : n)); refreshPreview() }}
-              onDeleted={id => { setNodes(prev => prev.filter(n => n.id !== id)); refreshPreview() }}
-              onCreated={n => { setNodes(prev => [...prev, n]); refreshPreview() }}
+              depth={focusNodeId ? 0 : 1}
+              onRefresh={refresh}
+              onFocus={setFocusNodeId}
             />
           ))}
           {addingRoot && (
@@ -341,20 +449,19 @@ export function ProcesoTemplateEditor() {
                 templateId={templateId}
                 parentId={null}
                 sortOrder={roots.length}
-                siblings={roots}
-                onCreated={n => { setNodes(prev => [...prev, n]); setAddingRoot(false); refreshPreview() }}
+                siblingNodes={roots}
+                onDone={() => { setAddingRoot(false); refresh() }}
                 onCancel={() => setAddingRoot(false)}
               />
             </div>
           )}
         </div>
-        {/* Footer */}
         <div style={{ padding: '10px 16px', borderTop: `1px solid ${colors.border}` }}>
           <button
             onClick={() => setAddingRoot(true)}
             style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em', padding: '6px 14px' }}
           >
-            + AGREGAR NODO RAÍZ
+            + AGREGAR SECCIÓN
           </button>
         </div>
       </div>
@@ -364,46 +471,77 @@ export function ProcesoTemplateEditor() {
         <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '16px' }}>
           VISTA PREVIA DEL PROCESO (HIPOTÉTICA)
         </div>
-        {ganttNodes.length === 0 ? (
+        {focusNodeId ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Description */}
+            <div>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>DESCRIPCIÓN</div>
+              <textarea
+                value={focusDescription}
+                onChange={e => setFocusDescription(e.target.value)}
+                onBlur={async () => {
+                  const n = nodes.find(n => n.id === focusNodeId)
+                  if (n && focusDescription !== n.description) {
+                    await updateNode(focusNodeId, { description: focusDescription })
+                  }
+                }}
+                placeholder="Instrucciones, contexto, criterios de éxito…"
+                rows={5}
+                style={{ width: '100%', background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', padding: '8px', outline: 'none', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box' as const }}
+              />
+            </div>
+            {/* Reference photos */}
+            <div>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>FOTOS DE REFERENCIA</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                {focusFiles.map(f => (
+                  <div key={f.id} style={{ position: 'relative', width: 80, height: 80 }}>
+                    {f.contentType.startsWith('image/') ? (
+                      <img src={`http://localhost:8000/files/${f.filePath}`} alt={f.fileName} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }} />
+                    ) : (
+                      <div style={{ width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.border, borderRadius: 2, fontSize: '10px', color: colors.secondary, fontFamily: fonts.label, padding: 4, textAlign: 'center' }}>{f.fileName}</div>
+                    )}
+                    <button
+                      onClick={async () => {
+                        await deleteNodeFile(f.id)
+                        fetchNodeFiles(focusNodeId).then(setFocusFiles)
+                      }}
+                      style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', borderRadius: '50%', width: 18, height: 18, cursor: 'pointer', fontSize: '10px', lineHeight: '18px', textAlign: 'center', padding: 0 }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em', padding: '8px 14px', cursor: 'pointer' }}>
+                + SUBIR REFERENCIA
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  await uploadNodeFile(focusNodeId, file)
+                  fetchNodeFiles(focusNodeId).then(setFocusFiles)
+                  e.target.value = ''
+                }} />
+              </label>
+            </div>
+            {/* Subtree Gantt */}
+            {(() => {
+              const sub = getSubtree(focusNodeId, nodes)
+              const rootStart = sub.find(n => n.id === focusNodeId)?.ganttStart ?? 0
+              const normalized = sub.map(n => ({ ...n, ganttStart: n.ganttStart - rootStart }))
+              const total = Math.max(...normalized.map(n => n.ganttStart + n.ganttDuration), 1)
+              return normalized.length > 0 ? (
+                <div>
+                  <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>CRONOGRAMA DEL NODO</div>
+                  <GanttChart nodes={normalized} totalDays={total} />
+                </div>
+              ) : null
+            })()}
+          </div>
+        ) : nodes.length === 0 ? (
           <div style={{ color: colors.secondary, fontFamily: fonts.sans, fontSize: '11px' }}>
             Agrega nodos para ver la vista previa.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {(() => {
-              const depthMap: Record<number, number> = {}
-              for (const n of ganttNodes) {
-                depthMap[n.id] = n.parentId === null ? 0 : (depthMap[n.parentId] ?? 0) + 1
-              }
-              return ganttNodes.map(n => {
-              const leftPct = totalDays > 0 ? (n.ganttStart / totalDays) * 100 : 0
-              const widthPct = totalDays > 0 ? Math.max(0.5, (n.ganttDuration / totalDays) * 100) : 0.5
-              const depth = depthMap[n.id] ?? 0
-              return (
-                <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: `${depth * 12}px`, flexShrink: 0 }} />
-                  <div style={{ width: '140px', flexShrink: 0, fontFamily: fonts.sans, fontSize: '10px', color: n.isDefinir ? colors.tertiary : colors.neutral, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {n.name}
-                  </div>
-                  <div style={{ flex: 1, position: 'relative', height: '16px', background: colors.surfaceAlt, border: `1px solid ${colors.border}` }}>
-                    <div style={{
-                      position: 'absolute',
-                      left: `${leftPct}%`,
-                      width: `${widthPct}%`,
-                      height: '100%',
-                      background: n.isDefinir ? 'transparent' : (n.parentId === null ? colors.primary : colors.secondary),
-                      border: n.isDefinir ? `1px dashed ${colors.tertiary}` : 'none',
-                      opacity: 0.7,
-                    }} />
-                  </div>
-                  <div style={{ width: '40px', flexShrink: 0, fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>
-                    {n.isDefinir ? '?' : `${n.ganttDuration}d`}
-                  </div>
-                </div>
-              )
-            })
-            })()}
-          </div>
+          <GanttChart nodes={nodes} totalDays={totalDays} />
         )}
       </div>
     </div>

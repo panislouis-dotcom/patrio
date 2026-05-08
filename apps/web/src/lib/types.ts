@@ -83,6 +83,7 @@ export interface Project {
   unrealizedGain: number
   unrealizedGainPct: number
   holdMonthsActual: number
+  prospectId: number | null
 }
 
 export type RawProjectFields = Pick<Project,
@@ -135,15 +136,35 @@ export interface TemplateNode {
   sortOrder: number
   dependsOnId: number | null
   durationDays: number | null
+  sourceTemplateId: number | null
   createdAt: string
+}
+
+export interface InstanceFile {
+  id: number
+  instanceId: number
+  filePath: string
+  fileName: string
+  contentType: string
+  uploadedAt: string
 }
 
 export interface ProcessInstance {
   id: number
-  templateId: number
+  templateId: number | null
+  templateName: string | null
   projectId: number | null
+  projectName: string | null
+  ownerId: number | null
+  ownerName: string | null
+  taskType: 'proyecto' | 'periodica' | 'one_time'
   name: string
   startDate: string
+  dueDate: string | null
+  frequencyDays: number | null
+  completedAt: string | null
+  originInstanceId: number | null
+  durationLockedAt: string | null
   status: string
   notes: string
   createdAt: string
@@ -159,6 +180,7 @@ export interface NodeState {
   actualEnd: string | null
   notes: string
   updatedAt: string
+  durationOverrideDays: number | null
 }
 
 export interface GanttNode extends TemplateNode {
@@ -171,4 +193,33 @@ export interface InstanceDetail {
   instance: ProcessInstance
   nodes: GanttNode[]
   states: NodeState[]
+}
+
+export interface NodeFile {
+  id: number
+  templateNodeId: number
+  instanceId: number | null
+  filePath: string
+  fileName: string
+  contentType: string
+  type: 'reference' | 'evidence'
+  uploadedAt: string
+}
+
+export interface NodeComment {
+  id: number
+  instanceId: number
+  templateNodeId: number
+  body: string
+  author: string
+  createdAt: string
+}
+
+export interface NodeDetail {
+  instance: ProcessInstance
+  node: TemplateNode
+  allNodes: GanttNode[]
+  states: NodeState[]
+  files: NodeFile[]
+  comments: NodeComment[]
 }

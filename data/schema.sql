@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS projects (
   url               TEXT NOT NULL CHECK (url != ''),
   latitude          REAL NOT NULL,
   longitude         REAL NOT NULL,
+  prospect_id       INTEGER REFERENCES prospects(id),
   -- JSON columns
   milestones        TEXT NOT NULL CHECK (milestones != ''),  -- {"2021-02":"Adquisición","2023-07":"Primera renta",...}
   budget            TEXT NOT NULL CHECK (budget != ''),      -- {"Adquisición edificio":3225000,"Mano de obra":1729740,...}
@@ -140,19 +141,26 @@ CREATE TABLE IF NOT EXISTS template_nodes (
   description   TEXT NOT NULL DEFAULT '',
   sort_order    INTEGER NOT NULL DEFAULT 0,
   depends_on_id INTEGER REFERENCES template_nodes(id) ON DELETE SET NULL,
+  source_template_id INTEGER REFERENCES process_templates(id),
   duration_days INTEGER,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS process_instances (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  template_id INTEGER NOT NULL REFERENCES process_templates(id) ON DELETE CASCADE,
-  project_id  INTEGER REFERENCES projects(id),
-  name        TEXT NOT NULL CHECK (name != ''),
-  start_date  TEXT NOT NULL,
-  status      TEXT NOT NULL DEFAULT 'active',
-  notes       TEXT NOT NULL DEFAULT '',
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_id    INTEGER REFERENCES process_templates(id) ON DELETE CASCADE,
+  project_id     INTEGER REFERENCES projects(id),
+  owner_id       INTEGER REFERENCES team_members(id),
+  name           TEXT NOT NULL CHECK (name != ''),
+  start_date     TEXT NOT NULL,
+  due_date       TEXT,
+  frequency_days INTEGER,
+  origin_instance_id  INTEGER REFERENCES process_instances(id),
+  completed_at        TEXT,
+  duration_locked_at  TEXT,
+  status              TEXT NOT NULL DEFAULT 'active',
+  notes               TEXT NOT NULL DEFAULT '',
+  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS instance_node_states (
@@ -164,8 +172,39 @@ CREATE TABLE IF NOT EXISTS instance_node_states (
   actual_start     TEXT,
   actual_end       TEXT,
   notes            TEXT NOT NULL DEFAULT '',
+  duration_override_days INTEGER,         -- overrides template node's duration_days for this instance
   updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(instance_id, template_node_id)
+);
+
+-- ── Node files (reference photos on template; evidence on instance) ──────────
+CREATE TABLE IF NOT EXISTS node_files (
+  id               INTEGER PRIMARY KEY,
+  template_node_id INTEGER NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
+  instance_id      INTEGER REFERENCES process_instances(id) ON DELETE CASCADE,
+  file_path        TEXT NOT NULL,
+  file_name        TEXT NOT NULL,
+  content_type     TEXT NOT NULL,
+  uploaded_at      TEXT DEFAULT (datetime('now'))
+);
+
+-- ── Node comments (per instance per node) ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS node_comments (
+  id               INTEGER PRIMARY KEY,
+  instance_id      INTEGER NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+  template_node_id INTEGER NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
+  body             TEXT NOT NULL,
+  author           TEXT NOT NULL DEFAULT '',
+  created_at       TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS instance_files (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  instance_id  INTEGER NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+  file_path    TEXT NOT NULL,
+  file_name    TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  uploaded_at  TEXT DEFAULT (datetime('now'))
 );
 
 -- Performance indexes on FK and filter columns
@@ -174,7 +213,11 @@ CREATE INDEX IF NOT EXISTS idx_node_template     ON template_nodes(template_id);
 CREATE INDEX IF NOT EXISTS idx_node_depends      ON template_nodes(depends_on_id);
 CREATE INDEX IF NOT EXISTS idx_instance_template ON process_instances(template_id);
 CREATE INDEX IF NOT EXISTS idx_instance_project  ON process_instances(project_id);
+CREATE INDEX IF NOT EXISTS idx_instance_owner   ON process_instances(owner_id);
 CREATE INDEX IF NOT EXISTS idx_node_state_inst   ON instance_node_states(instance_id);
 CREATE INDEX IF NOT EXISTS idx_node_state_node   ON instance_node_states(template_node_id);
 CREATE INDEX IF NOT EXISTS idx_team_manager      ON team_members(manager_id);
 CREATE INDEX IF NOT EXISTS idx_signals_prospect  ON signals(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_node_files_node     ON node_files(template_node_id);
+CREATE INDEX IF NOT EXISTS idx_node_files_instance ON node_files(instance_id);
+CREATE INDEX IF NOT EXISTS idx_comments_node       ON node_comments(template_node_id, instance_id);
