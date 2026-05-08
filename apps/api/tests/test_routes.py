@@ -8,7 +8,7 @@ SCHEMA_PATH = Path(__file__).parent.parent.parent.parent / "data" / "schema.sql"
 SEED_PROJECT = """
 INSERT INTO projects (
     name, type, address, city, status, total_units,
-    acquisition_date, first_rent_date,
+    acquisition_date, conclusion_date,
     total_investment, current_valuation, valuation_date,
     url, latitude, longitude,
     milestones, budget, notes
@@ -204,7 +204,7 @@ def test_post_creates_new_project(client):
         "status": "construction",
         "totalUnits": 10,
         "acquisitionDate": "2025-01",
-        "firstRentDate": "2026-06",
+        "conclusionDate": "2026-06",
         "totalInvestment": 8000000,
         "currentValuation": 8000000,
         "valuationDate": "2026-01",
