@@ -48,12 +48,6 @@ const selectStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-const smallInputStyle: React.CSSProperties = {
-  ...inputStyle,
-  width: '80px',
-  textAlign: 'right',
-}
-
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -64,7 +58,6 @@ interface Props {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ProjectProfitSection({ projectId, team }: Props) {
-  // server state
   const [config, setConfig] = useState<ProfitSplitConfig | null>(null)
   const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
   const [loading, setLoading] = useState(true)
@@ -72,12 +65,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // draft fields
-  const [exitPrice, setExitPrice] = useState<string>('')
-  const [investorCapital, setInvestorCapital] = useState<string>('')
-  const [investorRateAnnual, setInvestorRateAnnual] = useState<string>('12')
-  const [investorMonths, setInvestorMonths] = useState<string>('')
-  const [isrRate, setIsrRate] = useState<string>('30')
+  // draft fields — split percentages and assignments only
   const [finderFeePct, setFinderFeePct] = useState<string>('0')
   const [directorPct, setDirectorPct] = useState<string>('0')
   const [responsablePct, setResponsablePct] = useState<string>('0')
@@ -91,9 +79,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
   const [ayudanteMemberIds, setAyudanteMemberIds] = useState<number[]>([])
   const [maestroCount, setMaestroCount] = useState<string>('')
   const [ayudanteCount, setAyudanteCount] = useState<string>('')
-  const [plannedEndDate, setPlannedEndDate] = useState<string>('')
-  const [actualEndDate, setActualEndDate] = useState<string>('')
-  const [bufferDays, setBufferDays] = useState<string>('0')
 
   useEffect(() => {
     setLoading(true)
@@ -101,11 +86,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
     fetchProjectProfit(projectId).then(({ config, waterfall }) => {
       setConfig(config)
       setWaterfall(waterfall)
-      setExitPrice(config.exitPrice != null ? String(config.exitPrice) : '')
-      setInvestorCapital(config.investorCapital != null ? String(config.investorCapital) : '')
-      setInvestorRateAnnual(String(Math.round(config.investorRateAnnual * 100)))
-      setInvestorMonths(config.investorMonths != null ? String(config.investorMonths) : '')
-      setIsrRate(String(Math.round(config.isrRate * 100)))
       setFinderFeePct(String(Math.round(config.finderFeePct * 100)))
       setDirectorPct(String(Math.round(config.directorPct * 100)))
       setResponsablePct(String(Math.round(config.responsablePct * 100)))
@@ -119,9 +99,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
       setAyudanteMemberIds(config.ayudanteMemberIds)
       setMaestroCount(config.maestroCount != null ? String(config.maestroCount) : '')
       setAyudanteCount(config.ayudanteCount != null ? String(config.ayudanteCount) : '')
-      setPlannedEndDate(config.plannedEndDate ?? '')
-      setActualEndDate(config.actualEndDate ?? '')
-      setBufferDays(String(config.bufferDays ?? 0))
       setLoading(false)
     }).catch((err: unknown) => {
       setFetchError(err instanceof Error ? err.message : 'Error al cargar datos')
@@ -133,11 +110,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
     setSaving(true)
     try {
       const draft: Partial<ProfitSplitConfig> = {
-        exitPrice: exitPrice ? Number(exitPrice) : null,
-        investorCapital: investorCapital ? Number(investorCapital) : null,
-        investorRateAnnual: Number(investorRateAnnual) / 100,
-        investorMonths: investorMonths ? Number(investorMonths) : null,
-        isrRate: Number(isrRate) / 100,
         finderFeePct: Number(finderFeePct) / 100,
         directorPct: Number(directorPct) / 100,
         responsablePct: Number(responsablePct) / 100,
@@ -151,9 +123,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
         ayudanteMemberIds,
         maestroCount: maestroCount ? Number(maestroCount) : null,
         ayudanteCount: ayudanteCount ? Number(ayudanteCount) : null,
-        plannedEndDate: plannedEndDate || null,
-        actualEndDate: actualEndDate || null,
-        bufferDays: Number(bufferDays),
       }
       const result = await updateProjectProfit(projectId, draft)
       setConfig(result.config)
@@ -166,14 +135,10 @@ export function ProjectProfitSection({ projectId, team }: Props) {
     }
   }
 
-  // ─── Derived helpers (safe after loading) ──────────────────────────────────
-
   function splitTotal(label: string): number {
     if (!waterfall) return 0
     return waterfall.splits.filter(s => s.label === label).reduce((sum, s) => sum + s.total, 0)
   }
-
-  // ─── Loading ───────────────────────────────────────────────────────────────
 
   if (fetchError) {
     return (
@@ -191,186 +156,27 @@ export function ProjectProfitSection({ projectId, team }: Props) {
     )
   }
 
-  // ─── Bonus badge ───────────────────────────────────────────────────────────
-
-  const bonusTier = waterfall.bonusTier ?? 0
-  const bonusBg = bonusTier >= 0.5 ? colors.primary : bonusTier >= 0.25 ? colors.tertiary : 'transparent'
-  const bonusBorder = bonusTier === 0 ? colors.border : bonusBg
-  const bonusColor = bonusTier === 0 ? colors.secondary : colors.neutral
-  const bonusLabel = bonusTier >= 0.5 ? '50% BONO' : bonusTier >= 0.25 ? '25% BONO' : 'SIN BONO'
-
-  // ─── Role-filtered member lists ────────────────────────────────────────────
-
   const responsableMembers = team.filter(m => m.role === 'responsable_proyecto' || m.role === 'director')
   const liderMembers = team.filter(m => m.role === 'lider_proyecto')
   const maestroMembers = team.filter(m => m.role === 'maestro')
   const ayudanteMembers = team.filter(m => m.role === 'ayudante')
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  const pctInput = (value: string, onChange: (v: string) => void) => (
+    <input
+      type="number"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      step="1"
+      min="0"
+      max="100"
+      style={{ ...inputStyle, width: '52px', textAlign: 'right' }}
+    />
+  )
 
   return (
     <div style={{ padding: '0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-      {/* ── Section 1: CASCADA DE UTILIDAD ─────────────────────────────────── */}
-      <div>
-        {sectionDivider('CASCADA DE UTILIDAD')}
-
-        {/* Exit price — editable */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', gap: '8px' }}>
-          <span style={labelStyle}>PRECIO DE SALIDA</span>
-          <input
-            type="number"
-            value={exitPrice}
-            onChange={e => setExitPrice(e.target.value)}
-            placeholder="Precio de salida"
-            style={{ ...inputStyle, width: '130px', textAlign: 'right' }}
-          />
-        </div>
-
-        {/* Investment — read-only */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0' }}>
-          <span style={labelStyle}>− INVERSIÓN TOTAL</span>
-          <span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral }}>{fmt(waterfall.investment)}</span>
-        </div>
-
-        {/* Gross profit — computed */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0' }}>
-          <span style={labelStyle}>= UTILIDAD BRUTA</span>
-          <span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral }}>{fmt(waterfall.grossProfit)}</span>
-        </div>
-
-        {/* Investor cuota */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0' }}>
-          <span style={labelStyle}>− CUOTA INVERSIONISTA</span>
-          <span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral }}>{fmt(waterfall.investorCuota)}</span>
-        </div>
-
-        {/* Investor sub-inputs */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginLeft: '8px', marginBottom: '4px' }}>
-          <div>
-            <div style={{ ...labelStyle, marginBottom: '3px' }}>CAPITAL</div>
-            <input
-              type="number"
-              value={investorCapital}
-              onChange={e => setInvestorCapital(e.target.value)}
-              placeholder="Capital"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <div style={{ ...labelStyle, marginBottom: '3px' }}>TASA ANUAL %</div>
-            <input
-              type="number"
-              value={investorRateAnnual}
-              onChange={e => setInvestorRateAnnual(e.target.value)}
-              placeholder="12.00"
-              step="1"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <div style={{ ...labelStyle, marginBottom: '3px' }}>MESES</div>
-            <input
-              type="number"
-              value={investorMonths}
-              onChange={e => setInvestorMonths(e.target.value)}
-              placeholder="Meses"
-              style={inputStyle}
-            />
-          </div>
-        </div>
-
-        {/* ISR */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0' }}>
-          <span style={labelStyle}>− ISR</span>
-          <span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral }}>{fmt(waterfall.isr)}</span>
-        </div>
-
-        {/* ISR rate sub-input */}
-        <div style={{ marginLeft: '8px', marginBottom: '4px', width: '80px' }}>
-          <div style={{ ...labelStyle, marginBottom: '3px' }}>ISR %</div>
-          <input
-            type="number"
-            value={isrRate}
-            onChange={e => setIsrRate(e.target.value)}
-            placeholder="30"
-            step="1"
-            style={inputStyle}
-          />
-        </div>
-
-        {/* Net profit — highlighted */}
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-          padding: '5px 0', borderTop: `1px solid ${colors.border}`, marginTop: '4px',
-        }}>
-          <span style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.primary, letterSpacing: '0.10em' }}>= UTILIDAD NETA</span>
-          <span style={{ fontFamily: fonts.sans, fontSize: '14px', color: colors.primary, fontWeight: 600 }}>{fmt(waterfall.netProfit)}</span>
-        </div>
-
-        {/* Distributable */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0' }}>
-          <span style={labelStyle}>= DISTRIBUIBLE</span>
-          <span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral }}>{fmt(waterfall.distributable)}</span>
-        </div>
-      </div>
-
-      {/* ── Section 2: COLCHÓN Y BONO ──────────────────────────────────────── */}
-      <div>
-        {sectionDivider('COLCHÓN Y BONO')}
-
-        {/* Row 1: planned end + buffer */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', marginBottom: '8px' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ ...labelStyle, marginBottom: '3px' }}>FIN PLANEADO</div>
-            <input
-              type="date"
-              value={plannedEndDate}
-              onChange={e => setPlannedEndDate(e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-          <div style={{ width: '70px' }}>
-            <div style={{ ...labelStyle, marginBottom: '3px' }}>BUFFER DÍAS</div>
-            <input
-              type="number"
-              value={bufferDays}
-              onChange={e => setBufferDays(e.target.value)}
-              placeholder="0"
-              style={inputStyle}
-            />
-          </div>
-        </div>
-
-        {/* Row 2: actual end */}
-        <div style={{ marginBottom: '10px' }}>
-          <div style={{ ...labelStyle, marginBottom: '3px' }}>FIN REAL</div>
-          <input
-            type="date"
-            value={actualEndDate}
-            onChange={e => setActualEndDate(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
-
-        {/* Row 3: bonus badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={labelStyle}>BONO ACTUAL</span>
-          <span style={{
-            background: bonusBg,
-            border: `1px solid ${bonusBorder}`,
-            color: bonusColor,
-            fontFamily: fonts.label,
-            fontSize: '9px',
-            letterSpacing: '0.10em',
-            padding: '3px 8px',
-          }}>
-            {bonusLabel}
-          </span>
-        </div>
-      </div>
-
-      {/* ── Section 3: SPLIT DEL EQUIPO ────────────────────────────────────── */}
+      {/* ── SPLIT DEL EQUIPO ─────────────────────────────────────────────────── */}
       <div>
         {sectionDivider('SPLIT DEL EQUIPO')}
 
@@ -380,41 +186,23 @@ export function ProjectProfitSection({ projectId, team }: Props) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
               <span style={{ ...labelStyle, minWidth: '80px' }}>FINDER</span>
-              <input
-                type="number"
-                value={finderFeePct}
-                onChange={e => setFinderFeePct(e.target.value)}
-                step="1"
-                style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
-              />
-              <span style={{ ...labelStyle }}>%</span>
+              {pctInput(finderFeePct, setFinderFeePct)}
+              <span style={labelStyle}>%</span>
               <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
                 {fmt(splitTotal('Finder'))}
               </span>
             </div>
-            <select
-              value={finderMemberId}
-              onChange={e => setFinderMemberId(e.target.value)}
-              style={selectStyle}
-            >
+            <select value={finderMemberId} onChange={e => setFinderMemberId(e.target.value)} style={selectStyle}>
               <option value="">— sin asignar —</option>
-              {team.map(m => (
-                <option key={m.id} value={String(m.id)}>{m.name}</option>
-              ))}
+              {team.map(m => <option key={m.id} value={String(m.id)}>{m.name}</option>)}
             </select>
           </div>
 
           {/* DIRECTORES */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ ...labelStyle, minWidth: '80px' }}>DIRECTORES</span>
-            <input
-              type="number"
-              value={directorPct}
-              onChange={e => setDirectorPct(e.target.value)}
-              step="1"
-              style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
-            />
-            <span style={{ ...labelStyle }}>%</span>
+            {pctInput(directorPct, setDirectorPct)}
+            <span style={labelStyle}>%</span>
             <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
               {fmt(splitTotal('Director'))}
             </span>
@@ -424,27 +212,15 @@ export function ProjectProfitSection({ projectId, team }: Props) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
               <span style={{ ...labelStyle, minWidth: '80px' }}>RESPONSABLE</span>
-              <input
-                type="number"
-                value={responsablePct}
-                onChange={e => setResponsablePct(e.target.value)}
-                step="1"
-                style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
-              />
-              <span style={{ ...labelStyle }}>%</span>
+              {pctInput(responsablePct, setResponsablePct)}
+              <span style={labelStyle}>%</span>
               <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
                 {fmt(splitTotal('Responsable'))}
               </span>
             </div>
-            <select
-              value={responsableMemberId}
-              onChange={e => setResponsableMemberId(e.target.value)}
-              style={selectStyle}
-            >
+            <select value={responsableMemberId} onChange={e => setResponsableMemberId(e.target.value)} style={selectStyle}>
               <option value="">— sin asignar —</option>
-              {responsableMembers.map(m => (
-                <option key={m.id} value={String(m.id)}>{m.name}</option>
-              ))}
+              {responsableMembers.map(m => <option key={m.id} value={String(m.id)}>{m.name}</option>)}
             </select>
           </div>
 
@@ -452,27 +228,15 @@ export function ProjectProfitSection({ projectId, team }: Props) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
               <span style={{ ...labelStyle, minWidth: '80px' }}>LÍDER</span>
-              <input
-                type="number"
-                value={liderPct}
-                onChange={e => setLiderPct(e.target.value)}
-                step="1"
-                style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
-              />
-              <span style={{ ...labelStyle }}>%</span>
+              {pctInput(liderPct, setLiderPct)}
+              <span style={labelStyle}>%</span>
               <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
                 {fmt(splitTotal('Líder'))}
               </span>
             </div>
-            <select
-              value={liderMemberId}
-              onChange={e => setLiderMemberId(e.target.value)}
-              style={selectStyle}
-            >
+            <select value={liderMemberId} onChange={e => setLiderMemberId(e.target.value)} style={selectStyle}>
               <option value="">— sin asignar —</option>
-              {liderMembers.map(m => (
-                <option key={m.id} value={String(m.id)}>{m.name}</option>
-              ))}
+              {liderMembers.map(m => <option key={m.id} value={String(m.id)}>{m.name}</option>)}
             </select>
           </div>
 
@@ -480,21 +244,15 @@ export function ProjectProfitSection({ projectId, team }: Props) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
               <span style={{ ...labelStyle, minWidth: '80px' }}>MAESTROS</span>
-              <input
-                type="number"
-                value={maestroPct}
-                onChange={e => setMaestroPct(e.target.value)}
-                step="1"
-                style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
-              />
-              <span style={{ ...labelStyle }}>%</span>
+              {pctInput(maestroPct, setMaestroPct)}
+              <span style={labelStyle}>%</span>
               <input
                 type="number"
                 min="0"
                 placeholder="# personas"
                 value={maestroCount}
                 onChange={e => setMaestroCount(e.target.value)}
-                style={{ ...smallInputStyle, width: '80px' }}
+                style={{ ...inputStyle, width: '76px', textAlign: 'right' }}
               />
               <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
                 {fmt(splitTotal('Maestro'))}
@@ -512,9 +270,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                   <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{m.name}</span>
                 </label>
               ))}
-              {maestroMembers.length === 0 && (
-                <span style={{ ...labelStyle }}>sin maestros en el equipo</span>
-              )}
+              {maestroMembers.length === 0 && <span style={labelStyle}>sin maestros en el equipo</span>}
             </div>
           </div>
 
@@ -522,21 +278,15 @@ export function ProjectProfitSection({ projectId, team }: Props) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
               <span style={{ ...labelStyle, minWidth: '80px' }}>AYUDANTES</span>
-              <input
-                type="number"
-                value={ayudantePct}
-                onChange={e => setAyudantePct(e.target.value)}
-                step="1"
-                style={{ ...inputStyle, width: '60px', textAlign: 'right' }}
-              />
-              <span style={{ ...labelStyle }}>%</span>
+              {pctInput(ayudantePct, setAyudantePct)}
+              <span style={labelStyle}>%</span>
               <input
                 type="number"
                 min="0"
                 placeholder="# personas"
                 value={ayudanteCount}
                 onChange={e => setAyudanteCount(e.target.value)}
-                style={{ ...smallInputStyle, width: '80px' }}
+                style={{ ...inputStyle, width: '76px', textAlign: 'right' }}
               />
               <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
                 {fmt(splitTotal('Ayudante'))}
@@ -554,9 +304,7 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                   <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{m.name}</span>
                 </label>
               ))}
-              {ayudanteMembers.length === 0 && (
-                <span style={{ ...labelStyle }}>sin ayudantes en el equipo</span>
-              )}
+              {ayudanteMembers.length === 0 && <span style={labelStyle}>sin ayudantes en el equipo</span>}
             </div>
           </div>
 
@@ -571,37 +319,22 @@ export function ProjectProfitSection({ projectId, team }: Props) {
         </div>
       </div>
 
-      {/* ── Section 4: POR PERSONA ─────────────────────────────────────────── */}
-      <div>
-        {sectionDivider('POR PERSONA')}
-
-        {waterfall.splits.length === 0 ? (
-          <span style={labelStyle}>sin distribución calculada</span>
-        ) : (
+      {/* ── POR PERSONA ──────────────────────────────────────────────────────── */}
+      {waterfall.splits.length > 0 && (
+        <div>
+          {sectionDivider('POR PERSONA')}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-            {/* Header */}
             <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr auto auto auto',
-              gap: '8px',
-              padding: '3px 0',
-              borderBottom: `1px solid ${colors.border}`,
-              marginBottom: '4px',
+              display: 'grid', gridTemplateColumns: '1fr auto',
+              gap: '8px', padding: '3px 0', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px',
             }}>
               <span style={labelStyle}>NOMBRE</span>
-              <span style={{ ...labelStyle, textAlign: 'right' }}>BASE</span>
-              <span style={{ ...labelStyle, textAlign: 'right' }}>BONO</span>
               <span style={{ ...labelStyle, textAlign: 'right' }}>TOTAL</span>
             </div>
-
-            {/* Rows */}
             {waterfall.splits.map((split, idx) => (
               <div key={`${split.label}-${split.id ?? 'anon'}-${idx}`} style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr auto auto auto',
-                gap: '8px',
-                padding: '3px 0',
-                borderBottom: `1px solid ${colors.border}`,
+                display: 'grid', gridTemplateColumns: '1fr auto',
+                gap: '8px', padding: '4px 0', borderBottom: `1px solid ${colors.border}`,
               }}>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{split.name}</span>
@@ -609,22 +342,16 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                     {split.label.toUpperCase()}
                   </span>
                 </div>
-                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, textAlign: 'right', alignSelf: 'center' }}>
-                  {fmt(split.base)}
-                </span>
-                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, textAlign: 'right', alignSelf: 'center' }}>
-                  {fmt(split.bonus)}
-                </span>
                 <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right', alignSelf: 'center', fontWeight: 600 }}>
                   {fmt(split.total)}
                 </span>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* ── Save button ────────────────────────────────────────────────────── */}
+      {/* ── Save ─────────────────────────────────────────────────────────────── */}
       <div>
         <button
           onClick={handleSave}
@@ -638,7 +365,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
             fontSize: '10px',
             letterSpacing: '0.08em',
             padding: '8px 20px',
-            marginTop: '16px',
             opacity: saving ? 0.6 : 1,
           }}
         >
