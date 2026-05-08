@@ -267,6 +267,15 @@ export interface ProfitScenario {
   companyResidual: number
 }
 
+export interface InvestorBreakdownEntry {
+  investorId: number | null
+  name: string
+  fundedAmount: number
+  interestRateAnnual: number
+  cuota: number
+  totalReturn: number
+}
+
 export interface ProfitWaterfall {
   exitPrice: number
   investment: number
@@ -277,6 +286,8 @@ export interface ProfitWaterfall {
   netProfit: number
   distributable: number
   activeTier: number | null    // null = not concluded yet; 0 | 0.25 | 0.50 when concluded
+  months: number
+  investorBreakdown: InvestorBreakdownEntry[]
   scenarios: {
     sin_bono: ProfitScenario
     bono_25: ProfitScenario

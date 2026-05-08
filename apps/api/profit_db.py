@@ -282,6 +282,14 @@ def compute_waterfall(project: dict, config: dict, team: list[dict], project_inv
         investor_capital = config["investorCapital"]
         rate = config.get("investorRateAnnual") or 0.12
         investor_cuota = investor_capital * rate * (months / 12)
+        investor_breakdown = [{
+            "investorId": None,
+            "name": "Capital (manual)",
+            "fundedAmount": investor_capital,
+            "interestRateAnnual": rate,
+            "cuota": investor_cuota,
+            "totalReturn": investor_capital + investor_cuota,
+        }]
     else:
         fondeados = [pi for pi in (project_investors or []) if pi.get("status") == "fondeado"]
         investor_capital = sum(pi.get("fundedAmount", 0) for pi in fondeados)
@@ -289,11 +297,31 @@ def compute_waterfall(project: dict, config: dict, team: list[dict], project_inv
             pi.get("fundedAmount", 0) * pi.get("interestRateAnnual", 0.12) * (months / 12)
             for pi in fondeados
         )
-        if not fondeados:
+        if fondeados:
+            investor_breakdown = [
+                {
+                    "investorId": pi.get("investorId"),
+                    "name": pi.get("investorName", "—"),
+                    "fundedAmount": pi.get("fundedAmount", 0),
+                    "interestRateAnnual": pi.get("interestRateAnnual", 0.12),
+                    "cuota": pi.get("fundedAmount", 0) * pi.get("interestRateAnnual", 0.12) * (months / 12),
+                    "totalReturn": pi.get("fundedAmount", 0) * (1 + pi.get("interestRateAnnual", 0.12) * (months / 12)),
+                }
+                for pi in fondeados
+            ]
+        else:
             # fallback: use investment as capital with default rate (original behavior)
             investor_capital = investment
             rate = config.get("investorRateAnnual") or 0.12
             investor_cuota = investor_capital * rate * (months / 12)
+            investor_breakdown = [{
+                "investorId": None,
+                "name": "Inversión total (est.)",
+                "fundedAmount": investment,
+                "interestRateAnnual": rate,
+                "cuota": investor_cuota,
+                "totalReturn": investment + investor_cuota,
+            }]
     gross_profit = exit_price - investment
     operator_gross = gross_profit - investor_cuota
     isr = max(0, operator_gross * isr_rate)
@@ -362,5 +390,7 @@ def compute_waterfall(project: dict, config: dict, team: list[dict], project_inv
         "netProfit": net_profit,
         "distributable": distributable,
         "activeTier": active_tier,
+        "months": months,
+        "investorBreakdown": investor_breakdown,
         "scenarios": scenarios,
     }

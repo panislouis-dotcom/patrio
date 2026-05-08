@@ -171,6 +171,69 @@ export function ProjectProfitSection({ projectId, team }: Props) {
   return (
     <div style={{ padding: '0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
+      {/* ── FLUJO FINANCIERO ─────────────────────────────────────────────────── */}
+      <div>
+        {sectionDivider('FLUJO FINANCIERO')}
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <tbody>
+            {([
+              { label: 'PRECIO DE SALIDA',    value: waterfall.exitPrice,      dividerBefore: false, indent: false, highlight: false },
+              { label: '− INVERSIÓN TOTAL',   value: waterfall.investment,     dividerBefore: false, indent: false, highlight: false },
+              { label: 'GANANCIA BRUTA',      value: waterfall.grossProfit,    dividerBefore: true,  indent: true,  highlight: false },
+              { label: '− CUOTA INVERSORES',  value: waterfall.investorCuota,  dividerBefore: false, indent: false, highlight: false },
+              { label: 'GANANCIA OPERADOR',   value: waterfall.operatorGross,  dividerBefore: true,  indent: true,  highlight: false },
+              { label: `− ISR (${Math.round((config.isrRate || 0.30) * 100)}%)`, value: waterfall.isr, dividerBefore: false, indent: false, highlight: false },
+              { label: 'DISTRIBUIBLE',        value: waterfall.distributable,  dividerBefore: true,  indent: true,  highlight: true  },
+            ] as { label: string; value: number; dividerBefore: boolean; indent: boolean; highlight: boolean }[]).map(row => (
+              <tr key={row.label} style={{ borderTop: row.dividerBefore ? `1px solid ${colors.border}` : undefined }}>
+                <td style={{ padding: '4px 0', paddingLeft: row.indent ? '10px' : '0', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.08em' }}>
+                  {row.label}
+                </td>
+                <td style={{ padding: '4px 0', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: row.highlight ? colors.primary : colors.neutral }}>
+                  {fmt(row.value)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── PAGOS A INVERSORES ───────────────────────────────────────────────── */}
+      {waterfall.investorBreakdown.length > 0 && (
+        <div>
+          {sectionDivider(`PAGOS A INVERSORES (${waterfall.months} meses)`)}
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                {(['INVERSOR', 'FONDEO', 'TASA', 'CUOTA', 'TOTAL RETORNO'] as string[]).map((h, i) => (
+                  <th key={h} style={{ ...labelStyle, padding: '3px 4px', textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {waterfall.investorBreakdown.map((entry, idx) => (
+                <tr key={idx} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  <td style={{ padding: '5px 4px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{entry.name}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmt(entry.fundedAmount)}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{Math.round(entry.interestRateAnnual * 100)}%</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>{fmt(entry.cuota)}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, fontWeight: 600 }}>{fmt(entry.totalReturn)}</td>
+                </tr>
+              ))}
+              {waterfall.investorBreakdown.length > 1 && (
+                <tr style={{ borderTop: `1px solid ${colors.border}` }}>
+                  <td style={{ padding: '5px 4px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.08em' }}>TOTAL</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmt(waterfall.investorBreakdown.reduce((s, e) => s + e.fundedAmount, 0))}</td>
+                  <td />
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>{fmt(waterfall.investorBreakdown.reduce((s, e) => s + e.cuota, 0))}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, fontWeight: 600 }}>{fmt(waterfall.investorBreakdown.reduce((s, e) => s + e.totalReturn, 0))}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* ── SPLIT DEL EQUIPO ─────────────────────────────────────────────────── */}
       <div>
         {sectionDivider('SPLIT DEL EQUIPO')}
