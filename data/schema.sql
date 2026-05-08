@@ -256,3 +256,32 @@ CREATE TABLE IF NOT EXISTS profit_split_config (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_profit_split_project
   ON profit_split_config(project_id) WHERE project_id IS NOT NULL;
+
+-- ─────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS investors (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL CHECK (name != ''),
+  email      TEXT NOT NULL DEFAULT '',
+  phone      TEXT NOT NULL DEFAULT '',
+  notes      TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_investors (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  investor_id          INTEGER NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
+  status               TEXT NOT NULL DEFAULT 'interesado'
+                         CHECK (status IN ('interesado', 'comprometido', 'fondeado')),
+  interested_amount    REAL NOT NULL DEFAULT 0,
+  committed_amount     REAL NOT NULL DEFAULT 0,
+  funded_amount        REAL NOT NULL DEFAULT 0,
+  interest_rate_annual REAL NOT NULL DEFAULT 0.12,
+  notes                TEXT NOT NULL DEFAULT '',
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(project_id, investor_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_investors_project  ON project_investors(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_investors_investor ON project_investors(investor_id);
