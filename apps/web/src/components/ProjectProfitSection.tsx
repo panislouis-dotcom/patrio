@@ -53,11 +53,12 @@ const selectStyle: React.CSSProperties = {
 interface Props {
   projectId: number
   team: TeamMember[]
+  conclusionDate: string | null
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ProjectProfitSection({ projectId, team }: Props) {
+export function ProjectProfitSection({ projectId, team, conclusionDate }: Props) {
   const [config, setConfig] = useState<ProfitSplitConfig | null>(null)
   const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
   const [loading, setLoading] = useState(true)
@@ -79,6 +80,8 @@ export function ProjectProfitSection({ projectId, team }: Props) {
   const [ayudanteMemberIds, setAyudanteMemberIds] = useState<number[]>([])
   const [maestroCount, setMaestroCount] = useState<string>('')
   const [ayudanteCount, setAyudanteCount] = useState<string>('')
+  const [plannedEndDate, setPlannedEndDate] = useState<string>('')
+  const [bufferDays, setBufferDays] = useState<string>('0')
 
   useEffect(() => {
     setLoading(true)
@@ -99,6 +102,8 @@ export function ProjectProfitSection({ projectId, team }: Props) {
       setAyudanteMemberIds(config.ayudanteMemberIds)
       setMaestroCount(config.maestroCount != null ? String(config.maestroCount) : '')
       setAyudanteCount(config.ayudanteCount != null ? String(config.ayudanteCount) : '')
+      setPlannedEndDate(config.plannedEndDate ?? '')
+      setBufferDays(String(config.bufferDays ?? 0))
       setLoading(false)
     }).catch((err: unknown) => {
       setFetchError(err instanceof Error ? err.message : 'Error al cargar datos')
@@ -123,6 +128,8 @@ export function ProjectProfitSection({ projectId, team }: Props) {
         ayudanteMemberIds,
         maestroCount: maestroCount ? Number(maestroCount) : null,
         ayudanteCount: ayudanteCount ? Number(ayudanteCount) : null,
+        plannedEndDate: plannedEndDate || null,
+        bufferDays: Number(bufferDays),
       }
       const result = await updateProjectProfit(projectId, draft)
       setConfig(result.config)
@@ -133,11 +140,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
     } finally {
       setSaving(false)
     }
-  }
-
-  function splitTotal(label: string): number {
-    if (!waterfall) return 0
-    return waterfall.splits.filter(s => s.label === label).reduce((sum, s) => sum + s.total, 0)
   }
 
   if (fetchError) {
@@ -188,9 +190,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
               <span style={{ ...labelStyle, minWidth: '80px' }}>FINDER</span>
               {pctInput(finderFeePct, setFinderFeePct)}
               <span style={labelStyle}>%</span>
-              <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
-                {fmt(splitTotal('Finder'))}
-              </span>
             </div>
             <select value={finderMemberId} onChange={e => setFinderMemberId(e.target.value)} style={selectStyle}>
               <option value="">— sin asignar —</option>
@@ -203,9 +202,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
             <span style={{ ...labelStyle, minWidth: '80px' }}>DIRECTORES</span>
             {pctInput(directorPct, setDirectorPct)}
             <span style={labelStyle}>%</span>
-            <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
-              {fmt(splitTotal('Director'))}
-            </span>
           </div>
 
           {/* RESPONSABLE */}
@@ -214,9 +210,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
               <span style={{ ...labelStyle, minWidth: '80px' }}>RESPONSABLE</span>
               {pctInput(responsablePct, setResponsablePct)}
               <span style={labelStyle}>%</span>
-              <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
-                {fmt(splitTotal('Responsable'))}
-              </span>
             </div>
             <select value={responsableMemberId} onChange={e => setResponsableMemberId(e.target.value)} style={selectStyle}>
               <option value="">— sin asignar —</option>
@@ -230,9 +223,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
               <span style={{ ...labelStyle, minWidth: '80px' }}>LÍDER</span>
               {pctInput(liderPct, setLiderPct)}
               <span style={labelStyle}>%</span>
-              <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
-                {fmt(splitTotal('Líder'))}
-              </span>
             </div>
             <select value={liderMemberId} onChange={e => setLiderMemberId(e.target.value)} style={selectStyle}>
               <option value="">— sin asignar —</option>
@@ -254,9 +244,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                 onChange={e => setMaestroCount(e.target.value)}
                 style={{ ...inputStyle, width: '76px', textAlign: 'right' }}
               />
-              <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
-                {fmt(splitTotal('Maestro'))}
-              </span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginLeft: '4px' }}>
               {maestroMembers.map(m => (
@@ -288,9 +275,6 @@ export function ProjectProfitSection({ projectId, team }: Props) {
                 onChange={e => setAyudanteCount(e.target.value)}
                 style={{ ...inputStyle, width: '76px', textAlign: 'right' }}
               />
-              <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
-                {fmt(splitTotal('Ayudante'))}
-              </span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginLeft: '4px' }}>
               {ayudanteMembers.map(m => (
@@ -313,40 +297,128 @@ export function ProjectProfitSection({ projectId, team }: Props) {
             <span style={{ ...labelStyle, minWidth: '80px' }}>EMPRESA</span>
             <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.06em' }}>(residual)</span>
             <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
-              {fmt(waterfall.companyResidual)}
+              {fmt(waterfall.scenarios.sin_bono.companyResidual)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── COLCHÓN ─────────────────────────────────────────────────────────── */}
+      <div>
+        {sectionDivider('COLCHÓN')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ ...labelStyle, marginBottom: '3px' }}>FIN PLANEADO</div>
+              <input
+                type="text"
+                value={plannedEndDate}
+                onChange={e => setPlannedEndDate(e.target.value)}
+                placeholder="YYYY-MM"
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ width: '80px' }}>
+              <div style={{ ...labelStyle, marginBottom: '3px' }}>COLCHÓN (días)</div>
+              <input
+                type="number"
+                value={bufferDays}
+                onChange={e => setBufferDays(e.target.value)}
+                min="0"
+                step="1"
+                style={{ ...inputStyle, textAlign: 'right' }}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={labelStyle}>FIN REAL</span>
+            <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>
+              {conclusionDate ?? '—'}
             </span>
           </div>
         </div>
       </div>
 
       {/* ── POR PERSONA ──────────────────────────────────────────────────────── */}
-      {waterfall.splits.length > 0 && (
+      {waterfall.scenarios.sin_bono.splits.length > 0 && (
         <div>
           {sectionDivider('POR PERSONA')}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-            <div style={{
-              display: 'grid', gridTemplateColumns: '1fr auto',
-              gap: '8px', padding: '3px 0', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px',
-            }}>
-              <span style={labelStyle}>NOMBRE</span>
-              <span style={{ ...labelStyle, textAlign: 'right' }}>TOTAL</span>
-            </div>
-            {waterfall.splits.map((split, idx) => (
-              <div key={`${split.label}-${split.id ?? 'anon'}-${idx}`} style={{
-                display: 'grid', gridTemplateColumns: '1fr auto',
-                gap: '8px', padding: '4px 0', borderBottom: `1px solid ${colors.border}`,
-              }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{split.name}</span>
-                  <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>
-                    {split.label.toUpperCase()}
-                  </span>
-                </div>
-                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right', alignSelf: 'center', fontWeight: 600 }}>
-                  {fmt(split.total)}
-                </span>
-              </div>
-            ))}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...labelStyle, textAlign: 'left', padding: '3px 0', borderBottom: `1px solid ${colors.border}` }}>
+                    NOMBRE
+                  </th>
+                  {(['sin_bono', 'bono_25', 'bono_50'] as const).map(key => {
+                    const tierValue = key === 'sin_bono' ? 0 : key === 'bono_25' ? 0.25 : 0.50
+                    const isActive = waterfall.activeTier === tierValue
+                    const label = key === 'sin_bono' ? 'Sin bono' : key === 'bono_25' ? 'Bono 25%' : 'Bono 50%'
+                    return (
+                      <th key={key} style={{
+                        ...labelStyle,
+                        textAlign: 'right',
+                        padding: '3px 4px',
+                        borderBottom: `1px solid ${colors.border}`,
+                        color: isActive ? colors.primary : colors.secondary,
+                        fontWeight: isActive ? 700 : undefined,
+                      }}>
+                        {label}
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {waterfall.scenarios.sin_bono.splits.map((split, idx) => (
+                  <tr key={`${split.label}-${split.id ?? 'anon'}-${idx}`} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <td style={{ padding: '5px 0' }}>
+                      <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{split.name ?? '—'}</div>
+                      <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>{split.label.toUpperCase()}</div>
+                    </td>
+                    {(['sin_bono', 'bono_25', 'bono_50'] as const).map(key => {
+                      const tierValue = key === 'sin_bono' ? 0 : key === 'bono_25' ? 0.25 : 0.50
+                      const isActive = waterfall.activeTier === tierValue
+                      const amount = waterfall.scenarios[key].splits[idx]?.total ?? 0
+                      return (
+                        <td key={key} style={{
+                          padding: '5px 4px',
+                          textAlign: 'right',
+                          fontFamily: fonts.sans,
+                          fontSize: '11px',
+                          color: colors.neutral,
+                          fontWeight: isActive ? 600 : undefined,
+                        }}>
+                          {fmt(amount)}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+                {/* Empresa row */}
+                <tr style={{ borderTop: `1px solid ${colors.border}` }}>
+                  <td style={{ padding: '5px 0', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.08em' }}>
+                    EMPRESA
+                  </td>
+                  {(['sin_bono', 'bono_25', 'bono_50'] as const).map(key => {
+                    const tierValue = key === 'sin_bono' ? 0 : key === 'bono_25' ? 0.25 : 0.50
+                    const isActive = waterfall.activeTier === tierValue
+                    return (
+                      <td key={key} style={{
+                        padding: '5px 4px',
+                        textAlign: 'right',
+                        fontFamily: fonts.sans,
+                        fontSize: '11px',
+                        color: colors.secondary,
+                        fontWeight: isActive ? 600 : undefined,
+                      }}>
+                        {fmt(waterfall.scenarios[key].companyResidual)}
+                      </td>
+                    )
+                  })}
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       )}
