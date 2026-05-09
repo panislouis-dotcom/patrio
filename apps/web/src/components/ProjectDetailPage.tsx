@@ -56,16 +56,23 @@ export function ProjectDetailPage() {
   const [linkingTask, setLinkingTask] = useState(false)
 
   useEffect(() => {
-    fetchProject(projectId).then(p => {
+    Promise.all([
+      fetchProject(projectId),
+      fetchInstances(projectId),
+      fetchTeam(),
+      fetchProjectInvestors(projectId),
+      fetchInvestors(),
+      fetchProjectProfit(projectId),
+    ]).then(([p, inst, t, pis, allInv, { waterfall: wf }]) => {
       setProject(p)
+      setInstances(inst)
+      setTeam(t)
+      setProjectInvestors(pis)
+      setAllInvestors(allInv)
+      setWaterfall(wf)
       setTimeout(() => setMounted(true), 40)
       setTimeout(() => setBarsReady(true), 420)
-    })
-    fetchInstances(projectId).then(setInstances)
-    fetchTeam().then(setTeam)
-    fetchProjectInvestors(projectId).then(setProjectInvestors)
-    fetchInvestors().then(setAllInvestors)
-    fetchProjectProfit(projectId).then(({ waterfall }) => { setWaterfall(waterfall) })
+    }).catch(e => setError(e instanceof Error ? e.message : 'Error al cargar el proyecto'))
   }, [projectId])
 
   const field = (key: keyof Project) => (edits as Record<string, unknown>)[key] ?? (project ? (project as unknown as Record<string, unknown>)[key] : undefined)

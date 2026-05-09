@@ -298,3 +298,7 @@ CREATE INDEX IF NOT EXISTS idx_node_files_instance ON node_files(instance_id);
 CREATE INDEX IF NOT EXISTS idx_comments_node       ON node_comments(template_node_id, instance_id);
 CREATE INDEX IF NOT EXISTS idx_pi_project          ON project_investors(project_id);
 CREATE INDEX IF NOT EXISTS idx_pi_investor         ON project_investors(investor_id);
+CREATE INDEX IF NOT EXISTS idx_projects_status     ON projects(status);
+CREATE INDEX IF NOT EXISTS idx_projects_acq_date   ON projects(acquisition_date DESC);
+CREATE INDEX IF NOT EXISTS idx_instances_status    ON process_instances(status);
+CREATE INDEX IF NOT EXISTS idx_instances_origin    ON process_instances(origin_instance_id);

@@ -31,3 +31,5 @@ data/files/**
 
 # Environment
 .env
+
+docs/superpowers/

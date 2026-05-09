@@ -155,12 +155,12 @@ def post_instance(body: InstanceCreate, _: dict = Depends(get_current_user)):
 
 @router.patch("/api/process/instances/{iid}")
 def patch_instance(iid: int, body: InstanceUpdate, _: dict = Depends(get_current_user)):
-    from datetime import datetime
+    from datetime import datetime, timezone
     data = body.model_dump(exclude_unset=True)
 
     # Record completion time for periodic auto-scheduling
     if data.get("status") == "completed":
-        data["completedAt"] = datetime.utcnow().strftime("%Y-%m-%d")
+        data["completedAt"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     updated = update_instance(iid, data)
     if updated is None:

@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-os.environ.setdefault("JWT_SECRET", "testsecret")
+os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests-minimum-32-chars")
 os.environ.setdefault("DATABASE_URL", os.environ.get("DATABASE_URL", ""))
 
 from api.auth import create_access_token, hash_password, verify_password

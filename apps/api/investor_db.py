@@ -101,6 +101,8 @@ def update_investor(investor_id: int, data: dict) -> dict:
     """
     with get_db() as conn:
         row = conn.execute(query, (investor_id,)).fetchone()
+    if row is None:
+        raise ValueError(f"Investor {investor_id} not found")
     return {_snake_to_camel(k): v for k, v in dict(row).items()}
 
 
@@ -183,6 +185,8 @@ def update_project_investment(investment_id: int, data: dict) -> dict:
             "SELECT * FROM project_investor_metrics WHERE id = %s",
             (investment_id,),
         ).fetchone()
+    if row is None:
+        raise ValueError(f"Investment {investment_id} not found")
     return {_snake_to_camel(k): v for k, v in dict(row).items()}
 
 

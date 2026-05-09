@@ -69,21 +69,29 @@ def delete_template(tid: int) -> None:
 # ─── Template nodes ───────────────────────────────
 
 def _template_references(tid: int, visited: set | None = None) -> set:
-    """Return set of all template IDs reachable from tid via source_template_id references."""
+    """Return set of all template IDs reachable from tid via source_template_id references.
+
+    Uses a single DB connection for the entire traversal to avoid exhausting the pool
+    on deep template trees.
+    """
     if visited is None:
         visited = set()
-    if tid in visited:
-        return visited
-    visited.add(tid)
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT DISTINCT source_template_id FROM template_nodes "
-            "WHERE template_id = %s AND source_template_id IS NOT NULL",
-            (tid,)
-        ).fetchall()
-    for r in rows:
-        _template_references(r[0], visited)
+        _template_references_rec(tid, conn, visited)
     return visited
+
+
+def _template_references_rec(tid: int, conn, visited: set) -> None:
+    if tid in visited:
+        return
+    visited.add(tid)
+    rows = conn.execute(
+        "SELECT DISTINCT source_template_id FROM template_nodes "
+        "WHERE template_id = %s AND source_template_id IS NOT NULL",
+        (tid,),
+    ).fetchall()
+    for r in rows:
+        _template_references_rec(r[0], conn, visited)
 
 
 def get_template_nodes(tid: int) -> list[dict]:
@@ -225,7 +233,6 @@ def sync_periodic_series():
 
 
 def get_instances(project_id: Optional[int] = None) -> list[dict]:
-    sync_periodic_series()
     query = _INSTANCE_SELECT
     params: list = []
     if project_id is not None:
@@ -339,8 +346,8 @@ def create_node_file(
     else:
         rel_path = f"nodes/{template_node_id}/reference/{file_name}"
     full_path = _NODE_FILES_DIR / rel_path
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(content)
+
+    # Commit DB row first — prevents orphaned files if FK or other constraint fails
     with get_db() as conn:
         cur = conn.execute(
             """INSERT INTO node_files
@@ -349,6 +356,9 @@ def create_node_file(
             (template_node_id, instance_id, rel_path, file_name, content_type),
         )
         fid = cur.fetchone()["id"]
+
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(content)
     return get_node_file(fid)
 
 

@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
@@ -6,7 +5,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
-_SECRET = os.environ.get("JWT_SECRET", "")
+from api.config import JWT_SECRET as _SECRET
 _ALGORITHM = "HS256"
 _EXPIRE_HOURS = 8
 
