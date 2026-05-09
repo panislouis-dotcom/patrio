@@ -1,7 +1,4 @@
 # TODO
-- add auth, user types and user type based experience
-    - team and investors automatically have account.
-    - eduardo and panis seeded
 - change to postgres
 - deploy to vm
 - fix sonar
