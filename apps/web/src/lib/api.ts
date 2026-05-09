@@ -1,7 +1,7 @@
 import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User } from './types'
 import { getToken, clearToken } from './auth'
 
-const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
 
 async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const token = getToken()
@@ -286,6 +286,7 @@ export async function fetchInstanceDetail(iid: number): Promise<InstanceDetail &
 
 export async function fetchInstanceFiles(iid: number): Promise<InstanceFile[]> {
   const res = await authFetch(`${BASE}/api/process/instances/${iid}/files`)
+  if (!res.ok) throw new Error(`fetchInstanceFiles: ${res.status}`)
   return res.json()
 }
 

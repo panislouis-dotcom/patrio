@@ -101,7 +101,10 @@ def add_project_investor_route(project_id: int, body: ProjectInvestorCreate, _: 
 
 @router.put("/api/projects/{project_id}/investors/{investment_id}")
 def update_project_investment_route(project_id: int, investment_id: int, body: ProjectInvestorUpdate, _: dict = Depends(get_current_user)):
-    return update_project_investment(investment_id, body.model_dump(exclude_unset=True))
+    try:
+        return update_project_investment(investment_id, body.model_dump(exclude_unset=True))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.delete("/api/projects/{project_id}/investors/{investment_id}", status_code=204)

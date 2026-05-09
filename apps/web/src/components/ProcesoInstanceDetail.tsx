@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchInstanceDetail, updateNodeState, fetchTeam, updateInstance, uploadInstanceFile, deleteInstanceFile } from '../lib/api'
+import { BASE, fetchInstanceDetail, updateNodeState, fetchTeam, updateInstance, uploadInstanceFile, deleteInstanceFile } from '../lib/api'
 import type { InstanceDetail, GanttNode, NodeState, TeamMember, InstanceFile } from '../lib/types'
 import { GanttChart } from './GanttChart'
 import { colors, fonts } from '../lib/theme'
@@ -37,7 +37,7 @@ export function ProcesoInstanceDetail() {
       setTeam(t)
       setLocalOwnerId(d.instance.ownerId ?? null)
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [instanceId, refreshKey])
 
   useEffect(() => {
@@ -199,7 +199,7 @@ export function ProcesoInstanceDetail() {
             <div key={f.id} style={{ position: 'relative', width: 80, height: 80 }}>
               {f.contentType.startsWith('image/') ? (
                 <img
-                  src={`http://localhost:8000/files/${f.filePath}`}
+                  src={`${BASE}/files/${f.filePath}`}
                   alt={f.fileName}
                   style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }}
                 />

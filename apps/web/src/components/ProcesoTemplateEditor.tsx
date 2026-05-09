@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchTemplatePreview, fetchTemplates, createNode, updateNode, deleteNode, fetchNodeFiles, uploadNodeFile, deleteNodeFile } from '../lib/api'
+import { BASE, fetchTemplatePreview, fetchTemplates, createNode, updateNode, deleteNode, fetchNodeFiles, uploadNodeFile, deleteNodeFile } from '../lib/api'
 import type { ProcessTemplate, TemplateNode, GanttNode, NodeFile } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { GanttChart } from './GanttChart'
@@ -497,7 +497,7 @@ export function ProcesoTemplateEditor() {
                 {focusFiles.map(f => (
                   <div key={f.id} style={{ position: 'relative', width: 80, height: 80 }}>
                     {f.contentType.startsWith('image/') ? (
-                      <img src={`http://localhost:8000/files/${f.filePath}`} alt={f.fileName} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }} />
+                      <img src={`${BASE}/files/${f.filePath}`} alt={f.fileName} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }} />
                     ) : (
                       <div style={{ width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.border, borderRadius: 2, fontSize: '10px', color: colors.secondary, fontFamily: fonts.label, padding: 4, textAlign: 'center' }}>{f.fileName}</div>
                     )}

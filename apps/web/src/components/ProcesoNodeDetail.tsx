@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
+  BASE,
   fetchNodeDetail,
   uploadNodeFile,
   createNodeComment,
@@ -21,7 +22,7 @@ const STATUS_OPTIONS = ['pending', 'in_progress', 'done', 'skipped'] as const
 
 function FileThumb({ f, onDelete }: { f: NodeFile; onDelete: () => void }) {
   const isImage = f.contentType.startsWith('image/')
-  const src = `http://localhost:8000/files/${f.filePath}`
+  const src = `${BASE}/files/${f.filePath}`
   return (
     <div style={{ position: 'relative', width: 80, height: 80 }}>
       {isImage ? (
@@ -474,7 +475,7 @@ export function ProcesoNodeDetail() {
               <div key={f.id} style={{ width: 80, height: 80 }}>
                 {f.contentType.startsWith('image/') ? (
                   <img
-                    src={`http://localhost:8000/files/${f.filePath}`}
+                    src={`${BASE}/files/${f.filePath}`}
                     alt={f.fileName}
                     style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }}
                   />

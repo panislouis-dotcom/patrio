@@ -1,14 +1,12 @@
 import json
-import os
 from contextlib import contextmanager
 from datetime import datetime, date
 
 import psycopg2
 import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
-from dotenv import load_dotenv
 
-load_dotenv()
+from api.config import DATABASE_URL
 
 _pool: ThreadedConnectionPool | None = None
 
@@ -19,7 +17,7 @@ def _get_pool() -> ThreadedConnectionPool:
         _pool = ThreadedConnectionPool(
             minconn=1,
             maxconn=10,
-            dsn=os.environ["DATABASE_URL"],
+            dsn=DATABASE_URL,
         )
     return _pool
 

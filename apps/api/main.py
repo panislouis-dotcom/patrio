@@ -1,18 +1,17 @@
-import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from api.config import ALLOWED_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD_HASH
 from api.routes import prospects, projects, sonar, team, processes, profit, investors, users
 from api.routes.auth import router as auth_router
 from api.db import get_db
+from api.process_db import sync_periodic_series
 
 
 def _seed_admin() -> None:
-    email = os.environ.get("ADMIN_EMAIL", "").strip()
-    pw_hash = os.environ.get("ADMIN_PASSWORD_HASH", "").strip()
-    if not email or not pw_hash:
+    if not ADMIN_EMAIL or not ADMIN_PASSWORD_HASH:
         return
     with get_db() as conn:
         conn.execute(
@@ -21,19 +20,20 @@ def _seed_admin() -> None:
             VALUES (%s, %s, TRUE)
             ON CONFLICT (email) DO UPDATE SET hashed_password = EXCLUDED.hashed_password
             """,
-            (email, pw_hash),
+            (ADMIN_EMAIL, ADMIN_PASSWORD_HASH),
         )
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _seed_admin()
+    sync_periodic_series()
     yield
 
 
 app = FastAPI(title="Refigan API", lifespan=lifespan)
 
-_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").split(",")]
+_origins = ALLOWED_ORIGINS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
