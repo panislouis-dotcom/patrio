@@ -4,7 +4,10 @@ import type { Signal } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtM } from '../lib/fmt'
 
-function fmtK(n: number) { return n ? `$${(n / 1_000).toFixed(0)}k` : '—' }
+function fmtPpsqm(n: number) {
+  if (!n) return '—'
+  return n >= 1_000 ? `$${(n / 1_000).toFixed(0)}k` : `$${Math.round(n)}`
+}
 
 type SortCol = 'score' | 'portal' | 'title' | 'price' | 'sqmLand' | 'ppsqm' | 'scrapedAt'
 type SortDir = 'asc' | 'desc'
@@ -349,7 +352,7 @@ export function SonarTab() {
                     {/* M² */}
                     <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{s.sqmLand > 0 ? s.sqmLand.toLocaleString('es-MX') : '—'}</td>
                     {/* $/M² */}
-                    <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{s.ppsqm > 0 ? fmtK(s.ppsqm) : '—'}</td>
+                    <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{fmtPpsqm(s.ppsqm)}</td>
                     {/* Fecha */}
                     <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '10px' }}>{s.scrapedAt ? s.scrapedAt.slice(0, 10) : '—'}</td>
                     {/* Actions */}
