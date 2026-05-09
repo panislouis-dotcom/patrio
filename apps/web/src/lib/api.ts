@@ -92,6 +92,33 @@ export async function runSonarEnrich(): Promise<{ checked: number; updated: numb
   return res.json()
 }
 
+export type SonarRunEvent =
+  | { type: 'start';        portals: string[]; total: number }
+  | { type: 'portal_start'; portal: string }
+  | { type: 'portal_done';  portal: string; fetched: number; new: number; skipped: number }
+  | { type: 'portal_error'; portal: string; error: string }
+  | { type: 'enriching';    count: number }
+  | { type: 'complete';     new: number; skipped: number; enriched: number }
+
+export async function* streamSonarRun(): AsyncGenerator<SonarRunEvent> {
+  const res = await authFetch(`${BASE}/api/sonar/run`, { method: 'POST' })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const chunks = buf.split('\n\n')
+    buf = chunks.pop()!
+    for (const chunk of chunks) {
+      const line = chunk.trim()
+      if (line.startsWith('data: ')) yield JSON.parse(line.slice(6)) as SonarRunEvent
+    }
+  }
+}
+
 export async function fetchSignals(status?: string, portal?: string): Promise<Signal[]> {
   const params = new URLSearchParams()
   if (status) params.set('status', status)

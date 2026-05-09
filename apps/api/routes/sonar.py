@@ -1,5 +1,7 @@
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from api.auth import get_current_user
 from api.db import get_signals, create_signal, dismiss_signal, import_signal, update_signal_sqm, get_signals_missing_sqm
 from scraper import lamudi, mitula, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
@@ -53,14 +55,100 @@ def _enrich_batch(rows: list[dict]) -> int:
     return updated
 
 
+def _process_signals(signals: list, to_enrich: list) -> tuple[int, int]:
+    """Validate, insert signals into DB. Returns (new_count, skipped_count)."""
+    new = skipped = 0
+    for raw in signals:
+        s = _sanitize(raw)
+        if s is None:
+            skipped += 1
+            continue
+        inserted = create_signal({
+            "portal": s.portal,
+            "url": s.url,
+            "title": s.title,
+            "address": s.address,
+            "city": s.city,
+            "price": s.price,
+            "sqm_land": s.sqm_land,
+        })
+        if inserted:
+            new += 1
+            if s.sqm_land == 0 and s.portal in _ENRICHABLE:
+                to_enrich.append({"url": s.url, "portal": s.portal})
+    return new, skipped
+
+
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data)}\n\n"
+
+
+def _run_combined_stream():
+    """Generator: runs scan + enrich and yields SSE events throughout."""
+    portal_names = [s.PORTAL_NAME for s in _ALL_SCRAPERS]
+    yield _sse({"type": "start", "portals": portal_names, "total": len(_ALL_SCRAPERS)})
+
+    to_enrich: list[dict] = []
+    total_new = total_skipped = 0
+
+    # Static scrapers run sequentially — one active at a time
+    for scraper in _STATIC_SCRAPERS:
+        yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
+        _, signals, err = _run_scraper(scraper)
+        if err:
+            yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
+            continue
+        new, skipped = _process_signals(signals, to_enrich)
+        total_new += new
+        total_skipped += skipped
+        yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
+                    "fetched": len(signals), "new": new, "skipped": skipped})
+
+    # PW scrapers run in parallel — all start simultaneously
+    for scraper in _PW_SCRAPERS:
+        yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
+    with ThreadPoolExecutor(max_workers=len(_PW_SCRAPERS)) as pool:
+        futures = {pool.submit(_run_scraper, s): s for s in _PW_SCRAPERS}
+        for fut in as_completed(futures):
+            scraper, signals, err = fut.result()
+            if err:
+                yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
+                continue
+            new, skipped = _process_signals(signals, to_enrich)
+            total_new += new
+            total_skipped += skipped
+            yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
+                        "fetched": len(signals), "new": new, "skipped": skipped})
+
+    # Enrichment phase
+    yield _sse({"type": "enriching", "count": len(to_enrich)})
+    enriched = 0
+    if to_enrich:
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futs = [pool.submit(_enrich_batch, [r]) for r in to_enrich]
+            for f in as_completed(futs):
+                enriched += f.result()
+
+    yield _sse({"type": "complete", "new": total_new, "skipped": total_skipped, "enriched": enriched})
+
+
+@router.post("/api/sonar/run")
+def sonar_run(_: dict = Depends(get_current_user)):
+    return StreamingResponse(
+        _run_combined_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.post("/api/sonar/scan")
 def sonar_scan(_: dict = Depends(get_current_user)):
     total_new = 0
     errors = []
     portals: list[dict] = []
-    to_enrich: list[dict] = []   # new signals that need detail-page enrichment
+    to_enrich: list[dict] = []
+    total_skipped = 0
 
-    # Run static scrapers inline, PW scrapers in parallel threads
     results = []
     for s in _STATIC_SCRAPERS:
         results.append(_run_scraper(s))
@@ -70,37 +158,20 @@ def sonar_scan(_: dict = Depends(get_current_user)):
         for fut in as_completed(futures):
             results.append(fut.result())
 
-    total_skipped = 0
     for scraper, signals, err in results:
         if err:
             errors.append({"portal": scraper.PORTAL_NAME, "error": err})
             continue
         portal_new = 0
         portal_skipped = 0
-        for raw in signals:
-            s = _sanitize(raw)
-            if s is None:
-                portal_skipped += 1
-                total_skipped += 1
-                continue
-            inserted = create_signal({
-                "portal": s.portal,
-                "url": s.url,
-                "title": s.title,
-                "address": s.address,
-                "city": s.city,
-                "price": s.price,
-                "sqm_land": s.sqm_land,
-            })
-            if inserted:
-                portal_new += 1
-                total_new += 1
-                if s.sqm_land == 0 and s.portal in _ENRICHABLE:
-                    to_enrich.append({"url": s.url, "portal": s.portal})
+        new, skipped = _process_signals(signals, to_enrich)
+        portal_new += new
+        portal_skipped += skipped
+        total_new += new
+        total_skipped += skipped
         portals.append({"portal": scraper.PORTAL_NAME, "fetched": len(signals),
                         "new": portal_new, "skipped": portal_skipped})
 
-    # Enrich new signals missing sqm (detail-page fetch, parallel by portal)
     enriched = 0
     if to_enrich:
         with ThreadPoolExecutor(max_workers=3) as pool:
@@ -119,7 +190,6 @@ def sonar_enrich(_: dict = Depends(get_current_user)):
     if not rows:
         return {"checked": 0, "updated": 0}
 
-    # Process per-portal with a thread pool (3 concurrent fetches max)
     with ThreadPoolExecutor(max_workers=3) as pool:
         futs = [pool.submit(_enrich_batch, [r]) for r in rows]
         total_updated = sum(f.result() for f in as_completed(futs))
