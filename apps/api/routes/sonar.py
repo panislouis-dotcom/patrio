@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from api.auth import get_current_user
 from api.db import get_signals, create_signal, dismiss_signal, import_signal, update_signal_sqm, get_signals_missing_sqm
 from scraper import lamudi, mitula, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
+from scraper.base import SignalRaw
 
 router = APIRouter()
 
@@ -14,6 +15,19 @@ _ALL_SCRAPERS = _STATIC_SCRAPERS + _PW_SCRAPERS
 
 # Portals that expose sqm on their detail page (have fetch_sqm())
 _ENRICHABLE = {m.PORTAL_NAME: m for m in [lamudi, mitula, icasas, doorvel] if hasattr(m, "fetch_sqm")}
+
+# Validation thresholds for terrenos in Monterrey area (MXN)
+_MIN_PRICE = 100_000   # below this is almost certainly a unit price or data error
+_MIN_SQM   = 50        # below this is almost certainly a parse error (not a real lot)
+
+
+def _sanitize(s: SignalRaw) -> SignalRaw | None:
+    """Return None to discard, or the signal (possibly with sqm cleared) to keep."""
+    if 0 < s.price < _MIN_PRICE:
+        return None
+    if 0 < s.sqm_land < _MIN_SQM:
+        s.sqm_land = 0  # clear bogus sqm — will be re-enriched from detail page
+    return s
 
 
 def _run_scraper(scraper) -> tuple:
@@ -56,12 +70,19 @@ def sonar_scan(_: dict = Depends(get_current_user)):
         for fut in as_completed(futures):
             results.append(fut.result())
 
+    total_skipped = 0
     for scraper, signals, err in results:
         if err:
             errors.append({"portal": scraper.PORTAL_NAME, "error": err})
             continue
         portal_new = 0
-        for s in signals:
+        portal_skipped = 0
+        for raw in signals:
+            s = _sanitize(raw)
+            if s is None:
+                portal_skipped += 1
+                total_skipped += 1
+                continue
             inserted = create_signal({
                 "portal": s.portal,
                 "url": s.url,
@@ -76,7 +97,8 @@ def sonar_scan(_: dict = Depends(get_current_user)):
                 total_new += 1
                 if s.sqm_land == 0 and s.portal in _ENRICHABLE:
                     to_enrich.append({"url": s.url, "portal": s.portal})
-        portals.append({"portal": scraper.PORTAL_NAME, "fetched": len(signals), "new": portal_new})
+        portals.append({"portal": scraper.PORTAL_NAME, "fetched": len(signals),
+                        "new": portal_new, "skipped": portal_skipped})
 
     # Enrich new signals missing sqm (detail-page fetch, parallel by portal)
     enriched = 0
@@ -86,8 +108,8 @@ def sonar_scan(_: dict = Depends(get_current_user)):
             for f in as_completed(futs):
                 enriched += f.result()
 
-    return {"scanned": len(_ALL_SCRAPERS), "new": total_new, "enriched": enriched,
-            "portals": portals, "errors": errors}
+    return {"scanned": len(_ALL_SCRAPERS), "new": total_new, "skipped": total_skipped,
+            "enriched": enriched, "portals": portals, "errors": errors}
 
 
 @router.post("/api/sonar/enrich")
