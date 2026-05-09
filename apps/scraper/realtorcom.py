@@ -89,10 +89,10 @@ def fetch_sqm(url: str) -> float:
         r = httpx.get(url, headers=BROWSER_HEADERS, follow_redirects=True, timeout=15)
         if r.status_code != 200:
             return 0.0
-        # Prefer "X m² of land" over construction/total area
-        m = re.search(r"([\d,]+(?:\.\d+)?)\s*m²\s*of\s*land", r.text, re.IGNORECASE)
+        # Prefer "X m² of land"; require whitespace before m to avoid SVG path false positives
+        m = re.search(r"([\d,]+(?:\.\d+)?)\s+m²\s+of\s+land", r.text, re.IGNORECASE)
         if not m:
-            m = re.search(r"([\d,]+(?:\.\d+)?)\s*m²", r.text, re.IGNORECASE)
+            m = re.search(r"([\d,]+(?:\.\d+)?)\s+m[²2]", r.text, re.IGNORECASE)
         return parse_sqm(m.group(0)) if m else 0.0
     except Exception:
         return 0.0

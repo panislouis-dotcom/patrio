@@ -1,9 +1,9 @@
 import base64
+import re
 import httpx
 from bs4 import BeautifulSoup
 
-from .base import SignalRaw, BROWSER_HEADERS, rate_limit
-from .pw_base import parse_sqm
+from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
 
 PORTAL_NAME = "mitula"
 BASE_URL = "https://casas.mitula.mx"
@@ -83,3 +83,15 @@ def scrape(city: str = "Monterrey") -> list[SignalRaw]:
             break
 
     return signals
+
+
+def fetch_sqm(url: str) -> float:
+    """Visit the listing detail page and extract land area from page text."""
+    try:
+        r = httpx.get(url, headers=BROWSER_HEADERS, follow_redirects=True, timeout=15)
+        if r.status_code != 200:
+            return 0.0
+        m = re.search(r"([\d,]+(?:\.\d+)?)\s+m[²2]", r.text, re.IGNORECASE)
+        return parse_sqm(m.group(0)) if m else 0.0
+    except Exception:
+        return 0.0

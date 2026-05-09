@@ -80,7 +80,8 @@ def fetch_sqm(url: str) -> float:
         if r.status_code != 200:
             return 0.0
         # JSON-LD description has "de 406.797 m² ubicado" — first m² hit is the lot area
-        m = re.search(r"([\d,]+(?:[.,]\d+)?)\s*m[²2]", r.text, re.IGNORECASE)
+        # Require whitespace before m to avoid SVG path false positives
+        m = re.search(r"([\d,]+(?:[.,]\d+)?)\s+m[²2]", r.text, re.IGNORECASE)
         return parse_sqm(m.group(0)) if m else 0.0
     except Exception:
         return 0.0

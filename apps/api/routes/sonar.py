@@ -13,7 +13,7 @@ _PW_SCRAPERS = [inmuebles24, mercadolibre, vivanuncios]
 _ALL_SCRAPERS = _STATIC_SCRAPERS + _PW_SCRAPERS
 
 # Portals that expose sqm on their detail page (have fetch_sqm())
-_ENRICHABLE = {m.PORTAL_NAME: m for m in [icasas, doorvel, realtorcom] if hasattr(m, "fetch_sqm")}
+_ENRICHABLE = {m.PORTAL_NAME: m for m in [lamudi, mitula, icasas, doorvel, realtorcom] if hasattr(m, "fetch_sqm")}
 
 
 def _run_scraper(scraper) -> tuple:

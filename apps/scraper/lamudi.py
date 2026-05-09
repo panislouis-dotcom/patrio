@@ -76,3 +76,15 @@ def _parse_price(text: str) -> float:
         return float(digits)
     except ValueError:
         return 0.0
+
+
+def fetch_sqm(url: str) -> float:
+    """Visit the listing detail page and extract land area from page text."""
+    try:
+        r = httpx.get(url, headers=BROWSER_HEADERS, follow_redirects=True, timeout=15)
+        if r.status_code != 200:
+            return 0.0
+        m = re.search(r"([\d,]+(?:\.\d+)?)\s+m[²2]", r.text, re.IGNORECASE)
+        return parse_sqm(m.group(0)) if m else 0.0
+    except Exception:
+        return 0.0

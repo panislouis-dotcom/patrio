@@ -390,7 +390,7 @@ def get_signals_missing_sqm(portals: list[str]) -> list[dict]:
             f"SELECT id, url, portal FROM signals WHERE sqm_land = 0 AND portal IN ({placeholders})",
             portals
         ).fetchall()
-    return [{"id": r[0], "url": r[1], "portal": r[2]} for r in rows]
+    return [{"id": r["id"], "url": r["url"], "portal": r["portal"]} for r in rows]
 
 
 def dismiss_signal(signal_id: int) -> dict | None:
