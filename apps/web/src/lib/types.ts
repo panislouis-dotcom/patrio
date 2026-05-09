@@ -106,19 +106,14 @@ export interface TeamMember {
   createdAt: string
 }
 
-export interface Signal {
-  id: number
-  portal: string
+export interface SonarSignal {
   url: string
+  portal: string
   title: string
   address: string
   city: string
   price: number
   sqmLand: number
-  rawData: string
-  status: string       // new | dismissed | imported
-  prospectId: number | null
-  scrapedAt: string
 }
 
 export interface ProcessTemplate {

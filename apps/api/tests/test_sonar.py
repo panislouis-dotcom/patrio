@@ -14,7 +14,7 @@ def bypass_auth():
     app.dependency_overrides.clear()
 
 
-# ── Scraper unit tests (mocked HTTP) ──────────────────────────────────────
+# ── Scraper unit tests (mocked HTTP) ──────────────────────────────────────────
 
 def test_lamudi_scraper_returns_signals():
     cards_html = """
@@ -81,19 +81,14 @@ def test_lamudi_scraper_handles_missing_price():
     assert signals[0].price == 0.0
 
 
-# ── API endpoint tests (DB layer mocked) ──────────────────────────────────
+# ── /api/sonar/run — SSE stream ───────────────────────────────────────────────
 
 def _make_client():
     from api.main import app
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _mock_signal(url="https://www.lamudi.com.mx/detalle/test-1"):
-    return SignalRaw(portal="lamudi", url=url, title="Terreno Test", city="Monterrey", price=1500000)
-
-
 def _all_scrapers_empty():
-    """Context manager that mocks all 7 scrapers to return empty lists."""
     return (
         patch("api.routes.sonar.lamudi.scrape", return_value=[]),
         patch("api.routes.sonar.mitula.scrape", return_value=[]),
@@ -105,85 +100,72 @@ def _all_scrapers_empty():
     )
 
 
-def test_sonar_scan_returns_stats():
+def test_sonar_run_streams_events():
+    """SSE stream includes start and complete events even with no signals."""
+    import json
     p1, p2, p3, p4, p5, p6, p7 = _all_scrapers_empty()
-    with p1, p2, p3, p4, p5, p6, p7, patch("api.routes.sonar.create_signal", return_value=None):
-        r = _make_client().post("/api/sonar/scan")
+    with p1, p2, p3, p4, p5, p6, p7:
+        r = _make_client().post("/api/sonar/run")
     assert r.status_code == 200
-    data = r.json()
-    assert "scanned" in data
-    assert "new" in data
-    assert "portals" in data
-    assert data["scanned"] == 7
-    assert data["new"] == 0
+    assert r.headers["content-type"].startswith("text/event-stream")
+
+    events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
+    types = [e["type"] for e in events]
+    assert "start" in types
+    assert "complete" in types
+
+    complete = next(e for e in events if e["type"] == "complete")
+    assert complete["found"] == 0
+    assert "signals" in complete
 
 
-def test_sonar_scan_counts_new_signals():
-    sig = _mock_signal()
-    mock_row = {"id": 1, "portal": "lamudi", "url": sig.url, "title": sig.title,
-                "address": "", "city": "Monterrey", "price": 1500000, "sqm_land": 0,
-                "raw_data": "", "status": "new", "prospect_id": None, "scraped_at": "2025-01-01"}
-    with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]), \
-         patch("api.routes.sonar.mitula.scrape", return_value=[]), \
-         patch("api.routes.sonar.icasas.scrape", return_value=[]), \
-         patch("api.routes.sonar.doorvel.scrape", return_value=[]), \
-         patch("api.routes.sonar.inmuebles24.scrape", return_value=[]), \
-         patch("api.routes.sonar.mercadolibre.scrape", return_value=[]), \
-         patch("api.routes.sonar.vivanuncios.scrape", return_value=[]), \
-         patch("api.routes.sonar.create_signal", return_value=mock_row):
-        r = _make_client().post("/api/sonar/scan")
-    assert r.status_code == 200
-    assert r.json()["new"] == 1
+def test_sonar_run_includes_valid_signals():
+    """Signals passing validation appear in the complete event."""
+    import json
+    sig = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/test-1",
+                    title="Terreno Test", city="Monterrey", price=1_500_000)
+    p1, p2, p3, p4, p5, p6, p7 = _all_scrapers_empty()
+    with p1, p2, p3, p4, p5, p6, p7:
+        with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]):
+            r = _make_client().post("/api/sonar/run")
+
+    events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
+    complete = next(e for e in events if e["type"] == "complete")
+    assert complete["found"] == 1
+    assert complete["signals"][0]["url"] == sig.url
 
 
-def test_sonar_scan_deduplicates():
-    sig = _mock_signal()
-    # Second insert returns None (duplicate URL constraint)
-    with patch("api.routes.sonar.lamudi.scrape", return_value=[sig, sig]), \
-         patch("api.routes.sonar.mitula.scrape", return_value=[]), \
-         patch("api.routes.sonar.icasas.scrape", return_value=[]), \
-         patch("api.routes.sonar.doorvel.scrape", return_value=[]), \
-         patch("api.routes.sonar.inmuebles24.scrape", return_value=[]), \
-         patch("api.routes.sonar.mercadolibre.scrape", return_value=[]), \
-         patch("api.routes.sonar.vivanuncios.scrape", return_value=[]), \
-         patch("api.routes.sonar.create_signal", side_effect=[{"id": 1, "status": "new"}, None]):
-        r = _make_client().post("/api/sonar/scan")
-    assert r.json()["new"] == 1
+def test_sonar_run_drops_low_price_signals():
+    """Signals with 0 < price < 100k are discarded."""
+    import json
+    bad = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/bad",
+                    title="Bad listing", city="Monterrey", price=5_000)
+    p1, p2, p3, p4, p5, p6, p7 = _all_scrapers_empty()
+    with p1, p2, p3, p4, p5, p6, p7:
+        with patch("api.routes.sonar.lamudi.scrape", return_value=[bad]):
+            r = _make_client().post("/api/sonar/run")
+
+    events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
+    complete = next(e for e in events if e["type"] == "complete")
+    assert complete["found"] == 0
+    assert complete["skipped"] == 1
 
 
-def test_get_signals_returns_list():
-    with patch("api.routes.sonar.get_signals", return_value=[]):
-        r = _make_client().get("/api/sonar/signals")
-    assert r.status_code == 200
-    assert r.json() == []
+# ── /api/sonar/import ─────────────────────────────────────────────────────────
 
-
-def test_dismiss_signal():
-    mock_row = {"id": 5, "status": "dismissed"}
-    with patch("api.routes.sonar.dismiss_signal", return_value=mock_row):
-        r = _make_client().patch("/api/sonar/signals/5")
-    assert r.status_code == 200
-    assert r.json()["status"] == "dismissed"
-
-
-def test_dismiss_missing_signal_returns_404():
-    with patch("api.routes.sonar.dismiss_signal", return_value=None):
-        r = _make_client().patch("/api/sonar/signals/99999")
-    assert r.status_code == 404
-
-
-def test_import_signal_creates_prospect():
-    mock_signal = {"id": 3, "status": "imported", "url": "https://test.com"}
-    mock_prospect = {"id": 1, "name": "Terreno Test"}
-    with patch("api.routes.sonar.import_signal", return_value=(mock_signal, mock_prospect)):
-        r = _make_client().post("/api/sonar/signals/3/import")
+def test_sonar_import_creates_prospect():
+    mock_prospect = {"id": 42, "name": "Terreno Test", "status": "evaluating"}
+    with patch("api.routes.sonar.create_prospect", return_value=mock_prospect):
+        r = _make_client().post("/api/sonar/import", json={
+            "url":      "https://lamudi.com.mx/test-1",
+            "title":    "Terreno Test",
+            "address":  "Col. San Pedro",
+            "city":     "Monterrey",
+            "price":    1_500_000,
+            "sqmLand":  300.0,
+            "portal":   "lamudi",
+        })
     assert r.status_code == 201
     data = r.json()
-    assert data["signal"]["status"] == "imported"
-    assert data["prospect"]["name"] == "Terreno Test"
-
-
-def test_import_missing_signal_returns_404():
-    with patch("api.routes.sonar.import_signal", return_value=(None, None)):
-        r = _make_client().post("/api/sonar/signals/99999/import")
-    assert r.status_code == 404
+    assert data["prospect"]["id"] == 42
+    assert data["prospect"]["status"] == "evaluating"

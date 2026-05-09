@@ -1,9 +1,10 @@
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from api.auth import get_current_user
-from api.db import get_signals, create_signal, dismiss_signal, import_signal, update_signal_sqm, get_signals_missing_sqm
+from api.db import create_prospect
 from scraper import lamudi, mitula, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
 from scraper.base import SignalRaw
 
@@ -28,12 +29,11 @@ def _sanitize(s: SignalRaw) -> SignalRaw | None:
     if 0 < s.price < _MIN_PRICE:
         return None
     if 0 < s.sqm_land < _MIN_SQM:
-        s.sqm_land = 0  # clear bogus sqm — will be re-enriched from detail page
+        s.sqm_land = 0
     return s
 
 
 def _run_scraper(scraper) -> tuple:
-    """Run one scraper and return (scraper, signals, error_str)."""
     try:
         signals = scraper.scrape(city="Monterrey")
         return (scraper, signals, None)
@@ -41,42 +41,26 @@ def _run_scraper(scraper) -> tuple:
         return (scraper, [], str(e))
 
 
-def _enrich_batch(rows: list[dict]) -> int:
-    """Fetch sqm for a list of {id, url, portal} rows. Returns count updated."""
-    updated = 0
-    for row in rows:
-        mod = _ENRICHABLE.get(row["portal"])
-        if not mod:
-            continue
-        sqm = mod.fetch_sqm(row["url"])
-        if sqm > 0:
-            update_signal_sqm(row["url"], sqm)
-            updated += 1
-    return updated
+def _enrich_signal(signal: SignalRaw) -> None:
+    """Fetch sqm from detail page and update signal in place."""
+    mod = _ENRICHABLE.get(signal.portal)
+    if not mod or signal.sqm_land > 0:
+        return
+    sqm = mod.fetch_sqm(signal.url)
+    if sqm >= _MIN_SQM:
+        signal.sqm_land = sqm
 
 
-def _process_signals(signals: list, to_enrich: list) -> tuple[int, int]:
-    """Validate, insert signals into DB. Returns (new_count, skipped_count)."""
-    new = skipped = 0
-    for raw in signals:
-        s = _sanitize(raw)
-        if s is None:
-            skipped += 1
-            continue
-        inserted = create_signal({
-            "portal": s.portal,
-            "url": s.url,
-            "title": s.title,
-            "address": s.address,
-            "city": s.city,
-            "price": s.price,
-            "sqm_land": s.sqm_land,
-        })
-        if inserted:
-            new += 1
-            if s.sqm_land == 0 and s.portal in _ENRICHABLE:
-                to_enrich.append({"url": s.url, "portal": s.portal})
-    return new, skipped
+def _signal_to_dict(s: SignalRaw) -> dict:
+    return {
+        "url":      s.url,
+        "portal":   s.portal,
+        "title":    s.title,
+        "address":  s.address,
+        "city":     s.city,
+        "price":    s.price,
+        "sqmLand":  s.sqm_land,
+    }
 
 
 def _sse(data: dict) -> str:
@@ -84,52 +68,78 @@ def _sse(data: dict) -> str:
 
 
 def _run_combined_stream():
-    """Generator: runs scan + enrich and yields SSE events throughout."""
+    """Generator: runs scan + in-memory enrich and yields SSE events."""
     portal_names = [s.PORTAL_NAME for s in _ALL_SCRAPERS]
     yield _sse({"type": "start", "portals": portal_names, "total": len(_ALL_SCRAPERS)})
 
-    to_enrich: list[dict] = []
-    total_new = total_skipped = 0
+    all_signals: list[SignalRaw] = []
+    total_skipped = 0
 
-    # Static scrapers run sequentially — one active at a time
+    # Static scrapers — sequential
     for scraper in _STATIC_SCRAPERS:
         yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
-        _, signals, err = _run_scraper(scraper)
+        _, raw_signals, err = _run_scraper(scraper)
         if err:
             yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
             continue
-        new, skipped = _process_signals(signals, to_enrich)
-        total_new += new
+        skipped = 0
+        valid: list[SignalRaw] = []
+        for s in raw_signals:
+            s = _sanitize(s)
+            if s is None:
+                skipped += 1
+            else:
+                valid.append(s)
+        all_signals.extend(valid)
         total_skipped += skipped
         yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
-                    "fetched": len(signals), "new": new, "skipped": skipped})
+                    "fetched": len(raw_signals), "skipped": skipped})
 
-    # PW scrapers run in parallel — all start simultaneously
+    # PW scrapers — all start simultaneously
     for scraper in _PW_SCRAPERS:
         yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
     with ThreadPoolExecutor(max_workers=len(_PW_SCRAPERS)) as pool:
         futures = {pool.submit(_run_scraper, s): s for s in _PW_SCRAPERS}
         for fut in as_completed(futures):
-            scraper, signals, err = fut.result()
+            scraper, raw_signals, err = fut.result()
             if err:
                 yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
                 continue
-            new, skipped = _process_signals(signals, to_enrich)
-            total_new += new
+            skipped = 0
+            valid = []
+            for s in raw_signals:
+                s = _sanitize(s)
+                if s is None:
+                    skipped += 1
+                else:
+                    valid.append(s)
+            all_signals.extend(valid)
             total_skipped += skipped
             yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
-                        "fetched": len(signals), "new": new, "skipped": skipped})
+                        "fetched": len(raw_signals), "skipped": skipped})
 
-    # Enrichment phase
-    yield _sse({"type": "enriching", "count": len(to_enrich)})
+    # Enrich signals missing sqm — in memory, parallel
+    needs_enrich = [s for s in all_signals if s.sqm_land == 0 and s.portal in _ENRICHABLE]
+    yield _sse({"type": "enriching", "total": len(needs_enrich)})
     enriched = 0
-    if to_enrich:
+    if needs_enrich:
         with ThreadPoolExecutor(max_workers=3) as pool:
-            futs = [pool.submit(_enrich_batch, [r]) for r in to_enrich]
+            futs = [pool.submit(_enrich_signal, s) for s in needs_enrich]
+            done = 0
             for f in as_completed(futs):
-                enriched += f.result()
+                f.result()
+                done += 1
+                if done % 5 == 0 or done == len(needs_enrich):
+                    yield _sse({"type": "enrich_progress", "total": len(needs_enrich), "done": done})
+        enriched = sum(1 for s in needs_enrich if s.sqm_land > 0)
 
-    yield _sse({"type": "complete", "new": total_new, "skipped": total_skipped, "enriched": enriched})
+    yield _sse({
+        "type":    "complete",
+        "found":   len(all_signals),
+        "skipped": total_skipped,
+        "enriched": enriched,
+        "signals": [_signal_to_dict(s) for s in all_signals],
+    })
 
 
 @router.post("/api/sonar/run")
@@ -141,78 +151,37 @@ def sonar_run(_: dict = Depends(get_current_user)):
     )
 
 
-@router.post("/api/sonar/scan")
-def sonar_scan(_: dict = Depends(get_current_user)):
-    total_new = 0
-    errors = []
-    portals: list[dict] = []
-    to_enrich: list[dict] = []
-    total_skipped = 0
-
-    results = []
-    for s in _STATIC_SCRAPERS:
-        results.append(_run_scraper(s))
-
-    with ThreadPoolExecutor(max_workers=len(_PW_SCRAPERS)) as pool:
-        futures = {pool.submit(_run_scraper, s): s for s in _PW_SCRAPERS}
-        for fut in as_completed(futures):
-            results.append(fut.result())
-
-    for scraper, signals, err in results:
-        if err:
-            errors.append({"portal": scraper.PORTAL_NAME, "error": err})
-            continue
-        portal_new = 0
-        portal_skipped = 0
-        new, skipped = _process_signals(signals, to_enrich)
-        portal_new += new
-        portal_skipped += skipped
-        total_new += new
-        total_skipped += skipped
-        portals.append({"portal": scraper.PORTAL_NAME, "fetched": len(signals),
-                        "new": portal_new, "skipped": portal_skipped})
-
-    enriched = 0
-    if to_enrich:
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            futs = [pool.submit(_enrich_batch, [r]) for r in to_enrich]
-            for f in as_completed(futs):
-                enriched += f.result()
-
-    return {"scanned": len(_ALL_SCRAPERS), "new": total_new, "skipped": total_skipped,
-            "enriched": enriched, "portals": portals, "errors": errors}
+class _ImportRequest(BaseModel):
+    url: str
+    title: str
+    address: str = ""
+    city: str = "Monterrey"
+    price: float = 0.0
+    sqmLand: float = 0.0
+    portal: str = ""
 
 
-@router.post("/api/sonar/enrich")
-def sonar_enrich(_: dict = Depends(get_current_user)):
-    """Backfill sqm_land for all existing signals that are missing it."""
-    rows = get_signals_missing_sqm(list(_ENRICHABLE.keys()))
-    if not rows:
-        return {"checked": 0, "updated": 0}
-
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        futs = [pool.submit(_enrich_batch, [r]) for r in rows]
-        total_updated = sum(f.result() for f in as_completed(futs))
-
-    return {"checked": len(rows), "updated": total_updated}
-
-
-@router.get("/api/sonar/signals")
-def list_signals(status: str | None = None, portal: str | None = None, _: dict = Depends(get_current_user)):
-    return get_signals(status=status, portal=portal)
-
-
-@router.patch("/api/sonar/signals/{signal_id}")
-def patch_signal(signal_id: int, _: dict = Depends(get_current_user)):
-    updated = dismiss_signal(signal_id)
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Signal not found")
-    return updated
-
-
-@router.post("/api/sonar/signals/{signal_id}/import", status_code=201)
-def import_signal_route(signal_id: int, _: dict = Depends(get_current_user)):
-    signal, prospect = import_signal(signal_id)
-    if signal is None:
-        raise HTTPException(status_code=404, detail="Signal not found")
-    return {"signal": signal, "prospect": prospect}
+@router.post("/api/sonar/import", status_code=201)
+def sonar_import(req: _ImportRequest, _: dict = Depends(get_current_user)):
+    prospect = create_prospect({
+        "name":                   req.title,
+        "address":                req.address or req.title,
+        "city":                   req.city,
+        "status":                 "evaluating",
+        "url":                    req.url,
+        "latitude":               0.0,
+        "longitude":              0.0,
+        "sqmLand":                req.sqmLand,
+        "sqmConstruction":        0.0,
+        "landPrice":              req.price,
+        "acquisitionCostPct":     0.065,
+        "permitsCost":            0.0,
+        "subdivisionCost":        0.0,
+        "constructionCostPerSqm": 0.0,
+        "constructionOverhead":   1.3,
+        "projectedSale":          0.0,
+        "holdMonths":             12,
+        "rentMonthly":            0,
+        "notes":                  "-",
+    })
+    return {"prospect": prospect}

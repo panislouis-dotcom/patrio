@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User } from './types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -80,25 +80,14 @@ export async function updateProject(id: number, data: Partial<RawProjectFields>)
   return res.json()
 }
 
-export async function runSonarScan(): Promise<{ scanned: number; new: number; errors: { portal: string; error: string }[] }> {
-  const res = await authFetch(`${BASE}/api/sonar/scan`, { method: 'POST' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function runSonarEnrich(): Promise<{ checked: number; updated: number }> {
-  const res = await authFetch(`${BASE}/api/sonar/enrich`, { method: 'POST' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
 export type SonarRunEvent =
-  | { type: 'start';        portals: string[]; total: number }
-  | { type: 'portal_start'; portal: string }
-  | { type: 'portal_done';  portal: string; fetched: number; new: number; skipped: number }
-  | { type: 'portal_error'; portal: string; error: string }
-  | { type: 'enriching';    count: number }
-  | { type: 'complete';     new: number; skipped: number; enriched: number }
+  | { type: 'start';           portals: string[]; total: number }
+  | { type: 'portal_start';    portal: string }
+  | { type: 'portal_done';     portal: string; fetched: number; skipped: number }
+  | { type: 'portal_error';    portal: string; error: string }
+  | { type: 'enriching';       total: number }
+  | { type: 'enrich_progress'; total: number; done: number }
+  | { type: 'complete';        found: number; skipped: number; enriched: number; signals: SonarSignal[] }
 
 export async function* streamSonarRun(): AsyncGenerator<SonarRunEvent> {
   const res = await authFetch(`${BASE}/api/sonar/run`, { method: 'POST' })
@@ -119,24 +108,11 @@ export async function* streamSonarRun(): AsyncGenerator<SonarRunEvent> {
   }
 }
 
-export async function fetchSignals(status?: string, portal?: string): Promise<Signal[]> {
-  const params = new URLSearchParams()
-  if (status) params.set('status', status)
-  if (portal) params.set('portal', portal)
-  const url = `${BASE}/api/sonar/signals${params.size ? `?${params}` : ''}`
-  const res = await authFetch(url)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function dismissSignal(id: number): Promise<Signal> {
-  const res = await authFetch(`${BASE}/api/sonar/signals/${id}`, { method: 'PATCH' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function importSignal(id: number): Promise<{ signal: Signal; prospect: unknown }> {
-  const res = await authFetch(`${BASE}/api/sonar/signals/${id}/import`, { method: 'POST' })
+export async function importSonarSignal(signal: SonarSignal): Promise<{ prospect: unknown }> {
+  const res = await authFetch(`${BASE}/api/sonar/import`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(signal),
+  })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
