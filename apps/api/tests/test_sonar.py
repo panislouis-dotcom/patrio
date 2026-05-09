@@ -93,13 +93,12 @@ def _mock_signal(url="https://www.lamudi.com.mx/detalle/test-1"):
 
 
 def _all_scrapers_empty():
-    """Context manager that mocks all 8 scrapers to return empty lists."""
+    """Context manager that mocks all 7 scrapers to return empty lists."""
     return (
         patch("api.routes.sonar.lamudi.scrape", return_value=[]),
         patch("api.routes.sonar.mitula.scrape", return_value=[]),
         patch("api.routes.sonar.icasas.scrape", return_value=[]),
         patch("api.routes.sonar.doorvel.scrape", return_value=[]),
-        patch("api.routes.sonar.realtorcom.scrape", return_value=[]),
         patch("api.routes.sonar.inmuebles24.scrape", return_value=[]),
         patch("api.routes.sonar.mercadolibre.scrape", return_value=[]),
         patch("api.routes.sonar.vivanuncios.scrape", return_value=[]),
@@ -107,15 +106,15 @@ def _all_scrapers_empty():
 
 
 def test_sonar_scan_returns_stats():
-    p1, p2, p3, p4, p5, p6, p7, p8 = _all_scrapers_empty()
-    with p1, p2, p3, p4, p5, p6, p7, p8, patch("api.routes.sonar.create_signal", return_value=None):
+    p1, p2, p3, p4, p5, p6, p7 = _all_scrapers_empty()
+    with p1, p2, p3, p4, p5, p6, p7, patch("api.routes.sonar.create_signal", return_value=None):
         r = _make_client().post("/api/sonar/scan")
     assert r.status_code == 200
     data = r.json()
     assert "scanned" in data
     assert "new" in data
     assert "portals" in data
-    assert data["scanned"] == 8
+    assert data["scanned"] == 7
     assert data["new"] == 0
 
 
@@ -128,7 +127,6 @@ def test_sonar_scan_counts_new_signals():
          patch("api.routes.sonar.mitula.scrape", return_value=[]), \
          patch("api.routes.sonar.icasas.scrape", return_value=[]), \
          patch("api.routes.sonar.doorvel.scrape", return_value=[]), \
-         patch("api.routes.sonar.realtorcom.scrape", return_value=[]), \
          patch("api.routes.sonar.inmuebles24.scrape", return_value=[]), \
          patch("api.routes.sonar.mercadolibre.scrape", return_value=[]), \
          patch("api.routes.sonar.vivanuncios.scrape", return_value=[]), \
@@ -145,7 +143,6 @@ def test_sonar_scan_deduplicates():
          patch("api.routes.sonar.mitula.scrape", return_value=[]), \
          patch("api.routes.sonar.icasas.scrape", return_value=[]), \
          patch("api.routes.sonar.doorvel.scrape", return_value=[]), \
-         patch("api.routes.sonar.realtorcom.scrape", return_value=[]), \
          patch("api.routes.sonar.inmuebles24.scrape", return_value=[]), \
          patch("api.routes.sonar.mercadolibre.scrape", return_value=[]), \
          patch("api.routes.sonar.vivanuncios.scrape", return_value=[]), \

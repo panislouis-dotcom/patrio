@@ -2,18 +2,18 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter, Depends, HTTPException
 from api.auth import get_current_user
 from api.db import get_signals, create_signal, dismiss_signal, import_signal, update_signal_sqm, get_signals_missing_sqm
-from scraper import lamudi, mitula, icasas, doorvel, realtorcom, inmuebles24, mercadolibre, vivanuncios
+from scraper import lamudi, mitula, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
 
 router = APIRouter()
 
 # Static scrapers (httpx): fast, no browser overhead
-_STATIC_SCRAPERS = [lamudi, mitula, icasas, doorvel, realtorcom]
+_STATIC_SCRAPERS = [lamudi, mitula, icasas, doorvel]
 # Playwright scrapers: launch real Chromium, run in parallel threads
 _PW_SCRAPERS = [inmuebles24, mercadolibre, vivanuncios]
 _ALL_SCRAPERS = _STATIC_SCRAPERS + _PW_SCRAPERS
 
 # Portals that expose sqm on their detail page (have fetch_sqm())
-_ENRICHABLE = {m.PORTAL_NAME: m for m in [lamudi, mitula, icasas, doorvel, realtorcom] if hasattr(m, "fetch_sqm")}
+_ENRICHABLE = {m.PORTAL_NAME: m for m in [lamudi, mitula, icasas, doorvel] if hasattr(m, "fetch_sqm")}
 
 
 def _run_scraper(scraper) -> tuple:
