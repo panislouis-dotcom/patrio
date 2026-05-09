@@ -374,6 +374,25 @@ def create_signal(data: dict) -> bool:
         return is_new
 
 
+def update_signal_sqm(url: str, sqm: float) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE signals SET sqm_land = %s WHERE url = %s AND sqm_land = 0",
+            (sqm, url)
+        )
+
+
+def get_signals_missing_sqm(portals: list[str]) -> list[dict]:
+    """Return signals with sqm_land=0 for the given portals."""
+    placeholders = ",".join(["%s"] * len(portals))
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT id, url, portal FROM signals WHERE sqm_land = 0 AND portal IN ({placeholders})",
+            portals
+        ).fetchall()
+    return [{"id": r[0], "url": r[1], "portal": r[2]} for r in rows]
+
+
 def dismiss_signal(signal_id: int) -> dict | None:
     with get_db() as conn:
         conn.execute(

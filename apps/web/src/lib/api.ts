@@ -86,6 +86,12 @@ export async function runSonarScan(): Promise<{ scanned: number; new: number; er
   return res.json()
 }
 
+export async function runSonarEnrich(): Promise<{ checked: number; updated: number }> {
+  const res = await authFetch(`${BASE}/api/sonar/enrich`, { method: 'POST' })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchSignals(status?: string, portal?: string): Promise<Signal[]> {
   const params = new URLSearchParams()
   if (status) params.set('status', status)

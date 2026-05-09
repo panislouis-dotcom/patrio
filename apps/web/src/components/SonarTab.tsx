@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchSignals, runSonarScan, dismissSignal, importSignal } from '../lib/api'
+import { fetchSignals, runSonarScan, runSonarEnrich, dismissSignal, importSignal } from '../lib/api'
 import type { Signal } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtM } from '../lib/fmt'
@@ -94,8 +94,10 @@ function ScoreBadge({ score }: { score: number | null }) {
 export function SonarTab() {
   const [signals, setSignals]   = useState<Signal[]>([])
   const [loading, setLoading]   = useState(true)
-  const [scanning, setScanning] = useState(false)
+  const [scanning, setScanning]   = useState(false)
+  const [enriching, setEnriching] = useState(false)
   const [scanResult, setScanResult] = useState<{ new: number; scanned: number } | null>(null)
+  const [enrichResult, setEnrichResult] = useState<{ checked: number; updated: number } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey]   = useState(0)
 
@@ -173,13 +175,23 @@ export function SonarTab() {
   }, [signals, statusFilter, portalFilter, minPrice, maxPrice, maxPpsqm, sort])
 
   async function handleScan() {
-    setScanning(true); setScanResult(null)
+    setScanning(true); setScanResult(null); setEnrichResult(null)
     try {
       const r = await runSonarScan()
       setScanResult({ new: r.new, scanned: r.scanned })
       refresh()
     } catch { /* fail silently */ }
     finally { setScanning(false) }
+  }
+
+  async function handleEnrich() {
+    setEnriching(true); setEnrichResult(null)
+    try {
+      const r = await runSonarEnrich()
+      setEnrichResult(r)
+      refresh()
+    } catch { /* fail silently */ }
+    finally { setEnriching(false) }
   }
 
   async function handleDismiss(s: Signal) {
@@ -219,15 +231,30 @@ export function SonarTab() {
               ↑ {scanResult.new} nuevas de {scanResult.scanned} portales
             </span>
           )}
+          {enrichResult && (
+            <span style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.accent1, marginLeft: '12px' }}>
+              ◈ {enrichResult.updated}/{enrichResult.checked} enriquecidas
+            </span>
+          )}
         </div>
-        <button onClick={handleScan} disabled={scanning} style={{
-          background: scanning ? colors.border : colors.primary, border: 'none',
-          color: colors.neutral, cursor: scanning ? 'not-allowed' : 'pointer',
-          fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.1em',
-          padding: '6px 14px', opacity: scanning ? 0.6 : 1,
-        }}>
-          {scanning ? 'ESCANEANDO…' : 'EJECUTAR SCAN ▸'}
-        </button>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button onClick={handleEnrich} disabled={enriching || scanning} style={{
+            background: 'transparent', border: `1px solid ${colors.border}`,
+            color: enriching ? colors.secondary : colors.neutral, cursor: enriching ? 'not-allowed' : 'pointer',
+            fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.1em',
+            padding: '6px 12px', opacity: enriching ? 0.6 : 1,
+          }}>
+            {enriching ? 'ENRIQUECIENDO…' : 'ENRIQUECER M²'}
+          </button>
+          <button onClick={handleScan} disabled={scanning || enriching} style={{
+            background: scanning ? colors.border : colors.primary, border: 'none',
+            color: colors.neutral, cursor: scanning ? 'not-allowed' : 'pointer',
+            fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.1em',
+            padding: '6px 14px', opacity: scanning ? 0.6 : 1,
+          }}>
+            {scanning ? 'ESCANEANDO…' : 'EJECUTAR SCAN ▸'}
+          </button>
+        </div>
       </div>
 
       {actionError && (

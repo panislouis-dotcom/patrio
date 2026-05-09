@@ -77,3 +77,20 @@ def scrape(city: str = "Monterrey") -> list[SignalRaw]:
             break
 
     return signals
+
+
+def fetch_sqm(url: str) -> float:
+    """Visit the listing detail page and extract land area from page text."""
+    try:
+        r = httpx.get(url, headers=BROWSER_HEADERS, follow_redirects=True, timeout=15)
+        if r.status_code != 200:
+            return 0.0
+        soup = BeautifulSoup(r.text, "lxml")
+        # Try structured feature list first, then full page text
+        for el in soup.find_all(string=re.compile(r"\d+\s*m[²2]", re.IGNORECASE)):
+            sqm = parse_sqm(str(el))
+            if sqm > 0:
+                return sqm
+        return 0.0
+    except Exception:
+        return 0.0
