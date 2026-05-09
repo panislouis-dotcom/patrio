@@ -354,16 +354,24 @@ def get_signals(status: str | None = None, portal: str | None = None) -> list[di
 
 
 def create_signal(data: dict) -> bool:
-    """Insert a signal. Returns True if inserted, False if duplicate (url UNIQUE)."""
+    """Insert a signal. Returns True if inserted, False if duplicate (url UNIQUE).
+    On duplicate, backfills sqm_land if the existing row has none."""
+    sqm = data.get("sqm_land", 0)
     with get_db() as conn:
         cur = conn.execute(
             """INSERT INTO signals (portal, url, title, address, city, price, sqm_land)
                VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (url) DO NOTHING""",
             (data["portal"], data["url"], data["title"],
              data.get("address", ""), data.get("city", "Monterrey"),
-             data.get("price", 0), data.get("sqm_land", 0))
+             data.get("price", 0), sqm)
         )
-        return cur.rowcount > 0
+        is_new = cur.rowcount > 0
+        if not is_new and sqm > 0:
+            conn.execute(
+                "UPDATE signals SET sqm_land = %s WHERE url = %s AND sqm_land = 0",
+                (sqm, data["url"])
+            )
+        return is_new
 
 
 def dismiss_signal(signal_id: int) -> dict | None:

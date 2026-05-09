@@ -2,6 +2,7 @@
 import re
 from contextlib import contextmanager
 from playwright.sync_api import sync_playwright, Browser, BrowserContext
+from .base import parse_sqm as parse_sqm  # re-export for PW scrapers
 
 
 _LAUNCH_ARGS = [
@@ -41,12 +42,3 @@ def parse_price(text: str) -> float:
         return 0.0
 
 
-def parse_sqm(text: str) -> float:
-    """Extract m² value from strings like '753 m² lote' or '994 m² de terreno'."""
-    m = re.search(r"([\d,]+(?:\.\d+)?)\s*m", text.replace(",", ""))
-    if m:
-        try:
-            return float(m.group(1))
-        except ValueError:
-            pass
-    return 0.0

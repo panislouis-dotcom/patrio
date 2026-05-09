@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 import time
 
 
@@ -33,3 +34,14 @@ BROWSER_HEADERS = {
 
 def rate_limit(secs: float = 1.5):
     time.sleep(secs)
+
+
+def parse_sqm(text: str) -> float:
+    """Extract m² from strings like '6,757 m²', '994 m² de terreno', '180m2'."""
+    m = re.search(r"([\d,]+(?:\.\d+)?)\s*m[²2²]?", text.replace(",", ""))
+    if m:
+        try:
+            return float(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    return 0.0

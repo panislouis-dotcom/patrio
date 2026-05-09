@@ -1,7 +1,7 @@
 import re
 import httpx
 from bs4 import BeautifulSoup
-from .base import SignalRaw, BROWSER_HEADERS, rate_limit
+from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
 
 PORTAL_NAME = "lamudi"
 BASE_URL = "https://www.lamudi.com.mx"
@@ -33,6 +33,8 @@ def _scrape_page(url: str, city: str) -> list[SignalRaw]:
             title = title_el.get_text(strip=True)
             price = _parse_price(price_el.get_text(strip=True) if price_el else "")
             address = location_el.get_text(strip=True) if location_el else ""
+            area_el = card.select_one("span.property__number.area")
+            sqm = parse_sqm(area_el.get_text(strip=True)) if area_el else 0.0
 
             signals.append(SignalRaw(
                 portal=PORTAL_NAME,
@@ -41,6 +43,7 @@ def _scrape_page(url: str, city: str) -> list[SignalRaw]:
                 address=address,
                 city=city,
                 price=price,
+                sqm_land=sqm,
             ))
         except Exception:
             continue
