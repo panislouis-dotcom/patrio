@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { streamSonarRun, importSonarSignal } from '../lib/api'
+import { useEffect, useMemo, useState } from 'react'
+import { streamSonarRun, importSonarSignal, fetchProspects } from '../lib/api'
 import type { SonarRunEvent } from '../lib/api'
 import type { SonarSignal } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -131,6 +131,14 @@ export function SonarTab() {
   const [importedUrls, setImportedUrls] = useState<Set<string>>(new Set())
   const [actionError, setActionError] = useState<string | null>(null)
 
+  // Pre-load saved prospect URLs so signals already imported show "GUARDADA" across sessions
+  useEffect(() => {
+    fetchProspects().then(ps => {
+      const urls = new Set(ps.map(p => p.url).filter(Boolean))
+      setImportedUrls(urls)
+    }).catch(() => {/* non-critical — fail silently */})
+  }, [])
+
   // zone selection for scan
   const [selectedZones, setSelectedZones] = useState<string[]>([])
 
@@ -231,8 +239,8 @@ export function SonarTab() {
     setEnrichPhase({ phase: 'idle' })
     setRunSummary(null)
     setSignals([])
-    setImportedUrls(new Set())
     setZoneFilter('all')
+    // importedUrls intentionally preserved — pre-loaded prospect URLs stay across scans
     try {
       for await (const ev of streamSonarRun(selectedZones)) handleEvent(ev)
     } catch {
@@ -269,6 +277,11 @@ export function SonarTab() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontFamily: fonts.label, fontSize: '11px', color: colors.neutral, letterSpacing: '0.1em' }}>SONAR</span>
           <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>· Señales de mercado</span>
+          {importedUrls.size > 0 && !running && (
+            <span style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.primary, opacity: 0.8 }}>
+              ↪ {importedUrls.size} guardada{importedUrls.size !== 1 ? 's' : ''}
+            </span>
+          )}
           {hasRun && !running && (
             <span style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.tertiary }}>
               ↑ {runSummary!.found} encontradas
