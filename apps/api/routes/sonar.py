@@ -1,4 +1,5 @@
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -23,6 +24,9 @@ _ENRICHABLE = {m.PORTAL_NAME: m for m in [lamudi, mitula, icasas, doorvel] if ha
 _MIN_PRICE = 100_000   # below this is almost certainly a unit price or data error
 _MIN_SQM   = 50        # below this is almost certainly a parse error (not a real lot)
 
+# Seconds between starting each scraper — avoids request burst detection
+_SCRAPER_STAGGER = 2.0
+
 
 def _sanitize(s: SignalRaw) -> SignalRaw | None:
     """Return None to discard, or the signal (possibly with sqm cleared) to keep."""
@@ -39,6 +43,12 @@ def _run_scraper(scraper) -> tuple:
         return (scraper, signals, None)
     except Exception as e:
         return (scraper, [], str(e))
+
+
+def _run_scraper_staggered(scraper, delay: float) -> tuple:
+    if delay > 0:
+        time.sleep(delay)
+    return _run_scraper(scraper)
 
 
 def _enrich_signal(signal: SignalRaw) -> None:
@@ -75,11 +85,14 @@ def _run_combined_stream():
     all_signals: list[SignalRaw] = []
     total_skipped = 0
 
-    # All scrapers in parallel — static (httpx) and PW (Chromium) alike
+    # All scrapers in parallel with staggered starts to avoid burst detection
     for scraper in _ALL_SCRAPERS:
         yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
     with ThreadPoolExecutor(max_workers=len(_ALL_SCRAPERS)) as pool:
-        futures = {pool.submit(_run_scraper, s): s for s in _ALL_SCRAPERS}
+        futures = {
+            pool.submit(_run_scraper_staggered, s, i * _SCRAPER_STAGGER): s
+            for i, s in enumerate(_ALL_SCRAPERS)
+        }
         for fut in as_completed(futures):
             scraper, raw_signals, err = fut.result()
             if err:
