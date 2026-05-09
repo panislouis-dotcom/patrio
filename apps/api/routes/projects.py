@@ -64,7 +64,7 @@ def detail_project(project_id: int, _: dict = Depends(get_current_user)):
 
 @router.patch("/api/projects/{project_id}")
 def patch_project(project_id: int, body: ProjectUpdate, _: dict = Depends(get_current_user)):
-    payload = body.model_dump(exclude_none=True)
+    payload = body.model_dump(exclude_unset=True)
     updated = update_project(project_id, payload)
     if updated is None:
         raise HTTPException(status_code=404, detail="Project not found")

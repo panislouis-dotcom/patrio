@@ -35,7 +35,7 @@ def post_team_member(body: TeamMemberCreate, _: dict = Depends(get_current_user)
 
 @router.patch("/api/team/{member_id}")
 def patch_team_member(member_id: int, body: TeamMemberUpdate, _: dict = Depends(get_current_user)):
-    payload = body.model_dump(exclude_none=True)
+    payload = body.model_dump(exclude_unset=True)
     updated = update_team_member(member_id, payload)
     if updated is None:
         raise HTTPException(status_code=404, detail="Team member not found")

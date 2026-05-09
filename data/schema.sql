@@ -219,6 +219,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_profit_split_project
 CREATE TABLE IF NOT EXISTS investors (
   id         BIGSERIAL PRIMARY KEY,
   name       TEXT NOT NULL CHECK (name != ''),
+  apellidos  TEXT NOT NULL DEFAULT '',
   email      TEXT NOT NULL DEFAULT '',
   phone      TEXT NOT NULL DEFAULT '',
   notes      TEXT NOT NULL DEFAULT '',
@@ -235,10 +236,43 @@ CREATE TABLE IF NOT EXISTS project_investors (
   committed_amount     REAL NOT NULL DEFAULT 0,
   funded_amount        REAL NOT NULL DEFAULT 0,
   interest_rate_annual REAL NOT NULL DEFAULT 0.12,
+  investment_date      DATE,
+  return_amount        REAL,
+  return_date          DATE,
   notes                TEXT NOT NULL DEFAULT '',
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(project_id, investor_id)
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE OR REPLACE VIEW project_investor_metrics AS
+WITH hold AS (
+    SELECT
+        pi.id AS pi_id,
+        CASE
+            WHEN p.conclusion_date != ''
+            THEN (EXTRACT(YEAR FROM TO_DATE(p.conclusion_date || '-01', 'YYYY-MM-DD'))::int
+                  - EXTRACT(YEAR FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int) * 12
+                + (EXTRACT(MONTH FROM TO_DATE(p.conclusion_date || '-01', 'YYYY-MM-DD'))::int
+                   - EXTRACT(MONTH FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int)
+            ELSE (EXTRACT(YEAR FROM CURRENT_DATE)::int
+                  - EXTRACT(YEAR FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int) * 12
+                + (EXTRACT(MONTH FROM CURRENT_DATE)::int
+                   - EXTRACT(MONTH FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int)
+        END AS hold_months
+    FROM project_investors pi
+    JOIN projects p ON p.id = pi.project_id
+)
+SELECT
+    pi.*,
+    i.name || CASE WHEN COALESCE(i.apellidos, '') != '' THEN ' ' || i.apellidos ELSE '' END AS investor_name,
+    p.name AS project_name,
+    h.hold_months,
+    ROUND((pi.funded_amount * pi.interest_rate_annual * h.hold_months / 12.0)::numeric, 2)          AS interest_amount,
+    ROUND((pi.funded_amount * (1 + pi.interest_rate_annual * h.hold_months / 12.0))::numeric, 2)    AS expected_return,
+    ROUND((pi.interest_rate_annual * h.hold_months / 12.0 * 100)::numeric, 2)                       AS return_pct
+FROM project_investors pi
+JOIN projects p ON p.id = pi.project_id
+JOIN investors i ON i.id = pi.investor_id
+JOIN hold h ON h.pi_id = pi.id;
 
 CREATE TABLE IF NOT EXISTS users (
   id              BIGSERIAL PRIMARY KEY,

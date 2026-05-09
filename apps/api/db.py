@@ -195,12 +195,17 @@ def _parse_project(row) -> dict:
     unrealized_gain = current_valuation - total_investment
     unrealized_gain_pct = round(unrealized_gain / total_investment, 4) if total_investment != 0 else 0
 
-    # acquisition_date stored as YYYY-MM
-    acquisition_date_str = d.get("acquisitionDate", "")
+    # Months from acquisition to conclusion (or today for active projects)
+    acq_str = d.get("acquisitionDate", "")
+    conc_str = d.get("conclusionDate", "")
     try:
-        acq_year, acq_month = map(int, acquisition_date_str.split("-"))
-        today = date.today()
-        hold_months_actual = (today.year - acq_year) * 12 + (today.month - acq_month)
+        acq_year, acq_month = map(int, acq_str.split("-"))
+        if conc_str:
+            conc_year, conc_month = map(int, conc_str.split("-"))
+        else:
+            today = date.today()
+            conc_year, conc_month = today.year, today.month
+        hold_months_actual = (conc_year - acq_year) * 12 + (conc_month - acq_month)
     except (ValueError, AttributeError):
         hold_months_actual = 0
 

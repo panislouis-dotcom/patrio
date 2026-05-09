@@ -3,6 +3,11 @@ from datetime import date, timedelta
 
 from .db import get_db, _snake_to_camel, _camel_to_snake
 
+def _investor_cuota(funded: float, rate: float, months: float) -> float:
+    """Interest owed to an investor: funded × rate × months/12."""
+    return funded * rate * (months / 12.0)
+
+
 PROFIT_RAW_FIELDS = {
     "exitPrice", "investorCapital", "investorRateAnnual", "investorMonths", "isrRate",
     "finderFeePct", "directorPct", "responsablePct", "liderPct", "maestroPct", "ayudantePct",
@@ -117,7 +122,7 @@ def _upsert(project_id, data: dict) -> dict:
             # 6. INSERT
             insert_data = {"project_id": project_id, **snake_data}
             columns = ", ".join(insert_data.keys())
-            placeholders = ", ".join("%s" * len(insert_data))
+            placeholders = ", ".join(["%s"] * len(insert_data))
             values = list(insert_data.values())
             conn.execute(
                 f"INSERT INTO profit_split_config ({columns}) VALUES ({placeholders})",
@@ -193,10 +198,10 @@ def _compute_splits_for_tier(
 
     splits = []
 
-    # Finder — no bonus regardless of tier
+    # Finder — participates in bonus tier like the rest of the team
     finder_id = config.get("finderMemberId")
     if finder_id is not None:
-        splits.append(_entry("Finder", finder_id, config.get("finderFeePct") or 0, finder_amount, 0))
+        splits.append(_entry("Finder", finder_id, config.get("finderFeePct") or 0, finder_amount, finder_amount * tier))
 
     # Directors
     if directors:
@@ -267,7 +272,7 @@ def _compute_splits_for_tier(
             })
 
     total_bonuses = sum(s["bonus"] for s in splits)
-    company_residual = residual - total_bonuses
+    company_residual = max(0.0, residual - total_bonuses)
     return {"splits": splits, "companyResidual": company_residual}
 
 
@@ -281,7 +286,7 @@ def compute_waterfall(project: dict, config: dict, team: list[dict], project_inv
     if config.get("investorCapital"):
         investor_capital = config["investorCapital"]
         rate = config.get("investorRateAnnual") or 0.12
-        investor_cuota = investor_capital * rate * (months / 12)
+        investor_cuota = _investor_cuota(investor_capital, rate, months)
         investor_breakdown = [{
             "investorId": None,
             "name": "Capital (manual)",
@@ -294,7 +299,7 @@ def compute_waterfall(project: dict, config: dict, team: list[dict], project_inv
         fondeados = [pi for pi in (project_investors or []) if pi.get("status") == "fondeado"]
         investor_capital = sum(pi.get("fundedAmount", 0) for pi in fondeados)
         investor_cuota = sum(
-            pi.get("fundedAmount", 0) * pi.get("interestRateAnnual", 0.12) * (months / 12)
+            _investor_cuota(pi.get("fundedAmount", 0), pi.get("interestRateAnnual", 0.12), months)
             for pi in fondeados
         )
         if fondeados:
@@ -304,8 +309,8 @@ def compute_waterfall(project: dict, config: dict, team: list[dict], project_inv
                     "name": pi.get("investorName", "—"),
                     "fundedAmount": pi.get("fundedAmount", 0),
                     "interestRateAnnual": pi.get("interestRateAnnual", 0.12),
-                    "cuota": pi.get("fundedAmount", 0) * pi.get("interestRateAnnual", 0.12) * (months / 12),
-                    "totalReturn": pi.get("fundedAmount", 0) * (1 + pi.get("interestRateAnnual", 0.12) * (months / 12)),
+                    "cuota": _investor_cuota(pi.get("fundedAmount", 0), pi.get("interestRateAnnual", 0.12), months),
+                    "totalReturn": pi.get("fundedAmount", 0) + _investor_cuota(pi.get("fundedAmount", 0), pi.get("interestRateAnnual", 0.12), months),
                 }
                 for pi in fondeados
             ]
@@ -313,7 +318,7 @@ def compute_waterfall(project: dict, config: dict, team: list[dict], project_inv
             # fallback: use investment as capital with default rate (original behavior)
             investor_capital = investment
             rate = config.get("investorRateAnnual") or 0.12
-            investor_cuota = investor_capital * rate * (months / 12)
+            investor_cuota = _investor_cuota(investor_capital, rate, months)
             investor_breakdown = [{
                 "investorId": None,
                 "name": "Inversión total (est.)",

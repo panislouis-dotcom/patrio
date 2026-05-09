@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, Signal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User } from './types'
 import { getToken, clearToken } from './auth'
 
 const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -440,7 +440,7 @@ export async function createInvestor(data: Omit<Investor, 'id' | 'createdAt' | '
   return res.json()
 }
 
-export async function updateInvestor(id: number, data: Partial<Pick<Investor, 'name' | 'email' | 'phone' | 'notes'>>): Promise<Investor> {
+export async function updateInvestor(id: number, data: Partial<Pick<Investor, 'name' | 'apellidos' | 'email' | 'phone' | 'notes'>>): Promise<Investor> {
   const res = await authFetch(`${BASE}/api/investors/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -461,9 +461,9 @@ export async function fetchProjectInvestors(projectId: number): Promise<ProjectI
   return res.json()
 }
 
-export async function upsertProjectInvestor(
+export async function addProjectInvestor(
   projectId: number,
-  data: { investorId: number; status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; notes: string }
+  data: { investorId: number; status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; notes: string }
 ): Promise<ProjectInvestor> {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/investors`, {
     method: 'POST',
@@ -474,12 +474,12 @@ export async function upsertProjectInvestor(
   return res.json()
 }
 
-export async function updateProjectInvestor(
+export async function updateProjectInvestment(
   projectId: number,
-  investorId: number,
-  data: Partial<{ status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; notes: string }>
+  investmentId: number,
+  data: Partial<{ status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; returnAmount: number | null; returnDate: string | null; notes: string }>
 ): Promise<ProjectInvestor> {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/investors/${investorId}`, {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/investors/${investmentId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -488,7 +488,69 @@ export async function updateProjectInvestor(
   return res.json()
 }
 
-export async function deleteProjectInvestor(projectId: number, investorId: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/investors/${investorId}`, { method: 'DELETE' })
+export async function deleteProjectInvestment(projectId: number, investmentId: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/investors/${investmentId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
+}
+
+// ─── Auth / Me ────────────────────────────────────────────────────────────────
+
+export async function fetchMe(): Promise<{ email: string }> {
+  const res = await authFetch(`${BASE}/api/auth/me`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const res = await authFetch(`${BASE}/api/auth/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(err.detail ?? `API error: ${res.status}`)
+  }
+}
+
+// ─── User management ─────────────────────────────────────────────────────────
+
+export async function fetchUsers(): Promise<User[]> {
+  const res = await authFetch(`${BASE}/api/users`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function createUser(email: string, password: string): Promise<User> {
+  const res = await authFetch(`${BASE}/api/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(err.detail ?? `API error: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function updateUser(id: number, data: { isActive?: boolean; password?: string }): Promise<User> {
+  const res = await authFetch(`${BASE}/api/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(err.detail ?? `API error: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/users/${id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { detail?: string }
+    throw new Error(err.detail ?? `API error: ${res.status}`)
+  }
 }
