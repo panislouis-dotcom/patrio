@@ -75,38 +75,18 @@ def _run_combined_stream():
     all_signals: list[SignalRaw] = []
     total_skipped = 0
 
-    # Static scrapers — sequential
-    for scraper in _STATIC_SCRAPERS:
+    # All scrapers in parallel — static (httpx) and PW (Chromium) alike
+    for scraper in _ALL_SCRAPERS:
         yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
-        _, raw_signals, err = _run_scraper(scraper)
-        if err:
-            yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
-            continue
-        skipped = 0
-        valid: list[SignalRaw] = []
-        for s in raw_signals:
-            s = _sanitize(s)
-            if s is None:
-                skipped += 1
-            else:
-                valid.append(s)
-        all_signals.extend(valid)
-        total_skipped += skipped
-        yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
-                    "fetched": len(raw_signals), "skipped": skipped})
-
-    # PW scrapers — all start simultaneously
-    for scraper in _PW_SCRAPERS:
-        yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
-    with ThreadPoolExecutor(max_workers=len(_PW_SCRAPERS)) as pool:
-        futures = {pool.submit(_run_scraper, s): s for s in _PW_SCRAPERS}
+    with ThreadPoolExecutor(max_workers=len(_ALL_SCRAPERS)) as pool:
+        futures = {pool.submit(_run_scraper, s): s for s in _ALL_SCRAPERS}
         for fut in as_completed(futures):
             scraper, raw_signals, err = fut.result()
             if err:
                 yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
                 continue
             skipped = 0
-            valid = []
+            valid: list[SignalRaw] = []
             for s in raw_signals:
                 s = _sanitize(s)
                 if s is None:
