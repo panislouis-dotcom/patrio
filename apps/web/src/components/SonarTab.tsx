@@ -241,6 +241,10 @@ export function SonarTab() {
     }
   }
 
+  function handleDismiss(url: string) {
+    setSignals(prev => prev.filter(s => s.url !== url))
+  }
+
   const sep: React.CSSProperties = { width: '1px', height: '16px', background: colors.border, flexShrink: 0 }
   const lbl: React.CSSProperties = { fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.08em', whiteSpace: 'nowrap' }
 
@@ -393,12 +397,19 @@ export function SonarTab() {
                       <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{s.sqmLand > 0 ? s.sqmLand.toLocaleString('es-MX') : '—'}</td>
                       <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{fmtPpsqm(s.ppsqm)}</td>
                       <td style={{ padding: '5px 10px', textAlign: 'right' }}>
-                        {imported
-                          ? <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.08em' }}>GUARDADA</span>
-                          : <button onClick={() => handleImport(s)} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 8px' }}>
-                              GUARDAR OPORTUNIDAD
-                            </button>
-                        }
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                          <button onClick={() => handleDismiss(s.url)} title="Descartar" style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '13px', lineHeight: 1, padding: '2px 4px', opacity: 0.5 }}
+                            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                            onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}>
+                            ✕
+                          </button>
+                          {imported
+                            ? <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.08em' }}>GUARDADA</span>
+                            : <button onClick={() => handleImport(s)} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 8px' }}>
+                                GUARDAR OPORTUNIDAD
+                              </button>
+                          }
+                        </div>
                       </td>
                     </tr>
                   )

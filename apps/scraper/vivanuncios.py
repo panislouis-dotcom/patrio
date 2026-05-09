@@ -4,7 +4,7 @@ from .pw_base import pw_browser, parse_price, parse_sqm
 PORTAL_NAME = "vivanuncios"
 BASE_URL = "https://www.vivanuncios.com.mx"
 _SEARCH_BASE = f"{BASE_URL}/s-venta-terrenos/nuevo-leon/v1c31l1018p"
-_MAX_PAGES = 3
+_MAX_PAGES = 6
 
 _CARD_SEL = '[data-qa="posting PROPERTY"]'
 _LINK_SEL = 'a[href*="/a-venta"]'

@@ -1,31 +1,27 @@
 import json
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from api.auth import get_current_user
 from api.db import create_prospect
-from scraper import lamudi, mitula, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
+from scraper import lamudi, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
 from scraper.base import SignalRaw
 
 router = APIRouter()
 
 # Static scrapers (httpx): fast, no browser overhead
-_STATIC_SCRAPERS = [lamudi, mitula, icasas, doorvel]
+_STATIC_SCRAPERS = [lamudi, icasas, doorvel]
 # Playwright scrapers: launch real Chromium, run in parallel threads
 _PW_SCRAPERS = [inmuebles24, mercadolibre, vivanuncios]
 _ALL_SCRAPERS = _STATIC_SCRAPERS + _PW_SCRAPERS
 
 # Portals that expose sqm on their detail page (have fetch_sqm())
-_ENRICHABLE = {m.PORTAL_NAME: m for m in [lamudi, mitula, icasas, doorvel] if hasattr(m, "fetch_sqm")}
+_ENRICHABLE = {m.PORTAL_NAME: m for m in [lamudi, icasas, doorvel] if hasattr(m, "fetch_sqm")}
 
 # Validation thresholds for terrenos in Monterrey area (MXN)
 _MIN_PRICE = 100_000   # below this is almost certainly a unit price or data error
 _MIN_SQM   = 50        # below this is almost certainly a parse error (not a real lot)
-
-# Seconds between starting each scraper — avoids request burst detection
-_SCRAPER_STAGGER = 2.0
 
 
 def _sanitize(s: SignalRaw) -> SignalRaw | None:
@@ -43,12 +39,6 @@ def _run_scraper(scraper) -> tuple:
         return (scraper, signals, None)
     except Exception as e:
         return (scraper, [], str(e))
-
-
-def _run_scraper_staggered(scraper, delay: float) -> tuple:
-    if delay > 0:
-        time.sleep(delay)
-    return _run_scraper(scraper)
 
 
 def _enrich_signal(signal: SignalRaw) -> None:
@@ -85,21 +75,38 @@ def _run_combined_stream():
     all_signals: list[SignalRaw] = []
     total_skipped = 0
 
-    # All scrapers in parallel with staggered starts to avoid burst detection
-    for scraper in _ALL_SCRAPERS:
+    # Static scrapers — sequential
+    for scraper in _STATIC_SCRAPERS:
         yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
-    with ThreadPoolExecutor(max_workers=len(_ALL_SCRAPERS)) as pool:
-        futures = {
-            pool.submit(_run_scraper_staggered, s, i * _SCRAPER_STAGGER): s
-            for i, s in enumerate(_ALL_SCRAPERS)
-        }
+        _, raw_signals, err = _run_scraper(scraper)
+        if err:
+            yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
+            continue
+        skipped = 0
+        valid: list[SignalRaw] = []
+        for s in raw_signals:
+            s = _sanitize(s)
+            if s is None:
+                skipped += 1
+            else:
+                valid.append(s)
+        all_signals.extend(valid)
+        total_skipped += skipped
+        yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
+                    "fetched": len(raw_signals), "skipped": skipped})
+
+    # PW scrapers — all start simultaneously
+    for scraper in _PW_SCRAPERS:
+        yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
+    with ThreadPoolExecutor(max_workers=len(_PW_SCRAPERS)) as pool:
+        futures = {pool.submit(_run_scraper, s): s for s in _PW_SCRAPERS}
         for fut in as_completed(futures):
             scraper, raw_signals, err = fut.result()
             if err:
                 yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
                 continue
             skipped = 0
-            valid: list[SignalRaw] = []
+            valid = []
             for s in raw_signals:
                 s = _sanitize(s)
                 if s is None:

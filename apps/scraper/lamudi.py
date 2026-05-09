@@ -6,9 +6,7 @@ from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
 PORTAL_NAME = "lamudi"
 BASE_URL = "https://www.lamudi.com.mx"
 SEARCH_URL = f"{BASE_URL}/nuevo-leon/terreno/for-sale/"
-
-
-_MAX_PAGES = 5
+_MAX_PAGES = 10
 
 
 def _scrape_page(url: str, city: str) -> list[SignalRaw]:
@@ -56,7 +54,7 @@ def scrape(city: str = "Monterrey") -> list[SignalRaw]:
         seen_urls: set[str] = set()
         for page in range(1, _MAX_PAGES + 1):
             rate_limit(1.0)
-            url = SEARCH_URL if page == 1 else f"{SEARCH_URL}?p={page}"
+            url = SEARCH_URL if page == 1 else f"{SEARCH_URL}?page={page}"
             page_signals = _scrape_page(url, city)
             if not page_signals:
                 break

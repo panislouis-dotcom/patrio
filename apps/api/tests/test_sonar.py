@@ -91,7 +91,6 @@ def _make_client():
 def _all_scrapers_empty():
     return (
         patch("api.routes.sonar.lamudi.scrape", return_value=[]),
-        patch("api.routes.sonar.mitula.scrape", return_value=[]),
         patch("api.routes.sonar.icasas.scrape", return_value=[]),
         patch("api.routes.sonar.doorvel.scrape", return_value=[]),
         patch("api.routes.sonar.inmuebles24.scrape", return_value=[]),
@@ -103,8 +102,8 @@ def _all_scrapers_empty():
 def test_sonar_run_streams_events():
     """SSE stream includes start and complete events even with no signals."""
     import json
-    p1, p2, p3, p4, p5, p6, p7 = _all_scrapers_empty()
-    with p1, p2, p3, p4, p5, p6, p7:
+    p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
+    with p1, p2, p3, p4, p5, p6:
         r = _make_client().post("/api/sonar/run")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/event-stream")
@@ -124,8 +123,8 @@ def test_sonar_run_includes_valid_signals():
     import json
     sig = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/test-1",
                     title="Terreno Test", city="Monterrey", price=1_500_000)
-    p1, p2, p3, p4, p5, p6, p7 = _all_scrapers_empty()
-    with p1, p2, p3, p4, p5, p6, p7:
+    p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
+    with p1, p2, p3, p4, p5, p6:
         with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]):
             r = _make_client().post("/api/sonar/run")
 
@@ -140,8 +139,8 @@ def test_sonar_run_drops_low_price_signals():
     import json
     bad = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/bad",
                     title="Bad listing", city="Monterrey", price=5_000)
-    p1, p2, p3, p4, p5, p6, p7 = _all_scrapers_empty()
-    with p1, p2, p3, p4, p5, p6, p7:
+    p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
+    with p1, p2, p3, p4, p5, p6:
         with patch("api.routes.sonar.lamudi.scrape", return_value=[bad]):
             r = _make_client().post("/api/sonar/run")
 

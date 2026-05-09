@@ -5,12 +5,12 @@ from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
 
 PORTAL_NAME = "icasas"
 BASE_URL = "https://www.icasas.mx"
-SEARCH_URL = f"{BASE_URL}/venta/tierras-lotes-terrenos-nuevo-leon-monterrey-5_9_19_0_983_0"
-_MAX_PAGES = 4
+SEARCH_URL = f"{BASE_URL}/venta/tierras-lotes-terrenos-nuevo-leon-5_9_0_0_19_0"
+_MAX_PAGES = 12
 
 
 def _page_url(page: int) -> str:
-    return SEARCH_URL if page == 1 else f"{SEARCH_URL}?page={page}"
+    return SEARCH_URL if page == 1 else f"{SEARCH_URL}/p_{page}"
 
 
 def _parse_price(text: str) -> float:
