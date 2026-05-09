@@ -2,14 +2,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter, Depends, HTTPException
 from api.auth import get_current_user
 from api.db import get_signals, create_signal, dismiss_signal, import_signal
-from scraper import lamudi, inmuebles24, mercadolibre
+from scraper import lamudi, mitula, icasas, doorvel, realtorcom, inmuebles24, mercadolibre, vivanuncios
 
 router = APIRouter()
 
 # Static scrapers (httpx): fast, no browser overhead
-_STATIC_SCRAPERS = [lamudi]
+_STATIC_SCRAPERS = [lamudi, mitula, icasas, doorvel, realtorcom]
 # Playwright scrapers: launch real Chromium, run in parallel threads
-_PW_SCRAPERS = [inmuebles24, mercadolibre]
+_PW_SCRAPERS = [inmuebles24, mercadolibre, vivanuncios]
 _ALL_SCRAPERS = _STATIC_SCRAPERS + _PW_SCRAPERS
 
 
