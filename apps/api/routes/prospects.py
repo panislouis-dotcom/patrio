@@ -1,7 +1,8 @@
 from dataclasses import asdict
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from api.auth import get_current_user
 from api.db import get_prospects, get_prospect, update_prospect, create_prospect
 from api.checks import run_checks
 
@@ -71,13 +72,13 @@ def _score(p: dict, all_prospects: list[dict]) -> float:
 
 
 @router.get("/api/prospects")
-def list_prospects():
+def list_prospects(_: dict = Depends(get_current_user)):
     prospects = get_prospects()
     return [_with_checks({**p, "score": _score(p, prospects)}) for p in prospects]
 
 
 @router.get("/api/prospects/{prospect_id}")
-def detail_prospect(prospect_id: int):
+def detail_prospect(prospect_id: int, _: dict = Depends(get_current_user)):
     p = get_prospect(prospect_id)
     if p is None:
         raise HTTPException(status_code=404, detail="Prospect not found")
@@ -86,7 +87,7 @@ def detail_prospect(prospect_id: int):
 
 
 @router.get("/api/quality")
-def quality_report():
+def quality_report(_: dict = Depends(get_current_user)):
     prospects = get_prospects()
     return [
         {"id": p["id"], "name": p["name"],
@@ -96,7 +97,7 @@ def quality_report():
 
 
 @router.patch("/api/prospects/{prospect_id}")
-def patch_prospect(prospect_id: int, body: ProspectUpdate):
+def patch_prospect(prospect_id: int, body: ProspectUpdate, _: dict = Depends(get_current_user)):
     payload = body.model_dump(exclude_none=True)
     updated = update_prospect(prospect_id, payload)
     if updated is None:
@@ -106,7 +107,7 @@ def patch_prospect(prospect_id: int, body: ProspectUpdate):
 
 
 @router.post("/api/prospects", status_code=201)
-def post_prospect(body: ProspectCreate):
+def post_prospect(body: ProspectCreate, _: dict = Depends(get_current_user)):
     created = create_prospect(body.model_dump(exclude_none=False))
     if created is None:
         raise HTTPException(status_code=500, detail="Prospect created but not retrievable")

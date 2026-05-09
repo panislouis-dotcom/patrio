@@ -1,6 +1,7 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from api.auth import get_current_user
 from api.db import get_projects, get_project, update_project, create_project
 
 router = APIRouter()
@@ -49,12 +50,12 @@ class ProjectCreate(BaseModel):
 
 
 @router.get("/api/projects")
-def list_projects():
+def list_projects(_: dict = Depends(get_current_user)):
     return get_projects()
 
 
 @router.get("/api/projects/{project_id}")
-def detail_project(project_id: int):
+def detail_project(project_id: int, _: dict = Depends(get_current_user)):
     p = get_project(project_id)
     if p is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -62,8 +63,8 @@ def detail_project(project_id: int):
 
 
 @router.patch("/api/projects/{project_id}")
-def patch_project(project_id: int, body: ProjectUpdate):
-    payload = body.model_dump(exclude_none=True)
+def patch_project(project_id: int, body: ProjectUpdate, _: dict = Depends(get_current_user)):
+    payload = body.model_dump(exclude_unset=True)
     updated = update_project(project_id, payload)
     if updated is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -71,7 +72,7 @@ def patch_project(project_id: int, body: ProjectUpdate):
 
 
 @router.post("/api/projects", status_code=201)
-def post_project(body: ProjectCreate):
+def post_project(body: ProjectCreate, _: dict = Depends(get_current_user)):
     created = create_project(body.model_dump(exclude_none=False))
     if created is None:
         raise HTTPException(status_code=500, detail="Project created but not retrievable")

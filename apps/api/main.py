@@ -1,16 +1,45 @@
+import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from api.routes import prospects, projects, sonar, team, processes, profit, investors
+from api.routes import prospects, projects, sonar, team, processes, profit, investors, users
+from api.routes.auth import router as auth_router
+from api.db import get_db
 
-app = FastAPI(title="Refigan API")
 
+def _seed_admin() -> None:
+    email = os.environ.get("ADMIN_EMAIL", "").strip()
+    pw_hash = os.environ.get("ADMIN_PASSWORD_HASH", "").strip()
+    if not email or not pw_hash:
+        return
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO users (email, hashed_password, is_active)
+            VALUES (%s, %s, TRUE)
+            ON CONFLICT (email) DO UPDATE SET hashed_password = EXCLUDED.hashed_password
+            """,
+            (email, pw_hash),
+        )
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    _seed_admin()
+    yield
+
+
+app = FastAPI(title="Refigan API", lifespan=lifespan)
+
+_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").split(",")]
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://localhost:\d+",
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["*"],
+    allow_origins=_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 FILES_DIR = Path(__file__).parent.parent.parent / "data" / "files"
@@ -24,3 +53,10 @@ app.include_router(team.router)
 app.include_router(processes.router)
 app.include_router(profit.router)
 app.include_router(investors.router)
+app.include_router(users.router)
+app.include_router(auth_router)
+
+# Serve React frontend in production container (not present in local dev)
+FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend_dist"
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

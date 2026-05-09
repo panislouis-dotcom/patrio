@@ -5,7 +5,7 @@
 
 INSERT INTO projects (
   name, type, address, city, status, total_units,
-  acquisition_date, first_rent_date,
+  acquisition_date, conclusion_date,
   total_investment, current_valuation, valuation_date,
   url, latitude, longitude,
   milestones, budget, notes

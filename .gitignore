@@ -28,3 +28,6 @@ data/files/**
 # OS
 .DS_Store
 00Tree.html
+
+# Environment
+.env

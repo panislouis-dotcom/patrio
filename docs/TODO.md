@@ -1,19 +1,12 @@
 # TODO
-- desglose de distribucion de ganancias
-    - finders fee, responsable de proyecto, lider de equipo, maestro, ayudante
-    - bonos: extra 50% si no se usa colchon extra 25% si se usa menos de medio colchon
-- inversionistas
-- inversiones* relacionados a un client y a un proyecto
-    - interes, compsomiso, inversion.
-    - como diferencias prospectos de propiedades y de inversionistas
 - add auth, user types and user type based experience
     - team and investors automatically have account.
     - eduardo and panis seeded
-- poder subir oportunidades facil
 - change to postgres
 - deploy to vm
 - fix sonar
     - sonar tab de prospects
+- poder subir oportunidades facil
 - estados de cuenta? PNL? Finanzas?
     - como seria el cierre del mes?
     - numero de oprtunidades, proyectos y nuevas
@@ -21,6 +14,7 @@
     - Se pueden enviar a inversionistas y a equipo
 - home. resumen de todo
 
+- user types
 - poder ligar tarea de proyecto no solo crear
 - como considerar colchon en todo esto?
     - tal vez una tarea de COLCHON? que puedes sumar o restar dias

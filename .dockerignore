@@ -1,0 +1,9 @@
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+apps/web/node_modules
+apps/web/dist
+apps/api/tests
+.env
+.git
+data/refigan.db

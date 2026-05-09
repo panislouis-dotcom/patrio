@@ -1,4 +1,7 @@
+import { type ReactNode } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { LoginPage } from './components/LoginPage'
 import { TabBar } from './components/TabBar'
 import { ProspectTable } from './components/ProspectTable'
 import { ProspectDetailPage } from './components/ProspectDetailPage'
@@ -17,22 +20,32 @@ import { InversoresTab } from './components/InversoresTab'
 import { InversorDetailPage } from './components/InversorDetailPage'
 import { globalStyles, colors } from './lib/theme'
 
-export default function App() {
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { isLoggedIn } = useAuth()
+  return isLoggedIn ? <>{children}</> : <Navigate to="/login" replace />
+}
+
+function AppShell() {
+  const { isLoggedIn, logout } = useAuth()
   return (
     <>
       <style>{globalStyles}</style>
       <div style={{ minHeight: '100vh', background: colors.dark }}>
-        <TabBar />
+        {isLoggedIn && <TabBar onLogout={logout} />}
         <Routes>
+          <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<Navigate to="/prospectos/tabla" replace />} />
           <Route path="/prospectos" element={<Navigate to="/prospectos/tabla" replace />} />
-          <Route path="/prospectos/tabla" element={<ProspectTable />} />
-          <Route path="/prospectos/tabla/:id" element={<ProspectDetailPage />} />
-          <Route path="/prospectos/mapa" element={<ProspectMap />} />
-          <Route path="/proyectos" element={<ProjectsTab />} />
-          <Route path="/proyectos/:id" element={<ProjectDetailPage />} />
-          <Route path="/sonar" element={<SonarTab />} />
-          <Route path="/procesos" element={<ProcesosTab />}>
+          <Route path="/tabla" element={<Navigate to="/prospectos/tabla" replace />} />
+          <Route path="/mapa" element={<Navigate to="/prospectos/mapa" replace />} />
+
+          <Route path="/prospectos/tabla" element={<ProtectedRoute><ProspectTable /></ProtectedRoute>} />
+          <Route path="/prospectos/tabla/:id" element={<ProtectedRoute><ProspectDetailPage /></ProtectedRoute>} />
+          <Route path="/prospectos/mapa" element={<ProtectedRoute><ProspectMap /></ProtectedRoute>} />
+          <Route path="/proyectos" element={<ProtectedRoute><ProjectsTab /></ProtectedRoute>} />
+          <Route path="/proyectos/:id" element={<ProtectedRoute><ProjectDetailPage /></ProtectedRoute>} />
+          <Route path="/sonar" element={<ProtectedRoute><SonarTab /></ProtectedRoute>} />
+          <Route path="/procesos" element={<ProtectedRoute><ProcesosTab /></ProtectedRoute>}>
             <Route index element={<Navigate to="plantillas" replace />} />
             <Route path="plantillas" element={<ProcesoTemplateList />} />
             <Route path="plantillas/:tid" element={<ProcesoTemplateEditor />} />
@@ -40,13 +53,19 @@ export default function App() {
             <Route path="tareas/:iid" element={<ProcesoInstanceDetail />} />
             <Route path="tareas/:iid/nodos/:nid" element={<ProcesoNodeDetail />} />
           </Route>
-          <Route path="/inversionistas" element={<InversoresTab />} />
-          <Route path="/inversionistas/:id" element={<InversorDetailPage />} />
-          <Route path="/equipo" element={<OrgTab />} />
-          <Route path="/tabla" element={<Navigate to="/prospectos/tabla" replace />} />
-          <Route path="/mapa" element={<Navigate to="/prospectos/mapa" replace />} />
+          <Route path="/inversionistas" element={<ProtectedRoute><InversoresTab /></ProtectedRoute>} />
+          <Route path="/inversionistas/:id" element={<ProtectedRoute><InversorDetailPage /></ProtectedRoute>} />
+          <Route path="/equipo" element={<ProtectedRoute><OrgTab /></ProtectedRoute>} />
         </Routes>
       </div>
     </>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   )
 }

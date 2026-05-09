@@ -101,6 +101,7 @@ export interface TeamMember {
   name: string
   role: MemberRole
   managerId: number | null
+  email: string
   notes: string
   createdAt: string
 }
@@ -298,6 +299,7 @@ export interface ProfitWaterfall {
 export interface Investor {
   id: number
   name: string
+  apellidos: string
   email: string
   phone: string
   notes: string
@@ -307,17 +309,32 @@ export interface Investor {
   totalFunded: number
 }
 
+export interface User {
+  id: number
+  email: string
+  isActive: boolean
+  createdAt: string
+}
+
 export interface ProjectInvestor {
   id: number
   projectId: number
   investorId: number
   investorName: string
-  projectName?: string
+  projectName: string
   status: 'interesado' | 'comprometido' | 'fondeado'
   interestedAmount: number
   committedAmount: number
   fundedAmount: number
   interestRateAnnual: number
+  investmentDate: string | null
+  returnAmount: number | null
+  returnDate: string | null
   notes: string
   createdAt: string
+  // Computed server-side by project_investor_metrics view
+  holdMonths: number
+  interestAmount: number
+  expectedReturn: number
+  returnPct: number
 }
