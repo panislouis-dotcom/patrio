@@ -1,17 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from api.auth import get_current_user
 from api.db import get_signals, create_signal, dismiss_signal, import_signal
-from scraper import mercadolibre, pincali, inmuebles24, doorvel, nuroa
+from scraper import lamudi
 
 router = APIRouter()
+
+_SCRAPERS = [lamudi]
 
 
 @router.post("/api/sonar/scan")
 def sonar_scan(_: dict = Depends(get_current_user)):
-    scrapers = [mercadolibre, pincali, inmuebles24, doorvel, nuroa]
     total_new = 0
     errors = []
-    for scraper in scrapers:
+    portals: list[dict] = []
+    for scraper in _SCRAPERS:
+        portal_new = 0
         try:
             signals = scraper.scrape(city="Monterrey")
             for s in signals:
@@ -25,10 +28,12 @@ def sonar_scan(_: dict = Depends(get_current_user)):
                     "sqm_land": s.sqm_land,
                 })
                 if inserted:
+                    portal_new += 1
                     total_new += 1
+            portals.append({"portal": scraper.PORTAL_NAME, "fetched": len(signals), "new": portal_new})
         except Exception as e:
             errors.append({"portal": scraper.PORTAL_NAME, "error": str(e)})
-    return {"scanned": len(scrapers), "new": total_new, "errors": errors}
+    return {"scanned": len(_SCRAPERS), "new": total_new, "portals": portals, "errors": errors}
 
 
 @router.get("/api/sonar/signals")

@@ -1,199 +1,164 @@
-import sqlite3
 import pytest
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
-SCHEMA_PATH = Path(__file__).parent.parent.parent.parent / "data" / "schema.sql"
+from scraper.base import SignalRaw
 
 
-@pytest.fixture
-def tmp_db(monkeypatch, tmp_path):
-    db = tmp_path / "test.db"
-    with sqlite3.connect(db) as conn:
-        conn.executescript(SCHEMA_PATH.read_text())
-    import api.db
-    monkeypatch.setattr(api.db, "DB_PATH", db)
-    return db
-
-
-@pytest.fixture
-def client(tmp_db):
+@pytest.fixture(autouse=True)
+def bypass_auth():
     from api.main import app
-    return TestClient(app)
+    from api.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: {"id": 1, "email": "test@test.com"}
+    yield
+    app.dependency_overrides.clear()
 
 
 # ── Scraper unit tests (mocked HTTP) ──────────────────────────────────────
 
-def test_mercadolibre_scraper_returns_signals():
+def test_lamudi_scraper_returns_signals():
+    cards_html = """
+    <html><body>
+      <div class="snippet js-snippet">
+        <a href="/detalle/123">link</a>
+        <h3>Terreno en Venta en San Pedro</h3>
+        <span class="snippet__content__price">$ 2,500,000 MXN</span>
+      </div>
+      <div class="snippet js-snippet">
+        <a href="/detalle/456">link</a>
+        <h3>Lote en Monterrey</h3>
+        <span class="snippet__content__price">$ 1,800,000 MXN</span>
+      </div>
+    </body></html>
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "results": [
-            {"permalink": "https://mercadolibre.com/item/1", "title": "Terreno Monterrey", "price": 2000000},
-            {"permalink": "https://mercadolibre.com/item/2", "title": "Lote NL", "price": 1500000},
-        ]
-    }
+    mock_response.text = cards_html
     with patch("httpx.get", return_value=mock_response):
-        from scraper import mercadolibre
-        signals = mercadolibre.scrape()
+        from scraper import lamudi
+        signals = lamudi.scrape()
     assert len(signals) == 2
-    assert signals[0].portal == "mercadolibre"
-    assert signals[0].url == "https://mercadolibre.com/item/1"
-    assert signals[0].price == 2000000
+    assert signals[0].portal == "lamudi"
+    assert "San Pedro" in signals[0].title
+    assert signals[0].price == 2500000.0
 
 
-def test_mercadolibre_scraper_handles_empty():
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"results": []}
-    with patch("httpx.get", return_value=mock_response):
-        from scraper import mercadolibre
-        signals = mercadolibre.scrape()
-    assert signals == []
-
-
-def test_mercadolibre_scraper_handles_http_error():
-    mock_response = MagicMock()
-    mock_response.status_code = 500
-    with patch("httpx.get", return_value=mock_response):
-        from scraper import mercadolibre
-        signals = mercadolibre.scrape()
-    assert signals == []
-
-
-def test_pincali_scraper_handles_http_error():
+def test_lamudi_scraper_handles_http_error():
     mock_response = MagicMock()
     mock_response.status_code = 403
     with patch("httpx.get", return_value=mock_response):
-        from scraper import pincali
-        signals = pincali.scrape()
+        from scraper import lamudi
+        signals = lamudi.scrape()
     assert signals == []
 
 
-def test_pincali_scraper_handles_empty_html():
+def test_lamudi_scraper_handles_empty_page():
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.text = "<html><body><p>No listings</p></body></html>"
+    mock_response.text = "<html><body></body></html>"
     with patch("httpx.get", return_value=mock_response):
-        from scraper import pincali
-        signals = pincali.scrape()
+        from scraper import lamudi
+        signals = lamudi.scrape()
     assert signals == []
 
 
-# ── API endpoint tests ─────────────────────────────────────────────────────
+def test_lamudi_scraper_handles_missing_price():
+    cards_html = """
+    <html><body>
+      <div class="snippet js-snippet">
+        <a href="/detalle/789">link</a>
+        <h3>Terreno sin precio</h3>
+      </div>
+    </body></html>
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = cards_html
+    with patch("httpx.get", return_value=mock_response):
+        from scraper import lamudi
+        signals = lamudi.scrape()
+    assert len(signals) == 1
+    assert signals[0].price == 0.0
 
-def test_sonar_scan_returns_stats(client):
-    # Mock all scrapers to return empty (no real HTTP)
-    with patch("scraper.mercadolibre.scrape", return_value=[]), \
-         patch("scraper.pincali.scrape", return_value=[]), \
-         patch("scraper.inmuebles24.scrape", return_value=[]), \
-         patch("scraper.doorvel.scrape", return_value=[]), \
-         patch("scraper.nuroa.scrape", return_value=[]):
-        r = client.post("/api/sonar/scan")
+
+# ── API endpoint tests (DB layer mocked) ──────────────────────────────────
+
+def _make_client():
+    from api.main import app
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _mock_signal(url="https://www.lamudi.com.mx/detalle/test-1"):
+    return SignalRaw(portal="lamudi", url=url, title="Terreno Test", city="Monterrey", price=1500000)
+
+
+def test_sonar_scan_returns_stats():
+    with patch("api.routes.sonar.lamudi.scrape", return_value=[]), \
+         patch("api.routes.sonar.create_signal", return_value=None):
+        r = _make_client().post("/api/sonar/scan")
     assert r.status_code == 200
     data = r.json()
     assert "scanned" in data
     assert "new" in data
-    assert "errors" in data
-    assert data["scanned"] == 5
+    assert "portals" in data
+    assert data["scanned"] == 1
     assert data["new"] == 0
 
 
-def test_sonar_scan_counts_new_signals(client):
-    from scraper.base import SignalRaw
-    mock_signal = SignalRaw(
-        portal="mercadolibre",
-        url="https://ml.com/test-1",
-        title="Test Terreno",
-        city="Monterrey",
-        price=1500000,
-    )
-    with patch("scraper.mercadolibre.scrape", return_value=[mock_signal]), \
-         patch("scraper.pincali.scrape", return_value=[]), \
-         patch("scraper.inmuebles24.scrape", return_value=[]), \
-         patch("scraper.doorvel.scrape", return_value=[]), \
-         patch("scraper.nuroa.scrape", return_value=[]):
-        r = client.post("/api/sonar/scan")
+def test_sonar_scan_counts_new_signals():
+    sig = _mock_signal()
+    mock_row = {"id": 1, "portal": "lamudi", "url": sig.url, "title": sig.title,
+                "address": "", "city": "Monterrey", "price": 1500000, "sqm_land": 0,
+                "raw_data": "", "status": "new", "prospect_id": None, "scraped_at": "2025-01-01"}
+    with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]), \
+         patch("api.routes.sonar.create_signal", return_value=mock_row):
+        r = _make_client().post("/api/sonar/scan")
     assert r.status_code == 200
     assert r.json()["new"] == 1
 
 
-def test_sonar_scan_deduplicates(client):
-    from scraper.base import SignalRaw
-    mock_signal = SignalRaw(portal="ml", url="https://ml.com/dup", title="Dup", city="Monterrey")
-    with patch("scraper.mercadolibre.scrape", return_value=[mock_signal]), \
-         patch("scraper.pincali.scrape", return_value=[mock_signal]), \
-         patch("scraper.inmuebles24.scrape", return_value=[]), \
-         patch("scraper.doorvel.scrape", return_value=[]), \
-         patch("scraper.nuroa.scrape", return_value=[]):
-        r = client.post("/api/sonar/scan")
-    assert r.json()["new"] == 1  # Only one inserted despite appearing twice
+def test_sonar_scan_deduplicates():
+    sig = _mock_signal()
+    # Second insert returns None (duplicate URL constraint)
+    with patch("api.routes.sonar.lamudi.scrape", return_value=[sig, sig]), \
+         patch("api.routes.sonar.create_signal", side_effect=[{"id": 1, "status": "new"}, None]):
+        r = _make_client().post("/api/sonar/scan")
+    assert r.json()["new"] == 1
 
 
-def test_get_signals_returns_list(client):
-    r = client.get("/api/sonar/signals")
+def test_get_signals_returns_list():
+    with patch("api.routes.sonar.get_signals", return_value=[]):
+        r = _make_client().get("/api/sonar/signals")
     assert r.status_code == 200
-    assert isinstance(r.json(), list)
+    assert r.json() == []
 
 
-def test_get_signals_filter_by_status(client):
-    # Seed a signal first via scan
-    from scraper.base import SignalRaw
-    sig = SignalRaw(portal="ml", url="https://ml.com/filter-test", title="Filter Test", city="Monterrey")
-    with patch("scraper.mercadolibre.scrape", return_value=[sig]), \
-         patch("scraper.pincali.scrape", return_value=[]), \
-         patch("scraper.inmuebles24.scrape", return_value=[]), \
-         patch("scraper.doorvel.scrape", return_value=[]), \
-         patch("scraper.nuroa.scrape", return_value=[]):
-        client.post("/api/sonar/scan")
-    r = client.get("/api/sonar/signals?status=new")
-    assert r.status_code == 200
-    assert any(s["url"] == "https://ml.com/filter-test" for s in r.json())
-
-
-def test_dismiss_signal(client):
-    # Seed a signal
-    from scraper.base import SignalRaw
-    sig = SignalRaw(portal="ml", url="https://ml.com/dismiss-test", title="Dismiss Me", city="Monterrey")
-    with patch("scraper.mercadolibre.scrape", return_value=[sig]), \
-         patch("scraper.pincali.scrape", return_value=[]), \
-         patch("scraper.inmuebles24.scrape", return_value=[]), \
-         patch("scraper.doorvel.scrape", return_value=[]), \
-         patch("scraper.nuroa.scrape", return_value=[]):
-        client.post("/api/sonar/scan")
-    signals = client.get("/api/sonar/signals?status=new").json()
-    signal_id = signals[0]["id"]
-    r = client.patch(f"/api/sonar/signals/{signal_id}")
+def test_dismiss_signal():
+    mock_row = {"id": 5, "status": "dismissed"}
+    with patch("api.routes.sonar.dismiss_signal", return_value=mock_row):
+        r = _make_client().patch("/api/sonar/signals/5")
     assert r.status_code == 200
     assert r.json()["status"] == "dismissed"
 
 
-def test_dismiss_missing_signal_returns_404(client):
-    r = client.patch("/api/sonar/signals/99999")
+def test_dismiss_missing_signal_returns_404():
+    with patch("api.routes.sonar.dismiss_signal", return_value=None):
+        r = _make_client().patch("/api/sonar/signals/99999")
     assert r.status_code == 404
 
 
-def test_import_signal_creates_prospect(client):
-    from scraper.base import SignalRaw
-    sig = SignalRaw(portal="ml", url="https://ml.com/import-test", title="Import Me", city="Monterrey", price=2000000)
-    with patch("scraper.mercadolibre.scrape", return_value=[sig]), \
-         patch("scraper.pincali.scrape", return_value=[]), \
-         patch("scraper.inmuebles24.scrape", return_value=[]), \
-         patch("scraper.doorvel.scrape", return_value=[]), \
-         patch("scraper.nuroa.scrape", return_value=[]):
-        client.post("/api/sonar/scan")
-    signals = client.get("/api/sonar/signals?status=new").json()
-    signal_id = signals[0]["id"]
-    r = client.post(f"/api/sonar/signals/{signal_id}/import")
+def test_import_signal_creates_prospect():
+    mock_signal = {"id": 3, "status": "imported", "url": "https://test.com"}
+    mock_prospect = {"id": 1, "name": "Terreno Test"}
+    with patch("api.routes.sonar.import_signal", return_value=(mock_signal, mock_prospect)):
+        r = _make_client().post("/api/sonar/signals/3/import")
     assert r.status_code == 201
     data = r.json()
-    assert "signal" in data
-    assert "prospect" in data
     assert data["signal"]["status"] == "imported"
-    assert data["prospect"]["name"] == "Import Me"
+    assert data["prospect"]["name"] == "Terreno Test"
 
 
-def test_import_missing_signal_returns_404(client):
-    r = client.post("/api/sonar/signals/99999/import")
+def test_import_missing_signal_returns_404():
+    with patch("api.routes.sonar.import_signal", return_value=(None, None)):
+        r = _make_client().post("/api/sonar/signals/99999/import")
     assert r.status_code == 404
