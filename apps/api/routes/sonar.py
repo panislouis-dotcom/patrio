@@ -1,11 +1,25 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter, Depends, HTTPException
 from api.auth import get_current_user
 from api.db import get_signals, create_signal, dismiss_signal, import_signal
-from scraper import lamudi
+from scraper import lamudi, inmuebles24, mercadolibre
 
 router = APIRouter()
 
-_SCRAPERS = [lamudi]
+# Static scrapers (httpx): fast, no browser overhead
+_STATIC_SCRAPERS = [lamudi]
+# Playwright scrapers: launch real Chromium, run in parallel threads
+_PW_SCRAPERS = [inmuebles24, mercadolibre]
+_ALL_SCRAPERS = _STATIC_SCRAPERS + _PW_SCRAPERS
+
+
+def _run_scraper(scraper) -> tuple:
+    """Run one scraper and return (scraper, signals, error_str)."""
+    try:
+        signals = scraper.scrape(city="Monterrey")
+        return (scraper, signals, None)
+    except Exception as e:
+        return (scraper, [], str(e))
 
 
 @router.post("/api/sonar/scan")
@@ -13,27 +27,38 @@ def sonar_scan(_: dict = Depends(get_current_user)):
     total_new = 0
     errors = []
     portals: list[dict] = []
-    for scraper in _SCRAPERS:
+
+    # Run static scrapers inline, PW scrapers in parallel threads
+    results = []
+    for s in _STATIC_SCRAPERS:
+        results.append(_run_scraper(s))
+
+    with ThreadPoolExecutor(max_workers=len(_PW_SCRAPERS)) as pool:
+        futures = {pool.submit(_run_scraper, s): s for s in _PW_SCRAPERS}
+        for fut in as_completed(futures):
+            results.append(fut.result())
+
+    for scraper, signals, err in results:
+        if err:
+            errors.append({"portal": scraper.PORTAL_NAME, "error": err})
+            continue
         portal_new = 0
-        try:
-            signals = scraper.scrape(city="Monterrey")
-            for s in signals:
-                inserted = create_signal({
-                    "portal": s.portal,
-                    "url": s.url,
-                    "title": s.title,
-                    "address": s.address,
-                    "city": s.city,
-                    "price": s.price,
-                    "sqm_land": s.sqm_land,
-                })
-                if inserted:
-                    portal_new += 1
-                    total_new += 1
-            portals.append({"portal": scraper.PORTAL_NAME, "fetched": len(signals), "new": portal_new})
-        except Exception as e:
-            errors.append({"portal": scraper.PORTAL_NAME, "error": str(e)})
-    return {"scanned": len(_SCRAPERS), "new": total_new, "portals": portals, "errors": errors}
+        for s in signals:
+            inserted = create_signal({
+                "portal": s.portal,
+                "url": s.url,
+                "title": s.title,
+                "address": s.address,
+                "city": s.city,
+                "price": s.price,
+                "sqm_land": s.sqm_land,
+            })
+            if inserted:
+                portal_new += 1
+                total_new += 1
+        portals.append({"portal": scraper.PORTAL_NAME, "fetched": len(signals), "new": portal_new})
+
+    return {"scanned": len(_ALL_SCRAPERS), "new": total_new, "portals": portals, "errors": errors}
 
 
 @router.get("/api/sonar/signals")

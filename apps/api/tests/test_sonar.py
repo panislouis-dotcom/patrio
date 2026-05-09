@@ -92,16 +92,25 @@ def _mock_signal(url="https://www.lamudi.com.mx/detalle/test-1"):
     return SignalRaw(portal="lamudi", url=url, title="Terreno Test", city="Monterrey", price=1500000)
 
 
+def _all_scrapers_empty():
+    """Context manager that mocks all 3 scrapers to return empty lists."""
+    return (
+        patch("api.routes.sonar.lamudi.scrape", return_value=[]),
+        patch("api.routes.sonar.inmuebles24.scrape", return_value=[]),
+        patch("api.routes.sonar.mercadolibre.scrape", return_value=[]),
+    )
+
+
 def test_sonar_scan_returns_stats():
-    with patch("api.routes.sonar.lamudi.scrape", return_value=[]), \
-         patch("api.routes.sonar.create_signal", return_value=None):
+    p1, p2, p3 = _all_scrapers_empty()
+    with p1, p2, p3, patch("api.routes.sonar.create_signal", return_value=None):
         r = _make_client().post("/api/sonar/scan")
     assert r.status_code == 200
     data = r.json()
     assert "scanned" in data
     assert "new" in data
     assert "portals" in data
-    assert data["scanned"] == 1
+    assert data["scanned"] == 3
     assert data["new"] == 0
 
 
@@ -111,6 +120,8 @@ def test_sonar_scan_counts_new_signals():
                 "address": "", "city": "Monterrey", "price": 1500000, "sqm_land": 0,
                 "raw_data": "", "status": "new", "prospect_id": None, "scraped_at": "2025-01-01"}
     with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]), \
+         patch("api.routes.sonar.inmuebles24.scrape", return_value=[]), \
+         patch("api.routes.sonar.mercadolibre.scrape", return_value=[]), \
          patch("api.routes.sonar.create_signal", return_value=mock_row):
         r = _make_client().post("/api/sonar/scan")
     assert r.status_code == 200
@@ -121,6 +132,8 @@ def test_sonar_scan_deduplicates():
     sig = _mock_signal()
     # Second insert returns None (duplicate URL constraint)
     with patch("api.routes.sonar.lamudi.scrape", return_value=[sig, sig]), \
+         patch("api.routes.sonar.inmuebles24.scrape", return_value=[]), \
+         patch("api.routes.sonar.mercadolibre.scrape", return_value=[]), \
          patch("api.routes.sonar.create_signal", side_effect=[{"id": 1, "status": "new"}, None]):
         r = _make_client().post("/api/sonar/scan")
     assert r.json()["new"] == 1
