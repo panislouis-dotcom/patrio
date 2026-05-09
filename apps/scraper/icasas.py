@@ -5,12 +5,18 @@ from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
 
 PORTAL_NAME = "icasas"
 BASE_URL = "https://www.icasas.mx"
-SEARCH_URL = f"{BASE_URL}/venta/tierras-lotes-terrenos-nuevo-leon-5_9_0_0_19_0"
+_NL_SEARCH_URL = f"{BASE_URL}/venta/tierras-lotes-terrenos-nuevo-leon-5_9_0_0_19_0"
 _MAX_PAGES = 12
 
 
-def _page_url(page: int) -> str:
-    return SEARCH_URL if page == 1 else f"{SEARCH_URL}/p_{page}"
+def _search_url(zone_slug: str | None) -> str:
+    if zone_slug:
+        return f"{BASE_URL}/venta/tierras-lotes-terrenos-{zone_slug}_9_0_0_19_0"
+    return _NL_SEARCH_URL
+
+
+def _page_url(base: str, page: int) -> str:
+    return base if page == 1 else f"{base}/p_{page}"
 
 
 def _parse_price(text: str) -> float:
@@ -22,14 +28,12 @@ def _parse_price(text: str) -> float:
         return 0.0
 
 
-def scrape(city: str = "Monterrey") -> list[SignalRaw]:
+def _scrape_zone(search_base: str, city: str, seen: set[str]) -> list[SignalRaw]:
     signals: list[SignalRaw] = []
-    seen: set[str] = set()
-
     for page in range(1, _MAX_PAGES + 1):
         try:
             rate_limit(1.2)
-            r = httpx.get(_page_url(page), headers=BROWSER_HEADERS,
+            r = httpx.get(_page_url(search_base, page), headers=BROWSER_HEADERS,
                           follow_redirects=True, timeout=20)
             if r.status_code != 200:
                 break
@@ -75,8 +79,21 @@ def scrape(city: str = "Monterrey") -> list[SignalRaw]:
                 break
         except Exception:
             break
-
     return signals
+
+
+def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
+    from .zones import ZONE_DEFS
+    zone_list = [(z, ZONE_DEFS[z]["icasas"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
+    all_signals: list[SignalRaw] = []
+    seen: set[str] = set()
+    for zone_name, zone_slug in zone_list:
+        new = _scrape_zone(_search_url(zone_slug), city, seen)
+        if zone_name:
+            for s in new:
+                s.zone = zone_name
+        all_signals.extend(new)
+    return all_signals
 
 
 def fetch_sqm(url: str) -> float:

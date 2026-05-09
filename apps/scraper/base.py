@@ -10,6 +10,7 @@ class SignalRaw:
     title: str
     address: str = ''
     city: str = 'Monterrey'
+    zone: str = ''
     price: float = 0.0
     sqm_land: float = 0.0
 

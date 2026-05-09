@@ -5,8 +5,14 @@ from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
 
 PORTAL_NAME = "lamudi"
 BASE_URL = "https://www.lamudi.com.mx"
-SEARCH_URL = f"{BASE_URL}/nuevo-leon/terreno/for-sale/"
+_NL_SEARCH_URL = f"{BASE_URL}/nuevo-leon/terreno/for-sale/"
 _MAX_PAGES = 10
+
+
+def _search_url(zone_slug: str | None) -> str:
+    if zone_slug:
+        return f"{BASE_URL}/nuevo-leon/{zone_slug}/terreno/for-sale/"
+    return _NL_SEARCH_URL
 
 
 def _scrape_page(url: str, city: str) -> list[SignalRaw]:
@@ -48,24 +54,31 @@ def _scrape_page(url: str, city: str) -> list[SignalRaw]:
     return signals
 
 
-def scrape(city: str = "Monterrey") -> list[SignalRaw]:
-    try:
-        signals: list[SignalRaw] = []
-        seen_urls: set[str] = set()
-        for page in range(1, _MAX_PAGES + 1):
-            rate_limit(1.0)
-            url = SEARCH_URL if page == 1 else f"{SEARCH_URL}?page={page}"
-            page_signals = _scrape_page(url, city)
-            if not page_signals:
-                break
-            new = [s for s in page_signals if s.url not in seen_urls]
-            if not new:
-                break
-            seen_urls.update(s.url for s in new)
-            signals.extend(new)
-        return signals
-    except Exception:
-        return []
+def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
+    from .zones import ZONE_DEFS
+    zone_list = [(z, ZONE_DEFS[z]["lamudi"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
+    all_signals: list[SignalRaw] = []
+    seen_urls: set[str] = set()
+    for zone_name, zone_slug in zone_list:
+        try:
+            base = _search_url(zone_slug)
+            for page in range(1, _MAX_PAGES + 1):
+                rate_limit(1.0)
+                url = base if page == 1 else f"{base}?page={page}"
+                page_signals = _scrape_page(url, city)
+                if not page_signals:
+                    break
+                new = [s for s in page_signals if s.url not in seen_urls]
+                if not new:
+                    break
+                seen_urls.update(s.url for s in new)
+                if zone_name:
+                    for s in new:
+                        s.zone = zone_name
+                all_signals.extend(new)
+        except Exception:
+            continue
+    return all_signals
 
 
 def _parse_price(text: str) -> float:

@@ -30,6 +30,8 @@ function computeScores(signals: (SonarSignal & { ppsqm: number })[]): DisplaySig
   }))
 }
 
+const ALL_ZONES = ['Monterrey', 'San Pedro', 'Santa Catarina', 'García'] as const
+
 const MIN_PRICE_OPTS = [
   { label: 'Sin mínimo', value: 0 },
   { label: '> $500k',    value: 500_000 },
@@ -129,8 +131,12 @@ export function SonarTab() {
   const [importedUrls, setImportedUrls] = useState<Set<string>>(new Set())
   const [actionError, setActionError] = useState<string | null>(null)
 
+  // zone selection for scan
+  const [selectedZones, setSelectedZones] = useState<string[]>([])
+
   // filters
   const [portalFilter, setPortalFilter] = useState('all')
+  const [zoneFilter,   setZoneFilter]   = useState('all')
   const [minPrice,  setMinPrice]  = useState(0)
   const [maxPrice,  setMaxPrice]  = useState(0)
   const [maxPpsqm,  setMaxPpsqm]  = useState(0)
@@ -155,9 +161,12 @@ export function SonarTab() {
 
   const portals = useMemo(() => Array.from(new Set(signals.map(s => s.portal))).sort(), [signals])
 
+  const resultZones = useMemo(() => Array.from(new Set(signals.map(s => s.zone).filter(Boolean))).sort(), [signals])
+
   const displayed = useMemo((): DisplaySignal[] => {
     let list = signals
     if (portalFilter !== 'all') list = list.filter(s => s.portal === portalFilter)
+    if (zoneFilter   !== 'all') list = list.filter(s => s.zone === zoneFilter)
     if (minPrice > 0) list = list.filter(s => s.price >= minPrice)
     if (maxPrice > 0) list = list.filter(s => s.price > 0 && s.price <= maxPrice)
     const withPpsqm = list.map(s => ({ ...s, ppsqm: s.price > 0 && s.sqmLand > 0 ? s.price / s.sqmLand : 0 }))
@@ -177,7 +186,7 @@ export function SonarTab() {
       if (av! > bv!) return sort.dir === 'asc' ?  1 : -1
       return 0
     })
-  }, [signals, portalFilter, minPrice, maxPrice, maxPpsqm, sort])
+  }, [signals, portalFilter, zoneFilter, minPrice, maxPrice, maxPpsqm, sort])
 
   function toggleSort(col: SortCol) {
     setSort(prev => prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' })
@@ -223,8 +232,9 @@ export function SonarTab() {
     setRunSummary(null)
     setSignals([])
     setImportedUrls(new Set())
+    setZoneFilter('all')
     try {
-      for await (const ev of streamSonarRun()) handleEvent(ev)
+      for await (const ev of streamSonarRun(selectedZones)) handleEvent(ev)
     } catch {
       setActionError('Error durante el scan')
     } finally {
@@ -255,7 +265,7 @@ export function SonarTab() {
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: `1px solid ${colors.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: `1px solid ${colors.border}`, gap: '12px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontFamily: fonts.label, fontSize: '11px', color: colors.neutral, letterSpacing: '0.1em' }}>SONAR</span>
           <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>· Señales de mercado</span>
@@ -266,6 +276,33 @@ export function SonarTab() {
             </span>
           )}
         </div>
+
+        {/* Zone chip selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+          <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', marginRight: '4px' }}>ZONA</span>
+          {ALL_ZONES.map(z => {
+            const active = selectedZones.includes(z)
+            return (
+              <button key={z} disabled={running} onClick={() => setSelectedZones(prev =>
+                prev.includes(z) ? prev.filter(x => x !== z) : [...prev, z]
+              )} style={{
+                background: active ? colors.primary : 'transparent',
+                border: `1px solid ${active ? colors.primary : colors.border}`,
+                color: active ? colors.neutral : colors.secondary,
+                fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em',
+                padding: '3px 7px', cursor: running ? 'not-allowed' : 'pointer',
+                opacity: running ? 0.5 : 1,
+              }}>{z}</button>
+            )
+          })}
+          {selectedZones.length > 0 && (
+            <button disabled={running} onClick={() => setSelectedZones([])} style={{
+              background: 'none', border: 'none', color: colors.secondary,
+              fontFamily: fonts.label, fontSize: '10px', cursor: 'pointer', padding: '2px 4px', opacity: 0.6,
+            }}>✕</button>
+          )}
+        </div>
+
         <button onClick={handleRun} disabled={running} style={{
           background: running ? colors.border : colors.primary,
           border: 'none', color: colors.neutral,
@@ -294,6 +331,15 @@ export function SonarTab() {
               {portals.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
+          {resultZones.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={lbl}>ZONA</span>
+              <select value={zoneFilter} onChange={e => setZoneFilter(e.target.value)} style={SELECT}>
+                <option value="all">Todas</option>
+                {resultZones.map(z => <option key={z} value={z}>{z}</option>)}
+              </select>
+            </div>
+          )}
           <div style={sep} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={lbl}>PRECIO MÍN</span>
@@ -388,6 +434,11 @@ export function SonarTab() {
                       <td style={{ padding: '5px 10px', textAlign: 'center' }}><ScoreBadge score={s.score} /></td>
                       <td style={{ padding: '5px 10px' }}>
                         <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.portal}</span>
+                        {s.zone && (
+                          <div style={{ marginTop: '2px' }}>
+                            <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.06em', color: colors.primary, border: `1px solid ${colors.primary}`, padding: '1px 4px', opacity: 0.7 }}>{s.zone}</span>
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '5px 10px', maxWidth: '260px' }}>
                         <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{s.title}</a>

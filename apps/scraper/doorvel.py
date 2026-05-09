@@ -5,12 +5,18 @@ from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
 
 PORTAL_NAME = "doorvel"
 BASE_URL = "https://www.doorvel.com"
-_SEARCH_BASE = f"{BASE_URL}/home/terrenos-en-venta-en-monterrey-nuevo-leon-mexico"
+_NL_SEARCH_BASE = f"{BASE_URL}/home/terrenos-en-venta-en-monterrey-nuevo-leon-mexico"
 _MAX_PAGES = 4
 
 
-def _page_url(n: int) -> str:
-    return _SEARCH_BASE if n == 1 else f"{_SEARCH_BASE}?page={n}"
+def _search_url(zone_slug: str | None) -> str:
+    if zone_slug:
+        return f"{BASE_URL}/home/terrenos-en-venta-en-{zone_slug}-nuevo-leon-mexico"
+    return _NL_SEARCH_BASE
+
+
+def _page_url(base: str, n: int) -> str:
+    return base if n == 1 else f"{base}?page={n}"
 
 
 def _parse_price(text: str) -> float:
@@ -62,14 +68,12 @@ def _scrape_page(soup, city: str, seen: set) -> list[SignalRaw]:
     return signals
 
 
-def scrape(city: str = "Monterrey") -> list[SignalRaw]:
+def _scrape_zone(search_base: str, city: str, seen: set[str]) -> list[SignalRaw]:
+    signals: list[SignalRaw] = []
     try:
-        signals: list[SignalRaw] = []
-        seen: set[str] = set()
-
         for n in range(1, _MAX_PAGES + 1):
             rate_limit(1.2)
-            r = httpx.get(_page_url(n), headers=BROWSER_HEADERS,
+            r = httpx.get(_page_url(search_base, n), headers=BROWSER_HEADERS,
                           follow_redirects=True, timeout=20)
             if r.status_code != 200:
                 break
@@ -78,10 +82,23 @@ def scrape(city: str = "Monterrey") -> list[SignalRaw]:
             if not new:
                 break
             signals.extend(new)
-
-        return signals
     except Exception:
-        return []
+        pass
+    return signals
+
+
+def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
+    from .zones import ZONE_DEFS
+    zone_list = [(z, ZONE_DEFS[z]["doorvel"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
+    all_signals: list[SignalRaw] = []
+    seen: set[str] = set()
+    for zone_name, zone_slug in zone_list:
+        new = _scrape_zone(_search_url(zone_slug), city, seen)
+        if zone_name:
+            for s in new:
+                s.zone = zone_name
+        all_signals.extend(new)
+    return all_signals
 
 
 def fetch_sqm(url: str) -> float:

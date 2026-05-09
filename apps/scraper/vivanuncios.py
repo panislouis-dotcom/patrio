@@ -57,7 +57,7 @@ def _scrape_page(page_obj, url: str, city: str, seen: set) -> list[SignalRaw]:
     return signals
 
 
-def scrape(city: str = "Monterrey") -> list[SignalRaw]:
+def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:  # noqa: ARG001 — vivanuncios uses keyword fallback for zone detection
     try:
         signals: list[SignalRaw] = []
         seen: set[str] = set()

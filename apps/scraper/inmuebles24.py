@@ -3,10 +3,17 @@ from .pw_base import pw_browser, parse_price, parse_sqm
 
 PORTAL_NAME = "inmuebles24"
 BASE_URL = "https://www.inmuebles24.com"
-_SEARCH_BASES = [
+_NL_SEARCH_BASES = [
     f"{BASE_URL}/terrenos-en-venta-en-nuevo-leon",
     f"{BASE_URL}/lotes-en-venta-en-nuevo-leon",
 ]
+
+
+def _zone_bases(zone_slug: str) -> list[str]:
+    return [
+        f"{BASE_URL}/terrenos-en-venta-en-{zone_slug}",
+        f"{BASE_URL}/lotes-en-venta-en-{zone_slug}",
+    ]
 _MAX_PAGES = 5
 
 _CARD_SEL = '[data-qa="posting PROPERTY"]'
@@ -63,23 +70,30 @@ def _scrape_cards(page, city: str, seen: set) -> tuple[list[SignalRaw], int]:
     return signals
 
 
-def scrape(city: str = "Monterrey") -> list[SignalRaw]:
+def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
+    from .zones import ZONE_DEFS
+    zone_list = [(z, ZONE_DEFS[z]["inmuebles24"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
     try:
         with pw_browser() as ctx:
             page = ctx.new_page()
-            signals: list[SignalRaw] = []
+            all_signals: list[SignalRaw] = []
             seen: set[str] = set()
 
-            for base in _SEARCH_BASES:
-                for n in range(1, _MAX_PAGES + 1):
-                    url = _page_url(base, n)
-                    page.goto(url, wait_until="domcontentloaded", timeout=40000)
-                    page.wait_for_timeout(2500)
-                    new = _scrape_cards(page, city, seen)
-                    if not new:
-                        break
-                    signals.extend(new)
+            for zone_name, zone_slug in zone_list:
+                bases = _zone_bases(zone_slug) if zone_slug else _NL_SEARCH_BASES
+                for base in bases:
+                    for n in range(1, _MAX_PAGES + 1):
+                        url = _page_url(base, n)
+                        page.goto(url, wait_until="domcontentloaded", timeout=40000)
+                        page.wait_for_timeout(2500)
+                        new = _scrape_cards(page, city, seen)
+                        if not new:
+                            break
+                        if zone_name:
+                            for s in new:
+                                s.zone = zone_name
+                        all_signals.extend(new)
 
-            return signals
+            return all_signals
     except Exception:
         return []

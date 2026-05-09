@@ -7,6 +7,7 @@ from api.auth import get_current_user
 from api.db import create_prospect
 from scraper import lamudi, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
 from scraper.base import SignalRaw
+from scraper.zones import detect_zone
 
 router = APIRouter()
 
@@ -33,9 +34,9 @@ def _sanitize(s: SignalRaw) -> SignalRaw | None:
     return s
 
 
-def _run_scraper(scraper) -> tuple:
+def _run_scraper(scraper, zones: list[str] | None) -> tuple:
     try:
-        signals = scraper.scrape(city="Monterrey")
+        signals = scraper.scrape(city="Monterrey", zones=zones)
         return (scraper, signals, None)
     except Exception as e:
         return (scraper, [], str(e))
@@ -58,6 +59,7 @@ def _signal_to_dict(s: SignalRaw) -> dict:
         "title":    s.title,
         "address":  s.address,
         "city":     s.city,
+        "zone":     s.zone,
         "price":    s.price,
         "sqmLand":  s.sqm_land,
     }
@@ -67,10 +69,10 @@ def _sse(data: dict) -> str:
     return f"data: {json.dumps(data)}\n\n"
 
 
-def _run_combined_stream():
+def _run_combined_stream(zones: list[str] | None):
     """Generator: runs scan + in-memory enrich and yields SSE events."""
     portal_names = [s.PORTAL_NAME for s in _ALL_SCRAPERS]
-    yield _sse({"type": "start", "portals": portal_names, "total": len(_ALL_SCRAPERS)})
+    yield _sse({"type": "start", "portals": portal_names, "total": len(_ALL_SCRAPERS), "zones": zones or []})
 
     all_signals: list[SignalRaw] = []
     total_skipped = 0
@@ -78,7 +80,7 @@ def _run_combined_stream():
     # Static scrapers — sequential
     for scraper in _STATIC_SCRAPERS:
         yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
-        _, raw_signals, err = _run_scraper(scraper)
+        _, raw_signals, err = _run_scraper(scraper, zones)
         if err:
             yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
             continue
@@ -99,7 +101,7 @@ def _run_combined_stream():
     for scraper in _PW_SCRAPERS:
         yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
     with ThreadPoolExecutor(max_workers=len(_PW_SCRAPERS)) as pool:
-        futures = {pool.submit(_run_scraper, s): s for s in _PW_SCRAPERS}
+        futures = {pool.submit(_run_scraper, s, zones): s for s in _PW_SCRAPERS}
         for fut in as_completed(futures):
             scraper, raw_signals, err = fut.result()
             if err:
@@ -117,6 +119,11 @@ def _run_combined_stream():
             total_skipped += skipped
             yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
                         "fetched": len(raw_signals), "skipped": skipped})
+
+    # Keyword-based zone fallback for signals that scrapers couldn't tag (e.g. vivanuncios)
+    for s in all_signals:
+        if not s.zone:
+            s.zone = detect_zone(s.address)
 
     # Enrich signals missing sqm — in memory, parallel
     needs_enrich = [s for s in all_signals if s.sqm_land == 0 and s.portal in _ENRICHABLE]
@@ -142,10 +149,15 @@ def _run_combined_stream():
     })
 
 
+class _RunRequest(BaseModel):
+    zones: list[str] = []
+
+
 @router.post("/api/sonar/run")
-def sonar_run(_: dict = Depends(get_current_user)):
+def sonar_run(req: _RunRequest, _: dict = Depends(get_current_user)):
+    zones = req.zones or None
     return StreamingResponse(
-        _run_combined_stream(),
+        _run_combined_stream(zones),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

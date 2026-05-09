@@ -81,7 +81,7 @@ export async function updateProject(id: number, data: Partial<RawProjectFields>)
 }
 
 export type SonarRunEvent =
-  | { type: 'start';           portals: string[]; total: number }
+  | { type: 'start';           portals: string[]; total: number; zones: string[] }
   | { type: 'portal_start';    portal: string }
   | { type: 'portal_done';     portal: string; fetched: number; skipped: number }
   | { type: 'portal_error';    portal: string; error: string }
@@ -89,8 +89,12 @@ export type SonarRunEvent =
   | { type: 'enrich_progress'; total: number; done: number }
   | { type: 'complete';        found: number; skipped: number; enriched: number; signals: SonarSignal[] }
 
-export async function* streamSonarRun(): AsyncGenerator<SonarRunEvent> {
-  const res = await authFetch(`${BASE}/api/sonar/run`, { method: 'POST' })
+export async function* streamSonarRun(zones: string[]): AsyncGenerator<SonarRunEvent> {
+  const res = await authFetch(`${BASE}/api/sonar/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ zones }),
+  })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   const reader = res.body!.getReader()
   const decoder = new TextDecoder()

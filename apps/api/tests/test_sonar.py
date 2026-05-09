@@ -104,7 +104,7 @@ def test_sonar_run_streams_events():
     import json
     p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
     with p1, p2, p3, p4, p5, p6:
-        r = _make_client().post("/api/sonar/run")
+        r = _make_client().post("/api/sonar/run", json={})
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/event-stream")
 
@@ -119,19 +119,36 @@ def test_sonar_run_streams_events():
 
 
 def test_sonar_run_includes_valid_signals():
-    """Signals passing validation appear in the complete event."""
+    """Signals passing validation appear in the complete event with zone field."""
     import json
     sig = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/test-1",
                     title="Terreno Test", city="Monterrey", price=1_500_000)
     p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
     with p1, p2, p3, p4, p5, p6:
         with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]):
-            r = _make_client().post("/api/sonar/run")
+            r = _make_client().post("/api/sonar/run", json={})
 
     events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
     complete = next(e for e in events if e["type"] == "complete")
     assert complete["found"] == 1
-    assert complete["signals"][0]["url"] == sig.url
+    signal_dict = complete["signals"][0]
+    assert signal_dict["url"] == sig.url
+    assert "zone" in signal_dict
+
+
+def test_sonar_run_propagates_zone():
+    """Signals with a zone tag keep their zone in the output."""
+    import json
+    sig = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/test-zone",
+                    title="Terreno San Pedro", city="Monterrey", price=2_000_000, zone="San Pedro")
+    p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
+    with p1, p2, p3, p4, p5, p6:
+        with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]):
+            r = _make_client().post("/api/sonar/run", json={"zones": ["San Pedro"]})
+
+    events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
+    complete = next(e for e in events if e["type"] == "complete")
+    assert complete["signals"][0]["zone"] == "San Pedro"
 
 
 def test_sonar_run_drops_low_price_signals():
@@ -142,7 +159,7 @@ def test_sonar_run_drops_low_price_signals():
     p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
     with p1, p2, p3, p4, p5, p6:
         with patch("api.routes.sonar.lamudi.scrape", return_value=[bad]):
-            r = _make_client().post("/api/sonar/run")
+            r = _make_client().post("/api/sonar/run", json={})
 
     events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
     complete = next(e for e in events if e["type"] == "complete")

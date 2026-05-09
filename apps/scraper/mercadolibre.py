@@ -2,9 +2,15 @@ from .base import SignalRaw
 from .pw_base import pw_browser, parse_price, parse_sqm
 
 PORTAL_NAME = "mercadolibre"
-_SEARCH_BASE = "https://inmuebles.mercadolibre.com.mx/terrenos/nuevo-leon/"
+_NL_SEARCH_BASE = "https://inmuebles.mercadolibre.com.mx/terrenos/nuevo-leon/"
 _MAX_PAGES = 5
 _PAGE_SIZE = 48  # MercadoLibre shows 48 results per page
+
+
+def _search_url(zone_slug: str | None) -> str:
+    if zone_slug:
+        return f"https://inmuebles.mercadolibre.com.mx/terrenos/venta/nuevo-leon/{zone_slug}/"
+    return _NL_SEARCH_BASE
 
 _CARD_SEL = '[class*="ui-search-layout__item"]'
 _LINK_SEL = "a[href]"
@@ -14,11 +20,11 @@ _LOC_SEL = '[class*="poly-component__location"], [class*="ui-search-item__locati
 _SQM_SEL = '[class*="poly-attributes"], [class*="ui-search-item__details"]'
 
 
-def _page_url(n: int) -> str:
+def _page_url(base: str, n: int) -> str:
     if n == 1:
-        return _SEARCH_BASE
+        return base
     offset = (n - 1) * _PAGE_SIZE + 1
-    return f"{_SEARCH_BASE}_Desde_{offset}_NoIndex_True"
+    return f"{base}_Desde_{offset}_NoIndex_True"
 
 
 def _scrape_cards(page, city: str, seen: set) -> list[SignalRaw]:
@@ -61,21 +67,28 @@ def _scrape_cards(page, city: str, seen: set) -> list[SignalRaw]:
     return signals
 
 
-def scrape(city: str = "Monterrey") -> list[SignalRaw]:
+def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
+    from .zones import ZONE_DEFS
+    zone_list = [(z, ZONE_DEFS[z]["mercadolibre"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
     try:
         with pw_browser() as ctx:
             page = ctx.new_page()
-            signals: list[SignalRaw] = []
+            all_signals: list[SignalRaw] = []
             seen: set[str] = set()
 
-            for n in range(1, _MAX_PAGES + 1):
-                page.goto(_page_url(n), wait_until="domcontentloaded", timeout=50000)
-                page.wait_for_timeout(3000)
-                new = _scrape_cards(page, city, seen)
-                if not new:
-                    break
-                signals.extend(new)
+            for zone_name, zone_slug in zone_list:
+                base = _search_url(zone_slug)
+                for n in range(1, _MAX_PAGES + 1):
+                    page.goto(_page_url(base, n), wait_until="domcontentloaded", timeout=50000)
+                    page.wait_for_timeout(3000)
+                    new = _scrape_cards(page, city, seen)
+                    if not new:
+                        break
+                    if zone_name:
+                        for s in new:
+                            s.zone = zone_name
+                    all_signals.extend(new)
 
-            return signals
+            return all_signals
     except Exception:
         return []

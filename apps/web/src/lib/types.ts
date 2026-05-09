@@ -112,6 +112,7 @@ export interface SonarSignal {
   title: string
   address: string
   city: string
+  zone: string
   price: number
   sqmLand: number
 }
