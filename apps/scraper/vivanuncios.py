@@ -6,6 +6,15 @@ BASE_URL = "https://www.vivanuncios.com.mx"
 _SEARCH_BASE = f"{BASE_URL}/s-venta-terrenos/nuevo-leon/v1c31l1018p"
 _MAX_PAGES = 6
 
+# Vivanuncios uses internal numeric location IDs, not slugs.
+# URL pattern: /s-venta-terrenos/nuevo-leon/v1c31l{loc_id}p{page}
+_LOC_IDS: dict[str, str] = {
+    "19039": "10980",   # Monterrey
+    "19019": "14842",   # San Pedro Garza García
+    "19046": "14843",   # Santa Catarina
+    "19021": "14848",   # García
+}
+
 _CARD_SEL = '[data-qa="posting PROPERTY"]'
 _LINK_SEL = 'a[href*="/a-venta"]'
 _PRICE_SEL = '[data-qa="POSTING_CARD_PRICE"]'
@@ -14,7 +23,14 @@ _DESC_SEL = '[data-qa="POSTING_CARD_DESCRIPTION"]'
 _FEAT_SEL = '[data-qa="POSTING_CARD_FEATURES"]'
 
 
-def _scrape_page(page_obj, url: str, city: str, seen: set) -> list[SignalRaw]:
+def zone_url(cve: str) -> str | None:
+    loc = _LOC_IDS.get(cve)
+    if not loc:
+        return None
+    return f"{BASE_URL}/s-venta-terrenos/nuevo-leon/v1c31l{loc}p"
+
+
+def _scrape_page(page_obj, url: str, seen: set) -> list[SignalRaw]:
     page_obj.goto(url, wait_until="domcontentloaded", timeout=40000)
     page_obj.wait_for_timeout(2500)
     signals = []
@@ -48,7 +64,6 @@ def _scrape_page(page_obj, url: str, city: str, seen: set) -> list[SignalRaw]:
                 url=href,
                 title=title[:200],
                 address=address,
-                city=city,
                 price=parse_price(price_raw),
                 sqm_land=parse_sqm(feat_raw),
             ))
@@ -57,17 +72,27 @@ def _scrape_page(page_obj, url: str, city: str, seen: set) -> list[SignalRaw]:
     return signals
 
 
-def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:  # noqa: ARG001 — vivanuncios uses keyword fallback for zone detection
+def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
+    # Build targets: for each CVE try zone_url; fall back to NL-wide if no loc ID
+    if cves:
+        targets = [(cve, zone_url(cve) or _SEARCH_BASE) for cve in cves]
+    else:
+        targets = [(None, _SEARCH_BASE)]
+
     try:
         signals: list[SignalRaw] = []
         seen: set[str] = set()
         with pw_browser() as ctx:
             page = ctx.new_page()
-            for p in range(1, _MAX_PAGES + 1):
-                page_signals = _scrape_page(page, f"{_SEARCH_BASE}{p}", city, seen)
-                if not page_signals:
-                    break
-                signals.extend(page_signals)
+            for cve, base in targets:
+                for p in range(1, _MAX_PAGES + 1):
+                    page_signals = _scrape_page(page, f"{base}{p}", seen)
+                    if not page_signals:
+                        break
+                    if cve:
+                        for s in page_signals:
+                            s.municipio_cve = cve
+                    signals.extend(page_signals)
         return signals
     except Exception:
         return []

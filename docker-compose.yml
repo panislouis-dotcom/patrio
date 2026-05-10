@@ -9,7 +9,9 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./data/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./data/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql
+      - ./data/init_seeds.sh:/docker-entrypoint-initdb.d/01_seed.sh
+      - ./data:/docker-seeds
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
@@ -21,6 +23,7 @@ services:
     working_dir: /app/apps
     volumes:
       - ./apps/api:/app/apps/api
+      - ./apps/scraper:/app/apps/scraper
       - ./data:/app/data
       - pip-cache:/root/.cache/pip
     command: >

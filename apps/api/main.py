@@ -8,6 +8,7 @@ from api.routes import prospects, projects, sonar, team, processes, profit, inve
 from api.routes.auth import router as auth_router
 from api.db import get_db
 from api.process_db import sync_periodic_series
+from api import geo
 
 
 def _seed_admin() -> None:
@@ -28,6 +29,7 @@ def _seed_admin() -> None:
 async def lifespan(_: FastAPI):
     _seed_admin()
     sync_periodic_series()
+    geo.load_colonias()
     yield
 
 
@@ -55,6 +57,12 @@ app.include_router(profit.router)
 app.include_router(investors.router)
 app.include_router(users.router)
 app.include_router(auth_router)
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
 
 # Serve React frontend in production container (not present in local dev)
 FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend_dist"

@@ -81,7 +81,7 @@ export async function updateProject(id: number, data: Partial<RawProjectFields>)
 }
 
 export type SonarRunEvent =
-  | { type: 'start';           portals: string[]; total: number; zones: string[] }
+  | { type: 'start';           portals: string[]; total: number; cves: string[] }
   | { type: 'portal_start';    portal: string }
   | { type: 'portal_done';     portal: string; fetched: number; skipped: number }
   | { type: 'portal_error';    portal: string; error: string }
@@ -89,11 +89,11 @@ export type SonarRunEvent =
   | { type: 'enrich_progress'; total: number; done: number }
   | { type: 'complete';        found: number; skipped: number; enriched: number; signals: SonarSignal[] }
 
-export async function* streamSonarRun(zones: string[]): AsyncGenerator<SonarRunEvent> {
+export async function* streamSonarRun(cves: string[]): AsyncGenerator<SonarRunEvent> {
   const res = await authFetch(`${BASE}/api/sonar/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ zones }),
+    body: JSON.stringify({ cves }),
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   const reader = res.body!.getReader()
@@ -119,6 +119,20 @@ export async function importSonarSignal(signal: SonarSignal): Promise<{ prospect
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
+}
+
+export async function fetchSonarSignals(): Promise<SonarSignal[]> {
+  const res = await authFetch(`${BASE}/api/sonar/signals`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  const data = await res.json()
+  return data.signals
+}
+
+export async function fetchZoneMedians(): Promise<Record<string, number>> {
+  const res = await authFetch(`${BASE}/api/sonar/zone-medians`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  const data = await res.json()
+  return data.medians
 }
 
 export async function fetchTeam(): Promise<TeamMember[]> {

@@ -2,17 +2,26 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
+from .zones import cve_to_slug
 
 PORTAL_NAME = "icasas"
 BASE_URL = "https://www.icasas.mx"
 _NL_SEARCH_URL = f"{BASE_URL}/venta/tierras-lotes-terrenos-nuevo-leon-5_9_0_0_19_0"
 _MAX_PAGES = 12
 
+_MUN_IDS: dict[str, str] = {
+    "19039": "983",
+    "19019": "990",
+    "19046": "991",
+    "19021": "960",
+}
 
-def _search_url(zone_slug: str | None) -> str:
-    if zone_slug:
-        return f"{BASE_URL}/venta/tierras-lotes-terrenos-{zone_slug}_9_0_0_19_0"
-    return _NL_SEARCH_URL
+
+def zone_url(cve: str) -> str | None:
+    mid = _MUN_IDS.get(cve)
+    if not mid:
+        return None
+    return f"{BASE_URL}/venta/tierras-lotes-terrenos-{cve_to_slug(cve)}-{mid}_9_0_0_19_0"
 
 
 def _page_url(base: str, page: int) -> str:
@@ -28,7 +37,7 @@ def _parse_price(text: str) -> float:
         return 0.0
 
 
-def _scrape_zone(search_base: str, city: str, seen: set[str]) -> list[SignalRaw]:
+def _scrape_zone(search_base: str, seen: set[str]) -> list[SignalRaw]:
     signals: list[SignalRaw] = []
     for page in range(1, _MAX_PAGES + 1):
         try:
@@ -67,7 +76,6 @@ def _scrape_zone(search_base: str, city: str, seen: set[str]) -> list[SignalRaw]
                         url=href,
                         title=title,
                         address=address,
-                        city=city,
                         price=_parse_price(price_text),
                         sqm_land=sqm,
                     ))
@@ -82,16 +90,17 @@ def _scrape_zone(search_base: str, city: str, seen: set[str]) -> list[SignalRaw]
     return signals
 
 
-def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
-    from .zones import ZONE_DEFS
-    zone_list = [(z, ZONE_DEFS[z]["icasas"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
+def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
+    targets = [(cve, zone_url(cve)) for cve in cves] if cves else [(None, _NL_SEARCH_URL)]
     all_signals: list[SignalRaw] = []
     seen: set[str] = set()
-    for zone_name, zone_slug in zone_list:
-        new = _scrape_zone(_search_url(zone_slug), city, seen)
-        if zone_name:
+    for cve, url in targets:
+        if url is None:
+            continue
+        new = _scrape_zone(url, seen)
+        if cve:
             for s in new:
-                s.zone = zone_name
+                s.municipio_cve = cve
         all_signals.extend(new)
     return all_signals
 

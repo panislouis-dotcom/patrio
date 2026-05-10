@@ -2,6 +2,7 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
+from .zones import cve_to_slug
 
 PORTAL_NAME = "lamudi"
 BASE_URL = "https://www.lamudi.com.mx"
@@ -9,13 +10,11 @@ _NL_SEARCH_URL = f"{BASE_URL}/nuevo-leon/terreno/for-sale/"
 _MAX_PAGES = 10
 
 
-def _search_url(zone_slug: str | None) -> str:
-    if zone_slug:
-        return f"{BASE_URL}/nuevo-leon/{zone_slug}/terreno/for-sale/"
-    return _NL_SEARCH_URL
+def zone_url(cve: str) -> str:
+    return f"{BASE_URL}/nuevo-leon/{cve_to_slug(cve)}/terreno/for-sale/"
 
 
-def _scrape_page(url: str, city: str) -> list[SignalRaw]:
+def _scrape_page(url: str) -> list[SignalRaw]:
     r = httpx.get(url, headers=BROWSER_HEADERS, timeout=20, follow_redirects=True)
     if r.status_code != 200:
         return []
@@ -45,7 +44,6 @@ def _scrape_page(url: str, city: str) -> list[SignalRaw]:
                 url=href,
                 title=title,
                 address=address,
-                city=city,
                 price=price,
                 sqm_land=sqm,
             ))
@@ -54,27 +52,25 @@ def _scrape_page(url: str, city: str) -> list[SignalRaw]:
     return signals
 
 
-def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
-    from .zones import ZONE_DEFS
-    zone_list = [(z, ZONE_DEFS[z]["lamudi"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
+def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
+    targets = [(cve, zone_url(cve)) for cve in cves] if cves else [(None, _NL_SEARCH_URL)]
     all_signals: list[SignalRaw] = []
     seen_urls: set[str] = set()
-    for zone_name, zone_slug in zone_list:
+    for cve, base in targets:
         try:
-            base = _search_url(zone_slug)
             for page in range(1, _MAX_PAGES + 1):
                 rate_limit(1.0)
                 url = base if page == 1 else f"{base}?page={page}"
-                page_signals = _scrape_page(url, city)
+                page_signals = _scrape_page(url)
                 if not page_signals:
                     break
                 new = [s for s in page_signals if s.url not in seen_urls]
                 if not new:
                     break
                 seen_urls.update(s.url for s in new)
-                if zone_name:
+                if cve:
                     for s in new:
-                        s.zone = zone_name
+                        s.municipio_cve = cve
                 all_signals.extend(new)
         except Exception:
             continue

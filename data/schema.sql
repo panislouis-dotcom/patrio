@@ -282,6 +282,42 @@ CREATE TABLE IF NOT EXISTS users (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Sonar market intelligence
+CREATE TABLE IF NOT EXISTS sonar_signals (
+    id              BIGSERIAL PRIMARY KEY,
+    url             TEXT NOT NULL UNIQUE,
+    portal          TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    address         TEXT NOT NULL DEFAULT '',
+    municipio_cve   TEXT NOT NULL DEFAULT '',
+    municipio_name  TEXT NOT NULL DEFAULT '',
+    colonia         TEXT NOT NULL DEFAULT '',
+    lat             DOUBLE PRECISION,
+    lon             DOUBLE PRECISION,
+    price           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    sqm_land        DOUBLE PRECISION NOT NULL DEFAULT 0,
+    first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_price      DOUBLE PRECISION
+);
+
+CREATE TABLE IF NOT EXISTS sonar_scans (
+    id           BIGSERIAL PRIMARY KEY,
+    started_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    cves         TEXT[],
+    found        INT,
+    skipped      INT,
+    enriched     INT
+);
+
+CREATE TABLE IF NOT EXISTS sonar_scan_signals (
+    scan_id       BIGINT NOT NULL REFERENCES sonar_scans(id),
+    signal_id     BIGINT NOT NULL REFERENCES sonar_signals(id),
+    price_at_scan DOUBLE PRECISION,
+    PRIMARY KEY (scan_id, signal_id)
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_signals_status      ON signals(status);
 CREATE INDEX IF NOT EXISTS idx_signals_prospect    ON signals(prospect_id);
@@ -302,3 +338,6 @@ CREATE INDEX IF NOT EXISTS idx_projects_status     ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_acq_date   ON projects(acquisition_date DESC);
 CREATE INDEX IF NOT EXISTS idx_instances_status    ON process_instances(status);
 CREATE INDEX IF NOT EXISTS idx_instances_origin    ON process_instances(origin_instance_id);
+CREATE INDEX IF NOT EXISTS idx_sonar_signals_cve     ON sonar_signals(municipio_cve);
+CREATE INDEX IF NOT EXISTS idx_sonar_signals_colonia  ON sonar_signals(colonia);
+CREATE INDEX IF NOT EXISTS idx_sonar_scan_signals     ON sonar_scan_signals(scan_id);

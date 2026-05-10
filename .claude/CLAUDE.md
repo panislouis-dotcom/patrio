@@ -10,6 +10,9 @@ The vision is that it will support a suite of use caseswork on
 
 1. Value conceptual and data integrity above all.
 2. Features should be orthogonal. Things should be done one way only and fit together nicely.
+3. Follow 12 factor app principles, dry and clean code. 
+4. Always Consider "A Philosophy of Software Design" Book by John Ousterhout.
+
 
 ## Rules
 
