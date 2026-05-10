@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS projects (
   status            TEXT NOT NULL CHECK (status != ''),
   total_units       INTEGER NOT NULL,
   acquisition_date  TEXT NOT NULL CHECK (acquisition_date != ''),
-  conclusion_date   TEXT NOT NULL CHECK (conclusion_date != ''),
+  conclusion_date   DATE NOT NULL,
   total_investment  REAL NOT NULL,
   current_valuation REAL NOT NULL,
   valuation_date    TEXT NOT NULL CHECK (valuation_date != ''),
@@ -203,8 +203,8 @@ CREATE TABLE IF NOT EXISTS profit_split_config (
   finder_member_id      BIGINT REFERENCES team_members(id),
   responsable_member_id BIGINT REFERENCES team_members(id),
   lider_member_id       BIGINT REFERENCES team_members(id),
-  maestro_member_ids    TEXT NOT NULL DEFAULT '[]',
-  ayudante_member_ids   TEXT NOT NULL DEFAULT '[]',
+  maestro_member_ids    JSONB NOT NULL DEFAULT '[]',
+  ayudante_member_ids   JSONB NOT NULL DEFAULT '[]',
   maestro_count         INTEGER,
   ayudante_count        INTEGER,
   planned_end_date      TEXT,
@@ -248,10 +248,10 @@ WITH hold AS (
     SELECT
         pi.id AS pi_id,
         CASE
-            WHEN p.conclusion_date != ''
-            THEN (EXTRACT(YEAR FROM TO_DATE(p.conclusion_date || '-01', 'YYYY-MM-DD'))::int
+            WHEN p.conclusion_date IS NOT NULL
+            THEN (EXTRACT(YEAR FROM p.conclusion_date)::int
                   - EXTRACT(YEAR FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int) * 12
-                + (EXTRACT(MONTH FROM TO_DATE(p.conclusion_date || '-01', 'YYYY-MM-DD'))::int
+                + (EXTRACT(MONTH FROM p.conclusion_date)::int
                    - EXTRACT(MONTH FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int)
             ELSE (EXTRACT(YEAR FROM CURRENT_DATE)::int
                   - EXTRACT(YEAR FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int) * 12

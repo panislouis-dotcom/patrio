@@ -194,13 +194,20 @@ def _parse_project(row) -> dict:
     unrealized_gain_pct = round(unrealized_gain / total_investment, 4) if total_investment != 0 else 0
 
     # Months from acquisition to conclusion (or today for active projects)
+    # conclusion_date is DATE in PostgreSQL — psycopg2 returns datetime.date; format to YYYY-MM for frontend
     acq_str = d.get("acquisitionDate", "")
-    conc_str = d.get("conclusionDate", "")
+    conc_val = d.get("conclusionDate")
+    conc_has_val = False
+    if isinstance(conc_val, date):
+        d["conclusionDate"] = conc_val.strftime("%Y-%m")
+        conc_year, conc_month = conc_val.year, conc_val.month
+        conc_has_val = True
+    elif isinstance(conc_val, str) and conc_val:
+        conc_year, conc_month = map(int, conc_val.split("-"))
+        conc_has_val = True
     try:
         acq_year, acq_month = map(int, acq_str.split("-"))
-        if conc_str:
-            conc_year, conc_month = map(int, conc_str.split("-"))
-        else:
+        if not conc_has_val:
             today = date.today()
             conc_year, conc_month = today.year, today.month
         hold_months_actual = (conc_year - acq_year) * 12 + (conc_month - acq_month)
@@ -252,6 +259,12 @@ def update_project(project_id: int, data: dict) -> dict | None:
         if snake_field in snake_case_data and not isinstance(snake_case_data[snake_field], str):
             snake_case_data[snake_field] = json.dumps(snake_case_data[snake_field])
 
+    # Frontend sends YYYY-MM; DATE column needs YYYY-MM-01
+    if "conclusion_date" in snake_case_data and isinstance(snake_case_data["conclusion_date"], str):
+        val = snake_case_data["conclusion_date"]
+        if len(val) == 7:
+            snake_case_data["conclusion_date"] = val + "-01"
+
     columns = ", ".join(f"{col} = %s" for col in snake_case_data.keys())
     values = list(snake_case_data.values()) + [project_id]
     query = f"UPDATE projects SET {columns} WHERE id = %s"
@@ -286,6 +299,12 @@ def create_project(data: dict) -> dict:
     for snake_field in ("milestones", "budget"):
         if snake_field in snake_case_data and not isinstance(snake_case_data[snake_field], str):
             snake_case_data[snake_field] = json.dumps(snake_case_data[snake_field])
+
+    # Frontend sends YYYY-MM; DATE column needs YYYY-MM-01
+    if "conclusion_date" in snake_case_data and isinstance(snake_case_data["conclusion_date"], str):
+        val = snake_case_data["conclusion_date"]
+        if len(val) == 7:
+            snake_case_data["conclusion_date"] = val + "-01"
 
     columns = ", ".join(snake_case_data.keys())
     placeholders = ", ".join(["%s"] * len(snake_case_data))
