@@ -19,20 +19,34 @@ Read these two files before touching anything else:
 ## Step 2 — Query the DB
 
 ```bash
-sqlite3 data/refigan.db "
+source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
 SELECT name, address, total_investment, current_valuation,
        total_units, acquisition_date, milestones, budget
 FROM projects WHERE status IN ('operating','exited')
 ORDER BY acquisition_date;"
 
-sqlite3 data/refigan.db "
-SELECT name, address,
-       total_investment, projected_sale, profit,
-       ROUND(roi*100,1) AS roi,
-       ROUND(cap_rate*100,1) AS cap_rate,
-       rent_monthly, investment_date, sale_date, notes
-FROM prospect_metrics WHERE status='evaluating'
-ORDER BY roi DESC LIMIT 1;"
+source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
+SELECT
+  name, address, hold_months,
+  land_price * (1 + acquisition_cost_pct/100.0)
+    + permits_cost + subdivision_cost
+    + (construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0))
+  AS total_cost,
+  projected_sale,
+  ROUND((rent_monthly * 12) / NULLIF(land_price, 0) * 100, 1) AS cap_rate_pct,
+  rent_monthly, notes
+FROM prospects WHERE status = 'evaluating'
+ORDER BY
+  (projected_sale - (
+    land_price * (1 + acquisition_cost_pct/100.0)
+    + permits_cost + subdivision_cost
+    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
+  )) / NULLIF(
+    land_price * (1 + acquisition_cost_pct/100.0)
+    + permits_cost + subdivision_cost
+    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
+  , 0) DESC
+LIMIT 1;"
 ```
 
 ## Step 3 — Write `files/prospectus.html`
@@ -310,25 +324,25 @@ Declare them in the HTML `<style>` block before any other CSS:
   font-family: 'EB Garamond';
   font-style: normal;
   font-weight: 400;
-  src: url('file:///home/eduardo/Documents/repos/real_estate/files/fonts/eb-garamond-regular.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/eb-garamond-regular.woff2') format('woff2');
 }
 @font-face {
   font-family: 'EB Garamond';
   font-style: italic;
   font-weight: 400;
-  src: url('file:///home/eduardo/Documents/repos/real_estate/files/fonts/eb-garamond-italic.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/eb-garamond-italic.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Public Sans';
   font-style: normal;
   font-weight: 100 900;
-  src: url('file:///home/eduardo/Documents/repos/real_estate/files/fonts/public-sans.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/public-sans.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Space Grotesk';
   font-style: normal;
   font-weight: 300 700;
-  src: url('file:///home/eduardo/Documents/repos/real_estate/files/fonts/space-grotesk.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/space-grotesk.woff2') format('woff2');
 }
 ```
 

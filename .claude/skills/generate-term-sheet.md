@@ -30,13 +30,27 @@ Read these before touching the DB or writing HTML:
 ## Step 2 — Query the DB
 
 ```bash
-sqlite3 data/refigan.db "
-SELECT name, address, total_investment, projected_sale,
-       investment_date, sale_date,
-       ROUND(cap_rate*100,1) AS cap_rate
-FROM prospect_metrics
-WHERE status='evaluating'
-ORDER BY roi DESC LIMIT 1;"
+source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
+SELECT
+  name, address, hold_months,
+  land_price * (1 + acquisition_cost_pct/100.0)
+    + permits_cost + subdivision_cost
+    + (construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0))
+  AS total_cost,
+  projected_sale,
+  ROUND((rent_monthly * 12) / NULLIF(land_price, 0) * 100, 1) AS cap_rate_pct
+FROM prospects WHERE status = 'evaluating'
+ORDER BY
+  (projected_sale - (
+    land_price * (1 + acquisition_cost_pct/100.0)
+    + permits_cost + subdivision_cost
+    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
+  )) / NULLIF(
+    land_price * (1 + acquisition_cost_pct/100.0)
+    + permits_cost + subdivision_cost
+    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
+  , 0) DESC
+LIMIT 1;"
 ```
 
 ## Step 3 — Calculate return scenarios in Python
@@ -44,18 +58,12 @@ ORDER BY roi DESC LIMIT 1;"
 **CRITICAL: Never eyeball or estimate numbers. Use Python.**
 
 ```python
-from datetime import date
-
 # Inputs
 amount = <INVESTOR_AMOUNT>  # from user
 rate = 0.12  # annual
 
-# From DB: parse investment_date and sale_date (format: YYYY-MM-DD or YYYY-MM-01)
-inv_date = date(<YYYY>, <MM>, 1)
-sale_date = date(<YYYY>, <MM>, 1)
-
-# Base months: difference in full months
-base_months = (sale_date.year - inv_date.year) * 12 + (sale_date.month - inv_date.month)
+# From DB: hold_months is an integer — use directly
+base_months = <HOLD_MONTHS>  # from DB query result
 
 def calc_return(amount, months):
     return round(amount * rate * (months / 12))
@@ -96,25 +104,25 @@ with open('/tmp/term_sheet_XXXXXX.html', 'w') as f:
   font-family: 'EB Garamond';
   font-style: normal;
   font-weight: 400;
-  src: url('file:///home/eduardo/Documents/repos/real_estate/files/fonts/eb-garamond-regular.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/eb-garamond-regular.woff2') format('woff2');
 }
 @font-face {
   font-family: 'EB Garamond';
   font-style: italic;
   font-weight: 400;
-  src: url('file:///home/eduardo/Documents/repos/real_estate/files/fonts/eb-garamond-italic.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/eb-garamond-italic.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Public Sans';
   font-style: normal;
   font-weight: 100 900;
-  src: url('file:///home/eduardo/Documents/repos/real_estate/files/fonts/public-sans.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/public-sans.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Space Grotesk';
   font-style: normal;
   font-weight: 300 700;
-  src: url('file:///home/eduardo/Documents/repos/real_estate/files/fonts/space-grotesk.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/space-grotesk.woff2') format('woff2');
 }
 ```
 
