@@ -1,8 +1,10 @@
-DB_URL     ?= $(shell grep DATABASE_URL .env | cut -d= -f2-)
-PG_CTR     ?= refigan-db-1
-PG_USER    ?= $(shell grep POSTGRES_USER .env | cut -d= -f2)
-PG_DB      ?= $(shell grep POSTGRES_DB  .env | cut -d= -f2)
-PSQL        = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(PG_DB) --set=ON_ERROR_STOP=on
+DB_URL      ?= $(shell grep '^DATABASE_URL=' .env | cut -d= -f2-)
+PG_CTR      ?= refigan-db-1
+PG_USER     ?= $(shell grep '^POSTGRES_USER=' .env | cut -d= -f2)
+PG_DB       ?= $(shell grep '^POSTGRES_DB=' .env | cut -d= -f2)
+TEST_PG_DB  ?= $(shell grep '^TEST_DATABASE_URL=' .env | cut -d= -f2- | sed 's|.*/||')
+PSQL         = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(PG_DB) --set=ON_ERROR_STOP=on
+PSQL_TEST    = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(TEST_PG_DB) --set=ON_ERROR_STOP=on
 
 init-db: ## Apply schema to existing database
 	$(PSQL) -f - < data/schema.sql
@@ -10,6 +12,11 @@ init-db: ## Apply schema to existing database
 reset-db: ## Drop and recreate schema only
 	$(PSQL) -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 	$(PSQL) -f - < data/schema.sql
+
+reset-test-db: ## Wipe and recreate the test DB (refigan_test)
+	-docker exec -i $(PG_CTR) psql -U $(PG_USER) -d postgres -c "DROP DATABASE IF EXISTS $(TEST_PG_DB);"
+	docker exec -i $(PG_CTR) psql -U $(PG_USER) -d postgres -c "CREATE DATABASE $(TEST_PG_DB);"
+	$(PSQL_TEST) -f - < data/schema.sql
 
 full-reset: reset-db seed-db ## Drop schema, recreate, and apply all seeds
 

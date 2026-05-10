@@ -63,12 +63,12 @@ def test_project(client):
 
 # ── Prospects ─────────────────────────────────────────────────────────────────
 
-def test_get_prospects_returns_list(client):
+def test_get_prospects_returns_list(client, test_prospect):
     r = client.get("/api/prospects")
     assert r.status_code == 200
     data = r.json()
     assert isinstance(data, list)
-    assert len(data) > 0
+    assert any(p["id"] == test_prospect["id"] for p in data)
 
 
 def test_prospect_has_required_fields(client, test_prospect):
@@ -146,12 +146,12 @@ def test_post_creates_new_prospect(client):
 
 # ── Projects ──────────────────────────────────────────────────────────────────
 
-def test_get_projects_returns_list(client):
+def test_get_projects_returns_list(client, test_project):
     r = client.get("/api/projects")
     assert r.status_code == 200
     data = r.json()
     assert isinstance(data, list)
-    assert len(data) > 0
+    assert any(p["id"] == test_project["id"] for p in data)
 
 
 def test_project_has_required_fields(client, test_project):

@@ -72,35 +72,48 @@ export function LoginPage() {
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '6px' }}>
+            <label
+              htmlFor="email"
+              style={{ display: 'block', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '6px' }}
+            >
               CORREO
-            </div>
+            </label>
             <input
+              id="email"
+              name="email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
               autoComplete="email"
+              aria-required="true"
               style={inputStyle}
             />
           </div>
 
           <div>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '6px' }}>
+            <label
+              htmlFor="password"
+              style={{ display: 'block', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '6px' }}
+            >
               CONTRASEÑA
-            </div>
+            </label>
             <input
+              id="password"
+              name="password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
               autoComplete="current-password"
+              aria-required="true"
+              aria-describedby={error ? 'login-error' : undefined}
               style={inputStyle}
             />
           </div>
 
           {error && (
-            <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.tertiary }}>
+            <div id="login-error" role="alert" style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.tertiary }}>
               {error}
             </div>
           )}
@@ -108,6 +121,7 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={loading || !email || !password}
+            aria-busy={loading}
             style={{
               background: loading ? colors.border : colors.primary,
               border: 'none',
