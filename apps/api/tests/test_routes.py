@@ -1,63 +1,67 @@
-import sqlite3
+"""Integration tests for prospects and projects routes against real PostgreSQL DB."""
 import pytest
-from pathlib import Path
 from fastapi.testclient import TestClient
 
-SCHEMA_PATH = Path(__file__).parent.parent.parent.parent / "data" / "schema.sql"
+from api.db import get_db
 
-SEED_PROJECT = """
-INSERT INTO projects (
-    name, type, address, city, status, total_units,
-    acquisition_date, conclusion_date,
-    total_investment, current_valuation, valuation_date,
-    url, latitude, longitude,
-    milestones, budget, notes
-) VALUES (
-    'Edificio Test', 'adaptive_reuse', 'Centro, Monterrey', 'Monterrey', 'operating', 5,
-    '2022-01', '2023-06',
-    5000000, 9000000, '2026-04',
-    'https://refigan.mx', 25.6694, -100.3098,
-    '{"2022-01":"Adquisición","2023-06":"Primera renta"}',
-    '{"Adquisición":4000000,"Obra":1000000}',
-    'Proyecto de prueba'
-)
-"""
 
-SEED_PROSPECT = """
-INSERT INTO prospects (
-    name, address, city, status, url,
-    latitude, longitude, sqm_land, sqm_construction,
-    land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
-    construction_cost_per_sqm, construction_overhead,
-    projected_sale, hold_months, rent_monthly, notes
-) VALUES (
-    'Lote Test', 'Calle Ejemplo 123', 'Monterrey', 'evaluating', 'https://refigan.mx',
-    25.6866, -100.3161, 200, 400,
-    5000000, 0.065, 50000, 30000,
-    8000, 1.3,
-    22000000, 18, 18000, 'Prospect de prueba'
-)
-"""
+@pytest.fixture(autouse=True)
+def bypass_auth():
+    from api.main import app
+    from api.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: {"id": 1, "email": "test@test.com"}
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def tmp_db(monkeypatch, tmp_path):
-    db = tmp_path / "test.db"
-    schema = SCHEMA_PATH.read_text()
-    with sqlite3.connect(db) as conn:
-        conn.executescript(schema)
-        conn.execute(SEED_PROSPECT)
-        conn.execute(SEED_PROJECT)
-    import api.db
-    monkeypatch.setattr(api.db, "DB_PATH", db)
-    return db
-
-
-@pytest.fixture
-def client(tmp_db):
+def client():
     from api.main import app
     return TestClient(app)
 
+
+@pytest.fixture
+def test_prospect(client):
+    """Create a test prospect via API and delete it from DB after the test."""
+    r = client.post("/api/prospects", json={
+        "name":         "[TEST] Lote Prueba",
+        "address":      "Calle Test 123, Monterrey",
+        "city":         "Monterrey",
+        "status":       "evaluating",
+        "holdMonths":   18,
+        "rentMonthly":  18000,
+    })
+    assert r.status_code == 201
+    prospect = r.json()
+    yield prospect
+    with get_db() as conn:
+        conn.execute("DELETE FROM prospects WHERE id = %s", (prospect["id"],))
+
+
+@pytest.fixture
+def test_project(client):
+    """Create a test project via API and delete it from DB after the test."""
+    r = client.post("/api/projects", json={
+        "name":             "[TEST] Edificio Prueba",
+        "type":             "ground_up",
+        "address":          "Av. Test 100, Monterrey",
+        "city":             "Monterrey",
+        "status":           "construction",
+        "totalUnits":       4,
+        "acquisitionDate":  "2025-01",
+        "conclusionDate":   "2026-06",
+        "totalInvestment":  5000000,
+        "currentValuation": 5000000,
+        "valuationDate":    "2026-01",
+    })
+    assert r.status_code == 201
+    project = r.json()
+    yield project
+    with get_db() as conn:
+        conn.execute("DELETE FROM projects WHERE id = %s", (project["id"],))
+
+
+# ── Prospects ─────────────────────────────────────────────────────────────────
 
 def test_get_prospects_returns_list(client):
     r = client.get("/api/prospects")
@@ -67,31 +71,31 @@ def test_get_prospects_returns_list(client):
     assert len(data) > 0
 
 
-def test_prospect_has_required_fields(client):
-    r = client.get("/api/prospects")
-    p = r.json()[0]
+def test_prospect_has_required_fields(client, test_prospect):
+    r = client.get(f"/api/prospects/{test_prospect['id']}")
+    p = r.json()
     for field in ["id", "name", "roi", "capRate", "profit", "totalInvestment",
                   "latitude", "longitude", "score"]:
         assert field in p, f"Missing field: {field}"
 
 
-def test_prospect_has_issues_list(client):
-    r = client.get("/api/prospects")
-    p = r.json()[0]
+def test_prospect_has_issues_list(client, test_prospect):
+    r = client.get(f"/api/prospects/{test_prospect['id']}")
+    p = r.json()
     assert "issues" in p
     assert isinstance(p["issues"], list)
 
 
-def test_get_single_prospect(client):
-    r = client.get("/api/prospects/1")
+def test_get_single_prospect(client, test_prospect):
+    r = client.get(f"/api/prospects/{test_prospect['id']}")
     assert r.status_code == 200
     p = r.json()
-    assert p["id"] == 1
+    assert p["id"] == test_prospect["id"]
     assert "issues" in p
 
 
 def test_get_missing_prospect_returns_404(client):
-    r = client.get("/api/prospects/99999")
+    r = client.get("/api/prospects/99999999")
     assert r.status_code == 404
 
 
@@ -100,42 +104,44 @@ def test_quality_endpoint(client):
     assert r.status_code == 200
     data = r.json()
     assert isinstance(data, list)
-    # each item has id, name, issues
     for item in data:
         assert "id" in item
         assert "name" in item
         assert "issues" in item
 
 
-def test_patch_prospect_updates_field(client):
-    r = client.patch("/api/prospects/1", json={"name": "Test Patched Name"})
+def test_patch_prospect_updates_field(client, test_prospect):
+    r = client.patch(f"/api/prospects/{test_prospect['id']}", json={"name": "[TEST] Patched Name"})
     assert r.status_code == 200
     data = r.json()
-    assert data["name"] == "Test Patched Name"
+    assert data["name"] == "[TEST] Patched Name"
     assert "score" in data
     assert "issues" in data
 
 
 def test_patch_missing_prospect_returns_404(client):
-    r = client.patch("/api/prospects/99999", json={"name": "ghost"})
+    r = client.patch("/api/prospects/99999999", json={"name": "ghost"})
     assert r.status_code == 404
 
 
 def test_post_creates_new_prospect(client):
     r = client.post("/api/prospects", json={
-        "name": "Test New Prospect",
-        "address": "Calle Test 1",
-        "city": "Monterrey",
-        "status": "evaluating",
-        "holdMonths": 18,
-        "rentMonthly": 20000
+        "name":        "[TEST] Post Prospect",
+        "address":     "Calle Ejemplo 1",
+        "city":        "Monterrey",
+        "status":      "evaluating",
+        "holdMonths":  12,
+        "rentMonthly": 20000,
     })
     assert r.status_code == 201
     data = r.json()
-    assert data["name"] == "Test New Prospect"
+    assert data["name"] == "[TEST] Post Prospect"
     assert "id" in data
     assert "score" in data
     assert "issues" in data
+    # Cleanup
+    with get_db() as conn:
+        conn.execute("DELETE FROM prospects WHERE id = %s", (data["id"],))
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────
@@ -148,9 +154,9 @@ def test_get_projects_returns_list(client):
     assert len(data) > 0
 
 
-def test_project_has_required_fields(client):
-    r = client.get("/api/projects")
-    p = r.json()[0]
+def test_project_has_required_fields(client, test_project):
+    r = client.get(f"/api/projects/{test_project['id']}")
+    p = r.json()
     for field in [
         "id", "name", "type", "totalInvestment", "currentValuation",
         "unrealizedGain", "unrealizedGainPct", "holdMonthsActual",
@@ -159,57 +165,60 @@ def test_project_has_required_fields(client):
         assert field in p, f"Missing field: {field}"
 
 
-def test_project_milestones_parsed_as_dict(client):
-    r = client.get("/api/projects")
-    p = r.json()[0]
+def test_project_milestones_parsed_as_dict(client, test_project):
+    r = client.get(f"/api/projects/{test_project['id']}")
+    p = r.json()
     assert isinstance(p["milestones"], dict), "milestones should be a dict, not a string"
 
 
-def test_project_budget_parsed_as_dict(client):
-    r = client.get("/api/projects")
-    p = r.json()[0]
+def test_project_budget_parsed_as_dict(client, test_project):
+    r = client.get(f"/api/projects/{test_project['id']}")
+    p = r.json()
     assert isinstance(p["budget"], dict), "budget should be a dict, not a string"
 
 
-def test_get_single_project(client):
-    r = client.get("/api/projects/1")
+def test_get_single_project(client, test_project):
+    r = client.get(f"/api/projects/{test_project['id']}")
     assert r.status_code == 200
     p = r.json()
-    assert p["id"] == 1
+    assert p["id"] == test_project["id"]
 
 
 def test_get_missing_project_returns_404(client):
-    r = client.get("/api/projects/99999")
+    r = client.get("/api/projects/99999999")
     assert r.status_code == 404
 
 
-def test_patch_project_updates_field(client):
-    r = client.patch("/api/projects/1", json={"name": "Patched"})
+def test_patch_project_updates_field(client, test_project):
+    r = client.patch(f"/api/projects/{test_project['id']}", json={"name": "[TEST] Patched Project"})
     assert r.status_code == 200
     data = r.json()
-    assert data["name"] == "Patched"
+    assert data["name"] == "[TEST] Patched Project"
 
 
 def test_patch_missing_project_returns_404(client):
-    r = client.patch("/api/projects/99999", json={"name": "ghost"})
+    r = client.patch("/api/projects/99999999", json={"name": "ghost"})
     assert r.status_code == 404
 
 
 def test_post_creates_new_project(client):
     r = client.post("/api/projects", json={
-        "name": "Nuevo Proyecto",
-        "type": "ground_up",
-        "address": "Av. Constitución 100",
-        "city": "Monterrey",
-        "status": "construction",
-        "totalUnits": 10,
-        "acquisitionDate": "2025-01",
-        "conclusionDate": "2026-06",
-        "totalInvestment": 8000000,
+        "name":             "[TEST] Post Project",
+        "type":             "ground_up",
+        "address":          "Av. Constitución 100",
+        "city":             "Monterrey",
+        "status":           "construction",
+        "totalUnits":       10,
+        "acquisitionDate":  "2025-01",
+        "conclusionDate":   "2026-06",
+        "totalInvestment":  8000000,
         "currentValuation": 8000000,
-        "valuationDate": "2026-01",
+        "valuationDate":    "2026-01",
     })
     assert r.status_code == 201
     data = r.json()
-    assert data["name"] == "Nuevo Proyecto"
+    assert data["name"] == "[TEST] Post Project"
     assert "id" in data
+    # Cleanup
+    with get_db() as conn:
+        conn.execute("DELETE FROM projects WHERE id = %s", (data["id"],))

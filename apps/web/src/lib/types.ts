@@ -107,14 +107,20 @@ export interface TeamMember {
 }
 
 export interface SonarSignal {
-  url: string
-  portal: string
-  title: string
-  address: string
-  city: string
-  zone: string
-  price: number
-  sqmLand: number
+  url:           string
+  portal:        string
+  title:         string
+  address:       string
+  municipioCve:  string
+  municipioName: string
+  colonia:       string
+  lat:           number | null
+  lon:           number | null
+  price:         number
+  sqmLand:       number
+  lastPrice:     number | null
+  firstSeen:     string | null
+  lastSeen:      string | null
 }
 
 export interface ProcessTemplate {

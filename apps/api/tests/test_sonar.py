@@ -14,6 +14,16 @@ def bypass_auth():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def mock_sonar_db():
+    """Prevent sonar SSE tests from hitting the real DB."""
+    with patch("api.routes.sonar.sonar_db.create_scan", return_value=1), \
+         patch("api.routes.sonar.sonar_db.upsert_signal", return_value=1), \
+         patch("api.routes.sonar.sonar_db.link_signals_to_scan"), \
+         patch("api.routes.sonar.sonar_db.complete_scan"):
+        yield
+
+
 # ── Scraper unit tests (mocked HTTP) ──────────────────────────────────────────
 
 def test_lamudi_scraper_returns_signals():
@@ -119,10 +129,10 @@ def test_sonar_run_streams_events():
 
 
 def test_sonar_run_includes_valid_signals():
-    """Signals passing validation appear in the complete event with zone field."""
+    """Signals passing validation appear in the complete event."""
     import json
     sig = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/test-1",
-                    title="Terreno Test", city="Monterrey", price=1_500_000)
+                    title="Terreno Test", price=1_500_000)
     p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
     with p1, p2, p3, p4, p5, p6:
         with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]):
@@ -133,29 +143,29 @@ def test_sonar_run_includes_valid_signals():
     assert complete["found"] == 1
     signal_dict = complete["signals"][0]
     assert signal_dict["url"] == sig.url
-    assert "zone" in signal_dict
+    assert "municipioCve" in signal_dict
 
 
-def test_sonar_run_propagates_zone():
-    """Signals with a zone tag keep their zone in the output."""
+def test_sonar_run_with_cves():
+    """cves field is accepted in request body."""
     import json
     sig = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/test-zone",
-                    title="Terreno San Pedro", city="Monterrey", price=2_000_000, zone="San Pedro")
+                    title="Terreno San Pedro", municipio_cve="19019", price=2_000_000)
     p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
     with p1, p2, p3, p4, p5, p6:
         with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]):
-            r = _make_client().post("/api/sonar/run", json={"zones": ["San Pedro"]})
+            r = _make_client().post("/api/sonar/run", json={"cves": ["19019"]})
 
     events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
     complete = next(e for e in events if e["type"] == "complete")
-    assert complete["signals"][0]["zone"] == "San Pedro"
+    assert complete["signals"][0]["municipioCve"] == "19019"
 
 
 def test_sonar_run_drops_low_price_signals():
     """Signals with 0 < price < 100k are discarded."""
     import json
     bad = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/bad",
-                    title="Bad listing", city="Monterrey", price=5_000)
+                    title="Bad listing", price=5_000)
     p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
     with p1, p2, p3, p4, p5, p6:
         with patch("api.routes.sonar.lamudi.scrape", return_value=[bad]):

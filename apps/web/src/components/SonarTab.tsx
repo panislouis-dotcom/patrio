@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { streamSonarRun, importSonarSignal, fetchProspects } from '../lib/api'
+import { streamSonarRun, importSonarSignal, fetchSonarSignals, fetchZoneMedians, fetchProspects } from '../lib/api'
 import type { SonarRunEvent } from '../lib/api'
 import type { SonarSignal } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -30,7 +30,12 @@ function computeScores(signals: (SonarSignal & { ppsqm: number })[]): DisplaySig
   }))
 }
 
-const ALL_ZONES = ['Monterrey', 'San Pedro', 'Santa Catarina', 'García'] as const
+const ACTIVE_MUNICIPIOS = [
+  { cve: '19039', name: 'Monterrey' },
+  { cve: '19019', name: 'San Pedro' },
+  { cve: '19046', name: 'Santa Catarina' },
+  { cve: '19021', name: 'García' },
+]
 
 const MIN_PRICE_OPTS = [
   { label: 'Sin mínimo', value: 0 },
@@ -135,12 +140,15 @@ export function SonarTab() {
   useEffect(() => {
     fetchProspects().then(ps => {
       const urls = new Set(ps.map(p => p.url).filter(Boolean))
-      setImportedUrls(urls)
-    }).catch(() => {/* non-critical — fail silently */})
+      setImportedUrls(urls as Set<string>)
+    }).catch(() => {})
   }, [])
 
-  // zone selection for scan
-  const [selectedZones, setSelectedZones] = useState<string[]>([])
+  // colonia-level median $/m² from historical DB — {colonia: median}
+  const [zoneMedians, setZoneMedians] = useState<Record<string, number>>({})
+
+  // zone selection for scan (CVE codes)
+  const [selectedCves, setSelectedCves] = useState<string[]>([])
 
   // filters
   const [portalFilter, setPortalFilter] = useState('all')
@@ -167,14 +175,23 @@ export function SonarTab() {
     return () => clearInterval(id)
   }, [running])
 
+  // load last scan on mount
+  useEffect(() => {
+    fetchSonarSignals().then(setSignals).catch(() => {})
+    fetchZoneMedians().then(setZoneMedians).catch(() => {})
+  }, [])
+
   const portals = useMemo(() => Array.from(new Set(signals.map(s => s.portal))).sort(), [signals])
 
-  const resultZones = useMemo(() => Array.from(new Set(signals.map(s => s.zone).filter(Boolean))).sort(), [signals])
+  const resultZones = useMemo(
+    () => Array.from(new Set(signals.map(s => s.municipioName).filter(Boolean))).sort(),
+    [signals],
+  )
 
   const displayed = useMemo((): DisplaySignal[] => {
     let list = signals
     if (portalFilter !== 'all') list = list.filter(s => s.portal === portalFilter)
-    if (zoneFilter   !== 'all') list = list.filter(s => s.zone === zoneFilter)
+    if (zoneFilter   !== 'all') list = list.filter(s => s.municipioName === zoneFilter)
     if (minPrice > 0) list = list.filter(s => s.price >= minPrice)
     if (maxPrice > 0) list = list.filter(s => s.price > 0 && s.price <= maxPrice)
     const withPpsqm = list.map(s => ({ ...s, ppsqm: s.price > 0 && s.sqmLand > 0 ? s.price / s.sqmLand : 0 }))
@@ -198,6 +215,12 @@ export function SonarTab() {
 
   function toggleSort(col: SortCol) {
     setSort(prev => prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' })
+  }
+
+  function toggleCve(cve: string) {
+    setSelectedCves(prev =>
+      prev.includes(cve) ? prev.filter(c => c !== cve) : [...prev, cve]
+    )
   }
 
   function handleEvent(ev: SonarRunEvent) {
@@ -228,6 +251,7 @@ export function SonarTab() {
         setSignals(ev.signals)
         setImportedUrls(new Set())
         setRunSummary({ found: ev.found, skipped: ev.skipped, enriched: ev.enriched })
+        fetchZoneMedians().then(setZoneMedians).catch(() => {})
         break
     }
   }
@@ -242,9 +266,9 @@ export function SonarTab() {
     setZoneFilter('all')
     // importedUrls intentionally preserved — pre-loaded prospect URLs stay across scans
     try {
-      for await (const ev of streamSonarRun(selectedZones)) handleEvent(ev)
-    } catch {
-      setActionError('Error durante el scan')
+      for await (const ev of streamSonarRun(selectedCves)) handleEvent(ev)
+    } catch (e) {
+      setActionError(`Error durante el scan: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setRunning(false)
     }
@@ -290,26 +314,24 @@ export function SonarTab() {
           )}
         </div>
 
-        {/* Zone chip selector */}
+        {/* Zone chip selector — sends CVEs, shows display names */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
           <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', marginRight: '4px' }}>ZONA</span>
-          {ALL_ZONES.map(z => {
-            const active = selectedZones.includes(z)
+          {ACTIVE_MUNICIPIOS.map(({ cve, name }) => {
+            const active = selectedCves.includes(cve)
             return (
-              <button key={z} disabled={running} onClick={() => setSelectedZones(prev =>
-                prev.includes(z) ? prev.filter(x => x !== z) : [...prev, z]
-              )} style={{
+              <button key={cve} disabled={running} onClick={() => toggleCve(cve)} style={{
                 background: active ? colors.primary : 'transparent',
                 border: `1px solid ${active ? colors.primary : colors.border}`,
                 color: active ? colors.neutral : colors.secondary,
                 fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em',
                 padding: '3px 7px', cursor: running ? 'not-allowed' : 'pointer',
                 opacity: running ? 0.5 : 1,
-              }}>{z}</button>
+              }}>{name}</button>
             )
           })}
-          {selectedZones.length > 0 && (
-            <button disabled={running} onClick={() => setSelectedZones([])} style={{
+          {selectedCves.length > 0 && (
+            <button disabled={running} onClick={() => setSelectedCves([])} style={{
               background: 'none', border: 'none', color: colors.secondary,
               fontFamily: fonts.label, fontSize: '10px', cursor: 'pointer', padding: '2px 4px', opacity: 0.6,
             }}>✕</button>
@@ -427,29 +449,67 @@ export function SonarTab() {
               Sin resultados con los filtros actuales.
             </div>
           ) : (
+            <>
+            {/* Zone summary bar — one chip per municipio */}
+            {(() => {
+              const byZone: Record<string, { count: number; ppsqms: number[] }> = {}
+              for (const s of displayed) {
+                const z = s.municipioName || 'Sin zona'
+                if (!byZone[z]) byZone[z] = { count: 0, ppsqms: [] }
+                byZone[z].count++
+                if (s.ppsqm > 0) byZone[z].ppsqms.push(s.ppsqm)
+              }
+              const zones = Object.entries(byZone).sort((a, b) => b[1].count - a[1].count)
+              if (zones.length <= 1) return null
+              return (
+                <div style={{ display: 'flex', gap: '8px', padding: '10px 16px', borderBottom: `1px solid ${colors.border}`, flexWrap: 'wrap' }}>
+                  {zones.map(([name, info]) => {
+                    const sorted = [...info.ppsqms].sort((a, b) => a - b)
+                    const med = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 0
+                    return (
+                      <div key={name} style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.07em', color: colors.secondary, border: `1px solid ${colors.border}`, padding: '4px 8px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{ color: colors.neutral }}>{name}</span>
+                        <span style={{ color: colors.border }}>·</span>
+                        <span>{info.count}</span>
+                        {med > 0 && (
+                          <>
+                            <span style={{ color: colors.border }}>·</span>
+                            <span>{fmtPpsqm(med)}/m²</span>
+                          </>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ position: 'sticky', top: 0, background: colors.dark, zIndex: 10 }}>
                 <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
                   <th style={{ ...TH, textAlign: 'center', width: '52px' }} onClick={() => toggleSort('score')}>SCORE <SortMark col="score" sort={sort} /></th>
                   <th style={{ ...TH, textAlign: 'left' }}  onClick={() => toggleSort('portal')}>PORTAL <SortMark col="portal" sort={sort} /></th>
                   <th style={{ ...TH, textAlign: 'left' }}  onClick={() => toggleSort('title')}>PROPIEDAD <SortMark col="title" sort={sort} /></th>
+                  <th style={{ ...TH, textAlign: 'left' }}>COLONIA</th>
                   <th style={{ ...TH, textAlign: 'right' }} onClick={() => toggleSort('price')}>PRECIO <SortMark col="price" sort={sort} /></th>
                   <th style={{ ...TH, textAlign: 'right' }} onClick={() => toggleSort('sqmLand')}>M² <SortMark col="sqmLand" sort={sort} /></th>
                   <th style={{ ...TH, textAlign: 'right' }} onClick={() => toggleSort('ppsqm')}>$/M² <SortMark col="ppsqm" sort={sort} /></th>
+                  <th style={{ ...TH, textAlign: 'right' }}>VS ZONA</th>
                   <th style={{ padding: '6px 10px', width: '160px' }} />
                 </tr>
               </thead>
               <tbody>
                 {displayed.map(s => {
                   const imported = importedUrls.has(s.url)
+                  const priceChanged = s.lastPrice !== null && s.lastPrice !== s.price
+                  const priceDrop    = priceChanged && s.lastPrice! > s.price
                   return (
                     <tr key={s.url} style={{ borderBottom: `1px solid ${colors.border}` }}>
                       <td style={{ padding: '5px 10px', textAlign: 'center' }}><ScoreBadge score={s.score} /></td>
                       <td style={{ padding: '5px 10px' }}>
                         <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.portal}</span>
-                        {s.zone && (
+                        {s.municipioName && (
                           <div style={{ marginTop: '2px' }}>
-                            <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.06em', color: colors.primary, border: `1px solid ${colors.primary}`, padding: '1px 4px', opacity: 0.7 }}>{s.zone}</span>
+                            <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.06em', color: colors.primary, border: `1px solid ${colors.primary}`, padding: '1px 4px', opacity: 0.7 }}>{s.municipioName}</span>
                           </div>
                         )}
                       </td>
@@ -457,9 +517,42 @@ export function SonarTab() {
                         <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{s.title}</a>
                         {s.address && <div style={{ color: colors.secondary, fontFamily: fonts.label, fontSize: '10px', marginTop: '1px' }}>{s.address}</div>}
                       </td>
-                      <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.neutral, fontFamily: fonts.label, fontSize: '11px' }}>{fmtM(s.price)}</td>
+                      <td style={{ padding: '5px 10px', maxWidth: '140px' }}>
+                        {s.colonia
+                          ? <span style={{ color: colors.secondary, fontFamily: fonts.label, fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                              {s.colonia.length > 20 ? `${s.colonia.slice(0, 20)}…` : s.colonia}
+                            </span>
+                          : <span style={{ color: colors.border, fontFamily: fonts.label, fontSize: '10px' }}>—</span>
+                        }
+                      </td>
+                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>
+                        <span style={{ color: colors.neutral, fontFamily: fonts.label, fontSize: '11px' }}>{fmtM(s.price)}</span>
+                        {priceChanged && (
+                          <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2px' }}>
+                            <span style={{ fontSize: '9px', color: priceDrop ? colors.primary : 'tomato' }}>
+                              {priceDrop ? '↓' : '↑'}
+                            </span>
+                            <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textDecoration: 'line-through', opacity: 0.7 }}>
+                              {fmtM(s.lastPrice!)}
+                            </span>
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{s.sqmLand > 0 ? s.sqmLand.toLocaleString('es-MX') : '—'}</td>
                       <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{fmtPpsqm(s.ppsqm)}</td>
+                      <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '11px' }}>
+                        {(() => {
+                          const median = s.colonia ? zoneMedians[s.colonia] : undefined
+                          if (!median || !s.ppsqm) return <span style={{ color: colors.border }}>—</span>
+                          const pct = ((s.ppsqm - median) / median) * 100
+                          const cheaper = pct < 0
+                          return (
+                            <span style={{ color: cheaper ? colors.primary : 'tomato' }}>
+                              {cheaper ? '' : '+'}{pct.toFixed(0)}%
+                            </span>
+                          )
+                        })()}
+                      </td>
                       <td style={{ padding: '5px 10px', textAlign: 'right' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
                           <button onClick={() => handleDismiss(s.url)} title="Descartar" style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '13px', lineHeight: 1, padding: '2px 4px', opacity: 0.5 }}
@@ -480,6 +573,7 @@ export function SonarTab() {
                 })}
               </tbody>
             </table>
+            </>
           )}
         </div>
       )}

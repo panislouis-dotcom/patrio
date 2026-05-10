@@ -2,6 +2,7 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 from .base import SignalRaw, BROWSER_HEADERS, rate_limit, parse_sqm
+from .zones import cve_to_slug
 
 PORTAL_NAME = "doorvel"
 BASE_URL = "https://www.doorvel.com"
@@ -9,10 +10,8 @@ _NL_SEARCH_BASE = f"{BASE_URL}/home/terrenos-en-venta-en-monterrey-nuevo-leon-me
 _MAX_PAGES = 4
 
 
-def _search_url(zone_slug: str | None) -> str:
-    if zone_slug:
-        return f"{BASE_URL}/home/terrenos-en-venta-en-{zone_slug}-nuevo-leon-mexico"
-    return _NL_SEARCH_BASE
+def zone_url(cve: str) -> str:
+    return f"{BASE_URL}/home/terrenos-en-venta-en-{cve_to_slug(cve)}-nuevo-leon-mexico"
 
 
 def _page_url(base: str, n: int) -> str:
@@ -28,7 +27,7 @@ def _parse_price(text: str) -> float:
         return 0.0
 
 
-def _scrape_page(soup, city: str, seen: set) -> list[SignalRaw]:
+def _scrape_page(soup, seen: set) -> list[SignalRaw]:
     signals = []
     for card in soup.select('[data-testid="property-card"]'):
         try:
@@ -60,7 +59,6 @@ def _scrape_page(soup, city: str, seen: set) -> list[SignalRaw]:
                 url=href,
                 title=title,
                 address=address,
-                city=city,
                 price=_parse_price(price_text),
             ))
         except Exception:
@@ -68,7 +66,7 @@ def _scrape_page(soup, city: str, seen: set) -> list[SignalRaw]:
     return signals
 
 
-def _scrape_zone(search_base: str, city: str, seen: set[str]) -> list[SignalRaw]:
+def _scrape_zone(search_base: str, seen: set[str]) -> list[SignalRaw]:
     signals: list[SignalRaw] = []
     try:
         for n in range(1, _MAX_PAGES + 1):
@@ -78,7 +76,7 @@ def _scrape_zone(search_base: str, city: str, seen: set[str]) -> list[SignalRaw]
             if r.status_code != 200:
                 break
             soup = BeautifulSoup(r.text, "lxml")
-            new = _scrape_page(soup, city, seen)
+            new = _scrape_page(soup, seen)
             if not new:
                 break
             signals.extend(new)
@@ -87,16 +85,15 @@ def _scrape_zone(search_base: str, city: str, seen: set[str]) -> list[SignalRaw]
     return signals
 
 
-def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
-    from .zones import ZONE_DEFS
-    zone_list = [(z, ZONE_DEFS[z]["doorvel"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
+def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
+    targets = [(cve, zone_url(cve)) for cve in cves] if cves else [(None, _NL_SEARCH_BASE)]
     all_signals: list[SignalRaw] = []
     seen: set[str] = set()
-    for zone_name, zone_slug in zone_list:
-        new = _scrape_zone(_search_url(zone_slug), city, seen)
-        if zone_name:
+    for cve, base in targets:
+        new = _scrape_zone(base, seen)
+        if cve:
             for s in new:
-                s.zone = zone_name
+                s.municipio_cve = cve
         all_signals.extend(new)
     return all_signals
 

@@ -1,5 +1,6 @@
 from .base import SignalRaw
 from .pw_base import pw_browser, parse_price, parse_sqm
+from .zones import cve_to_slug
 
 PORTAL_NAME = "inmuebles24"
 BASE_URL = "https://www.inmuebles24.com"
@@ -9,11 +10,17 @@ _NL_SEARCH_BASES = [
 ]
 
 
-def _zone_bases(zone_slug: str) -> list[str]:
+def zone_url(cve: str) -> str:
+    return f"https://www.inmuebles24.com/terrenos-en-venta-en-{cve_to_slug(cve)}.html"
+
+
+def _zone_bases(cve: str) -> list[str]:
+    slug = cve_to_slug(cve)
     return [
-        f"{BASE_URL}/terrenos-en-venta-en-{zone_slug}",
-        f"{BASE_URL}/lotes-en-venta-en-{zone_slug}",
+        f"{BASE_URL}/terrenos-en-venta-en-{slug}",
+        f"{BASE_URL}/lotes-en-venta-en-{slug}",
     ]
+
 _MAX_PAGES = 5
 
 _CARD_SEL = '[data-qa="posting PROPERTY"]'
@@ -28,7 +35,7 @@ def _page_url(base: str, n: int) -> str:
     return f"{base}.html" if n == 1 else f"{base}-pagina-{n}.html"
 
 
-def _scrape_cards(page, city: str, seen: set) -> tuple[list[SignalRaw], int]:
+def _scrape_cards(page, seen: set) -> tuple[list[SignalRaw], int]:
     signals = []
     for card in page.query_selector_all(_CARD_SEL):
         try:
@@ -61,7 +68,6 @@ def _scrape_cards(page, city: str, seen: set) -> tuple[list[SignalRaw], int]:
                 url=href,
                 title=title[:200],
                 address=address,
-                city=city,
                 price=parse_price(price_raw),
                 sqm_land=parse_sqm(feat_raw),
             ))
@@ -70,28 +76,26 @@ def _scrape_cards(page, city: str, seen: set) -> tuple[list[SignalRaw], int]:
     return signals
 
 
-def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
-    from .zones import ZONE_DEFS
-    zone_list = [(z, ZONE_DEFS[z]["inmuebles24"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
+def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
+    targets = [(cve, _zone_bases(cve)) for cve in cves] if cves else [(None, _NL_SEARCH_BASES)]
     try:
         with pw_browser() as ctx:
             page = ctx.new_page()
             all_signals: list[SignalRaw] = []
             seen: set[str] = set()
 
-            for zone_name, zone_slug in zone_list:
-                bases = _zone_bases(zone_slug) if zone_slug else _NL_SEARCH_BASES
+            for cve, bases in targets:
                 for base in bases:
                     for n in range(1, _MAX_PAGES + 1):
                         url = _page_url(base, n)
                         page.goto(url, wait_until="domcontentloaded", timeout=40000)
                         page.wait_for_timeout(2500)
-                        new = _scrape_cards(page, city, seen)
+                        new = _scrape_cards(page, seen)
                         if not new:
                             break
-                        if zone_name:
+                        if cve:
                             for s in new:
-                                s.zone = zone_name
+                                s.municipio_cve = cve
                         all_signals.extend(new)
 
             return all_signals

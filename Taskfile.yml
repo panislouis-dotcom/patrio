@@ -1,0 +1,61 @@
+version: '3'
+
+dotenv: ['.env']
+
+vars:
+  SSH: ssh -i {{.DEPLOY_KEY}} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no {{.DEPLOY_USER}}@{{.DEPLOY_HOST}}
+
+tasks:
+  deploy:
+    desc: Sync code to VM and restart production services
+    cmds:
+      - rsync -avz --delete
+          --exclude='.git'
+          --exclude='apps/web/node_modules'
+          --exclude='apps/e2e'
+          --exclude='.venv'
+          --exclude='__pycache__'
+          --exclude='*.pyc'
+          --exclude='playwright-report'
+          --exclude='test-results'
+          . {{.DEPLOY_USER}}@{{.DEPLOY_HOST}}:{{.DEPLOY_PATH}}
+      - '{{.SSH}} "cd {{.DEPLOY_PATH}} && docker compose -f docker-compose.prod.yml up -d --build"'
+
+  ssh:
+    desc: Open interactive SSH session on production VM
+    interactive: true
+    cmds:
+      - '{{.SSH}}'
+
+  logs:
+    desc: Stream all production container logs
+    cmds:
+      - '{{.SSH}} "cd {{.DEPLOY_PATH}} && docker compose -f docker-compose.prod.yml logs -f"'
+
+  logs-app:
+    desc: Stream app container logs only
+    cmds:
+      - '{{.SSH}} "cd {{.DEPLOY_PATH}} && docker compose -f docker-compose.prod.yml logs -f app"'
+
+  restart:
+    desc: Restart production services without rebuilding
+    cmds:
+      - '{{.SSH}} "cd {{.DEPLOY_PATH}} && docker compose -f docker-compose.prod.yml restart"'
+
+  db-shell:
+    desc: Open psql shell on production database
+    interactive: true
+    cmds:
+      - '{{.SSH}} "cd {{.DEPLOY_PATH}} && docker compose -f docker-compose.prod.yml exec db psql -U $POSTGRES_USER -d $POSTGRES_DB"'
+
+  create-user:
+    desc: Create a user on production
+    interactive: true
+    cmds:
+      - '{{.SSH}} "cd {{.DEPLOY_PATH}} && docker compose -f docker-compose.prod.yml exec app python -m api.create_user"'
+
+  setup:
+    desc: First-time VM setup — install Docker and create deploy directory
+    cmds:
+      - scp -i {{.DEPLOY_KEY}} deploy/setup.sh {{.DEPLOY_USER}}@{{.DEPLOY_HOST}}:/tmp/refigan-setup.sh
+      - '{{.SSH}} "bash /tmp/refigan-setup.sh {{.DEPLOY_PATH}}"'

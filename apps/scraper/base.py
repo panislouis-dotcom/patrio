@@ -8,9 +8,12 @@ class SignalRaw:
     portal: str
     url: str
     title: str
-    address: str = ''
-    city: str = 'Monterrey'
-    zone: str = ''
+    address:       str          = ''
+    municipio_cve: str          = ''   # INEGI CVE e.g. "19039"; set at scrape time
+    lat:           float | None = None  # from portals that expose coordinates
+    lon:           float | None = None
+    city:          str          = 'Monterrey'   # kept for backward compat during migration
+    zone:          str          = ''            # kept for backward compat during migration
     price: float = 0.0
     sqm_land: float = 0.0
 

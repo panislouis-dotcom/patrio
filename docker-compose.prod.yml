@@ -5,53 +5,40 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./data/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql
       - ./data/init_seeds.sh:/docker-entrypoint-initdb.d/01_seed.sh
       - ./data:/docker-seeds
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
 
-  api:
-    image: python:3.12-slim
-    working_dir: /app/apps
-    volumes:
-      - ./apps/api:/app/apps/api
-      - ./apps/scraper:/app/apps/scraper
-      - ./data:/app/data
-      - pip-cache:/root/.cache/pip
-    command: >
-      sh -c "pip install --no-cache-dir -r api/requirements.txt -q &&
-             uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
+  app:
+    build: .
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
     ports:
-      - "8000:8000"
+      - "80:8000"
     depends_on:
       db:
         condition: service_healthy
-
-  web:
-    image: node:20-alpine
-    working_dir: /app
-    volumes:
-      - ./apps/web:/app
-      - node-modules:/app/node_modules
-    command: sh -c "npm install --silent && npx vite --host 0.0.0.0"
-    environment:
-      VITE_API_BASE: ${VITE_API_BASE}
-    ports:
-      - "5173:5173"
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
 volumes:
   pgdata:
-  pip-cache:
-  node-modules:

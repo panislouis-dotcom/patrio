@@ -1,5 +1,6 @@
 from .base import SignalRaw
 from .pw_base import pw_browser, parse_price, parse_sqm
+from .zones import cve_to_slug
 
 PORTAL_NAME = "mercadolibre"
 _NL_SEARCH_BASE = "https://inmuebles.mercadolibre.com.mx/terrenos/nuevo-leon/"
@@ -7,10 +8,8 @@ _MAX_PAGES = 5
 _PAGE_SIZE = 48  # MercadoLibre shows 48 results per page
 
 
-def _search_url(zone_slug: str | None) -> str:
-    if zone_slug:
-        return f"https://inmuebles.mercadolibre.com.mx/terrenos/venta/nuevo-leon/{zone_slug}/"
-    return _NL_SEARCH_BASE
+def zone_url(cve: str) -> str:
+    return f"https://inmuebles.mercadolibre.com.mx/terrenos/venta/nuevo-leon/{cve_to_slug(cve)}/"
 
 _CARD_SEL = '[class*="ui-search-layout__item"]'
 _LINK_SEL = "a[href]"
@@ -27,7 +26,7 @@ def _page_url(base: str, n: int) -> str:
     return f"{base}_Desde_{offset}_NoIndex_True"
 
 
-def _scrape_cards(page, city: str, seen: set) -> list[SignalRaw]:
+def _scrape_cards(page, seen: set) -> list[SignalRaw]:
     signals = []
     for card in page.query_selector_all(_CARD_SEL):
         try:
@@ -58,7 +57,6 @@ def _scrape_cards(page, city: str, seen: set) -> list[SignalRaw]:
                 url=href,
                 title=title[:200],
                 address=address,
-                city=city,
                 price=parse_price(price_raw),
                 sqm_land=parse_sqm(sqm_raw),
             ))
@@ -67,26 +65,24 @@ def _scrape_cards(page, city: str, seen: set) -> list[SignalRaw]:
     return signals
 
 
-def scrape(city: str = "Monterrey", zones: list[str] | None = None) -> list[SignalRaw]:
-    from .zones import ZONE_DEFS
-    zone_list = [(z, ZONE_DEFS[z]["mercadolibre"]) for z in zones if z in ZONE_DEFS] if zones else [(None, None)]
+def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
+    targets = [(cve, zone_url(cve)) for cve in cves] if cves else [(None, _NL_SEARCH_BASE)]
     try:
         with pw_browser() as ctx:
             page = ctx.new_page()
             all_signals: list[SignalRaw] = []
             seen: set[str] = set()
 
-            for zone_name, zone_slug in zone_list:
-                base = _search_url(zone_slug)
+            for cve, base in targets:
                 for n in range(1, _MAX_PAGES + 1):
                     page.goto(_page_url(base, n), wait_until="domcontentloaded", timeout=50000)
                     page.wait_for_timeout(3000)
-                    new = _scrape_cards(page, city, seen)
+                    new = _scrape_cards(page, seen)
                     if not new:
                         break
-                    if zone_name:
+                    if cve:
                         for s in new:
-                            s.zone = zone_name
+                            s.municipio_cve = cve
                     all_signals.extend(new)
 
             return all_signals
