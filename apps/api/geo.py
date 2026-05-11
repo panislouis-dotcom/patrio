@@ -44,11 +44,25 @@ def _colonia_from_raw(raw: dict) -> str:
     return ""
 
 
-def geocode(address: str) -> Optional[tuple[float, float, str]]:
+def _place_from_raw(raw: dict) -> tuple[str, str]:
+    """Extract (state_name, municipio_name) from a Nominatim raw result dict."""
+    addr = raw.get("address", {})
+    state = str(addr.get("state", "")).strip()
+    municipio = (
+        addr.get("county") or
+        addr.get("municipality") or
+        addr.get("city_district") or
+        addr.get("city") or ""
+    )
+    return state, str(municipio).strip()
+
+
+def geocode(address: str, state_hint: str = "") -> Optional[tuple[float, float, str, str, str]]:
     """
     Geocode address via Nominatim.
-    Returns (lat, lon, colonia) or None on failure.
-    Colonia is extracted from the response directly — no shapefile needed.
+    Returns (lat, lon, colonia, state_name, municipio_name) or None on failure.
+    state_hint (e.g. "Nuevo León") is appended to the query when the address
+    doesn't already mention the state, preventing cross-state homonym mismatches.
     Rate-limited to 1 req/sec.
     """
     global _last_request
@@ -61,13 +75,24 @@ def geocode(address: str) -> Optional[tuple[float, float, str]]:
         time.sleep(_MIN_INTERVAL - elapsed)
 
     try:
-        query = address if "México" in address or "Mexico" in address else f"{address}, México"
+        lower_addr = address.lower()
+        has_country = "méxico" in lower_addr or "mexico" in lower_addr
+        has_state   = bool(state_hint) and state_hint.lower() in lower_addr
+
+        if state_hint and not has_state:
+            query = f"{address}, {state_hint}, México"
+        elif not has_country:
+            query = f"{address}, México"
+        else:
+            query = address
+
         loc = geo.geocode(query, addressdetails=True)
         _last_request = time.monotonic()
         if not loc:
             return None
         colonia = _colonia_from_raw(loc.raw)
-        return (loc.latitude, loc.longitude, colonia)
+        state, municipio = _place_from_raw(loc.raw)
+        return (loc.latitude, loc.longitude, colonia, state, municipio)
     except Exception as exc:
         logger.debug("geo: geocode failed for %r — %s", address, exc)
         _last_request = time.monotonic()

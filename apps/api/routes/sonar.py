@@ -9,7 +9,7 @@ from api.db import create_prospect
 from api import sonar_db, geo
 from scraper import lamudi, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
 from scraper.base import SignalRaw
-from scraper.zones import detect_cve, cve_to_name, ACTIVE_CVES, MUNICIPIOS
+from scraper.zones import detect_cve, cve_to_name, resolve_cve_from_nominatim, ACTIVE_CVES, MUNICIPIOS
 
 router = APIRouter()
 
@@ -54,23 +54,42 @@ def _enrich_signal(signal: SignalRaw) -> None:
         signal.sqm_land = sqm
 
 
+def _geocode_one(sig_id: int, address: str, state_hint: str = "") -> None:
+    """Geocode a single signal and update its geo fields in DB.
+    If state_hint is given and geocoded state doesn't match, the signal is deleted."""
+    result = geo.geocode(address, state_hint=state_hint)
+    if not result:
+        return
+    lat, lon, colonia, state_name, mun_name = result
+    if state_hint and state_name and state_name != state_hint:
+        sonar_db.delete_signal(sig_id)
+        return
+    mun_cve = resolve_cve_from_nominatim(state_name, mun_name)
+    sonar_db.update_signal_geo(
+        sig_id, lat, lon, colonia,
+        state_name=state_name,
+        municipio_name=mun_name,
+        municipio_cve=mun_cve,
+    )
+
+
 def _geocode_batch(items: list[tuple[int, SignalRaw]]) -> None:
-    """Background task: geocode signals, assign colonia, update DB."""
+    """Background task: geocode signals, update municipio + colonia from Nominatim."""
     for sig_id, s in items:
         try:
-            if s.lat is not None and s.lon is not None:
-                # Coordinates known — try shapefile first, fall back to Nominatim for colonia
-                colonia = geo.assign_colonia(s.lat, s.lon)
-                if not colonia:
-                    result = geo.geocode(s.address)
-                    colonia = result[2] if result else ""
-                if colonia:
-                    sonar_db.update_signal_geo(sig_id, s.lat, s.lon, colonia)
-            else:
-                result = geo.geocode(s.address)
-                if result:
-                    lat, lon, colonia = result
-                    sonar_db.update_signal_geo(sig_id, lat, lon, colonia)
+            state_hint = MUNICIPIOS.get(s.municipio_cve, {}).get("state", "")
+            _geocode_one(sig_id, s.address, state_hint=state_hint)
+        except Exception:
+            pass
+
+
+def _regeocode_all() -> None:
+    """Background task: re-geocode all signals to correct stale municipio assignments."""
+    rows = sonar_db.get_all_signals()
+    for row in rows:
+        try:
+            state_hint = MUNICIPIOS.get(row.get("municipio_cve", ""), {}).get("state", "")
+            _geocode_one(row["id"], row["address"], state_hint=state_hint)
         except Exception:
             pass
 
@@ -84,6 +103,7 @@ def _signal_to_dict(s: SignalRaw) -> dict:
         "municipioCve":  s.municipio_cve,
         "municipioName": cve_to_name(s.municipio_cve) if s.municipio_cve else "",
         "colonia":       "",           # filled in later by geocoding
+        "stateName":     "",           # filled in later by geocoding
         "lat":           s.lat,
         "lon":           s.lon,
         "price":         s.price,
@@ -103,6 +123,7 @@ def _db_row_to_dict(row: dict) -> dict:
         "municipioCve":  row["municipio_cve"],
         "municipioName": row["municipio_name"],
         "colonia":       row["colonia"],
+        "stateName":     row.get("state_name", ""),
         "lat":           row["lat"],
         "lon":           row["lon"],
         "price":         float(row["price"]),
@@ -271,6 +292,17 @@ def sonar_import(req: _ImportRequest, _: dict = Depends(get_current_user)):
     return {"prospect": prospect}
 
 
+@router.get("/api/sonar/zones")
+def sonar_zones(_: dict = Depends(get_current_user)):
+    """Return active municipios grouped by state, derived from ACTIVE_CVES."""
+    grouped: dict[str, list[dict]] = {}
+    for cve in ACTIVE_CVES:
+        info = MUNICIPIOS[cve]
+        state = info["state"]
+        grouped.setdefault(state, []).append({"cve": cve, "name": info["name"]})
+    return {"states": [{"name": s, "municipios": m} for s, m in grouped.items()]}
+
+
 @router.get("/api/sonar/signals")
 def sonar_signals(_: dict = Depends(get_current_user)):
     rows = sonar_db.get_latest_scan_signals()
@@ -280,3 +312,13 @@ def sonar_signals(_: dict = Depends(get_current_user)):
 @router.get("/api/sonar/zone-medians")
 def sonar_zone_medians(_: dict = Depends(get_current_user)):
     return {"medians": sonar_db.get_zone_medians()}
+
+
+@router.post("/api/sonar/re-geocode")
+def sonar_re_geocode(_: dict = Depends(get_current_user)):
+    """Re-geocode all signals to correct stale municipio/colonia assignments.
+    Runs in background at 1 req/sec (Nominatim rate limit).
+    Returns immediately with the number of signals queued."""
+    rows = sonar_db.get_all_signals()
+    threading.Thread(target=_regeocode_all, daemon=True).start()
+    return {"queued": len(rows)}

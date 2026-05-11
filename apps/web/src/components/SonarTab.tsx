@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { streamSonarRun, importSonarSignal, fetchSonarSignals, fetchZoneMedians, fetchProspects } from '../lib/api'
+import { streamSonarRun, importSonarSignal, fetchSonarSignals, fetchZoneMedians, fetchProspects, fetchSonarZones } from '../lib/api'
 import type { SonarRunEvent } from '../lib/api'
-import type { SonarSignal } from '../lib/types'
+import type { SonarSignal, SonarState } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtM } from '../lib/fmt'
 
@@ -29,13 +29,6 @@ function computeScores(signals: (SonarSignal & { ppsqm: number })[]): DisplaySig
       : null,
   }))
 }
-
-const ACTIVE_MUNICIPIOS = [
-  { cve: '19039', name: 'Monterrey' },
-  { cve: '19019', name: 'San Pedro' },
-  { cve: '19046', name: 'Santa Catarina' },
-  { cve: '19021', name: 'García' },
-]
 
 const MIN_PRICE_OPTS = [
   { label: 'Sin mínimo', value: 0 },
@@ -144,8 +137,12 @@ export function SonarTab() {
     }).catch(() => {})
   }, [])
 
-  // colonia-level median $/m² from historical DB — {colonia: median}
+  // municipio-level median $/m² from historical DB — {municipio_name: median}
   const [zoneMedians, setZoneMedians] = useState<Record<string, number>>({})
+
+  // geographic zone data (loaded from API)
+  const [states, setStates]               = useState<SonarState[]>([])
+  const [selectedState, setSelectedState] = useState<string>('')
 
   // zone selection for scan (CVE codes)
   const [selectedCves, setSelectedCves] = useState<string[]>([])
@@ -175,10 +172,14 @@ export function SonarTab() {
     return () => clearInterval(id)
   }, [running])
 
-  // load last scan on mount
+  // load last scan + zone config on mount
   useEffect(() => {
     fetchSonarSignals().then(setSignals).catch(() => {})
     fetchZoneMedians().then(setZoneMedians).catch(() => {})
+    fetchSonarZones().then(s => {
+      setStates(s)
+      if (s.length > 0) setSelectedState(s[0].name)
+    }).catch(() => {})
   }, [])
 
   const portals = useMemo(() => Array.from(new Set(signals.map(s => s.portal))).sort(), [signals])
@@ -187,6 +188,18 @@ export function SonarTab() {
     () => Array.from(new Set(signals.map(s => s.municipioName).filter(Boolean))).sort(),
     [signals],
   )
+
+  const currentMunicipios = useMemo(
+    () => states.find(s => s.name === selectedState)?.municipios ?? [],
+    [states, selectedState],
+  )
+
+  function selectAllCities()  { setSelectedCves(currentMunicipios.map(m => m.cve)) }
+  function clearAllCities()   { setSelectedCves([]) }
+  function onStateChange(name: string) {
+    setSelectedState(name)
+    setSelectedCves([])
+  }
 
   const displayed = useMemo((): DisplaySignal[] => {
     let list = signals
@@ -314,28 +327,52 @@ export function SonarTab() {
           )}
         </div>
 
-        {/* Zone chip selector — sends CVEs, shows display names */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
-          <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', marginRight: '4px' }}>ZONA</span>
-          {ACTIVE_MUNICIPIOS.map(({ cve, name }) => {
-            const active = selectedCves.includes(cve)
-            return (
-              <button key={cve} disabled={running} onClick={() => toggleCve(cve)} style={{
-                background: active ? colors.primary : 'transparent',
-                border: `1px solid ${active ? colors.primary : colors.border}`,
-                color: active ? colors.neutral : colors.secondary,
-                fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em',
-                padding: '3px 7px', cursor: running ? 'not-allowed' : 'pointer',
-                opacity: running ? 0.5 : 1,
-              }}>{name}</button>
-            )
-          })}
-          {selectedCves.length > 0 && (
-            <button disabled={running} onClick={() => setSelectedCves([])} style={{
-              background: 'none', border: 'none', color: colors.secondary,
-              fontFamily: fonts.label, fontSize: '10px', cursor: 'pointer', padding: '2px 4px', opacity: 0.6,
-            }}>✕</button>
-          )}
+        {/* Geographic search selector — state dropdown + city chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+          {/* State dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em' }}>ESTADO</span>
+            <select
+              value={selectedState}
+              onChange={e => onStateChange(e.target.value)}
+              disabled={running}
+              style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, fontFamily: fonts.label, fontSize: '9px', padding: '3px 5px', cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.5 : 1 }}
+            >
+              {states.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+          </div>
+
+          {/* City chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em' }}>CIUDAD</span>
+            {currentMunicipios.map(({ cve, name }) => {
+              const active = selectedCves.includes(cve)
+              const label  = name.split(' ').slice(0, 2).join(' ')
+              return (
+                <button key={cve} disabled={running} onClick={() => toggleCve(cve)}
+                  title={name}
+                  style={{
+                    background: active ? colors.primary : 'transparent',
+                    border: `1px solid ${active ? colors.primary : colors.border}`,
+                    color: active ? colors.neutral : colors.secondary,
+                    fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em',
+                    padding: '3px 7px', cursor: running ? 'not-allowed' : 'pointer',
+                    opacity: running ? 0.5 : 1,
+                  }}>{label}</button>
+              )
+            })}
+            <button disabled={running} onClick={selectAllCities} style={{
+              background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary,
+              fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em',
+              padding: '3px 6px', cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.5 : 0.6,
+            }}>Todas</button>
+            {selectedCves.length > 0 && (
+              <button disabled={running} onClick={clearAllCities} style={{
+                background: 'none', border: 'none', color: colors.secondary,
+                fontFamily: fonts.label, fontSize: '10px', cursor: 'pointer', padding: '2px 4px', opacity: 0.6,
+              }}>✕</button>
+            )}
+          </div>
         </div>
 
         <button onClick={handleRun} disabled={running} style={{
@@ -493,7 +530,7 @@ export function SonarTab() {
                   <th style={{ ...TH, textAlign: 'right' }} onClick={() => toggleSort('price')}>PRECIO <SortMark col="price" sort={sort} /></th>
                   <th style={{ ...TH, textAlign: 'right' }} onClick={() => toggleSort('sqmLand')}>M² <SortMark col="sqmLand" sort={sort} /></th>
                   <th style={{ ...TH, textAlign: 'right' }} onClick={() => toggleSort('ppsqm')}>$/M² <SortMark col="ppsqm" sort={sort} /></th>
-                  <th style={{ ...TH, textAlign: 'right' }}>VS ZONA</th>
+                  <th style={{ ...TH, textAlign: 'right' }}>VS MUN</th>
                   <th style={{ padding: '6px 10px', width: '160px' }} />
                 </tr>
               </thead>
@@ -542,7 +579,7 @@ export function SonarTab() {
                       <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{fmtPpsqm(s.ppsqm)}</td>
                       <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '11px' }}>
                         {(() => {
-                          const median = s.colonia ? zoneMedians[s.colonia] : undefined
+                          const median = s.municipioName ? zoneMedians[s.municipioName] : undefined
                           if (!median || !s.ppsqm) return <span style={{ color: colors.border }}>—</span>
                           const pct = ((s.ppsqm - median) / median) * 100
                           const cheaper = pct < 0

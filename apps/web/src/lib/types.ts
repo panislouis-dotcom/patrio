@@ -106,6 +106,9 @@ export interface TeamMember {
   createdAt: string
 }
 
+export interface SonarZone  { cve: string; name: string }
+export interface SonarState { name: string; municipios: SonarZone[] }
+
 export interface SonarSignal {
   url:           string
   portal:        string
@@ -114,6 +117,7 @@ export interface SonarSignal {
   municipioCve:  string
   municipioName: string
   colonia:       string
+  stateName:     string
   lat:           number | null
   lon:           number | null
   price:         number

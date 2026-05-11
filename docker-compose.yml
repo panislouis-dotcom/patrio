@@ -26,8 +26,10 @@ services:
       - ./apps/scraper:/app/apps/scraper
       - ./data:/app/data
       - pip-cache:/root/.cache/pip
+      - playwright-browsers:/root/.cache/ms-playwright
     command: >
       sh -c "pip install --no-cache-dir -r api/requirements.txt -q &&
+             DEBIAN_FRONTEND=noninteractive playwright install chromium --with-deps &&
              uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
@@ -55,3 +57,4 @@ volumes:
   pgdata:
   pip-cache:
   node-modules:
+  playwright-browsers:

@@ -13,13 +13,13 @@ const SSE_BODY = [
 ].join('\n')
 
 test.describe('Sonar', () => {
-  test("/sonar loads with scan button 'EJECUTAR SCAN ▸'", async ({ page }) => {
-    await page.goto('/sonar')
+  test("/prospectos/sonar loads with scan button 'EJECUTAR SCAN ▸'", async ({ page }) => {
+    await page.goto('/prospectos/sonar')
     await expect(page.getByText('EJECUTAR SCAN ▸')).toBeVisible()
   })
 
   test('zone chips Monterrey, San Pedro, Santa Catarina, García are visible', async ({ page }) => {
-    await page.goto('/sonar')
+    await page.goto('/prospectos/sonar')
     // Scope to button elements — when signals exist, the zone filter <select> also contains
     // <option> elements with these names which are not visible but fool getByText
     await expect(page.locator('button', { hasText: 'Monterrey' })).toBeVisible()
@@ -29,7 +29,7 @@ test.describe('Sonar', () => {
   })
 
   test('clicking Monterrey chip toggles its visual state', async ({ page }) => {
-    await page.goto('/sonar')
+    await page.goto('/prospectos/sonar')
     // The zone chip is a <button> — scope to button to avoid matching zone filter select options
     const chip = page.locator('button', { hasText: 'Monterrey' })
 
@@ -65,7 +65,7 @@ test.describe('Sonar', () => {
       })
     })
 
-    await page.goto('/sonar')
+    await page.goto('/prospectos/sonar')
     await page.getByText('EJECUTAR SCAN ▸').click()
 
     // Scope to span elements to skip hidden <option> elements in the portal filter select

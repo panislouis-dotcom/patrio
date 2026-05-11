@@ -78,7 +78,7 @@ def get_latest_scan_signals() -> list[dict]:
     with get_db() as conn:
         cur = conn.execute(
             """SELECT ss.id, ss.url, ss.portal, ss.title, ss.address,
-                      ss.municipio_cve, ss.municipio_name, ss.colonia,
+                      ss.municipio_cve, ss.municipio_name, ss.colonia, ss.state_name,
                       ss.lat, ss.lon, ss.price, ss.sqm_land,
                       ss.first_seen_at, ss.last_seen_at, ss.last_price
                FROM sonar_signals ss
@@ -94,27 +94,62 @@ def get_latest_scan_signals() -> list[dict]:
         return [dict(row) for row in cur.fetchall()]
 
 
-def update_signal_geo(signal_id: int, lat: float, lon: float, colonia: str) -> None:
-    """Update lat/lon and colonia for a signal. Only overwrites if values are not already set."""
+def get_all_signals() -> list[dict]:
+    """Return all signals with address and municipio_cve, for re-geocodification."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "SELECT id, address, municipio_cve FROM sonar_signals WHERE address != '' ORDER BY id"
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+
+def delete_signal(signal_id: int) -> None:
+    """Delete a signal confirmed out-of-zone after geocoding."""
+    with get_db() as conn:
+        conn.execute("DELETE FROM sonar_signals WHERE id = %s", (signal_id,))
+
+
+def update_signal_geo(
+    signal_id: int,
+    lat: float,
+    lon: float,
+    colonia: str,
+    state_name: str = "",
+    municipio_name: str = "",
+    municipio_cve: str = "",
+) -> None:
+    """Update geo fields for a signal.
+    state_name is always overwritten. municipio_name and municipio_cve are only
+    overwritten when non-empty, preserving scraper-assigned values when Nominatim
+    cannot resolve them."""
     with get_db() as conn:
         conn.execute(
             """UPDATE sonar_signals
-               SET lat     = COALESCE(lat, %s),
-                   lon     = COALESCE(lon, %s),
-                   colonia = CASE WHEN colonia = '' THEN %s ELSE colonia END
+               SET lat            = %s,
+                   lon            = %s,
+                   colonia        = CASE WHEN %s != '' THEN %s ELSE colonia END,
+                   state_name     = %s,
+                   municipio_name = CASE WHEN %s != '' THEN %s ELSE municipio_name END,
+                   municipio_cve  = CASE WHEN %s != '' THEN %s ELSE municipio_cve  END
                WHERE id = %s""",
-            (lat, lon, colonia, signal_id),
+            (lat, lon,
+             colonia, colonia,
+             state_name,
+             municipio_name, municipio_name,
+             municipio_cve, municipio_cve,
+             signal_id),
         )
 
 
 def get_zone_medians() -> dict[str, float]:
-    """Return {colonia: median_price_per_sqm} from all historical signals with sqm > 0."""
+    """Return {municipio_name: median_price_per_sqm} from all historical signals with sqm > 0."""
     with get_db() as conn:
         cur = conn.execute(
-            """SELECT colonia, PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price / sqm_land) AS median_ppsqm
+            """SELECT municipio_name,
+                      PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price / sqm_land) AS median_ppsqm
                FROM sonar_signals
-               WHERE sqm_land > 0 AND colonia != ''
-               GROUP BY colonia
+               WHERE sqm_land > 0 AND municipio_name != ''
+               GROUP BY municipio_name
                HAVING COUNT(*) >= 3"""
         )
-        return {row["colonia"]: float(row["median_ppsqm"]) for row in cur.fetchall()}
+        return {row["municipio_name"]: float(row["median_ppsqm"]) for row in cur.fetchall()}

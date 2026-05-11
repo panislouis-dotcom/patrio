@@ -1,5 +1,5 @@
 from .base import SignalRaw
-from .pw_base import pw_browser, parse_price, parse_sqm
+from .pw_base import pw_browser, stealth_page, parse_price, parse_sqm
 from .zones import cve_to_slug
 
 PORTAL_NAME = "mercadolibre"
@@ -69,7 +69,7 @@ def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
     targets = [(cve, zone_url(cve)) for cve in cves] if cves else [(None, _NL_SEARCH_BASE)]
     try:
         with pw_browser() as ctx:
-            page = ctx.new_page()
+            page = stealth_page(ctx)
             all_signals: list[SignalRaw] = []
             seen: set[str] = set()
 

@@ -1,6 +1,6 @@
 from .base import SignalRaw
-from .pw_base import pw_browser, parse_price, parse_sqm
-from .zones import cve_to_slug
+from .pw_base import pw_browser, stealth_page, parse_price, parse_sqm
+from .zones import cve_to_slug, state_to_slug
 
 PORTAL_NAME = "inmuebles24"
 BASE_URL = "https://www.inmuebles24.com"
@@ -15,10 +15,11 @@ def zone_url(cve: str) -> str:
 
 
 def _zone_bases(cve: str) -> list[str]:
-    slug = cve_to_slug(cve)
+    city_slug  = cve_to_slug(cve)
+    state_slug = state_to_slug(cve)
     return [
-        f"{BASE_URL}/terrenos-en-venta-en-{slug}",
-        f"{BASE_URL}/lotes-en-venta-en-{slug}",
+        f"{BASE_URL}/terrenos-en-venta-en-{city_slug}-{state_slug}",
+        f"{BASE_URL}/lotes-en-venta-en-{city_slug}-{state_slug}",
     ]
 
 _MAX_PAGES = 5
@@ -80,7 +81,7 @@ def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
     targets = [(cve, _zone_bases(cve)) for cve in cves] if cves else [(None, _NL_SEARCH_BASES)]
     try:
         with pw_browser() as ctx:
-            page = ctx.new_page()
+            page = stealth_page(ctx)
             all_signals: list[SignalRaw] = []
             seen: set[str] = set()
 

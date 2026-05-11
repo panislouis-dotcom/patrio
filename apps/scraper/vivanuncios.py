@@ -1,5 +1,5 @@
 from .base import SignalRaw
-from .pw_base import pw_browser, parse_price, parse_sqm
+from .pw_base import pw_browser, stealth_page, parse_price, parse_sqm
 
 PORTAL_NAME = "vivanuncios"
 BASE_URL = "https://www.vivanuncios.com.mx"
@@ -83,7 +83,7 @@ def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
         signals: list[SignalRaw] = []
         seen: set[str] = set()
         with pw_browser() as ctx:
-            page = ctx.new_page()
+            page = stealth_page(ctx)
             for cve, base in targets:
                 for p in range(1, _MAX_PAGES + 1):
                     page_signals = _scrape_page(page, f"{base}{p}", seen)

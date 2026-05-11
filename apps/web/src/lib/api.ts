@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User } from './types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -133,6 +133,19 @@ export async function fetchZoneMedians(): Promise<Record<string, number>> {
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   const data = await res.json()
   return data.medians
+}
+
+export async function reGeocodeSonarSignals(): Promise<{ queued: number }> {
+  const res = await authFetch(`${BASE}/api/sonar/re-geocode`, { method: 'POST' })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchSonarZones(): Promise<SonarState[]> {
+  const res = await authFetch(`${BASE}/api/sonar/zones`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.states ?? []
 }
 
 export async function fetchTeam(): Promise<TeamMember[]> {
