@@ -166,28 +166,26 @@ def _run_combined_stream(scan_id: int, cves: list[str] | None):
         yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
                     "fetched": len(raw_signals), "skipped": skipped})
 
-    # PW scrapers — all start simultaneously
+    # PW scrapers — sequential: uvloop cannot safely spawn multiple Chromium processes concurrently
+    # (RuntimeError: Racing with another loop to spawn a process)
     for scraper in _PW_SCRAPERS:
         yield _sse({"type": "portal_start", "portal": scraper.PORTAL_NAME})
-    with ThreadPoolExecutor(max_workers=len(_PW_SCRAPERS)) as pool:
-        futures = {pool.submit(_run_scraper, s, cves): s for s in _PW_SCRAPERS}
-        for fut in as_completed(futures):
-            scraper, raw_signals, err = fut.result()
-            if err:
-                yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
-                continue
-            skipped = 0
-            valid = []
-            for s in raw_signals:
-                s = _sanitize(s)
-                if s is None:
-                    skipped += 1
-                else:
-                    valid.append(s)
-            all_signals.extend(valid)
-            total_skipped += skipped
-            yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
-                        "fetched": len(raw_signals), "skipped": skipped})
+        _, raw_signals, err = _run_scraper(scraper, cves)
+        if err:
+            yield _sse({"type": "portal_error", "portal": scraper.PORTAL_NAME, "error": err})
+            continue
+        skipped = 0
+        valid = []
+        for s in raw_signals:
+            s = _sanitize(s)
+            if s is None:
+                skipped += 1
+            else:
+                valid.append(s)
+        all_signals.extend(valid)
+        total_skipped += skipped
+        yield _sse({"type": "portal_done", "portal": scraper.PORTAL_NAME,
+                    "fetched": len(raw_signals), "skipped": skipped})
 
     # Keyword-based CVE fallback for signals that scrapers couldn't tag (e.g. vivanuncios)
     for s in all_signals:

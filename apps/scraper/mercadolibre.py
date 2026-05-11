@@ -5,7 +5,7 @@ from .pw_base import pw_browser, stealth_page, parse_price, parse_sqm
 from .zones import cve_to_slug
 
 PORTAL_NAME = "mercadolibre"
-_NL_SEARCH_BASE = "https://inmuebles.mercadolibre.com.mx/terrenos/nuevo-leon/"
+_NL_SEARCH_BASE = "https://inmuebles.mercadolibre.com.mx/terrenos/venta/nuevo-leon/"
 _MAX_PAGES = 5
 _PAGE_SIZE = 48  # MercadoLibre shows 48 results per page
 
