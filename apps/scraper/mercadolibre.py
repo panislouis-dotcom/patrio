@@ -1,3 +1,5 @@
+import sys
+import traceback
 from .base import SignalRaw
 from .pw_base import pw_browser, stealth_page, parse_price, parse_sqm
 from .zones import cve_to_slug
@@ -75,10 +77,13 @@ def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
 
             for cve, base in targets:
                 for n in range(1, _MAX_PAGES + 1):
-                    page.goto(_page_url(base, n), wait_until="domcontentloaded", timeout=50000)
+                    url = _page_url(base, n)
+                    page.goto(url, wait_until="domcontentloaded", timeout=50000)
                     page.wait_for_timeout(3000)
                     new = _scrape_cards(page, seen)
                     if not new:
+                        if n == 1:
+                            print(f"[WARN] mercadolibre: 0 cards on page 1 — {url} (title: {page.title()!r})", file=sys.stderr)
                         break
                     if cve:
                         for s in new:
@@ -87,4 +92,6 @@ def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
 
             return all_signals
     except Exception:
+        print(f"[ERROR] mercadolibre scrape failed:", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return []

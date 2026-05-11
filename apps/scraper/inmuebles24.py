@@ -1,3 +1,5 @@
+import sys
+import traceback
 from .base import SignalRaw
 from .pw_base import pw_browser, stealth_page, parse_price, parse_sqm
 from .zones import cve_to_slug, state_to_slug
@@ -93,6 +95,8 @@ def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
                         page.wait_for_timeout(2500)
                         new = _scrape_cards(page, seen)
                         if not new:
+                            if n == 1:
+                                print(f"[WARN] inmuebles24: 0 cards on page 1 — {url} (title: {page.title()!r})", file=sys.stderr)
                             break
                         if cve:
                             for s in new:
@@ -101,4 +105,6 @@ def scrape(cves: list[str] | None = None) -> list[SignalRaw]:
 
             return all_signals
     except Exception:
+        print(f"[ERROR] inmuebles24 scrape failed:", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return []
