@@ -148,11 +148,12 @@ export function SonarTab() {
   const [selectedCves, setSelectedCves] = useState<string[]>([])
 
   // filters
-  const [portalFilter, setPortalFilter] = useState('all')
-  const [zoneFilter,   setZoneFilter]   = useState('all')
-  const [minPrice,  setMinPrice]  = useState(0)
-  const [maxPrice,  setMaxPrice]  = useState(0)
-  const [maxPpsqm,  setMaxPpsqm]  = useState(0)
+  const [portalFilter,  setPortalFilter]  = useState('all')
+  const [zoneFilter,    setZoneFilter]    = useState('all')
+  const [minPrice,      setMinPrice]      = useState(0)
+  const [maxPrice,      setMaxPrice]      = useState(0)
+  const [maxPpsqm,      setMaxPpsqm]      = useState(0)
+  const [excludeLotes,  setExcludeLotes]  = useState(false)
 
   // sort
   const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: 'score', dir: 'desc' })
@@ -205,6 +206,7 @@ export function SonarTab() {
     let list = signals
     if (portalFilter !== 'all') list = list.filter(s => s.portal === portalFilter)
     if (zoneFilter   !== 'all') list = list.filter(s => s.municipioName === zoneFilter)
+    if (excludeLotes) list = list.filter(s => !/lote|terreno/i.test(s.title))
     if (minPrice > 0) list = list.filter(s => s.price >= minPrice)
     if (maxPrice > 0) list = list.filter(s => s.price > 0 && s.price <= maxPrice)
     const withPpsqm = list.map(s => ({ ...s, ppsqm: s.price > 0 && s.sqmLand > 0 ? s.price / s.sqmLand : 0 }))
@@ -224,7 +226,7 @@ export function SonarTab() {
       if (av! > bv!) return sort.dir === 'asc' ?  1 : -1
       return 0
     })
-  }, [signals, portalFilter, zoneFilter, minPrice, maxPrice, maxPpsqm, sort])
+  }, [signals, portalFilter, zoneFilter, excludeLotes, minPrice, maxPrice, maxPpsqm, sort])
 
   function toggleSort(col: SortCol) {
     setSort(prev => prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' })
@@ -432,6 +434,16 @@ export function SonarTab() {
               {MAX_PPSQM_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+          <div style={sep} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={excludeLotes}
+              onChange={e => setExcludeLotes(e.target.checked)}
+              style={{ accentColor: colors.primary, cursor: 'pointer' }}
+            />
+            <span style={{ ...lbl, color: excludeLotes ? colors.neutral : colors.secondary }}>Sin lotes/terrenos</span>
+          </label>
           <div style={{ marginLeft: 'auto', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.06em' }}>
             {displayed.length} señales
           </div>
