@@ -10,6 +10,55 @@ function fmtPpsqm(n: number) {
   return n >= 1_000 ? `$${(n / 1_000).toFixed(0)}k` : `$${Math.round(n)}`
 }
 
+function deduplicateSignals(signals: SonarSignal[]): { signals: SonarSignal[]; removed: number } {
+  const dedupable: SonarSignal[] = []
+  const passthrough: SonarSignal[] = []
+
+  for (const s of signals) {
+    if (s.municipioName && s.price > 0 && s.sqmLand > 0) {
+      dedupable.push(s)
+    } else {
+      passthrough.push(s)
+    }
+  }
+
+  // Group by municipioName, then cluster within group by price ±5% and sqmLand ±10%
+  const byZone = new Map<string, SonarSignal[]>()
+  for (const s of dedupable) {
+    const g = byZone.get(s.municipioName!) ?? []
+    g.push(s)
+    byZone.set(s.municipioName!, g)
+  }
+
+  const result: SonarSignal[] = [...passthrough]
+  for (const group of byZone.values()) {
+    const clusters: SonarSignal[][] = []
+    for (const sig of group) {
+      let placed = false
+      for (const cluster of clusters) {
+        const rep = cluster[0]
+        const priceAvg = (sig.price + rep.price) / 2
+        const sqmAvg   = (sig.sqmLand + rep.sqmLand) / 2
+        if (Math.abs(sig.price - rep.price) / priceAvg <= 0.05 &&
+            Math.abs(sig.sqmLand - rep.sqmLand) / sqmAvg <= 0.10) {
+          cluster.push(sig)
+          placed = true
+          break
+        }
+      }
+      if (!placed) clusters.push([sig])
+    }
+    for (const cluster of clusters) {
+      // Keep signal with best (lowest) $/m²
+      result.push(cluster.reduce((a, b) =>
+        (a.price / a.sqmLand) <= (b.price / b.sqmLand) ? a : b
+      ))
+    }
+  }
+
+  return { signals: result, removed: signals.length - result.length }
+}
+
 type SortCol = 'score' | 'portal' | 'title' | 'price' | 'sqmLand' | 'ppsqm'
 type SortDir = 'asc' | 'desc'
 type DisplaySignal = SonarSignal & { ppsqm: number; score: number | null }
@@ -101,6 +150,10 @@ type EnrichPhase =
   | { phase: 'running'; total: number; done: number }
   | { phase: 'done';    total: number; enriched: number }
 
+type DedupPhase =
+  | { phase: 'idle' }
+  | { phase: 'done'; removed: number }
+
 function PortalRow({ name, state, pulse }: { name: string; state: PortalPhase; pulse: boolean }) {
   const lbl: React.CSSProperties = { fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase' as const }
   const icon      = state.phase === 'done' ? '✓' : state.phase === 'error' ? '✕' : state.phase === 'scanning' ? '●' : '·'
@@ -163,7 +216,9 @@ export function SonarTab() {
   const [portalOrder, setPortalOrder]   = useState<string[]>([])
   const [portalStatus, setPortalStatus] = useState<Record<string, PortalPhase>>({})
   const [enrichPhase, setEnrichPhase]   = useState<EnrichPhase>({ phase: 'idle' })
+  const [dedupPhase,  setDedupPhase]    = useState<DedupPhase>({ phase: 'idle' })
   const [runSummary, setRunSummary]     = useState<{ found: number; skipped: number; enriched: number } | null>(null)
+  const [dedupRemoved, setDedupRemoved] = useState(0)
 
   // pulsing dot for scanning indicator
   const [pulse, setPulse] = useState(true)
@@ -175,7 +230,11 @@ export function SonarTab() {
 
   // load last scan + zone config on mount
   useEffect(() => {
-    fetchSonarSignals().then(setSignals).catch(() => {})
+    fetchSonarSignals().then(sigs => {
+      const { signals: deduped, removed } = deduplicateSignals(sigs)
+      setSignals(deduped)
+      setDedupRemoved(removed)
+    }).catch(() => {})
     fetchZoneMedians().then(setZoneMedians).catch(() => {})
     fetchSonarZones().then(s => {
       setStates(s)
@@ -259,15 +318,19 @@ export function SonarTab() {
       case 'enrich_progress':
         setEnrichPhase({ phase: 'running', total: ev.total, done: ev.done })
         break
-      case 'complete':
+      case 'complete': {
         setEnrichPhase(prev => prev.phase === 'running'
           ? { phase: 'done', total: prev.total, enriched: ev.enriched }
           : { phase: 'done', total: ev.enriched, enriched: ev.enriched })
-        setSignals(ev.signals)
+        const { signals: deduped, removed } = deduplicateSignals(ev.signals)
+        setSignals(deduped)
+        setDedupRemoved(removed)
+        setDedupPhase({ phase: 'done', removed })
         setImportedUrls(new Set())
         setRunSummary({ found: ev.found, skipped: ev.skipped, enriched: ev.enriched })
         fetchZoneMedians().then(setZoneMedians).catch(() => {})
         break
+      }
     }
   }
 
@@ -276,6 +339,7 @@ export function SonarTab() {
     setPortalOrder([])
     setPortalStatus({})
     setEnrichPhase({ phase: 'idle' })
+    setDedupPhase({ phase: 'idle' })
     setRunSummary(null)
     setSignals([])
     setZoneFilter('all')
@@ -325,6 +389,7 @@ export function SonarTab() {
             <span style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.tertiary }}>
               ↑ {runSummary!.found} encontradas
               {runSummary!.enriched > 0 && <span style={{ color: colors.accent1 }}> · ◈ {runSummary!.enriched} m² enriquecidas</span>}
+              {dedupRemoved > 0 && <span style={{ color: colors.secondary }}> · −{dedupRemoved} dupes</span>}
             </span>
           )}
         </div>
@@ -480,6 +545,18 @@ export function SonarTab() {
             {enrichPhase.phase === 'done' && (
               <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.tertiary, letterSpacing: '0.08em' }}>
                 ✓ {enrichPhase.enriched}/{enrichPhase.total} m² actualizadas
+              </div>
+            )}
+
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginTop: '24px', marginBottom: '12px' }}>
+              DEDUPLICACIÓN
+            </div>
+            {dedupPhase.phase === 'idle' && (
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.border, letterSpacing: '0.1em' }}>· pendiente...</div>
+            )}
+            {dedupPhase.phase === 'done' && (
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.tertiary, letterSpacing: '0.08em' }}>
+                ✓ {dedupPhase.removed > 0 ? `${dedupPhase.removed} duplicados eliminados` : 'sin duplicados'}
               </div>
             )}
           </div>

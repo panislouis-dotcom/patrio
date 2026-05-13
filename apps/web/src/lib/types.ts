@@ -106,6 +106,23 @@ export interface TeamMember {
   createdAt: string
 }
 
+export interface ParsedProspect {
+  name:          string
+  address:       string
+  city:          string
+  price:         number   // total asking price → maps to landPrice on save
+  sqmLand:       number
+  notes:         string
+  url:           string
+  status:        string
+  latitude:      number
+  longitude:     number
+  municipioCve:  string
+  municipioName: string
+  colonia:       string
+  stateName:     string
+}
+
 export interface SonarZone  { cve: string; name: string }
 export interface SonarState { name: string; municipios: SonarZone[] }
 
