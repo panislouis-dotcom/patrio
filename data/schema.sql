@@ -459,6 +459,26 @@ CREATE TABLE IF NOT EXISTS analysis_snapshots (
   confidence_score          INTEGER NOT NULL DEFAULT 0 CHECK (confidence_score BETWEEN 0 AND 100),
   confidence_notes          TEXT NOT NULL DEFAULT '',
   data_quality_warnings     JSONB NOT NULL DEFAULT '[]',
+
+  -- ARV override
+  arv_manual_override       REAL,
+
+  -- Build & Hold inputs
+  renta_mensual_estimada    REAL,
+  tasa_interes_credito      REAL,
+  plazo_credito_meses       INTEGER,
+  financiamiento_pct        REAL,
+  gastos_operativos_pct     REAL,
+
+  -- Build & Hold outputs
+  noi_anual                 REAL,
+  debt_service_anual        REAL,
+  cash_flow_anual           REAL,
+  cash_on_cash_yr1_pct      REAL,
+  break_even_months         INTEGER,
+  npv_10yr                  REAL,
+  irr_10yr_pct              REAL,
+
   UNIQUE(prospect_id, generated_at)
 );
 

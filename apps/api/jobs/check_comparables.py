@@ -31,6 +31,14 @@ SOLD_KEYWORDS = [
 REQUEST_TIMEOUT = 15  # seconds
 DELAY_BETWEEN_REQUESTS = 2  # seconds, be polite to portals
 
+# Browser-like headers to avoid bot protection (403s from inmuebles24, etc.)
+REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-MX,es;q=0.9,en;q=0.8",
+}
+
 
 def _is_redirect_to_home(response: httpx.Response) -> bool:
     """Check if we got redirected to the portal's home page."""
@@ -73,9 +81,19 @@ def check_all():
 
         try:
             with httpx.Client(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
-                resp = client.get(url, headers={"User-Agent": "Patrio/1.0 listing-checker"})
+                resp = client.get(url, headers=REQUEST_HEADERS)
 
-            if resp.status_code == 404 or _is_redirect_to_home(resp):
+            if resp.status_code == 403:
+                # Bot protection — don't count as failure, just log and skip
+                with get_db() as conn:
+                    conn.execute(
+                        "UPDATE comparables SET last_checked_at = %s WHERE id = %s",
+                        (now, cid),
+                    )
+                    _log_check(conn, cid, 403, "error", "bot protection (403), skipped")
+                errors += 1
+
+            elif resp.status_code == 404 or _is_redirect_to_home(resp):
                 # Listing removed → likely sold
                 with get_db() as conn:
                     conn.execute(
