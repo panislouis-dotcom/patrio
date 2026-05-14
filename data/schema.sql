@@ -341,3 +341,101 @@ CREATE INDEX IF NOT EXISTS idx_instances_origin    ON process_instances(origin_i
 CREATE INDEX IF NOT EXISTS idx_sonar_signals_cve     ON sonar_signals(municipio_cve);
 CREATE INDEX IF NOT EXISTS idx_sonar_signals_colonia  ON sonar_signals(colonia);
 CREATE INDEX IF NOT EXISTS idx_sonar_scan_signals     ON sonar_scan_signals(scan_id);
+
+-- ─────────────────────────────────────────────────
+-- Analyzer tables (Phase 1)
+-- ─────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS zones (
+  id        BIGSERIAL PRIMARY KEY,
+  name      TEXT NOT NULL UNIQUE CHECK (name != ''),
+  cities    JSONB NOT NULL DEFAULT '[]',
+  notes     TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS remodel_costs (
+  id                  BIGSERIAL PRIMARY KEY,
+  zone_id             BIGINT NOT NULL REFERENCES zones(id),
+  intervention_level  TEXT NOT NULL CHECK (intervention_level IN (
+                        'cosmetica', 'media', 'total', 'obra_nueva')),
+  cost_per_m2_mxn     INTEGER NOT NULL,
+  includes            JSONB NOT NULL DEFAULT '[]',
+  valid_from          DATE NOT NULL DEFAULT CURRENT_DATE,
+  valid_until         DATE,
+  source              TEXT NOT NULL DEFAULT '',
+  notes               TEXT NOT NULL DEFAULT '',
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(zone_id, intervention_level, valid_from)
+);
+
+CREATE TABLE IF NOT EXISTS comparables (
+  id              BIGSERIAL PRIMARY KEY,
+  source_url      TEXT NOT NULL DEFAULT '',
+  source          TEXT NOT NULL CHECK (source IN (
+                    'inmuebles24', 'vivanuncios', 'lamudi', 'propiedades_com',
+                    'mercadolibre', 'doorvel', 'off_market', 'other')),
+  lat             DOUBLE PRECISION NOT NULL,
+  lng             DOUBLE PRECISION NOT NULL,
+  address         TEXT NOT NULL DEFAULT '',
+  neighborhood    TEXT NOT NULL DEFAULT '',
+  city            TEXT NOT NULL DEFAULT 'Monterrey',
+  price_mxn       BIGINT NOT NULL,
+  area_m2         REAL NOT NULL,
+  price_per_m2    REAL GENERATED ALWAYS AS (price_mxn::real / NULLIF(area_m2, 0)) STORED,
+  bedrooms        INTEGER,
+  bathrooms       INTEGER,
+  parking_spots   INTEGER,
+  property_type   TEXT NOT NULL CHECK (property_type IN (
+                    'casa', 'depto', 'duplex', 'lote', 'local')),
+  condition       TEXT NOT NULL CHECK (condition IN (
+                    'remodelada', 'nueva', 'semi_nueva', 'por_remodelar')),
+  style_tags      JSONB NOT NULL DEFAULT '[]',
+  listed_date     DATE,
+  sold_date       DATE,
+  notes           TEXT NOT NULL DEFAULT '',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_comparables_geo
+  ON comparables(lat, lng);
+CREATE INDEX IF NOT EXISTS idx_comparables_city
+  ON comparables(city);
+CREATE INDEX IF NOT EXISTS idx_comparables_type_condition
+  ON comparables(property_type, condition);
+
+CREATE TABLE IF NOT EXISTS analysis_snapshots (
+  id                        BIGSERIAL PRIMARY KEY,
+  prospect_id               BIGINT NOT NULL REFERENCES prospects(id),
+  generated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  purchase_price            REAL NOT NULL,
+  remodel_cost_estimate     REAL NOT NULL,
+  remodel_cost_per_m2       REAL NOT NULL,
+  intervention_level        TEXT NOT NULL,
+  transaction_costs         REAL NOT NULL,
+  financing_costs           REAL NOT NULL,
+  total_cost                REAL NOT NULL,
+  holding_period_months     INTEGER NOT NULL,
+  exit_price_manual         REAL,
+  exit_price_calculated_low REAL,
+  exit_price_calculated_mid REAL,
+  exit_price_calculated_high REAL,
+  exit_price_source         TEXT NOT NULL DEFAULT 'manual'
+                              CHECK (exit_price_source IN ('manual','calculated','blended')),
+  exit_price_used           REAL NOT NULL,
+  manual_vs_market_delta_pct REAL,
+  comparable_count          INTEGER NOT NULL DEFAULT 0,
+  comparable_ids            JSONB NOT NULL DEFAULT '[]',
+  avg_comp_distance_km      REAL,
+  gross_margin              REAL,
+  roi_pct                   REAL,
+  irr_pct                   REAL,
+  cap_rate_pct              REAL,
+  confidence_score          INTEGER NOT NULL DEFAULT 0 CHECK (confidence_score BETWEEN 0 AND 100),
+  confidence_notes          TEXT NOT NULL DEFAULT '',
+  data_quality_warnings     JSONB NOT NULL DEFAULT '[]',
+  UNIQUE(prospect_id, generated_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_prospect_date
+  ON analysis_snapshots(prospect_id, generated_at DESC);
