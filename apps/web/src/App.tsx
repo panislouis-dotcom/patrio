@@ -42,9 +42,10 @@ function AppShell() {
           <Route path="/prospectos/tabla" element={<ProtectedRoute><ProspectTable /></ProtectedRoute>} />
           <Route path="/prospectos/tabla/:id" element={<ProtectedRoute><ProspectDetailPage /></ProtectedRoute>} />
           <Route path="/prospectos/mapa" element={<ProtectedRoute><ProspectMap /></ProtectedRoute>} />
+          <Route path="/prospectos/sonar" element={<ProtectedRoute><SonarTab /></ProtectedRoute>} />
+          <Route path="/sonar" element={<Navigate to="/prospectos/sonar" replace />} />
           <Route path="/proyectos" element={<ProtectedRoute><ProjectsTab /></ProtectedRoute>} />
           <Route path="/proyectos/:id" element={<ProtectedRoute><ProjectDetailPage /></ProtectedRoute>} />
-          <Route path="/sonar" element={<ProtectedRoute><SonarTab /></ProtectedRoute>} />
           <Route path="/procesos" element={<ProtectedRoute><ProcesosTab /></ProtectedRoute>}>
             <Route index element={<Navigate to="plantillas" replace />} />
             <Route path="plantillas" element={<ProcesoTemplateList />} />

@@ -1,3 +1,5 @@
+import os
+import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +11,20 @@ from api.routes.auth import router as auth_router
 from api.db import get_db
 from api.process_db import sync_periodic_series
 from api import geo
+
+
+_REQUIRED_ENV = [
+    "DATABASE_URL",
+    "JWT_SECRET",
+    "ANTHROPIC_API_KEY",
+]
+
+
+def _check_env() -> None:
+    missing = [k for k in _REQUIRED_ENV if not os.environ.get(k)]
+    if missing:
+        print(f"[FATAL] Missing required environment variables: {', '.join(missing)}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _seed_admin() -> None:
@@ -27,6 +43,7 @@ def _seed_admin() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _check_env()
     _seed_admin()
     sync_periodic_series()
     geo.load_colonias()

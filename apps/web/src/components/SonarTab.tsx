@@ -1,13 +1,62 @@
 import { useEffect, useMemo, useState } from 'react'
-import { streamSonarRun, importSonarSignal, fetchSonarSignals, fetchZoneMedians, fetchProspects } from '../lib/api'
+import { streamSonarRun, importSonarSignal, fetchSonarSignals, fetchZoneMedians, fetchProspects, fetchSonarZones } from '../lib/api'
 import type { SonarRunEvent } from '../lib/api'
-import type { SonarSignal } from '../lib/types'
+import type { SonarSignal, SonarState } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtM } from '../lib/fmt'
 
 function fmtPpsqm(n: number) {
   if (!n) return '—'
   return n >= 1_000 ? `$${(n / 1_000).toFixed(0)}k` : `$${Math.round(n)}`
+}
+
+function deduplicateSignals(signals: SonarSignal[]): { signals: SonarSignal[]; removed: number } {
+  const dedupable: SonarSignal[] = []
+  const passthrough: SonarSignal[] = []
+
+  for (const s of signals) {
+    if (s.municipioName && s.price > 0 && s.sqmLand > 0) {
+      dedupable.push(s)
+    } else {
+      passthrough.push(s)
+    }
+  }
+
+  // Group by municipioName, then cluster within group by price ±5% and sqmLand ±10%
+  const byZone = new Map<string, SonarSignal[]>()
+  for (const s of dedupable) {
+    const g = byZone.get(s.municipioName!) ?? []
+    g.push(s)
+    byZone.set(s.municipioName!, g)
+  }
+
+  const result: SonarSignal[] = [...passthrough]
+  for (const group of byZone.values()) {
+    const clusters: SonarSignal[][] = []
+    for (const sig of group) {
+      let placed = false
+      for (const cluster of clusters) {
+        const rep = cluster[0]
+        const priceAvg = (sig.price + rep.price) / 2
+        const sqmAvg   = (sig.sqmLand + rep.sqmLand) / 2
+        if (Math.abs(sig.price - rep.price) / priceAvg <= 0.05 &&
+            Math.abs(sig.sqmLand - rep.sqmLand) / sqmAvg <= 0.10) {
+          cluster.push(sig)
+          placed = true
+          break
+        }
+      }
+      if (!placed) clusters.push([sig])
+    }
+    for (const cluster of clusters) {
+      // Keep signal with best (lowest) $/m²
+      result.push(cluster.reduce((a, b) =>
+        (a.price / a.sqmLand) <= (b.price / b.sqmLand) ? a : b
+      ))
+    }
+  }
+
+  return { signals: result, removed: signals.length - result.length }
 }
 
 type SortCol = 'score' | 'portal' | 'title' | 'price' | 'sqmLand' | 'ppsqm'
@@ -29,13 +78,6 @@ function computeScores(signals: (SonarSignal & { ppsqm: number })[]): DisplaySig
       : null,
   }))
 }
-
-const ACTIVE_MUNICIPIOS = [
-  { cve: '19039', name: 'Monterrey' },
-  { cve: '19019', name: 'San Pedro' },
-  { cve: '19046', name: 'Santa Catarina' },
-  { cve: '19021', name: 'García' },
-]
 
 const MIN_PRICE_OPTS = [
   { label: 'Sin mínimo', value: 0 },
@@ -108,6 +150,10 @@ type EnrichPhase =
   | { phase: 'running'; total: number; done: number }
   | { phase: 'done';    total: number; enriched: number }
 
+type DedupPhase =
+  | { phase: 'idle' }
+  | { phase: 'done'; removed: number }
+
 function PortalRow({ name, state, pulse }: { name: string; state: PortalPhase; pulse: boolean }) {
   const lbl: React.CSSProperties = { fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase' as const }
   const icon      = state.phase === 'done' ? '✓' : state.phase === 'error' ? '✕' : state.phase === 'scanning' ? '●' : '·'
@@ -144,18 +190,23 @@ export function SonarTab() {
     }).catch(() => {})
   }, [])
 
-  // colonia-level median $/m² from historical DB — {colonia: median}
+  // municipio-level median $/m² from historical DB — {municipio_name: median}
   const [zoneMedians, setZoneMedians] = useState<Record<string, number>>({})
+
+  // geographic zone data (loaded from API)
+  const [states, setStates]               = useState<SonarState[]>([])
+  const [selectedState, setSelectedState] = useState<string>('')
 
   // zone selection for scan (CVE codes)
   const [selectedCves, setSelectedCves] = useState<string[]>([])
 
   // filters
-  const [portalFilter, setPortalFilter] = useState('all')
-  const [zoneFilter,   setZoneFilter]   = useState('all')
-  const [minPrice,  setMinPrice]  = useState(0)
-  const [maxPrice,  setMaxPrice]  = useState(0)
-  const [maxPpsqm,  setMaxPpsqm]  = useState(0)
+  const [portalFilter,  setPortalFilter]  = useState('all')
+  const [zoneFilter,    setZoneFilter]    = useState('all')
+  const [minPrice,      setMinPrice]      = useState(0)
+  const [maxPrice,      setMaxPrice]      = useState(0)
+  const [maxPpsqm,      setMaxPpsqm]      = useState(0)
+  const [excludeLotes,  setExcludeLotes]  = useState(false)
 
   // sort
   const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: 'score', dir: 'desc' })
@@ -165,7 +216,9 @@ export function SonarTab() {
   const [portalOrder, setPortalOrder]   = useState<string[]>([])
   const [portalStatus, setPortalStatus] = useState<Record<string, PortalPhase>>({})
   const [enrichPhase, setEnrichPhase]   = useState<EnrichPhase>({ phase: 'idle' })
+  const [dedupPhase,  setDedupPhase]    = useState<DedupPhase>({ phase: 'idle' })
   const [runSummary, setRunSummary]     = useState<{ found: number; skipped: number; enriched: number } | null>(null)
+  const [dedupRemoved, setDedupRemoved] = useState(0)
 
   // pulsing dot for scanning indicator
   const [pulse, setPulse] = useState(true)
@@ -175,10 +228,18 @@ export function SonarTab() {
     return () => clearInterval(id)
   }, [running])
 
-  // load last scan on mount
+  // load last scan + zone config on mount
   useEffect(() => {
-    fetchSonarSignals().then(setSignals).catch(() => {})
+    fetchSonarSignals().then(sigs => {
+      const { signals: deduped, removed } = deduplicateSignals(sigs)
+      setSignals(deduped)
+      setDedupRemoved(removed)
+    }).catch(() => {})
     fetchZoneMedians().then(setZoneMedians).catch(() => {})
+    fetchSonarZones().then(s => {
+      setStates(s)
+      if (s.length > 0) setSelectedState(s[0].name)
+    }).catch(() => {})
   }, [])
 
   const portals = useMemo(() => Array.from(new Set(signals.map(s => s.portal))).sort(), [signals])
@@ -188,10 +249,23 @@ export function SonarTab() {
     [signals],
   )
 
+  const currentMunicipios = useMemo(
+    () => states.find(s => s.name === selectedState)?.municipios ?? [],
+    [states, selectedState],
+  )
+
+  function selectAllCities()  { setSelectedCves(currentMunicipios.map(m => m.cve)) }
+  function clearAllCities()   { setSelectedCves([]) }
+  function onStateChange(name: string) {
+    setSelectedState(name)
+    setSelectedCves([])
+  }
+
   const displayed = useMemo((): DisplaySignal[] => {
     let list = signals
     if (portalFilter !== 'all') list = list.filter(s => s.portal === portalFilter)
     if (zoneFilter   !== 'all') list = list.filter(s => s.municipioName === zoneFilter)
+    if (excludeLotes) list = list.filter(s => !/lote|terreno/i.test(s.title))
     if (minPrice > 0) list = list.filter(s => s.price >= minPrice)
     if (maxPrice > 0) list = list.filter(s => s.price > 0 && s.price <= maxPrice)
     const withPpsqm = list.map(s => ({ ...s, ppsqm: s.price > 0 && s.sqmLand > 0 ? s.price / s.sqmLand : 0 }))
@@ -211,7 +285,7 @@ export function SonarTab() {
       if (av! > bv!) return sort.dir === 'asc' ?  1 : -1
       return 0
     })
-  }, [signals, portalFilter, zoneFilter, minPrice, maxPrice, maxPpsqm, sort])
+  }, [signals, portalFilter, zoneFilter, excludeLotes, minPrice, maxPrice, maxPpsqm, sort])
 
   function toggleSort(col: SortCol) {
     setSort(prev => prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' })
@@ -244,15 +318,19 @@ export function SonarTab() {
       case 'enrich_progress':
         setEnrichPhase({ phase: 'running', total: ev.total, done: ev.done })
         break
-      case 'complete':
+      case 'complete': {
         setEnrichPhase(prev => prev.phase === 'running'
           ? { phase: 'done', total: prev.total, enriched: ev.enriched }
           : { phase: 'done', total: ev.enriched, enriched: ev.enriched })
-        setSignals(ev.signals)
+        const { signals: deduped, removed } = deduplicateSignals(ev.signals)
+        setSignals(deduped)
+        setDedupRemoved(removed)
+        setDedupPhase({ phase: 'done', removed })
         setImportedUrls(new Set())
         setRunSummary({ found: ev.found, skipped: ev.skipped, enriched: ev.enriched })
         fetchZoneMedians().then(setZoneMedians).catch(() => {})
         break
+      }
     }
   }
 
@@ -261,6 +339,7 @@ export function SonarTab() {
     setPortalOrder([])
     setPortalStatus({})
     setEnrichPhase({ phase: 'idle' })
+    setDedupPhase({ phase: 'idle' })
     setRunSummary(null)
     setSignals([])
     setZoneFilter('all')
@@ -310,32 +389,57 @@ export function SonarTab() {
             <span style={{ fontFamily: fonts.label, fontSize: '10px', color: colors.tertiary }}>
               ↑ {runSummary!.found} encontradas
               {runSummary!.enriched > 0 && <span style={{ color: colors.accent1 }}> · ◈ {runSummary!.enriched} m² enriquecidas</span>}
+              {dedupRemoved > 0 && <span style={{ color: colors.secondary }}> · −{dedupRemoved} dupes</span>}
             </span>
           )}
         </div>
 
-        {/* Zone chip selector — sends CVEs, shows display names */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
-          <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', marginRight: '4px' }}>ZONA</span>
-          {ACTIVE_MUNICIPIOS.map(({ cve, name }) => {
-            const active = selectedCves.includes(cve)
-            return (
-              <button key={cve} disabled={running} onClick={() => toggleCve(cve)} style={{
-                background: active ? colors.primary : 'transparent',
-                border: `1px solid ${active ? colors.primary : colors.border}`,
-                color: active ? colors.neutral : colors.secondary,
-                fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em',
-                padding: '3px 7px', cursor: running ? 'not-allowed' : 'pointer',
-                opacity: running ? 0.5 : 1,
-              }}>{name}</button>
-            )
-          })}
-          {selectedCves.length > 0 && (
-            <button disabled={running} onClick={() => setSelectedCves([])} style={{
-              background: 'none', border: 'none', color: colors.secondary,
-              fontFamily: fonts.label, fontSize: '10px', cursor: 'pointer', padding: '2px 4px', opacity: 0.6,
-            }}>✕</button>
-          )}
+        {/* Geographic search selector — state dropdown + city chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+          {/* State dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em' }}>ESTADO</span>
+            <select
+              value={selectedState}
+              onChange={e => onStateChange(e.target.value)}
+              disabled={running}
+              style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, fontFamily: fonts.label, fontSize: '9px', padding: '3px 5px', cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.5 : 1 }}
+            >
+              {states.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+          </div>
+
+          {/* City chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em' }}>CIUDAD</span>
+            {currentMunicipios.map(({ cve, name }) => {
+              const active = selectedCves.includes(cve)
+              const label  = name.split(' ').slice(0, 2).join(' ')
+              return (
+                <button key={cve} disabled={running} onClick={() => toggleCve(cve)}
+                  title={name}
+                  style={{
+                    background: active ? colors.primary : 'transparent',
+                    border: `1px solid ${active ? colors.primary : colors.border}`,
+                    color: active ? colors.neutral : colors.secondary,
+                    fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em',
+                    padding: '3px 7px', cursor: running ? 'not-allowed' : 'pointer',
+                    opacity: running ? 0.5 : 1,
+                  }}>{label}</button>
+              )
+            })}
+            <button disabled={running} onClick={selectAllCities} style={{
+              background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary,
+              fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em',
+              padding: '3px 6px', cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.5 : 0.6,
+            }}>Todas</button>
+            {selectedCves.length > 0 && (
+              <button disabled={running} onClick={clearAllCities} style={{
+                background: 'none', border: 'none', color: colors.secondary,
+                fontFamily: fonts.label, fontSize: '10px', cursor: 'pointer', padding: '2px 4px', opacity: 0.6,
+              }}>✕</button>
+            )}
+          </div>
         </div>
 
         <button onClick={handleRun} disabled={running} style={{
@@ -395,6 +499,16 @@ export function SonarTab() {
               {MAX_PPSQM_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+          <div style={sep} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={excludeLotes}
+              onChange={e => setExcludeLotes(e.target.checked)}
+              style={{ accentColor: colors.primary, cursor: 'pointer' }}
+            />
+            <span style={{ ...lbl, color: excludeLotes ? colors.neutral : colors.secondary }}>Sin lotes/terrenos</span>
+          </label>
           <div style={{ marginLeft: 'auto', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.06em' }}>
             {displayed.length} señales
           </div>
@@ -431,6 +545,18 @@ export function SonarTab() {
             {enrichPhase.phase === 'done' && (
               <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.tertiary, letterSpacing: '0.08em' }}>
                 ✓ {enrichPhase.enriched}/{enrichPhase.total} m² actualizadas
+              </div>
+            )}
+
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginTop: '24px', marginBottom: '12px' }}>
+              DEDUPLICACIÓN
+            </div>
+            {dedupPhase.phase === 'idle' && (
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.border, letterSpacing: '0.1em' }}>· pendiente...</div>
+            )}
+            {dedupPhase.phase === 'done' && (
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.tertiary, letterSpacing: '0.08em' }}>
+                ✓ {dedupPhase.removed > 0 ? `${dedupPhase.removed} duplicados eliminados` : 'sin duplicados'}
               </div>
             )}
           </div>
@@ -493,7 +619,7 @@ export function SonarTab() {
                   <th style={{ ...TH, textAlign: 'right' }} onClick={() => toggleSort('price')}>PRECIO <SortMark col="price" sort={sort} /></th>
                   <th style={{ ...TH, textAlign: 'right' }} onClick={() => toggleSort('sqmLand')}>M² <SortMark col="sqmLand" sort={sort} /></th>
                   <th style={{ ...TH, textAlign: 'right' }} onClick={() => toggleSort('ppsqm')}>$/M² <SortMark col="ppsqm" sort={sort} /></th>
-                  <th style={{ ...TH, textAlign: 'right' }}>VS ZONA</th>
+                  <th style={{ ...TH, textAlign: 'right' }}>VS MUN</th>
                   <th style={{ padding: '6px 10px', width: '160px' }} />
                 </tr>
               </thead>
@@ -542,7 +668,7 @@ export function SonarTab() {
                       <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{fmtPpsqm(s.ppsqm)}</td>
                       <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: fonts.label, fontSize: '11px' }}>
                         {(() => {
-                          const median = s.colonia ? zoneMedians[s.colonia] : undefined
+                          const median = s.municipioName ? zoneMedians[s.municipioName] : undefined
                           if (!median || !s.ppsqm) return <span style={{ color: colors.border }}>—</span>
                           const pct = ((s.ppsqm - median) / median) * 100
                           const cheaper = pct < 0

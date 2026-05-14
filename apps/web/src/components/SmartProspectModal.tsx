@@ -1,0 +1,330 @@
+import { useEffect, useState } from 'react'
+import { parseProspect, createProspect } from '../lib/api'
+import type { ParsedProspect } from '../lib/types'
+import { colors, fonts } from '../lib/theme'
+
+interface Props {
+  onClose: () => void
+  onCreated: () => void
+}
+
+const _DEFAULTS = {
+  status:               'evaluating',
+  acquisitionCostPct:   0.065,
+  constructionOverhead: 1.3,
+  latitude:             0,
+  longitude:            0,
+  sqmLand:              0,
+  sqmConstruction:      0,
+  landPrice:            0,
+  permitsCost:          0,
+  subdivisionCost:      0,
+  constructionCostPerSqm: 0,
+  projectedSale:        0,
+  rentMonthly:          0,
+  holdMonths:           12,
+  notes:                '-',
+}
+
+const inp: React.CSSProperties = {
+  background:   'transparent',
+  border:       'none',
+  color:        colors.neutral,
+  fontFamily:   fonts.sans,
+  fontSize:     '13px',
+  padding:      '4px 0',
+  width:        '100%',
+  outline:      'none',
+}
+
+function Field({
+  label, value, onChange, type = 'text', filled = false, placeholder = '',
+}: {
+  label: string
+  value: string | number
+  onChange: (v: string) => void
+  type?: string
+  filled?: boolean
+  placeholder?: string
+}) {
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+        <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          {label}
+        </span>
+        {filled && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.06em' }}>✓</span>}
+      </div>
+      <div style={{ borderBottom: `1px solid ${filled ? colors.primary : colors.border}`, transition: 'border-color 0.2s' }}>
+        <input
+          type={type}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          style={{ ...inp, color: filled ? colors.neutral : colors.secondary }}
+        />
+      </div>
+    </div>
+  )
+}
+
+export function SmartProspectModal({ onClose, onCreated }: Props) {
+  const [step, setStep]           = useState<'capture' | 'review'>('capture')
+  const [url, setUrl]             = useState('')
+  const [text, setText]           = useState('')
+  const [parsing, setParsing]     = useState(false)
+  const [parseError, setParseError] = useState<string | null>(null)
+
+  const [parsed, setParsed]       = useState<ParsedProspect | null>(null)
+  const [name, setName]           = useState('')
+  const [address, setAddress]     = useState('')
+  const [city, setCity]           = useState('Monterrey')
+  const [landPrice, setLandPrice] = useState(0)
+  const [sqmLand, setSqmLand]     = useState(0)
+  const [rentMonthly, setRentMonthly] = useState(0)
+
+  const [saving, setSaving]       = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  async function handleAnalyze() {
+    setParsing(true)
+    setParseError(null)
+    try {
+      const result = await parseProspect(url.trim(), text.trim())
+      setParsed(result)
+      setName(result.name || '')
+      setAddress(result.address || '')
+      setCity(result.city || 'Monterrey')
+      setLandPrice(result.price || 0)
+      setSqmLand(result.sqmLand || 0)
+      setStep('review')
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Error al analizar')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  async function handleSave() {
+    if (!name.trim()) { setSaveError('El nombre es requerido'); return }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await createProspect({
+        ..._DEFAULTS,
+        name:        name.trim(),
+        address:     address.trim() || name.trim(),
+        city:        city.trim() || 'Monterrey',
+        landPrice,
+        sqmLand,
+        rentMonthly,
+        url:         url.trim() || undefined,
+        notes:       text.trim() || parsed?.notes || undefined,
+        latitude:    parsed?.latitude  ?? 0,
+        longitude:   parsed?.longitude ?? 0,
+      })
+      onCreated()
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Count how many key fields were filled by the parser
+  const filledCount = parsed
+    ? [parsed.name, parsed.address, parsed.price, parsed.sqmLand, parsed.latitude]
+        .filter(v => v !== '' && v !== 0 && v != null).length
+    : 0
+
+  const canAnalyze = (url.trim() || text.trim()) && !parsing
+
+  const overlay: React.CSSProperties = {
+    position: 'fixed', inset: 0,
+    background: 'rgba(0,0,0,0.7)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 1000,
+  }
+  const box: React.CSSProperties = {
+    background:   colors.surfaceAlt,
+    border:       `1px solid ${colors.border}`,
+    borderRadius: '2px',
+    padding:      '28px 32px',
+    width:        '440px',
+    maxWidth:     'calc(100vw - 32px)',
+    maxHeight:    'calc(100vh - 64px)',
+    overflowY:    'auto',
+  }
+  const btn = (primary: boolean, disabled = false): React.CSSProperties => ({
+    background:   primary ? colors.primary : 'transparent',
+    border:       primary ? 'none' : `1px solid ${colors.border}`,
+    color:        primary ? colors.neutral : colors.secondary,
+    fontFamily:   fonts.label,
+    fontSize:     '10px',
+    letterSpacing: '0.1em',
+    padding:      '6px 14px',
+    cursor:       disabled ? 'not-allowed' : 'pointer',
+    opacity:      disabled ? 0.5 : 1,
+  })
+
+  return (
+    <div style={overlay} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={box}>
+
+        {/* Header */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ fontFamily: fonts.label, fontSize: '11px', color: colors.neutral, letterSpacing: '0.12em' }}>
+            NUEVO PROSPECTO
+          </div>
+          {step === 'review' && (
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.08em', marginTop: '4px' }}>
+              ◈ {filledCount} campo{filledCount !== 1 ? 's' : ''} encontrado{filledCount !== 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
+
+        {/* ── Step 1: Capture ── */}
+        {step === 'capture' && (
+          <>
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '4px', textTransform: 'uppercase' }}>
+                URL (opcional)
+              </div>
+              <div style={{ borderBottom: `1px solid ${colors.border}` }}>
+                <input
+                  type="url"
+                  value={url}
+                  onChange={e => setUrl(e.target.value)}
+                  placeholder="https://lamudi.com.mx/..."
+                  style={{ ...inp, color: url ? colors.neutral : colors.secondary }}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '4px', textTransform: 'uppercase' }}>
+                Descripción / notas
+              </div>
+              <div style={{ border: `1px solid ${colors.border}`, padding: '8px' }}>
+                <textarea
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  placeholder="Pega descripción, mensaje, o escribe lo que sabes de la propiedad…"
+                  rows={4}
+                  style={{ ...inp, resize: 'vertical', lineHeight: '1.5', color: text ? colors.neutral : colors.secondary }}
+                />
+              </div>
+            </div>
+
+            {parseError && (
+              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: 'tomato', marginBottom: '16px' }}>
+                {parseError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button style={btn(false)} onClick={onClose}>CANCELAR</button>
+              <button style={btn(true, !canAnalyze)} onClick={handleAnalyze} disabled={!canAnalyze}>
+                {parsing ? 'ANALIZANDO…' : 'ANALIZAR ▸'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── Step 2: Review ── */}
+        {step === 'review' && (
+          <>
+            <Field
+              label="Nombre"
+              value={name}
+              onChange={setName}
+              filled={!!parsed?.name}
+              placeholder="Nombre del prospecto"
+            />
+            <Field
+              label="Dirección"
+              value={address}
+              onChange={setAddress}
+              filled={!!parsed?.address}
+              placeholder="Calle, colonia, ciudad"
+            />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Field
+                label="Ciudad"
+                value={city}
+                onChange={setCity}
+                filled={!!parsed?.city && parsed.city !== 'Monterrey'}
+                placeholder="Monterrey"
+              />
+              <Field
+                label="M² Terreno"
+                value={sqmLand || ''}
+                onChange={v => setSqmLand(parseFloat(v) || 0)}
+                type="number"
+                filled={(parsed?.sqmLand ?? 0) > 0}
+                placeholder="0"
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Field
+                label="Precio terreno (MXN)"
+                value={landPrice || ''}
+                onChange={v => setLandPrice(parseFloat(v) || 0)}
+                type="number"
+                filled={(parsed?.price ?? 0) > 0}
+                placeholder="0"
+              />
+              <Field
+                label="Renta mensual (MXN)"
+                value={rentMonthly || ''}
+                onChange={v => setRentMonthly(parseFloat(v) || 0)}
+                type="number"
+                filled={false}
+                placeholder="0"
+              />
+            </div>
+
+            {/* Geo info strip */}
+            {parsed && (parsed.municipioName || parsed.latitude !== 0) && (
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', padding: '8px 10px', background: `${colors.border}44`, borderRadius: '2px', flexWrap: 'wrap' }}>
+                {parsed.municipioName && (
+                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.06em' }}>
+                    📍 {parsed.municipioName}{parsed.colonia ? ` · ${parsed.colonia}` : ''}
+                  </span>
+                )}
+                {parsed.latitude !== 0 && (
+                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.04em' }}>
+                    {parsed.latitude.toFixed(4)}, {parsed.longitude.toFixed(4)} · geo ✓
+                  </span>
+                )}
+              </div>
+            )}
+
+            {saveError && (
+              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: 'tomato', marginBottom: '16px' }}>
+                {saveError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+              <button style={btn(false)} onClick={() => { setStep('capture'); setSaveError(null) }}>← VOLVER</button>
+              <button style={btn(true, saving || !name.trim())} onClick={handleSave} disabled={saving || !name.trim()}>
+                {saving ? 'GUARDANDO…' : 'GUARDAR ▸'}
+              </button>
+            </div>
+          </>
+        )}
+
+      </div>
+    </div>
+  )
+}

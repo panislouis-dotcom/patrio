@@ -16,7 +16,8 @@ if _env_file.exists():
 
 # ── Always use the test DB — never the dev DB ────────────────────────────────
 _TEST_URL = (
-    _env.get("TEST_DATABASE_URL")
+    os.environ.get("TEST_DATABASE_URL")
+    or _env.get("TEST_DATABASE_URL")
     or "postgresql://postgres:postgres@localhost:5432/refigan_test"
 )
 os.environ["DATABASE_URL"] = _TEST_URL

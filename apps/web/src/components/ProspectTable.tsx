@@ -6,7 +6,7 @@ import type { Prospect, ScoreWeights } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtPct, fmtM } from '../lib/fmt'
 import { ScoreWeights as ScoreWeightsPanel } from './ScoreWeights'
-import { QuickCaptureModal } from './QuickCaptureModal'
+import { SmartProspectModal } from './SmartProspectModal'
 import { PROSPECT_STATUS_COLOR } from '../lib/status'
 
 type SortKey = 'score' | 'roi' | 'capRate' | 'profit' | 'totalInvestment' | 'projectedSale' | 'holdMonths'
@@ -166,7 +166,7 @@ export function ProspectTable() {
       </div>
 
       {showCapture && (
-        <QuickCaptureModal
+        <SmartProspectModal
           onClose={() => setShowCapture(false)}
           onCreated={() => {
             setShowCapture(false)
