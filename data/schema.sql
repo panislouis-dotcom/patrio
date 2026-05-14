@@ -346,3 +346,146 @@ CREATE INDEX IF NOT EXISTS idx_sonar_scan_signals     ON sonar_scan_signals(scan
 -- Migration: add state_name for existing databases
 ALTER TABLE sonar_signals ADD COLUMN IF NOT EXISTS state_name TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_sonar_signals_state ON sonar_signals(state_name);
+
+-- ─────────────────────────────────────────────────
+-- Analyzer tables (Phase 1)
+-- ─────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS zones (
+  id        BIGSERIAL PRIMARY KEY,
+  name      TEXT NOT NULL UNIQUE CHECK (name != ''),
+  cities    JSONB NOT NULL DEFAULT '[]',
+  notes     TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS remodel_costs (
+  id                  BIGSERIAL PRIMARY KEY,
+  zone_id             BIGINT NOT NULL REFERENCES zones(id),
+  intervention_level  TEXT NOT NULL CHECK (intervention_level IN (
+                        'cosmetica', 'media', 'total', 'obra_nueva')),
+  cost_per_m2_mxn     INTEGER NOT NULL,
+  includes            JSONB NOT NULL DEFAULT '[]',
+  valid_from          DATE NOT NULL DEFAULT CURRENT_DATE,
+  valid_until         DATE,
+  source              TEXT NOT NULL DEFAULT '',
+  notes               TEXT NOT NULL DEFAULT '',
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(zone_id, intervention_level, valid_from)
+);
+
+CREATE TABLE IF NOT EXISTS comparables (
+  id                  BIGSERIAL PRIMARY KEY,
+  address             TEXT NOT NULL CHECK (address != ''),
+  zone_id             BIGINT NOT NULL REFERENCES zones(id),
+  m2                  REAL NOT NULL CHECK (m2 > 0),
+  price               BIGINT NOT NULL CHECK (price > 0),
+  listing_url         TEXT NOT NULL CHECK (listing_url != ''),
+  source_portal       TEXT NOT NULL CHECK (source_portal IN (
+                        'inmuebles24', 'vivanuncios', 'lamudi', 'propiedades_com',
+                        'mercadolibre', 'doorvel', 'off_market', 'other')),
+  listed_at           TIMESTAMPTZ NOT NULL,
+  captured_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  price_per_m2        REAL GENERATED ALWAYS AS (price::real / NULLIF(m2, 0)) STORED,
+  neighborhood        TEXT NOT NULL DEFAULT '',
+  city                TEXT NOT NULL DEFAULT 'Monterrey',
+  lat                 DOUBLE PRECISION,
+  lng                 DOUBLE PRECISION,
+  bedrooms            INTEGER,
+  bathrooms           INTEGER,
+  parking_spots       INTEGER,
+  property_type       TEXT NOT NULL DEFAULT 'casa' CHECK (property_type IN (
+                        'casa', 'depto', 'duplex', 'lote', 'local')),
+  condition           TEXT NOT NULL DEFAULT 'remodelada' CHECK (condition IN (
+                        'remodelada', 'nueva', 'semi_nueva', 'por_remodelar')),
+  style_tags          JSONB NOT NULL DEFAULT '[]',
+  status              TEXT NOT NULL DEFAULT 'active' CHECK (status IN (
+                        'active', 'sold', 'withdrawn', 'expired')),
+  last_checked_at     TIMESTAMPTZ,
+  last_seen_active    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sold_at             TIMESTAMPTZ,
+  check_failure_count INTEGER NOT NULL DEFAULT 0,
+  notes               TEXT NOT NULL DEFAULT '',
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_comparables_geo
+  ON comparables(lat, lng);
+CREATE INDEX IF NOT EXISTS idx_comparables_zone
+  ON comparables(zone_id);
+CREATE INDEX IF NOT EXISTS idx_comparables_status
+  ON comparables(status);
+CREATE INDEX IF NOT EXISTS idx_comparables_type_condition
+  ON comparables(property_type, condition);
+CREATE INDEX IF NOT EXISTS idx_comparables_last_seen
+  ON comparables(last_seen_active);
+
+CREATE TABLE IF NOT EXISTS comparable_check_log (
+  id              BIGSERIAL PRIMARY KEY,
+  comparable_id   BIGINT NOT NULL REFERENCES comparables(id) ON DELETE CASCADE,
+  checked_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  http_status     INTEGER,
+  result          TEXT NOT NULL CHECK (result IN (
+                    'active', 'sold', 'error', 'timeout', 'redirect')),
+  detail          TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_check_log_comparable
+  ON comparable_check_log(comparable_id, checked_at DESC);
+
+CREATE TABLE IF NOT EXISTS analysis_snapshots (
+  id                        BIGSERIAL PRIMARY KEY,
+  prospect_id               BIGINT NOT NULL REFERENCES prospects(id),
+  generated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  purchase_price            REAL NOT NULL,
+  remodel_cost_estimate     REAL NOT NULL,
+  remodel_cost_per_m2       REAL NOT NULL,
+  intervention_level        TEXT NOT NULL,
+  transaction_costs         REAL NOT NULL,
+  financing_costs           REAL NOT NULL,
+  total_cost                REAL NOT NULL,
+  holding_period_months     INTEGER NOT NULL,
+  exit_price_manual         REAL,
+  exit_price_calculated_low REAL,
+  exit_price_calculated_mid REAL,
+  exit_price_calculated_high REAL,
+  exit_price_source         TEXT NOT NULL DEFAULT 'manual'
+                              CHECK (exit_price_source IN ('manual','calculated','blended')),
+  exit_price_used           REAL NOT NULL,
+  manual_vs_market_delta_pct REAL,
+  comparable_count          INTEGER NOT NULL DEFAULT 0,
+  comparable_ids            JSONB NOT NULL DEFAULT '[]',
+  avg_comp_distance_km      REAL,
+  gross_margin              REAL,
+  roi_pct                   REAL,
+  irr_pct                   REAL,
+  cap_rate_pct              REAL,
+  confidence_score          INTEGER NOT NULL DEFAULT 0 CHECK (confidence_score BETWEEN 0 AND 100),
+  confidence_notes          TEXT NOT NULL DEFAULT '',
+  data_quality_warnings     JSONB NOT NULL DEFAULT '[]',
+
+  -- ARV override
+  arv_manual_override       REAL,
+
+  -- Build & Hold inputs
+  renta_mensual_estimada    REAL,
+  tasa_interes_credito      REAL,
+  plazo_credito_meses       INTEGER,
+  financiamiento_pct        REAL,
+  gastos_operativos_pct     REAL,
+
+  -- Build & Hold outputs
+  noi_anual                 REAL,
+  debt_service_anual        REAL,
+  cash_flow_anual           REAL,
+  cash_on_cash_yr1_pct      REAL,
+  break_even_months         INTEGER,
+  npv_10yr                  REAL,
+  irr_10yr_pct              REAL,
+
+  UNIQUE(prospect_id, generated_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_prospect_date
+  ON analysis_snapshots(prospect_id, generated_at DESC);
