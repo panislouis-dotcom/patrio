@@ -7,7 +7,6 @@ const topTabs = [
   { path: '/prospectos', label: 'PROSPECTOS' },
   { path: '/proyectos', label: 'PROYECTOS' },
   { path: '/inversionistas', label: 'INVERSIONISTAS' },
-  { path: '/sonar', label: 'SONAR' },
   { path: '/procesos', label: 'PROCESOS' },
   { path: '/equipo', label: 'EQUIPO' },
 ]
@@ -15,6 +14,7 @@ const topTabs = [
 const prospectoSubTabs = [
   { path: '/prospectos/tabla', label: 'TABLA' },
   { path: '/prospectos/mapa', label: 'MAPA' },
+  { path: '/prospectos/sonar', label: 'SONAR' },
 ]
 
 interface TabBarProps {
@@ -104,7 +104,7 @@ export function TabBar({ onLogout }: TabBarProps) {
           <NavLink
             key={path}
             to={path}
-            end={path === '/sonar' || path === '/equipo' || path === '/procesos'}
+            end={path === '/equipo' || path === '/procesos'}
             style={({ isActive }) => ({
               padding: '14px 20px',
               fontFamily: fonts.label,

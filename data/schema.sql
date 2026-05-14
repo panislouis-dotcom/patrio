@@ -292,6 +292,7 @@ CREATE TABLE IF NOT EXISTS sonar_signals (
     municipio_cve   TEXT NOT NULL DEFAULT '',
     municipio_name  TEXT NOT NULL DEFAULT '',
     colonia         TEXT NOT NULL DEFAULT '',
+    state_name      TEXT NOT NULL DEFAULT '',
     lat             DOUBLE PRECISION,
     lon             DOUBLE PRECISION,
     price           DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -341,6 +342,10 @@ CREATE INDEX IF NOT EXISTS idx_instances_origin    ON process_instances(origin_i
 CREATE INDEX IF NOT EXISTS idx_sonar_signals_cve     ON sonar_signals(municipio_cve);
 CREATE INDEX IF NOT EXISTS idx_sonar_signals_colonia  ON sonar_signals(colonia);
 CREATE INDEX IF NOT EXISTS idx_sonar_scan_signals     ON sonar_scan_signals(scan_id);
+
+-- Migration: add state_name for existing databases
+ALTER TABLE sonar_signals ADD COLUMN IF NOT EXISTS state_name TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_sonar_signals_state ON sonar_signals(state_name);
 
 -- ─────────────────────────────────────────────────
 -- Analyzer tables (Phase 1)

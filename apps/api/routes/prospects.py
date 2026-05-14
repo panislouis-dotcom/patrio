@@ -113,3 +113,14 @@ def post_prospect(body: ProspectCreate, _: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Prospect created but not retrievable")
     all_prospects = get_prospects()
     return _with_checks({**created, "score": _score(created, all_prospects)})
+
+
+class _ParseRequest(BaseModel):
+    url: str = ""
+    text: str = ""
+
+
+@router.post("/api/prospects/parse")
+def parse_prospect_route(body: _ParseRequest, _: dict = Depends(get_current_user)):
+    from api.parse_prospect import parse_prospect
+    return parse_prospect(url=body.url.strip(), text=body.text.strip())

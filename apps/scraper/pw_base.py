@@ -1,8 +1,14 @@
 """Shared Playwright browser context for all PW-based scrapers."""
 import re
 from contextlib import contextmanager
-from playwright.sync_api import sync_playwright, Browser, BrowserContext
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 from .base import parse_sqm as parse_sqm  # re-export for PW scrapers
+
+try:
+    from playwright_stealth import stealth_sync as _stealth_sync
+    _STEALTH_AVAILABLE = True
+except ImportError:
+    _STEALTH_AVAILABLE = False
 
 
 _LAUNCH_ARGS = [
@@ -19,6 +25,14 @@ _CONTEXT_OPTS = dict(
     viewport={"width": 1280, "height": 800},
     locale="es-MX",
 )
+
+
+def stealth_page(ctx: BrowserContext) -> Page:
+    """Create a new page with stealth patches applied."""
+    page = ctx.new_page()
+    if _STEALTH_AVAILABLE:
+        _stealth_sync(page)
+    return page
 
 
 @contextmanager

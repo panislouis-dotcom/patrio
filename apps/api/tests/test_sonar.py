@@ -177,6 +177,105 @@ def test_sonar_run_drops_low_price_signals():
     assert complete["skipped"] == 1
 
 
+# ── Zone detection unit tests ─────────────────────────────────────────────────
+
+def test_detect_cve_does_not_match_san_pedro_la_paz():
+    """Generic 'san pedro' no longer falsely maps to San Pedro Garza García."""
+    from scraper.zones import detect_cve
+    assert detect_cve("San Pedro La Paz, Estado de México") == ""
+    assert detect_cve("Predio en San Pedro Cholula, Puebla") == ""
+
+
+def test_detect_cve_matches_specific_spgg_terms():
+    """Specific SPGG terms still resolve correctly."""
+    from scraper.zones import detect_cve
+    assert detect_cve("Fraccionamiento en San Pedro Garza García, NL") == "19019"
+    assert detect_cve("Terreno en SPGG, Monterrey") == "19019"
+    assert detect_cve("Garza García NL") == "19019"
+
+
+def test_resolve_cve_from_nominatim():
+    """Nominatim-based CVE lookup returns correct CVE for known municipios."""
+    from scraper.zones import resolve_cve_from_nominatim
+    assert resolve_cve_from_nominatim("Nuevo León", "San Pedro Garza García") == "19019"
+    assert resolve_cve_from_nominatim("Nuevo León", "Monterrey") == "19039"
+    assert resolve_cve_from_nominatim("Estado de México", "San Pedro La Paz") == ""
+    assert resolve_cve_from_nominatim("Puebla", "San Pedro Cholula") == ""
+
+
+def test_sonar_run_signal_includes_state_name_field():
+    """stateName field is present in complete event signals."""
+    import json
+    sig = SignalRaw(portal="lamudi", url="https://lamudi.com.mx/test-state",
+                    title="Terreno Test", price=1_500_000)
+    p1, p2, p3, p4, p5, p6 = _all_scrapers_empty()
+    with p1, p2, p3, p4, p5, p6:
+        with patch("api.routes.sonar.lamudi.scrape", return_value=[sig]):
+            r = _make_client().post("/api/sonar/run", json={})
+
+    events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
+    complete = next(e for e in events if e["type"] == "complete")
+    assert "stateName" in complete["signals"][0]
+
+
+# ── Round 2: state_hint geocoding + out-of-zone deletion ─────────────────────
+
+def test_state_to_slug():
+    """state_to_slug returns correct URL slug for a known CVE."""
+    from scraper.zones import state_to_slug
+    assert state_to_slug("19019") == "nuevo-leon"
+    assert state_to_slug("19039") == "nuevo-leon"
+
+
+def test_geocode_with_state_hint_appends_state_to_query():
+    """When state_hint is given and not in address, query is augmented."""
+    from unittest.mock import MagicMock, patch
+    from api.geo import geocode
+
+    mock_loc = MagicMock()
+    mock_loc.latitude = 25.6
+    mock_loc.longitude = -100.4
+    mock_loc.raw = {"address": {"state": "Nuevo León", "county": "Monterrey"}}
+
+    captured = {}
+    def fake_geocode(query, **kwargs):
+        captured["query"] = query
+        return mock_loc
+
+    with patch("api.geo._get_geolocator") as mock_geo:
+        mock_geo.return_value.geocode = fake_geocode
+        geocode("La Paz, NL", state_hint="Nuevo León")
+
+    assert "Nuevo León" in captured["query"]
+    assert "México" in captured["query"]
+
+
+def test_geocode_one_deletes_wrong_state_signal():
+    """_geocode_one deletes a signal when geocoded state != state_hint."""
+    with patch("api.routes.sonar.geo.geocode",
+               return_value=(24.1, -110.3, "", "Baja California Sur", "La Paz")), \
+         patch("api.routes.sonar.sonar_db.delete_signal") as mock_delete, \
+         patch("api.routes.sonar.sonar_db.update_signal_geo") as mock_update:
+        from api.routes.sonar import _geocode_one
+        _geocode_one(99, "La Paz, NL", state_hint="Nuevo León")
+
+    mock_delete.assert_called_once_with(99)
+    mock_update.assert_not_called()
+
+
+def test_geocode_one_keeps_correct_state_signal():
+    """_geocode_one updates geo when geocoded state matches state_hint."""
+    with patch("api.routes.sonar.geo.geocode",
+               return_value=(25.65, -100.29, "Del Valle", "Nuevo León", "San Pedro Garza García")), \
+         patch("api.routes.sonar.sonar_db.delete_signal") as mock_delete, \
+         patch("api.routes.sonar.sonar_db.update_signal_geo") as mock_update:
+        from api.routes.sonar import _geocode_one
+        _geocode_one(42, "San Pedro Garza García, NL", state_hint="Nuevo León")
+
+    mock_delete.assert_not_called()
+    mock_update.assert_called_once()
+
+
 # ── /api/sonar/import ─────────────────────────────────────────────────────────
 
 def test_sonar_import_creates_prospect():

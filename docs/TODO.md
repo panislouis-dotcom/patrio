@@ -21,3 +21,5 @@
     - team puede picar nombre y con pin ver dashboard con su info
     - have favorites in that session that sort up for easy access
     - it could be a tareas view that is simpler
+- geographical timelaps tiem series of prices on a map
+    - need record prices.
