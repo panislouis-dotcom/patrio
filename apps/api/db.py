@@ -505,3 +505,100 @@ def update_team_member(member_id: int, data: dict) -> dict | None:
     with get_db() as conn:
         conn.execute(f"UPDATE team_members SET {columns} WHERE id = %s", values)
     return get_team_member(member_id)
+
+
+# ─── Comparables ─────────────────────────────────────
+
+COMPARABLE_RAW_FIELDS = {
+    "address", "zoneId", "m2", "price", "listingUrl", "sourcePortal",
+    "listedAt", "neighborhood", "city", "lat", "lng",
+    "bedrooms", "bathrooms", "parkingSpots",
+    "propertyType", "condition", "styleTags",
+    "status", "soldAt", "notes",
+}
+
+
+def get_comparables(
+    status: str | None = None,
+    zone_id: int | None = None,
+) -> list[dict]:
+    query = "SELECT * FROM comparables"
+    conditions, params = [], []
+    if status:
+        conditions.append("status = %s")
+        params.append(status)
+    if zone_id:
+        conditions.append("zone_id = %s")
+        params.append(zone_id)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY captured_at DESC"
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [_parse_comparable(r) for r in rows]
+
+
+def get_comparable(comparable_id: int) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM comparables WHERE id = %s", (comparable_id,)
+        ).fetchone()
+    return _parse_comparable(row) if row else None
+
+
+def create_comparable(data: dict) -> dict | None:
+    filtered = {k: v for k, v in data.items() if k in COMPARABLE_RAW_FIELDS}
+    if not filtered:
+        raise ValueError("No valid fields provided for create_comparable")
+
+    snake = {_camel_to_snake(k): v for k, v in filtered.items()}
+
+    # Serialize JSONB fields
+    if "style_tags" in snake and not isinstance(snake["style_tags"], str):
+        snake["style_tags"] = json.dumps(snake["style_tags"])
+
+    columns = ", ".join(snake.keys())
+    placeholders = ", ".join(["%s"] * len(snake))
+    values = list(snake.values())
+    query = f"INSERT INTO comparables ({columns}) VALUES ({placeholders}) RETURNING id"
+
+    with get_db() as conn:
+        cur = conn.execute(query, values)
+        comparable_id = cur.fetchone()["id"]
+
+    return get_comparable(comparable_id)
+
+
+def update_comparable(comparable_id: int, data: dict) -> dict | None:
+    filtered = {k: v for k, v in data.items() if k in COMPARABLE_RAW_FIELDS}
+    if not filtered:
+        return get_comparable(comparable_id)
+
+    snake = {_camel_to_snake(k): v for k, v in filtered.items()}
+
+    # Serialize JSONB fields
+    if "style_tags" in snake and not isinstance(snake["style_tags"], str):
+        snake["style_tags"] = json.dumps(snake["style_tags"])
+
+    columns = ", ".join(f"{col} = %s" for col in snake.keys())
+    values = list(snake.values()) + [comparable_id]
+    query = f"UPDATE comparables SET {columns} WHERE id = %s"
+
+    with get_db() as conn:
+        conn.execute(query, values)
+
+    return get_comparable(comparable_id)
+
+
+def _parse_comparable(row) -> dict | None:
+    if row is None:
+        return None
+    d = _row_to_dict(row)
+    # Parse JSONB style_tags
+    raw_tags = d.get("styleTags")
+    if isinstance(raw_tags, str):
+        try:
+            d["styleTags"] = json.loads(raw_tags)
+        except json.JSONDecodeError:
+            d["styleTags"] = []
+    return d

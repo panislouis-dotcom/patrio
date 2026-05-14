@@ -366,43 +366,68 @@ CREATE TABLE IF NOT EXISTS remodel_costs (
   source              TEXT NOT NULL DEFAULT '',
   notes               TEXT NOT NULL DEFAULT '',
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(zone_id, intervention_level, valid_from)
 );
 
 CREATE TABLE IF NOT EXISTS comparables (
-  id              BIGSERIAL PRIMARY KEY,
-  source_url      TEXT NOT NULL DEFAULT '',
-  source          TEXT NOT NULL CHECK (source IN (
-                    'inmuebles24', 'vivanuncios', 'lamudi', 'propiedades_com',
-                    'mercadolibre', 'doorvel', 'off_market', 'other')),
-  lat             DOUBLE PRECISION NOT NULL,
-  lng             DOUBLE PRECISION NOT NULL,
-  address         TEXT NOT NULL DEFAULT '',
-  neighborhood    TEXT NOT NULL DEFAULT '',
-  city            TEXT NOT NULL DEFAULT 'Monterrey',
-  price_mxn       BIGINT NOT NULL,
-  area_m2         REAL NOT NULL,
-  price_per_m2    REAL GENERATED ALWAYS AS (price_mxn::real / NULLIF(area_m2, 0)) STORED,
-  bedrooms        INTEGER,
-  bathrooms       INTEGER,
-  parking_spots   INTEGER,
-  property_type   TEXT NOT NULL CHECK (property_type IN (
-                    'casa', 'depto', 'duplex', 'lote', 'local')),
-  condition       TEXT NOT NULL CHECK (condition IN (
-                    'remodelada', 'nueva', 'semi_nueva', 'por_remodelar')),
-  style_tags      JSONB NOT NULL DEFAULT '[]',
-  listed_date     DATE,
-  sold_date       DATE,
-  notes           TEXT NOT NULL DEFAULT '',
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                  BIGSERIAL PRIMARY KEY,
+  address             TEXT NOT NULL CHECK (address != ''),
+  zone_id             BIGINT NOT NULL REFERENCES zones(id),
+  m2                  REAL NOT NULL CHECK (m2 > 0),
+  price               BIGINT NOT NULL CHECK (price > 0),
+  listing_url         TEXT NOT NULL CHECK (listing_url != ''),
+  source_portal       TEXT NOT NULL CHECK (source_portal IN (
+                        'inmuebles24', 'vivanuncios', 'lamudi', 'propiedades_com',
+                        'mercadolibre', 'doorvel', 'off_market', 'other')),
+  listed_at           TIMESTAMPTZ NOT NULL,
+  captured_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  price_per_m2        REAL GENERATED ALWAYS AS (price::real / NULLIF(m2, 0)) STORED,
+  neighborhood        TEXT NOT NULL DEFAULT '',
+  city                TEXT NOT NULL DEFAULT 'Monterrey',
+  lat                 DOUBLE PRECISION,
+  lng                 DOUBLE PRECISION,
+  bedrooms            INTEGER,
+  bathrooms           INTEGER,
+  parking_spots       INTEGER,
+  property_type       TEXT NOT NULL DEFAULT 'casa' CHECK (property_type IN (
+                        'casa', 'depto', 'duplex', 'lote', 'local')),
+  condition           TEXT NOT NULL DEFAULT 'remodelada' CHECK (condition IN (
+                        'remodelada', 'nueva', 'semi_nueva', 'por_remodelar')),
+  style_tags          JSONB NOT NULL DEFAULT '[]',
+  status              TEXT NOT NULL DEFAULT 'active' CHECK (status IN (
+                        'active', 'sold', 'withdrawn', 'expired')),
+  last_checked_at     TIMESTAMPTZ,
+  last_seen_active    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sold_at             TIMESTAMPTZ,
+  check_failure_count INTEGER NOT NULL DEFAULT 0,
+  notes               TEXT NOT NULL DEFAULT '',
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_comparables_geo
   ON comparables(lat, lng);
-CREATE INDEX IF NOT EXISTS idx_comparables_city
-  ON comparables(city);
+CREATE INDEX IF NOT EXISTS idx_comparables_zone
+  ON comparables(zone_id);
+CREATE INDEX IF NOT EXISTS idx_comparables_status
+  ON comparables(status);
 CREATE INDEX IF NOT EXISTS idx_comparables_type_condition
   ON comparables(property_type, condition);
+CREATE INDEX IF NOT EXISTS idx_comparables_last_seen
+  ON comparables(last_seen_active);
+
+CREATE TABLE IF NOT EXISTS comparable_check_log (
+  id              BIGSERIAL PRIMARY KEY,
+  comparable_id   BIGINT NOT NULL REFERENCES comparables(id) ON DELETE CASCADE,
+  checked_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  http_status     INTEGER,
+  result          TEXT NOT NULL CHECK (result IN (
+                    'active', 'sold', 'error', 'timeout', 'redirect')),
+  detail          TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_check_log_comparable
+  ON comparable_check_log(comparable_id, checked_at DESC);
 
 CREATE TABLE IF NOT EXISTS analysis_snapshots (
   id                        BIGSERIAL PRIMARY KEY,
