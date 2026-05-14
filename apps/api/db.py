@@ -49,6 +49,17 @@ def get_db():
         pool.putconn(conn)
 
 
+def execute_script(sql: str) -> None:
+    pool = _get_pool()
+    conn = pool.getconn()
+    try:
+        cur = conn.cursor()
+        cur.execute(sql)
+        conn.commit()
+    finally:
+        pool.putconn(conn)
+
+
 PROSPECTS_QUERY = """
 SELECT
     pm.*,
