@@ -10,6 +10,7 @@ interface Props {
 
 const _DEFAULTS = {
   status:               'evaluating',
+  type:                 '',
   acquisitionCostPct:   0.065,
   constructionOverhead: 1.3,
   latitude:             0,

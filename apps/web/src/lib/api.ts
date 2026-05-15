@@ -122,6 +122,11 @@ export async function createProject(data: RawProjectFields & { prospectId?: numb
   return res.json()
 }
 
+export async function deleteProject(id: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/projects/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+}
+
 export type SonarRunEvent =
   | { type: 'start';           portals: string[]; total: number; cves: string[] }
   | { type: 'portal_start';    portal: string }

@@ -1,3 +1,5 @@
+export const PROPERTY_TYPES = ['Casa', 'Departamento', 'Local', 'Edificio', 'Lote', 'Bodega'] as const
+
 export interface Issue {
   field: string
   message: string
@@ -10,6 +12,7 @@ export interface Prospect {
   address: string
   city: string
   status: string
+  type: string
   url: string
   latitude: number
   longitude: number
@@ -54,7 +57,7 @@ export interface QualityEntry {
 }
 
 export type RawFields = Pick<Prospect,
-  | 'name' | 'address' | 'city' | 'status' | 'url'
+  | 'name' | 'address' | 'city' | 'status' | 'type' | 'url'
   | 'latitude' | 'longitude' | 'sqmLand' | 'sqmConstruction'
   | 'landPrice' | 'acquisitionCostPct' | 'permitsCost' | 'subdivisionCost'
   | 'constructionCostPerSqm' | 'constructionOverhead'

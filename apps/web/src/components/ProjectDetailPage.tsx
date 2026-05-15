@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProject, updateProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit } from '../lib/api'
+import { fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit } from '../lib/api'
 import type { Project, ProcessInstance, TeamMember, ProjectInvestor, Investor, ProfitWaterfall } from '../lib/types'
+import { PROPERTY_TYPES } from '../lib/types'
 import { ProjectProfitSection } from './ProjectProfitSection'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
@@ -49,6 +50,8 @@ export function ProjectDetailPage() {
   const [editReturnDate, setEditReturnDate] = useState<string>('')
   const [savingId, setSavingId] = useState<number | null>(null)
   const [rightTab, setRightTab] = useState<'proyecto' | 'finanzas'>('proyecto')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
   const [showLinkTask, setShowLinkTask] = useState(false)
   const [allInstances, setAllInstances] = useState<ProcessInstance[]>([])
@@ -97,6 +100,17 @@ export function ProjectDetailPage() {
       setError(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await deleteProject(Number(id))
+      navigate('/proyectos')
+    } catch {
+      setDeleting(false)
+      setConfirmDelete(false)
     }
   }
 
@@ -291,6 +305,30 @@ export function ProjectDetailPage() {
         }}>
           {PROJECT_STATUS_LABEL[field('status') as string] ?? String(field('status') ?? '').toUpperCase()}
         </span>
+        {confirmDelete ? (
+          <>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
+            >
+              CANCELAR
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{ background: '#c0392b', border: 'none', color: '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '6px 16px', opacity: deleting ? 0.7 : 1, flexShrink: 0 }}
+            >
+              {deleting ? 'BORRANDO…' : '¿CONFIRMAR BORRADO?'}
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
+          >
+            ELIMINAR
+          </button>
+        )}
         {hasEdits && (
           <button
             onClick={save}
@@ -366,7 +404,6 @@ export function ProjectDetailPage() {
             { key: 'name', label: 'Nombre', type: 'text' },
             { key: 'address', label: 'Dirección', type: 'text' },
             { key: 'city', label: 'Ciudad', type: 'text' },
-            { key: 'type', label: 'Tipo', type: 'text' },
           ] as const).map(({ key, label, type }) => (
             <div key={key} style={{ marginBottom: '8px' }}>
               <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
@@ -378,6 +415,20 @@ export function ProjectDetailPage() {
               />
             </div>
           ))}
+
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>TIPO</div>
+            <select
+              value={(edits.type as string) ?? (project.type ?? '')}
+              onChange={e => setField('type', e.target.value)}
+              style={{ ...fieldInput, cursor: 'pointer' }}
+            >
+              <option value="">— sin tipo —</option>
+              {PROPERTY_TYPES.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
 
           <div style={{ marginBottom: '8px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>ESTADO</div>
