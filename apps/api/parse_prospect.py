@@ -12,6 +12,7 @@ No DB writes — safe to call speculatively from any route.
 """
 
 import base64
+import io
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ import os
 import anthropic
 import httpx
 from bs4 import BeautifulSoup
+from PIL import Image
 
 from api import geo
 from scraper.base import parse_sqm
@@ -107,6 +109,32 @@ def _image_media_type(data: bytes) -> str:
     return "image/jpeg"
 
 
+_MAX_B64_BYTES = 4_500_000   # stay well under Anthropic's 5 MB base64 limit
+_MAX_DIMENSION  = 1568        # Claude's recommended max side length
+
+
+def _compress_for_claude(image_bytes: bytes) -> tuple[bytes, str]:
+    """Resize and JPEG-compress image to fit Anthropic's 5 MB base64 limit."""
+    img = Image.open(io.BytesIO(image_bytes))
+    img = img.convert("RGB")
+
+    # Resize if either dimension exceeds the recommended max
+    w, h = img.size
+    if max(w, h) > _MAX_DIMENSION:
+        scale = _MAX_DIMENSION / max(w, h)
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+    # Iteratively lower quality until base64 size fits
+    for quality in (85, 70, 55, 40):
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        data = buf.getvalue()
+        if len(base64.b64encode(data)) <= _MAX_B64_BYTES:
+            return data, "image/jpeg"
+
+    raise ValueError(f"Cannot compress image to fit {_MAX_B64_BYTES} B base64 limit")
+
+
 def _parse_llm_response(raw: str) -> dict:
     """Strip optional markdown fences and parse JSON from an LLM response."""
     raw = raw.strip()
@@ -130,9 +158,10 @@ def _llm_extract(text: str) -> dict:
 def _llm_extract_vision(image_bytes: bytes, text: str = "") -> dict:
     """Call Claude Sonnet with vision to extract structured fields from a listing image."""
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    b64 = base64.standard_b64encode(image_bytes).decode("ascii")
+    compressed, media_type = _compress_for_claude(image_bytes)
+    b64 = base64.standard_b64encode(compressed).decode("ascii")
     content: list[dict] = [
-        {"type": "image", "source": {"type": "base64", "media_type": _image_media_type(image_bytes), "data": b64}},
+        {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
     ]
     if text:
         content.append({"type": "text", "text": text})
