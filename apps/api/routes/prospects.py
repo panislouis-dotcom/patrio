@@ -13,6 +13,7 @@ _FILES_BASE = Path(__file__).parent.parent.parent.parent / "data" / "files"
 router = APIRouter()
 
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
 class ProspectUpdate(BaseModel):
@@ -143,13 +144,12 @@ async def upload_prospect_image(
     if p is None:
         raise HTTPException(status_code=404, detail="Prospect not found")
 
-    MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
+    if file.content_type not in _ALLOWED_MIME:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
+
     content = await file.read(MAX_IMAGE_SIZE + 1)
     if len(content) > MAX_IMAGE_SIZE:
         raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
-
-    if file.content_type not in _ALLOWED_MIME:
-        raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
 
     ext = Path(file.filename).suffix if file.filename else ""
     relative_path = f"prospects/{prospect_id}/{uuid4().hex}{ext}"
@@ -160,11 +160,14 @@ async def upload_prospect_image(
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to store image") from exc
 
-    rel_path = Path(relative_path)
     try:
-        set_prospect_image_path(prospect_id, str(rel_path))
+        set_prospect_image_path(prospect_id, relative_path)
     except ValueError:
+        full_path.unlink(missing_ok=True)
         raise HTTPException(status_code=404, detail="Prospect not found")
+    except Exception:
+        full_path.unlink(missing_ok=True)
+        raise
 
     all_prospects = get_prospects()
     updated = get_prospect(prospect_id)
