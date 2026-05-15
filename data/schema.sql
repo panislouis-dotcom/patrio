@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   hold_months               INTEGER NOT NULL DEFAULT 12,
   rent_monthly              REAL NOT NULL CHECK (rent_monthly >= 0),
   notes                     TEXT NOT NULL DEFAULT '',
+  image_path                TEXT NOT NULL DEFAULT '',
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -54,7 +55,7 @@ SELECT
         / NULLIF(sqm_land, 0))::numeric, 2)                            AS investment_per_sqm,
   rent_monthly,
   ROUND((rent_monthly * 12)::numeric, 0)                    AS rent_annual,
-  hold_months, notes
+  hold_months, notes, image_path
 FROM prospects;
 
 CREATE TABLE IF NOT EXISTS projects (

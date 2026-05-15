@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProspect, updateProspect, createProspect } from '../lib/api'
+import { fetchProspect, updateProspect, createProspect, deleteProspect } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
@@ -37,9 +37,11 @@ export function ProspectDetailPage() {
   const [prospect, setProspect] = useState<Prospect | null>(null)
   const [loading, setLoading] = useState(!isNew)
   const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [edits, setEdits] = useState<Partial<RawFields>>({})
+  const [saving, setSaving]               = useState(false)
+  const [saveError, setSaveError]         = useState<string | null>(null)
+  const [edits, setEdits]                 = useState<Partial<RawFields>>({})
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting]           = useState(false)
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
 
@@ -95,6 +97,17 @@ export function ProspectDetailPage() {
       else { (next as Record<string, unknown>)[key as string] = value }
       return next
     })
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await deleteProspect(Number(id))
+      navigate('/prospectos/tabla')
+    } catch {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
   }
 
   function cv(key: keyof RawFields, isAcqPct = false): string {
@@ -209,6 +222,30 @@ export function ProspectDetailPage() {
         }}>
           {PROSPECT_STATUS_LABEL[p.status] ?? p.status.toUpperCase()}
         </span>
+        {confirmDelete ? (
+          <>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
+            >
+              CANCELAR
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{ background: '#c0392b', border: 'none', color: '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '6px 16px', opacity: deleting ? 0.7 : 1, flexShrink: 0 }}
+            >
+              {deleting ? 'BORRANDO…' : '¿CONFIRMAR BORRADO?'}
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
+          >
+            ELIMINAR
+          </button>
+        )}
         {hasEdits && (
           <button
             onClick={handleInlineSave}

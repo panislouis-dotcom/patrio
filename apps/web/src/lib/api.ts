@@ -48,13 +48,35 @@ export async function updateProspect(id: number, data: Partial<RawFields>): Prom
   return res.json()
 }
 
-export async function parseProspect(url: string, text: string): Promise<ParsedProspect> {
+export async function deleteProspect(id: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/prospects/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+}
+
+export async function parseProspect(url: string, text: string, image?: Blob): Promise<ParsedProspect> {
+  if (image) {
+    const form = new FormData()
+    form.append('url', url)
+    form.append('text', text)
+    form.append('file', image, 'screenshot.png')
+    const res = await authFetch(`${BASE}/api/prospects/parse`, { method: 'POST', body: form })
+    if (!res.ok) throw new Error(await res.text())
+    return res.json()
+  }
   const res = await authFetch(`${BASE}/api/prospects/parse`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, text }),
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function uploadProspectImage(prospectId: number, image: Blob): Promise<Prospect> {
+  const form = new FormData()
+  form.append('file', image, 'screenshot.png')
+  const res = await authFetch(`${BASE}/api/prospects/${prospectId}/image`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
 
