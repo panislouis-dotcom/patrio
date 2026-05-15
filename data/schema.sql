@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   address                   TEXT NOT NULL CHECK (address != ''),
   city                      TEXT NOT NULL CHECK (city != ''),
   status                    TEXT NOT NULL CHECK (status != ''),
+  type                      TEXT NOT NULL DEFAULT '',
   url                       TEXT NOT NULL CHECK (url != ''),
   latitude                  REAL NOT NULL,
   longitude                 REAL NOT NULL,

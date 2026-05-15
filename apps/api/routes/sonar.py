@@ -271,6 +271,7 @@ def sonar_import(req: _ImportRequest, _: dict = Depends(get_current_user)):
         "address":                req.address or req.title,
         "city":                   req.city,
         "status":                 "evaluating",
+        "type":                   "",
         "url":                    req.url,
         "latitude":               0.0,
         "longitude":              0.0,

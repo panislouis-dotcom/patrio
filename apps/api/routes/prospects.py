@@ -21,6 +21,7 @@ class ProspectUpdate(BaseModel):
     address: Optional[str] = None
     city: Optional[str] = None
     status: Optional[str] = None
+    type: Optional[str] = None
     url: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -43,6 +44,7 @@ class ProspectCreate(BaseModel):
     address: str
     city: str
     status: str
+    type: str = ""
     holdMonths: int = 12
     url: str = "https://refigan.mx"
     latitude: float = 0.0

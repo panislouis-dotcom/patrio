@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from api.auth import get_current_user
-from api.db import get_projects, get_project, update_project, create_project
+from api.db import get_projects, get_project, update_project, create_project, delete_project
 
 router = APIRouter()
 
@@ -77,3 +77,11 @@ def post_project(body: ProjectCreate, _: dict = Depends(get_current_user)):
     if created is None:
         raise HTTPException(status_code=500, detail="Project created but not retrievable")
     return created
+
+
+@router.delete("/api/projects/{project_id}", status_code=204)
+def remove_project(project_id: int, _: dict = Depends(get_current_user)):
+    try:
+        delete_project(project_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Project not found")

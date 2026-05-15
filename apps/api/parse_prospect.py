@@ -50,7 +50,8 @@ Return ONLY a JSON object with these fields:
   "price": <total asking price in MXN as a plain integer, 0 if not found>,
   "sqmLand": <land/lot area in square metres as a plain integer, 0 if not found>,
   "sqmConstruction": <built/construction area in square metres as a plain integer, 0 if not found>,
-  "notes": "<any other useful context, max 300 chars>"
+  "notes": "<any other useful context, max 300 chars>",
+  "type": "<property type, one of: Casa | Departamento | Local | Edificio | Lote | Bodega — empty string if cannot be determined>"
 }}
 
 Rules:
@@ -75,7 +76,8 @@ Return ONLY a JSON object with these fields:
   "price": <total asking price in MXN as a plain integer, 0 if not found>,
   "sqmLand": <land/lot area in square metres as a plain integer, 0 if not found>,
   "sqmConstruction": <built/construction area in square metres as a plain integer, 0 if not found>,
-  "notes": "<any other useful context, max 300 chars>"
+  "notes": "<any other useful context, max 300 chars>",
+  "type": "<property type, one of: Casa | Departamento | Local | Edificio | Lote | Bodega — empty string if cannot be determined>"
 }
 
 Rules:
@@ -229,6 +231,7 @@ def parse_prospect(url: str = "", text: str = "", image_bytes: bytes | None = No
         "sqmLand":          float(extracted.get("sqmLand", 0) or sqm_regex),
         "sqmConstruction":  float(extracted.get("sqmConstruction", 0)),
         "notes":         extracted.get("notes", ""),
+        "type":          extracted.get("type", ""),
         "url":           url or "",
         "status":        "evaluating",
         "latitude":      0.0,
