@@ -56,7 +56,7 @@ SELECT
         / NULLIF(sqm_land, 0))::numeric, 2)                            AS investment_per_sqm,
   rent_monthly,
   ROUND((rent_monthly * 12)::numeric, 0)                    AS rent_annual,
-  hold_months, notes, image_path
+  hold_months, notes, image_path, type
 FROM prospects;
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS projects (
   url               TEXT NOT NULL CHECK (url != ''),
   latitude          REAL NOT NULL,
   longitude         REAL NOT NULL,
-  prospect_id       BIGINT REFERENCES prospects(id),
+  prospect_id       BIGINT REFERENCES prospects(id) ON DELETE SET NULL,
   milestones        TEXT NOT NULL DEFAULT '{}',
   budget            TEXT NOT NULL DEFAULT '{}',
   notes             TEXT NOT NULL DEFAULT '',
