@@ -140,10 +140,12 @@ def get_prospect(prospect_id: int) -> dict | None:
 
 def set_prospect_image_path(prospect_id: int, image_path: str) -> None:
     with get_db() as conn:
-        conn.execute(
+        result = conn.execute(
             "UPDATE prospects SET image_path = %s WHERE id = %s",
             (image_path, prospect_id),
         )
+        if result.rowcount == 0:
+            raise ValueError(f"Prospect {prospect_id} not found")
 
 
 def update_prospect(prospect_id: int, data: dict) -> dict | None:
