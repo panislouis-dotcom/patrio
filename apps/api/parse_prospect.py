@@ -4,12 +4,14 @@ Parse a property prospect from a URL and/or free-text description.
 Pipeline:
   1. Fetch URL HTML (httpx) → strip to plain text
   2. Send combined text to Claude Haiku → structured JSON
+     OR: Send image bytes to Claude Sonnet (vision) → structured JSON
   3. geo.geocode(address) → lat, lon, colonia, state, municipio
   4. CVE keyword fallback if Nominatim can't resolve
 
 No DB writes — safe to call speculatively from any route.
 """
 
+import base64
 import json
 import logging
 import os
@@ -57,6 +59,26 @@ Rules:
 Text:
 {text}"""
 
+_VISION_PROMPT = """\
+Extract real estate property information from the listing screenshot above.
+Properties are in Mexico (primarily Monterrey, Nuevo León area).
+
+Return ONLY a JSON object with these fields:
+{
+  "name": "<property title or short description, max 120 chars>",
+  "address": "<full address: street number, colonia, city>",
+  "city": "<city name only, default Monterrey>",
+  "price": <total asking price in MXN as a plain integer, 0 if not found>,
+  "sqmLand": <land area in square metres as a plain integer, 0 if not found>,
+  "notes": "<any other useful context, max 300 chars>"
+}
+
+Rules:
+- price is a number, e.g. 2500000 not "$2.5M"
+- sqmLand is a number, e.g. 350 not "350 m²"
+- Use 0 for unknown numbers, empty string for unknown text
+- Return only JSON — no markdown, no explanation"""
+
 
 def _fetch_url_text(url: str) -> str:
     """Fetch URL and return cleaned plain text, truncated to 4000 chars."""
@@ -72,6 +94,15 @@ def _fetch_url_text(url: str) -> str:
         return ""
 
 
+def _parse_llm_response(raw: str) -> dict:
+    """Strip optional markdown fences and parse JSON from an LLM response."""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        lines = raw.splitlines()
+        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    return json.loads(raw)
+
+
 def _llm_extract(text: str) -> dict:
     """Call Claude Haiku to extract structured fields from property text."""
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -80,40 +111,66 @@ def _llm_extract(text: str) -> dict:
         max_tokens=512,
         messages=[{"role": "user", "content": _PROMPT.format(text=text)}],
     )
-    raw = msg.content[0].text.strip()
-    if raw.startswith("```"):
-        lines = raw.splitlines()
-        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-    return json.loads(raw)
+    return _parse_llm_response(msg.content[0].text)
 
 
-def parse_prospect(url: str = "", text: str = "") -> dict:
+def _llm_extract_vision(image_bytes: bytes, text: str = "") -> dict:
+    """Call Claude Sonnet with vision to extract structured fields from a listing image."""
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    b64 = base64.standard_b64encode(image_bytes).decode("ascii")
+    content: list[dict] = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+    ]
+    if text:
+        content.append({"type": "text", "text": text})
+    content.append({"type": "text", "text": _VISION_PROMPT})
+    msg = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": content}],
+    )
+    return _parse_llm_response(msg.content[0].text)
+
+
+def parse_prospect(url: str = "", text: str = "", image_bytes: bytes | None = None) -> dict:
     """
-    Parse a property from a URL and/or free-text description.
-    Returns a partial prospect dict (no DB writes).
+    Parse a property from a URL, free-text description, and/or image.
+
+    When image_bytes is provided the URL is not fetched and vision is used
+    instead of the text path.  Returns a partial prospect dict (no DB writes).
     """
-    clean_url = url.split("#")[0].split("?")[0] if url else ""
-    url_text = _fetch_url_text(url) if url else ""
-    if url and not url_text:
-        # Page fetch blocked (bot protection). Include clean URL so LLM can
-        # extract whatever it can from the URL slug and domain.
-        logger.info("URL fetch returned empty for %s — falling back to URL slug", clean_url)
-        url_text = f"URL de la propiedad: {clean_url}"
-
-    combined = "\n\n".join(filter(None, [url_text, text]))
-
-    if not combined:
-        return {}
-
-    # Regex fast-pass — cheap fallback if LLM fails
-    price_regex = parse_price(combined)
-    sqm_regex   = parse_sqm(combined)
-
     extracted: dict = {}
-    try:
-        extracted = _llm_extract(combined)
-    except Exception as e:
-        logger.warning("LLM extraction failed: %s", e)
+    price_regex = 0
+    sqm_regex = 0
+
+    if image_bytes is not None:
+        # Vision path — skip URL fetch and regex fast-pass entirely
+        try:
+            extracted = _llm_extract_vision(image_bytes, text)
+        except Exception as e:
+            logger.warning("Vision LLM extraction failed: %s", e)
+    else:
+        clean_url = url.split("#")[0].split("?")[0] if url else ""
+        url_text = _fetch_url_text(url) if url else ""
+        if url and not url_text:
+            # Page fetch blocked (bot protection). Include clean URL so LLM can
+            # extract whatever it can from the URL slug and domain.
+            logger.info("URL fetch returned empty for %s — falling back to URL slug", clean_url)
+            url_text = f"URL de la propiedad: {clean_url}"
+
+        combined = "\n\n".join(filter(None, [url_text, text]))
+
+        if not combined:
+            return {}
+
+        # Regex fast-pass — cheap fallback if LLM fails
+        price_regex = parse_price(combined)
+        sqm_regex   = parse_sqm(combined)
+
+        try:
+            extracted = _llm_extract(combined)
+        except Exception as e:
+            logger.warning("LLM extraction failed: %s", e)
 
     result = {
         "name":          extracted.get("name", ""),
