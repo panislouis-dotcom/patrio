@@ -112,6 +112,16 @@ export async function updateProject(id: number, data: Partial<RawProjectFields>)
   return res.json()
 }
 
+export async function createProject(data: RawProjectFields & { prospectId?: number }): Promise<Project> {
+  const res = await authFetch(`${BASE}/api/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
 export type SonarRunEvent =
   | { type: 'start';           portals: string[]; total: number; cves: string[] }
   | { type: 'portal_start';    portal: string }
