@@ -55,7 +55,7 @@ SELECT
         / NULLIF(sqm_land, 0))::numeric, 2)                            AS investment_per_sqm,
   rent_monthly,
   ROUND((rent_monthly * 12)::numeric, 0)                    AS rent_annual,
-  hold_months, notes
+  hold_months, notes, image_path
 FROM prospects;
 
 CREATE TABLE IF NOT EXISTS projects (
