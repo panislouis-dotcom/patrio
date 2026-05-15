@@ -81,6 +81,10 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
   const [city, setCity]           = useState('Monterrey')
   const [landPrice, setLandPrice] = useState(0)
   const [sqmLand, setSqmLand]     = useState(0)
+  const [sqmConstruction, setSqmConstruction]               = useState(0)
+  const [projectedSale, setProjectedSale]                   = useState(0)
+  const [holdMonths, setHoldMonths]                         = useState(12)
+  const [constructionCostPerSqm, setConstructionCostPerSqm] = useState(0)
   const [rentMonthly, setRentMonthly] = useState(0)
 
   const [image, setImage]               = useState<Blob | null>(null)
@@ -126,6 +130,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
       setCity(result.city || 'Monterrey')
       setLandPrice(result.price || 0)
       setSqmLand(result.sqmLand || 0)
+      setSqmConstruction(result.sqmConstruction || 0)
       setStep('review')
     } catch (e) {
       setParseError(e instanceof Error ? e.message : 'Error al analizar')
@@ -141,16 +146,20 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
     try {
       const created = await createProspect({
         ..._DEFAULTS,
-        name:        name.trim(),
-        address:     address.trim() || name.trim(),
-        city:        city.trim() || 'Monterrey',
+        name:                 name.trim(),
+        address:              address.trim() || name.trim(),
+        city:                 city.trim() || 'Monterrey',
         landPrice,
         sqmLand,
+        sqmConstruction,
+        projectedSale,
+        holdMonths,
+        constructionCostPerSqm,
         rentMonthly,
-        url:         url.trim() || undefined,
-        notes:       text.trim() || parsed?.notes || undefined,
-        latitude:    parsed?.latitude  ?? 0,
-        longitude:   parsed?.longitude ?? 0,
+        url:                  url.trim() || undefined,
+        notes:                text.trim() || parsed?.notes || undefined,
+        latitude:             parsed?.latitude  ?? 0,
+        longitude:            parsed?.longitude ?? 0,
       })
       if (image && created?.id) {
         try { await uploadProspectImage(created.id, image) } catch { /* non-fatal */ }
@@ -165,7 +174,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
   // Count how many key fields were filled by the parser
   const filledCount = parsed
-    ? [parsed.name, parsed.address, parsed.price, parsed.sqmLand, parsed.latitude]
+    ? [parsed.name, parsed.address, parsed.price, parsed.sqmLand, parsed.sqmConstruction, parsed.latitude]
         .filter(v => v !== '' && v !== 0 && v != null).length
     : 0
 
@@ -356,6 +365,25 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Field
+                label="M² Construcción"
+                value={sqmConstruction || ''}
+                onChange={v => setSqmConstruction(parseFloat(v) || 0)}
+                type="number"
+                filled={(parsed?.sqmConstruction ?? 0) > 0}
+                placeholder="0"
+              />
+              <Field
+                label="Costo constr./m² (MXN)"
+                value={constructionCostPerSqm || ''}
+                onChange={v => setConstructionCostPerSqm(parseFloat(v) || 0)}
+                type="number"
+                filled={false}
+                placeholder="0"
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Field
                 label="Precio terreno (MXN)"
                 value={landPrice || ''}
                 onChange={v => setLandPrice(parseFloat(v) || 0)}
@@ -364,12 +392,31 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
                 placeholder="0"
               />
               <Field
+                label="Venta proyectada (MXN)"
+                value={projectedSale || ''}
+                onChange={v => setProjectedSale(parseFloat(v) || 0)}
+                type="number"
+                filled={false}
+                placeholder="0"
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Field
                 label="Renta mensual (MXN)"
                 value={rentMonthly || ''}
                 onChange={v => setRentMonthly(parseFloat(v) || 0)}
                 type="number"
                 filled={false}
                 placeholder="0"
+              />
+              <Field
+                label="Plazo (meses)"
+                value={holdMonths || ''}
+                onChange={v => setHoldMonths(parseInt(v) || 12)}
+                type="number"
+                filled={false}
+                placeholder="12"
               />
             </div>
 

@@ -48,13 +48,15 @@ Return ONLY a JSON object with these fields:
   "address": "<full address: street number, colonia, city>",
   "city": "<city name only, default Monterrey>",
   "price": <total asking price in MXN as a plain integer, 0 if not found>,
-  "sqmLand": <land area in square metres as a plain integer, 0 if not found>,
+  "sqmLand": <land/lot area in square metres as a plain integer, 0 if not found>,
+  "sqmConstruction": <built/construction area in square metres as a plain integer, 0 if not found>,
   "notes": "<any other useful context, max 300 chars>"
 }}
 
 Rules:
 - price is a number, e.g. 2500000 not "$2.5M"
-- sqmLand is a number, e.g. 350 not "350 m²"
+- sqmLand is lot/land area only; sqmConstruction is built floor area
+- All numbers are plain integers, e.g. 350 not "350 m²"
 - Use 0 for unknown numbers, empty string for unknown text
 - Return only JSON — no markdown, no explanation
 
@@ -71,13 +73,15 @@ Return ONLY a JSON object with these fields:
   "address": "<full address: street number, colonia, city>",
   "city": "<city name only, default Monterrey>",
   "price": <total asking price in MXN as a plain integer, 0 if not found>,
-  "sqmLand": <land area in square metres as a plain integer, 0 if not found>,
+  "sqmLand": <land/lot area in square metres as a plain integer, 0 if not found>,
+  "sqmConstruction": <built/construction area in square metres as a plain integer, 0 if not found>,
   "notes": "<any other useful context, max 300 chars>"
 }
 
 Rules:
 - price is a number, e.g. 2500000 not "$2.5M"
-- sqmLand is a number, e.g. 350 not "350 m²"
+- sqmLand is lot/land area only; sqmConstruction is built floor area
+- All numbers are plain integers, e.g. 330 not "330 m²"
 - Use 0 for unknown numbers, empty string for unknown text
 - Return only JSON — no markdown, no explanation"""
 
@@ -221,8 +225,9 @@ def parse_prospect(url: str = "", text: str = "", image_bytes: bytes | None = No
         "name":          extracted.get("name", ""),
         "address":       extracted.get("address", ""),
         "city":          extracted.get("city", "") or "Monterrey",
-        "price":         float(extracted.get("price", 0) or price_regex),
-        "sqmLand":       float(extracted.get("sqmLand", 0) or sqm_regex),
+        "price":            float(extracted.get("price", 0) or price_regex),
+        "sqmLand":          float(extracted.get("sqmLand", 0) or sqm_regex),
+        "sqmConstruction":  float(extracted.get("sqmConstruction", 0)),
         "notes":         extracted.get("notes", ""),
         "url":           url or "",
         "status":        "evaluating",
