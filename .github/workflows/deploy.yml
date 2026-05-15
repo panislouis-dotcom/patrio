@@ -13,3 +13,10 @@ jobs:
     uses: edlgg/edg-infra/.github/workflows/build-push.yml@main
     with:
       service: refigan
+
+  deploy:
+    needs: build
+    uses: edlgg/edg-infra/.github/workflows/deploy.yml@main
+    with:
+      service: refigan
+      tag: ${{ github.sha }}
