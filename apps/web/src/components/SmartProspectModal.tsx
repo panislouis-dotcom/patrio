@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { parseProspect, createProspect } from '../lib/api'
+import { useCallback, useEffect, useState } from 'react'
+import { parseProspect, createProspect, uploadProspectImage } from '../lib/api'
 import type { ParsedProspect } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 
@@ -83,8 +83,16 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
   const [sqmLand, setSqmLand]     = useState(0)
   const [rentMonthly, setRentMonthly] = useState(0)
 
+  const [image, setImage]               = useState<Blob | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+
   const [saving, setSaving]       = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+
+  const handleImageSelect = useCallback((blob: Blob) => {
+    setImage(blob)
+    setImagePreview(URL.createObjectURL(blob))
+  }, [])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -92,11 +100,22 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const item = Array.from(e.clipboardData?.items ?? []).find(i => i.type.startsWith('image/'))
+      if (!item) return
+      const blob = item.getAsFile()
+      if (blob) handleImageSelect(blob)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [handleImageSelect])
+
   async function handleAnalyze() {
     setParsing(true)
     setParseError(null)
     try {
-      const result = await parseProspect(url.trim(), text.trim())
+      const result = await parseProspect(url.trim(), text.trim(), image ?? undefined)
       setParsed(result)
       setName(result.name || '')
       setAddress(result.address || '')
@@ -116,7 +135,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
     setSaving(true)
     setSaveError(null)
     try {
-      await createProspect({
+      const created = await createProspect({
         ..._DEFAULTS,
         name:        name.trim(),
         address:     address.trim() || name.trim(),
@@ -129,6 +148,9 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
         latitude:    parsed?.latitude  ?? 0,
         longitude:   parsed?.longitude ?? 0,
       })
+      if (image && created?.id) {
+        try { await uploadProspectImage(created.id, image) } catch { /* non-fatal */ }
+      }
       onCreated()
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Error al guardar')
@@ -143,7 +165,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
         .filter(v => v !== '' && v !== 0 && v != null).length
     : 0
 
-  const canAnalyze = (url.trim() || text.trim()) && !parsing
+  const canAnalyze = (url.trim() || text.trim() || image) && !parsing
 
   const overlay: React.CSSProperties = {
     position: 'fixed', inset: 0,
@@ -221,6 +243,55 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
                   style={{ ...inp, resize: 'vertical', lineHeight: '1.5', color: text ? colors.neutral : colors.secondary }}
                 />
               </div>
+            </div>
+
+            {/* Image paste / drop zone */}
+            <div
+              style={{
+                border: `1px dashed ${imagePreview ? colors.primary : colors.border}`,
+                borderRadius: '2px',
+                padding: '16px',
+                marginBottom: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                position: 'relative',
+              }}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault()
+                const file = e.dataTransfer.files[0]
+                if (file?.type.startsWith('image/')) handleImageSelect(file)
+              }}
+              onClick={() => document.getElementById('prospect-img-input')?.click()}
+            >
+              <input
+                id="prospect-img-input"
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImageSelect(file)
+                }}
+              />
+              {imagePreview ? (
+                <>
+                  <img src={imagePreview} alt="preview" style={{ maxHeight: '120px', maxWidth: '100%', objectFit: 'contain' }} />
+                  <button
+                    style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '0.06em' }}
+                    onClick={e => { e.stopPropagation(); setImage(null); setImagePreview(null) }}
+                  >
+                    QUITAR IMAGEN
+                  </button>
+                </>
+              ) : (
+                <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.06em', textAlign: 'center' }}>
+                  PEGAR IMAGEN (Ctrl+V) · ARRASTRAR · O HACER CLIC
+                </span>
+              )}
             </div>
 
             {parseError && (
