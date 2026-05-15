@@ -1,10 +1,14 @@
 from dataclasses import asdict
+from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from uuid import uuid4
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from api.auth import get_current_user
-from api.db import get_prospects, get_prospect, update_prospect, create_prospect
+from api.db import get_prospects, get_prospect, update_prospect, create_prospect, set_prospect_image_path
 from api.checks import run_checks
+
+_FILES_BASE = Path(__file__).parent.parent.parent.parent / "data" / "files"
 
 router = APIRouter()
 
@@ -115,12 +119,37 @@ def post_prospect(body: ProspectCreate, _: dict = Depends(get_current_user)):
     return _with_checks({**created, "score": _score(created, all_prospects)})
 
 
-class _ParseRequest(BaseModel):
-    url: str = ""
-    text: str = ""
-
-
 @router.post("/api/prospects/parse")
-def parse_prospect_route(body: _ParseRequest, _: dict = Depends(get_current_user)):
+async def parse_prospect_route(
+    url: str = Form(""),
+    text: str = Form(""),
+    file: Optional[UploadFile] = File(None),
+    _: dict = Depends(get_current_user),
+):
     from api.parse_prospect import parse_prospect
-    return parse_prospect(url=body.url.strip(), text=body.text.strip())
+    image_bytes = await file.read() if file else None
+    return parse_prospect(url=url.strip(), text=text.strip(), image_bytes=image_bytes)
+
+
+@router.post("/api/prospects/{prospect_id}/image", status_code=200)
+async def upload_prospect_image(
+    prospect_id: int,
+    file: UploadFile = File(...),
+    _: dict = Depends(get_current_user),
+):
+    p = get_prospect(prospect_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+
+    content = await file.read()
+    ext = Path(file.filename).suffix if file.filename else ""
+    relative_path = f"prospects/{prospect_id}/{uuid4().hex}{ext}"
+    full_path = _FILES_BASE / relative_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(content)
+
+    set_prospect_image_path(prospect_id, relative_path)
+
+    all_prospects = get_prospects()
+    updated = get_prospect(prospect_id)
+    return _with_checks({**updated, "score": _score(updated, all_prospects)})
