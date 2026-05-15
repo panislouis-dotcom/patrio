@@ -76,6 +76,7 @@ RAW_FIELDS = {
     "address",
     "city",
     "status",
+    "type",
     "url",
     "latitude",
     "longitude",
@@ -153,6 +154,13 @@ def delete_prospect(prospect_id: int) -> None:
         result = conn.execute("DELETE FROM prospects WHERE id = %s", (prospect_id,))
         if result.rowcount == 0:
             raise ValueError(f"Prospect {prospect_id} not found")
+
+
+def delete_project(project_id: int) -> None:
+    with get_db() as conn:
+        result = conn.execute("DELETE FROM projects WHERE id = %s", (project_id,))
+        if result.rowcount == 0:
+            raise ValueError(f"Project {project_id} not found")
 
 
 def update_prospect(prospect_id: int, data: dict) -> dict | None:

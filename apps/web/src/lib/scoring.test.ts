@@ -6,7 +6,7 @@ const weights: ScoreWeights = { roi: 0.5, capRate: 0.3, profit: 0.2 }
 
 function makeProspect(overrides: Partial<Prospect>): Prospect {
   return {
-    id: 1, name: 'Test', address: '', city: '', status: 'evaluating', url: '',
+    id: 1, name: 'Test', address: '', city: '', status: 'evaluating', type: '', url: '',
     latitude: 25.68, longitude: -100.33, sqmLand: 100, sqmConstruction: 100,
     landPrice: 3000000, acquisitionCostPct: 0.06, acquisitionCosts: 0,
     acquisitionTotal: 0, permitsCost: 0, subdivisionCost: 0, constructionBase: 0,

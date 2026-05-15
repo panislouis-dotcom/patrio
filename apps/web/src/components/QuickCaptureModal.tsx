@@ -72,6 +72,7 @@ export function QuickCaptureModal({ onClose, onCreated, initialValues }: Props) 
         address: address.trim(),
         city: city.trim(),
         status,
+        type: '',
         latitude: 0,
         longitude: 0,
         sqmLand: 0,

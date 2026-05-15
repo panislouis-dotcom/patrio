@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProspect, updateProspect, createProspect, deleteProspect } from '../lib/api'
+import { fetchProspect, updateProspect, createProspect, deleteProspect, createProject } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
+import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { fmtMXN } from '../lib/fmt'
@@ -42,6 +43,15 @@ export function ProspectDetailPage() {
   const [edits, setEdits]                 = useState<Partial<RawFields>>({})
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting]           = useState(false)
+  const [convertModal, setConvertModal]   = useState(false)
+  const [converting, setConverting]       = useState(false)
+  const [convertError, setConvertError]   = useState<string | null>(null)
+  const [convertFields, setConvertFields] = useState({
+    totalUnits: 1,
+    acquisitionDate: '', conclusionDate: '',
+    currentValuation: 0, valuationDate: '',
+    status: 'activo',
+  })
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
 
@@ -107,6 +117,50 @@ export function ProspectDetailPage() {
     } catch {
       setDeleting(false)
       setConfirmDelete(false)
+    }
+  }
+
+  function openConvertModal(p: Prospect) {
+    const now = new Date()
+    const yyyymm = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const currentMonth = yyyymm(now)
+    const concDate = new Date(now.getFullYear(), now.getMonth() + (p.holdMonths || 12), 1)
+    setConvertFields({
+      totalUnits: 1,
+      acquisitionDate: currentMonth,
+      conclusionDate: yyyymm(concDate),
+      currentValuation: p.projectedSale || 0,
+      valuationDate: currentMonth,
+      status: 'activo',
+    })
+    setConvertError(null)
+    setConvertModal(true)
+  }
+
+  async function handleConvert() {
+    const p = prospect!
+    setConverting(true)
+    setConvertError(null)
+    try {
+      const project = await createProject({
+        name: p.name,
+        type: p.type,
+        address: p.address,
+        city: p.city,
+        url: p.url || 'https://refigan.mx',
+        latitude: p.latitude,
+        longitude: p.longitude,
+        notes: p.notes || '-',
+        totalInvestment: p.acquisitionTotal,
+        prospectId: p.id,
+        ...convertFields,
+      })
+      await deleteProspect(p.id)
+      navigate(`/proyectos/${project.id}`)
+    } catch (e) {
+      setConvertError(e instanceof Error ? e.message : 'Error al crear proyecto')
+      setConverting(false)
     }
   }
 
@@ -222,6 +276,12 @@ export function ProspectDetailPage() {
         }}>
           {PROSPECT_STATUS_LABEL[p.status] ?? p.status.toUpperCase()}
         </span>
+        <button
+          onClick={() => openConvertModal(p)}
+          style={{ background: 'none', border: `1px solid ${colors.primary}`, color: colors.primary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
+        >
+          CONVERTIR ▸ PROYECTO
+        </button>
         {confirmDelete ? (
           <>
             <button
@@ -320,6 +380,20 @@ export function ProspectDetailPage() {
               <input value={cv(key)} onChange={e => handleEdit(key, e.target.value, 'text')} type={type} style={fieldInput} />
             </div>
           ))}
+
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>TIPO</div>
+            <select
+              value={(edits.type as string) ?? p.type ?? ''}
+              onChange={e => setEdits(prev => ({ ...prev, type: e.target.value }))}
+              style={{ ...fieldInput, cursor: 'pointer' }}
+            >
+              <option value="">— sin tipo —</option>
+              {PROPERTY_TYPES.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
 
           <div style={{ marginBottom: '8px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>ESTADO</div>
@@ -510,6 +584,108 @@ export function ProspectDetailPage() {
           )}
         </div>
       </div>
+
+      {/* ── CONVERT MODAL ── */}
+      {convertModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.75)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: colors.dark, border: `1px solid ${colors.border}`,
+            padding: '28px', width: '340px', display: 'flex', flexDirection: 'column', gap: '12px',
+          }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '4px' }}>
+              CONVERTIR A PROYECTO — {p.name}
+            </div>
+
+            <div>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '3px' }}>TIPO</div>
+              <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: p.type ? colors.neutral : colors.secondary, padding: '6px 10px', background: colors.surfaceAlt, border: `1px solid ${colors.border}` }}>
+                {p.type || '— sin tipo asignado —'}
+              </div>
+            </div>
+
+            {([
+              { key: 'acquisitionDate', label: 'Fecha adquisición',     inputType: 'text', placeholder: 'YYYY-MM' },
+              { key: 'conclusionDate',  label: 'Fecha conclusión',      inputType: 'text', placeholder: 'YYYY-MM' },
+              { key: 'valuationDate',   label: 'Fecha valuación',       inputType: 'text', placeholder: 'YYYY-MM' },
+            ] as const).map(({ key, label, inputType, placeholder }) => (
+              <div key={key}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '3px' }}>{label.toUpperCase()}</div>
+                <input
+                  value={convertFields[key]}
+                  placeholder={placeholder}
+                  onChange={e => setConvertFields(prev => ({ ...prev, [key]: e.target.value }))}
+                  type={inputType}
+                  style={{ width: '100%', boxSizing: 'border-box', background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', padding: '6px 10px', outline: 'none' }}
+                />
+              </div>
+            ))}
+
+            <div>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '3px' }}>UNIDADES</div>
+              <input
+                value={convertFields.totalUnits}
+                onChange={e => setConvertFields(prev => ({ ...prev, totalUnits: Number(e.target.value) || 1 }))}
+                type="number" min="1"
+                style={{ width: '100%', boxSizing: 'border-box', background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', padding: '6px 10px', outline: 'none' }}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '3px' }}>VALUACIÓN ACTUAL ($)</div>
+              <input
+                value={convertFields.currentValuation}
+                onChange={e => setConvertFields(prev => ({ ...prev, currentValuation: parseFloat(e.target.value) || 0 }))}
+                type="number"
+                style={{ width: '100%', boxSizing: 'border-box', background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', padding: '6px 10px', outline: 'none' }}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '3px' }}>ESTADO</div>
+              <select
+                value={convertFields.status}
+                onChange={e => setConvertFields(prev => ({ ...prev, status: e.target.value }))}
+                style={{ width: '100%', boxSizing: 'border-box', background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', padding: '6px 10px', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="activo">Activo</option>
+                <option value="en_proceso">En proceso</option>
+                <option value="pausado">Pausado</option>
+                <option value="concluido">Concluido</option>
+              </select>
+            </div>
+
+            {convertError && (
+              <div style={{ color: '#c0392b', fontFamily: fonts.sans, fontSize: '11px' }}>{convertError}</div>
+            )}
+
+            {!p.type && (
+              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, fontStyle: 'italic' }}>
+                Debes asignar un tipo al prospecto primero
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+              <button
+                onClick={() => setConvertModal(false)}
+                style={{ flex: 1, background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '8px' }}
+              >
+                CANCELAR
+              </button>
+              <button
+                onClick={handleConvert}
+                disabled={converting || !p.type}
+                style={{ flex: 2, background: colors.primary, border: 'none', color: colors.neutral, cursor: converting || !p.type ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '8px', opacity: converting || !p.type ? 0.6 : 1 }}
+              >
+                {converting ? 'CREANDO…' : 'CREAR PROYECTO ▸'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
