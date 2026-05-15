@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   hold_months               INTEGER NOT NULL DEFAULT 12,
   rent_monthly              REAL NOT NULL CHECK (rent_monthly >= 0),
   notes                     TEXT NOT NULL DEFAULT '',
+  image_path                TEXT NOT NULL DEFAULT '',
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
