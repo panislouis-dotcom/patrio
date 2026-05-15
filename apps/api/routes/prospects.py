@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from api.auth import get_current_user
-from api.db import get_prospects, get_prospect, update_prospect, create_prospect, set_prospect_image_path
+from api.db import get_prospects, get_prospect, update_prospect, create_prospect, set_prospect_image_path, delete_prospect
 from api.checks import run_checks
 
 _FILES_BASE = Path(__file__).parent.parent.parent.parent / "data" / "files"
@@ -111,6 +111,14 @@ def patch_prospect(prospect_id: int, body: ProspectUpdate, _: dict = Depends(get
         raise HTTPException(status_code=404, detail="Prospect not found")
     all_prospects = get_prospects()
     return _with_checks({**updated, "score": _score(updated, all_prospects)})
+
+
+@router.delete("/api/prospects/{prospect_id}", status_code=204)
+def remove_prospect(prospect_id: int, _: dict = Depends(get_current_user)):
+    try:
+        delete_prospect(prospect_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Prospect not found")
 
 
 @router.post("/api/prospects", status_code=201)

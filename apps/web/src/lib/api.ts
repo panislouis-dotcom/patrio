@@ -48,6 +48,11 @@ export async function updateProspect(id: number, data: Partial<RawFields>): Prom
   return res.json()
 }
 
+export async function deleteProspect(id: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/prospects/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+}
+
 export async function parseProspect(url: string, text: string, image?: Blob): Promise<ParsedProspect> {
   if (image) {
     const form = new FormData()

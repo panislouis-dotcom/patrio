@@ -148,6 +148,13 @@ def set_prospect_image_path(prospect_id: int, image_path: str) -> None:
             raise ValueError(f"Prospect {prospect_id} not found")
 
 
+def delete_prospect(prospect_id: int) -> None:
+    with get_db() as conn:
+        result = conn.execute("DELETE FROM prospects WHERE id = %s", (prospect_id,))
+        if result.rowcount == 0:
+            raise ValueError(f"Prospect {prospect_id} not found")
+
+
 def update_prospect(prospect_id: int, data: dict) -> dict | None:
     """Update a prospect record with the provided data.
 
