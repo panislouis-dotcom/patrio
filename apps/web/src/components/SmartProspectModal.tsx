@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { parseProspect, createProspect, uploadProspectImage } from '../lib/api'
 import type { ParsedProspect } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -86,10 +86,13 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
   const [image, setImage]               = useState<Blob | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [saving, setSaving]       = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const handleImageSelect = useCallback((blob: Blob) => {
+    setImagePreview(prev => { if (prev) URL.revokeObjectURL(prev); return null })
     setImage(blob)
     setImagePreview(URL.createObjectURL(blob))
   }, [])
@@ -102,6 +105,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
   useEffect(() => {
     function onPaste(e: ClipboardEvent) {
+      if (step !== 'capture') return
       const item = Array.from(e.clipboardData?.items ?? []).find(i => i.type.startsWith('image/'))
       if (!item) return
       const blob = item.getAsFile()
@@ -109,7 +113,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
-  }, [handleImageSelect])
+  }, [handleImageSelect, step])
 
   async function handleAnalyze() {
     setParsing(true)
@@ -265,10 +269,10 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
                 const file = e.dataTransfer.files[0]
                 if (file?.type.startsWith('image/')) handleImageSelect(file)
               }}
-              onClick={() => document.getElementById('prospect-img-input')?.click()}
+              onClick={() => fileInputRef.current?.click()}
             >
               <input
-                id="prospect-img-input"
+                ref={fileInputRef}
                 type="file"
                 accept="image/*"
                 style={{ display: 'none' }}
@@ -282,7 +286,12 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
                   <img src={imagePreview} alt="preview" style={{ maxHeight: '120px', maxWidth: '100%', objectFit: 'contain' }} />
                   <button
                     style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '0.06em' }}
-                    onClick={e => { e.stopPropagation(); setImage(null); setImagePreview(null) }}
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (imagePreview) URL.revokeObjectURL(imagePreview)
+                      setImage(null)
+                      setImagePreview(null)
+                    }}
                   >
                     QUITAR IMAGEN
                   </button>
