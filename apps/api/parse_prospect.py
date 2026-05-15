@@ -94,6 +94,19 @@ def _fetch_url_text(url: str) -> str:
         return ""
 
 
+def _image_media_type(data: bytes) -> str:
+    """Detect MIME type from image magic bytes."""
+    if data.startswith(b'\x89PNG'):
+        return "image/png"
+    elif data.startswith(b'\xff\xd8'):
+        return "image/jpeg"
+    elif data.startswith(b'RIFF') and len(data) > 12 and data[8:12] == b'WEBP':
+        return "image/webp"
+    elif data.startswith(b'GIF8'):
+        return "image/gif"
+    return "image/jpeg"
+
+
 def _parse_llm_response(raw: str) -> dict:
     """Strip optional markdown fences and parse JSON from an LLM response."""
     raw = raw.strip()
@@ -119,7 +132,7 @@ def _llm_extract_vision(image_bytes: bytes, text: str = "") -> dict:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     b64 = base64.standard_b64encode(image_bytes).decode("ascii")
     content: list[dict] = [
-        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+        {"type": "image", "source": {"type": "base64", "media_type": _image_media_type(image_bytes), "data": b64}},
     ]
     if text:
         content.append({"type": "text", "text": text})
@@ -145,10 +158,13 @@ def parse_prospect(url: str = "", text: str = "", image_bytes: bytes | None = No
 
     if image_bytes is not None:
         # Vision path — skip URL fetch and regex fast-pass entirely
-        try:
-            extracted = _llm_extract_vision(image_bytes, text)
-        except Exception as e:
-            logger.warning("Vision LLM extraction failed: %s", e)
+        if not image_bytes:
+            logger.warning("parse_prospect: empty image_bytes received, skipping vision extraction")
+        else:
+            try:
+                extracted = _llm_extract_vision(image_bytes, text)
+            except Exception as e:
+                logger.warning("Vision LLM extraction failed: %s", e)
     else:
         clean_url = url.split("#")[0].split("?")[0] if url else ""
         url_text = _fetch_url_text(url) if url else ""
