@@ -154,14 +154,17 @@ async def upload_prospect_image(
     ext = Path(file.filename).suffix if file.filename else ""
     relative_path = f"prospects/{prospect_id}/{uuid4().hex}{ext}"
     full_path = _FILES_BASE / relative_path
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-
     try:
+        full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_bytes(content)
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to store image") from exc
 
-    set_prospect_image_path(prospect_id, relative_path)
+    rel_path = Path(relative_path)
+    try:
+        set_prospect_image_path(prospect_id, str(rel_path))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Prospect not found")
 
     all_prospects = get_prospects()
     updated = get_prospect(prospect_id)
