@@ -81,7 +81,7 @@ function SensitivityMatrix({ snap }: { snap: AnalysisSnapshot }) {
   function sensitivityROI(exitMult: number, remodelMult: number): number | null {
     const exit = snap.exitPriceUsed * exitMult
     const remodel = snap.remodelCostEstimate * remodelMult
-    const total = snap.purchasePrice + remodel + snap.transactionCosts
+    const total = snap.purchasePrice + remodel + snap.transactionCosts + (snap.financingCosts ?? 0)
     if (total <= 0) return null
     return ((exit - total) / total) * 100
   }
