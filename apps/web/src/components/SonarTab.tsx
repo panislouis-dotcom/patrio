@@ -703,7 +703,7 @@ export function SonarTab() {
                             onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}>
                             ✕
                           </button>
-                          {s.sqmLand > 0 && (
+                          {s.sqmLand > 0 && s.sqmLand <= 50_000 && (
                             compSavedIds.has(s.id)
                               ? <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.tertiary, letterSpacing: '0.08em' }}>✓ COMP</span>
                               : compPickerId === s.id
