@@ -183,19 +183,23 @@ def find_comparables(
             if c.get("m2") and 0.75 * prospect_sqm <= c["m2"] <= 1.25 * prospect_sqm
         ]
 
-    # Filter by distance, attach _dist_km for sorting
+    # Filter by distance, attach _dist_km for sorting.
+    # Comps without coordinates are kept as valid data (we can't measure distance, not exclude them).
     avg_dist_km: float | None = None
     if prospect_lat is not None and prospect_lng is not None:
         with_dist = []
+        no_coords = []
         for c in comps:
-            if c.get("lat") and c.get("lng"):
+            if c.get("lat") is not None and c.get("lng") is not None:
                 d = _haversine_km(prospect_lat, prospect_lng, c["lat"], c["lng"])
                 if d <= max_km:
                     c["_dist_km"] = round(d, 3)
                     with_dist.append(c)
-        comps = sorted(with_dist, key=lambda c: c["_dist_km"])
-        if comps:
-            avg_dist_km = round(sum(c["_dist_km"] for c in comps) / len(comps), 2)
+            else:
+                no_coords.append(c)
+        comps = sorted(with_dist, key=lambda c: c["_dist_km"]) + no_coords
+        if with_dist:
+            avg_dist_km = round(sum(c["_dist_km"] for c in with_dist) / len(with_dist), 2)
 
     # Apply listing-to-sale haircut
     factor = 1.0 - listing_haircut
@@ -444,11 +448,9 @@ def analyze_prospect(
 
     exit_low = exit_mid = exit_high = None
     if len(comp_ppm2) >= 1:
-        # Use sqm_construction for exit price (price of finished product)
-        sale_area = sqm_construction if sqm_construction > 0 else p["sqm_land"]
-        exit_low = _percentile(comp_ppm2, 0.25) * sale_area
-        exit_mid = _percentile(comp_ppm2, 0.50) * sale_area
-        exit_high = _percentile(comp_ppm2, 0.75) * sale_area
+        exit_low = _percentile(comp_ppm2, 0.25) * sale_sqm
+        exit_mid = _percentile(comp_ppm2, 0.50) * sale_sqm
+        exit_high = _percentile(comp_ppm2, 0.75) * sale_sqm
 
     # Determine which exit price to use
     if exit_price_source == "calculated" and exit_mid is not None:
