@@ -99,7 +99,7 @@ export function ProspectTable() {
             {sorted.map(p => {
               const errors = p.issues.filter(i => i.severity === 'error').length
               const warnings = p.issues.filter(i => i.severity === 'warning').length
-              const roiColor = p.roi < 0 ? 'tomato' : p.roi > 0.15 ? colors.tertiary : colors.neutral
+              const roiColor = (p.roi ?? 0) < 0 ? 'tomato' : (p.roi ?? 0) > 0.15 ? colors.tertiary : colors.neutral
               const statusDot = PROSPECT_STATUS_COLOR[p.status] ?? colors.secondary
 
               return (

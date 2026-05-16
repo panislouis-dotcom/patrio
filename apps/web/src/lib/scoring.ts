@@ -11,14 +11,14 @@ export function computeScores(
   prospects: Prospect[],
   weights: ScoreWeights
 ): Prospect[] {
-  const rois = prospects.map(p => p.roi)
-  const capRates = prospects.map(p => p.capRate)
+  const rois = prospects.map(p => p.roi ?? 0)
+  const capRates = prospects.map(p => p.capRate ?? 0)
   const profits = prospects.map(p => p.profit)
 
   return prospects.map(p => {
     const score =
-      percentileRank(p.roi, rois) * weights.roi +
-      percentileRank(p.capRate, capRates) * weights.capRate +
+      percentileRank(p.roi ?? 0, rois) * weights.roi +
+      percentileRank(p.capRate ?? 0, capRates) * weights.capRate +
       percentileRank(p.profit, profits) * weights.profit
     return { ...p, score: Math.round(score * 100) }
   })

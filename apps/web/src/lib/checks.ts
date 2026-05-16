@@ -8,7 +8,7 @@ export function runChecks(p: Prospect): Issue[] {
   if (!p.longitude) issues.push({ field: 'longitude', message: 'Longitud es 0 o faltante', severity: 'error' })
   if (!p.landPrice) issues.push({ field: 'landPrice', message: 'Precio de terreno es 0', severity: 'error' })
   if (!p.sqmLand) issues.push({ field: 'sqmLand', message: 'Superficie terreno es 0', severity: 'error' })
-  if (p.roi < 0) issues.push({ field: 'roi', message: `ROI negativo (${(p.roi * 100).toFixed(1)}%)`, severity: 'error' })
+  if (p.roi != null && p.roi < 0) issues.push({ field: 'roi', message: `ROI negativo (${(p.roi * 100).toFixed(1)}%)`, severity: 'error' })
   if (p.constructionOverhead < 1.0)
     issues.push({ field: 'constructionOverhead', message: `Overhead ${p.constructionOverhead} < 1.0`, severity: 'error' })
 

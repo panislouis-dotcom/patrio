@@ -358,7 +358,7 @@ export function ProspectDetailPage() {
           </div>
 
           {stat('PROFIT', fmtMXN(p.profit))}
-          {stat('CAP RATE', p.capRate > 0 ? `${(p.capRate * 100).toFixed(1)}%` : '—')}
+          {stat('CAP RATE', (p.capRate ?? 0) > 0 ? `${((p.capRate ?? 0) * 100).toFixed(1)}%` : '—')}
           {stat('INVERSIÓN', fmtMXN(p.totalInvestment))}
           {stat('VENTA', fmtMXN(p.projectedSale))}
           {p.holdMonths > 0 ? stat('PLAZO', `${p.holdMonths} meses`) : null}
