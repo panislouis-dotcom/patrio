@@ -634,6 +634,12 @@ def update_comparable(comparable_id: int, data: dict) -> dict | None:
     return get_comparable(comparable_id)
 
 
+def delete_comparable(comparable_id: int) -> bool:
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM comparables WHERE id = %s", (comparable_id,))
+    return cur.rowcount > 0
+
+
 def _parse_comparable(row) -> dict | None:
     if row is None:
         return None

@@ -630,6 +630,11 @@ export async function updateComparable(id: number, data: Partial<Comparable>): P
   return res.json()
 }
 
+export async function deleteComparable(id: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/comparables/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+}
+
 // ─── Analyses ────────────────────────────────────────────────────────────────
 
 export async function runAnalysis(data: AnalysisRequest): Promise<AnalysisSnapshot> {

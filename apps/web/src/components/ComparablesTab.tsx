@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { colors, fonts } from '../lib/theme'
-import { fetchComparables } from '../lib/api'
+import { fetchComparables, deleteComparable } from '../lib/api'
 import { fmtMXN } from '../lib/fmt'
 import type { Comparable } from '../lib/types'
 
@@ -42,7 +42,18 @@ export function ComparablesTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<string>('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const navigate = useNavigate()
+
+  async function handleDelete(id: number) {
+    try {
+      await deleteComparable(id)
+      setComps(prev => prev.filter(c => c.id !== id))
+      setConfirmDeleteId(null)
+    } catch {
+      setError('Error al borrar comparable')
+    }
+  }
 
   useEffect(() => {
     fetchComparables()
@@ -117,6 +128,7 @@ export function ComparablesTab() {
               <th style={thStyle}>TIPO</th>
               <th style={thStyle}>CONDICIÓN</th>
               <th style={thStyle}>ÚLTIMA VERIF.</th>
+              <th style={{ ...thStyle, width: '60px' }} />
             </tr>
           </thead>
           <tbody>
@@ -162,6 +174,18 @@ export function ComparablesTab() {
                   <td style={{ ...tdStyle, fontSize: '11px' }}>{c.condition}</td>
                   <td style={{ ...tdStyle, fontSize: '11px', color: colors.secondary }}>
                     {c.lastCheckedAt ? new Date(c.lastCheckedAt).toLocaleDateString('es-MX') : '—'}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    {confirmDeleteId === c.id
+                      ? <span style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                          <button onClick={() => handleDelete(c.id)} style={{ background: 'tomato', border: 'none', color: '#fff', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: '2px 7px', cursor: 'pointer' }}>BORRAR</button>
+                          <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, fontFamily: fonts.label, fontSize: '9px', padding: '2px 6px', cursor: 'pointer' }}>NO</button>
+                        </span>
+                      : <button onClick={e => { e.stopPropagation(); setConfirmDeleteId(c.id) }} style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '13px', padding: '2px 4px', opacity: 0.4 }}
+                          onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                          onMouseLeave={e => (e.currentTarget.style.opacity = '0.4')}
+                          title="Borrar comparable">✕</button>
+                    }
                   </td>
                 </tr>
               )

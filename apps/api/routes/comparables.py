@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from api.auth import get_current_user
 from api.db import (
     get_comparables, get_comparable,
-    create_comparable, update_comparable,
+    create_comparable, update_comparable, delete_comparable,
     get_db,
 )
 
@@ -110,3 +110,9 @@ def patch_comparable(
     if updated is None:
         raise HTTPException(status_code=404, detail="Comparable not found")
     return updated
+
+
+@router.delete("/api/comparables/{comparable_id}", status_code=204)
+def remove_comparable(comparable_id: int, _: dict = Depends(get_current_user)):
+    if not delete_comparable(comparable_id):
+        raise HTTPException(status_code=404, detail="Comparable not found")
