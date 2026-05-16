@@ -88,7 +88,7 @@ export function ComparablesTab() {
           <option value="expired">Expirados</option>
         </select>
         <button
-          onClick={() => navigate('/comparables/nuevo')}
+          onClick={() => navigate('/prospectos/comparables/nuevo')}
           style={{
             marginLeft: 'auto',
             background: colors.primary,

@@ -60,8 +60,8 @@ function AppShell() {
           <Route path="/inversionistas" element={<ProtectedRoute><InversoresTab /></ProtectedRoute>} />
           <Route path="/inversionistas/:id" element={<ProtectedRoute><InversorDetailPage /></ProtectedRoute>} />
           <Route path="/equipo" element={<ProtectedRoute><OrgTab /></ProtectedRoute>} />
-          <Route path="/comparables" element={<ProtectedRoute><ComparablesTab /></ProtectedRoute>} />
-          <Route path="/comparables/nuevo" element={<ProtectedRoute><ComparableForm /></ProtectedRoute>} />
+          <Route path="/prospectos/comparables" element={<ProtectedRoute><ComparablesTab /></ProtectedRoute>} />
+          <Route path="/prospectos/comparables/nuevo" element={<ProtectedRoute><ComparableForm /></ProtectedRoute>} />
           <Route path="/analyses/:id" element={<ProtectedRoute><AnalysisView /></ProtectedRoute>} />
         </Routes>
       </div>
