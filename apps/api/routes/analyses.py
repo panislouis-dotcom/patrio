@@ -1,14 +1,27 @@
+import json
 from typing import Optional
-from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.auth import get_current_user
-from api.analyzer import analyze_prospect, ProspectNotFound, AnalysisResult
+from api.analyzer import analyze_prospect, ProspectNotFound
 from api.db import get_db, _row_to_dict
 
 router = APIRouter()
+
+
+def _parse_snapshot(row) -> dict | None:
+    d = _row_to_dict(row)
+    if d is None:
+        return None
+    for key in ("comparableIds", "dataQualityWarnings"):
+        if isinstance(d.get(key), str):
+            try:
+                d[key] = json.loads(d[key])
+            except (json.JSONDecodeError, TypeError):
+                d[key] = []
+    return d
 
 
 class AnalysisRequest(BaseModel):
@@ -43,7 +56,11 @@ def run_analysis(body: AnalysisRequest, _: dict = Depends(get_current_user)):
             plazo_credito_meses=body.plazoCreditoMeses,
             gastos_operativos_pct=body.gastosOperativosPct,
         )
-        return asdict(result)
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM analysis_snapshots WHERE id = %s", (result.snapshot_id,)
+            ).fetchone()
+        return _parse_snapshot(row)
     except ProspectNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -56,7 +73,7 @@ def get_analysis(snapshot_id: int, _: dict = Depends(get_current_user)):
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Snapshot not found")
-    return _row_to_dict(row)
+    return _parse_snapshot(row)
 
 
 @router.get("/api/analyses")
@@ -72,4 +89,4 @@ def list_analyses(
     query += " ORDER BY generated_at DESC"
     with get_db() as conn:
         rows = conn.execute(query, params).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    return [_parse_snapshot(r) for r in rows]

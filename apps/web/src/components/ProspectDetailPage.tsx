@@ -8,6 +8,7 @@ import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { fmtMXN } from '../lib/fmt'
 import { ProspectForm } from './ProspectForm'
+import { ProspectAnalysisSection } from './ProspectAnalysisSection'
 import { PROSPECT_STATUS_COLOR, PROSPECT_STATUS_LABEL } from '../lib/status'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
@@ -583,6 +584,9 @@ export function ProspectDetailPage() {
               </a>
             </div>
           )}
+
+          {/* Analysis section */}
+          <ProspectAnalysisSection prospectId={p.id} />
         </div>
       </div>
 

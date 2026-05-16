@@ -134,11 +134,35 @@ def _monthly_payment(principal: float, annual_rate: float, months: int) -> float
 
 # ─── Core functions ──────────────────────────────────
 
-def find_comparables(zone_id: int, property_type: str = "casa") -> list[dict]:
-    """Find active comparables in the same zone, seen in the last 6 months."""
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle distance in km between two lat/lng points."""
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def find_comparables(
+    zone_id: int,
+    property_type: str = "casa",
+    prospect_lat: float | None = None,
+    prospect_lng: float | None = None,
+    prospect_sqm: float | None = None,
+    max_km: float = 5.0,
+    listing_haircut: float = 0.06,
+) -> tuple[list[dict], float | None]:
+    """
+    Find active comparables for a zone with distance/size/type filtering.
+
+    Returns (comps, avg_comp_distance_km).
+    Applies a 6% listing-to-sale haircut on prices.
+    """
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT id, price, m2, price_per_m2, lat, lng, listed_at, last_seen_active
+            """SELECT id, price, m2, price_per_m2, lat, lng,
+                      listed_at, last_seen_active, property_type
                FROM comparables
                WHERE zone_id = %s
                  AND status = 'active'
@@ -146,7 +170,46 @@ def find_comparables(zone_id: int, property_type: str = "casa") -> list[dict]:
                ORDER BY captured_at DESC""",
             (zone_id,),
         ).fetchall()
-    return [dict(r) for r in rows]
+
+    comps = [dict(r) for r in rows]
+
+    # Filter by property type
+    comps = [c for c in comps if (c.get("property_type") or "casa").lower() == property_type.lower()]
+
+    # Filter by size ±25%
+    if prospect_sqm and prospect_sqm > 0:
+        comps = [
+            c for c in comps
+            if c.get("m2") and 0.75 * prospect_sqm <= c["m2"] <= 1.25 * prospect_sqm
+        ]
+
+    # Filter by distance, attach _dist_km for sorting.
+    # Comps without coordinates are kept as valid data (we can't measure distance, not exclude them).
+    avg_dist_km: float | None = None
+    if prospect_lat is not None and prospect_lng is not None:
+        with_dist = []
+        no_coords = []
+        for c in comps:
+            if c.get("lat") is not None and c.get("lng") is not None:
+                d = _haversine_km(prospect_lat, prospect_lng, c["lat"], c["lng"])
+                if d <= max_km:
+                    c["_dist_km"] = round(d, 3)
+                    with_dist.append(c)
+            else:
+                no_coords.append(c)
+        comps = sorted(with_dist, key=lambda c: c["_dist_km"]) + no_coords
+        if with_dist:
+            avg_dist_km = round(sum(c["_dist_km"] for c in with_dist) / len(with_dist), 2)
+
+    # Apply listing-to-sale haircut
+    factor = 1.0 - listing_haircut
+    for c in comps:
+        if c.get("price_per_m2") is not None:
+            c["price_per_m2"] = c["price_per_m2"] * factor
+        if c.get("price") is not None:
+            c["price"] = c["price"] * factor
+
+    return comps, avg_dist_km
 
 
 def get_remodel_cost(zone_id: int, intervention_level: str) -> dict | None:
@@ -284,7 +347,7 @@ def analyze_prospect(
     # ── 1. Load prospect ─────────────────────────────
     with get_db() as conn:
         prospect = conn.execute(
-            """SELECT id, name, city, sqm_land, sqm_construction, land_price,
+            """SELECT id, name, city, type, sqm_land, sqm_construction, land_price,
                       acquisition_cost_pct, projected_sale, rent_monthly,
                       latitude, longitude
                FROM prospects WHERE id = %s""",
@@ -371,17 +434,23 @@ def analyze_prospect(
     total_cost = total_cost_before_financing + financing_costs
 
     # ── 5. Find comparables & calculate exit price ───
-    comps = find_comparables(zone_id)
+    sale_sqm = sqm_construction if sqm_construction > 0 else p["sqm_land"]
+    prop_type = (p.get("type") or "casa").lower()
+    comps, avg_comp_distance_km = find_comparables(
+        zone_id,
+        property_type=prop_type,
+        prospect_lat=p["latitude"],
+        prospect_lng=p["longitude"],
+        prospect_sqm=sale_sqm,
+    )
     comp_ids = [c["id"] for c in comps]
-    comp_ppm2 = [c["price_per_m2"] for c in comps if c["price_per_m2"]]
+    comp_ppm2 = [c["price_per_m2"] for c in comps if c.get("price_per_m2")]
 
     exit_low = exit_mid = exit_high = None
     if len(comp_ppm2) >= 1:
-        # Use sqm_construction for exit price (price of finished product)
-        sale_area = sqm_construction if sqm_construction > 0 else p["sqm_land"]
-        exit_low = _percentile(comp_ppm2, 0.25) * sale_area
-        exit_mid = _percentile(comp_ppm2, 0.50) * sale_area
-        exit_high = _percentile(comp_ppm2, 0.75) * sale_area
+        exit_low = _percentile(comp_ppm2, 0.25) * sale_sqm
+        exit_mid = _percentile(comp_ppm2, 0.50) * sale_sqm
+        exit_high = _percentile(comp_ppm2, 0.75) * sale_sqm
 
     # Determine which exit price to use
     if exit_price_source == "calculated" and exit_mid is not None:
@@ -414,12 +483,8 @@ def analyze_prospect(
         if monthly_irr is not None:
             irr_pct = round(((1 + monthly_irr) ** 12 - 1) * 100, 2)
 
-    # Cap rate (only if rental income exists)
-    cap_rate_pct = None
-    if rent_monthly > 0 and exit_used and exit_used > 0:
-        cap_rate_pct = round((rent_monthly * 12 / exit_used) * 100, 2)
-
     # ── 7. Build & Hold (10 year analysis) ───────────
+    cap_rate_pct = None
     noi_anual = None
     debt_service_anual = None
     cash_flow_anual = None
@@ -433,6 +498,10 @@ def analyze_prospect(
         gross_rental_income = rent_estimate * 12
         opex = gross_rental_income * gastos_operativos_pct
         noi_anual = gross_rental_income - opex
+
+        # Cap rate uses NOI (not gross rent), so compute it here after noi_anual
+        if noi_anual and noi_anual > 0 and exit_used and exit_used > 0:
+            cap_rate_pct = round((noi_anual / exit_used) * 100, 2)
 
         # Debt service
         loan_amount = total_cost * financiamiento_pct
@@ -526,7 +595,7 @@ def analyze_prospect(
                 exit_price_source if exit_mid is not None else "manual",
                 exit_used, delta_pct,
                 arv_manual_override,
-                len(comps), json.dumps(comp_ids), None,
+                len(comps), json.dumps(comp_ids), avg_comp_distance_km,
                 gross_margin, roi_pct, irr_pct, cap_rate_pct,
                 score, conf_notes, json.dumps(warnings),
                 rent_estimate if rent_estimate > 0 else None,
@@ -576,7 +645,7 @@ def analyze_prospect(
         arv_manual_override=arv_manual_override,
         comparable_count=len(comps),
         comparable_ids=comp_ids,
-        avg_comp_distance_km=None,
+        avg_comp_distance_km=avg_comp_distance_km,
         gross_margin=gross_margin,
         roi_pct=roi_pct,
         irr_pct=irr_pct,

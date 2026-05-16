@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { streamSonarRun, importSonarSignal, fetchSonarSignals, fetchZoneMedians, fetchProspects, fetchSonarZones } from '../lib/api'
+import { streamSonarRun, importSonarSignal, importSonarToComparables, fetchSonarSignals, fetchZoneMedians, fetchProspects, fetchSonarZones, fetchZones } from '../lib/api'
 import type { SonarRunEvent } from '../lib/api'
-import type { SonarSignal, SonarState } from '../lib/types'
+import type { SonarSignal, SonarState, Zone } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtM } from '../lib/fmt'
 
@@ -180,6 +180,9 @@ function PortalRow({ name, state, pulse }: { name: string; state: PortalPhase; p
 export function SonarTab() {
   const [signals, setSignals]         = useState<SonarSignal[]>([])
   const [importedUrls, setImportedUrls] = useState<Set<string>>(new Set())
+  const [compSavedIds, setCompSavedIds] = useState<Set<number>>(new Set())
+  const [compPickerId, setCompPickerId] = useState<number | null>(null)
+  const [zones, setZones] = useState<Zone[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
 
   // Pre-load saved prospect URLs so signals already imported show "GUARDADA" across sessions
@@ -188,6 +191,10 @@ export function SonarTab() {
       const urls = new Set(ps.map(p => p.url).filter(Boolean))
       setImportedUrls(urls as Set<string>)
     }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetchZones().then(setZones).catch(() => {})
   }, [])
 
   // municipio-level median $/m² from historical DB — {municipio_name: median}
@@ -364,6 +371,16 @@ export function SonarTab() {
 
   function handleDismiss(url: string) {
     setSignals(prev => prev.filter(s => s.url !== url))
+  }
+
+  async function handleSaveAsComp(signalId: number, zoneId: number) {
+    setCompPickerId(null)
+    try {
+      await importSonarToComparables([signalId], zoneId)
+      setCompSavedIds(prev => new Set([...prev, signalId]))
+    } catch {
+      setActionError('Error al guardar comparable')
+    }
   }
 
   const sep: React.CSSProperties = { width: '1px', height: '16px', background: colors.border, flexShrink: 0 }
@@ -680,12 +697,34 @@ export function SonarTab() {
                         })()}
                       </td>
                       <td style={{ padding: '5px 10px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', flexWrap: 'wrap' }}>
                           <button onClick={() => handleDismiss(s.url)} title="Descartar" style={{ background: 'none', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '13px', lineHeight: 1, padding: '2px 4px', opacity: 0.5 }}
                             onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                             onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}>
                             ✕
                           </button>
+                          {s.sqmLand <= 50_000 && (
+                            compSavedIds.has(s.id)
+                              ? <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.tertiary, letterSpacing: '0.08em' }}>✓ COMP</span>
+                              : compPickerId === s.id
+                                ? <select
+                                    autoFocus
+                                    defaultValue=""
+                                    onChange={e => e.target.value && handleSaveAsComp(s.id, Number(e.target.value))}
+                                    onBlur={() => setCompPickerId(null)}
+                                    style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.label, fontSize: '9px', padding: '2px 4px', cursor: 'pointer' }}
+                                  >
+                                    <option value="">— zona —</option>
+                                    {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+                                  </select>
+                                : <button
+                                    onClick={() => setCompPickerId(s.id)}
+                                    style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '2px 7px' }}
+                                    title="Guardar como comparable"
+                                  >
+                                    → COMP
+                                  </button>
+                          )}
                           {imported
                             ? <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.08em' }}>GUARDADA</span>
                             : <button onClick={() => handleImport(s)} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 8px' }}>

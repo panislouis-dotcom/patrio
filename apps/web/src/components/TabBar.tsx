@@ -15,6 +15,7 @@ const prospectoSubTabs = [
   { path: '/prospectos/tabla', label: 'TABLA' },
   { path: '/prospectos/mapa', label: 'MAPA' },
   { path: '/prospectos/sonar', label: 'SONAR' },
+  { path: '/prospectos/comparables', label: 'COMPARABLES' },
 ]
 
 interface TabBarProps {

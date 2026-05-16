@@ -596,13 +596,21 @@ def create_comparable(data: dict) -> dict | None:
     columns = ", ".join(snake.keys())
     placeholders = ", ".join(["%s"] * len(snake))
     values = list(snake.values())
-    query = f"INSERT INTO comparables ({columns}) VALUES ({placeholders}) RETURNING id"
+    query = f"INSERT INTO comparables ({columns}) VALUES ({placeholders}) ON CONFLICT (listing_url) DO NOTHING RETURNING id"
 
     with get_db() as conn:
         cur = conn.execute(query, values)
-        comparable_id = cur.fetchone()["id"]
+        row = cur.fetchone()
 
-    return get_comparable(comparable_id)
+    if row is None:
+        # Duplicate — return existing row
+        with get_db() as conn:
+            existing = conn.execute(
+                "SELECT id FROM comparables WHERE listing_url = %s", (snake.get("listing_url"),)
+            ).fetchone()
+        return get_comparable(existing["id"]) if existing else None
+
+    return get_comparable(row["id"])
 
 
 def update_comparable(comparable_id: int, data: dict) -> dict | None:
@@ -624,6 +632,12 @@ def update_comparable(comparable_id: int, data: dict) -> dict | None:
         conn.execute(query, values)
 
     return get_comparable(comparable_id)
+
+
+def delete_comparable(comparable_id: int) -> bool:
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM comparables WHERE id = %s", (comparable_id,))
+    return cur.rowcount > 0
 
 
 def _parse_comparable(row) -> dict | None:

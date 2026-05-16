@@ -1,11 +1,12 @@
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi import APIRouter, Depends
+from typing import Literal
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from api.auth import get_current_user
-from api.db import create_prospect
+from api.db import create_prospect, create_comparable, get_db
 from api import sonar_db, geo
 from scraper import lamudi, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
 from scraper.base import SignalRaw
@@ -116,6 +117,7 @@ def _signal_to_dict(s: SignalRaw) -> dict:
 
 def _db_row_to_dict(row: dict) -> dict:
     return {
+        "id":            row["id"],
         "url":           row["url"],
         "portal":        row["portal"],
         "title":         row["title"],
@@ -321,3 +323,71 @@ def sonar_re_geocode(_: dict = Depends(get_current_user)):
     rows = sonar_db.get_all_signals()
     threading.Thread(target=_regeocode_all, daemon=True).start()
     return {"queued": len(rows)}
+
+
+VALID_PORTALS = {
+    'inmuebles24', 'vivanuncios', 'lamudi', 'propiedades_com',
+    'mercadolibre', 'doorvel', 'off_market', 'other',
+}
+
+
+class _ToComparableRequest(BaseModel):
+    signal_ids: list[int]
+    zone_id: int
+    condition: Literal['remodelada', 'nueva', 'semi_nueva', 'por_remodelar'] = "semi_nueva"
+
+
+@router.post("/api/sonar/to-comparables", status_code=201)
+def sonar_to_comparables(req: _ToComparableRequest, _: dict = Depends(get_current_user)):
+    if not req.signal_ids:
+        return {"created": 0, "skipped": 0}
+
+    with get_db() as conn:
+        if not conn.execute("SELECT 1 FROM zones WHERE id = %s", (req.zone_id,)).fetchone():
+            raise HTTPException(status_code=422, detail=f"zone_id {req.zone_id} does not exist")
+
+    placeholders = ",".join(["%s"] * len(req.signal_ids))
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""SELECT id, url, portal, address, municipio_name, colonia, lat, lon,
+                       price, sqm_land, first_seen_at
+                FROM sonar_signals WHERE id IN ({placeholders})""",
+            req.signal_ids,
+        ).fetchall()
+    signals = {r["id"]: dict(r) for r in rows}
+
+    created = 0
+    skipped = 0
+    for sig_id in req.signal_ids:
+        sig = signals.get(sig_id)
+        if not sig:
+            skipped += 1
+            continue
+        if sig.get("sqm_land") is not None and sig["sqm_land"] > 50_000:
+            skipped += 1
+            continue
+        if not sig.get("address") or not sig.get("url") or sig.get("price") is None or sig["price"] <= 0:
+            skipped += 1
+            continue
+        data = {
+            "zoneId":       req.zone_id,
+            "address":      sig["address"],
+            "neighborhood": sig["colonia"] or "",
+            "city":         sig["municipio_name"] or "Monterrey",
+            "m2":           float(sig["sqm_land"]),
+            "price":        int(sig["price"]),
+            "listingUrl":   sig["url"],
+            "sourcePortal": sig["portal"] if sig["portal"] in VALID_PORTALS else "other",
+            "listedAt":     sig["first_seen_at"].isoformat() if sig.get("first_seen_at") else None,
+            "lat":          sig.get("lat"),
+            "lng":          sig.get("lon"),
+            "propertyType": "casa",
+            "condition":    req.condition,
+        }
+        try:
+            create_comparable(data)
+            created += 1
+        except Exception:
+            skipped += 1
+
+    return {"created": created, "skipped": skipped}

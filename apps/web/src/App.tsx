@@ -18,6 +18,9 @@ import { ProcesoNodeDetail } from './components/ProcesoNodeDetail'
 import { OrgTab } from './components/OrgTab'
 import { InversoresTab } from './components/InversoresTab'
 import { InversorDetailPage } from './components/InversorDetailPage'
+import { ComparablesTab } from './components/ComparablesTab'
+import { ComparableForm } from './components/ComparableForm'
+import { AnalysisView } from './components/AnalysisView'
 import { globalStyles, colors } from './lib/theme'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -57,6 +60,9 @@ function AppShell() {
           <Route path="/inversionistas" element={<ProtectedRoute><InversoresTab /></ProtectedRoute>} />
           <Route path="/inversionistas/:id" element={<ProtectedRoute><InversorDetailPage /></ProtectedRoute>} />
           <Route path="/equipo" element={<ProtectedRoute><OrgTab /></ProtectedRoute>} />
+          <Route path="/prospectos/comparables" element={<ProtectedRoute><ComparablesTab /></ProtectedRoute>} />
+          <Route path="/prospectos/comparables/nuevo" element={<ProtectedRoute><ComparableForm /></ProtectedRoute>} />
+          <Route path="/analyses/:id" element={<ProtectedRoute><AnalysisView /></ProtectedRoute>} />
         </Routes>
       </div>
     </>
