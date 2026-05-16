@@ -360,7 +360,7 @@ def sonar_to_comparables(req: _ToComparableRequest, _: dict = Depends(get_curren
         if not sig.get("sqm_land") or sig["sqm_land"] <= 0:
             skipped += 1
             continue
-        if not sig.get("address") or not sig.get("url") or not sig.get("price"):
+        if not sig.get("address") or not sig.get("url") or sig.get("price") is None or sig["price"] <= 0:
             skipped += 1
             continue
         data = {
