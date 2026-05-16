@@ -1,9 +1,18 @@
 # TODO
-- change to postgres
-- deploy to vm
-- fix sonar
-    - sonar tab de prospects
-- poder subir oportunidades facil
+
+- revisar pr
+- Roi esta mal porque no se mueve cuando muevo el plazo
+- no jala pasar a prospecto el dropdown esta mal
+    - y varios inputs no me gustan o no les entiendo aun
+- Agregar tab de comparables
+- No me deja borrar miembros
+- top oportuniades por categoria
+- generar pdf de ui
+- refigan.com
+- agregar funcionalidad de subir fotos a prospectos y proyectos
+    - usar en generacion de pdfs
+
+
 - estados de cuenta? PNL? Finanzas?
     - como seria el cierre del mes?
     - numero de oprtunidades, proyectos y nuevas
@@ -12,10 +21,6 @@
 - home. resumen de todo
 
 - user types
-- poder ligar tarea de proyecto no solo crear
-- como considerar colchon en todo esto?
-    - tal vez una tarea de COLCHON? que puedes sumar o restar dias
-    - Si cambio colchon deberian de cambiar datos, metricas, profit split en proeycto automaticamente
 - pagina para equipo administrar trabajo
     - director hace login y dashboard con nombres de equipo aparecen
     - team puede picar nombre y con pin ver dashboard con su info
