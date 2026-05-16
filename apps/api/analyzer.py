@@ -472,7 +472,9 @@ def analyze_prospect(
 
     # ── 6. Flip metrics ──────────────────────────────
     gross_margin = exit_used - total_cost if exit_used else None
-    roi_pct = round((gross_margin / total_cost) * 100, 2) if gross_margin is not None and total_cost > 0 else None
+    # Annualized ROI (CAGR): ((exit/cost)^(12/months) - 1) — always moves with holding period
+    roi_pct = round((((exit_used / total_cost) ** (12 / holding_period_months)) - 1) * 100, 2) \
+        if exit_used and exit_used > 0 and total_cost > 0 and holding_period_months > 0 else None
 
     # IRR for flip: -total_cost at t=0, +exit_used at t=holding_period (in years)
     irr_pct = None
