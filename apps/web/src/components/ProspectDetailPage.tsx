@@ -216,11 +216,7 @@ export function ProspectDetailPage() {
 
   const p = prospect!
   const hasCoords = p.latitude !== 0 && p.longitude !== 0
-  // Annualized ROI (CAGR) — matches analysis engine formula, moves with holdMonths
-  const holdMonths = p.holdMonths > 0 ? p.holdMonths : 12
-  const roi = (p.totalInvestment > 0 && p.projectedSale > 0)
-    ? Math.pow(p.projectedSale / p.totalInvestment, 12 / holdMonths) - 1
-    : null
+  const roi = p.roi ?? null
   const roiColor = roi != null && roi > 0.5 ? colors.primary : roi != null && roi > 0.25 ? colors.tertiary : '#c0392b'
   const hasEdits = Object.keys(edits).length > 0
   const errors = p.issues.filter(i => i.severity === 'error')
