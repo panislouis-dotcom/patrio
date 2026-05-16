@@ -145,7 +145,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
   }
 
   async function handleSave() {
-    if (!name.trim()) { setSaveError('El nombre es requerido'); return }
+    if (!canSave) return
     setSaving(true)
     setSaveError(null)
     try {
@@ -185,6 +185,14 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
     : 0
 
   const canAnalyze = (url.trim() || text.trim() || image) && !parsing
+
+  const saveBlockers: string[] = []
+  if (!name.trim())                                    saveBlockers.push('Nombre')
+  if (!landPrice)                                      saveBlockers.push('Precio de terreno')
+  if (!projectedSale)                                  saveBlockers.push('Venta proyectada (para ROI y profit)')
+  if (!rentMonthly)                                    saveBlockers.push('Renta mensual (para cap rate)')
+  if (sqmConstruction > 0 && !constructionCostPerSqm) saveBlockers.push('Costo/m² de construcción')
+  const canSave = !saving && saveBlockers.length === 0
 
   const overlay: React.CSSProperties = {
     position: 'fixed', inset: 0,
@@ -461,6 +469,16 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
               </div>
             )}
 
+            {saveBlockers.length > 0 && (
+              <div style={{ marginBottom: '12px' }}>
+                {saveBlockers.map((b, i) => (
+                  <div key={i} style={{ fontFamily: fonts.label, fontSize: '9px', color: 'tomato', letterSpacing: '0.05em', lineHeight: '1.8' }}>
+                    ✕ {b}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {saveError && (
               <div style={{ fontFamily: fonts.label, fontSize: '10px', color: 'tomato', marginBottom: '16px' }}>
                 {saveError}
@@ -469,7 +487,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
               <button style={btn(false)} onClick={() => { setStep('capture'); setSaveError(null) }}>← VOLVER</button>
-              <button style={btn(true, saving || !name.trim())} onClick={handleSave} disabled={saving || !name.trim()}>
+              <button style={btn(true, !canSave)} onClick={handleSave} disabled={!canSave}>
                 {saving ? 'GUARDANDO…' : 'GUARDAR ▸'}
               </button>
             </div>
