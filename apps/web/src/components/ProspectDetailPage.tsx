@@ -216,8 +216,12 @@ export function ProspectDetailPage() {
 
   const p = prospect!
   const hasCoords = p.latitude !== 0 && p.longitude !== 0
-  const roi = p.roi ?? 0
-  const roiColor = roi > 0.5 ? colors.primary : roi > 0.25 ? colors.tertiary : '#c0392b'
+  // Annualized ROI (CAGR) — matches analysis engine formula, moves with holdMonths
+  const holdMonths = p.holdMonths > 0 ? p.holdMonths : 12
+  const roi = (p.totalInvestment > 0 && p.projectedSale > 0)
+    ? Math.pow(p.projectedSale / p.totalInvestment, 12 / holdMonths) - 1
+    : null
+  const roiColor = roi != null && roi > 0.5 ? colors.primary : roi != null && roi > 0.25 ? colors.tertiary : '#c0392b'
   const hasEdits = Object.keys(edits).length > 0
   const errors = p.issues.filter(i => i.severity === 'error')
   const warnings = p.issues.filter(i => i.severity === 'warning')
@@ -338,15 +342,15 @@ export function ProspectDetailPage() {
         }}>
           {/* Hero ROI */}
           <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI</div>
-            <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roiColor, lineHeight: 1 }}>
-              {roi > 0 ? `+${(roi * 100).toFixed(1)}%` : '—'}
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
+            <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roi != null ? roiColor : colors.secondary, lineHeight: 1 }}>
+              {roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
               <div style={{ flex: 1, height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
                 <div style={{
                   height: '100%',
-                  width: barsReady ? `${Math.min(100, roi * 100)}%` : '0%',
+                  width: barsReady && roi != null ? `${Math.min(100, Math.max(0, roi * 100))}%` : '0%',
                   background: roiColor,
                   transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
                 }} />
@@ -536,7 +540,7 @@ export function ProspectDetailPage() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>PROFIT</span>
-                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: roi > 0 ? colors.primary : colors.secondary }}>{fmtMXN(p.profit)}</span>
+                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: (roi ?? 0) > 0 ? colors.primary : colors.secondary }}>{fmtMXN(p.profit)}</span>
               </div>
             </div>
           </div>
