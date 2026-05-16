@@ -132,6 +132,7 @@ export interface SonarZone  { cve: string; name: string }
 export interface SonarState { name: string; municipios: SonarZone[] }
 
 export interface SonarSignal {
+  id:            number
   url:           string
   portal:        string
   title:         string

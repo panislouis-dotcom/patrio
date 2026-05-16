@@ -117,6 +117,7 @@ def _signal_to_dict(s: SignalRaw) -> dict:
 
 def _db_row_to_dict(row: dict) -> dict:
     return {
+        "id":            row["id"],
         "url":           row["url"],
         "portal":        row["portal"],
         "title":         row["title"],

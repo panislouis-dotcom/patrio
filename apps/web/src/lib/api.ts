@@ -168,6 +168,15 @@ export async function importSonarSignal(signal: SonarSignal): Promise<{ prospect
   return res.json()
 }
 
+export async function importSonarToComparables(signalIds: number[], zoneId: number): Promise<{ created: number; skipped: number }> {
+  const res = await authFetch(`${BASE}/api/sonar/to-comparables`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ signal_ids: signalIds, zone_id: zoneId }),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchSonarSignals(): Promise<SonarSignal[]> {
   const res = await authFetch(`${BASE}/api/sonar/signals`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
