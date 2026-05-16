@@ -343,7 +343,7 @@ def analyze_prospect(
     # ── 1. Load prospect ─────────────────────────────
     with get_db() as conn:
         prospect = conn.execute(
-            """SELECT id, name, city, sqm_land, sqm_construction, land_price,
+            """SELECT id, name, city, type, sqm_land, sqm_construction, land_price,
                       acquisition_cost_pct, projected_sale, rent_monthly,
                       latitude, longitude
                FROM prospects WHERE id = %s""",
