@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ReactNode, CSSProperties } from 'react'
 import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet'
 import type { RawFields } from '../lib/types'
+import { PROPERTY_TYPES } from '../lib/types'
 import { validateRaw } from '../lib/validateRaw'
 import { colors, fonts } from '../lib/theme'
 
@@ -139,14 +140,27 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
             </select>
           </div>
         </div>
-        <div>
-          <FieldLabel>URL</FieldLabel>
-          <input
-            style={inputStyle}
-            type="text"
-            value={form.url ?? ''}
-            onChange={e => set('url', e.target.value)}
-          />
+        <div style={{ ...gridTwo, marginBottom: '16px' }}>
+          <div>
+            <FieldLabel>Tipo</FieldLabel>
+            <select
+              style={{ ...inputStyle, cursor: 'pointer' }}
+              value={form.type ?? ''}
+              onChange={e => set('type', e.target.value)}
+            >
+              <option value="">— seleccionar —</option>
+              {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <FieldLabel>URL</FieldLabel>
+            <input
+              style={inputStyle}
+              type="text"
+              value={form.url ?? ''}
+              onChange={e => set('url', e.target.value)}
+            />
+          </div>
         </div>
       </Section>
 

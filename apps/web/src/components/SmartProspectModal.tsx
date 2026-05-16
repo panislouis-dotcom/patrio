@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { parseProspect, createProspect, uploadProspectImage } from '../lib/api'
 import type { ParsedProspect } from '../lib/types'
+import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 
 interface Props {
@@ -93,6 +94,8 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [tipo, setTipo]           = useState('')
+
   const [saving, setSaving]       = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -129,6 +132,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
       setName(result.name || '')
       setAddress(result.address || '')
       setCity(result.city || 'Monterrey')
+      setTipo(result.type || '')
       setLandPrice(result.price || 0)
       setSqmLand(result.sqmLand || 0)
       setSqmConstruction(result.sqmConstruction || 0)
@@ -150,6 +154,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
         name:                 name.trim(),
         address:              address.trim() || name.trim(),
         city:                 city.trim() || 'Monterrey',
+        type:                 tipo,
         landPrice,
         sqmLand,
         sqmConstruction,
@@ -345,6 +350,25 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
               filled={!!parsed?.address}
               placeholder="Calle, colonia, ciudad"
             />
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+                <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  Tipo
+                </span>
+                {tipo && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.06em' }}>✓</span>}
+              </div>
+              <div style={{ borderBottom: `1px solid ${tipo ? colors.primary : colors.border}`, transition: 'border-color 0.2s' }}>
+                <select
+                  value={tipo}
+                  onChange={e => setTipo(e.target.value)}
+                  style={{ ...inp, color: tipo ? colors.neutral : colors.secondary, cursor: 'pointer' }}
+                >
+                  <option value="">— seleccionar —</option>
+                  {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Field
