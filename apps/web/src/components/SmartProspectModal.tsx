@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { parseProspect, createProspect, uploadProspectImage } from '../lib/api'
 import type { ParsedProspect } from '../lib/types'
+import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 
 interface Props {
@@ -93,6 +94,8 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [tipo, setTipo]           = useState('')
+
   const [saving, setSaving]       = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -129,6 +132,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
       setName(result.name || '')
       setAddress(result.address || '')
       setCity(result.city || 'Monterrey')
+      setTipo(result.type || '')
       setLandPrice(result.price || 0)
       setSqmLand(result.sqmLand || 0)
       setSqmConstruction(result.sqmConstruction || 0)
@@ -141,7 +145,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
   }
 
   async function handleSave() {
-    if (!name.trim()) { setSaveError('El nombre es requerido'); return }
+    if (!canSave) return
     setSaving(true)
     setSaveError(null)
     try {
@@ -150,6 +154,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
         name:                 name.trim(),
         address:              address.trim() || name.trim(),
         city:                 city.trim() || 'Monterrey',
+        type:                 tipo,
         landPrice,
         sqmLand,
         sqmConstruction,
@@ -180,6 +185,14 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
     : 0
 
   const canAnalyze = (url.trim() || text.trim() || image) && !parsing
+
+  const saveBlockers: string[] = []
+  if (!name.trim())                                    saveBlockers.push('Nombre')
+  if (!landPrice)                                      saveBlockers.push('Precio de terreno')
+  if (!projectedSale)                                  saveBlockers.push('Venta proyectada (para ROI y profit)')
+  if (!rentMonthly)                                    saveBlockers.push('Renta mensual (para cap rate)')
+  if (sqmConstruction > 0 && !constructionCostPerSqm) saveBlockers.push('Costo/m² de construcción')
+  const canSave = !saving && saveBlockers.length === 0
 
   const overlay: React.CSSProperties = {
     position: 'fixed', inset: 0,
@@ -346,6 +359,25 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
               placeholder="Calle, colonia, ciudad"
             />
 
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+                <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  Tipo
+                </span>
+                {tipo && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.06em' }}>✓</span>}
+              </div>
+              <div style={{ borderBottom: `1px solid ${tipo ? colors.primary : colors.border}`, transition: 'border-color 0.2s' }}>
+                <select
+                  value={tipo}
+                  onChange={e => setTipo(e.target.value)}
+                  style={{ ...inp, color: tipo ? colors.neutral : colors.secondary, cursor: 'pointer' }}
+                >
+                  <option value="">— seleccionar —</option>
+                  {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Field
                 label="Ciudad"
@@ -437,6 +469,16 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
               </div>
             )}
 
+            {saveBlockers.length > 0 && (
+              <div style={{ marginBottom: '12px' }}>
+                {saveBlockers.map((b, i) => (
+                  <div key={i} style={{ fontFamily: fonts.label, fontSize: '9px', color: 'tomato', letterSpacing: '0.05em', lineHeight: '1.8' }}>
+                    ✕ {b}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {saveError && (
               <div style={{ fontFamily: fonts.label, fontSize: '10px', color: 'tomato', marginBottom: '16px' }}>
                 {saveError}
@@ -445,7 +487,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
               <button style={btn(false)} onClick={() => { setStep('capture'); setSaveError(null) }}>← VOLVER</button>
-              <button style={btn(true, saving || !name.trim())} onClick={handleSave} disabled={saving || !name.trim()}>
+              <button style={btn(true, !canSave)} onClick={handleSave} disabled={!canSave}>
                 {saving ? 'GUARDANDO…' : 'GUARDAR ▸'}
               </button>
             </div>

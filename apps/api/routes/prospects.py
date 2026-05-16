@@ -141,7 +141,10 @@ async def parse_prospect_route(
 ):
     from api.parse_prospect import parse_prospect
     image_bytes = await file.read() if file else None
-    return parse_prospect(url=url.strip(), text=text.strip(), image_bytes=image_bytes)
+    try:
+        return parse_prospect(url=url.strip(), text=text.strip(), image_bytes=image_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error al analizar la propiedad: {e}")
 
 
 @router.post("/api/prospects/{prospect_id}/image", status_code=200)

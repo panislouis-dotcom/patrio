@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { createProspect } from '../lib/api'
+import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 
 interface Props {
@@ -46,6 +47,7 @@ export function QuickCaptureModal({ onClose, onCreated, initialValues }: Props) 
   const [address, setAddress] = useState(initialValues?.address ?? '')
   const [city, setCity] = useState(initialValues?.city ?? 'Monterrey')
   const landPrice = initialValues?.landPrice ?? 0
+  const [tipo, setTipo] = useState('')
   const [status, setStatus] = useState<'evaluating' | 'passed' | 'converted'>('evaluating')
   const [rentMonthly, setRentMonthly] = useState('')
   const [saving, setSaving] = useState(false)
@@ -60,7 +62,7 @@ export function QuickCaptureModal({ onClose, onCreated, initialValues }: Props) 
   }, [onClose])
 
   const rentVal = parseFloat(rentMonthly) || 0
-  const canSave = !saving && name.trim() !== '' && address.trim() !== '' && rentVal > 0
+  const canSave = !saving && name.trim() !== '' && address.trim() !== '' && rentVal > 0 && tipo !== ''
 
   async function handleSave() {
     if (!canSave) return
@@ -72,7 +74,7 @@ export function QuickCaptureModal({ onClose, onCreated, initialValues }: Props) 
         address: address.trim(),
         city: city.trim(),
         status,
-        type: '',
+        type: tipo,
         latitude: 0,
         longitude: 0,
         sqmLand: 0,
@@ -160,6 +162,18 @@ export function QuickCaptureModal({ onClose, onCreated, initialValues }: Props) 
             </div>
           </div>
         ) : null}
+
+        <div style={{ marginBottom: '16px' }}>
+          <FieldLabel>Tipo</FieldLabel>
+          <select
+            value={tipo}
+            onChange={e => setTipo(e.target.value)}
+            style={{ ...inputStyle, cursor: 'pointer' }}
+          >
+            <option value="">— seleccionar —</option>
+            {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
 
         <div style={{ marginBottom: '16px' }}>
           <FieldLabel>Renta mensual (MXN)</FieldLabel>

@@ -47,6 +47,7 @@ export function ProspectDetailPage() {
   const [converting, setConverting]       = useState(false)
   const [convertError, setConvertError]   = useState<string | null>(null)
   const [convertFields, setConvertFields] = useState({
+    type: '',
     totalUnits: 1,
     acquisitionDate: '', conclusionDate: '',
     currentValuation: 0, valuationDate: '',
@@ -127,6 +128,7 @@ export function ProspectDetailPage() {
     const currentMonth = yyyymm(now)
     const concDate = new Date(now.getFullYear(), now.getMonth() + (p.holdMonths || 12), 1)
     setConvertFields({
+      type: p.type || '',
       totalUnits: 1,
       acquisitionDate: currentMonth,
       conclusionDate: yyyymm(concDate),
@@ -145,7 +147,6 @@ export function ProspectDetailPage() {
     try {
       const project = await createProject({
         name: p.name,
-        type: p.type,
         address: p.address,
         city: p.city,
         url: p.url || 'https://refigan.mx',
@@ -602,9 +603,16 @@ export function ProspectDetailPage() {
 
             <div>
               <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '3px' }}>TIPO</div>
-              <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: p.type ? colors.neutral : colors.secondary, padding: '6px 10px', background: colors.surfaceAlt, border: `1px solid ${colors.border}` }}>
-                {p.type || '— sin tipo asignado —'}
-              </div>
+              <select
+                value={convertFields.type}
+                onChange={e => setConvertFields(prev => ({ ...prev, type: e.target.value }))}
+                style={{ width: '100%', boxSizing: 'border-box', background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: convertFields.type ? colors.neutral : colors.secondary, fontFamily: fonts.sans, fontSize: '12px', padding: '6px 10px', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="">— seleccionar tipo —</option>
+                {PROPERTY_TYPES.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             </div>
 
             {([
@@ -662,12 +670,6 @@ export function ProspectDetailPage() {
               <div style={{ color: '#c0392b', fontFamily: fonts.sans, fontSize: '11px' }}>{convertError}</div>
             )}
 
-            {!p.type && (
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, fontStyle: 'italic' }}>
-                Debes asignar un tipo al prospecto primero
-              </div>
-            )}
-
             <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
               <button
                 onClick={() => setConvertModal(false)}
@@ -677,8 +679,8 @@ export function ProspectDetailPage() {
               </button>
               <button
                 onClick={handleConvert}
-                disabled={converting || !p.type}
-                style={{ flex: 2, background: colors.primary, border: 'none', color: colors.neutral, cursor: converting || !p.type ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '8px', opacity: converting || !p.type ? 0.6 : 1 }}
+                disabled={converting || !convertFields.type}
+                style={{ flex: 2, background: colors.primary, border: 'none', color: colors.neutral, cursor: converting || !convertFields.type ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '8px', opacity: converting || !convertFields.type ? 0.6 : 1 }}
               >
                 {converting ? 'CREANDO…' : 'CREAR PROYECTO ▸'}
               </button>

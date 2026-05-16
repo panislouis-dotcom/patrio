@@ -113,6 +113,7 @@ export interface ParsedProspect {
   name:             string
   address:          string
   city:             string
+  type:             string
   price:            number   // total asking price → maps to landPrice on save
   sqmLand:          number
   sqmConstruction:  number
