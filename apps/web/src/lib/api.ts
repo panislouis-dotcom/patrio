@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect, Zone, Comparable, AnalysisSnapshot, AnalysisRequest } from './types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -579,6 +579,71 @@ export async function updateProjectInvestment(
 export async function deleteProjectInvestment(projectId: number, investmentId: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/projects/${projectId}/investors/${investmentId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
+}
+
+// ─── Zones ───────────────────────────────────────────────────────────────────
+
+export async function fetchZones(): Promise<Zone[]> {
+  const res = await authFetch(`${BASE}/api/zones`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+// ─── Comparables ─────────────────────────────────────────────────────────────
+
+export async function fetchComparables(status?: string, zoneId?: number): Promise<Comparable[]> {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (zoneId) params.set('zone_id', String(zoneId))
+  const qs = params.size ? `?${params}` : ''
+  const res = await authFetch(`${BASE}/api/comparables${qs}`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function createComparable(data: Partial<Comparable>): Promise<Comparable> {
+  const res = await authFetch(`${BASE}/api/comparables`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function updateComparable(id: number, data: Partial<Comparable>): Promise<Comparable> {
+  const res = await authFetch(`${BASE}/api/comparables/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+// ─── Analyses ────────────────────────────────────────────────────────────────
+
+export async function runAnalysis(data: AnalysisRequest): Promise<AnalysisSnapshot> {
+  const res = await authFetch(`${BASE}/api/analyses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchAnalysis(id: number): Promise<AnalysisSnapshot> {
+  const res = await authFetch(`${BASE}/api/analyses/${id}`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchAnalyses(prospectId?: number): Promise<AnalysisSnapshot[]> {
+  const qs = prospectId != null ? `?prospect_id=${prospectId}` : ''
+  const res = await authFetch(`${BASE}/api/analyses${qs}`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
 }
 
 // ─── Auth / Me ────────────────────────────────────────────────────────────────

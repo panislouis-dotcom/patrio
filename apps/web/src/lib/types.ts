@@ -366,3 +366,97 @@ export interface ProjectInvestor {
   expectedReturn: number
   returnPct: number
 }
+
+export interface Zone {
+  id: number
+  name: string
+  cities: string[]
+}
+
+export interface Comparable {
+  id: number
+  address: string
+  zoneId: number
+  m2: number
+  price: number
+  pricePerM2: number
+  listingUrl: string
+  sourcePortal: string
+  listedAt: string
+  capturedAt: string
+  neighborhood: string
+  city: string
+  lat: number | null
+  lng: number | null
+  bedrooms: number | null
+  bathrooms: number | null
+  parkingSpots: number | null
+  propertyType: string
+  condition: string
+  styleTags: string[]
+  status: 'active' | 'sold' | 'withdrawn' | 'expired'
+  lastCheckedAt: string | null
+  lastSeenActive: string
+  soldAt: string | null
+  checkFailureCount: number
+  notes: string
+  createdAt: string
+}
+
+export interface AnalysisSnapshot {
+  id: number
+  prospectId: number
+  generatedAt: string
+  purchasePrice: number
+  remodelCostEstimate: number
+  remodelCostPerM2: number
+  interventionLevel: string
+  transactionCosts: number
+  financingCosts: number
+  totalCost: number
+  holdingPeriodMonths: number
+  exitPriceManual: number | null
+  exitPriceCalculatedLow: number | null
+  exitPriceCalculatedMid: number | null
+  exitPriceCalculatedHigh: number | null
+  exitPriceSource: 'manual' | 'calculated' | 'blended'
+  exitPriceUsed: number
+  manualVsMarketDeltaPct: number | null
+  arvManualOverride: number | null
+  comparableCount: number
+  comparableIds: number[]
+  avgCompDistanceKm: number | null
+  grossMargin: number | null
+  roiPct: number | null
+  irrPct: number | null
+  capRatePct: number | null
+  confidenceScore: number
+  confidenceNotes: string
+  dataQualityWarnings: string[]
+  rentaMensualEstimada: number | null
+  tasaInteresCredito: number | null
+  plazoCreditoMeses: number | null
+  financiamientoPct: number | null
+  gastosOperativosPct: number | null
+  noiAnual: number | null
+  debtServiceAnual: number | null
+  cashFlowAnual: number | null
+  cashOnCashYr1Pct: number | null
+  breakEvenMonths: number | null
+  npv10yr: number | null
+  irr10yrPct: number | null
+}
+
+export interface AnalysisRequest {
+  prospectId: number
+  interventionLevel?: string
+  holdingPeriodMonths?: number
+  transactionCostPct?: number
+  exitPriceSource?: 'manual' | 'calculated' | 'blended'
+  arvManualOverride?: number | null
+  rentaMensualEstimada?: number | null
+  financiamientoPct?: number
+  tasaInteresCredito?: number
+  plazoCreditoMeses?: number
+  gastosOperativosPct?: number
+}

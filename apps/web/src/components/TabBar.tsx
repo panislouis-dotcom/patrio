@@ -9,6 +9,7 @@ const topTabs = [
   { path: '/inversionistas', label: 'INVERSIONISTAS' },
   { path: '/procesos', label: 'PROCESOS' },
   { path: '/equipo', label: 'EQUIPO' },
+  { path: '/comparables', label: 'COMPARABLES' },
 ]
 
 const prospectoSubTabs = [
