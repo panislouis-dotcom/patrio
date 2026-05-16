@@ -8,6 +8,7 @@ from api.auth import get_current_user
 from api.db import (
     get_comparables, get_comparable,
     create_comparable, update_comparable,
+    get_db,
 )
 
 router = APIRouter()
@@ -64,6 +65,13 @@ class ComparableUpdate(BaseModel):
 
 
 # ─── Routes ──────────────────────────────────────────
+
+@router.get("/api/zones")
+def list_zones(_: dict = Depends(get_current_user)):
+    with get_db() as conn:
+        rows = conn.execute("SELECT id, name, city FROM zones ORDER BY city, name").fetchall()
+    return [dict(r) for r in rows]
+
 
 @router.get("/api/comparables")
 def list_comparables(
