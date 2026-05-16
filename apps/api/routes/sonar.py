@@ -1,7 +1,8 @@
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi import APIRouter, Depends
+from typing import Literal
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from api.auth import get_current_user
@@ -332,13 +333,17 @@ VALID_PORTALS = {
 class _ToComparableRequest(BaseModel):
     signal_ids: list[int]
     zone_id: int
-    condition: str = "semi_nueva"
+    condition: Literal['remodelada', 'nueva', 'semi_nueva', 'por_remodelar'] = "semi_nueva"
 
 
 @router.post("/api/sonar/to-comparables", status_code=201)
 def sonar_to_comparables(req: _ToComparableRequest, _: dict = Depends(get_current_user)):
     if not req.signal_ids:
         return {"created": 0, "skipped": 0}
+
+    with get_db() as conn:
+        if not conn.execute("SELECT 1 FROM zones WHERE id = %s", (req.zone_id,)).fetchone():
+            raise HTTPException(status_code=422, detail=f"zone_id {req.zone_id} does not exist")
 
     placeholders = ",".join(["%s"] * len(req.signal_ids))
     with get_db() as conn:

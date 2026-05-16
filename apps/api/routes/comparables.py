@@ -69,7 +69,7 @@ class ComparableUpdate(BaseModel):
 @router.get("/api/zones")
 def list_zones(_: dict = Depends(get_current_user)):
     with get_db() as conn:
-        rows = conn.execute("SELECT id, name, city FROM zones ORDER BY city, name").fetchall()
+        rows = conn.execute("SELECT id, name, cities FROM zones ORDER BY name").fetchall()
     return [dict(r) for r in rows]
 
 
