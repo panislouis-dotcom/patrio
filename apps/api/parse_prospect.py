@@ -152,7 +152,7 @@ def _parse_llm_response(raw: str) -> dict:
 
 def _llm_extract(text: str) -> dict:
     """Call Claude Haiku to extract structured fields from property text."""
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], max_retries=2)
     msg = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=512,
@@ -163,7 +163,7 @@ def _llm_extract(text: str) -> dict:
 
 def _llm_extract_vision(image_bytes: bytes, text: str = "") -> dict:
     """Call Claude Sonnet with vision to extract structured fields from a listing image."""
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], max_retries=2)
     compressed, media_type = _compress_for_claude(image_bytes)
     b64 = base64.standard_b64encode(compressed).decode("ascii")
     content: list[dict] = [
@@ -194,12 +194,8 @@ def parse_prospect(url: str = "", text: str = "", image_bytes: bytes | None = No
     if image_bytes is not None:
         # Vision path — skip URL fetch and regex fast-pass entirely
         if not image_bytes:
-            logger.warning("parse_prospect: empty image_bytes received, skipping vision extraction")
-        else:
-            try:
-                extracted = _llm_extract_vision(image_bytes, text)
-            except Exception as e:
-                logger.warning("Vision LLM extraction failed: %s", e)
+            raise ValueError("Empty image received")
+        extracted = _llm_extract_vision(image_bytes, text)  # propagate; no fallback for vision
     else:
         clean_url = url.split("#")[0].split("?")[0] if url else ""
         url_text = _fetch_url_text(url) if url else ""
