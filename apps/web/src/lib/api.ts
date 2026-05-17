@@ -177,7 +177,7 @@ export async function* streamSonarRun(cves: string[]): AsyncGenerator<SonarRunEv
   }
 }
 
-export async function importSonarSignal(signal: SonarSignal): Promise<{ prospect: unknown }> {
+export async function importSonarSignal(signal: SonarSignal): Promise<{ prospect: Prospect }> {
   const res = await authFetch(`${BASE}/api/sonar/import`, { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(signal),
