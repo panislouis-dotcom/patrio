@@ -19,7 +19,7 @@ function MapClickHandler({ onPlace }: { onPlace: (lat: number, lng: number) => v
 export function LatLonPicker({ lat, lon, onChange }: Props) {
   const [open, setOpen] = useState(false)
 
-  const hasCoords = lat !== 0 || lon !== 0
+  const hasCoords = isFinite(lat) && isFinite(lon) && (lat !== 0 || lon !== 0)
   const center: [number, number] = hasCoords ? [lat, lon] : _MONTERREY
 
   return (
@@ -36,7 +36,7 @@ export function LatLonPicker({ lat, lon, onChange }: Props) {
             placeholder="0"
             onChange={e => {
               const val = parseFloat(e.target.value)
-              if (isFinite(val)) onChange(val, lon)
+              onChange(isFinite(val) ? val : 0, lon)
             }}
             style={fieldInput}
           />
@@ -52,7 +52,7 @@ export function LatLonPicker({ lat, lon, onChange }: Props) {
             placeholder="0"
             onChange={e => {
               const val = parseFloat(e.target.value)
-              if (isFinite(val)) onChange(lat, val)
+              onChange(lat, isFinite(val) ? val : 0)
             }}
             style={fieldInput}
           />

@@ -436,8 +436,8 @@ export function ProspectDetailPage() {
 
           <div style={{ marginBottom: '8px' }}>
             <LatLonPicker
-              lat={parseFloat(cv('latitude')) || 0}
-              lon={parseFloat(cv('longitude')) || 0}
+              lat={(edits.latitude !== undefined ? edits.latitude : prospect?.latitude) ?? 0}
+              lon={(edits.longitude !== undefined ? edits.longitude : prospect?.longitude) ?? 0}
               onChange={(newLat, newLon) => {
                 handleEdit('latitude', String(newLat), 'number')
                 handleEdit('longitude', String(newLon), 'number')
