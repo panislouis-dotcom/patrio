@@ -7,6 +7,7 @@ import { PROPERTY_TYPES } from '../lib/types'
 import { ProjectProfitSection } from './ProjectProfitSection'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
+import { LatLonPicker } from './LatLonPicker'
 import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL, PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
 import { fmtMXN } from '../lib/fmt'
 import { StatRow } from './StatRow'
@@ -465,21 +466,16 @@ export function ProjectDetailPage() {
             </div>
           ))}
 
-          {([
-            { key: 'latitude' as keyof Project, label: 'Latitud' },
-            { key: 'longitude' as keyof Project, label: 'Longitud' },
-          ]).map(({ key, label }) => (
-            <div key={key} style={{ marginBottom: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-              <input
-                value={(field(key) as number) ?? ''}
-                onChange={e => setField(key, Number(e.target.value))}
-                type="number"
-                step="any"
-                style={fieldInput}
-              />
-            </div>
-          ))}
+          <div style={{ marginBottom: '8px' }}>
+            <LatLonPicker
+              lat={Number(field('latitude')) || 0}
+              lon={Number(field('longitude')) || 0}
+              onChange={(newLat, newLon) => {
+                setField('latitude', newLat)
+                setField('longitude', newLon)
+              }}
+            />
+          </div>
 
           <div style={{ marginBottom: '8px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
