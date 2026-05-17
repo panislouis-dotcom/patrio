@@ -222,6 +222,8 @@ function MemberPanel({
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState(false)
 
   const linkedUser = email ? users.find(u => u.email === email) : undefined
 
@@ -265,13 +267,13 @@ function MemberPanel({
 
   async function handleDelete() {
     if (!member) return
-    if (!window.confirm(`¿Eliminar a ${member.name}?`)) return
     setSaving(true)
     try {
       await deleteTeamMember(member.id)
       onDelete(member.id)
     } catch (e) {
-      alert(`No se pudo eliminar: ${e instanceof Error ? e.message : 'Error desconocido'}`)
+      setConfirmDelete(false)
+      setError(e instanceof Error ? e.message : 'Error al eliminar')
     } finally {
       setSaving(false)
     }
@@ -321,12 +323,12 @@ function MemberPanel({
 
   async function handleDeleteUser() {
     if (!linkedUser) return
-    if (!window.confirm(`¿Eliminar acceso de ${linkedUser.email}?`)) return
     setUserSaving(true)
     try {
       await deleteUser(linkedUser.id)
       onUserChange(users.filter(u => u.id !== linkedUser.id))
     } catch {
+      setConfirmDeleteUser(false)
       setUserError('Error al eliminar')
     } finally {
       setUserSaving(false)
@@ -459,7 +461,16 @@ function MemberPanel({
         ) : (
           <div style={{ display: 'flex', gap: '6px' }}>
             <button onClick={() => setMode('edit')} style={btnBase('ghost')}>EDITAR</button>
-            <button onClick={handleDelete} disabled={saving} style={{ ...btnBase('danger'), opacity: saving ? 0.5 : 1 }}>BORRAR</button>
+            {confirmDelete ? (
+              <>
+                <button onClick={() => setConfirmDelete(false)} style={btnBase('ghost')}>CANCELAR</button>
+                <button onClick={handleDelete} disabled={saving} style={{ ...btnBase('danger'), opacity: saving ? 0.5 : 1 }}>
+                  {saving ? 'BORRANDO…' : '¿CONFIRMAR?'}
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmDelete(true)} style={btnBase('danger')}>BORRAR</button>
+            )}
           </div>
         )}
 
@@ -490,9 +501,16 @@ function MemberPanel({
                         <button onClick={handleToggleActive} disabled={userSaving} style={{ ...btnBase('ghost'), opacity: userSaving ? 0.5 : 1 }}>
                           {linkedUser.isActive ? 'DESACTIVAR' : 'ACTIVAR'}
                         </button>
-                        <button onClick={handleDeleteUser} disabled={userSaving} style={{ ...btnBase('danger'), opacity: userSaving ? 0.5 : 1 }}>
-                          BORRAR
-                        </button>
+                        {confirmDeleteUser ? (
+                          <>
+                            <button onClick={() => setConfirmDeleteUser(false)} style={btnBase('ghost')}>CANCELAR</button>
+                            <button onClick={handleDeleteUser} disabled={userSaving} style={{ ...btnBase('danger'), opacity: userSaving ? 0.5 : 1 }}>
+                              {userSaving ? 'BORRANDO…' : '¿CONFIRMAR?'}
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteUser(true)} style={btnBase('danger')}>BORRAR</button>
+                        )}
                       </div>
                     )}
                   </div>
