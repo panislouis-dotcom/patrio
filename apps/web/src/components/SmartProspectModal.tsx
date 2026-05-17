@@ -3,6 +3,7 @@ import { parseProspect, createProspect, uploadProspectImage } from '../lib/api'
 import type { ParsedProspect } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { LatLonPicker } from './LatLonPicker'
 
 interface Props {
   onClose: () => void
@@ -98,6 +99,8 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
   const [saving, setSaving]       = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [lat, setLat]             = useState(0)
+  const [lon, setLon]             = useState(0)
 
   const handleImageSelect = useCallback((blob: Blob) => {
     setImagePreview(prev => { if (prev) URL.revokeObjectURL(prev); return null })
@@ -110,6 +113,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
 
   useEffect(() => {
     function onPaste(e: ClipboardEvent) {
@@ -136,6 +140,8 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
       setLandPrice(result.price || 0)
       setSqmLand(result.sqmLand || 0)
       setSqmConstruction(result.sqmConstruction || 0)
+      setLat(result.latitude ?? 0)
+      setLon(result.longitude ?? 0)
       setStep('review')
     } catch (e) {
       setParseError(e instanceof Error ? e.message : 'Error al analizar')
@@ -164,8 +170,8 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
         rentMonthly,
         url:                  url.trim() || undefined,
         notes:                text.trim() || parsed?.notes || undefined,
-        latitude:             parsed?.latitude  ?? 0,
-        longitude:            parsed?.longitude ?? 0,
+        latitude:             lat,
+        longitude:            lon,
       })
       if (image && created?.id) {
         try { await uploadProspectImage(created.id, image instanceof File ? image : new File([image], 'screenshot.png', { type: image.type })) } catch { /* non-fatal */ }
@@ -454,20 +460,18 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
             </div>
 
             {/* Geo info strip */}
-            {parsed && (parsed.municipioName || parsed.latitude !== 0) && (
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', padding: '8px 10px', background: `${colors.border}44`, borderRadius: '2px', flexWrap: 'wrap' }}>
-                {parsed.municipioName && (
-                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.06em' }}>
-                    📍 {parsed.municipioName}{parsed.colonia ? ` · ${parsed.colonia}` : ''}
-                  </span>
-                )}
-                {parsed.latitude !== 0 && (
-                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.04em' }}>
-                    {parsed.latitude.toFixed(4)}, {parsed.longitude.toFixed(4)} · geo ✓
-                  </span>
-                )}
+            {parsed?.municipioName && (
+              <div style={{ marginBottom: '8px' }}>
+                <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.06em' }}>
+                  📍 {parsed.municipioName}{parsed.colonia ? ` · ${parsed.colonia}` : ''}
+                </span>
               </div>
             )}
+
+            {/* Lat/lon picker */}
+            <div style={{ marginBottom: '20px' }}>
+              <LatLonPicker lat={lat} lon={lon} onChange={(newLat, newLon) => { setLat(newLat); setLon(newLon) }} />
+            </div>
 
             {saveBlockers.length > 0 && (
               <div style={{ marginBottom: '12px' }}>
