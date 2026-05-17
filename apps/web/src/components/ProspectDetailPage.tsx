@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProspect, updateProspect, createProspect, deleteProspect, createProject } from '../lib/api'
+import { fetchProspect, updateProspect, createProspect, deleteProspect, createProject, uploadProspectImage } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -58,6 +58,9 @@ export function ProspectDetailPage() {
   })
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
+  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (isNew) { setLoading(false); return }
@@ -331,12 +334,6 @@ export function ProspectDetailPage() {
           padding: '20px',
           scrollbarWidth: 'none',
         }}>
-          {p.imagePath && (
-            <div style={{ margin: '-20px -20px 16px' }}>
-              <img src={`${BASE}/files/${p.imagePath}`} alt="" style={{ width: '100%', height: '180px', objectFit: 'cover', display: 'block' }} />
-            </div>
-          )}
-
           {/* Hero ROI */}
           <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
@@ -458,29 +455,84 @@ export function ProspectDetailPage() {
           )}
         </div>
 
-        {/* ── CENTER: Mapa ── */}
-        <div style={{ ...fade(160), position: 'relative', overflow: 'hidden' }}>
-          {hasCoords ? (
-            <MapContainer
-              center={[p.latitude, p.longitude]}
-              zoom={15}
-              style={{ height: '100%', width: '100%' }}
-              scrollWheelZoom={false}
-            >
-              <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+        {/* ── CENTER: Mapa / Fotos ── */}
+        <div style={{ ...fade(160), display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Tab bar */}
+          <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
+            {(['mapa', 'fotos'] as const).map(tab => (
+              <button key={tab} onClick={() => setCenterTab(tab)} style={{
+                background: 'transparent', border: 'none',
+                borderBottom: centerTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
+                color: centerTab === tab ? colors.neutral : colors.secondary,
+                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
+                letterSpacing: '0.12em', padding: '10px 16px 8px', marginBottom: '-1px',
+              }}>
+                {tab.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* MAPA tab */}
+          {centerTab === 'mapa' && (
+            <div style={{ flex: 1, position: 'relative' }}>
+              {hasCoords ? (
+                <MapContainer
+                  center={[p.latitude, p.longitude]}
+                  zoom={15}
+                  style={{ height: '100%', width: '100%' }}
+                  scrollWheelZoom={false}
+                >
+                  <TileLayer
+                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                  />
+                  <CircleMarker
+                    center={[p.latitude, p.longitude]}
+                    radius={12}
+                    pathOptions={{ color: roiColor, fillColor: roiColor, fillOpacity: 0.7, weight: 2 }}
+                  />
+                </MapContainer>
+              ) : (
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
+                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* FOTOS tab */}
+          {centerTab === 'fotos' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', scrollbarWidth: 'none' }}>
+              {p.imagePath ? (
+                <img
+                  src={`${BASE}/files/${p.imagePath}`}
+                  alt=""
+                  onClick={() => setLightboxSrc(`${BASE}/files/${p.imagePath}`)}
+                  style={{ width: '100%', objectFit: 'contain', cursor: 'zoom-in', display: 'block', maxHeight: '60vh' }}
+                />
+              ) : (
+                <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border, marginTop: '40px' }}>SIN FOTOS</div>
+              )}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.12em', color: colors.secondary, background: 'transparent', border: `1px solid ${colors.border}`, padding: '6px 14px', cursor: 'pointer' }}
+              >
+                + SUBIR FOTO
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={async e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const updated = await uploadProspectImage(p.id, file)
+                  setProspect(updated)
+                  e.target.value = ''
+                }}
               />
-              <CircleMarker
-                center={[p.latitude, p.longitude]}
-                radius={12}
-                pathOptions={{ color: roiColor, fillColor: roiColor, fillOpacity: 0.7, weight: 2 }}
-              />
-            </MapContainer>
-          ) : (
-            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
             </div>
           )}
         </div>
@@ -691,6 +743,19 @@ export function ProspectDetailPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {lightboxSrc && (
+        <div
+          onClick={() => setLightboxSrc(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, cursor: 'zoom-out',
+          }}
+        >
+          <img src={lightboxSrc} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
         </div>
       )}
     </div>

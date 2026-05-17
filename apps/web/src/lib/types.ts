@@ -84,6 +84,7 @@ export interface Project {
   milestones: Record<string, string>   // {"YYYY-MM": "label"}
   budget: Record<string, number>       // {"category": amount}
   notes: string
+  imagePath: string
   unrealizedGain: number
   unrealizedGainPct: number
   holdMonthsActual: number

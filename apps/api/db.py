@@ -149,6 +149,16 @@ def set_prospect_image_path(prospect_id: int, image_path: str) -> None:
             raise ValueError(f"Prospect {prospect_id} not found")
 
 
+def set_project_image_path(project_id: int, image_path: str) -> None:
+    with get_db() as conn:
+        result = conn.execute(
+            "UPDATE projects SET image_path = %s WHERE id = %s",
+            (image_path, project_id),
+        )
+        if result.rowcount == 0:
+            raise ValueError(f"Project {project_id} not found")
+
+
 def delete_prospect(prospect_id: int) -> None:
     with get_db() as conn:
         result = conn.execute("DELETE FROM prospects WHERE id = %s", (prospect_id,))

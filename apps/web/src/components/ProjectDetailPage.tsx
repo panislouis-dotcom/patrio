@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit } from '../lib/api'
+import { fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit, uploadProjectImage } from '../lib/api'
+import { BASE } from '../lib/api'
 import type { Project, ProcessInstance, TeamMember, ProjectInvestor, Investor, ProfitWaterfall } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { ProjectProfitSection } from './ProjectProfitSection'
@@ -44,6 +45,9 @@ export function ProjectDetailPage() {
   const [editReturnDate, setEditReturnDate] = useState<string>('')
   const [savingId, setSavingId] = useState<number | null>(null)
   const [rightTab, setRightTab] = useState<'proyecto' | 'finanzas'>('proyecto')
+  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
@@ -463,6 +467,22 @@ export function ProjectDetailPage() {
             </div>
           ))}
 
+          {([
+            { key: 'latitude' as keyof Project, label: 'Latitud' },
+            { key: 'longitude' as keyof Project, label: 'Longitud' },
+          ]).map(({ key, label }) => (
+            <div key={key} style={{ marginBottom: '8px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+              <input
+                value={(field(key) as number) ?? ''}
+                onChange={e => setField(key, Number(e.target.value))}
+                type="number"
+                step="any"
+                style={fieldInput}
+              />
+            </div>
+          ))}
+
           <div style={{ marginBottom: '8px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
             <textarea
@@ -478,29 +498,84 @@ export function ProjectDetailPage() {
           )}
         </div>
 
-        {/* ── CENTER: Mapa ── */}
-        <div style={{ ...fade(160), position: 'relative', overflow: 'hidden' }}>
-          {hasMap ? (
-            <MapContainer
-              center={[lat, lng]}
-              zoom={15}
-              style={{ height: '100%', width: '100%' }}
-              scrollWheelZoom={false}
-            >
-              <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+        {/* ── CENTER: Mapa / Fotos ── */}
+        <div style={{ ...fade(160), display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Tab bar */}
+          <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
+            {(['mapa', 'fotos'] as const).map(tab => (
+              <button key={tab} onClick={() => setCenterTab(tab)} style={{
+                background: 'transparent', border: 'none',
+                borderBottom: centerTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
+                color: centerTab === tab ? colors.neutral : colors.secondary,
+                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
+                letterSpacing: '0.12em', padding: '10px 16px 8px', marginBottom: '-1px',
+              }}>
+                {tab.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* MAPA tab */}
+          {centerTab === 'mapa' && (
+            <div style={{ flex: 1, position: 'relative' }}>
+              {hasMap ? (
+                <MapContainer
+                  center={[lat, lng]}
+                  zoom={15}
+                  style={{ height: '100%', width: '100%' }}
+                  scrollWheelZoom={false}
+                >
+                  <TileLayer
+                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                  />
+                  <CircleMarker
+                    center={[lat, lng]}
+                    radius={12}
+                    pathOptions={{ color: colors.primary, fillColor: colors.primary, fillOpacity: 0.7, weight: 2 }}
+                  />
+                </MapContainer>
+              ) : (
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
+                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* FOTOS tab */}
+          {centerTab === 'fotos' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', scrollbarWidth: 'none' }}>
+              {project.imagePath ? (
+                <img
+                  src={`${BASE}/files/${project.imagePath}`}
+                  alt=""
+                  onClick={() => setLightboxSrc(`${BASE}/files/${project.imagePath}`)}
+                  style={{ width: '100%', objectFit: 'contain', cursor: 'zoom-in', display: 'block', maxHeight: '60vh' }}
+                />
+              ) : (
+                <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border, marginTop: '40px' }}>SIN FOTOS</div>
+              )}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.12em', color: colors.secondary, background: 'transparent', border: `1px solid ${colors.border}`, padding: '6px 14px', cursor: 'pointer' }}
+              >
+                + SUBIR FOTO
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={async e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const updated = await uploadProjectImage(project.id, file)
+                  setProject(updated)
+                  e.target.value = ''
+                }}
               />
-              <CircleMarker
-                center={[lat, lng]}
-                radius={12}
-                pathOptions={{ color: colors.primary, fillColor: colors.primary, fillOpacity: 0.7, weight: 2 }}
-              />
-            </MapContainer>
-          ) : (
-            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
             </div>
           )}
         </div>
@@ -912,6 +987,19 @@ export function ProjectDetailPage() {
           </div>
       </div>
     </div>
+
+      {lightboxSrc && (
+        <div
+          onClick={() => setLightboxSrc(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, cursor: 'zoom-out',
+          }}
+        >
+          <img src={lightboxSrc} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
+        </div>
+      )}
   </div>
   )
 }
