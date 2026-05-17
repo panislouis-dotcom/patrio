@@ -9,7 +9,7 @@ export function fmtM(n: number): string {
   return `$${Math.round(n)}`
 }
 
-export function fmtMXN(n: number): string {
+export function fmtMXN(n: number | null | undefined): string {
   if (!n) return '—'
   const abs = Math.abs(n)
   const sign = n < 0 ? '-' : ''

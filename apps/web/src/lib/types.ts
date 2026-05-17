@@ -40,6 +40,7 @@ export interface Prospect {
   rentAnnual: number
   holdMonths: number
   notes: string
+  imagePath: string
   score: number
   issues: Issue[]
 }

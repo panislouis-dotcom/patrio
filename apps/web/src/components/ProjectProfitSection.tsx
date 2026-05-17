@@ -2,16 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchProjectProfit, updateProjectProfit } from '../lib/api'
 import type { ProfitSplitConfig, ProfitWaterfall, TeamMember } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function fmt(n: number | null | undefined): string {
-  if (n == null) return '—'
-  const abs = Math.abs(n)
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
-  return `$${n.toFixed(0)}`
-}
+import { fmtMXN } from '../lib/fmt'
 
 function toggleId(ids: number[], id: number): number[] {
   return ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]
@@ -195,7 +186,7 @@ export function ProjectProfitSection({ projectId, team, showWaterfall = true, sh
                   {row.label}
                 </td>
                 <td style={{ padding: '4px 0', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: row.highlight ? colors.primary : colors.neutral }}>
-                  {fmt(row.value)}
+                  {fmtMXN(row.value)}
                 </td>
               </tr>
             ))}
@@ -219,19 +210,19 @@ export function ProjectProfitSection({ projectId, team, showWaterfall = true, sh
               {waterfall.investorBreakdown.map((entry, idx) => (
                 <tr key={idx} style={{ borderBottom: `1px solid ${colors.border}` }}>
                   <td style={{ padding: '5px 4px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{entry.name}</td>
-                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmt(entry.fundedAmount)}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(entry.fundedAmount)}</td>
                   <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{Math.round(entry.interestRateAnnual * 100)}%</td>
-                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>{fmt(entry.cuota)}</td>
-                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, fontWeight: 600 }}>{fmt(entry.totalReturn)}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>{fmtMXN(entry.cuota)}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, fontWeight: 600 }}>{fmtMXN(entry.totalReturn)}</td>
                 </tr>
               ))}
               {waterfall.investorBreakdown.length > 1 && (
                 <tr style={{ borderTop: `1px solid ${colors.border}` }}>
                   <td style={{ padding: '5px 4px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.08em' }}>TOTAL</td>
-                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmt(waterfall.investorBreakdown.reduce((s, e) => s + e.fundedAmount, 0))}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(waterfall.investorBreakdown.reduce((s, e) => s + e.fundedAmount, 0))}</td>
                   <td />
-                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>{fmt(waterfall.investorBreakdown.reduce((s, e) => s + e.cuota, 0))}</td>
-                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, fontWeight: 600 }}>{fmt(waterfall.investorBreakdown.reduce((s, e) => s + e.totalReturn, 0))}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>{fmtMXN(waterfall.investorBreakdown.reduce((s, e) => s + e.cuota, 0))}</td>
+                  <td style={{ padding: '5px 4px', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, fontWeight: 600 }}>{fmtMXN(waterfall.investorBreakdown.reduce((s, e) => s + e.totalReturn, 0))}</td>
                 </tr>
               )}
             </tbody>
@@ -358,7 +349,7 @@ export function ProjectProfitSection({ projectId, team, showWaterfall = true, sh
             <span style={{ ...labelStyle, minWidth: '80px' }}>EMPRESA</span>
             <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.06em' }}>(residual)</span>
             <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
-              {fmt(waterfall.scenarios.sin_bono.companyResidual)}
+              {fmtMXN(waterfall.scenarios.sin_bono.companyResidual)}
             </span>
           </div>
         </div>
@@ -414,7 +405,7 @@ export function ProjectProfitSection({ projectId, team, showWaterfall = true, sh
                           color: colors.neutral,
                           fontWeight: isActive ? 600 : undefined,
                         }}>
-                          {fmt(amount)}
+                          {fmtMXN(amount)}
                         </td>
                       )
                     })}
@@ -437,7 +428,7 @@ export function ProjectProfitSection({ projectId, team, showWaterfall = true, sh
                         color: colors.secondary,
                         fontWeight: isActive ? 600 : undefined,
                       }}>
-                        {fmt(waterfall.scenarios[key].companyResidual)}
+                        {fmtMXN(waterfall.scenarios[key].companyResidual)}
                       </td>
                     )
                   })}

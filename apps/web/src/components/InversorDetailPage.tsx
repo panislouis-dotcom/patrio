@@ -4,15 +4,8 @@ import { fetchInvestor, updateInvestor, deleteInvestor, fetchProjects, addProjec
 import type { Investor, ProjectInvestor, Project } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
-import { fmtM } from '../lib/fmt'
-
-function fmt(n: number): string {
-  const abs = Math.abs(n)
-  const sign = n < 0 ? '-' : ''
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`
-  return `${sign}$${abs.toFixed(0)}`
-}
+import { fmtM, fmtMXN } from '../lib/fmt'
+import { StatRow } from './StatRow'
 
 export function InversorDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -200,13 +193,6 @@ export function InversorDetailPage() {
     </div>
   )
 
-  const stat = (label: string, value: React.ReactNode) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
-      <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>{label}</span>
-      <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{value}</span>
-    </div>
-  )
-
   const iStyle: React.CSSProperties = {
     background: colors.surface,
     border: `1px solid ${colors.border}`,
@@ -275,9 +261,9 @@ export function InversorDetailPage() {
         }}>
           {divider('DATOS')}
 
-          {stat('TOTAL INTERESADO', fmtM(positions.reduce((s, p) => s + p.interestedAmount, 0)))}
-          {stat('TOTAL COMPROMETIDO', fmtM(positions.reduce((s, p) => s + p.committedAmount, 0)))}
-          {stat('TOTAL FONDEADO', fmtM(positions.reduce((s, p) => s + p.fundedAmount, 0)))}
+          <StatRow label="TOTAL INTERESADO" value={fmtM(positions.reduce((s, p) => s + p.interestedAmount, 0))} />
+          <StatRow label="TOTAL COMPROMETIDO" value={fmtM(positions.reduce((s, p) => s + p.committedAmount, 0))} />
+          <StatRow label="TOTAL FONDEADO" value={fmtM(positions.reduce((s, p) => s + p.fundedAmount, 0))} />
 
           {divider('RETORNOS')}
 
@@ -287,8 +273,8 @@ export function InversorDetailPage() {
             const pendiente = Math.max(0, totalARecibir - totalPagado)
             return (
               <>
-                {stat('TOTAL A RECIBIR', fmtM(totalARecibir))}
-                {stat('TOTAL PAGADO', fmtM(totalPagado))}
+                <StatRow label="TOTAL A RECIBIR" value={fmtM(totalARecibir)} />
+                <StatRow label="TOTAL PAGADO" value={fmtM(totalPagado)} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
                   <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>PENDIENTE</span>
                   <span style={{ fontFamily: fonts.sans, fontSize: '13px', color: pendiente > 0 ? 'tomato' : colors.primary }}>{fmtM(pendiente)}</span>
@@ -443,14 +429,14 @@ export function InversorDetailPage() {
                       ) : (
                         <>
                           <td style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{pos.investmentDate ?? '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pos.interestedAmount ? fmt(pos.interestedAmount) : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: pos.committedAmount ? colors.tertiary : colors.secondary, textAlign: 'right' }}>{pos.committedAmount ? fmt(pos.committedAmount) : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: pos.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pos.fundedAmount ? fmt(pos.fundedAmount) : '—'}</td>
+                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pos.interestedAmount ? fmtMXN(pos.interestedAmount) : '—'}</td>
+                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: pos.committedAmount ? colors.tertiary : colors.secondary, textAlign: 'right' }}>{pos.committedAmount ? fmtMXN(pos.committedAmount) : '—'}</td>
+                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: pos.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pos.fundedAmount ? fmtMXN(pos.fundedAmount) : '—'}</td>
                           <td style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{Math.round(pos.interestRateAnnual * 100)}%</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pos.fundedAmount ? fmt(pos.interestAmount) : '—'}</td>
+                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pos.fundedAmount ? fmtMXN(pos.interestAmount) : '—'}</td>
                           <td style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{pos.fundedAmount ? `${pos.returnPct.toFixed(1)}%` : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pos.fundedAmount ? fmt(pos.expectedReturn) : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: pos.returnAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pos.returnAmount ? fmt(pos.returnAmount) : '—'}</td>
+                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pos.fundedAmount ? fmtMXN(pos.expectedReturn) : '—'}</td>
+                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: pos.returnAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pos.returnAmount ? fmtMXN(pos.returnAmount) : '—'}</td>
                           <td style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{pos.returnDate ?? '—'}</td>
                           <td style={{ padding: '5px 8px', textAlign: 'right' }}>
                             <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.08em', color: estadoColor }}>{estado}</span>

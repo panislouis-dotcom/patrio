@@ -7,8 +7,10 @@ import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { fmtMXN } from '../lib/fmt'
+import { BASE } from '../lib/api'
 import { ProspectForm } from './ProspectForm'
 import { ProspectAnalysisSection } from './ProspectAnalysisSection'
+import { StatRow } from './StatRow'
 import { PROSPECT_STATUS_COLOR, PROSPECT_STATUS_LABEL } from '../lib/status'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
@@ -228,13 +230,6 @@ export function ProspectDetailPage() {
     </div>
   )
 
-  const stat = (label: string, value: React.ReactNode) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
-      <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>{label}</span>
-      <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{value}</span>
-    </div>
-  )
-
   const investmentItems = [
     { label: 'Precio terreno', amount: p.landPrice },
     { label: 'Costos adq.', amount: p.acquisitionCosts },
@@ -336,6 +331,12 @@ export function ProspectDetailPage() {
           padding: '20px',
           scrollbarWidth: 'none',
         }}>
+          {p.imagePath && (
+            <div style={{ margin: '-20px -20px 16px' }}>
+              <img src={`${BASE}/files/${p.imagePath}`} alt="" style={{ width: '100%', height: '180px', objectFit: 'cover', display: 'block' }} />
+            </div>
+          )}
+
           {/* Hero ROI */}
           <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
@@ -357,14 +358,14 @@ export function ProspectDetailPage() {
             </div>
           </div>
 
-          {stat('PROFIT', fmtMXN(p.profit))}
-          {stat('CAP RATE', (p.capRate ?? 0) > 0 ? `${((p.capRate ?? 0) * 100).toFixed(1)}%` : '—')}
-          {stat('INVERSIÓN', fmtMXN(p.totalInvestment))}
-          {stat('VENTA', fmtMXN(p.projectedSale))}
-          {p.holdMonths > 0 ? stat('PLAZO', `${p.holdMonths} meses`) : null}
-          {p.rentMonthly > 0 ? stat('RENTA/MES', fmtMXN(p.rentMonthly)) : null}
-          {stat('TERRENO', `${p.sqmLand} m²`)}
-          {stat('CONSTRUCCIÓN', `${p.sqmConstruction} m²`)}
+          <StatRow label="PROFIT" value={fmtMXN(p.profit)} />
+          <StatRow label="CAP RATE" value={(p.capRate ?? 0) > 0 ? `${((p.capRate ?? 0) * 100).toFixed(1)}%` : '—'} />
+          <StatRow label="INVERSIÓN" value={fmtMXN(p.totalInvestment)} />
+          <StatRow label="VENTA" value={fmtMXN(p.projectedSale)} />
+          {p.holdMonths > 0 && <StatRow label="PLAZO" value={`${p.holdMonths} meses`} />}
+          {p.rentMonthly > 0 && <StatRow label="RENTA/MES" value={fmtMXN(p.rentMonthly)} />}
+          <StatRow label="TERRENO" value={`${p.sqmLand} m²`} />
+          <StatRow label="CONSTRUCCIÓN" value={`${p.sqmConstruction} m²`} />
 
           {divider('UBICACIÓN')}
           <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{p.address || '—'}</div>
