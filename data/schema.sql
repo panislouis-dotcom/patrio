@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS prospects (
   hold_months               INTEGER NOT NULL DEFAULT 12,
   rent_monthly              REAL NOT NULL CHECK (rent_monthly >= 0),
   notes                     TEXT NOT NULL DEFAULT '',
-  image_path                TEXT NOT NULL DEFAULT '',
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -65,7 +64,7 @@ SELECT
         / NULLIF(sqm_land, 0))::numeric, 2)                            AS investment_per_sqm,
   rent_monthly,
   ROUND((rent_monthly * 12)::numeric, 0)                    AS rent_annual,
-  hold_months, notes, image_path, type
+  hold_months, notes, type
 FROM prospects;
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -89,6 +88,26 @@ CREATE TABLE IF NOT EXISTS projects (
   budget            TEXT NOT NULL DEFAULT '{}',
   notes             TEXT NOT NULL DEFAULT '',
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS prospect_images (
+  id           BIGSERIAL PRIMARY KEY,
+  prospect_id  BIGINT NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  file_path    TEXT NOT NULL,
+  file_name    TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS project_images (
+  id           BIGSERIAL PRIMARY KEY,
+  project_id   BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  file_path    TEXT NOT NULL,
+  file_name    TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS team_members (
