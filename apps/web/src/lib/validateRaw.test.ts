@@ -6,7 +6,11 @@ const VALID: Parameters<typeof validateRaw>[0] = {
   longitude: -100.3161,
   landPrice: 5_000_000,
   sqmLand: 200,
+  sqmConstruction: 180,
+  constructionCostPerSqm: 15_000,
   constructionOverhead: 1.3,
+  projectedSale: 9_000_000,
+  rentMonthly: 25_000,
   holdMonths: 18,
 }
 
