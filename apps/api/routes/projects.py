@@ -4,7 +4,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from api.auth import get_current_user
-from api.db import get_projects, get_project, update_project, create_project, delete_project, set_project_image_path
+from api.db import get_projects, get_project, update_project, create_project, delete_project, add_project_image, delete_project_image
 
 router = APIRouter()
 
@@ -93,7 +93,7 @@ def remove_project(project_id: int, _: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Project not found")
 
 
-@router.post("/api/projects/{project_id}/image", status_code=200)
+@router.post("/api/projects/{project_id}/images", status_code=201)
 async def upload_project_image(
     project_id: int,
     file: UploadFile = File(...),
@@ -102,14 +102,11 @@ async def upload_project_image(
     p = get_project(project_id)
     if p is None:
         raise HTTPException(status_code=404, detail="Project not found")
-
     if file.content_type not in _ALLOWED_MIME:
         raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
-
     content = await file.read(_MAX_IMAGE_SIZE + 1)
     if len(content) > _MAX_IMAGE_SIZE:
         raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
-
     ext = Path(file.filename).suffix if file.filename else ""
     relative_path = f"projects/{project_id}/{uuid4().hex}{ext}"
     full_path = _FILES_BASE / relative_path
@@ -118,14 +115,16 @@ async def upload_project_image(
         full_path.write_bytes(content)
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to store image") from exc
+    return add_project_image(project_id, relative_path, file.filename or "", file.content_type or "image/jpeg")
 
+
+@router.delete("/api/projects/{project_id}/images/{image_id}", status_code=204)
+async def remove_project_image(
+    project_id: int,
+    image_id: int,
+    _: dict = Depends(get_current_user),
+):
     try:
-        set_project_image_path(project_id, relative_path)
+        delete_project_image(image_id, project_id)
     except ValueError:
-        full_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=404, detail="Project not found")
-    except Exception:
-        full_path.unlink(missing_ok=True)
-        raise
-
-    return get_project(project_id)
+        raise HTTPException(status_code=404, detail="Image not found")

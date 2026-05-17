@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect, Zone, Comparable, AnalysisSnapshot, AnalysisRequest } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage } from './types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -72,20 +72,30 @@ export async function parseProspect(url: string, text: string, image?: Blob): Pr
   return res.json()
 }
 
-export async function uploadProspectImage(prospectId: number, image: Blob): Promise<Prospect> {
+export async function uploadProspectImage(prospectId: number, file: File): Promise<PropertyImage> {
   const form = new FormData()
-  form.append('file', image, 'screenshot.png')
-  const res = await authFetch(`${BASE}/api/prospects/${prospectId}/image`, { method: 'POST', body: form })
+  form.append('file', file, file.name)
+  const res = await authFetch(`${BASE}/api/prospects/${prospectId}/images`, { method: 'POST', body: form })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
 
-export async function uploadProjectImage(projectId: number, image: Blob): Promise<Project> {
+export async function deleteProspectImage(prospectId: number, imageId: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/prospects/${prospectId}/images/${imageId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+
+export async function uploadProjectImage(projectId: number, file: File): Promise<PropertyImage> {
   const form = new FormData()
-  form.append('file', image, 'photo.jpg')
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/image`, { method: 'POST', body: form })
+  form.append('file', file, file.name)
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/images`, { method: 'POST', body: form })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
+}
+
+export async function deleteProjectImage(projectId: number, imageId: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/images/${imageId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
 }
 
 export async function createProspect(data: Omit<RawFields, 'url' | 'notes'> & { url?: string; notes?: string }): Promise<Prospect> {

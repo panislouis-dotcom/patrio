@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from api.auth import get_current_user
-from api.db import get_prospects, get_prospect, update_prospect, create_prospect, set_prospect_image_path, delete_prospect
+from api.db import get_prospects, get_prospect, update_prospect, create_prospect, add_prospect_image, delete_prospect_image, delete_prospect
 from api.checks import run_checks
 
 _FILES_BASE = Path(__file__).parent.parent.parent.parent / "data" / "files"
@@ -13,7 +13,7 @@ _FILES_BASE = Path(__file__).parent.parent.parent.parent / "data" / "files"
 router = APIRouter()
 
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
-MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
+_MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
 class ProspectUpdate(BaseModel):
@@ -147,7 +147,7 @@ async def parse_prospect_route(
         raise HTTPException(status_code=502, detail=f"Error al analizar la propiedad: {e}")
 
 
-@router.post("/api/prospects/{prospect_id}/image", status_code=200)
+@router.post("/api/prospects/{prospect_id}/images", status_code=201)
 async def upload_prospect_image(
     prospect_id: int,
     file: UploadFile = File(...),
@@ -156,14 +156,11 @@ async def upload_prospect_image(
     p = get_prospect(prospect_id)
     if p is None:
         raise HTTPException(status_code=404, detail="Prospect not found")
-
     if file.content_type not in _ALLOWED_MIME:
         raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
-
-    content = await file.read(MAX_IMAGE_SIZE + 1)
-    if len(content) > MAX_IMAGE_SIZE:
+    content = await file.read(_MAX_IMAGE_SIZE + 1)
+    if len(content) > _MAX_IMAGE_SIZE:
         raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
-
     ext = Path(file.filename).suffix if file.filename else ""
     relative_path = f"prospects/{prospect_id}/{uuid4().hex}{ext}"
     full_path = _FILES_BASE / relative_path
@@ -172,18 +169,16 @@ async def upload_prospect_image(
         full_path.write_bytes(content)
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to store image") from exc
+    return add_prospect_image(prospect_id, relative_path, file.filename or "", file.content_type or "image/jpeg")
 
+
+@router.delete("/api/prospects/{prospect_id}/images/{image_id}", status_code=204)
+async def remove_prospect_image(
+    prospect_id: int,
+    image_id: int,
+    _: dict = Depends(get_current_user),
+):
     try:
-        set_prospect_image_path(prospect_id, relative_path)
+        delete_prospect_image(image_id, prospect_id)
     except ValueError:
-        full_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=404, detail="Prospect not found")
-    except Exception:
-        full_path.unlink(missing_ok=True)
-        raise
-
-    all_prospects = get_prospects()
-    updated = get_prospect(prospect_id)
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Prospect not found")
-    return _with_checks({**updated, "score": _score(updated, all_prospects)})
+        raise HTTPException(status_code=404, detail="Image not found")

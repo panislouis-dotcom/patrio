@@ -168,7 +168,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
         longitude:            parsed?.longitude ?? 0,
       })
       if (image && created?.id) {
-        try { await uploadProspectImage(created.id, image) } catch { /* non-fatal */ }
+        try { await uploadProspectImage(created.id, image instanceof File ? image : new File([image], 'screenshot.png', { type: image.type })) } catch { /* non-fatal */ }
       }
       onCreated()
     } catch (e) {
