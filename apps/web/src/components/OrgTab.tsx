@@ -270,6 +270,8 @@ function MemberPanel({
     try {
       await deleteTeamMember(member.id)
       onDelete(member.id)
+    } catch (e) {
+      alert(`No se pudo eliminar: ${e instanceof Error ? e.message : 'Error desconocido'}`)
     } finally {
       setSaving(false)
     }
