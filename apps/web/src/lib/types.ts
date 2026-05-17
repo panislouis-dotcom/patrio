@@ -31,8 +31,8 @@ export interface Prospect {
   totalInvestment: number
   projectedSale: number
   profit: number
-  roi: number
-  capRate: number
+  roi: number | null
+  capRate: number | null
   landPricePerSqm: number
   salePerSqm: number
   investmentPerSqm: number
@@ -86,6 +86,7 @@ export interface Project {
   unrealizedGain: number
   unrealizedGainPct: number
   holdMonthsActual: number
+  roi: number | null
   prospectId: number | null
 }
 

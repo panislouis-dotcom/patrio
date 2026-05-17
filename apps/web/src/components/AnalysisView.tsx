@@ -78,12 +78,14 @@ function SensitivityMatrix({ snap }: { snap: AnalysisSnapshot }) {
   const exitMultipliers = [0.85, 0.90, 1.00, 1.10, 1.15]
   const remodelMultipliers = [0.80, 0.90, 1.00, 1.10, 1.20]
 
+  const holdMonths = snap.holdingPeriodMonths ?? 12
+
   function sensitivityROI(exitMult: number, remodelMult: number): number | null {
     const exit = snap.exitPriceUsed * exitMult
     const remodel = snap.remodelCostEstimate * remodelMult
     const total = snap.purchasePrice + remodel + snap.transactionCosts + (snap.financingCosts ?? 0)
-    if (total <= 0) return null
-    return ((exit - total) / total) * 100
+    if (total <= 0 || exit <= 0) return null
+    return (Math.pow(exit / total, 12 / holdMonths) - 1) * 100
   }
 
   function roiColor(roi: number | null): string {
@@ -108,7 +110,7 @@ function SensitivityMatrix({ snap }: { snap: AnalysisSnapshot }) {
         fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em',
         color: colors.secondary, textTransform: 'uppercase', marginBottom: '8px',
       }}>
-        MATRIZ DE SENSIBILIDAD — ROI FLIP
+        MATRIZ DE SENSIBILIDAD — ROI ANUAL FLIP
       </div>
       <div style={{ fontFamily: fonts.sans, fontSize: '10px', color: colors.secondary, marginBottom: '12px' }}>
         Filas: precio de salida · Columnas: costo de remodelación
@@ -268,7 +270,7 @@ export function AnalysisView() {
         )}
         <Row label="MARGEN BRUTO" value={snap.grossMargin != null ? fmtMXN(snap.grossMargin) : '—'} />
         <Row
-          label="ROI"
+          label="ROI ANUAL"
           value={snap.roiPct != null ? fmtPct(snap.roiPct / 100) : '—'}
           highlight
         />

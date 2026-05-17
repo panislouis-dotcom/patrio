@@ -190,7 +190,7 @@ export function ProspectAnalysisSection({ prospectId }: Props) {
                 {s.interventionLevel} · {s.holdingPeriodMonths}m
               </span>
               <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
-                ROI {s.roiPct != null ? `${s.roiPct.toFixed(1)}%` : '—'}
+                ROI/a {s.roiPct != null ? `${s.roiPct.toFixed(1)}%` : '—'}
               </span>
               <span style={{
                 fontFamily: fonts.label, fontSize: '9px',

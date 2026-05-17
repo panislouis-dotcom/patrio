@@ -1,5 +1,5 @@
-export function fmtPct(n: number): string {
-  return n ? `${(n * 100).toFixed(1)}%` : '—'
+export function fmtPct(n: number | null | undefined): string {
+  return n != null && n !== 0 ? `${(n * 100).toFixed(1)}%` : '—'
 }
 
 export function fmtM(n: number): string {
