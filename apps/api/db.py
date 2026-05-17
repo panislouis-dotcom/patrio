@@ -250,9 +250,14 @@ def _parse_project(row) -> dict:
     except (ValueError, AttributeError):
         hold_months_actual = 0
 
+    roi = None
+    if total_investment > 0 and current_valuation > 0 and hold_months_actual > 0:
+        roi = round((current_valuation / total_investment) ** (12.0 / hold_months_actual) - 1, 4)
+
     d["unrealizedGain"] = unrealized_gain
     d["unrealizedGainPct"] = unrealized_gain_pct
     d["holdMonthsActual"] = hold_months_actual
+    d["roi"] = roi
 
     return d
 

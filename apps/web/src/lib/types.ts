@@ -86,6 +86,7 @@ export interface Project {
   unrealizedGain: number
   unrealizedGainPct: number
   holdMonthsActual: number
+  roi: number | null
   prospectId: number | null
 }
 

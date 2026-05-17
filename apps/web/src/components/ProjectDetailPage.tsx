@@ -250,9 +250,9 @@ export function ProjectDetailPage() {
   const milestones = (project.milestones ?? {}) as Record<string, string>
   const milestoneEntries = Object.entries(milestones).sort(([a], [b]) => a.localeCompare(b))
   const gain = project.unrealizedGain ?? 0
-  const gainPct = (project.unrealizedGainPct ?? 0) * 100
   const gainPositive = gain >= 0
-  const gainColor = gainPositive ? colors.primary : colors.tertiary
+  const roi = project.roi ?? null
+  const roiColor = roi != null && roi > 0.5 ? colors.primary : roi != null && roi > 0.25 ? colors.tertiary : '#c0392b'
   const lat = project.latitude as number | null
   const lng = project.longitude as number | null
   const hasMap = lat && lng
@@ -358,34 +358,32 @@ export function ProjectDetailPage() {
           scrollbarWidth: 'none',
         }}>
 
-          {/* Hero gain */}
+          {/* Hero ROI */}
           <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>
-              GANANCIA NO REALIZADA
-            </div>
-            <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: gainColor, lineHeight: 1 }}>
-              {gainPositive ? '+' : ''}{fmt(gain)}
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
+            <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roi != null ? roiColor : colors.secondary, lineHeight: 1 }}>
+              {roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
               <div style={{ flex: 1, height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
                 <div style={{
                   height: '100%',
-                  width: barsReady ? `${Math.min(100, Math.abs(gainPct))}%` : '0%',
-                  background: gainColor,
+                  width: barsReady && roi != null ? `${Math.min(100, Math.max(0, roi * 100))}%` : '0%',
+                  background: roi != null ? roiColor : colors.border,
                   transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
                 }} />
               </div>
-              <span style={{ fontFamily: fonts.label, fontSize: '13px', color: gainColor, fontWeight: 700, flexShrink: 0 }}>
-                {gainPositive ? '+' : ''}{gainPct.toFixed(1)}%
+              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, flexShrink: 0 }}>
+                {gainPositive ? '+' : ''}{fmt(gain)}
               </span>
             </div>
           </div>
 
           {stat('INVERSIÓN', fmt((field('totalInvestment') as number) ?? 0))}
           {stat('VALORACIÓN', fmt((field('currentValuation') as number) ?? 0))}
+          {stat('PLAZO', project.holdMonthsActual ? `${project.holdMonthsActual} meses` : '—')}
           {stat('UNIDADES', field('totalUnits') as React.ReactNode)}
           {stat('TIPO', field('type') as React.ReactNode)}
-          {project.holdMonthsActual ? stat('HOLD', `${project.holdMonthsActual} meses`) : null}
 
           {divider('FECHAS')}
           {stat('ADQUISICIÓN', field('acquisitionDate') as React.ReactNode)}
