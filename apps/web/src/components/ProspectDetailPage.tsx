@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProspect, updateProspect, createProspect, deleteProspect, createProject, uploadProspectImage } from '../lib/api'
+import { BASE, fetchProspect, updateProspect, createProspect, deleteProspect, createProject, uploadProspectImage, deleteProspectImage } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { fmtMXN } from '../lib/fmt'
-import { BASE } from '../lib/api'
 import { ProspectForm } from './ProspectForm'
 import { ProspectAnalysisSection } from './ProspectAnalysisSection'
 import { StatRow } from './StatRow'
+import { PhotoGallery } from './PhotoGallery'
 import { PROSPECT_STATUS_COLOR, PROSPECT_STATUS_LABEL } from '../lib/status'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
@@ -59,8 +59,6 @@ export function ProspectDetailPage() {
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
   const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (isNew) { setLoading(false); return }
@@ -503,37 +501,18 @@ export function ProspectDetailPage() {
 
           {/* FOTOS tab */}
           {centerTab === 'fotos' && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', scrollbarWidth: 'none' }}>
-              {p.imagePath ? (
-                <img
-                  src={`${BASE}/files/${p.imagePath}`}
-                  alt=""
-                  onClick={() => setLightboxSrc(`${BASE}/files/${p.imagePath}`)}
-                  style={{ width: '100%', objectFit: 'contain', cursor: 'zoom-in', display: 'block', maxHeight: '60vh' }}
-                />
-              ) : (
-                <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border, marginTop: '40px' }}>SIN FOTOS</div>
-              )}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.12em', color: colors.secondary, background: 'transparent', border: `1px solid ${colors.border}`, padding: '6px 14px', cursor: 'pointer' }}
-              >
-                + SUBIR FOTO
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={async e => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  const updated = await uploadProspectImage(p.id, file)
-                  setProspect(updated)
-                  e.target.value = ''
-                }}
-              />
-            </div>
+            <PhotoGallery
+              images={p.images}
+              base={BASE}
+              onUpload={async file => {
+                const img = await uploadProspectImage(p.id, file)
+                setProspect(prev => prev ? { ...prev, images: [...prev.images, img] } : prev)
+              }}
+              onDelete={async imageId => {
+                await deleteProspectImage(p.id, imageId)
+                setProspect(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
+              }}
+            />
           )}
         </div>
 
@@ -746,18 +725,6 @@ export function ProspectDetailPage() {
         </div>
       )}
 
-      {lightboxSrc && (
-        <div
-          onClick={() => setLightboxSrc(null)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 1000, cursor: 'zoom-out',
-          }}
-        >
-          <img src={lightboxSrc} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
-        </div>
-      )}
     </div>
   )
 }
