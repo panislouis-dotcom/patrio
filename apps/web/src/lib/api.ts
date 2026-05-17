@@ -80,6 +80,14 @@ export async function uploadProspectImage(prospectId: number, image: Blob): Prom
   return res.json()
 }
 
+export async function uploadProjectImage(projectId: number, image: Blob): Promise<Project> {
+  const form = new FormData()
+  form.append('file', image, 'photo.jpg')
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/image`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 export async function createProspect(data: Omit<RawFields, 'url' | 'notes'> & { url?: string; notes?: string }): Promise<Prospect> {
   const res = await authFetch(`${BASE}/api/prospects`, {
     method: 'POST',

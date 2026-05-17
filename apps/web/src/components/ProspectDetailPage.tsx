@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProspect, updateProspect, createProspect, deleteProspect, createProject } from '../lib/api'
+import { BASE, fetchProspect, updateProspect, createProspect, deleteProspect, createProject, uploadProspectImage, deleteProspectImage } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -9,6 +9,8 @@ import { fieldInput } from '../lib/styles'
 import { fmtMXN } from '../lib/fmt'
 import { ProspectForm } from './ProspectForm'
 import { ProspectAnalysisSection } from './ProspectAnalysisSection'
+import { StatRow } from './StatRow'
+import { PhotoGallery } from './PhotoGallery'
 import { PROSPECT_STATUS_COLOR, PROSPECT_STATUS_LABEL } from '../lib/status'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
@@ -56,6 +58,7 @@ export function ProspectDetailPage() {
   })
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
+  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')
 
   useEffect(() => {
     if (isNew) { setLoading(false); return }
@@ -228,13 +231,6 @@ export function ProspectDetailPage() {
     </div>
   )
 
-  const stat = (label: string, value: React.ReactNode) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
-      <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>{label}</span>
-      <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{value}</span>
-    </div>
-  )
-
   const investmentItems = [
     { label: 'Precio terreno', amount: p.landPrice },
     { label: 'Costos adq.', amount: p.acquisitionCosts },
@@ -357,14 +353,14 @@ export function ProspectDetailPage() {
             </div>
           </div>
 
-          {stat('PROFIT', fmtMXN(p.profit))}
-          {stat('CAP RATE', (p.capRate ?? 0) > 0 ? `${((p.capRate ?? 0) * 100).toFixed(1)}%` : '—')}
-          {stat('INVERSIÓN', fmtMXN(p.totalInvestment))}
-          {stat('VENTA', fmtMXN(p.projectedSale))}
-          {p.holdMonths > 0 ? stat('PLAZO', `${p.holdMonths} meses`) : null}
-          {p.rentMonthly > 0 ? stat('RENTA/MES', fmtMXN(p.rentMonthly)) : null}
-          {stat('TERRENO', `${p.sqmLand} m²`)}
-          {stat('CONSTRUCCIÓN', `${p.sqmConstruction} m²`)}
+          <StatRow label="PROFIT" value={fmtMXN(p.profit)} />
+          <StatRow label="CAP RATE" value={(p.capRate ?? 0) > 0 ? `${((p.capRate ?? 0) * 100).toFixed(1)}%` : '—'} />
+          <StatRow label="INVERSIÓN" value={fmtMXN(p.totalInvestment)} />
+          <StatRow label="VENTA" value={fmtMXN(p.projectedSale)} />
+          {p.holdMonths > 0 && <StatRow label="PLAZO" value={`${p.holdMonths} meses`} />}
+          {p.rentMonthly > 0 && <StatRow label="RENTA/MES" value={fmtMXN(p.rentMonthly)} />}
+          <StatRow label="TERRENO" value={`${p.sqmLand} m²`} />
+          <StatRow label="CONSTRUCCIÓN" value={`${p.sqmConstruction} m²`} />
 
           {divider('UBICACIÓN')}
           <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{p.address || '—'}</div>
@@ -457,30 +453,66 @@ export function ProspectDetailPage() {
           )}
         </div>
 
-        {/* ── CENTER: Mapa ── */}
-        <div style={{ ...fade(160), position: 'relative', overflow: 'hidden' }}>
-          {hasCoords ? (
-            <MapContainer
-              center={[p.latitude, p.longitude]}
-              zoom={15}
-              style={{ height: '100%', width: '100%' }}
-              scrollWheelZoom={false}
-            >
-              <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-              />
-              <CircleMarker
-                center={[p.latitude, p.longitude]}
-                radius={12}
-                pathOptions={{ color: roiColor, fillColor: roiColor, fillOpacity: 0.7, weight: 2 }}
-              />
-            </MapContainer>
-          ) : (
-            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
+        {/* ── CENTER: Mapa / Fotos ── */}
+        <div style={{ ...fade(160), display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Tab bar */}
+          <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
+            {(['mapa', 'fotos'] as const).map(tab => (
+              <button key={tab} onClick={() => setCenterTab(tab)} style={{
+                background: 'transparent', border: 'none',
+                borderBottom: centerTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
+                color: centerTab === tab ? colors.neutral : colors.secondary,
+                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
+                letterSpacing: '0.12em', padding: '10px 16px 8px', marginBottom: '-1px',
+              }}>
+                {tab.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* MAPA tab */}
+          {centerTab === 'mapa' && (
+            <div style={{ flex: 1, position: 'relative' }}>
+              {hasCoords ? (
+                <MapContainer
+                  center={[p.latitude, p.longitude]}
+                  zoom={15}
+                  style={{ height: '100%', width: '100%' }}
+                  scrollWheelZoom={false}
+                >
+                  <TileLayer
+                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                  />
+                  <CircleMarker
+                    center={[p.latitude, p.longitude]}
+                    radius={12}
+                    pathOptions={{ color: roiColor, fillColor: roiColor, fillOpacity: 0.7, weight: 2 }}
+                  />
+                </MapContainer>
+              ) : (
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
+                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
+                </div>
+              )}
             </div>
+          )}
+
+          {/* FOTOS tab */}
+          {centerTab === 'fotos' && (
+            <PhotoGallery
+              images={p.images}
+              base={BASE}
+              onUpload={async file => {
+                const img = await uploadProspectImage(p.id, file)
+                setProspect(prev => prev ? { ...prev, images: [...prev.images, img] } : prev)
+              }}
+              onDelete={async imageId => {
+                await deleteProspectImage(p.id, imageId)
+                setProspect(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
+              }}
+            />
           )}
         </div>
 
@@ -692,6 +724,7 @@ export function ProspectDetailPage() {
           </div>
         </div>
       )}
+
     </div>
   )
 }

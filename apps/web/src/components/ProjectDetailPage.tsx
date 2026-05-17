@@ -1,21 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit } from '../lib/api'
+import { BASE, fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit, uploadProjectImage, deleteProjectImage } from '../lib/api'
 import type { Project, ProcessInstance, TeamMember, ProjectInvestor, Investor, ProfitWaterfall } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { ProjectProfitSection } from './ProjectProfitSection'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL, PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
-
-function fmt(n: number): string {
-  const abs = Math.abs(n)
-  const sign = n < 0 ? '-' : ''
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`
-  return `${sign}$${abs.toFixed(0)}`
-}
+import { fmtMXN } from '../lib/fmt'
+import { StatRow } from './StatRow'
+import { PhotoGallery } from './PhotoGallery'
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -50,6 +45,7 @@ export function ProjectDetailPage() {
   const [editReturnDate, setEditReturnDate] = useState<string>('')
   const [savingId, setSavingId] = useState<number | null>(null)
   const [rightTab, setRightTab] = useState<'proyecto' | 'finanzas'>('proyecto')
+  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
@@ -263,13 +259,6 @@ export function ProjectDetailPage() {
     </div>
   )
 
-  const stat = (label: string, value: React.ReactNode) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
-      <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>{label}</span>
-      <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{value}</span>
-    </div>
-  )
-
   const barColors = [colors.primary, '#654F6F', '#5C5D8D', colors.tertiary, colors.secondary]
 
   return (
@@ -374,24 +363,26 @@ export function ProjectDetailPage() {
                 }} />
               </div>
               <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, flexShrink: 0 }}>
-                {gainPositive ? '+' : ''}{fmt(gain)}
+                {gainPositive ? '+' : ''}{fmtMXN(gain)}
               </span>
             </div>
           </div>
 
-          {stat('INVERSIÓN', fmt((field('totalInvestment') as number) ?? 0))}
-          {stat('VALORACIÓN', fmt((field('currentValuation') as number) ?? 0))}
-          {stat('PLAZO', project.holdMonthsActual ? `${project.holdMonthsActual} meses` : '—')}
-          {stat('UNIDADES', field('totalUnits') as React.ReactNode)}
-          {stat('TIPO', field('type') as React.ReactNode)}
+          <StatRow label="INVERSIÓN" value={fmtMXN((field('totalInvestment') as number) ?? 0)} />
+          <StatRow label="VALORACIÓN" value={fmtMXN((field('currentValuation') as number) ?? 0)} />
+          <StatRow label="PLAZO" value={project.holdMonthsActual ? `${project.holdMonthsActual} meses` : '—'} />
+          <StatRow label="UNIDADES" value={field('totalUnits') as React.ReactNode} />
+          <StatRow label="TIPO" value={field('type') as React.ReactNode} />
 
           {divider('FECHAS')}
-          {stat('ADQUISICIÓN', field('acquisitionDate') as React.ReactNode)}
-          {project.conclusionDate ? stat(
-            ['flip', 'land'].includes(project.type) ? 'FECHA DE VENTA' : 'PRIMERA RENTA',
-            field('conclusionDate') as React.ReactNode
-          ) : null}
-          {project.valuationDate ? stat('VALUACIÓN', field('valuationDate') as React.ReactNode) : null}
+          <StatRow label="ADQUISICIÓN" value={field('acquisitionDate') as React.ReactNode} />
+          {project.conclusionDate && (
+            <StatRow
+              label={['flip', 'land'].includes(project.type) ? 'FECHA DE VENTA' : 'PRIMERA RENTA'}
+              value={field('conclusionDate') as React.ReactNode}
+            />
+          )}
+          {project.valuationDate && <StatRow label="VALUACIÓN" value={field('valuationDate') as React.ReactNode} />}
 
           {divider('UBICACIÓN')}
           <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{field('address') as string}</div>
@@ -474,6 +465,22 @@ export function ProjectDetailPage() {
             </div>
           ))}
 
+          {([
+            { key: 'latitude' as keyof Project, label: 'Latitud' },
+            { key: 'longitude' as keyof Project, label: 'Longitud' },
+          ]).map(({ key, label }) => (
+            <div key={key} style={{ marginBottom: '8px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+              <input
+                value={(field(key) as number) ?? ''}
+                onChange={e => setField(key, Number(e.target.value))}
+                type="number"
+                step="any"
+                style={fieldInput}
+              />
+            </div>
+          ))}
+
           <div style={{ marginBottom: '8px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
             <textarea
@@ -489,30 +496,66 @@ export function ProjectDetailPage() {
           )}
         </div>
 
-        {/* ── CENTER: Mapa ── */}
-        <div style={{ ...fade(160), position: 'relative', overflow: 'hidden' }}>
-          {hasMap ? (
-            <MapContainer
-              center={[lat, lng]}
-              zoom={15}
-              style={{ height: '100%', width: '100%' }}
-              scrollWheelZoom={false}
-            >
-              <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-              />
-              <CircleMarker
-                center={[lat, lng]}
-                radius={12}
-                pathOptions={{ color: colors.primary, fillColor: colors.primary, fillOpacity: 0.7, weight: 2 }}
-              />
-            </MapContainer>
-          ) : (
-            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
+        {/* ── CENTER: Mapa / Fotos ── */}
+        <div style={{ ...fade(160), display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Tab bar */}
+          <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
+            {(['mapa', 'fotos'] as const).map(tab => (
+              <button key={tab} onClick={() => setCenterTab(tab)} style={{
+                background: 'transparent', border: 'none',
+                borderBottom: centerTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
+                color: centerTab === tab ? colors.neutral : colors.secondary,
+                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
+                letterSpacing: '0.12em', padding: '10px 16px 8px', marginBottom: '-1px',
+              }}>
+                {tab.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* MAPA tab */}
+          {centerTab === 'mapa' && (
+            <div style={{ flex: 1, position: 'relative' }}>
+              {hasMap ? (
+                <MapContainer
+                  center={[lat, lng]}
+                  zoom={15}
+                  style={{ height: '100%', width: '100%' }}
+                  scrollWheelZoom={false}
+                >
+                  <TileLayer
+                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                  />
+                  <CircleMarker
+                    center={[lat, lng]}
+                    radius={12}
+                    pathOptions={{ color: colors.primary, fillColor: colors.primary, fillOpacity: 0.7, weight: 2 }}
+                  />
+                </MapContainer>
+              ) : (
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
+                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
+                </div>
+              )}
             </div>
+          )}
+
+          {/* FOTOS tab */}
+          {centerTab === 'fotos' && (
+            <PhotoGallery
+              images={project.images}
+              base={BASE}
+              onUpload={async file => {
+                const img = await uploadProjectImage(project.id, file)
+                setProject(prev => prev ? { ...prev, images: [...prev.images, img] } : prev)
+              }}
+              onDelete={async imageId => {
+                await deleteProjectImage(project.id, imageId)
+                setProject(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
+              }}
+            />
           )}
         </div>
 
@@ -551,7 +594,7 @@ export function ProjectDetailPage() {
             <>
               <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '6px' }}>PRESUPUESTO</div>
               <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>
-                {fmt(budgetTotal)}
+                {fmtMXN(budgetTotal)}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {Object.entries(budget).sort(([, a], [, b]) => b - a).map(([cat, amount], i) => {
@@ -562,7 +605,7 @@ export function ProjectDetailPage() {
                         <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>
                           {cat.toUpperCase()}
                         </span>
-                        <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmt(amount)}</span>
+                        <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(amount)}</span>
                       </div>
                       <div style={{ height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
                         <div style={{
@@ -737,13 +780,13 @@ export function ProjectDetailPage() {
             return (
               <div style={{ marginBottom: '20px' }}>
                 <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>FLUJO FINANCIERO</div>
-                <div style={rowS}><span style={lblS}>PRECIO DE SALIDA</span><span style={valS}>{fmt(waterfall.exitPrice)}</span></div>
-                <div style={rowS}><span style={lblS}>− INVERSIÓN TOTAL</span><span style={valS}>{fmt(waterfall.investment)}</span></div>
-                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA BRUTA</span><span style={valS}>{fmt(waterfall.grossProfit)}</span></div>
-                <div style={rowS}><span style={lblS}>− CUOTA INVERSORES</span><span style={valS}>{fmt(waterfall.investorCuota)}</span></div>
-                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA OPERADOR</span><span style={valS}>{fmt(waterfall.operatorGross)}</span></div>
-                <div style={rowS}><span style={lblS}>− ISR ({isrPct}%)</span><span style={valS}>{fmt(waterfall.isr)}</span></div>
-                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px', borderBottom: 'none' }}><span style={totLblS}>DISTRIBUIBLE</span><span style={totValS}>{fmt(waterfall.distributable)}</span></div>
+                <div style={rowS}><span style={lblS}>PRECIO DE SALIDA</span><span style={valS}>{fmtMXN(waterfall.exitPrice)}</span></div>
+                <div style={rowS}><span style={lblS}>− INVERSIÓN TOTAL</span><span style={valS}>{fmtMXN(waterfall.investment)}</span></div>
+                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA BRUTA</span><span style={valS}>{fmtMXN(waterfall.grossProfit)}</span></div>
+                <div style={rowS}><span style={lblS}>− CUOTA INVERSORES</span><span style={valS}>{fmtMXN(waterfall.investorCuota)}</span></div>
+                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA OPERADOR</span><span style={valS}>{fmtMXN(waterfall.operatorGross)}</span></div>
+                <div style={rowS}><span style={lblS}>− ISR ({isrPct}%)</span><span style={valS}>{fmtMXN(waterfall.isr)}</span></div>
+                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px', borderBottom: 'none' }}><span style={totLblS}>DISTRIBUIBLE</span><span style={totValS}>{fmtMXN(waterfall.distributable)}</span></div>
               </div>
             )
           })()}
@@ -859,13 +902,13 @@ export function ProjectDetailPage() {
                                 return (
                                   <>
                                     <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '10px', color: colors.secondary }}>{pi.investmentDate ?? '—'}</td>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? fmt(pi.fundedAmount) : '—'}</td>
+                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.fundedAmount) : '—'}</td>
                                     <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{Math.round(pi.interestRateAnnual * 100)}%</td>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmt(pi.interestAmount) : '—'}</td>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmt(pi.expectedReturn) : '—'}</td>
+                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.interestAmount) : '—'}</td>
+                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.expectedReturn) : '—'}</td>
                                     <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? `${pi.returnPct.toFixed(1)}%` : '—'}</td>
                                     <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.returnAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>
-                                      {pi.returnAmount ? fmt(pi.returnAmount) : '—'}
+                                      {pi.returnAmount ? fmtMXN(pi.returnAmount) : '—'}
                                       {pi.returnDate && <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary }}>{pi.returnDate}</div>}
                                     </td>
                                     <td style={{ padding: '5px 5px', textAlign: 'right' }}>
@@ -891,14 +934,14 @@ export function ProjectDetailPage() {
                       <tr style={{ borderTop: `1px solid ${colors.border}`, background: colors.surface }}>
                         <td colSpan={2} style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>TOTAL ACUMULADO</td>
                         <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '10px', color: colors.primary, textAlign: 'right' }}>
-                          {fmt(Object.values(totalsById).reduce((s, t) => s + t.funded, 0))}
+                          {fmtMXN(Object.values(totalsById).reduce((s, t) => s + t.funded, 0))}
                         </td>
                         <td />
                         <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '10px', color: colors.neutral, textAlign: 'right' }}>
-                          {fmt(Object.values(totalsById).reduce((s, t) => s + t.cuota, 0))}
+                          {fmtMXN(Object.values(totalsById).reduce((s, t) => s + t.cuota, 0))}
                         </td>
                         <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '10px', color: colors.neutral, textAlign: 'right' }}>
-                          {fmt(Object.values(totalsById).reduce((s, t) => s + t.total, 0))}
+                          {fmtMXN(Object.values(totalsById).reduce((s, t) => s + t.total, 0))}
                         </td>
                         <td /><td /><td /><td />
                       </tr>
