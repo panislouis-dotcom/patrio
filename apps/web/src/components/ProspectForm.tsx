@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode, CSSProperties } from 'react'
-import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet'
+import { LatLonPicker } from './LatLonPicker'
 import type { RawFields } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { validateRaw } from '../lib/validateRaw'
@@ -41,11 +41,6 @@ function FieldLabel({ children }: { children: ReactNode }) {
       {children}
     </div>
   )
-}
-
-function MapClickHandler({ onPlace }: { onPlace: (lat: number, lng: number) => void }) {
-  useMapEvents({ click: e => onPlace(e.latlng.lat, e.latlng.lng) })
-  return null
 }
 
 // ── input style ───────────────────────────────────────────────────────────────
@@ -89,10 +84,6 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
   function set<K extends keyof RawFields>(key: K, value: RawFields[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
   }
-
-  const lat = form.latitude || 25.6866
-  const lng = form.longitude || -100.3161
-  const hasCoords = Boolean(form.latitude && form.longitude && form.latitude !== 0 && form.longitude !== 0)
 
   return (
     <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 20px' }}>
@@ -166,51 +157,14 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
 
       {/* ── Ubicación ───────────────────────────────────────────────── */}
       <Section title="Ubicación">
-        <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginBottom: '8px' }}>
-          Haz click en el mapa para fijar la ubicación
-        </div>
-        <div style={{ height: '300px', borderRadius: '2px', overflow: 'hidden', marginBottom: '16px' }}>
-          <MapContainer
-            center={[lat, lng]}
-            zoom={13}
-            style={{ height: '100%', width: '100%' }}
-          >
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
-            <MapClickHandler onPlace={(clickLat, clickLng) => {
-              set('latitude', clickLat)
-              set('longitude', clickLng)
-            }} />
-            {hasCoords && (
-              <CircleMarker
-                center={[form.latitude as number, form.longitude as number]}
-                radius={10}
-                pathOptions={{ color: colors.tertiary, fillColor: colors.tertiary, fillOpacity: 1 }}
-              />
-            )}
-          </MapContainer>
-        </div>
-        <div style={gridTwo}>
-          <div>
-            <FieldLabel>Latitud</FieldLabel>
-            <input
-              style={inputStyle}
-              type="number"
-              step="any"
-              value={form.latitude ?? ''}
-              onChange={e => set('latitude', parseFloat(e.target.value) || 0)}
-            />
-          </div>
-          <div>
-            <FieldLabel>Longitud</FieldLabel>
-            <input
-              style={inputStyle}
-              type="number"
-              step="any"
-              value={form.longitude ?? ''}
-              onChange={e => set('longitude', parseFloat(e.target.value) || 0)}
-            />
-          </div>
-        </div>
+        <LatLonPicker
+          lat={form.latitude ?? 0}
+          lon={form.longitude ?? 0}
+          onChange={(newLat, newLon) => {
+            set('latitude', newLat)
+            set('longitude', newLon)
+          }}
+        />
       </Section>
 
       {/* ── Tamaño ──────────────────────────────────────────────────── */}
