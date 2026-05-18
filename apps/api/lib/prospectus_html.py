@@ -35,8 +35,10 @@ def _build_fonts_css() -> str:
 
 _BODY_CSS = """
 @page { size: A4; margin: 0; }
+html { margin: 0; padding: 0; background: #F2F0EB; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Public Sans', sans-serif; background: #F2F0EB; color: #1A1A1A; font-size: 12pt; line-height: 1.75; }
+body { font-family: 'Public Sans', sans-serif; background: #F2F0EB; color: #1A1A1A; font-size: 12pt; line-height: 1.75;
+       width: 210mm; overflow: hidden; }
 
 .cover { height: 297mm; background: #1A2319; padding: 72px 80px; page-break-after: always; break-after: always;
          display: flex; flex-direction: column; justify-content: space-between; }
@@ -338,10 +340,14 @@ async def render_to_pdf(html: str) -> bytes:
         tmp_path = f.name
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
+            browser = await p.chromium.launch(args=["--hide-scrollbars"])
             page = await browser.new_page()
             await page.goto(f"file://{tmp_path}", wait_until="networkidle")
-            pdf = await page.pdf(format="A4", print_background=True)
+            pdf = await page.pdf(
+                format="A4",
+                print_background=True,
+                margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
+            )
             await browser.close()
         return pdf
     finally:
