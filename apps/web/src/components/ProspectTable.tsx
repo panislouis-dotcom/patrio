@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchProspects, updateProspect } from '../lib/api'
+import { fetchProspects, updateProspect, generateProspectus } from '../lib/api'
 import { computeScores, DEFAULT_WEIGHTS } from '../lib/scoring'
 import type { Prospect, ScoreWeights } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -20,6 +20,7 @@ export function ProspectTable() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCapture, setShowCapture] = useState(false)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -72,6 +73,40 @@ export function ProspectTable() {
                 {totalWarnings > 0 && <span style={{ color: '#D4891A' }}>⚠️ {totalWarnings}</span>}
               </div>
             )}
+            <button
+              onClick={async () => {
+                setGeneratingPdf(true)
+                try {
+                  const blob = await generateProspectus()
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = 'prospecto.pdf'
+                  document.body.appendChild(a)
+                  a.click()
+                  document.body.removeChild(a)
+                  URL.revokeObjectURL(url)
+                } catch (err) {
+                  alert((err as Error).message)
+                } finally {
+                  setGeneratingPdf(false)
+                }
+              }}
+              disabled={generatingPdf}
+              style={{
+                background: 'transparent',
+                border: `1px solid ${colors.primary}`,
+                color: colors.tertiary,
+                cursor: generatingPdf ? 'wait' : 'pointer',
+                fontFamily: fonts.label,
+                fontSize: '10px',
+                letterSpacing: '0.1em',
+                padding: '5px 12px',
+                opacity: generatingPdf ? 0.7 : 1,
+              }}
+            >
+              {generatingPdf ? '⏳ GENERANDO…' : '📄 PROSPECTO'}
+            </button>
             <button
               onClick={() => setShowCapture(true)}
               style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.1em', padding: '5px 12px' }}
