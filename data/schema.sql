@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS prospects (
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE OR REPLACE VIEW prospect_metrics AS
+DROP VIEW IF EXISTS prospect_metrics;
+CREATE VIEW prospect_metrics AS
 SELECT
   id, name, address, city, status, url,
   sqm_land, sqm_construction, land_price, acquisition_cost_pct,
