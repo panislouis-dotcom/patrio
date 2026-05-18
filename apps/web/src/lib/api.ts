@@ -38,7 +38,7 @@ export async function fetchQuality(): Promise<QualityEntry[]> {
   return res.json()
 }
 
-export async function updateProspect(id: number, data: Partial<RawFields>): Promise<Prospect> {
+export async function updateProspect(id: number, data: Partial<RawFields> & { isFavorite?: boolean }): Promise<Prospect> {
   const res = await authFetch(`${BASE}/api/prospects/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

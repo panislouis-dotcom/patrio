@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchProspects } from '../lib/api'
+import { fetchProspects, updateProspect } from '../lib/api'
 import { computeScores, DEFAULT_WEIGHTS } from '../lib/scoring'
 import type { Prospect, ScoreWeights } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -84,6 +84,7 @@ export function ProspectTable() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead style={{ position: 'sticky', top: 0, background: colors.dark, zIndex: 10 }}>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+              <th style={{ width: '28px', padding: '0 4px' }} />
               <th style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.12em', textAlign: 'left', whiteSpace: 'nowrap' }}>PROSPECTO</th>
               {th('score', 'SCORE')}
               {th('roi', 'ROI')}
@@ -110,6 +111,19 @@ export function ProspectTable() {
                   onMouseEnter={e => (e.currentTarget.style.background = `${colors.border}55`)}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
+                  {/* Favorite */}
+                  <td
+                    style={{ padding: '0 4px', textAlign: 'center', cursor: 'pointer', width: '28px' }}
+                    onClick={e => {
+                      e.stopPropagation()
+                      updateProspect(p.id, { isFavorite: !p.isFavorite })
+                        .then(updated => setProspects(prev => prev.map(x => x.id === updated.id ? { ...x, isFavorite: updated.isFavorite, score: x.score } : x)))
+                    }}
+                  >
+                    <span style={{ color: p.isFavorite ? colors.tertiary : colors.border, fontSize: '14px' }}>
+                      {p.isFavorite ? '★' : '☆'}
+                    </span>
+                  </td>
                   {/* Name + city + status dot */}
                   <td style={{ padding: '5px 10px', maxWidth: '200px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
