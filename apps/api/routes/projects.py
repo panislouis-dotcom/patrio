@@ -32,6 +32,7 @@ class ProjectUpdate(BaseModel):
     budget: Optional[dict] = None
     notes: Optional[str] = None
     prospectId: Optional[int] = None
+    isFavorite: Optional[bool] = None
 
 
 class ProjectCreate(BaseModel):
