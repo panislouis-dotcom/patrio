@@ -66,7 +66,8 @@ SELECT
     p.latitude,
     p.longitude,
     p.construction_cost_per_sqm,
-    p.construction_overhead
+    p.construction_overhead,
+    p.is_favorite
 FROM prospect_metrics pm
 JOIN prospects p ON pm.id = p.id
 """
@@ -92,6 +93,7 @@ RAW_FIELDS = {
     "rentMonthly",
     "holdMonths",
     "notes",
+    "isFavorite",
 }
 
 
@@ -257,7 +259,7 @@ PROJECTS_RAW_FIELDS = {
     "latitude", "longitude", "totalUnits",
     "acquisitionDate", "conclusionDate",
     "totalInvestment", "currentValuation", "valuationDate",
-    "milestones", "budget", "notes", "prospectId",
+    "milestones", "budget", "notes", "prospectId", "isFavorite",
 }
 
 
