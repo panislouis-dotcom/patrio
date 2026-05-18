@@ -130,6 +130,15 @@ export async function updateProject(id: number, data: Partial<RawProjectFields> 
   return res.json()
 }
 
+export async function generateProspectus(): Promise<Blob> {
+  const res = await authFetch(`${BASE}/api/documents/prospectus`, { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: `API error: ${res.status}` }))
+    throw new Error(body.detail ?? `API error: ${res.status}`)
+  }
+  return res.blob()
+}
+
 export async function createProject(data: RawProjectFields & { prospectId?: number }): Promise<Project> {
   const res = await authFetch(`${BASE}/api/projects`, {
     method: 'POST',
