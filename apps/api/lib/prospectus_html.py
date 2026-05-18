@@ -12,11 +12,12 @@ def _font_b64(name: str) -> str:
 
 
 def _build_fonts_css() -> str:
+    # (family, weight_range, style, filename)
     fonts = [
-        ("EB Garamond", "normal", "normal", "eb-garamond-regular.woff2"),
-        ("EB Garamond", "normal", "italic", "eb-garamond-italic.woff2"),
-        ("Public Sans", "normal", "normal", "public-sans.woff2"),
-        ("Space Grotesk", "normal", "normal", "space-grotesk.woff2"),
+        ("EB Garamond", "400", "normal", "eb-garamond-regular.woff2"),
+        ("EB Garamond", "400", "italic", "eb-garamond-italic.woff2"),
+        ("Public Sans", "100 900", "normal", "public-sans.woff2"),
+        ("Space Grotesk", "300 700", "normal", "space-grotesk.woff2"),
     ]
     blocks = []
     for family, weight, style, filename in fonts:
