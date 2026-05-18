@@ -22,7 +22,7 @@ Read these two files before touching anything else:
 source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
 SELECT name, address, total_investment, current_valuation,
        total_units, acquisition_date, milestones, budget
-FROM projects WHERE status IN ('operating','exited')
+FROM projects WHERE is_favorite = true
 ORDER BY acquisition_date;"
 
 source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
@@ -35,19 +35,11 @@ SELECT
   projected_sale,
   ROUND((rent_monthly * 12) / NULLIF(land_price, 0) * 100, 1) AS cap_rate_pct,
   rent_monthly, notes
-FROM prospects WHERE status = 'evaluating'
-ORDER BY
-  (projected_sale - (
-    land_price * (1 + acquisition_cost_pct/100.0)
-    + permits_cost + subdivision_cost
-    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
-  )) / NULLIF(
-    land_price * (1 + acquisition_cost_pct/100.0)
-    + permits_cost + subdivision_cost
-    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
-  , 0) DESC
-LIMIT 1;"
+FROM prospects WHERE is_favorite = true
+ORDER BY projected_sale DESC;"
 ```
+
+> **Note:** If no favorites are set, the corresponding section will be empty. Mark at least one prospect and one project as favorite in the web app before running this skill.
 
 ## Step 3 — Write `files/prospectus.html`
 
