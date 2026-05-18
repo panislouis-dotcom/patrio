@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 
-_FONTS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "files" / "fonts"
+_FONTS_DIR = Path(__file__).resolve().parent.parent / "fonts"
 
 
 def _font_b64(name: str) -> str:
