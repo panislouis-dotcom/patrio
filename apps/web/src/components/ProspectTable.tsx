@@ -117,7 +117,7 @@ export function ProspectTable() {
                     onClick={e => {
                       e.stopPropagation()
                       updateProspect(p.id, { isFavorite: !p.isFavorite })
-                        .then(updated => setProspects(prev => prev.map(x => x.id === updated.id ? { ...x, isFavorite: updated.isFavorite, score: x.score } : x)))
+                        .then(updated => setProspects(prev => prev.map(x => x.id === updated.id ? { ...x, isFavorite: updated.isFavorite } : x)))
                     }}
                   >
                     <span style={{ color: p.isFavorite ? colors.tertiary : colors.border, fontSize: '14px' }}>
