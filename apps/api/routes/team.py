@@ -47,4 +47,9 @@ def delete_team_member_route(member_id: int, _: dict = Depends(get_current_user)
     member = get_team_member(member_id)
     if member is None:
         raise HTTPException(status_code=404, detail="Team member not found")
-    delete_team_member(member_id)
+    try:
+        delete_team_member(member_id)
+    except Exception as e:
+        if "foreign key" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Member is referenced by active records")
+        raise

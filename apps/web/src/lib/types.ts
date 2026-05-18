@@ -1,5 +1,14 @@
 export const PROPERTY_TYPES = ['Casa', 'Departamento', 'Local', 'Edificio', 'Lote', 'Bodega'] as const
 
+export interface PropertyImage {
+  id: number
+  filePath: string
+  fileName: string
+  contentType: string
+  sortOrder: number
+  uploadedAt: string
+}
+
 export interface Issue {
   field: string
   message: string
@@ -40,7 +49,7 @@ export interface Prospect {
   rentAnnual: number
   holdMonths: number
   notes: string
-  imagePath: string
+  images: PropertyImage[]
   score: number
   issues: Issue[]
 }
@@ -84,7 +93,7 @@ export interface Project {
   milestones: Record<string, string>   // {"YYYY-MM": "label"}
   budget: Record<string, number>       // {"category": amount}
   notes: string
-  imagePath: string
+  images: PropertyImage[]
   unrealizedGain: number
   unrealizedGainPct: number
   holdMonthsActual: number

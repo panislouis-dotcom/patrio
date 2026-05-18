@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { streamSonarRun, importSonarSignal, importSonarToComparables, fetchSonarSignals, fetchZoneMedians, fetchProspects, fetchSonarZones, fetchZones } from '../lib/api'
 import type { SonarRunEvent } from '../lib/api'
 import type { SonarSignal, SonarState, Zone } from '../lib/types'
@@ -178,6 +179,7 @@ function PortalRow({ name, state, pulse }: { name: string; state: PortalPhase; p
 }
 
 export function SonarTab() {
+  const navigate = useNavigate()
   const [signals, setSignals]         = useState<SonarSignal[]>([])
   const [importedUrls, setImportedUrls] = useState<Set<string>>(new Set())
   const [compSavedIds, setCompSavedIds] = useState<Set<number>>(new Set())
@@ -362,8 +364,9 @@ export function SonarTab() {
 
   async function handleImport(s: SonarSignal) {
     try {
-      await importSonarSignal(s)
+      const { prospect } = await importSonarSignal(s)
       setImportedUrls(prev => new Set([...prev, s.url]))
+      navigate(`/prospectos/tabla/${prospect.id}`)
     } catch {
       setActionError('Error al importar')
     }

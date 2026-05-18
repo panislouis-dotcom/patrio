@@ -264,19 +264,25 @@ class _ImportRequest(BaseModel):
     price: float = 0.0
     sqmLand: float = 0.0
     portal: str = ""
+    lat: float | None = None
+    lon: float | None = None
+    municipioName: str = ""
+    colonia: str = ""
+    stateName: str = ""
 
 
 @router.post("/api/sonar/import", status_code=201)
 def sonar_import(req: _ImportRequest, _: dict = Depends(get_current_user)):
+    city = req.municipioName or req.city
     prospect = create_prospect({
         "name":                   req.title,
         "address":                req.address or req.title,
-        "city":                   req.city,
+        "city":                   city,
         "status":                 "evaluating",
         "type":                   "",
         "url":                    req.url,
-        "latitude":               0.0,
-        "longitude":              0.0,
+        "latitude":               req.lat or 0.0,
+        "longitude":              req.lon or 0.0,
         "sqmLand":                req.sqmLand,
         "sqmConstruction":        0.0,
         "landPrice":              req.price,

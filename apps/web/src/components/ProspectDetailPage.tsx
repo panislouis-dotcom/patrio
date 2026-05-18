@@ -7,6 +7,7 @@ import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { fmtMXN } from '../lib/fmt'
+import { LatLonPicker } from './LatLonPicker'
 import { ProspectForm } from './ProspectForm'
 import { ProspectAnalysisSection } from './ProspectAnalysisSection'
 import { StatRow } from './StatRow'
@@ -433,15 +434,16 @@ export function ProspectDetailPage() {
             <input value={cv('constructionOverhead')} onChange={e => handleEdit('constructionOverhead', e.target.value, 'number')} type="number" step="0.01" style={fieldInput} />
           </div>
 
-          {([
-            { key: 'latitude', label: 'Latitud' },
-            { key: 'longitude', label: 'Longitud' },
-          ] as const).map(({ key, label }) => (
-            <div key={key} style={{ marginBottom: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-              <input value={cv(key)} onChange={e => handleEdit(key, e.target.value, 'number')} type="number" step="any" style={fieldInput} />
-            </div>
-          ))}
+          <div style={{ marginBottom: '8px' }}>
+            <LatLonPicker
+              lat={(edits.latitude !== undefined ? edits.latitude : prospect?.latitude) ?? 0}
+              lon={(edits.longitude !== undefined ? edits.longitude : prospect?.longitude) ?? 0}
+              onChange={(newLat, newLon) => {
+                handleEdit('latitude', String(newLat), 'number')
+                handleEdit('longitude', String(newLon), 'number')
+              }}
+            />
+          </div>
 
           <div style={{ marginBottom: '8px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>

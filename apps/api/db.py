@@ -128,7 +128,12 @@ def _row_to_dict(row) -> dict | None:
 def get_prospects() -> list[dict]:
     with get_db() as conn:
         rows = conn.execute(PROSPECTS_QUERY).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = _row_to_dict(r)
+        d["images"] = get_prospect_images(d["id"])
+        result.append(d)
+    return result
 
 
 def get_prospect(prospect_id: int) -> dict | None:
@@ -136,27 +141,11 @@ def get_prospect(prospect_id: int) -> dict | None:
         row = conn.execute(
             f"{PROSPECTS_QUERY} WHERE pm.id = %s", (prospect_id,)
         ).fetchone()
-    return _row_to_dict(row) if row else None
-
-
-def set_prospect_image_path(prospect_id: int, image_path: str) -> None:
-    with get_db() as conn:
-        result = conn.execute(
-            "UPDATE prospects SET image_path = %s WHERE id = %s",
-            (image_path, prospect_id),
-        )
-        if result.rowcount == 0:
-            raise ValueError(f"Prospect {prospect_id} not found")
-
-
-def set_project_image_path(project_id: int, image_path: str) -> None:
-    with get_db() as conn:
-        result = conn.execute(
-            "UPDATE projects SET image_path = %s WHERE id = %s",
-            (image_path, project_id),
-        )
-        if result.rowcount == 0:
-            raise ValueError(f"Project {project_id} not found")
+    if not row:
+        return None
+    d = _row_to_dict(row)
+    d["images"] = get_prospect_images(d["id"])
+    return d
 
 
 def delete_prospect(prospect_id: int) -> None:
@@ -171,6 +160,62 @@ def delete_project(project_id: int) -> None:
         result = conn.execute("DELETE FROM projects WHERE id = %s", (project_id,))
         if result.rowcount == 0:
             raise ValueError(f"Project {project_id} not found")
+
+
+def get_prospect_images(prospect_id: int) -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM prospect_images WHERE prospect_id = %s ORDER BY sort_order, uploaded_at",
+            (prospect_id,),
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def add_prospect_image(prospect_id: int, file_path: str, file_name: str, content_type: str) -> dict:
+    with get_db() as conn:
+        row = conn.execute(
+            "INSERT INTO prospect_images (prospect_id, file_path, file_name, content_type) VALUES (%s, %s, %s, %s) RETURNING *",
+            (prospect_id, file_path, file_name, content_type),
+        ).fetchone()
+    return _row_to_dict(row)
+
+
+def delete_prospect_image(image_id: int, prospect_id: int) -> None:
+    with get_db() as conn:
+        result = conn.execute(
+            "DELETE FROM prospect_images WHERE id = %s AND prospect_id = %s",
+            (image_id, prospect_id),
+        )
+        if result.rowcount == 0:
+            raise ValueError(f"Image {image_id} not found for prospect {prospect_id}")
+
+
+def get_project_images(project_id: int) -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM project_images WHERE project_id = %s ORDER BY sort_order, uploaded_at",
+            (project_id,),
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def add_project_image(project_id: int, file_path: str, file_name: str, content_type: str) -> dict:
+    with get_db() as conn:
+        row = conn.execute(
+            "INSERT INTO project_images (project_id, file_path, file_name, content_type) VALUES (%s, %s, %s, %s) RETURNING *",
+            (project_id, file_path, file_name, content_type),
+        ).fetchone()
+    return _row_to_dict(row)
+
+
+def delete_project_image(image_id: int, project_id: int) -> None:
+    with get_db() as conn:
+        result = conn.execute(
+            "DELETE FROM project_images WHERE id = %s AND project_id = %s",
+            (image_id, project_id),
+        )
+        if result.rowcount == 0:
+            raise ValueError(f"Image {image_id} not found for project {project_id}")
 
 
 def update_prospect(prospect_id: int, data: dict) -> dict | None:
@@ -268,6 +313,7 @@ def _parse_project(row) -> dict:
     d["unrealizedGainPct"] = unrealized_gain_pct
     d["holdMonthsActual"] = hold_months_actual
     d["roi"] = roi
+    d["images"] = get_project_images(d["id"])
 
     return d
 

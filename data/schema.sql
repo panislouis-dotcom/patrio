@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS prospects (
   hold_months               INTEGER NOT NULL DEFAULT 12,
   rent_monthly              REAL NOT NULL CHECK (rent_monthly >= 0),
   notes                     TEXT NOT NULL DEFAULT '',
-  image_path                TEXT NOT NULL DEFAULT '',
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -65,7 +64,7 @@ SELECT
         / NULLIF(sqm_land, 0))::numeric, 2)                            AS investment_per_sqm,
   rent_monthly,
   ROUND((rent_monthly * 12)::numeric, 0)                    AS rent_annual,
-  hold_months, notes, image_path, type
+  hold_months, notes, type
 FROM prospects;
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -91,11 +90,31 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS prospect_images (
+  id           BIGSERIAL PRIMARY KEY,
+  prospect_id  BIGINT NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  file_path    TEXT NOT NULL,
+  file_name    TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS project_images (
+  id           BIGSERIAL PRIMARY KEY,
+  project_id   BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  file_path    TEXT NOT NULL,
+  file_name    TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS team_members (
   id          BIGSERIAL PRIMARY KEY,
   name        TEXT NOT NULL CHECK (name != ''),
   role        TEXT NOT NULL CHECK (role IN ('director','responsable_proyecto','lider_proyecto','maestro','ayudante','finder')),
-  manager_id  BIGINT REFERENCES team_members(id),
+  manager_id  BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
   email       TEXT NOT NULL DEFAULT '',
   notes       TEXT NOT NULL DEFAULT '',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -140,7 +159,7 @@ CREATE TABLE IF NOT EXISTS process_instances (
   id                  BIGSERIAL PRIMARY KEY,
   template_id         BIGINT REFERENCES process_templates(id) ON DELETE CASCADE,
   project_id          BIGINT REFERENCES projects(id),
-  owner_id            BIGINT REFERENCES team_members(id),
+  owner_id            BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
   task_type           TEXT NOT NULL DEFAULT 'proyecto',
   name                TEXT NOT NULL CHECK (name != ''),
   start_date          TEXT NOT NULL,
@@ -159,7 +178,7 @@ CREATE TABLE IF NOT EXISTS instance_node_states (
   instance_id            BIGINT NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
   template_node_id       BIGINT NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
   status                 TEXT NOT NULL DEFAULT 'pending',
-  assignee_id            BIGINT REFERENCES team_members(id),
+  assignee_id            BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
   actual_start           TEXT,
   actual_end             TEXT,
   notes                  TEXT NOT NULL DEFAULT '',
@@ -211,9 +230,9 @@ CREATE TABLE IF NOT EXISTS profit_split_config (
   lider_pct             REAL NOT NULL DEFAULT 0.0,
   maestro_pct           REAL NOT NULL DEFAULT 0.0,
   ayudante_pct          REAL NOT NULL DEFAULT 0.0,
-  finder_member_id      BIGINT REFERENCES team_members(id),
-  responsable_member_id BIGINT REFERENCES team_members(id),
-  lider_member_id       BIGINT REFERENCES team_members(id),
+  finder_member_id      BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
+  responsable_member_id BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
+  lider_member_id       BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
   maestro_member_ids    JSONB NOT NULL DEFAULT '[]',
   ayudante_member_ids   JSONB NOT NULL DEFAULT '[]',
   maestro_count         INTEGER,
