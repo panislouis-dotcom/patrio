@@ -380,6 +380,10 @@ CREATE INDEX IF NOT EXISTS idx_sonar_scan_signals     ON sonar_scan_signals(scan
 ALTER TABLE sonar_signals ADD COLUMN IF NOT EXISTS state_name TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_sonar_signals_state ON sonar_signals(state_name);
 
+-- Migration: add is_favorite to prospects and projects
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE projects  ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- ─────────────────────────────────────────────────
 -- Analyzer tables (Phase 1)
 -- ─────────────────────────────────────────────────
