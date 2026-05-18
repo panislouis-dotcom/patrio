@@ -344,20 +344,35 @@ Add `--allow-file-access-from-files` to the Chrome render command so local font 
 
 ## Step 4 — Render to PDF
 
-Write the HTML to a temp file, render, delete it. Only the PDF survives.
+Write the HTML to a temp file, render via Playwright (ships its own Chromium — no system Chrome needed), delete temp file. Only the PDF survives.
 
-```bash
-TMPFILE=$(mktemp /tmp/prospectus_XXXXXX.html)
-# ... write HTML to $TMPFILE via Write tool, then:
-rm -f files/prospectus.pdf
-google-chrome --headless --disable-gpu --no-sandbox \
-  --disable-dev-shm-usage \
-  --allow-file-access-from-files \
-  --print-to-pdf=files/prospectus.pdf \
-  --print-to-pdf-no-header \
-  "$TMPFILE"
-rm "$TMPFILE"
+Save the snippet below as a temp script, run it, then delete the script:
+
+```python
+import asyncio, os, tempfile
+from playwright.async_api import async_playwright
+
+html = open('files/prospectus.html').read()
+
+async def render():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        with tempfile.NamedTemporaryFile(suffix='.html', delete=False, mode='w') as f:
+            f.write(html)
+            tmp = f.name
+        try:
+            await page.goto(f'file://{tmp}', wait_until='networkidle')
+            await page.pdf(path='files/prospectus.pdf', format='A4', print_background=True)
+        finally:
+            os.unlink(tmp)
+        await browser.close()
+        print('Done:', os.path.getsize('files/prospectus.pdf'), 'bytes')
+
+asyncio.run(render())
 ```
+
+If playwright is not installed: `pip install playwright && playwright install chromium`.
 
 Confirm `files/prospectus.pdf` exists before reporting done.
 
