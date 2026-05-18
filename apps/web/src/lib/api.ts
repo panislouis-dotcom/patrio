@@ -38,7 +38,7 @@ export async function fetchQuality(): Promise<QualityEntry[]> {
   return res.json()
 }
 
-export async function updateProspect(id: number, data: Partial<RawFields>): Promise<Prospect> {
+export async function updateProspect(id: number, data: Partial<RawFields> & { isFavorite?: boolean }): Promise<Prospect> {
   const res = await authFetch(`${BASE}/api/prospects/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -120,7 +120,7 @@ export async function fetchProject(id: number): Promise<Project> {
   return res.json()
 }
 
-export async function updateProject(id: number, data: Partial<RawProjectFields>): Promise<Project> {
+export async function updateProject(id: number, data: Partial<RawProjectFields> & { isFavorite?: boolean }): Promise<Project> {
   const res = await authFetch(`${BASE}/api/projects/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -128,6 +128,15 @@ export async function updateProject(id: number, data: Partial<RawProjectFields>)
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
+}
+
+export async function generateProspectus(): Promise<Blob> {
+  const res = await authFetch(`${BASE}/api/documents/prospectus`, { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: `API error: ${res.status}` }))
+    throw new Error(body.detail ?? `API error: ${res.status}`)
+  }
+  return res.blob()
 }
 
 export async function createProject(data: RawProjectFields & { prospectId?: number }): Promise<Project> {

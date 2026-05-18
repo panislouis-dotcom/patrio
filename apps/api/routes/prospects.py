@@ -37,6 +37,7 @@ class ProspectUpdate(BaseModel):
     rentMonthly: Optional[float] = None
     holdMonths: Optional[int] = None
     notes: Optional[str] = None
+    isFavorite: Optional[bool] = None
 
 
 class ProspectCreate(BaseModel):

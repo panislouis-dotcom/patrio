@@ -22,7 +22,7 @@ Read these two files before touching anything else:
 source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
 SELECT name, address, total_investment, current_valuation,
        total_units, acquisition_date, milestones, budget
-FROM projects WHERE status IN ('operating','exited')
+FROM projects WHERE is_favorite = true
 ORDER BY acquisition_date;"
 
 source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
@@ -35,19 +35,11 @@ SELECT
   projected_sale,
   ROUND((rent_monthly * 12) / NULLIF(land_price, 0) * 100, 1) AS cap_rate_pct,
   rent_monthly, notes
-FROM prospects WHERE status = 'evaluating'
-ORDER BY
-  (projected_sale - (
-    land_price * (1 + acquisition_cost_pct/100.0)
-    + permits_cost + subdivision_cost
-    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
-  )) / NULLIF(
-    land_price * (1 + acquisition_cost_pct/100.0)
-    + permits_cost + subdivision_cost
-    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
-  , 0) DESC
-LIMIT 1;"
+FROM prospects WHERE is_favorite = true
+ORDER BY projected_sale DESC;"
 ```
+
+> **Note:** If no favorites are set, the corresponding section will be empty. Mark at least one prospect and one project as favorite in the web app before running this skill.
 
 ## Step 3 — Write `files/prospectus.html`
 
@@ -352,20 +344,35 @@ Add `--allow-file-access-from-files` to the Chrome render command so local font 
 
 ## Step 4 — Render to PDF
 
-Write the HTML to a temp file, render, delete it. Only the PDF survives.
+Write the HTML to a temp file, render via Playwright (ships its own Chromium — no system Chrome needed), delete temp file. Only the PDF survives.
 
-```bash
-TMPFILE=$(mktemp /tmp/prospectus_XXXXXX.html)
-# ... write HTML to $TMPFILE via Write tool, then:
-rm -f files/prospectus.pdf
-google-chrome --headless --disable-gpu --no-sandbox \
-  --disable-dev-shm-usage \
-  --allow-file-access-from-files \
-  --print-to-pdf=files/prospectus.pdf \
-  --print-to-pdf-no-header \
-  "$TMPFILE"
-rm "$TMPFILE"
+Save the snippet below as a temp script, run it, then delete the script:
+
+```python
+import asyncio, os, tempfile
+from playwright.async_api import async_playwright
+
+html = open('files/prospectus.html').read()
+
+async def render():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        with tempfile.NamedTemporaryFile(suffix='.html', delete=False, mode='w') as f:
+            f.write(html)
+            tmp = f.name
+        try:
+            await page.goto(f'file://{tmp}', wait_until='networkidle')
+            await page.pdf(path='files/prospectus.pdf', format='A4', print_background=True)
+        finally:
+            os.unlink(tmp)
+        await browser.close()
+        print('Done:', os.path.getsize('files/prospectus.pdf'), 'bytes')
+
+asyncio.run(render())
 ```
+
+If playwright is not installed: `pip install playwright && playwright install chromium`.
 
 Confirm `files/prospectus.pdf` exists before reporting done.
 

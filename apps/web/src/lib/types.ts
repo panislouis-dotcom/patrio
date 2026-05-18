@@ -49,6 +49,7 @@ export interface Prospect {
   rentAnnual: number
   holdMonths: number
   notes: string
+  isFavorite: boolean
   images: PropertyImage[]
   score: number
   issues: Issue[]
@@ -93,6 +94,7 @@ export interface Project {
   milestones: Record<string, string>   // {"YYYY-MM": "label"}
   budget: Record<string, number>       // {"category": amount}
   notes: string
+  isFavorite: boolean
   images: PropertyImage[]
   unrealizedGain: number
   unrealizedGainPct: number

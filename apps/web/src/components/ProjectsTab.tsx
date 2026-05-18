@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchProjects } from '../lib/api'
+import { fetchProjects, updateProject } from '../lib/api'
 import type { Project } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtM } from '../lib/fmt'
@@ -72,6 +72,7 @@ export function ProjectsTab() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead style={{ position: 'sticky', top: 0, background: colors.dark, zIndex: 10 }}>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+              <th style={{ width: '28px', padding: '0 4px' }} />
               <th style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.12em', textAlign: 'left', whiteSpace: 'nowrap' }}>PROYECTO</th>
               <th style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.12em', textAlign: 'right', whiteSpace: 'nowrap' }}>ESTADO</th>
               <th style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.12em', textAlign: 'right', whiteSpace: 'nowrap' }}>UNIDADES</th>
@@ -94,6 +95,20 @@ export function ProjectsTab() {
                   onMouseEnter={e => (e.currentTarget.style.background = `${colors.border}55`)}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
+                  {/* Favorite */}
+                  <td
+                    style={{ padding: '0 4px', textAlign: 'center', cursor: 'pointer', width: '28px' }}
+                    onClick={e => {
+                      e.stopPropagation()
+                      updateProject(p.id, { isFavorite: !p.isFavorite })
+                        .then(updated => setProjects(prev => prev.map(x => x.id === updated.id ? { ...x, isFavorite: updated.isFavorite } : x)))
+                    }}
+                  >
+                    <span style={{ color: p.isFavorite ? colors.tertiary : colors.border, fontSize: '14px' }}>
+                      {p.isFavorite ? '★' : '☆'}
+                    </span>
+                  </td>
+
                   {/* Name + type (without status dot) */}
                   <td style={{ padding: '5px 10px', maxWidth: '240px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
