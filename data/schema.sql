@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   hold_months               INTEGER NOT NULL DEFAULT 12,
   rent_monthly              REAL NOT NULL CHECK (rent_monthly >= 0),
   notes                     TEXT NOT NULL DEFAULT '',
+  is_favorite               BOOLEAN  NOT NULL DEFAULT FALSE,
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -87,6 +88,7 @@ CREATE TABLE IF NOT EXISTS projects (
   milestones        TEXT NOT NULL DEFAULT '{}',
   budget            TEXT NOT NULL DEFAULT '{}',
   notes             TEXT NOT NULL DEFAULT '',
+  is_favorite       BOOLEAN  NOT NULL DEFAULT FALSE,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
