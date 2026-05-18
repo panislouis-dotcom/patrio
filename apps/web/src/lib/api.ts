@@ -120,7 +120,7 @@ export async function fetchProject(id: number): Promise<Project> {
   return res.json()
 }
 
-export async function updateProject(id: number, data: Partial<RawProjectFields>): Promise<Project> {
+export async function updateProject(id: number, data: Partial<RawProjectFields> & { isFavorite?: boolean }): Promise<Project> {
   const res = await authFetch(`${BASE}/api/projects/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
