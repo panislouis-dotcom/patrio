@@ -41,7 +41,7 @@ def _seed_admin() -> None:
             """
             INSERT INTO users (email, hashed_password, is_active)
             VALUES (%s, %s, TRUE)
-            ON CONFLICT (email) DO UPDATE SET hashed_password = EXCLUDED.hashed_password
+            ON CONFLICT (email) DO NOTHING
             """,
             (ADMIN_EMAIL, ADMIN_PASSWORD_HASH),
         )
