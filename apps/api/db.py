@@ -53,9 +53,13 @@ def execute_script(sql: str) -> None:
     pool = _get_pool()
     conn = pool.getconn()
     try:
+        conn.autocommit = False
         cur = conn.cursor()
         cur.execute(sql)
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         pool.putconn(conn)
 
