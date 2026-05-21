@@ -11,7 +11,7 @@ This repo is the operational backbone: a structured database, AI-powered documen
 ## How It Works
 
 ```text
-SQLite DB  →  AI skills  →  Markdown  →  Documents / UI
+PostgreSQL  →  AI skills  →  Markdown  →  Documents / UI
 ```
 
 ## Key Features
@@ -41,20 +41,10 @@ Detailed document: deal structure, compensation, projected returns, timeline.
 
 Phone-friendly web app, internal only. Manage prospects, update project data, trigger document generation.
 
-## Phases
-
-| Phase | Focus |
-| --- | --- |
-| 1 · Now | Data model — schema, seed real data, queries |
-| 2 · Next | Investor prospectus — AI skill generates from DB |
-| 3 | Term sheet generation |
-| 4 | Operations web UI |
-| 5 | Clients web UI | 
-
-Can see open investments. In the future other funds can add investments. Website becomes private development marketplace.
-
 ## Stack
 
-- **Data**: SQLite (`data/refigan.db`)
+- **Data**: PostgreSQL on CNPG (Kubernetes); local dev via docker-compose
 - **Documents**: Claude Code AI skills → Markdown
-- **UI**: Web app, phone-friendly, internal only
+- **API**: FastAPI (Python)
+- **UI**: React + Vite, phone-friendly, internal only
+- **Infra**: K8s on Hetzner, ArgoCD, CNPG, S3 backups

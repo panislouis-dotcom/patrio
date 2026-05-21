@@ -24,9 +24,8 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 COPY apps/api/ ./api/
 COPY apps/scraper/ ./scraper/
 
-# Data: schema + static reference files only (data/files/ lives on PVC)
+# Schema used for DB bootstrap (data/files/ lives on PVC)
 COPY data/schema.sql /app/data/schema.sql
-COPY data/process/ /app/data/process/
 
 # Frontend bundle
 COPY --from=frontend-build /build/dist /app/frontend_dist

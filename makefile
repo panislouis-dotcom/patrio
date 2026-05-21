@@ -6,9 +6,6 @@ TEST_PG_DB  ?= $(shell grep '^TEST_DATABASE_URL=' .env | cut -d= -f2- | sed 's|.
 PSQL         = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(PG_DB) --set=ON_ERROR_STOP=on
 PSQL_TEST    = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(TEST_PG_DB) --set=ON_ERROR_STOP=on
 
-init-db: ## Apply schema to existing database
-	$(PSQL) -f - < data/schema.sql
-
 reset-db: ## Drop and recreate schema only
 	$(PSQL) -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 	$(PSQL) -f - < data/schema.sql
@@ -76,4 +73,7 @@ e2e-report: ## Open last Playwright HTML report
 e2e-install: ## Install Playwright and Chromium (run once after cloning)
 	cd $(E2E_DIR) && npm install && npx playwright install chromium
 
-.DEFAULT_GOAL := reset-db
+.DEFAULT_GOAL := help
+
+help: ## List available targets
+	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-20s %s\n", $$1, $$2}'

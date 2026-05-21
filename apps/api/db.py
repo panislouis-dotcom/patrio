@@ -23,7 +23,7 @@ def _get_pool() -> ThreadedConnectionPool:
 
 
 class _ConnProxy:
-    """Mimics sqlite3 connection.execute() so all db functions work unchanged."""
+    """Thin wrapper over a psycopg2 connection that executes SQL via RealDictCursor."""
 
     def __init__(self, conn):
         self._conn = conn
@@ -41,21 +41,6 @@ def get_db():
     try:
         conn.autocommit = False
         yield _ConnProxy(conn)
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        pool.putconn(conn)
-
-
-def execute_script(sql: str) -> None:
-    pool = _get_pool()
-    conn = pool.getconn()
-    try:
-        conn.autocommit = False
-        cur = conn.cursor()
-        cur.execute(sql)
         conn.commit()
     except Exception:
         conn.rollback()

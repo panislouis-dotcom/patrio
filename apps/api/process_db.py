@@ -91,7 +91,7 @@ def _template_references_rec(tid: int, conn, visited: set) -> None:
         (tid,),
     ).fetchall()
     for r in rows:
-        _template_references_rec(r[0], conn, visited)
+        _template_references_rec(r["source_template_id"], conn, visited)
 
 
 def get_template_nodes(tid: int) -> list[dict]:
