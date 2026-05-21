@@ -29,6 +29,15 @@ def _check_env() -> None:
 
 
 def _init_schema() -> None:
+    # Skip if DB is already initialised — avoids DDL on every pod restart.
+    # On a fresh CNPG database there are no tables yet, so we apply the schema once.
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM information_schema.tables"
+            " WHERE table_schema = 'public' AND table_name = 'users'"
+        ).fetchone()
+        if row:
+            return
     schema_path = Path(__file__).parent.parent.parent / "data" / "schema.sql"
     execute_script(schema_path.read_text())
 
