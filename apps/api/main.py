@@ -9,7 +9,7 @@ from pathlib import Path
 from api.config import ALLOWED_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD_HASH
 from api.routes import prospects, projects, sonar, team, processes, profit, investors, users, comparables, analyses, documents
 from api.routes.auth import router as auth_router
-from api.db import get_db, execute_script
+from api.db import get_db
 from api.process_db import sync_periodic_series
 from api import geo
 
@@ -28,18 +28,22 @@ def _check_env() -> None:
         sys.exit(1)
 
 
-def _init_schema() -> None:
-    # Skip if DB is already initialised — avoids DDL on every pod restart.
-    # On a fresh CNPG database there are no tables yet, so we apply the schema once.
+def _assert_schema_ready() -> None:
+    required = {"users", "prospects", "projects", "process_templates"}
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT 1 FROM information_schema.tables"
-            " WHERE table_schema = 'public' AND table_name = 'users'"
-        ).fetchone()
-        if row:
-            return
-    schema_path = Path(__file__).parent.parent.parent / "data" / "schema.sql"
-    execute_script(schema_path.read_text())
+        rows = conn.execute(
+            "SELECT table_name FROM information_schema.tables"
+            " WHERE table_schema = 'public'"
+        ).fetchall()
+    present = {r["table_name"] for r in rows}
+    missing = required - present
+    if missing:
+        print(
+            f"[FATAL] Required tables missing: {missing}. "
+            "Apply the schema migration before starting the app.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def _seed_admin() -> None:
@@ -59,7 +63,7 @@ def _seed_admin() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _check_env()
-    _init_schema()
+    _assert_schema_ready()
     _seed_admin()
     sync_periodic_series()
     geo.load_colonias()
