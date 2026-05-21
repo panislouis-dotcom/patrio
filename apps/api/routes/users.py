@@ -1,7 +1,8 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from api.auth import get_current_user, hash_password
+from api.config import ADMIN_EMAIL
 from api.db import get_db
 
 router = APIRouter()
@@ -15,6 +16,13 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     isActive: Optional[bool] = None
     password: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) < 8:
+            raise ValueError("password must be at least 8 characters")
+        return v
 
 
 def _to_dict(row) -> dict:
@@ -57,7 +65,13 @@ def update_user(user_id: int, body: UserUpdate, current_user: dict = Depends(get
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
-        if body.isActive is False and dict(row)["email"] == current_user["email"]:
+        target_email = dict(row)["email"]
+        is_self = target_email == current_user["email"]
+        is_admin = current_user["email"] == ADMIN_EMAIL
+        # Only the admin may modify other users' accounts
+        if not is_self and not is_admin:
+            raise HTTPException(status_code=403, detail="Sin permisos para modificar este usuario")
+        if body.isActive is False and is_self:
             raise HTTPException(status_code=400, detail="No puedes desactivar tu propia cuenta")
         if body.isActive is not None:
             conn.execute("UPDATE users SET is_active = %s WHERE id = %s", (body.isActive, user_id))
