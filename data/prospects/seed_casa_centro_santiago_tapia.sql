@@ -3,9 +3,9 @@ INSERT INTO prospects (
   name, address, city, status, url,
   latitude, longitude,
   sqm_land, sqm_construction,
-  land_price, permits_cost, subdivision_cost,
+  land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
-  projected_sale, investment_date, sale_date,
+  projected_sale, hold_months,
   rent_monthly, notes
 ) VALUES (
   'Casa Centro Santiago Tapia',
@@ -15,9 +15,9 @@ INSERT INTO prospects (
   'https://propiedades.com/inmuebles/casa-en-venta-santiago-tapia-ote-1626-centro-64000-monterrey-nl-1626-monterrey-centro-nuevo_leon-30863193',
   25.678003, -100.299049,
   198, 100,
-  2650000, 11000, 0,
+  2650000, 0.065, 11000, 0,
   6000, 1.0,
-  5000000, '2025-07-01', '2026-03-01',
+  5000000, 8,
   25000,
   'Remodelación o construcción. Precio $2,650,000 MXN. Terreno 198 m², construcción 100 m², 1 piso. 2 recámaras, 2 baños. 33 años de antigüedad. Sobre Santiago Tapia Ote. 1626, Centro.'
 );
