@@ -1,3 +1,5 @@
+-- migrate:up
+
 -- Fix: add ON DELETE SET NULL to all FK columns referencing team_members
 -- Allows deleting team members without blocking on dependent records
 
@@ -30,3 +32,5 @@ ALTER TABLE profit_split_config
   DROP CONSTRAINT IF EXISTS profit_split_config_lider_member_id_fkey,
   ADD CONSTRAINT profit_split_config_lider_member_id_fkey
     FOREIGN KEY (lider_member_id) REFERENCES team_members(id) ON DELETE SET NULL;
+
+-- migrate:down

@@ -29,18 +29,11 @@ def _check_env() -> None:
 
 
 def _assert_schema_ready() -> None:
-    required = {"users", "prospects", "projects", "process_templates"}
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT table_name FROM information_schema.tables"
-            " WHERE table_schema = 'public'"
-        ).fetchall()
-    present = {r["table_name"] for r in rows}
-    missing = required - present
-    if missing:
+        row = conn.execute("SELECT to_regclass('public.schema_migrations')").fetchone()
+    if row["to_regclass"] is None:
         print(
-            f"[FATAL] Required tables missing: {missing}. "
-            "Apply the schema migration before starting the app.",
+            "[FATAL] schema_migrations table missing — run: docker compose run --rm migrate",
             file=sys.stderr,
         )
         sys.exit(1)

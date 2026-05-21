@@ -20,12 +20,18 @@ RUN pip install --no-cache-dir -r api/requirements.txt && \
 # Non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
+# Install dbmate for running migrations (K8s Job / init container)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && curl -fsSL https://github.com/amacneil/dbmate/releases/download/v2.33.0/dbmate-linux-amd64 \
+       -o /usr/local/bin/dbmate && chmod +x /usr/local/bin/dbmate \
+    && rm -rf /var/lib/apt/lists/*
+
 # Application code
 COPY apps/api/ ./api/
 COPY apps/scraper/ ./scraper/
 
-# Schema used for DB bootstrap (data/files/ lives on PVC)
-COPY data/schema.sql /app/data/schema.sql
+# DB schema + migrations (used by dbmate)
+COPY db/ /app/db/
 
 # Frontend bundle
 COPY --from=frontend-build /build/dist /app/frontend_dist

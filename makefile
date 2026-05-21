@@ -1,19 +1,27 @@
-DB_URL      ?= $(shell grep '^DATABASE_URL=' .env | cut -d= -f2-)
-PG_CTR      ?= refigan-db-1
-PG_USER     ?= $(shell grep '^POSTGRES_USER=' .env | cut -d= -f2)
-PG_DB       ?= $(shell grep '^POSTGRES_DB=' .env | cut -d= -f2)
-TEST_PG_DB  ?= $(shell grep '^TEST_DATABASE_URL=' .env | cut -d= -f2- | sed 's|.*/||')
-PSQL         = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(PG_DB) --set=ON_ERROR_STOP=on
-PSQL_TEST    = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(TEST_PG_DB) --set=ON_ERROR_STOP=on
+DB_URL            ?= $(shell grep '^DATABASE_URL=' .env | cut -d= -f2-)
+PG_CTR            ?= refigan-db-1
+PG_USER           ?= $(shell grep '^POSTGRES_USER=' .env | cut -d= -f2)
+PG_DB             ?= $(shell grep '^POSTGRES_DB=' .env | cut -d= -f2)
+TEST_PG_DB        ?= $(shell grep '^TEST_DATABASE_URL=' .env | cut -d= -f2- | sed 's|.*/||')
+# Replace localhost→db so dbmate connects via compose network
+TEST_DB_URL_COMPOSE ?= $(shell grep '^TEST_DATABASE_URL=' .env | cut -d= -f2- | sed 's/localhost/db/g;s/127\.0\.0\.1/db/g')
+PSQL               = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(PG_DB) --set=ON_ERROR_STOP=on
+PSQL_TEST          = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(TEST_PG_DB) --set=ON_ERROR_STOP=on
 
-reset-db: ## Drop and recreate schema only
+install-dev: ## Install development tools — run once after cloning (Mac)
+	@command -v dbmate >/dev/null 2>&1 && echo "dbmate already installed" || brew install dbmate
+
+migrate: ## Run pending DB migrations (via docker compose)
+	docker compose run --rm migrate
+
+reset-db: ## Drop schema and re-run all migrations from scratch
 	$(PSQL) -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-	$(PSQL) -f - < data/schema.sql
+	docker compose run --rm migrate
 
-reset-test-db: ## Wipe and recreate the test DB (refigan_test)
+reset-test-db: ## Wipe and recreate the test DB (refigan_test), then migrate
 	-docker exec -i $(PG_CTR) psql -U $(PG_USER) -d postgres -c "DROP DATABASE IF EXISTS $(TEST_PG_DB);"
 	docker exec -i $(PG_CTR) psql -U $(PG_USER) -d postgres -c "CREATE DATABASE $(TEST_PG_DB);"
-	$(PSQL_TEST) -f - < data/schema.sql
+	docker compose run --rm -e DATABASE_URL=$(TEST_DB_URL_COMPOSE) migrate
 
 full-reset: reset-db seed-db ## Drop schema, recreate, and apply all seeds
 

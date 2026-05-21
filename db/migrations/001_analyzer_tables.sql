@@ -1,3 +1,5 @@
+-- migrate:up
+
 -- Migration 001: Analyzer tables (comparables, remodel_costs, zones, analysis_snapshots)
 -- Apply:   psql -f data/migrations/001_analyzer_tables.sql
 -- Rollback: run the DOWN section at the bottom
@@ -123,3 +125,5 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_prospect_date
 -- DROP TABLE IF EXISTS comparables CASCADE;
 -- DROP TABLE IF EXISTS remodel_costs CASCADE;
 -- DROP TABLE IF EXISTS zones CASCADE;
+
+-- migrate:down

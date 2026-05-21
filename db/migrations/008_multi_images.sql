@@ -1,3 +1,5 @@
+-- migrate:up
+
 CREATE TABLE IF NOT EXISTS prospect_images (
   id           BIGSERIAL PRIMARY KEY,
   prospect_id  BIGINT NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
@@ -87,3 +89,5 @@ SELECT
     notes,
     type
 FROM prospects;
+
+-- migrate:down

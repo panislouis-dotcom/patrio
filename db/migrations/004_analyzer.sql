@@ -1,3 +1,5 @@
+-- migrate:up
+
 -- Migration 003: Extend analysis_snapshots for Build & Hold + ARV override
 -- Apply:   psql -f data/migrations/003_analyzer.sql
 -- Rollback: run the DOWN section at the bottom
@@ -44,3 +46,5 @@ ALTER TABLE analysis_snapshots
 --   DROP COLUMN IF EXISTS break_even_months,
 --   DROP COLUMN IF EXISTS npv_10yr,
 --   DROP COLUMN IF EXISTS irr_10yr_pct;
+
+-- migrate:down

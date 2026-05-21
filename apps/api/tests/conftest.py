@@ -1,5 +1,6 @@
 import os
-import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import psycopg2
@@ -23,24 +24,50 @@ _TEST_URL = (
 os.environ["DATABASE_URL"] = _TEST_URL
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests-minimum-32-chars")
 
-
-# ── Bootstrap: create refigan_test and apply schema (idempotent) ─────────────
-def _split_sql(sql: str) -> list[str]:
-    """Split a SQL file into individual statements, stripping leading comments."""
-    stmts = []
-    for chunk in re.split(r";\s*\n", sql):
-        # Strip leading comment lines, keep the actual SQL
-        lines = [ln for ln in chunk.splitlines() if not ln.strip().startswith("--")]
-        stmt = "\n".join(lines).strip()
-        if stmt:
-            stmts.append(stmt)
-    return stmts
+_DB_DIR = Path(__file__).parent.parent.parent.parent / "db"
 
 
+def _with_sslmode_disable(url: str) -> str:
+    sep = "&" if "?" in url else "?"
+    return url if "sslmode" in url else f"{url}{sep}sslmode=disable"
+
+
+def _docker_url(url: str) -> str:
+    """Rewrite localhost → host.docker.internal and ensure sslmode=disable."""
+    url = url.replace("localhost", "host.docker.internal").replace(
+        "127.0.0.1", "host.docker.internal"
+    )
+    return _with_sslmode_disable(url)
+
+
+def _run_dbmate(db_url: str) -> None:
+    """Run dbmate up — local binary if available, otherwise docker run."""
+    dbmate_bin = shutil.which("dbmate")
+    if dbmate_bin:
+        cmd = [
+            dbmate_bin,
+            "--url", _with_sslmode_disable(db_url),
+            "--migrations-dir", str(_DB_DIR / "migrations"),
+            "--no-dump-schema",
+            "up",
+        ]
+    else:
+        cmd = [
+            "docker", "run", "--rm",
+            "-e", f"DATABASE_URL={_docker_url(db_url)}",
+            "-v", f"{_DB_DIR}:/db",
+            "ghcr.io/amacneil/dbmate:latest",
+            "--no-dump-schema", "up",
+        ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"dbmate up failed:\n{result.stderr}\n{result.stdout}")
+
+
+# ── Bootstrap: create refigan_test and run migrations (idempotent) ───────────
 def _bootstrap_test_db() -> None:
     db_name = _TEST_URL.rsplit("/", 1)[1]
-    # Safety: refuse to run against any database not clearly named for testing.
-    # If TEST_DATABASE_URL accidentally points at production, this fires before DROP DATABASE.
     _TEST_MARKERS = ("_test", "test_", "-test")
     if not any(m in db_name for m in _TEST_MARKERS):
         raise RuntimeError(
@@ -49,9 +76,7 @@ def _bootstrap_test_db() -> None:
             "Set TEST_DATABASE_URL to a database with '_test' in its name."
         )
     admin_url = _TEST_URL.rsplit("/", 1)[0] + "/postgres"
-    schema_sql = (Path(__file__).parent.parent.parent.parent / "data" / "schema.sql").read_text()
 
-    # Always drop and recreate so schema changes are picked up without manual resets.
     conn = psycopg2.connect(admin_url)
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
     cur = conn.cursor()
@@ -59,13 +84,7 @@ def _bootstrap_test_db() -> None:
     cur.execute(f'CREATE DATABASE "{db_name}"')
     conn.close()
 
-    # Apply schema statement by statement
-    conn = psycopg2.connect(_TEST_URL)
-    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-    cur = conn.cursor()
-    for stmt in _split_sql(schema_sql):
-        cur.execute(stmt)
-    conn.close()
+    _run_dbmate(_TEST_URL)
 
 
 _bootstrap_test_db()

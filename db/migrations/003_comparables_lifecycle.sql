@@ -1,3 +1,5 @@
+-- migrate:up
+
 -- Migration 002: Comparables lifecycle, check log, remodel_costs.updated_at
 -- Apply:   psql -f data/migrations/002_comparables_lifecycle.sql
 -- Rollback: run the DOWN section at the bottom
@@ -93,3 +95,5 @@ ALTER TABLE remodel_costs
 -- ALTER TABLE remodel_costs DROP COLUMN IF EXISTS updated_at;
 --
 -- Then re-run migration 001 to restore the original comparables table.
+
+-- migrate:down
