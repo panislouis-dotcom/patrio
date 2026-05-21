@@ -39,6 +39,15 @@ def _split_sql(sql: str) -> list[str]:
 
 def _bootstrap_test_db() -> None:
     db_name = _TEST_URL.rsplit("/", 1)[1]
+    # Safety: refuse to run against any database not clearly named for testing.
+    # If TEST_DATABASE_URL accidentally points at production, this fires before DROP DATABASE.
+    _TEST_MARKERS = ("_test", "test_", "-test")
+    if not any(m in db_name for m in _TEST_MARKERS):
+        raise RuntimeError(
+            f"conftest: refusing to DROP DATABASE '{db_name}' — "
+            f"name does not contain any of {_TEST_MARKERS}. "
+            "Set TEST_DATABASE_URL to a database with '_test' in its name."
+        )
     admin_url = _TEST_URL.rsplit("/", 1)[0] + "/postgres"
     schema_sql = (Path(__file__).parent.parent.parent.parent / "data" / "schema.sql").read_text()
 
