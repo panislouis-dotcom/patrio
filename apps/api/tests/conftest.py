@@ -42,16 +42,15 @@ def _bootstrap_test_db() -> None:
     admin_url = _TEST_URL.rsplit("/", 1)[0] + "/postgres"
     schema_sql = (Path(__file__).parent.parent.parent.parent / "data" / "schema.sql").read_text()
 
-    # Create DB if it doesn't exist
+    # Always drop and recreate so schema changes are picked up without manual resets.
     conn = psycopg2.connect(admin_url)
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
     cur = conn.cursor()
-    cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
-    if not cur.fetchone():
-        cur.execute(f'CREATE DATABASE "{db_name}"')
+    cur.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
+    cur.execute(f'CREATE DATABASE "{db_name}"')
     conn.close()
 
-    # Apply schema statement by statement (idempotent: IF NOT EXISTS / OR REPLACE)
+    # Apply schema statement by statement
     conn = psycopg2.connect(_TEST_URL)
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
     cur = conn.cursor()

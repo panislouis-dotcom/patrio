@@ -43,9 +43,9 @@ def test_warning_on_zero_construction_cost():
     p = _base(); p["constructionCostPerSqm"] = 0
     assert any(i.field == "constructionCostPerSqm" and i.severity == "warning" for i in run_checks(p))
 
-def test_error_on_zero_rent():
+def test_warning_on_zero_rent():
     p = _base(); p["rentMonthly"] = 0
-    assert any(i.field == "rentMonthly" and i.severity == "error" for i in run_checks(p))
+    assert any(i.field == "rentMonthly" and i.severity == "warning" for i in run_checks(p))
 
 def test_warning_on_high_acquisition_cost():
     p = _base(); p["acquisitionCostPct"] = 0.12
