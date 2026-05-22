@@ -16,6 +16,10 @@ class InvestorCreate(BaseModel):
     email: str = ''
     phone: str = ''
     notes: str = ''
+    temperatura: Optional[str] = None
+    capacidad: Optional[str] = None
+    fuente: Optional[str] = None
+    confianza: Optional[str] = None
 
 
 class InvestorUpdate(BaseModel):
@@ -24,6 +28,10 @@ class InvestorUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     notes: Optional[str] = None
+    temperatura: Optional[str] = None
+    capacidad: Optional[str] = None
+    fuente: Optional[str] = None
+    confianza: Optional[str] = None
 
 
 class ProjectInvestorCreate(BaseModel):

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchInvestor, updateInvestor, deleteInvestor, fetchProjects, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment } from '../lib/api'
-import type { Investor, ProjectInvestor, Project } from '../lib/types'
+import type { Investor, ProjectInvestor, Project, InvestorTemperatura, InvestorCapacidad, InvestorFuente, InvestorConfianza } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { fmtM, fmtMXN } from '../lib/fmt'
@@ -20,6 +20,10 @@ export function InversorDetailPage() {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [notes, setNotes] = useState('')
+  const [temperatura, setTemperatura] = useState<InvestorTemperatura | ''>('')
+  const [capacidad, setCapacidad] = useState<InvestorCapacidad | ''>('')
+  const [fuente, setFuente] = useState<InvestorFuente | ''>('')
+  const [confianza, setConfianza] = useState<InvestorConfianza | ''>('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -53,6 +57,10 @@ export function InversorDetailPage() {
       setEmail(data.email)
       setPhone(data.phone)
       setNotes(data.notes ?? '')
+      setTemperatura(data.temperatura ?? '')
+      setCapacidad(data.capacidad ?? '')
+      setFuente(data.fuente ?? '')
+      setConfianza(data.confianza ?? '')
     })
     fetchProjects().then(setAllProjects)
   }, [investorId])
@@ -61,7 +69,11 @@ export function InversorDetailPage() {
     setSaving(true)
     setError(null)
     try {
-      const updated = await updateInvestor(investorId, { name, apellidos, email, phone, notes })
+      const updated = await updateInvestor(investorId, {
+        name, apellidos, email, phone, notes,
+        temperatura: temperatura || null, capacidad: capacidad || null,
+        fuente: fuente || null, confianza: confianza || null,
+      })
       setInvestor(updated)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al guardar')
@@ -308,6 +320,49 @@ export function InversorDetailPage() {
           <div style={{ marginBottom: '14px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>NOTAS</div>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={4} style={{ ...fieldInput, resize: 'vertical' }} />
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>TEMPERATURA</div>
+            <select value={temperatura} onChange={e => setTemperatura(e.target.value as InvestorTemperatura | '')} style={fieldInput}>
+              <option value="">—</option>
+              <option value="caliente">Caliente</option>
+              <option value="tibio">Tibio</option>
+              <option value="frio">Frío</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>CAPACIDAD</div>
+            <select value={capacidad} onChange={e => setCapacidad(e.target.value as InvestorCapacidad | '')} style={fieldInput}>
+              <option value="">—</option>
+              <option value="<500k">&lt;500k</option>
+              <option value="500k-2M">500k–2M</option>
+              <option value="2M-5M">2M–5M</option>
+              <option value="5M+">5M+</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>FUENTE</div>
+            <select value={fuente} onChange={e => setFuente(e.target.value as InvestorFuente | '')} style={fieldInput}>
+              <option value="">—</option>
+              <option value="red_personal">Red personal</option>
+              <option value="referido">Referido</option>
+              <option value="red_negocios">Red negocios</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>CONFIANZA</div>
+            <select value={confianza} onChange={e => setConfianza(e.target.value as InvestorConfianza | '')} style={fieldInput}>
+              <option value="">—</option>
+              <option value="bajo">Bajo</option>
+              <option value="medio">Medio</option>
+              <option value="alto">Alto</option>
+            </select>
           </div>
 
           {error && (

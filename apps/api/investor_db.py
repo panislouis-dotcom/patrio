@@ -1,6 +1,6 @@
 from .db import get_db, _snake_to_camel, _camel_to_snake
 
-INVESTOR_RAW_FIELDS = {"name", "apellidos", "email", "phone", "notes"}
+INVESTOR_RAW_FIELDS = {"name", "apellidos", "email", "phone", "notes", "temperatura", "capacidad", "fuente", "confianza"}
 PROJECT_INVESTOR_RAW_FIELDS = {
     "status", "interestedAmount", "committedAmount", "fundedAmount",
     "interestRateAnnual", "investmentDate", "returnAmount", "returnDate", "notes"

@@ -564,7 +564,7 @@ export async function createInvestor(data: Omit<Investor, 'id' | 'createdAt' | '
   return res.json()
 }
 
-export async function updateInvestor(id: number, data: Partial<Pick<Investor, 'name' | 'apellidos' | 'email' | 'phone' | 'notes'>>): Promise<Investor> {
+export async function updateInvestor(id: number, data: Partial<Pick<Investor, 'name' | 'apellidos' | 'email' | 'phone' | 'notes' | 'temperatura' | 'capacidad' | 'fuente' | 'confianza'>>): Promise<Investor> {
   const res = await authFetch(`${BASE}/api/investors/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

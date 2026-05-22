@@ -339,6 +339,11 @@ export interface ProfitWaterfall {
   }
 }
 
+export type InvestorTemperatura = 'caliente' | 'tibio' | 'frio'
+export type InvestorCapacidad = '<500k' | '500k-2M' | '2M-5M' | '5M+'
+export type InvestorFuente = 'red_personal' | 'referido' | 'red_negocios' | 'linkedin' | 'otro'
+export type InvestorConfianza = 'bajo' | 'medio' | 'alto'
+
 export interface Investor {
   id: number
   name: string
@@ -346,6 +351,10 @@ export interface Investor {
   email: string
   phone: string
   notes: string
+  temperatura: InvestorTemperatura | null
+  capacidad: InvestorCapacidad | null
+  fuente: InvestorFuente | null
+  confianza: InvestorConfianza | null
   createdAt: string
   totalInterested: number
   totalCommitted: number
