@@ -8,6 +8,7 @@ import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { fmtMXN } from '../lib/fmt'
 import { LatLonPicker } from './LatLonPicker'
+import { NumericInput } from './NumericInput'
 import { ProspectForm } from './ProspectForm'
 import { ProspectAnalysisSection } from './ProspectAnalysisSection'
 import { StatRow } from './StatRow'
@@ -60,6 +61,7 @@ export function ProspectDetailPage() {
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
   const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')
+  const [leftTab, setLeftTab] = useState<'info' | 'editar' | 'analisis'>('info')
 
   useEffect(() => {
     if (isNew) { setLoading(false); return }
@@ -322,136 +324,293 @@ export function ProspectDetailPage() {
         )}
       </div>
 
-      {/* ── MAIN 3-COLUMN GRID ── */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '290px 1fr 310px', overflow: 'hidden' }}>
+      {/* ── MAIN 2-COLUMN GRID ── */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '360px 1fr', overflow: 'hidden' }}>
 
-        {/* ── LEFT: Métricas + Edición ── */}
+        {/* ── LEFT: Tabbed panel ── */}
         <div style={{
           ...fade(80),
           borderRight: `1px solid ${colors.border}`,
-          overflowY: 'auto',
-          padding: '20px',
-          scrollbarWidth: 'none',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
         }}>
-          {/* Hero ROI */}
-          <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
-            <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roi != null ? roiColor : colors.secondary, lineHeight: 1 }}>
-              {roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-              <div style={{ flex: 1, height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: barsReady && roi != null ? `${Math.min(100, Math.max(0, roi * 100))}%` : '0%',
-                  background: roiColor,
-                  transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                }} />
+          {/* Left tab bar */}
+          <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
+            {(['info', 'editar', 'analisis'] as const).map(tab => (
+              <button key={tab} onClick={() => setLeftTab(tab)} style={{
+                background: 'transparent', border: 'none',
+                borderBottom: leftTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
+                color: leftTab === tab ? colors.neutral : colors.secondary,
+                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
+                letterSpacing: '0.12em', padding: '10px 16px 8px', textTransform: 'uppercase' as const,
+              }}>
+                {tab === 'info' ? 'INFO' : tab === 'editar' ? 'EDITAR' : 'ANÁLISIS'}
+              </button>
+            ))}
+          </div>
+
+          {/* INFO tab */}
+          {leftTab === 'info' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
+              {/* Hero ROI */}
+              <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
+                <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roi != null ? roiColor : colors.secondary, lineHeight: 1 }}>
+                  {roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                  <div style={{ flex: 1, height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      width: barsReady && roi != null ? `${Math.min(100, Math.max(0, roi * 100))}%` : '0%',
+                      background: roiColor,
+                      transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    }} />
+                  </div>
+                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, flexShrink: 0 }}>
+                    Score {p.score ?? '—'}
+                  </span>
+                </div>
               </div>
-              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, flexShrink: 0 }}>
-                Score {p.score ?? '—'}
-              </span>
+
+              <StatRow label="PROFIT" value={fmtMXN(p.profit)} />
+              <StatRow label="CAP RATE" value={(p.capRate ?? 0) > 0 ? `${((p.capRate ?? 0) * 100).toFixed(1)}%` : '—'} />
+              <StatRow label="INVERSIÓN" value={fmtMXN(p.totalInvestment)} />
+              <StatRow label="VENTA" value={fmtMXN(p.projectedSale)} />
+              {p.holdMonths > 0 && <StatRow label="PLAZO" value={`${p.holdMonths} meses`} />}
+              {p.rentMonthly > 0 && <StatRow label="RENTA/MES" value={fmtMXN(p.rentMonthly)} />}
+              <StatRow label="TERRENO" value={`${p.sqmLand} m²`} />
+              <StatRow label="CONSTRUCCIÓN" value={`${p.sqmConstruction} m²`} />
+
+              {divider('UBICACIÓN')}
+              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{p.address || '—'}</div>
+              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>{p.city}</div>
+
+              {/* Investment breakdown bars */}
+              {investmentItems.length > 0 && (
+                <div style={{ marginTop: '20px' }}>
+                  {divider('INVERSIÓN TOTAL')}
+                  <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>{fmtMXN(p.totalInvestment)}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {investmentItems.map(({ label, amount }, i) => {
+                      const pct = p.totalInvestment > 0 ? (amount / p.totalInvestment) * 100 : 0
+                      return (
+                        <div key={label}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                            <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>
+                              {label.toUpperCase()}
+                            </span>
+                            <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(amount)}</span>
+                          </div>
+                          <div style={{ height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
+                            <div style={{
+                              height: '100%',
+                              width: barsReady ? `${pct}%` : '0%',
+                              background: barColors[i % barColors.length],
+                              borderRadius: '2px',
+                              transition: `width 0.9s cubic-bezier(0.4, 0, 0.2, 1) ${i * 70}ms`,
+                            }} />
+                          </div>
+                          <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.border, marginTop: '3px', textAlign: 'right' }}>
+                            {pct.toFixed(0)}%
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Venta + Profit summary */}
+              <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>VENTA PROYECTADA</span>
+                    <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(p.projectedSale)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>PROFIT</span>
+                    <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: (roi ?? 0) > 0 ? colors.primary : colors.secondary }}>{fmtMXN(p.profit)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data quality issues */}
+              {(errors.length > 0 || warnings.length > 0) && (
+                <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '12px' }}>CALIDAD DE DATOS</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {[...errors, ...warnings].map((issue, i) => (
+                      <div key={i} style={{
+                        display: 'flex', gap: '8px', padding: '8px',
+                        background: colors.surfaceAlt,
+                        border: `1px solid ${issue.severity === 'error' ? '#c0392b44' : colors.border}`,
+                      }}>
+                        <span style={{ fontSize: '11px', flexShrink: 0 }}>{issue.severity === 'error' ? '🔴' : '⚠️'}</span>
+                        <div>
+                          <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>{issue.field.toUpperCase()}</div>
+                          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: issue.severity === 'error' ? colors.neutral : colors.secondary, marginTop: '2px' }}>{issue.message}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              {p.notes && p.notes !== '-' && (
+                <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>NOTAS</div>
+                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>{p.notes}</div>
+                </div>
+              )}
+
+              {/* URL */}
+              {p.url && (
+                <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+                  <a
+                    href={p.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary, textDecoration: 'none' }}
+                  >
+                    VER FUENTE ↗
+                  </a>
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
-          <StatRow label="PROFIT" value={fmtMXN(p.profit)} />
-          <StatRow label="CAP RATE" value={(p.capRate ?? 0) > 0 ? `${((p.capRate ?? 0) * 100).toFixed(1)}%` : '—'} />
-          <StatRow label="INVERSIÓN" value={fmtMXN(p.totalInvestment)} />
-          <StatRow label="VENTA" value={fmtMXN(p.projectedSale)} />
-          {p.holdMonths > 0 && <StatRow label="PLAZO" value={`${p.holdMonths} meses`} />}
-          {p.rentMonthly > 0 && <StatRow label="RENTA/MES" value={fmtMXN(p.rentMonthly)} />}
-          <StatRow label="TERRENO" value={`${p.sqmLand} m²`} />
-          <StatRow label="CONSTRUCCIÓN" value={`${p.sqmConstruction} m²`} />
-
-          {divider('UBICACIÓN')}
-          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{p.address || '—'}</div>
-          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>{p.city}</div>
-
-          {divider('EDITAR')}
-          {([
-            { key: 'name', label: 'Nombre', type: 'text' },
-            { key: 'address', label: 'Dirección', type: 'text' },
-            { key: 'city', label: 'Ciudad', type: 'text' },
-            { key: 'url', label: 'URL', type: 'text' },
-          ] as const).map(({ key, label, type }) => (
-            <div key={key} style={{ marginBottom: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-              <input value={cv(key)} onChange={e => handleEdit(key, e.target.value, 'text')} type={type} style={fieldInput} />
-            </div>
-          ))}
-
-          <div style={{ marginBottom: '8px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>TIPO</div>
-            <select
-              value={(edits.type as string) ?? p.type ?? ''}
-              onChange={e => setEdits(prev => ({ ...prev, type: e.target.value }))}
-              style={{ ...fieldInput, cursor: 'pointer' }}
-            >
-              <option value="">— sin tipo —</option>
-              {PROPERTY_TYPES.map(t => (
-                <option key={t} value={t}>{t}</option>
+          {/* EDITAR tab */}
+          {leftTab === 'editar' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
+              {([
+                { key: 'name', label: 'Nombre', type: 'text' },
+                { key: 'address', label: 'Dirección', type: 'text' },
+                { key: 'city', label: 'Ciudad', type: 'text' },
+                { key: 'url', label: 'URL', type: 'text' },
+              ] as const).map(({ key, label, type }) => (
+                <div key={key} style={{ marginBottom: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+                  <input value={cv(key)} onChange={e => handleEdit(key, e.target.value, 'text')} type={type} style={fieldInput} />
+                </div>
               ))}
-            </select>
-          </div>
 
-          <div style={{ marginBottom: '8px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>ESTADO</div>
-            <select
-              value={(edits.status as string) ?? p.status}
-              onChange={e => setEdits(prev => ({ ...prev, status: e.target.value }))}
-              style={{ ...fieldInput, cursor: 'pointer' }}
-            >
-              {Object.entries(PROSPECT_STATUS_LABEL).map(([val, lbl]) => (
-                <option key={val} value={val}>{lbl}</option>
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>TIPO</div>
+                <select
+                  value={(edits.type as string) ?? p.type ?? ''}
+                  onChange={e => setEdits(prev => ({ ...prev, type: e.target.value }))}
+                  style={{ ...fieldInput, cursor: 'pointer' }}
+                >
+                  <option value="">— sin tipo —</option>
+                  {PROPERTY_TYPES.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>ESTADO</div>
+                <select
+                  value={(edits.status as string) ?? p.status}
+                  onChange={e => setEdits(prev => ({ ...prev, status: e.target.value }))}
+                  style={{ ...fieldInput, cursor: 'pointer' }}
+                >
+                  {Object.entries(PROSPECT_STATUS_LABEL).map(([val, lbl]) => (
+                    <option key={val} value={val}>{lbl}</option>
+                  ))}
+                </select>
+              </div>
+
+              {([
+                { key: 'landPrice', label: 'Precio terreno ($)' },
+                { key: 'permitsCost', label: 'Permisos ($)' },
+                { key: 'subdivisionCost', label: 'Subdivisión ($)' },
+                { key: 'sqmLand', label: 'm² Terreno' },
+                { key: 'sqmConstruction', label: 'm² Construcción' },
+                { key: 'constructionCostPerSqm', label: 'Costo/m² ($)' },
+                { key: 'projectedSale', label: 'Venta proyectada ($)' },
+                { key: 'rentMonthly', label: 'Renta mensual ($)' },
+                { key: 'holdMonths', label: 'Plazo (meses)' },
+              ] as const).map(({ key, label }) => (
+                <div key={key} style={{ marginBottom: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+                  <NumericInput
+                    value={(edits[key] !== undefined ? edits[key] : prospect![key]) as number | undefined}
+                    onChange={n => {
+                      setEdits(prev => {
+                        const next = { ...prev }
+                        if (n === undefined) delete (next as Record<string, unknown>)[key as string]
+                        else (next as Record<string, unknown>)[key as string] = n
+                        return next
+                      })
+                    }}
+                    style={fieldInput}
+                  />
+                </div>
               ))}
-            </select>
-          </div>
 
-          {([
-            { key: 'landPrice', label: 'Precio terreno ($)' },
-            { key: 'permitsCost', label: 'Permisos ($)' },
-            { key: 'subdivisionCost', label: 'Subdivisión ($)' },
-            { key: 'sqmLand', label: 'm² Terreno' },
-            { key: 'sqmConstruction', label: 'm² Construcción' },
-            { key: 'constructionCostPerSqm', label: 'Costo/m² ($)' },
-            { key: 'projectedSale', label: 'Venta proyectada ($)' },
-            { key: 'rentMonthly', label: 'Renta mensual ($)' },
-            { key: 'holdMonths', label: 'Plazo (meses)' },
-          ] as const).map(({ key, label }) => (
-            <div key={key} style={{ marginBottom: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-              <input value={cv(key)} onChange={e => handleEdit(key, e.target.value, 'number')} type="number" style={fieldInput} />
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>COSTOS ADQ. (%)</div>
+                <NumericInput
+                  value={edits.acquisitionCostPct !== undefined
+                    ? (edits.acquisitionCostPct as number) * 100
+                    : (prospect?.acquisitionCostPct ?? 0) * 100}
+                  onChange={n => setEdits(prev => {
+                    const next = { ...prev }
+                    if (n === undefined) delete (next as Record<string, unknown>).acquisitionCostPct
+                    else next.acquisitionCostPct = n / 100
+                    return next
+                  })}
+                  step={0.1}
+                  style={fieldInput}
+                />
+              </div>
+
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>OVERHEAD CONSTRUCCIÓN</div>
+                <NumericInput
+                  value={(edits.constructionOverhead !== undefined ? edits.constructionOverhead : prospect?.constructionOverhead) as number | undefined}
+                  onChange={n => setEdits(prev => {
+                    const next = { ...prev }
+                    if (n === undefined) delete (next as Record<string, unknown>).constructionOverhead
+                    else next.constructionOverhead = n
+                    return next
+                  })}
+                  step={0.01}
+                  style={fieldInput}
+                />
+              </div>
+
+              <div style={{ marginBottom: '8px' }}>
+                <LatLonPicker
+                  lat={(edits.latitude !== undefined ? edits.latitude : prospect?.latitude) ?? 0}
+                  lon={(edits.longitude !== undefined ? edits.longitude : prospect?.longitude) ?? 0}
+                  onChange={(newLat, newLon) => {
+                    handleEdit('latitude', String(newLat), 'number')
+                    handleEdit('longitude', String(newLon), 'number')
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
+                <textarea value={cv('notes')} onChange={e => handleEdit('notes', e.target.value, 'text')} rows={3} style={{ ...fieldInput, resize: 'vertical' }} />
+              </div>
+
+              {saveError && (
+                <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginTop: '8px' }}>{saveError}</div>
+              )}
             </div>
-          ))}
+          )}
 
-          <div style={{ marginBottom: '8px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>COSTOS ADQ. (%)</div>
-            <input value={cv('acquisitionCostPct', true)} onChange={e => handleEdit('acquisitionCostPct', e.target.value, 'number', true)} type="number" step="0.1" style={fieldInput} />
-          </div>
-
-          <div style={{ marginBottom: '8px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>OVERHEAD CONSTRUCCIÓN</div>
-            <input value={cv('constructionOverhead')} onChange={e => handleEdit('constructionOverhead', e.target.value, 'number')} type="number" step="0.01" style={fieldInput} />
-          </div>
-
-          <div style={{ marginBottom: '8px' }}>
-            <LatLonPicker
-              lat={(edits.latitude !== undefined ? edits.latitude : prospect?.latitude) ?? 0}
-              lon={(edits.longitude !== undefined ? edits.longitude : prospect?.longitude) ?? 0}
-              onChange={(newLat, newLon) => {
-                handleEdit('latitude', String(newLat), 'number')
-                handleEdit('longitude', String(newLon), 'number')
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '8px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
-            <textarea value={cv('notes')} onChange={e => handleEdit('notes', e.target.value, 'text')} rows={3} style={{ ...fieldInput, resize: 'vertical' }} />
-          </div>
-
-          {saveError && (
-            <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginTop: '8px' }}>{saveError}</div>
+          {/* ANÁLISIS tab */}
+          {leftTab === 'analisis' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
+              <ProspectAnalysisSection prospectId={p.id} />
+            </div>
           )}
         </div>
 
@@ -518,110 +677,6 @@ export function ProspectDetailPage() {
           )}
         </div>
 
-        {/* ── RIGHT: Inversión + Calidad + Notas ── */}
-        <div style={{
-          ...fade(240),
-          borderLeft: `1px solid ${colors.border}`,
-          overflowY: 'auto',
-          padding: '20px',
-          scrollbarWidth: 'none',
-        }}>
-          {/* Investment breakdown bars */}
-          {investmentItems.length > 0 && (
-            <>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '6px' }}>INVERSIÓN TOTAL</div>
-              <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>{fmtMXN(p.totalInvestment)}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {investmentItems.map(({ label, amount }, i) => {
-                  const pct = p.totalInvestment > 0 ? (amount / p.totalInvestment) * 100 : 0
-                  return (
-                    <div key={label}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                        <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>
-                          {label.toUpperCase()}
-                        </span>
-                        <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(amount)}</span>
-                      </div>
-                      <div style={{ height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
-                        <div style={{
-                          height: '100%',
-                          width: barsReady ? `${pct}%` : '0%',
-                          background: barColors[i % barColors.length],
-                          borderRadius: '2px',
-                          transition: `width 0.9s cubic-bezier(0.4, 0, 0.2, 1) ${i * 70}ms`,
-                        }} />
-                      </div>
-                      <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.border, marginTop: '3px', textAlign: 'right' }}>
-                        {pct.toFixed(0)}%
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )}
-
-          {/* Venta + Profit summary */}
-          <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>VENTA PROYECTADA</span>
-                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(p.projectedSale)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>PROFIT</span>
-                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: (roi ?? 0) > 0 ? colors.primary : colors.secondary }}>{fmtMXN(p.profit)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Data quality issues */}
-          {(errors.length > 0 || warnings.length > 0) && (
-            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '12px' }}>CALIDAD DE DATOS</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {[...errors, ...warnings].map((issue, i) => (
-                  <div key={i} style={{
-                    display: 'flex', gap: '8px', padding: '8px',
-                    background: colors.surfaceAlt,
-                    border: `1px solid ${issue.severity === 'error' ? '#c0392b44' : colors.border}`,
-                  }}>
-                    <span style={{ fontSize: '11px', flexShrink: 0 }}>{issue.severity === 'error' ? '🔴' : '⚠️'}</span>
-                    <div>
-                      <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>{issue.field.toUpperCase()}</div>
-                      <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: issue.severity === 'error' ? colors.neutral : colors.secondary, marginTop: '2px' }}>{issue.message}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Notes */}
-          {p.notes && p.notes !== '-' && (
-            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>NOTAS</div>
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>{p.notes}</div>
-            </div>
-          )}
-
-          {/* URL */}
-          {p.url && (
-            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-              <a
-                href={p.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary, textDecoration: 'none' }}
-              >
-                VER FUENTE ↗
-              </a>
-            </div>
-          )}
-
-          {/* Analysis section */}
-          <ProspectAnalysisSection prospectId={p.id} />
-        </div>
       </div>
 
       {/* ── CONVERT MODAL ── */}

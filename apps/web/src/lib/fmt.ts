@@ -10,10 +10,7 @@ export function fmtM(n: number): string {
 }
 
 export function fmtMXN(n: number | null | undefined): string {
-  if (!n) return '—'
-  const abs = Math.abs(n)
+  if (n == null || n === 0) return '—'
   const sign = n < 0 ? '-' : ''
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`
-  return `${sign}$${abs.toLocaleString('es-MX')}`
+  return `${sign}$${Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
 }

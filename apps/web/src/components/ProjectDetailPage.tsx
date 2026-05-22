@@ -8,6 +8,7 @@ import { ProjectProfitSection } from './ProjectProfitSection'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { LatLonPicker } from './LatLonPicker'
+import { NumericInput } from './NumericInput'
 import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL, PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
 import { fmtMXN } from '../lib/fmt'
 import { StatRow } from './StatRow'
@@ -45,7 +46,7 @@ export function ProjectDetailPage() {
   const [editReturnAmount, setEditReturnAmount] = useState<string>('')
   const [editReturnDate, setEditReturnDate] = useState<string>('')
   const [savingId, setSavingId] = useState<number | null>(null)
-  const [rightTab, setRightTab] = useState<'proyecto' | 'finanzas'>('proyecto')
+  const [leftTab, setLeftTab] = useState<'info' | 'editar' | 'finanzas'>('info')
   const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -336,160 +337,561 @@ export function ProjectDetailPage() {
         )}
       </div>
 
-      {/* ── MAIN 3-COLUMN GRID ── */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '290px 1fr 310px', overflow: 'hidden' }}>
+      {/* ── MAIN 2-COLUMN GRID ── */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '360px 1fr', overflow: 'hidden' }}>
 
-        {/* ── LEFT: Métricas + Edición ── */}
+        {/* ── LEFT: Tabbed (INFO / EDITAR / FINANZAS) ── */}
         <div style={{
           ...fade(80),
           borderRight: `1px solid ${colors.border}`,
-          overflowY: 'auto',
-          padding: '20px',
-          scrollbarWidth: 'none',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         }}>
 
-          {/* Hero ROI */}
-          <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
-            <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roi != null ? roiColor : colors.secondary, lineHeight: 1 }}>
-              {roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-              <div style={{ flex: 1, height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: barsReady && roi != null ? `${Math.min(100, Math.max(0, roi * 100))}%` : '0%',
-                  background: roi != null ? roiColor : colors.border,
-                  transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                }} />
+          {/* Tab bar */}
+          <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
+            {(['info', 'editar', 'finanzas'] as const).map(tab => (
+              <button key={tab} onClick={() => setLeftTab(tab)} style={{
+                background: 'transparent', border: 'none',
+                borderBottom: leftTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
+                color: leftTab === tab ? colors.neutral : colors.secondary,
+                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
+                letterSpacing: '0.12em', padding: '10px 16px 8px', textTransform: 'uppercase' as const,
+              }}>
+                {tab === 'info' ? 'INFO' : tab === 'editar' ? 'EDITAR' : 'FINANZAS'}
+              </button>
+            ))}
+          </div>
+
+          {/* ── INFO tab ── */}
+          {leftTab === 'info' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
+
+              {/* Hero ROI */}
+              <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
+                <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roi != null ? roiColor : colors.secondary, lineHeight: 1 }}>
+                  {roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                  <div style={{ flex: 1, height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      width: barsReady && roi != null ? `${Math.min(100, Math.max(0, roi * 100))}%` : '0%',
+                      background: roi != null ? roiColor : colors.border,
+                      transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    }} />
+                  </div>
+                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, flexShrink: 0 }}>
+                    {gainPositive ? '+' : ''}{fmtMXN(gain)}
+                  </span>
+                </div>
               </div>
-              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, flexShrink: 0 }}>
-                {gainPositive ? '+' : ''}{fmtMXN(gain)}
-              </span>
+
+              <StatRow label="INVERSIÓN" value={fmtMXN((field('totalInvestment') as number) ?? 0)} />
+              <StatRow label="VALORACIÓN" value={fmtMXN((field('currentValuation') as number) ?? 0)} />
+              <StatRow label="PLAZO" value={project.holdMonthsActual ? `${project.holdMonthsActual} meses` : '—'} />
+              <StatRow label="UNIDADES" value={field('totalUnits') as React.ReactNode} />
+              <StatRow label="TIPO" value={field('type') as React.ReactNode} />
+
+              {divider('FECHAS')}
+              <StatRow label="ADQUISICIÓN" value={field('acquisitionDate') as React.ReactNode} />
+              {project.conclusionDate && (
+                <StatRow
+                  label={['flip', 'land'].includes(project.type) ? 'FECHA DE VENTA' : 'PRIMERA RENTA'}
+                  value={field('conclusionDate') as React.ReactNode}
+                />
+              )}
+              {project.valuationDate && <StatRow label="VALUACIÓN" value={field('valuationDate') as React.ReactNode} />}
+
+              {divider('UBICACIÓN')}
+              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{field('address') as string}</div>
+              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>{field('city') as string}</div>
+
+              {/* Presupuesto */}
+              {Object.keys(budget).length > 0 && (
+                <>
+                  {divider('PRESUPUESTO')}
+                  <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>
+                    {fmtMXN(budgetTotal)}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {Object.entries(budget).sort(([, a], [, b]) => b - a).map(([cat, amount], i) => {
+                      const pct = budgetTotal > 0 ? (amount / budgetTotal) * 100 : 0
+                      return (
+                        <div key={cat}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                            <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>
+                              {cat.toUpperCase()}
+                            </span>
+                            <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(amount)}</span>
+                          </div>
+                          <div style={{ height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
+                            <div style={{
+                              height: '100%',
+                              width: barsReady ? `${pct}%` : '0%',
+                              background: barColors[i % barColors.length],
+                              borderRadius: '2px',
+                              transition: `width 0.9s cubic-bezier(0.4, 0, 0.2, 1) ${i * 70}ms`,
+                            }} />
+                          </div>
+                          <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.border, marginTop: '3px', textAlign: 'right' }}>
+                            {pct.toFixed(0)}%
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+
+              {/* Hitos */}
+              {milestoneEntries.length > 0 && (
+                <div style={{ marginTop: Object.keys(budget).length > 0 ? '28px' : '0', paddingTop: Object.keys(budget).length > 0 ? '20px' : '0', borderTop: Object.keys(budget).length > 0 ? `1px solid ${colors.border}` : 'none' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '16px' }}>HITOS</div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {milestoneEntries.map(([date, label], i) => (
+                      <div key={date} style={{ display: 'flex', gap: '14px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '8px' }}>
+                          <div style={{
+                            width: '8px', height: '8px', borderRadius: '50%',
+                            background: colors.primary,
+                            flexShrink: 0,
+                            boxShadow: `0 0 6px ${colors.primary}66`,
+                          }} />
+                          {i < milestoneEntries.length - 1 && (
+                            <div style={{ width: '1px', flex: 1, minHeight: '20px', background: colors.border }} />
+                          )}
+                        </div>
+                        <div style={{ paddingBottom: '16px' }}>
+                          <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.05em' }}>{date}</div>
+                          <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral, marginTop: '2px' }}>{label}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Notas */}
+              {project.notes && (
+                <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>NOTAS</div>
+                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>
+                    {project.notes}
+                  </div>
+                </div>
+              )}
+
+              {/* URL */}
+              {project.url && (
+                <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
+                  <a
+                    href={project.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary, textDecoration: 'none' }}
+                  >
+                    VER FUENTE ↗
+                  </a>
+                </div>
+              )}
+
+              {/* TAREAS */}
+              <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '24px', marginTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em' }}>TAREAS</span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      onClick={handleShowLinkTask}
+                      style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 10px' }}
+                    >
+                      {showLinkTask ? '✕' : 'LIGAR EXISTENTE'}
+                    </button>
+                    <button
+                      onClick={() => navigate(`/procesos/tareas?proyecto=${project.id}&tipo=proyecto`)}
+                      style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 10px' }}
+                    >
+                      + NUEVA TAREA
+                    </button>
+                  </div>
+                </div>
+
+                {/* Link picker */}
+                {showLinkTask && (() => {
+                  const linkedIds = new Set(instances.map(i => i.id))
+                  const available = allInstances.filter(i => !linkedIds.has(i.id))
+                  const iStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '5px 8px', outline: 'none', flex: 1 }
+                  return (
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', padding: '10px', background: colors.surface, border: `1px solid ${colors.border}` }}>
+                      <select value={linkTaskId} onChange={e => setLinkTaskId(e.target.value)} style={iStyle}>
+                        <option value="">— seleccionar tarea —</option>
+                        {available.map(i => (
+                          <option key={i.id} value={i.id}>{i.name}{i.projectName ? ` (${i.projectName})` : ''}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleLinkTask}
+                        disabled={!linkTaskId || linkingTask}
+                        style={{ background: linkTaskId ? colors.primary : colors.border, border: 'none', color: colors.neutral, cursor: linkTaskId ? 'pointer' : 'not-allowed', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '5px 14px', opacity: linkingTask ? 0.6 : 1 }}
+                      >
+                        {linkingTask ? '…' : 'LIGAR'}
+                      </button>
+                    </div>
+                  )
+                })()}
+
+                {instances.length === 0 ? (
+                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Sin tareas ligadas a este proyecto.</div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                        {['NOMBRE', 'TIPO', 'ESTADO', 'INICIO', ''].map(h => (
+                          <th key={h} style={{ padding: '5px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'left', letterSpacing: '0.1em' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {instances.map(inst => (
+                        <tr
+                          key={inst.id}
+                          style={{ borderBottom: `1px solid ${colors.border}` }}
+                        >
+                          <td
+                            style={{ padding: '6px 10px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, cursor: 'pointer' }}
+                            onClick={() => navigate(`/procesos/tareas/${inst.id}`)}
+                          >
+                            {inst.name}
+                          </td>
+                          <td style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.06em' }}>{inst.taskType.toUpperCase().replace('_', ' ')}</td>
+                          <td style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.06em', color: PROCESS_INSTANCE_STATUS_COLOR[inst.status] ?? colors.secondary }}>{inst.status.toUpperCase()}</td>
+                          <td style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{inst.startDate}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right' }}>
+                            <button
+                              onClick={() => handleUnlinkTask(inst)}
+                              style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '0 4px', opacity: 0.6 }}
+                              title="Desligar"
+                            >
+                              ✕
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
             </div>
-          </div>
-
-          <StatRow label="INVERSIÓN" value={fmtMXN((field('totalInvestment') as number) ?? 0)} />
-          <StatRow label="VALORACIÓN" value={fmtMXN((field('currentValuation') as number) ?? 0)} />
-          <StatRow label="PLAZO" value={project.holdMonthsActual ? `${project.holdMonthsActual} meses` : '—'} />
-          <StatRow label="UNIDADES" value={field('totalUnits') as React.ReactNode} />
-          <StatRow label="TIPO" value={field('type') as React.ReactNode} />
-
-          {divider('FECHAS')}
-          <StatRow label="ADQUISICIÓN" value={field('acquisitionDate') as React.ReactNode} />
-          {project.conclusionDate && (
-            <StatRow
-              label={['flip', 'land'].includes(project.type) ? 'FECHA DE VENTA' : 'PRIMERA RENTA'}
-              value={field('conclusionDate') as React.ReactNode}
-            />
           )}
-          {project.valuationDate && <StatRow label="VALUACIÓN" value={field('valuationDate') as React.ReactNode} />}
 
-          {divider('UBICACIÓN')}
-          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{field('address') as string}</div>
-          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>{field('city') as string}</div>
+          {/* ── EDITAR tab ── */}
+          {leftTab === 'editar' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
 
-          {divider('EDITAR')}
-          {([
-            { key: 'name', label: 'Nombre', type: 'text' },
-            { key: 'address', label: 'Dirección', type: 'text' },
-            { key: 'city', label: 'Ciudad', type: 'text' },
-          ] as const).map(({ key, label, type }) => (
-            <div key={key} style={{ marginBottom: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-              <input
-                value={(field(key as keyof Project) as string) ?? ''}
-                onChange={e => setField(key as keyof Project, e.target.value)}
-                type={type}
-                style={fieldInput}
-              />
-            </div>
-          ))}
-
-          <div style={{ marginBottom: '8px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>TIPO</div>
-            <select
-              value={(edits.type as string) ?? (project.type ?? '')}
-              onChange={e => setField('type', e.target.value)}
-              style={{ ...fieldInput, cursor: 'pointer' }}
-            >
-              <option value="">— sin tipo —</option>
-              {PROPERTY_TYPES.map(t => (
-                <option key={t} value={t}>{t}</option>
+              {([
+                { key: 'name', label: 'Nombre', type: 'text' },
+                { key: 'address', label: 'Dirección', type: 'text' },
+                { key: 'city', label: 'Ciudad', type: 'text' },
+              ] as const).map(({ key, label, type }) => (
+                <div key={key} style={{ marginBottom: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+                  <input
+                    value={(field(key as keyof Project) as string) ?? ''}
+                    onChange={e => setField(key as keyof Project, e.target.value)}
+                    type={type}
+                    style={fieldInput}
+                  />
+                </div>
               ))}
-            </select>
-          </div>
 
-          <div style={{ marginBottom: '8px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>ESTADO</div>
-            <select
-              value={(field('status') as string) ?? ''}
-              onChange={e => setField('status', e.target.value)}
-              style={{ ...fieldInput, cursor: 'pointer' }}
-            >
-              {Object.entries(PROJECT_STATUS_LABEL).map(([val, lbl]) => (
-                <option key={val} value={val}>{lbl}</option>
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>TIPO</div>
+                <select
+                  value={(edits.type as string) ?? (project.type ?? '')}
+                  onChange={e => setField('type', e.target.value)}
+                  style={{ ...fieldInput, cursor: 'pointer' }}
+                >
+                  <option value="">— sin tipo —</option>
+                  {PROPERTY_TYPES.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>ESTADO</div>
+                <select
+                  value={(field('status') as string) ?? ''}
+                  onChange={e => setField('status', e.target.value)}
+                  style={{ ...fieldInput, cursor: 'pointer' }}
+                >
+                  {Object.entries(PROJECT_STATUS_LABEL).map(([val, lbl]) => (
+                    <option key={val} value={val}>{lbl}</option>
+                  ))}
+                </select>
+              </div>
+
+              {([
+                { key: 'totalInvestment', label: 'Inversión ($)' },
+                { key: 'currentValuation', label: 'Valoración ($)' },
+                { key: 'totalUnits', label: 'Unidades' },
+              ] as const).map(({ key, label }) => (
+                <div key={key} style={{ marginBottom: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+                  <NumericInput
+                    value={(field(key as keyof Project) as number) || undefined}
+                    onChange={n => setField(key as keyof Project, n ?? 0)}
+                    style={fieldInput}
+                  />
+                </div>
               ))}
-            </select>
-          </div>
 
-          {([
-            { key: 'totalInvestment', label: 'Inversión ($)' },
-            { key: 'currentValuation', label: 'Valoración ($)' },
-            { key: 'totalUnits', label: 'Unidades' },
-          ] as const).map(({ key, label }) => (
-            <div key={key} style={{ marginBottom: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-              <input
-                value={(field(key as keyof Project) as number) ?? ''}
-                onChange={e => setField(key as keyof Project, Number(e.target.value))}
-                type="number"
-                style={fieldInput}
-              />
+              {([
+                { key: 'acquisitionDate' as keyof Project, label: 'Adquisición (YYYY-MM)' },
+                { key: 'conclusionDate' as keyof Project, label: (['flip', 'land'].includes(field('type') as string) ? 'Fecha de venta (YYYY-MM)' : 'Primera renta (YYYY-MM)') },
+                { key: 'valuationDate' as keyof Project, label: 'Valuación (YYYY-MM)' },
+              ]).map(({ key, label }) => (
+                <div key={key} style={{ marginBottom: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+                  <input
+                    value={(field(key) as string) ?? ''}
+                    onChange={e => setField(key, e.target.value)}
+                    type="text"
+                    placeholder="YYYY-MM"
+                    style={fieldInput}
+                  />
+                </div>
+              ))}
+
+              <div style={{ marginBottom: '8px' }}>
+                <LatLonPicker
+                  lat={Number(field('latitude')) || 0}
+                  lon={Number(field('longitude')) || 0}
+                  onChange={(newLat, newLon) => {
+                    setField('latitude', newLat)
+                    setField('longitude', newLon)
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
+                <textarea
+                  value={(field('notes') as string) ?? ''}
+                  onChange={e => setField('notes', e.target.value)}
+                  rows={3}
+                  style={{ ...fieldInput, resize: 'vertical' }}
+                />
+              </div>
+
+              {error && (
+                <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginTop: '8px' }}>{error}</div>
+              )}
+
             </div>
-          ))}
-
-          {([
-            { key: 'acquisitionDate' as keyof Project, label: 'Adquisición (YYYY-MM)' },
-            { key: 'conclusionDate' as keyof Project, label: (['flip', 'land'].includes(field('type') as string) ? 'Fecha de venta (YYYY-MM)' : 'Primera renta (YYYY-MM)') },
-            { key: 'valuationDate' as keyof Project, label: 'Valuación (YYYY-MM)' },
-          ]).map(({ key, label }) => (
-            <div key={key} style={{ marginBottom: '8px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-              <input
-                value={(field(key) as string) ?? ''}
-                onChange={e => setField(key, e.target.value)}
-                type="text"
-                placeholder="YYYY-MM"
-                style={fieldInput}
-              />
-            </div>
-          ))}
-
-          <div style={{ marginBottom: '8px' }}>
-            <LatLonPicker
-              lat={Number(field('latitude')) || 0}
-              lon={Number(field('longitude')) || 0}
-              onChange={(newLat, newLon) => {
-                setField('latitude', newLat)
-                setField('longitude', newLon)
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '8px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
-            <textarea
-              value={(field('notes') as string) ?? ''}
-              onChange={e => setField('notes', e.target.value)}
-              rows={3}
-              style={{ ...fieldInput, resize: 'vertical' }}
-            />
-          </div>
-
-          {error && (
-            <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginTop: '8px' }}>{error}</div>
           )}
+
+          {/* ── FINANZAS tab ── */}
+          {leftTab === 'finanzas' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
+
+              {/* FLUJO FINANCIERO */}
+              {waterfall && (() => {
+                const isrPct = waterfall.operatorGross > 0 ? Math.round(waterfall.isr / waterfall.operatorGross * 100) : 0
+                const rowS: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${colors.border}` }
+                const lblS: React.CSSProperties = { fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }
+                const valS: React.CSSProperties = { fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }
+                const totLblS: React.CSSProperties = { fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.neutral }
+                const totValS: React.CSSProperties = { fontFamily: fonts.sans, fontSize: '12px', color: colors.primary, fontWeight: 700 }
+                return (
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>FLUJO FINANCIERO</div>
+                    <div style={rowS}><span style={lblS}>PRECIO DE SALIDA</span><span style={valS}>{fmtMXN(waterfall.exitPrice)}</span></div>
+                    <div style={rowS}><span style={lblS}>− INVERSIÓN TOTAL</span><span style={valS}>{fmtMXN(waterfall.investment)}</span></div>
+                    <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA BRUTA</span><span style={valS}>{fmtMXN(waterfall.grossProfit)}</span></div>
+                    <div style={rowS}><span style={lblS}>− CUOTA INVERSORES</span><span style={valS}>{fmtMXN(waterfall.investorCuota)}</span></div>
+                    <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA OPERADOR</span><span style={valS}>{fmtMXN(waterfall.operatorGross)}</span></div>
+                    <div style={rowS}><span style={lblS}>− ISR ({isrPct}%)</span><span style={valS}>{fmtMXN(waterfall.isr)}</span></div>
+                    <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px', borderBottom: 'none' }}><span style={totLblS}>DISTRIBUIBLE</span><span style={totValS}>{fmtMXN(waterfall.distributable)}</span></div>
+                  </div>
+                )
+              })()}
+
+              {/* INVERSIONISTAS */}
+              <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em' }}>
+                    INVERSIONISTAS{waterfall ? ` (${waterfall.months} meses)` : ''}
+                  </span>
+                  <button
+                    onClick={() => { setShowAddInvestor(v => !v); setEditingId(null) }}
+                    style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: '2px 8px' }}
+                  >
+                    {showAddInvestor ? '✕' : '+ AGREGAR'}
+                  </button>
+                </div>
+
+                {/* Add form */}
+                {showAddInvestor && (() => {
+                  const iStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 6px', outline: 'none' }
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px', padding: '10px', background: colors.surface, border: `1px solid ${colors.border}` }}>
+                      <select value={addInvestorId} onChange={e => setAddInvestorId(e.target.value)} style={iStyle}>
+                        <option value="">— seleccionar inversionista —</option>
+                        {allInvestors.map(inv => <option key={inv.id} value={inv.id}>{[inv.name, inv.apellidos].filter(Boolean).join(' ')}</option>)}
+                      </select>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 60px 120px', gap: '6px' }}>
+                        {([['Fondeado', addFunded, setAddFunded], ['Interesado', addInterested, setAddInterested]] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
+                          <div key={label}>
+                            <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+                            <input type="number" value={val} onChange={e => setter(e.target.value)} placeholder="0" style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
+                          </div>
+                        ))}
+                        <div>
+                          <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>TASA %</div>
+                          <input type="number" value={addRate} onChange={e => setAddRate(e.target.value)} style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>FECHA INVERSIÓN</div>
+                          <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)} style={{ ...iStyle, width: '100%', boxSizing: 'border-box' }} />
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleAddInvestor}
+                        disabled={!addInvestorId || addingInvestor}
+                        style={{ background: !addInvestorId ? colors.border : colors.primary, border: 'none', color: colors.neutral, cursor: !addInvestorId ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '5px 12px', opacity: addingInvestor ? 0.6 : 1 }}
+                      >
+                        {addingInvestor ? 'GUARDANDO…' : 'AGREGAR'}
+                      </button>
+                    </div>
+                  )
+                })()}
+
+                {/* Investments table */}
+                {projectInvestors.length === 0 && !showAddInvestor ? (
+                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Sin inversionistas registrados.</div>
+                ) : (() => {
+                  const eStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 5px', outline: 'none', width: '60px', textAlign: 'right' }
+
+                  const totalsById: Record<number, { name: string; funded: number; cuota: number; total: number }> = {}
+                  for (const pi of projectInvestors) {
+                    if (!totalsById[pi.investorId]) totalsById[pi.investorId] = { name: pi.investorName, funded: 0, cuota: 0, total: 0 }
+                    totalsById[pi.investorId].funded += pi.fundedAmount
+                    totalsById[pi.investorId].cuota += pi.interestAmount
+                    totalsById[pi.investorId].total += pi.expectedReturn
+                  }
+                  const multipleInvestors = Object.keys(totalsById).length > 1 || projectInvestors.length > 1
+
+                  return (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                          {(['NOMBRE', 'FECHA', 'FONDEADO', 'TASA', 'CUOTA', 'TOTAL', 'RET %', 'PAGADO', 'ESTADO', ''] as string[]).map(h => (
+                            <th key={h} style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, textAlign: h === 'NOMBRE' || h === 'FECHA' ? 'left' : 'right', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectInvestors.map(pi => {
+                          const isEditing = editingId === pi.id
+                          const isSaving = savingId === pi.id
+                          return (
+                            <tr key={pi.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                              <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, whiteSpace: 'nowrap' }}>{pi.investorName}</td>
+                              {isEditing ? (
+                                <>
+                                  <td style={{ padding: '4px 5px' }}><input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} style={{ ...eStyle, width: '110px', textAlign: 'left' }} /></td>
+                                  <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editFunded} onChange={e => setEditFunded(e.target.value)} style={eStyle} /></td>
+                                  <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editRate} onChange={e => setEditRate(e.target.value)} style={{ ...eStyle, width: '44px' }} /></td>
+                                  <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
+                                  <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
+                                  <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
+                                  <td style={{ padding: '4px 5px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <input type="number" value={editReturnAmount} onChange={e => setEditReturnAmount(e.target.value)} placeholder="Monto" style={{ ...eStyle, width: '70px' }} />
+                                      <input type="date" value={editReturnDate} onChange={e => setEditReturnDate(e.target.value)} style={{ ...eStyle, width: '110px', textAlign: 'left' }} />
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
+                                  <td style={{ padding: '4px 5px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                    <button onClick={() => handleSaveEditInvestment(pi.id)} disabled={isSaving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 7px', marginRight: '3px', opacity: isSaving ? 0.6 : 1 }}>{isSaving ? '…' : 'OK'}</button>
+                                    <button onClick={() => setEditingId(null)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '2px 5px' }}>✕</button>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  {(() => {
+                                    const paid = pi.returnAmount ?? 0
+                                    const estado = paid <= 0 ? 'PENDIENTE' : paid >= pi.expectedReturn ? 'LIQUIDADO' : 'PARCIAL'
+                                    const estadoColor = paid <= 0 ? colors.secondary : paid >= pi.expectedReturn ? colors.primary : '#c8a000'
+                                    return (
+                                      <>
+                                        <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '10px', color: colors.secondary }}>{pi.investmentDate ?? '—'}</td>
+                                        <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.fundedAmount) : '—'}</td>
+                                        <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{Math.round(pi.interestRateAnnual * 100)}%</td>
+                                        <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.interestAmount) : '—'}</td>
+                                        <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.expectedReturn) : '—'}</td>
+                                        <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? `${pi.returnPct.toFixed(1)}%` : '—'}</td>
+                                        <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.returnAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>
+                                          {pi.returnAmount ? fmtMXN(pi.returnAmount) : '—'}
+                                          {pi.returnDate && <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary }}>{pi.returnDate}</div>}
+                                        </td>
+                                        <td style={{ padding: '5px 5px', textAlign: 'right' }}>
+                                          <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.08em', color: estadoColor }}>{estado}</span>
+                                        </td>
+                                        <td style={{ padding: '5px 5px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                          {estado !== 'LIQUIDADO' && pi.fundedAmount > 0 && (
+                                            <button onClick={() => handleLiquidarInvestment(pi)} disabled={savingId === pi.id} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.05em', padding: '2px 6px', marginRight: '3px', opacity: savingId === pi.id ? 0.6 : 1 }}>LIQUIDAR</button>
+                                          )}
+                                          <button onClick={() => startEditInvestor(pi)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.05em', padding: '2px 6px', marginRight: '3px' }}>EDITAR</button>
+                                          <button onClick={() => handleRemoveInvestment(pi.id)} style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '0 2px' }}>✕</button>
+                                        </td>
+                                      </>
+                                    )
+                                  })()}
+                                </>
+                              )}
+                            </tr>
+                          )
+                        })}
+                        {/* Accumulated totals row */}
+                        {multipleInvestors && (
+                          <tr style={{ borderTop: `1px solid ${colors.border}`, background: colors.surface }}>
+                            <td colSpan={2} style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>TOTAL ACUMULADO</td>
+                            <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '10px', color: colors.primary, textAlign: 'right' }}>
+                              {fmtMXN(Object.values(totalsById).reduce((s, t) => s + t.funded, 0))}
+                            </td>
+                            <td />
+                            <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '10px', color: colors.neutral, textAlign: 'right' }}>
+                              {fmtMXN(Object.values(totalsById).reduce((s, t) => s + t.cuota, 0))}
+                            </td>
+                            <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '10px', color: colors.neutral, textAlign: 'right' }}>
+                              {fmtMXN(Object.values(totalsById).reduce((s, t) => s + t.total, 0))}
+                            </td>
+                            <td /><td /><td /><td />
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )
+                })()}
+              </div>
+
+              {/* GANANCIA / PROFIT */}
+              <ProjectProfitSection
+                projectId={project.id}
+                team={team}
+                showWaterfall={false}
+                showInvestorBreakdown={false}
+                onWaterfallChange={w => setWaterfall(w)}
+              />
+
+            </div>
+          )}
+
         </div>
 
         {/* ── CENTER: Mapa / Fotos ── */}
@@ -555,413 +957,7 @@ export function ProjectDetailPage() {
           )}
         </div>
 
-        {/* ── RIGHT: Tabbed (PROYECTO / FINANZAS) ── */}
-        <div style={{
-          ...fade(240),
-          borderLeft: `1px solid ${colors.border}`,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-
-          {/* Tab bar */}
-          <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
-            {(['proyecto', 'finanzas'] as const).map(tab => (
-              <button key={tab} onClick={() => setRightTab(tab)} style={{
-                background: 'transparent', border: 'none',
-                borderBottom: rightTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
-                color: rightTab === tab ? colors.neutral : colors.secondary,
-                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
-                letterSpacing: '0.12em', padding: '10px 16px 8px', marginBottom: '-1px',
-              }}>
-                {tab.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          {/* Scrollable content */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
-
-          {/* ── PROYECTO tab ── */}
-          {rightTab === 'proyecto' && (<>
-
-          {/* Presupuesto */}
-          {Object.keys(budget).length > 0 && (
-            <>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '6px' }}>PRESUPUESTO</div>
-              <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>
-                {fmtMXN(budgetTotal)}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {Object.entries(budget).sort(([, a], [, b]) => b - a).map(([cat, amount], i) => {
-                  const pct = budgetTotal > 0 ? (amount / budgetTotal) * 100 : 0
-                  return (
-                    <div key={cat}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                        <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>
-                          {cat.toUpperCase()}
-                        </span>
-                        <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(amount)}</span>
-                      </div>
-                      <div style={{ height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
-                        <div style={{
-                          height: '100%',
-                          width: barsReady ? `${pct}%` : '0%',
-                          background: barColors[i % barColors.length],
-                          borderRadius: '2px',
-                          transition: `width 0.9s cubic-bezier(0.4, 0, 0.2, 1) ${i * 70}ms`,
-                        }} />
-                      </div>
-                      <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.border, marginTop: '3px', textAlign: 'right' }}>
-                        {pct.toFixed(0)}%
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )}
-
-          {/* Hitos */}
-          {milestoneEntries.length > 0 && (
-            <div style={{ marginTop: Object.keys(budget).length > 0 ? '28px' : '0', paddingTop: Object.keys(budget).length > 0 ? '20px' : '0', borderTop: Object.keys(budget).length > 0 ? `1px solid ${colors.border}` : 'none' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '16px' }}>HITOS</div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {milestoneEntries.map(([date, label], i) => (
-                  <div key={date} style={{ display: 'flex', gap: '14px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '8px' }}>
-                      <div style={{
-                        width: '8px', height: '8px', borderRadius: '50%',
-                        background: colors.primary,
-                        flexShrink: 0,
-                        boxShadow: `0 0 6px ${colors.primary}66`,
-                      }} />
-                      {i < milestoneEntries.length - 1 && (
-                        <div style={{ width: '1px', flex: 1, minHeight: '20px', background: colors.border }} />
-                      )}
-                    </div>
-                    <div style={{ paddingBottom: '16px' }}>
-                      <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.05em' }}>{date}</div>
-                      <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral, marginTop: '2px' }}>{label}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Notas */}
-          {project.notes && (
-            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>NOTAS</div>
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>
-                {project.notes}
-              </div>
-            </div>
-          )}
-
-          {/* URL */}
-          {project.url && (
-            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-              <a
-                href={project.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary, textDecoration: 'none' }}
-              >
-                VER FUENTE ↗
-              </a>
-            </div>
-          )}
-
-          {/* TAREAS */}
-          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '24px', marginTop: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em' }}>TAREAS</span>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  onClick={handleShowLinkTask}
-                  style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 10px' }}
-                >
-                  {showLinkTask ? '✕' : 'LIGAR EXISTENTE'}
-                </button>
-                <button
-                  onClick={() => navigate(`/procesos/tareas?proyecto=${project.id}&tipo=proyecto`)}
-                  style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 10px' }}
-                >
-                  + NUEVA TAREA
-                </button>
-              </div>
-            </div>
-
-            {/* Link picker */}
-            {showLinkTask && (() => {
-              const linkedIds = new Set(instances.map(i => i.id))
-              const available = allInstances.filter(i => !linkedIds.has(i.id))
-              const iStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '5px 8px', outline: 'none', flex: 1 }
-              return (
-                <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', padding: '10px', background: colors.surface, border: `1px solid ${colors.border}` }}>
-                  <select value={linkTaskId} onChange={e => setLinkTaskId(e.target.value)} style={iStyle}>
-                    <option value="">— seleccionar tarea —</option>
-                    {available.map(i => (
-                      <option key={i.id} value={i.id}>{i.name}{i.projectName ? ` (${i.projectName})` : ''}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={handleLinkTask}
-                    disabled={!linkTaskId || linkingTask}
-                    style={{ background: linkTaskId ? colors.primary : colors.border, border: 'none', color: colors.neutral, cursor: linkTaskId ? 'pointer' : 'not-allowed', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '5px 14px', opacity: linkingTask ? 0.6 : 1 }}
-                  >
-                    {linkingTask ? '…' : 'LIGAR'}
-                  </button>
-                </div>
-              )
-            })()}
-
-            {instances.length === 0 ? (
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Sin tareas ligadas a este proyecto.</div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                    {['NOMBRE', 'TIPO', 'ESTADO', 'INICIO', ''].map(h => (
-                      <th key={h} style={{ padding: '5px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'left', letterSpacing: '0.1em' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {instances.map(inst => (
-                    <tr
-                      key={inst.id}
-                      style={{ borderBottom: `1px solid ${colors.border}` }}
-                    >
-                      <td
-                        style={{ padding: '6px 10px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, cursor: 'pointer' }}
-                        onClick={() => navigate(`/procesos/tareas/${inst.id}`)}
-                      >
-                        {inst.name}
-                      </td>
-                      <td style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.06em' }}>{inst.taskType.toUpperCase().replace('_', ' ')}</td>
-                      <td style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.06em', color: PROCESS_INSTANCE_STATUS_COLOR[inst.status] ?? colors.secondary }}>{inst.status.toUpperCase()}</td>
-                      <td style={{ padding: '6px 10px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{inst.startDate}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => handleUnlinkTask(inst)}
-                          style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '0 4px', opacity: 0.6 }}
-                          title="Desligar"
-                        >
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          </>)}
-
-          {/* ── FINANZAS tab ── */}
-          {rightTab === 'finanzas' && (<>
-
-          {/* FLUJO FINANCIERO */}
-          {waterfall && (() => {
-            const isrPct = waterfall.operatorGross > 0 ? Math.round(waterfall.isr / waterfall.operatorGross * 100) : 0
-            const rowS: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${colors.border}` }
-            const lblS: React.CSSProperties = { fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }
-            const valS: React.CSSProperties = { fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }
-            const totLblS: React.CSSProperties = { fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.neutral }
-            const totValS: React.CSSProperties = { fontFamily: fonts.sans, fontSize: '12px', color: colors.primary, fontWeight: 700 }
-            return (
-              <div style={{ marginBottom: '20px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>FLUJO FINANCIERO</div>
-                <div style={rowS}><span style={lblS}>PRECIO DE SALIDA</span><span style={valS}>{fmtMXN(waterfall.exitPrice)}</span></div>
-                <div style={rowS}><span style={lblS}>− INVERSIÓN TOTAL</span><span style={valS}>{fmtMXN(waterfall.investment)}</span></div>
-                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA BRUTA</span><span style={valS}>{fmtMXN(waterfall.grossProfit)}</span></div>
-                <div style={rowS}><span style={lblS}>− CUOTA INVERSORES</span><span style={valS}>{fmtMXN(waterfall.investorCuota)}</span></div>
-                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA OPERADOR</span><span style={valS}>{fmtMXN(waterfall.operatorGross)}</span></div>
-                <div style={rowS}><span style={lblS}>− ISR ({isrPct}%)</span><span style={valS}>{fmtMXN(waterfall.isr)}</span></div>
-                <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px', borderBottom: 'none' }}><span style={totLblS}>DISTRIBUIBLE</span><span style={totValS}>{fmtMXN(waterfall.distributable)}</span></div>
-              </div>
-            )
-          })()}
-
-          {/* INVERSIONISTAS */}
-          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em' }}>
-                INVERSIONISTAS{waterfall ? ` (${waterfall.months} meses)` : ''}
-              </span>
-              <button
-                onClick={() => { setShowAddInvestor(v => !v); setEditingId(null) }}
-                style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: '2px 8px' }}
-              >
-                {showAddInvestor ? '✕' : '+ AGREGAR'}
-              </button>
-            </div>
-
-            {/* Add form */}
-            {showAddInvestor && (() => {
-              const iStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 6px', outline: 'none' }
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px', padding: '10px', background: colors.surface, border: `1px solid ${colors.border}` }}>
-                  <select value={addInvestorId} onChange={e => setAddInvestorId(e.target.value)} style={iStyle}>
-                    <option value="">— seleccionar inversionista —</option>
-                    {allInvestors.map(inv => <option key={inv.id} value={inv.id}>{[inv.name, inv.apellidos].filter(Boolean).join(' ')}</option>)}
-                  </select>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 60px 120px', gap: '6px' }}>
-                    {([['Fondeado', addFunded, setAddFunded], ['Interesado', addInterested, setAddInterested]] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
-                      <div key={label}>
-                        <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-                        <input type="number" value={val} onChange={e => setter(e.target.value)} placeholder="0" style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
-                      </div>
-                    ))}
-                    <div>
-                      <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>TASA %</div>
-                      <input type="number" value={addRate} onChange={e => setAddRate(e.target.value)} style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                      <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>FECHA INVERSIÓN</div>
-                      <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)} style={{ ...iStyle, width: '100%', boxSizing: 'border-box' }} />
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleAddInvestor}
-                    disabled={!addInvestorId || addingInvestor}
-                    style={{ background: !addInvestorId ? colors.border : colors.primary, border: 'none', color: colors.neutral, cursor: !addInvestorId ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '5px 12px', opacity: addingInvestor ? 0.6 : 1 }}
-                  >
-                    {addingInvestor ? 'GUARDANDO…' : 'AGREGAR'}
-                  </button>
-                </div>
-              )
-            })()}
-
-            {/* Investments table: NOMBRE | FECHA | FONDEADO | TASA | CUOTA | TOTAL | RET % | PAGADO | ESTADO | actions */}
-            {projectInvestors.length === 0 && !showAddInvestor ? (
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Sin inversionistas registrados.</div>
-            ) : (() => {
-              const eStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 5px', outline: 'none', width: '60px', textAlign: 'right' }
-
-              // Accumulated totals per investor for the summary row
-              const totalsById: Record<number, { name: string; funded: number; cuota: number; total: number }> = {}
-              for (const pi of projectInvestors) {
-                if (!totalsById[pi.investorId]) totalsById[pi.investorId] = { name: pi.investorName, funded: 0, cuota: 0, total: 0 }
-                totalsById[pi.investorId].funded += pi.fundedAmount
-                totalsById[pi.investorId].cuota += pi.interestAmount
-                totalsById[pi.investorId].total += pi.expectedReturn
-              }
-              const multipleInvestors = Object.keys(totalsById).length > 1 || projectInvestors.length > 1
-
-              return (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                      {(['NOMBRE', 'FECHA', 'FONDEADO', 'TASA', 'CUOTA', 'TOTAL', 'RET %', 'PAGADO', 'ESTADO', ''] as string[]).map(h => (
-                        <th key={h} style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, textAlign: h === 'NOMBRE' || h === 'FECHA' ? 'left' : 'right', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projectInvestors.map(pi => {
-                      const isEditing = editingId === pi.id
-                      const isSaving = savingId === pi.id
-                      return (
-                        <tr key={pi.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                          <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, whiteSpace: 'nowrap' }}>{pi.investorName}</td>
-                          {isEditing ? (
-                            <>
-                              <td style={{ padding: '4px 5px' }}><input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} style={{ ...eStyle, width: '110px', textAlign: 'left' }} /></td>
-                              <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editFunded} onChange={e => setEditFunded(e.target.value)} style={eStyle} /></td>
-                              <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editRate} onChange={e => setEditRate(e.target.value)} style={{ ...eStyle, width: '44px' }} /></td>
-                              <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
-                              <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
-                              <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
-                              <td style={{ padding: '4px 5px' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                  <input type="number" value={editReturnAmount} onChange={e => setEditReturnAmount(e.target.value)} placeholder="Monto" style={{ ...eStyle, width: '70px' }} />
-                                  <input type="date" value={editReturnDate} onChange={e => setEditReturnDate(e.target.value)} style={{ ...eStyle, width: '110px', textAlign: 'left' }} />
-                                </div>
-                              </td>
-                              <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
-                              <td style={{ padding: '4px 5px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                <button onClick={() => handleSaveEditInvestment(pi.id)} disabled={isSaving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 7px', marginRight: '3px', opacity: isSaving ? 0.6 : 1 }}>{isSaving ? '…' : 'OK'}</button>
-                                <button onClick={() => setEditingId(null)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '2px 5px' }}>✕</button>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              {(() => {
-                                const paid = pi.returnAmount ?? 0
-                                const estado = paid <= 0 ? 'PENDIENTE' : paid >= pi.expectedReturn ? 'LIQUIDADO' : 'PARCIAL'
-                                const estadoColor = paid <= 0 ? colors.secondary : paid >= pi.expectedReturn ? colors.primary : '#c8a000'
-                                return (
-                                  <>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '10px', color: colors.secondary }}>{pi.investmentDate ?? '—'}</td>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.fundedAmount) : '—'}</td>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{Math.round(pi.interestRateAnnual * 100)}%</td>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.interestAmount) : '—'}</td>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.expectedReturn) : '—'}</td>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? `${pi.returnPct.toFixed(1)}%` : '—'}</td>
-                                    <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.returnAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>
-                                      {pi.returnAmount ? fmtMXN(pi.returnAmount) : '—'}
-                                      {pi.returnDate && <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary }}>{pi.returnDate}</div>}
-                                    </td>
-                                    <td style={{ padding: '5px 5px', textAlign: 'right' }}>
-                                      <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.08em', color: estadoColor }}>{estado}</span>
-                                    </td>
-                                    <td style={{ padding: '5px 5px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                      {estado !== 'LIQUIDADO' && pi.fundedAmount > 0 && (
-                                        <button onClick={() => handleLiquidarInvestment(pi)} disabled={savingId === pi.id} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.05em', padding: '2px 6px', marginRight: '3px', opacity: savingId === pi.id ? 0.6 : 1 }}>LIQUIDAR</button>
-                                      )}
-                                      <button onClick={() => startEditInvestor(pi)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.05em', padding: '2px 6px', marginRight: '3px' }}>EDITAR</button>
-                                      <button onClick={() => handleRemoveInvestment(pi.id)} style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '0 2px' }}>✕</button>
-                                    </td>
-                                  </>
-                                )
-                              })()}
-                            </>
-                          )}
-                        </tr>
-                      )
-                    })}
-                    {/* Accumulated totals row — shown when there are multiple investment rows */}
-                    {multipleInvestors && (
-                      <tr style={{ borderTop: `1px solid ${colors.border}`, background: colors.surface }}>
-                        <td colSpan={2} style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>TOTAL ACUMULADO</td>
-                        <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '10px', color: colors.primary, textAlign: 'right' }}>
-                          {fmtMXN(Object.values(totalsById).reduce((s, t) => s + t.funded, 0))}
-                        </td>
-                        <td />
-                        <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '10px', color: colors.neutral, textAlign: 'right' }}>
-                          {fmtMXN(Object.values(totalsById).reduce((s, t) => s + t.cuota, 0))}
-                        </td>
-                        <td style={{ padding: '5px 5px', fontFamily: fonts.label, fontSize: '10px', color: colors.neutral, textAlign: 'right' }}>
-                          {fmtMXN(Object.values(totalsById).reduce((s, t) => s + t.total, 0))}
-                        </td>
-                        <td /><td /><td /><td />
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              )
-            })()}
-          </div>
-
-          {/* GANANCIA / PROFIT */}
-          <ProjectProfitSection
-            projectId={project.id}
-            team={team}
-            showWaterfall={false}
-            showInvestorBreakdown={false}
-            onWaterfallChange={w => setWaterfall(w)}
-          />
-
-          </>)}
-
-          </div>
       </div>
     </div>
-  </div>
   )
 }

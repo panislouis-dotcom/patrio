@@ -2,13 +2,14 @@ import type React from 'react'
 import { colors, fonts } from './theme'
 
 export const fieldInput: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  borderBottom: `1px solid ${colors.border}`,
+  background: colors.surfaceAlt,
+  border: `1px solid ${colors.border}`,
+  borderRadius: '2px',
   color: colors.neutral,
   fontFamily: fonts.sans,
-  fontSize: '11px',
+  fontSize: '13px',
   outline: 'none',
-  padding: '2px 0',
+  padding: '6px 8px',
   width: '100%',
+  boxSizing: 'border-box',
 }
