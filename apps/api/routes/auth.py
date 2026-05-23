@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.auth import verify_password, hash_password, create_access_token, get_current_user
 from api.db import get_db
@@ -36,7 +36,7 @@ def me(current_user: dict = Depends(get_current_user)):
 
 class ChangePasswordRequest(BaseModel):
     currentPassword: str
-    newPassword: str
+    newPassword: str = Field(min_length=8)
 
 
 @router.post("/api/auth/change-password")

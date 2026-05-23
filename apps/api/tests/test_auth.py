@@ -40,6 +40,14 @@ def test_token_contains_correct_email():
 
 
 @pytest.fixture(autouse=True)
+def clear_auth_bypass():
+    """This file tests the real auth mechanism — bypass must be off."""
+    from api.main import app
+    app.dependency_overrides.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def seed_test_user():
     with get_db() as conn:
         conn.execute("DELETE FROM users WHERE email = %s", (TEST_EMAIL,))
@@ -93,3 +101,34 @@ def test_protected_route_with_valid_token_returns_200():
     ).json()["access_token"]
     res = client.get("/api/team", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 200
+
+
+def test_change_password_success():
+    token = client.post("/api/auth/login", json={"email": TEST_EMAIL, "password": TEST_PW}).json()["access_token"]
+    res = client.post(
+        "/api/auth/change-password",
+        json={"currentPassword": TEST_PW, "newPassword": "newpass123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 200
+    assert res.json() == {"ok": True}
+
+
+def test_change_password_wrong_current():
+    token = client.post("/api/auth/login", json={"email": TEST_EMAIL, "password": TEST_PW}).json()["access_token"]
+    res = client.post(
+        "/api/auth/change-password",
+        json={"currentPassword": "wrongpassword", "newPassword": "newpass123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 400
+
+
+def test_change_password_too_short():
+    token = client.post("/api/auth/login", json={"email": TEST_EMAIL, "password": TEST_PW}).json()["access_token"]
+    res = client.post(
+        "/api/auth/change-password",
+        json={"currentPassword": TEST_PW, "newPassword": "short"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 422

@@ -1,79 +1,5 @@
 """Integration tests for prospects and projects routes against real PostgreSQL DB."""
-import pytest
-from fastapi.testclient import TestClient
-
 from api.db import get_db
-
-
-@pytest.fixture(autouse=True)
-def bypass_auth():
-    from api.main import app
-    from api.auth import get_current_user
-    app.dependency_overrides[get_current_user] = lambda: {"id": 1, "email": "test@test.com"}
-    yield
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def client():
-    from api.main import app
-    return TestClient(app)
-
-
-@pytest.fixture
-def test_prospect(client):
-    """Create a test prospect via API and delete it from DB after the test."""
-    r = client.post("/api/prospects", json={
-        "name":         "[TEST] Lote Prueba",
-        "address":      "Calle Test 123, Monterrey",
-        "city":         "Monterrey",
-        "status":       "evaluating",
-        "holdMonths":   18,
-        "rentMonthly":  18000,
-    })
-    assert r.status_code == 201
-    prospect = r.json()
-    yield prospect
-    with get_db() as conn:
-        conn.execute("DELETE FROM prospects WHERE id = %s", (prospect["id"],))
-
-
-@pytest.fixture
-def test_project(client):
-    """Create a test project via API and delete it from DB after the test."""
-    r = client.post("/api/projects", json={
-        "name":             "[TEST] Edificio Prueba",
-        "type":             "ground_up",
-        "address":          "Av. Test 100, Monterrey",
-        "city":             "Monterrey",
-        "status":           "construction",
-        "totalUnits":       4,
-        "acquisitionDate":  "2025-01",
-        "conclusionDate":   "2026-06",
-        "totalInvestment":  5000000,
-        "currentValuation": 5000000,
-        "valuationDate":    "2026-01",
-    })
-    assert r.status_code == 201
-    project = r.json()
-    yield project
-    with get_db() as conn:
-        conn.execute("DELETE FROM projects WHERE id = %s", (project["id"],))
-
-
-@pytest.fixture
-def test_project_image(test_project):
-    """Insert a fake image row (no filesystem dependency) and clean up after."""
-    with get_db() as conn:
-        row = conn.execute(
-            "INSERT INTO project_images (project_id, file_path, file_name, content_type)"
-            " VALUES (%s, %s, %s, %s) RETURNING id",
-            (test_project['id'], f"projects/{test_project['id']}/fake.jpg", 'fake.jpg', 'image/jpeg'),
-        ).fetchone()
-    image_id = row['id']
-    yield {'id': image_id, 'project_id': test_project['id']}
-    with get_db() as conn:
-        conn.execute("DELETE FROM project_images WHERE id = %s", (image_id,))
 
 
 # ── Prospects ─────────────────────────────────────────────────────────────────
@@ -159,6 +85,13 @@ def test_post_creates_new_prospect(client):
         conn.execute("DELETE FROM prospects WHERE id = %s", (data["id"],))
 
 
+def test_delete_prospect(client, test_prospect):
+    r = client.delete(f"/api/prospects/{test_prospect['id']}")
+    assert r.status_code == 204
+    r2 = client.get(f"/api/prospects/{test_prospect['id']}")
+    assert r2.status_code == 404
+
+
 # ── Projects ──────────────────────────────────────────────────────────────────
 
 def test_get_projects_returns_list(client, test_project):
@@ -237,6 +170,13 @@ def test_post_creates_new_project(client):
     # Cleanup
     with get_db() as conn:
         conn.execute("DELETE FROM projects WHERE id = %s", (data["id"],))
+
+
+def test_delete_project(client, test_project):
+    r = client.delete(f"/api/projects/{test_project['id']}")
+    assert r.status_code == 204
+    r2 = client.get(f"/api/projects/{test_project['id']}")
+    assert r2.status_code == 404
 
 
 # ── Project image type ────────────────────────────────────────────────────────

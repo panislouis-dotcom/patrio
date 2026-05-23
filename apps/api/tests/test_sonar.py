@@ -6,15 +6,6 @@ from scraper.base import SignalRaw
 
 
 @pytest.fixture(autouse=True)
-def bypass_auth():
-    from api.main import app
-    from api.auth import get_current_user
-    app.dependency_overrides[get_current_user] = lambda: {"id": 1, "email": "test@test.com"}
-    yield
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture(autouse=True)
 def mock_sonar_db():
     """Prevent sonar SSE tests from hitting the real DB."""
     with patch("api.routes.sonar.sonar_db.create_scan", return_value=1), \

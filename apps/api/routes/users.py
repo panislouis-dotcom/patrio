@@ -1,6 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from api.auth import get_current_user, hash_password
 from api.config import ADMIN_EMAIL
 from api.db import get_db
@@ -10,7 +10,7 @@ router = APIRouter()
 
 class UserCreate(BaseModel):
     email: str
-    password: str
+    password: str = Field(min_length=8)
 
 
 class UserUpdate(BaseModel):

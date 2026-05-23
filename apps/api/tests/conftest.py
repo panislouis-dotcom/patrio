@@ -88,3 +88,79 @@ def _bootstrap_test_db() -> None:
 
 
 _bootstrap_test_db()
+
+# ── Shared fixtures ───────────────────────────────────────────────────────────
+import pytest
+from fastapi.testclient import TestClient
+from api.db import get_db
+
+
+@pytest.fixture(autouse=True)
+def bypass_auth():
+    from api.main import app
+    from api.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: {"id": 1, "email": "test@test.com"}
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client():
+    from api.main import app
+    return TestClient(app)
+
+
+@pytest.fixture
+def test_prospect(client):
+    r = client.post("/api/prospects", json={
+        "name": "[TEST] Lote Prueba",
+        "address": "Calle Test 123, Monterrey",
+        "city": "Monterrey",
+        "status": "evaluating",
+        "holdMonths": 18,
+        "rentMonthly": 18000,
+    })
+    assert r.status_code == 201
+    prospect = r.json()
+    yield prospect
+    with get_db() as conn:
+        conn.execute("DELETE FROM analysis_snapshots WHERE prospect_id = %s", (prospect["id"],))
+        conn.execute("DELETE FROM prospects WHERE id = %s", (prospect["id"],))
+
+
+@pytest.fixture
+def test_project(client):
+    r = client.post("/api/projects", json={
+        "name": "[TEST] Edificio Prueba",
+        "type": "ground_up",
+        "address": "Av. Test 100, Monterrey",
+        "city": "Monterrey",
+        "status": "construction",
+        "totalUnits": 4,
+        "acquisitionDate": "2025-01",
+        "conclusionDate": "2026-06",
+        "totalInvestment": 5000000,
+        "currentValuation": 5000000,
+        "valuationDate": "2026-01",
+    })
+    assert r.status_code == 201
+    project = r.json()
+    yield project
+    with get_db() as conn:
+        conn.execute("DELETE FROM profit_split_config WHERE project_id = %s", (project["id"],))
+        conn.execute("DELETE FROM projects WHERE id = %s", (project["id"],))
+
+
+@pytest.fixture
+def test_project_image(test_project):
+    """Insert a fake image row (no filesystem dependency) and clean up after."""
+    with get_db() as conn:
+        row = conn.execute(
+            "INSERT INTO project_images (project_id, file_path, file_name, content_type)"
+            " VALUES (%s, %s, %s, %s) RETURNING id",
+            (test_project['id'], f"projects/{test_project['id']}/fake.jpg", 'fake.jpg', 'image/jpeg'),
+        ).fetchone()
+    image_id = row['id']
+    yield {'id': image_id, 'project_id': test_project['id']}
+    with get_db() as conn:
+        conn.execute("DELETE FROM project_images WHERE id = %s", (image_id,))
