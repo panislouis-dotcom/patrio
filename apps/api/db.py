@@ -190,11 +190,12 @@ def get_project_images(project_id: int) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
-def add_project_image(project_id: int, file_path: str, file_name: str, content_type: str) -> dict:
+def add_project_image(project_id: int, file_path: str, file_name: str, content_type: str, image_type: str = 'antes') -> dict:
     with get_db() as conn:
         row = conn.execute(
-            "INSERT INTO project_images (project_id, file_path, file_name, content_type) VALUES (%s, %s, %s, %s) RETURNING *",
-            (project_id, file_path, file_name, content_type),
+            "INSERT INTO project_images (project_id, file_path, file_name, content_type, image_type)"
+            " VALUES (%s, %s, %s, %s, %s) RETURNING *",
+            (project_id, file_path, file_name, content_type, image_type),
         ).fetchone()
     return _row_to_dict(row)
 
@@ -207,6 +208,18 @@ def delete_project_image(image_id: int, project_id: int) -> None:
         )
         if result.rowcount == 0:
             raise ValueError(f"Image {image_id} not found for project {project_id}")
+
+
+def update_project_image_type(image_id: int, project_id: int, image_type: str) -> dict:
+    with get_db() as conn:
+        row = conn.execute(
+            "UPDATE project_images SET image_type = %s"
+            " WHERE id = %s AND project_id = %s RETURNING *",
+            (image_type, image_id, project_id),
+        ).fetchone()
+    if row is None:
+        raise ValueError(f"Image {image_id} not found for project {project_id}")
+    return _row_to_dict(row)
 
 
 def update_prospect(prospect_id: int, data: dict) -> dict | None:

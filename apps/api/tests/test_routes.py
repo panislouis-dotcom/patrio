@@ -61,6 +61,21 @@ def test_project(client):
         conn.execute("DELETE FROM projects WHERE id = %s", (project["id"],))
 
 
+@pytest.fixture
+def test_project_image(test_project):
+    """Insert a fake image row (no filesystem dependency) and clean up after."""
+    with get_db() as conn:
+        row = conn.execute(
+            "INSERT INTO project_images (project_id, file_path, file_name, content_type)"
+            " VALUES (%s, %s, %s, %s) RETURNING id",
+            (test_project['id'], f"projects/{test_project['id']}/fake.jpg", 'fake.jpg', 'image/jpeg'),
+        ).fetchone()
+    image_id = row['id']
+    yield {'id': image_id, 'project_id': test_project['id']}
+    with get_db() as conn:
+        conn.execute("DELETE FROM project_images WHERE id = %s", (image_id,))
+
+
 # ── Prospects ─────────────────────────────────────────────────────────────────
 
 def test_get_prospects_returns_list(client, test_prospect):
@@ -222,3 +237,38 @@ def test_post_creates_new_project(client):
     # Cleanup
     with get_db() as conn:
         conn.execute("DELETE FROM projects WHERE id = %s", (data["id"],))
+
+
+# ── Project image type ────────────────────────────────────────────────────────
+
+def test_patch_project_image_type_changes_to_despues(client, test_project, test_project_image):
+    r = client.patch(
+        f"/api/projects/{test_project['id']}/images/{test_project_image['id']}",
+        json={"image_type": "despues"},
+    )
+    assert r.status_code == 200
+    assert r.json()["imageType"] == "despues"
+
+
+def test_patch_project_image_type_changes_back_to_antes(client, test_project, test_project_image):
+    # flip to despues first
+    setup_r = client.patch(
+        f"/api/projects/{test_project['id']}/images/{test_project_image['id']}",
+        json={"image_type": "despues"},
+    )
+    assert setup_r.status_code == 200
+    # flip back to antes
+    r = client.patch(
+        f"/api/projects/{test_project['id']}/images/{test_project_image['id']}",
+        json={"image_type": "antes"},
+    )
+    assert r.status_code == 200
+    assert r.json()["imageType"] == "antes"
+
+
+def test_patch_project_image_type_invalid_value_returns_422(client, test_project, test_project_image):
+    r = client.patch(
+        f"/api/projects/{test_project['id']}/images/{test_project_image['id']}",
+        json={"image_type": "unknown"},
+    )
+    assert r.status_code == 422

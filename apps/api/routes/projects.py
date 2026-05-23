@@ -1,10 +1,10 @@
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from api.auth import get_current_user
-from api.db import get_projects, get_project, update_project, create_project, delete_project, add_project_image, delete_project_image
+from api.db import get_projects, get_project, update_project, create_project, delete_project, add_project_image, delete_project_image, update_project_image_type
 
 router = APIRouter()
 
@@ -98,6 +98,7 @@ def remove_project(project_id: int, _: dict = Depends(get_current_user)):
 async def upload_project_image(
     project_id: int,
     file: UploadFile = File(...),
+    image_type: str = Form(default='antes'),
     _: dict = Depends(get_current_user),
 ):
     p = get_project(project_id)
@@ -108,6 +109,8 @@ async def upload_project_image(
     content = await file.read(_MAX_IMAGE_SIZE + 1)
     if len(content) > _MAX_IMAGE_SIZE:
         raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    if image_type not in ('antes', 'despues'):
+        raise HTTPException(status_code=422, detail="image_type must be 'antes' or 'despues'")
     ext = Path(file.filename).suffix if file.filename else ""
     relative_path = f"projects/{project_id}/{uuid4().hex}{ext}"
     full_path = _FILES_BASE / relative_path
@@ -116,7 +119,7 @@ async def upload_project_image(
         full_path.write_bytes(content)
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to store image") from exc
-    return add_project_image(project_id, relative_path, file.filename or "", file.content_type or "image/jpeg")
+    return add_project_image(project_id, relative_path, file.filename or "", file.content_type or "image/jpeg", image_type)
 
 
 @router.delete("/api/projects/{project_id}/images/{image_id}", status_code=204)
@@ -127,5 +130,24 @@ async def remove_project_image(
 ):
     try:
         delete_project_image(image_id, project_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+
+class ImageTypeUpdate(BaseModel):
+    image_type: str
+
+
+@router.patch("/api/projects/{project_id}/images/{image_id}", status_code=200)
+async def patch_project_image_type(
+    project_id: int,
+    image_id: int,
+    body: ImageTypeUpdate,
+    _: dict = Depends(get_current_user),
+):
+    if body.image_type not in ('antes', 'despues'):
+        raise HTTPException(status_code=422, detail="image_type must be 'antes' or 'despues'")
+    try:
+        return update_project_image_type(image_id, project_id, body.image_type)
     except ValueError:
         raise HTTPException(status_code=404, detail="Image not found")

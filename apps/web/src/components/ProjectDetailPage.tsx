@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { BASE, fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit, uploadProjectImage, deleteProjectImage } from '../lib/api'
+import { BASE, fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit, uploadProjectImage, deleteProjectImage, updateProjectImageType } from '../lib/api'
 import type { Project, ProcessInstance, TeamMember, ProjectInvestor, Investor, ProfitWaterfall } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { ProjectProfitSection } from './ProjectProfitSection'
@@ -12,7 +12,7 @@ import { NumericInput } from './NumericInput'
 import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL, PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
 import { fmtMXN } from '../lib/fmt'
 import { StatRow } from './StatRow'
-import { PhotoGallery } from './PhotoGallery'
+import { ProjectPhotoGallery } from './ProjectPhotoGallery'
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -942,16 +942,20 @@ export function ProjectDetailPage() {
 
           {/* FOTOS tab */}
           {centerTab === 'fotos' && (
-            <PhotoGallery
+            <ProjectPhotoGallery
               images={project.images}
               base={BASE}
-              onUpload={async file => {
-                const img = await uploadProjectImage(project.id, file)
+              onUpload={async (file, imageType) => {
+                const img = await uploadProjectImage(project.id, file, imageType)
                 setProject(prev => prev ? { ...prev, images: [...prev.images, img] } : prev)
               }}
               onDelete={async imageId => {
                 await deleteProjectImage(project.id, imageId)
                 setProject(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
+              }}
+              onFlipType={async (imageId, newType) => {
+                const updated = await updateProjectImageType(project.id, imageId, newType)
+                setProject(prev => prev ? { ...prev, images: prev.images.map(i => i.id === imageId ? updated : i) } : prev)
               }}
             />
           )}

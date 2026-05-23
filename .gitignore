@@ -32,4 +32,4 @@ data/files/**
 # Environment
 .env
 
-docs/superpowers/
+docs/superpowers/.coverage

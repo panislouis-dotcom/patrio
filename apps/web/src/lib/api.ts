@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, ProjectImage } from './types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -85,10 +85,21 @@ export async function deleteProspectImage(prospectId: number, imageId: number): 
   if (!res.ok) throw new Error(await res.text())
 }
 
-export async function uploadProjectImage(projectId: number, file: File): Promise<PropertyImage> {
+export async function uploadProjectImage(projectId: number, file: File, imageType: ImageType = 'antes'): Promise<ProjectImage> {
   const form = new FormData()
   form.append('file', file, file.name)
+  form.append('image_type', imageType)
   const res = await authFetch(`${BASE}/api/projects/${projectId}/images`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function updateProjectImageType(projectId: number, imageId: number, imageType: ImageType): Promise<ProjectImage> {
+  const res = await authFetch(`${BASE}/api/projects/${projectId}/images/${imageId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_type: imageType }),
+  })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }

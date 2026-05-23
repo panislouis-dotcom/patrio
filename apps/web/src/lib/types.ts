@@ -9,6 +9,12 @@ export interface PropertyImage {
   uploadedAt: string
 }
 
+export type ImageType = 'antes' | 'despues'
+
+export interface ProjectImage extends PropertyImage {
+  imageType: ImageType
+}
+
 export interface Issue {
   field: string
   message: string
@@ -95,7 +101,7 @@ export interface Project {
   budget: Record<string, number>       // {"category": amount}
   notes: string
   isFavorite: boolean
-  images: PropertyImage[]
+  images: ProjectImage[]
   unrealizedGain: number
   unrealizedGainPct: number
   holdMonthsActual: number

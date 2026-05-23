@@ -1,528 +1,2046 @@
--- ─────────────────────────────────────────────────
--- PATRIO · Real Estate Knowledge Base  (PostgreSQL)
--- ─────────────────────────────────────────────────
+\restrict dbmate
 
-CREATE TABLE IF NOT EXISTS prospects (
-  id                        BIGSERIAL PRIMARY KEY,
-  name                      TEXT NOT NULL CHECK (name != ''),
-  address                   TEXT NOT NULL CHECK (address != ''),
-  city                      TEXT NOT NULL CHECK (city != ''),
-  status                    TEXT NOT NULL CHECK (status != ''),
-  type                      TEXT NOT NULL DEFAULT '',
-  url                       TEXT NOT NULL CHECK (url != ''),
-  latitude                  REAL NOT NULL,
-  longitude                 REAL NOT NULL,
-  sqm_land                  REAL NOT NULL,
-  sqm_construction          REAL NOT NULL,
-  land_price                REAL NOT NULL,
-  acquisition_cost_pct      REAL NOT NULL,
-  permits_cost              REAL NOT NULL,
-  subdivision_cost          REAL NOT NULL,
-  construction_cost_per_sqm REAL NOT NULL,
-  construction_overhead     REAL NOT NULL,
-  projected_sale            REAL NOT NULL,
-  hold_months               INTEGER NOT NULL DEFAULT 12,
-  rent_monthly              REAL NOT NULL CHECK (rent_monthly >= 0),
-  notes                     TEXT NOT NULL DEFAULT '',
-  is_favorite               BOOLEAN  NOT NULL DEFAULT FALSE,
-  created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Dumped from database version 16.13
+-- Dumped by pg_dump version 18.3
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: analysis_snapshots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.analysis_snapshots (
+    id bigint NOT NULL,
+    prospect_id bigint NOT NULL,
+    generated_at timestamp with time zone DEFAULT now() NOT NULL,
+    purchase_price real NOT NULL,
+    remodel_cost_estimate real NOT NULL,
+    remodel_cost_per_m2 real NOT NULL,
+    intervention_level text NOT NULL,
+    transaction_costs real NOT NULL,
+    financing_costs real NOT NULL,
+    total_cost real NOT NULL,
+    holding_period_months integer NOT NULL,
+    exit_price_manual real,
+    exit_price_calculated_low real,
+    exit_price_calculated_mid real,
+    exit_price_calculated_high real,
+    exit_price_source text DEFAULT 'manual'::text NOT NULL,
+    exit_price_used real NOT NULL,
+    manual_vs_market_delta_pct real,
+    comparable_count integer DEFAULT 0 NOT NULL,
+    comparable_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    avg_comp_distance_km real,
+    gross_margin real,
+    roi_pct real,
+    irr_pct real,
+    cap_rate_pct real,
+    confidence_score integer DEFAULT 0 NOT NULL,
+    confidence_notes text DEFAULT ''::text NOT NULL,
+    data_quality_warnings jsonb DEFAULT '[]'::jsonb NOT NULL,
+    arv_manual_override real,
+    renta_mensual_estimada real,
+    tasa_interes_credito real,
+    plazo_credito_meses integer,
+    financiamiento_pct real,
+    gastos_operativos_pct real,
+    noi_anual real,
+    debt_service_anual real,
+    cash_flow_anual real,
+    cash_on_cash_yr1_pct real,
+    break_even_months integer,
+    npv_10yr real,
+    irr_10yr_pct real,
+    CONSTRAINT analysis_snapshots_confidence_score_check CHECK (((confidence_score >= 0) AND (confidence_score <= 100))),
+    CONSTRAINT analysis_snapshots_exit_price_source_check CHECK ((exit_price_source = ANY (ARRAY['manual'::text, 'calculated'::text, 'blended'::text])))
 );
 
-DROP VIEW IF EXISTS prospect_metrics;
-CREATE VIEW prospect_metrics AS
-SELECT
-  id, name, address, city, status, url,
-  sqm_land, sqm_construction, land_price, acquisition_cost_pct,
-  ROUND((land_price * acquisition_cost_pct)::numeric, 0)    AS acquisition_costs,
-  ROUND((land_price * (1 + acquisition_cost_pct))::numeric, 0) AS acquisition_total,
-  permits_cost, subdivision_cost,
-  ROUND((sqm_construction * construction_cost_per_sqm)::numeric, 0)                          AS construction_base,
-  ROUND((sqm_construction * construction_cost_per_sqm * construction_overhead)::numeric, 0)  AS construction_total,
-  ROUND((land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
-        sqm_construction * construction_cost_per_sqm * construction_overhead)::numeric, 0)   AS total_investment,
-  projected_sale,
-  ROUND((projected_sale -
-       (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
-        sqm_construction * construction_cost_per_sqm * construction_overhead))::numeric, 0)  AS profit,
-  CASE
-    WHEN hold_months > 0
-      AND (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
-           sqm_construction * construction_cost_per_sqm * construction_overhead) > 0
-      AND projected_sale > 0
-    THEN ROUND(
-      (POWER(
-        projected_sale::float /
-        (land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
-         sqm_construction * construction_cost_per_sqm * construction_overhead),
-        12.0 / hold_months
-      ) - 1)::numeric, 4)
-    ELSE NULL
-  END AS roi,
-  ROUND((rent_monthly * 12 * 0.70 / NULLIF(projected_sale, 0))::numeric, 4) AS cap_rate,
-  ROUND((land_price / NULLIF(sqm_land, 0))::numeric, 2)                AS land_price_per_sqm,
-  ROUND((projected_sale / NULLIF(sqm_land, 0))::numeric, 2)            AS sale_per_sqm,
-  ROUND(((land_price * (1 + acquisition_cost_pct) + permits_cost + subdivision_cost +
-         sqm_construction * construction_cost_per_sqm * construction_overhead)
-        / NULLIF(sqm_land, 0))::numeric, 2)                            AS investment_per_sqm,
-  rent_monthly,
-  ROUND((rent_monthly * 12)::numeric, 0)                    AS rent_annual,
-  hold_months, notes, type
-FROM prospects;
 
-CREATE TABLE IF NOT EXISTS projects (
-  id                BIGSERIAL PRIMARY KEY,
-  name              TEXT NOT NULL CHECK (name != ''),
-  type              TEXT NOT NULL CHECK (type != ''),
-  address           TEXT NOT NULL CHECK (address != ''),
-  city              TEXT NOT NULL CHECK (city != ''),
-  status            TEXT NOT NULL CHECK (status != ''),
-  total_units       INTEGER NOT NULL,
-  acquisition_date  TEXT NOT NULL CHECK (acquisition_date != ''),
-  conclusion_date   DATE NOT NULL,
-  total_investment  REAL NOT NULL,
-  current_valuation REAL NOT NULL,
-  valuation_date    TEXT NOT NULL CHECK (valuation_date != ''),
-  url               TEXT NOT NULL CHECK (url != ''),
-  latitude          REAL NOT NULL,
-  longitude         REAL NOT NULL,
-  prospect_id       BIGINT REFERENCES prospects(id) ON DELETE SET NULL,
-  milestones        TEXT NOT NULL DEFAULT '{}',
-  budget            TEXT NOT NULL DEFAULT '{}',
-  notes             TEXT NOT NULL DEFAULT '',
-  is_favorite       BOOLEAN  NOT NULL DEFAULT FALSE,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+--
+-- Name: analysis_snapshots_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.analysis_snapshots_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: analysis_snapshots_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.analysis_snapshots_id_seq OWNED BY public.analysis_snapshots.id;
+
+
+--
+-- Name: comparable_check_log; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.comparable_check_log (
+    id bigint NOT NULL,
+    comparable_id bigint NOT NULL,
+    checked_at timestamp with time zone DEFAULT now() NOT NULL,
+    http_status integer,
+    result text NOT NULL,
+    detail text DEFAULT ''::text NOT NULL,
+    CONSTRAINT comparable_check_log_result_check CHECK ((result = ANY (ARRAY['active'::text, 'sold'::text, 'error'::text, 'timeout'::text, 'redirect'::text])))
 );
 
-CREATE TABLE IF NOT EXISTS prospect_images (
-  id           BIGSERIAL PRIMARY KEY,
-  prospect_id  BIGINT NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
-  file_path    TEXT NOT NULL,
-  file_name    TEXT NOT NULL,
-  content_type TEXT NOT NULL,
-  sort_order   INTEGER NOT NULL DEFAULT 0,
-  uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+--
+-- Name: comparable_check_log_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.comparable_check_log_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: comparable_check_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.comparable_check_log_id_seq OWNED BY public.comparable_check_log.id;
+
+
+--
+-- Name: comparables; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.comparables (
+    id bigint NOT NULL,
+    address text NOT NULL,
+    zone_id bigint NOT NULL,
+    m2 real NOT NULL,
+    price bigint NOT NULL,
+    listing_url text NOT NULL,
+    source_portal text NOT NULL,
+    listed_at timestamp with time zone NOT NULL,
+    captured_at timestamp with time zone DEFAULT now() NOT NULL,
+    price_per_m2 real GENERATED ALWAYS AS (((price)::real / NULLIF(m2, (0)::double precision))) STORED,
+    neighborhood text DEFAULT ''::text NOT NULL,
+    city text DEFAULT 'Monterrey'::text NOT NULL,
+    lat double precision,
+    lng double precision,
+    bedrooms integer,
+    bathrooms integer,
+    parking_spots integer,
+    property_type text DEFAULT 'casa'::text NOT NULL,
+    condition text DEFAULT 'remodelada'::text NOT NULL,
+    style_tags jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    last_checked_at timestamp with time zone,
+    last_seen_active timestamp with time zone DEFAULT now() NOT NULL,
+    sold_at timestamp with time zone,
+    check_failure_count integer DEFAULT 0 NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT comparables_address_check CHECK ((address <> ''::text)),
+    CONSTRAINT comparables_condition_check CHECK ((condition = ANY (ARRAY['remodelada'::text, 'nueva'::text, 'semi_nueva'::text, 'por_remodelar'::text]))),
+    CONSTRAINT comparables_listing_url_check CHECK ((listing_url <> ''::text)),
+    CONSTRAINT comparables_m2_check CHECK ((m2 > (0)::double precision)),
+    CONSTRAINT comparables_price_check CHECK ((price > 0)),
+    CONSTRAINT comparables_property_type_check CHECK ((property_type = ANY (ARRAY['casa'::text, 'depto'::text, 'duplex'::text, 'lote'::text, 'local'::text]))),
+    CONSTRAINT comparables_source_portal_check CHECK ((source_portal = ANY (ARRAY['inmuebles24'::text, 'vivanuncios'::text, 'lamudi'::text, 'propiedades_com'::text, 'mercadolibre'::text, 'doorvel'::text, 'off_market'::text, 'other'::text]))),
+    CONSTRAINT comparables_status_check CHECK ((status = ANY (ARRAY['active'::text, 'sold'::text, 'withdrawn'::text, 'expired'::text])))
 );
 
-CREATE TABLE IF NOT EXISTS project_images (
-  id           BIGSERIAL PRIMARY KEY,
-  project_id   BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  file_path    TEXT NOT NULL,
-  file_name    TEXT NOT NULL,
-  content_type TEXT NOT NULL,
-  sort_order   INTEGER NOT NULL DEFAULT 0,
-  uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+--
+-- Name: comparables_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.comparables_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: comparables_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.comparables_id_seq OWNED BY public.comparables.id;
+
+
+--
+-- Name: instance_files; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.instance_files (
+    id bigint NOT NULL,
+    instance_id bigint NOT NULL,
+    file_path text NOT NULL,
+    file_name text NOT NULL,
+    content_type text NOT NULL,
+    uploaded_at timestamp with time zone DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS team_members (
-  id          BIGSERIAL PRIMARY KEY,
-  name        TEXT NOT NULL CHECK (name != ''),
-  role        TEXT NOT NULL CHECK (role IN ('director','responsable_proyecto','lider_proyecto','maestro','ayudante','finder')),
-  manager_id  BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
-  email       TEXT NOT NULL DEFAULT '',
-  notes       TEXT NOT NULL DEFAULT '',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+--
+-- Name: instance_files_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.instance_files_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: instance_files_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.instance_files_id_seq OWNED BY public.instance_files.id;
+
+
+--
+-- Name: instance_node_states; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.instance_node_states (
+    id bigint NOT NULL,
+    instance_id bigint NOT NULL,
+    template_node_id bigint NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    assignee_id bigint,
+    actual_start text,
+    actual_end text,
+    notes text DEFAULT ''::text NOT NULL,
+    duration_override_days integer,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS signals (
-  id            BIGSERIAL PRIMARY KEY,
-  portal        TEXT NOT NULL,
-  url           TEXT NOT NULL UNIQUE,
-  title         TEXT NOT NULL,
-  address       TEXT NOT NULL DEFAULT '',
-  city          TEXT NOT NULL DEFAULT 'Monterrey',
-  price         REAL NOT NULL DEFAULT 0,
-  sqm_land      REAL NOT NULL DEFAULT 0,
-  raw_data      TEXT NOT NULL DEFAULT '',
-  status        TEXT NOT NULL DEFAULT 'new',
-  prospect_id   BIGINT REFERENCES prospects(id),
-  scraped_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+--
+-- Name: instance_node_states_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.instance_node_states_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: instance_node_states_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.instance_node_states_id_seq OWNED BY public.instance_node_states.id;
+
+
+--
+-- Name: investors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.investors (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    apellidos text DEFAULT ''::text NOT NULL,
+    email text DEFAULT ''::text NOT NULL,
+    phone text DEFAULT ''::text NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    temperatura text,
+    capacidad text,
+    fuente text,
+    confianza text,
+    CONSTRAINT investors_capacidad_check CHECK ((capacidad = ANY (ARRAY['<500k'::text, '500k-2M'::text, '2M-5M'::text, '5M+'::text]))),
+    CONSTRAINT investors_confianza_check CHECK ((confianza = ANY (ARRAY['bajo'::text, 'medio'::text, 'alto'::text]))),
+    CONSTRAINT investors_fuente_check CHECK ((fuente = ANY (ARRAY['red_personal'::text, 'referido'::text, 'red_negocios'::text, 'linkedin'::text, 'otro'::text]))),
+    CONSTRAINT investors_name_check CHECK ((name <> ''::text)),
+    CONSTRAINT investors_temperatura_check CHECK ((temperatura = ANY (ARRAY['caliente'::text, 'tibio'::text, 'frio'::text])))
 );
 
-CREATE TABLE IF NOT EXISTS process_templates (
-  id          BIGSERIAL PRIMARY KEY,
-  name        TEXT NOT NULL CHECK (name != ''),
-  description TEXT NOT NULL DEFAULT '',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+--
+-- Name: investors_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.investors_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: investors_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.investors_id_seq OWNED BY public.investors.id;
+
+
+--
+-- Name: node_comments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.node_comments (
+    id bigint NOT NULL,
+    instance_id bigint NOT NULL,
+    template_node_id bigint NOT NULL,
+    body text NOT NULL,
+    author text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS template_nodes (
-  id                 BIGSERIAL PRIMARY KEY,
-  template_id        BIGINT NOT NULL REFERENCES process_templates(id) ON DELETE CASCADE,
-  parent_id          BIGINT REFERENCES template_nodes(id) ON DELETE CASCADE,
-  name               TEXT NOT NULL CHECK (name != ''),
-  description        TEXT NOT NULL DEFAULT '',
-  sort_order         INTEGER NOT NULL DEFAULT 0,
-  depends_on_id      BIGINT REFERENCES template_nodes(id) ON DELETE SET NULL,
-  source_template_id BIGINT REFERENCES process_templates(id),
-  duration_days      INTEGER,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+--
+-- Name: node_comments_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.node_comments_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: node_comments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.node_comments_id_seq OWNED BY public.node_comments.id;
+
+
+--
+-- Name: node_files; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.node_files (
+    id bigint NOT NULL,
+    template_node_id bigint NOT NULL,
+    instance_id bigint,
+    file_path text NOT NULL,
+    file_name text NOT NULL,
+    content_type text NOT NULL,
+    type text DEFAULT 'reference'::text NOT NULL,
+    uploaded_at timestamp with time zone DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS process_instances (
-  id                  BIGSERIAL PRIMARY KEY,
-  template_id         BIGINT REFERENCES process_templates(id) ON DELETE CASCADE,
-  project_id          BIGINT REFERENCES projects(id),
-  owner_id            BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
-  task_type           TEXT NOT NULL DEFAULT 'proyecto',
-  name                TEXT NOT NULL CHECK (name != ''),
-  start_date          TEXT NOT NULL,
-  due_date            TEXT,
-  frequency_days      INTEGER,
-  origin_instance_id  BIGINT REFERENCES process_instances(id),
-  completed_at        TEXT,
-  duration_locked_at  TEXT,
-  status              TEXT NOT NULL DEFAULT 'active',
-  notes               TEXT NOT NULL DEFAULT '',
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+--
+-- Name: node_files_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.node_files_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: node_files_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.node_files_id_seq OWNED BY public.node_files.id;
+
+
+--
+-- Name: process_instances; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.process_instances (
+    id bigint NOT NULL,
+    template_id bigint,
+    project_id bigint,
+    owner_id bigint,
+    task_type text DEFAULT 'proyecto'::text NOT NULL,
+    name text NOT NULL,
+    start_date text NOT NULL,
+    due_date text,
+    frequency_days integer,
+    origin_instance_id bigint,
+    completed_at text,
+    duration_locked_at text,
+    status text DEFAULT 'active'::text NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT process_instances_name_check CHECK ((name <> ''::text))
 );
 
-CREATE TABLE IF NOT EXISTS instance_node_states (
-  id                     BIGSERIAL PRIMARY KEY,
-  instance_id            BIGINT NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
-  template_node_id       BIGINT NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
-  status                 TEXT NOT NULL DEFAULT 'pending',
-  assignee_id            BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
-  actual_start           TEXT,
-  actual_end             TEXT,
-  notes                  TEXT NOT NULL DEFAULT '',
-  duration_override_days INTEGER,
-  updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(instance_id, template_node_id)
+
+--
+-- Name: process_instances_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.process_instances_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: process_instances_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.process_instances_id_seq OWNED BY public.process_instances.id;
+
+
+--
+-- Name: process_templates; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.process_templates (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    description text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT process_templates_name_check CHECK ((name <> ''::text))
 );
 
-CREATE TABLE IF NOT EXISTS node_files (
-  id               BIGSERIAL PRIMARY KEY,
-  template_node_id BIGINT NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
-  instance_id      BIGINT REFERENCES process_instances(id) ON DELETE CASCADE,
-  file_path        TEXT NOT NULL,
-  file_name        TEXT NOT NULL,
-  content_type     TEXT NOT NULL,
-  type             TEXT NOT NULL DEFAULT 'reference',
-  uploaded_at      TIMESTAMPTZ DEFAULT NOW()
+
+--
+-- Name: process_templates_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.process_templates_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: process_templates_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.process_templates_id_seq OWNED BY public.process_templates.id;
+
+
+--
+-- Name: profit_split_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.profit_split_config (
+    id bigint NOT NULL,
+    project_id bigint,
+    exit_price real,
+    investor_capital real,
+    investor_rate_annual real DEFAULT 0.12 NOT NULL,
+    investor_months real,
+    isr_rate real DEFAULT 0.30 NOT NULL,
+    finder_fee_pct real DEFAULT 0.0 NOT NULL,
+    director_pct real DEFAULT 0.0 NOT NULL,
+    responsable_pct real DEFAULT 0.0 NOT NULL,
+    lider_pct real DEFAULT 0.0 NOT NULL,
+    maestro_pct real DEFAULT 0.0 NOT NULL,
+    ayudante_pct real DEFAULT 0.0 NOT NULL,
+    finder_member_id bigint,
+    responsable_member_id bigint,
+    lider_member_id bigint,
+    maestro_member_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    ayudante_member_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    maestro_count integer,
+    ayudante_count integer,
+    planned_end_date text,
+    actual_end_date text,
+    buffer_days integer DEFAULT 0 NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS node_comments (
-  id               BIGSERIAL PRIMARY KEY,
-  instance_id      BIGINT NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
-  template_node_id BIGINT NOT NULL REFERENCES template_nodes(id) ON DELETE CASCADE,
-  body             TEXT NOT NULL,
-  author           TEXT NOT NULL DEFAULT '',
-  created_at       TIMESTAMPTZ DEFAULT NOW()
+
+--
+-- Name: profit_split_config_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.profit_split_config_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: profit_split_config_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.profit_split_config_id_seq OWNED BY public.profit_split_config.id;
+
+
+--
+-- Name: project_images; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.project_images (
+    id bigint NOT NULL,
+    project_id bigint NOT NULL,
+    file_path text NOT NULL,
+    file_name text NOT NULL,
+    content_type text NOT NULL,
+    sort_order integer DEFAULT 0 NOT NULL,
+    uploaded_at timestamp with time zone DEFAULT now() NOT NULL,
+    image_type text DEFAULT 'antes'::text NOT NULL,
+    CONSTRAINT project_images_image_type_check CHECK ((image_type = ANY (ARRAY['antes'::text, 'despues'::text])))
 );
 
-CREATE TABLE IF NOT EXISTS instance_files (
-  id           BIGSERIAL PRIMARY KEY,
-  instance_id  BIGINT NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
-  file_path    TEXT NOT NULL,
-  file_name    TEXT NOT NULL,
-  content_type TEXT NOT NULL,
-  uploaded_at  TIMESTAMPTZ DEFAULT NOW()
+
+--
+-- Name: project_images_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.project_images_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: project_images_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.project_images_id_seq OWNED BY public.project_images.id;
+
+
+--
+-- Name: project_investors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.project_investors (
+    id bigint NOT NULL,
+    project_id bigint NOT NULL,
+    investor_id bigint NOT NULL,
+    status text DEFAULT 'interesado'::text NOT NULL,
+    interested_amount real DEFAULT 0 NOT NULL,
+    committed_amount real DEFAULT 0 NOT NULL,
+    funded_amount real DEFAULT 0 NOT NULL,
+    interest_rate_annual real DEFAULT 0.12 NOT NULL,
+    investment_date date,
+    return_amount real,
+    return_date date,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT project_investors_status_check CHECK ((status = ANY (ARRAY['interesado'::text, 'comprometido'::text, 'fondeado'::text])))
 );
 
-CREATE TABLE IF NOT EXISTS profit_split_config (
-  id                    BIGSERIAL PRIMARY KEY,
-  project_id            BIGINT REFERENCES projects(id),
-  exit_price            REAL,
-  investor_capital      REAL,
-  investor_rate_annual  REAL NOT NULL DEFAULT 0.12,
-  investor_months       REAL,
-  isr_rate              REAL NOT NULL DEFAULT 0.30,
-  finder_fee_pct        REAL NOT NULL DEFAULT 0.0,
-  director_pct          REAL NOT NULL DEFAULT 0.0,
-  responsable_pct       REAL NOT NULL DEFAULT 0.0,
-  lider_pct             REAL NOT NULL DEFAULT 0.0,
-  maestro_pct           REAL NOT NULL DEFAULT 0.0,
-  ayudante_pct          REAL NOT NULL DEFAULT 0.0,
-  finder_member_id      BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
-  responsable_member_id BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
-  lider_member_id       BIGINT REFERENCES team_members(id) ON DELETE SET NULL,
-  maestro_member_ids    JSONB NOT NULL DEFAULT '[]',
-  ayudante_member_ids   JSONB NOT NULL DEFAULT '[]',
-  maestro_count         INTEGER,
-  ayudante_count        INTEGER,
-  planned_end_date      TEXT,
-  actual_end_date       TEXT,
-  buffer_days           INTEGER NOT NULL DEFAULT 0,
-  notes                 TEXT NOT NULL DEFAULT '',
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_profit_split_project
-  ON profit_split_config(project_id) WHERE project_id IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS investors (
-  id         BIGSERIAL PRIMARY KEY,
-  name       TEXT NOT NULL CHECK (name != ''),
-  apellidos  TEXT NOT NULL DEFAULT '',
-  email      TEXT NOT NULL DEFAULT '',
-  phone      TEXT NOT NULL DEFAULT '',
-  notes      TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+--
+-- Name: projects; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.projects (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    type text NOT NULL,
+    address text NOT NULL,
+    city text NOT NULL,
+    status text NOT NULL,
+    total_units integer NOT NULL,
+    acquisition_date text NOT NULL,
+    total_investment real NOT NULL,
+    current_valuation real NOT NULL,
+    valuation_date text NOT NULL,
+    url text NOT NULL,
+    latitude real NOT NULL,
+    longitude real NOT NULL,
+    prospect_id bigint,
+    milestones text DEFAULT '{}'::text NOT NULL,
+    budget text DEFAULT '{}'::text NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    conclusion_date date NOT NULL,
+    is_favorite boolean DEFAULT false NOT NULL,
+    CONSTRAINT projects_acquisition_date_check CHECK ((acquisition_date <> ''::text)),
+    CONSTRAINT projects_address_check CHECK ((address <> ''::text)),
+    CONSTRAINT projects_city_check CHECK ((city <> ''::text)),
+    CONSTRAINT projects_name_check CHECK ((name <> ''::text)),
+    CONSTRAINT projects_status_check CHECK ((status <> ''::text)),
+    CONSTRAINT projects_type_check CHECK ((type <> ''::text)),
+    CONSTRAINT projects_url_check CHECK ((url <> ''::text)),
+    CONSTRAINT projects_valuation_date_check CHECK ((valuation_date <> ''::text))
 );
 
-CREATE TABLE IF NOT EXISTS project_investors (
-  id                   BIGSERIAL PRIMARY KEY,
-  project_id           BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  investor_id          BIGINT NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
-  status               TEXT NOT NULL DEFAULT 'interesado'
-                         CHECK (status IN ('interesado','comprometido','fondeado')),
-  interested_amount    REAL NOT NULL DEFAULT 0,
-  committed_amount     REAL NOT NULL DEFAULT 0,
-  funded_amount        REAL NOT NULL DEFAULT 0,
-  interest_rate_annual REAL NOT NULL DEFAULT 0.12,
-  investment_date      DATE,
-  return_amount        REAL,
-  return_date          DATE,
-  notes                TEXT NOT NULL DEFAULT '',
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
 
-CREATE OR REPLACE VIEW project_investor_metrics AS
-WITH hold AS (
-    SELECT
-        pi.id AS pi_id,
+--
+-- Name: project_investor_metrics; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.project_investor_metrics AS
+ WITH hold AS (
+         SELECT pi_1.id AS pi_id,
+                CASE
+                    WHEN (p_1.conclusion_date IS NOT NULL) THEN ((((EXTRACT(year FROM p_1.conclusion_date))::integer - (EXTRACT(year FROM to_date((p_1.acquisition_date || '-01'::text), 'YYYY-MM-DD'::text)))::integer) * 12) + ((EXTRACT(month FROM p_1.conclusion_date))::integer - (EXTRACT(month FROM to_date((p_1.acquisition_date || '-01'::text), 'YYYY-MM-DD'::text)))::integer))
+                    ELSE ((((EXTRACT(year FROM CURRENT_DATE))::integer - (EXTRACT(year FROM to_date((p_1.acquisition_date || '-01'::text), 'YYYY-MM-DD'::text)))::integer) * 12) + ((EXTRACT(month FROM CURRENT_DATE))::integer - (EXTRACT(month FROM to_date((p_1.acquisition_date || '-01'::text), 'YYYY-MM-DD'::text)))::integer))
+                END AS hold_months
+           FROM (public.project_investors pi_1
+             JOIN public.projects p_1 ON ((p_1.id = pi_1.project_id)))
+        )
+ SELECT pi.id,
+    pi.project_id,
+    pi.investor_id,
+    pi.status,
+    pi.interested_amount,
+    pi.committed_amount,
+    pi.funded_amount,
+    pi.interest_rate_annual,
+    pi.investment_date,
+    pi.return_amount,
+    pi.return_date,
+    pi.notes,
+    pi.created_at,
+    (i.name ||
         CASE
-            WHEN p.conclusion_date IS NOT NULL
-            THEN (EXTRACT(YEAR FROM p.conclusion_date)::int
-                  - EXTRACT(YEAR FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int) * 12
-                + (EXTRACT(MONTH FROM p.conclusion_date)::int
-                   - EXTRACT(MONTH FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int)
-            ELSE (EXTRACT(YEAR FROM CURRENT_DATE)::int
-                  - EXTRACT(YEAR FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int) * 12
-                + (EXTRACT(MONTH FROM CURRENT_DATE)::int
-                   - EXTRACT(MONTH FROM TO_DATE(p.acquisition_date || '-01', 'YYYY-MM-DD'))::int)
-        END AS hold_months
-    FROM project_investors pi
-    JOIN projects p ON p.id = pi.project_id
-)
-SELECT
-    pi.*,
-    i.name || CASE WHEN COALESCE(i.apellidos, '') != '' THEN ' ' || i.apellidos ELSE '' END AS investor_name,
+            WHEN (COALESCE(i.apellidos, ''::text) <> ''::text) THEN (' '::text || i.apellidos)
+            ELSE ''::text
+        END) AS investor_name,
     p.name AS project_name,
     h.hold_months,
-    ROUND((pi.funded_amount * pi.interest_rate_annual * h.hold_months / 12.0)::numeric, 2)          AS interest_amount,
-    ROUND((pi.funded_amount * (1 + pi.interest_rate_annual * h.hold_months / 12.0))::numeric, 2)    AS expected_return,
-    ROUND((pi.interest_rate_annual * h.hold_months / 12.0 * 100)::numeric, 2)                       AS return_pct
-FROM project_investors pi
-JOIN projects p ON p.id = pi.project_id
-JOIN investors i ON i.id = pi.investor_id
-JOIN hold h ON h.pi_id = pi.id;
+    round(((((pi.funded_amount * pi.interest_rate_annual) * (h.hold_months)::double precision) / (12.0)::double precision))::numeric, 2) AS interest_amount,
+    round(((pi.funded_amount * ((1)::double precision + ((pi.interest_rate_annual * (h.hold_months)::double precision) / (12.0)::double precision))))::numeric, 2) AS expected_return,
+    round(((((pi.interest_rate_annual * (h.hold_months)::double precision) / (12.0)::double precision) * (100)::double precision))::numeric, 2) AS return_pct
+   FROM (((public.project_investors pi
+     JOIN public.projects p ON ((p.id = pi.project_id)))
+     JOIN public.investors i ON ((i.id = pi.investor_id)))
+     JOIN hold h ON ((h.pi_id = pi.id)));
 
-CREATE TABLE IF NOT EXISTS users (
-  id              BIGSERIAL PRIMARY KEY,
-  email           TEXT NOT NULL UNIQUE,
-  hashed_password TEXT NOT NULL,
-  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+--
+-- Name: project_investors_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.project_investors_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: project_investors_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.project_investors_id_seq OWNED BY public.project_investors.id;
+
+
+--
+-- Name: projects_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.projects_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: projects_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.projects_id_seq OWNED BY public.projects.id;
+
+
+--
+-- Name: prospect_images; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prospect_images (
+    id bigint NOT NULL,
+    prospect_id bigint NOT NULL,
+    file_path text NOT NULL,
+    file_name text NOT NULL,
+    content_type text NOT NULL,
+    sort_order integer DEFAULT 0 NOT NULL,
+    uploaded_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
--- Sonar market intelligence
-CREATE TABLE IF NOT EXISTS sonar_signals (
-    id              BIGSERIAL PRIMARY KEY,
-    url             TEXT NOT NULL UNIQUE,
-    portal          TEXT NOT NULL,
-    title           TEXT NOT NULL,
-    address         TEXT NOT NULL DEFAULT '',
-    municipio_cve   TEXT NOT NULL DEFAULT '',
-    municipio_name  TEXT NOT NULL DEFAULT '',
-    colonia         TEXT NOT NULL DEFAULT '',
-    state_name      TEXT NOT NULL DEFAULT '',
-    lat             DOUBLE PRECISION,
-    lon             DOUBLE PRECISION,
-    price           DOUBLE PRECISION NOT NULL DEFAULT 0,
-    sqm_land        DOUBLE PRECISION NOT NULL DEFAULT 0,
-    first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_price      DOUBLE PRECISION
+
+--
+-- Name: prospect_images_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.prospect_images_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: prospect_images_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.prospect_images_id_seq OWNED BY public.prospect_images.id;
+
+
+--
+-- Name: prospects; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prospects (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    address text NOT NULL,
+    city text NOT NULL,
+    status text NOT NULL,
+    url text NOT NULL,
+    latitude real NOT NULL,
+    longitude real NOT NULL,
+    sqm_land real NOT NULL,
+    sqm_construction real NOT NULL,
+    land_price real NOT NULL,
+    acquisition_cost_pct real NOT NULL,
+    permits_cost real NOT NULL,
+    subdivision_cost real NOT NULL,
+    construction_cost_per_sqm real NOT NULL,
+    construction_overhead real NOT NULL,
+    projected_sale real NOT NULL,
+    hold_months integer DEFAULT 12 NOT NULL,
+    rent_monthly real NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    type text DEFAULT ''::text NOT NULL,
+    is_favorite boolean DEFAULT false NOT NULL,
+    CONSTRAINT prospects_address_check CHECK ((address <> ''::text)),
+    CONSTRAINT prospects_city_check CHECK ((city <> ''::text)),
+    CONSTRAINT prospects_name_check CHECK ((name <> ''::text)),
+    CONSTRAINT prospects_rent_monthly_check CHECK ((rent_monthly >= (0)::double precision)),
+    CONSTRAINT prospects_status_check CHECK ((status <> ''::text)),
+    CONSTRAINT prospects_url_check CHECK ((url <> ''::text))
 );
 
-CREATE TABLE IF NOT EXISTS sonar_scans (
-    id           BIGSERIAL PRIMARY KEY,
-    started_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMPTZ,
-    cves         TEXT[],
-    found        INT,
-    skipped      INT,
-    enriched     INT
+
+--
+-- Name: prospect_metrics; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.prospect_metrics AS
+ SELECT id,
+    name,
+    address,
+    city,
+    status,
+    url,
+    sqm_land,
+    sqm_construction,
+    land_price,
+    acquisition_cost_pct,
+    round(((land_price * acquisition_cost_pct))::numeric, 0) AS acquisition_costs,
+    round(((land_price * ((1)::double precision + acquisition_cost_pct)))::numeric, 0) AS acquisition_total,
+    permits_cost,
+    subdivision_cost,
+    round(((sqm_construction * construction_cost_per_sqm))::numeric, 0) AS construction_base,
+    round((((sqm_construction * construction_cost_per_sqm) * construction_overhead))::numeric, 0) AS construction_total,
+    round((((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead)))::numeric, 0) AS total_investment,
+    projected_sale,
+    round(((projected_sale - ((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead))))::numeric, 0) AS profit,
+        CASE
+            WHEN ((hold_months > 0) AND (((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead)) > (0)::double precision) AND (projected_sale > (0)::double precision)) THEN round(((power((projected_sale / ((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead))), ((12.0 / (hold_months)::numeric))::double precision) - (1)::double precision))::numeric, 4)
+            ELSE NULL::numeric
+        END AS roi,
+    round(((((rent_monthly * (12)::double precision) * (0.70)::double precision) / NULLIF(projected_sale, (0)::double precision)))::numeric, 4) AS cap_rate,
+    round(((land_price / NULLIF(sqm_land, (0)::double precision)))::numeric, 2) AS land_price_per_sqm,
+    round(((projected_sale / NULLIF(sqm_land, (0)::double precision)))::numeric, 2) AS sale_per_sqm,
+    round(((((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead)) / NULLIF(sqm_land, (0)::double precision)))::numeric, 2) AS investment_per_sqm,
+    rent_monthly,
+    round(((rent_monthly * (12)::double precision))::numeric, 0) AS rent_annual,
+    hold_months,
+    notes,
+    type
+   FROM public.prospects;
+
+
+--
+-- Name: prospects_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.prospects_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: prospects_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.prospects_id_seq OWNED BY public.prospects.id;
+
+
+--
+-- Name: remodel_costs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.remodel_costs (
+    id bigint NOT NULL,
+    zone_id bigint NOT NULL,
+    intervention_level text NOT NULL,
+    cost_per_m2_mxn integer NOT NULL,
+    includes jsonb DEFAULT '[]'::jsonb NOT NULL,
+    valid_from date DEFAULT CURRENT_DATE NOT NULL,
+    valid_until date,
+    source text DEFAULT ''::text NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT remodel_costs_intervention_level_check CHECK ((intervention_level = ANY (ARRAY['cosmetica'::text, 'media'::text, 'total'::text, 'obra_nueva'::text])))
 );
 
-CREATE TABLE IF NOT EXISTS sonar_scan_signals (
-    scan_id       BIGINT NOT NULL REFERENCES sonar_scans(id),
-    signal_id     BIGINT NOT NULL REFERENCES sonar_signals(id),
-    price_at_scan DOUBLE PRECISION,
-    PRIMARY KEY (scan_id, signal_id)
+
+--
+-- Name: remodel_costs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.remodel_costs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: remodel_costs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.remodel_costs_id_seq OWNED BY public.remodel_costs.id;
+
+
+--
+-- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_migrations (
+    version text NOT NULL,
+    applied_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_signals_status      ON signals(status);
-CREATE INDEX IF NOT EXISTS idx_signals_prospect    ON signals(prospect_id);
-CREATE INDEX IF NOT EXISTS idx_node_template       ON template_nodes(template_id);
-CREATE INDEX IF NOT EXISTS idx_node_depends        ON template_nodes(depends_on_id);
-CREATE INDEX IF NOT EXISTS idx_instance_template   ON process_instances(template_id);
-CREATE INDEX IF NOT EXISTS idx_instance_project    ON process_instances(project_id);
-CREATE INDEX IF NOT EXISTS idx_instance_owner      ON process_instances(owner_id);
-CREATE INDEX IF NOT EXISTS idx_node_state_inst     ON instance_node_states(instance_id);
-CREATE INDEX IF NOT EXISTS idx_node_state_node     ON instance_node_states(template_node_id);
-CREATE INDEX IF NOT EXISTS idx_team_manager        ON team_members(manager_id);
-CREATE INDEX IF NOT EXISTS idx_node_files_node     ON node_files(template_node_id);
-CREATE INDEX IF NOT EXISTS idx_node_files_instance ON node_files(instance_id);
-CREATE INDEX IF NOT EXISTS idx_comments_node       ON node_comments(template_node_id, instance_id);
-CREATE INDEX IF NOT EXISTS idx_pi_project          ON project_investors(project_id);
-CREATE INDEX IF NOT EXISTS idx_pi_investor         ON project_investors(investor_id);
-CREATE INDEX IF NOT EXISTS idx_projects_status     ON projects(status);
-CREATE INDEX IF NOT EXISTS idx_projects_acq_date   ON projects(acquisition_date DESC);
-CREATE INDEX IF NOT EXISTS idx_instances_status    ON process_instances(status);
-CREATE INDEX IF NOT EXISTS idx_instances_origin    ON process_instances(origin_instance_id);
-CREATE INDEX IF NOT EXISTS idx_sonar_signals_cve     ON sonar_signals(municipio_cve);
-CREATE INDEX IF NOT EXISTS idx_sonar_signals_colonia  ON sonar_signals(colonia);
-CREATE INDEX IF NOT EXISTS idx_sonar_scan_signals     ON sonar_scan_signals(scan_id);
 
--- Migration: add state_name for existing databases
-ALTER TABLE sonar_signals ADD COLUMN IF NOT EXISTS state_name TEXT NOT NULL DEFAULT '';
-CREATE INDEX IF NOT EXISTS idx_sonar_signals_state ON sonar_signals(state_name);
+--
+-- Name: signals; Type: TABLE; Schema: public; Owner: -
+--
 
--- Migration: add is_favorite to prospects and projects
-ALTER TABLE prospects ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE projects  ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE;
-
--- ─────────────────────────────────────────────────
--- Analyzer tables (Phase 1)
--- ─────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS zones (
-  id        BIGSERIAL PRIMARY KEY,
-  name      TEXT NOT NULL UNIQUE CHECK (name != ''),
-  cities    JSONB NOT NULL DEFAULT '[]',
-  notes     TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE public.signals (
+    id bigint NOT NULL,
+    portal text NOT NULL,
+    url text NOT NULL,
+    title text NOT NULL,
+    address text DEFAULT ''::text NOT NULL,
+    city text DEFAULT 'Monterrey'::text NOT NULL,
+    price real DEFAULT 0 NOT NULL,
+    sqm_land real DEFAULT 0 NOT NULL,
+    raw_data text DEFAULT ''::text NOT NULL,
+    status text DEFAULT 'new'::text NOT NULL,
+    prospect_id bigint,
+    scraped_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS remodel_costs (
-  id                  BIGSERIAL PRIMARY KEY,
-  zone_id             BIGINT NOT NULL REFERENCES zones(id),
-  intervention_level  TEXT NOT NULL CHECK (intervention_level IN (
-                        'cosmetica', 'media', 'total', 'obra_nueva')),
-  cost_per_m2_mxn     INTEGER NOT NULL,
-  includes            JSONB NOT NULL DEFAULT '[]',
-  valid_from          DATE NOT NULL DEFAULT CURRENT_DATE,
-  valid_until         DATE,
-  source              TEXT NOT NULL DEFAULT '',
-  notes               TEXT NOT NULL DEFAULT '',
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(zone_id, intervention_level, valid_from)
+
+--
+-- Name: signals_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.signals_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: signals_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.signals_id_seq OWNED BY public.signals.id;
+
+
+--
+-- Name: sonar_scan_signals; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sonar_scan_signals (
+    scan_id bigint NOT NULL,
+    signal_id bigint NOT NULL,
+    price_at_scan double precision
 );
 
-CREATE TABLE IF NOT EXISTS comparables (
-  id                  BIGSERIAL PRIMARY KEY,
-  address             TEXT NOT NULL CHECK (address != ''),
-  zone_id             BIGINT NOT NULL REFERENCES zones(id),
-  m2                  REAL NOT NULL CHECK (m2 > 0),
-  price               BIGINT NOT NULL CHECK (price > 0),
-  listing_url         TEXT NOT NULL CHECK (listing_url != ''),
-  source_portal       TEXT NOT NULL CHECK (source_portal IN (
-                        'inmuebles24', 'vivanuncios', 'lamudi', 'propiedades_com',
-                        'mercadolibre', 'doorvel', 'off_market', 'other')),
-  listed_at           TIMESTAMPTZ NOT NULL,
-  captured_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  price_per_m2        REAL GENERATED ALWAYS AS (price::real / NULLIF(m2, 0)) STORED,
-  neighborhood        TEXT NOT NULL DEFAULT '',
-  city                TEXT NOT NULL DEFAULT 'Monterrey',
-  lat                 DOUBLE PRECISION,
-  lng                 DOUBLE PRECISION,
-  bedrooms            INTEGER,
-  bathrooms           INTEGER,
-  parking_spots       INTEGER,
-  property_type       TEXT NOT NULL DEFAULT 'casa' CHECK (property_type IN (
-                        'casa', 'depto', 'duplex', 'lote', 'local')),
-  condition           TEXT NOT NULL DEFAULT 'remodelada' CHECK (condition IN (
-                        'remodelada', 'nueva', 'semi_nueva', 'por_remodelar')),
-  style_tags          JSONB NOT NULL DEFAULT '[]',
-  status              TEXT NOT NULL DEFAULT 'active' CHECK (status IN (
-                        'active', 'sold', 'withdrawn', 'expired')),
-  last_checked_at     TIMESTAMPTZ,
-  last_seen_active    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  sold_at             TIMESTAMPTZ,
-  check_failure_count INTEGER NOT NULL DEFAULT 0,
-  notes               TEXT NOT NULL DEFAULT '',
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+--
+-- Name: sonar_scans; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sonar_scans (
+    id bigint NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone,
+    cves text[],
+    found integer,
+    skipped integer,
+    enriched integer
 );
 
-CREATE INDEX IF NOT EXISTS idx_comparables_geo
-  ON comparables(lat, lng);
-CREATE INDEX IF NOT EXISTS idx_comparables_zone
-  ON comparables(zone_id);
-CREATE INDEX IF NOT EXISTS idx_comparables_status
-  ON comparables(status);
-CREATE INDEX IF NOT EXISTS idx_comparables_type_condition
-  ON comparables(property_type, condition);
-CREATE INDEX IF NOT EXISTS idx_comparables_last_seen
-  ON comparables(last_seen_active);
 
-CREATE TABLE IF NOT EXISTS comparable_check_log (
-  id              BIGSERIAL PRIMARY KEY,
-  comparable_id   BIGINT NOT NULL REFERENCES comparables(id) ON DELETE CASCADE,
-  checked_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  http_status     INTEGER,
-  result          TEXT NOT NULL CHECK (result IN (
-                    'active', 'sold', 'error', 'timeout', 'redirect')),
-  detail          TEXT NOT NULL DEFAULT ''
+--
+-- Name: sonar_scans_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.sonar_scans_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: sonar_scans_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.sonar_scans_id_seq OWNED BY public.sonar_scans.id;
+
+
+--
+-- Name: sonar_signals; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sonar_signals (
+    id bigint NOT NULL,
+    url text NOT NULL,
+    portal text NOT NULL,
+    title text NOT NULL,
+    address text DEFAULT ''::text NOT NULL,
+    municipio_cve text DEFAULT ''::text NOT NULL,
+    municipio_name text DEFAULT ''::text NOT NULL,
+    colonia text DEFAULT ''::text NOT NULL,
+    lat double precision,
+    lon double precision,
+    price double precision DEFAULT 0 NOT NULL,
+    sqm_land double precision DEFAULT 0 NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_price double precision,
+    state_name text DEFAULT ''::text NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_check_log_comparable
-  ON comparable_check_log(comparable_id, checked_at DESC);
 
-CREATE TABLE IF NOT EXISTS analysis_snapshots (
-  id                        BIGSERIAL PRIMARY KEY,
-  prospect_id               BIGINT NOT NULL REFERENCES prospects(id),
-  generated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  purchase_price            REAL NOT NULL,
-  remodel_cost_estimate     REAL NOT NULL,
-  remodel_cost_per_m2       REAL NOT NULL,
-  intervention_level        TEXT NOT NULL,
-  transaction_costs         REAL NOT NULL,
-  financing_costs           REAL NOT NULL,
-  total_cost                REAL NOT NULL,
-  holding_period_months     INTEGER NOT NULL,
-  exit_price_manual         REAL,
-  exit_price_calculated_low REAL,
-  exit_price_calculated_mid REAL,
-  exit_price_calculated_high REAL,
-  exit_price_source         TEXT NOT NULL DEFAULT 'manual'
-                              CHECK (exit_price_source IN ('manual','calculated','blended')),
-  exit_price_used           REAL NOT NULL,
-  manual_vs_market_delta_pct REAL,
-  comparable_count          INTEGER NOT NULL DEFAULT 0,
-  comparable_ids            JSONB NOT NULL DEFAULT '[]',
-  avg_comp_distance_km      REAL,
-  gross_margin              REAL,
-  roi_pct                   REAL,
-  irr_pct                   REAL,
-  cap_rate_pct              REAL,
-  confidence_score          INTEGER NOT NULL DEFAULT 0 CHECK (confidence_score BETWEEN 0 AND 100),
-  confidence_notes          TEXT NOT NULL DEFAULT '',
-  data_quality_warnings     JSONB NOT NULL DEFAULT '[]',
+--
+-- Name: sonar_signals_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
 
-  -- ARV override
-  arv_manual_override       REAL,
+CREATE SEQUENCE public.sonar_signals_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
 
-  -- Build & Hold inputs
-  renta_mensual_estimada    REAL,
-  tasa_interes_credito      REAL,
-  plazo_credito_meses       INTEGER,
-  financiamiento_pct        REAL,
-  gastos_operativos_pct     REAL,
 
-  -- Build & Hold outputs
-  noi_anual                 REAL,
-  debt_service_anual        REAL,
-  cash_flow_anual           REAL,
-  cash_on_cash_yr1_pct      REAL,
-  break_even_months         INTEGER,
-  npv_10yr                  REAL,
-  irr_10yr_pct              REAL,
+--
+-- Name: sonar_signals_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
 
-  UNIQUE(prospect_id, generated_at)
+ALTER SEQUENCE public.sonar_signals_id_seq OWNED BY public.sonar_signals.id;
+
+
+--
+-- Name: team_members; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.team_members (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    role text NOT NULL,
+    manager_id bigint,
+    email text DEFAULT ''::text NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT team_members_name_check CHECK ((name <> ''::text)),
+    CONSTRAINT team_members_role_check CHECK ((role = ANY (ARRAY['director'::text, 'responsable_proyecto'::text, 'lider_proyecto'::text, 'maestro'::text, 'ayudante'::text, 'finder'::text])))
 );
 
-CREATE INDEX IF NOT EXISTS idx_snapshots_prospect_date
-  ON analysis_snapshots(prospect_id, generated_at DESC);
+
+--
+-- Name: team_members_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.team_members_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: team_members_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.team_members_id_seq OWNED BY public.team_members.id;
+
+
+--
+-- Name: template_nodes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.template_nodes (
+    id bigint NOT NULL,
+    template_id bigint NOT NULL,
+    parent_id bigint,
+    name text NOT NULL,
+    description text DEFAULT ''::text NOT NULL,
+    sort_order integer DEFAULT 0 NOT NULL,
+    depends_on_id bigint,
+    source_template_id bigint,
+    duration_days integer,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT template_nodes_name_check CHECK ((name <> ''::text))
+);
+
+
+--
+-- Name: template_nodes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.template_nodes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: template_nodes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.template_nodes_id_seq OWNED BY public.template_nodes.id;
+
+
+--
+-- Name: users; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.users (
+    id bigint NOT NULL,
+    email text NOT NULL,
+    hashed_password text NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.users_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
+
+
+--
+-- Name: zones; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.zones (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    cities jsonb DEFAULT '[]'::jsonb NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT zones_name_check CHECK ((name <> ''::text))
+);
+
+
+--
+-- Name: zones_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.zones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: zones_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.zones_id_seq OWNED BY public.zones.id;
+
+
+--
+-- Name: analysis_snapshots id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.analysis_snapshots ALTER COLUMN id SET DEFAULT nextval('public.analysis_snapshots_id_seq'::regclass);
+
+
+--
+-- Name: comparable_check_log id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.comparable_check_log ALTER COLUMN id SET DEFAULT nextval('public.comparable_check_log_id_seq'::regclass);
+
+
+--
+-- Name: comparables id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.comparables ALTER COLUMN id SET DEFAULT nextval('public.comparables_id_seq'::regclass);
+
+
+--
+-- Name: instance_files id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_files ALTER COLUMN id SET DEFAULT nextval('public.instance_files_id_seq'::regclass);
+
+
+--
+-- Name: instance_node_states id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_node_states ALTER COLUMN id SET DEFAULT nextval('public.instance_node_states_id_seq'::regclass);
+
+
+--
+-- Name: investors id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.investors ALTER COLUMN id SET DEFAULT nextval('public.investors_id_seq'::regclass);
+
+
+--
+-- Name: node_comments id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.node_comments ALTER COLUMN id SET DEFAULT nextval('public.node_comments_id_seq'::regclass);
+
+
+--
+-- Name: node_files id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.node_files ALTER COLUMN id SET DEFAULT nextval('public.node_files_id_seq'::regclass);
+
+
+--
+-- Name: process_instances id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.process_instances ALTER COLUMN id SET DEFAULT nextval('public.process_instances_id_seq'::regclass);
+
+
+--
+-- Name: process_templates id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.process_templates ALTER COLUMN id SET DEFAULT nextval('public.process_templates_id_seq'::regclass);
+
+
+--
+-- Name: profit_split_config id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.profit_split_config ALTER COLUMN id SET DEFAULT nextval('public.profit_split_config_id_seq'::regclass);
+
+
+--
+-- Name: project_images id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_images ALTER COLUMN id SET DEFAULT nextval('public.project_images_id_seq'::regclass);
+
+
+--
+-- Name: project_investors id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_investors ALTER COLUMN id SET DEFAULT nextval('public.project_investors_id_seq'::regclass);
+
+
+--
+-- Name: projects id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.projects ALTER COLUMN id SET DEFAULT nextval('public.projects_id_seq'::regclass);
+
+
+--
+-- Name: prospect_images id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospect_images ALTER COLUMN id SET DEFAULT nextval('public.prospect_images_id_seq'::regclass);
+
+
+--
+-- Name: prospects id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospects ALTER COLUMN id SET DEFAULT nextval('public.prospects_id_seq'::regclass);
+
+
+--
+-- Name: remodel_costs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.remodel_costs ALTER COLUMN id SET DEFAULT nextval('public.remodel_costs_id_seq'::regclass);
+
+
+--
+-- Name: signals id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signals ALTER COLUMN id SET DEFAULT nextval('public.signals_id_seq'::regclass);
+
+
+--
+-- Name: sonar_scans id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sonar_scans ALTER COLUMN id SET DEFAULT nextval('public.sonar_scans_id_seq'::regclass);
+
+
+--
+-- Name: sonar_signals id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sonar_signals ALTER COLUMN id SET DEFAULT nextval('public.sonar_signals_id_seq'::regclass);
+
+
+--
+-- Name: team_members id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.team_members ALTER COLUMN id SET DEFAULT nextval('public.team_members_id_seq'::regclass);
+
+
+--
+-- Name: template_nodes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.template_nodes ALTER COLUMN id SET DEFAULT nextval('public.template_nodes_id_seq'::regclass);
+
+
+--
+-- Name: users id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
+
+
+--
+-- Name: zones id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zones ALTER COLUMN id SET DEFAULT nextval('public.zones_id_seq'::regclass);
+
+
+--
+-- Name: analysis_snapshots analysis_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.analysis_snapshots
+    ADD CONSTRAINT analysis_snapshots_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: analysis_snapshots analysis_snapshots_prospect_id_generated_at_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.analysis_snapshots
+    ADD CONSTRAINT analysis_snapshots_prospect_id_generated_at_key UNIQUE (prospect_id, generated_at);
+
+
+--
+-- Name: comparable_check_log comparable_check_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.comparable_check_log
+    ADD CONSTRAINT comparable_check_log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: comparables comparables_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.comparables
+    ADD CONSTRAINT comparables_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: instance_files instance_files_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_files
+    ADD CONSTRAINT instance_files_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: instance_node_states instance_node_states_instance_id_template_node_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_node_states
+    ADD CONSTRAINT instance_node_states_instance_id_template_node_id_key UNIQUE (instance_id, template_node_id);
+
+
+--
+-- Name: instance_node_states instance_node_states_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_node_states
+    ADD CONSTRAINT instance_node_states_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: investors investors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.investors
+    ADD CONSTRAINT investors_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: node_comments node_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.node_comments
+    ADD CONSTRAINT node_comments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: node_files node_files_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.node_files
+    ADD CONSTRAINT node_files_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: process_instances process_instances_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.process_instances
+    ADD CONSTRAINT process_instances_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: process_templates process_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.process_templates
+    ADD CONSTRAINT process_templates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: profit_split_config profit_split_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.profit_split_config
+    ADD CONSTRAINT profit_split_config_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: project_images project_images_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_images
+    ADD CONSTRAINT project_images_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: project_investors project_investors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_investors
+    ADD CONSTRAINT project_investors_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: projects projects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.projects
+    ADD CONSTRAINT projects_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: prospect_images prospect_images_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospect_images
+    ADD CONSTRAINT prospect_images_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: prospects prospects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospects
+    ADD CONSTRAINT prospects_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: remodel_costs remodel_costs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.remodel_costs
+    ADD CONSTRAINT remodel_costs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: remodel_costs remodel_costs_zone_id_intervention_level_valid_from_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.remodel_costs
+    ADD CONSTRAINT remodel_costs_zone_id_intervention_level_valid_from_key UNIQUE (zone_id, intervention_level, valid_from);
+
+
+--
+-- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_migrations
+    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+
+
+--
+-- Name: signals signals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signals
+    ADD CONSTRAINT signals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: signals signals_url_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signals
+    ADD CONSTRAINT signals_url_key UNIQUE (url);
+
+
+--
+-- Name: sonar_scan_signals sonar_scan_signals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sonar_scan_signals
+    ADD CONSTRAINT sonar_scan_signals_pkey PRIMARY KEY (scan_id, signal_id);
+
+
+--
+-- Name: sonar_scans sonar_scans_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sonar_scans
+    ADD CONSTRAINT sonar_scans_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sonar_signals sonar_signals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sonar_signals
+    ADD CONSTRAINT sonar_signals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sonar_signals sonar_signals_url_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sonar_signals
+    ADD CONSTRAINT sonar_signals_url_key UNIQUE (url);
+
+
+--
+-- Name: team_members team_members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.team_members
+    ADD CONSTRAINT team_members_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: template_nodes template_nodes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.template_nodes
+    ADD CONSTRAINT template_nodes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_email_key UNIQUE (email);
+
+
+--
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: zones zones_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zones
+    ADD CONSTRAINT zones_name_key UNIQUE (name);
+
+
+--
+-- Name: zones zones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zones
+    ADD CONSTRAINT zones_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_check_log_comparable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_check_log_comparable ON public.comparable_check_log USING btree (comparable_id, checked_at DESC);
+
+
+--
+-- Name: idx_comments_node; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_comments_node ON public.node_comments USING btree (template_node_id, instance_id);
+
+
+--
+-- Name: idx_comparables_geo; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_comparables_geo ON public.comparables USING btree (lat, lng);
+
+
+--
+-- Name: idx_comparables_last_seen; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_comparables_last_seen ON public.comparables USING btree (last_seen_active);
+
+
+--
+-- Name: idx_comparables_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_comparables_status ON public.comparables USING btree (status);
+
+
+--
+-- Name: idx_comparables_type_condition; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_comparables_type_condition ON public.comparables USING btree (property_type, condition);
+
+
+--
+-- Name: idx_comparables_zone; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_comparables_zone ON public.comparables USING btree (zone_id);
+
+
+--
+-- Name: idx_instance_owner; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_instance_owner ON public.process_instances USING btree (owner_id);
+
+
+--
+-- Name: idx_instance_project; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_instance_project ON public.process_instances USING btree (project_id);
+
+
+--
+-- Name: idx_instance_template; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_instance_template ON public.process_instances USING btree (template_id);
+
+
+--
+-- Name: idx_instances_origin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_instances_origin ON public.process_instances USING btree (origin_instance_id);
+
+
+--
+-- Name: idx_instances_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_instances_status ON public.process_instances USING btree (status);
+
+
+--
+-- Name: idx_node_depends; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_node_depends ON public.template_nodes USING btree (depends_on_id);
+
+
+--
+-- Name: idx_node_files_instance; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_node_files_instance ON public.node_files USING btree (instance_id);
+
+
+--
+-- Name: idx_node_files_node; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_node_files_node ON public.node_files USING btree (template_node_id);
+
+
+--
+-- Name: idx_node_state_inst; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_node_state_inst ON public.instance_node_states USING btree (instance_id);
+
+
+--
+-- Name: idx_node_state_node; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_node_state_node ON public.instance_node_states USING btree (template_node_id);
+
+
+--
+-- Name: idx_node_template; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_node_template ON public.template_nodes USING btree (template_id);
+
+
+--
+-- Name: idx_pi_investor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pi_investor ON public.project_investors USING btree (investor_id);
+
+
+--
+-- Name: idx_pi_project; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pi_project ON public.project_investors USING btree (project_id);
+
+
+--
+-- Name: idx_projects_acq_date; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_projects_acq_date ON public.projects USING btree (acquisition_date DESC);
+
+
+--
+-- Name: idx_projects_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_projects_status ON public.projects USING btree (status);
+
+
+--
+-- Name: idx_signals_prospect; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_signals_prospect ON public.signals USING btree (prospect_id);
+
+
+--
+-- Name: idx_signals_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_signals_status ON public.signals USING btree (status);
+
+
+--
+-- Name: idx_snapshots_prospect_date; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_snapshots_prospect_date ON public.analysis_snapshots USING btree (prospect_id, generated_at DESC);
+
+
+--
+-- Name: idx_sonar_scan_signals; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sonar_scan_signals ON public.sonar_scan_signals USING btree (scan_id);
+
+
+--
+-- Name: idx_sonar_signals_colonia; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sonar_signals_colonia ON public.sonar_signals USING btree (colonia);
+
+
+--
+-- Name: idx_sonar_signals_cve; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sonar_signals_cve ON public.sonar_signals USING btree (municipio_cve);
+
+
+--
+-- Name: idx_sonar_signals_state; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sonar_signals_state ON public.sonar_signals USING btree (state_name);
+
+
+--
+-- Name: idx_team_manager; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_team_manager ON public.team_members USING btree (manager_id);
+
+
+--
+-- Name: uq_profit_split_project; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_profit_split_project ON public.profit_split_config USING btree (project_id) WHERE (project_id IS NOT NULL);
+
+
+--
+-- Name: analysis_snapshots analysis_snapshots_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.analysis_snapshots
+    ADD CONSTRAINT analysis_snapshots_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects(id);
+
+
+--
+-- Name: comparables comparables_zone_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.comparables
+    ADD CONSTRAINT comparables_zone_id_fkey FOREIGN KEY (zone_id) REFERENCES public.zones(id);
+
+
+--
+-- Name: instance_files instance_files_instance_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_files
+    ADD CONSTRAINT instance_files_instance_id_fkey FOREIGN KEY (instance_id) REFERENCES public.process_instances(id) ON DELETE CASCADE;
+
+
+--
+-- Name: instance_node_states instance_node_states_assignee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_node_states
+    ADD CONSTRAINT instance_node_states_assignee_id_fkey FOREIGN KEY (assignee_id) REFERENCES public.team_members(id) ON DELETE SET NULL;
+
+
+--
+-- Name: instance_node_states instance_node_states_instance_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_node_states
+    ADD CONSTRAINT instance_node_states_instance_id_fkey FOREIGN KEY (instance_id) REFERENCES public.process_instances(id) ON DELETE CASCADE;
+
+
+--
+-- Name: instance_node_states instance_node_states_template_node_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_node_states
+    ADD CONSTRAINT instance_node_states_template_node_id_fkey FOREIGN KEY (template_node_id) REFERENCES public.template_nodes(id) ON DELETE CASCADE;
+
+
+--
+-- Name: node_comments node_comments_instance_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.node_comments
+    ADD CONSTRAINT node_comments_instance_id_fkey FOREIGN KEY (instance_id) REFERENCES public.process_instances(id) ON DELETE CASCADE;
+
+
+--
+-- Name: node_comments node_comments_template_node_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.node_comments
+    ADD CONSTRAINT node_comments_template_node_id_fkey FOREIGN KEY (template_node_id) REFERENCES public.template_nodes(id) ON DELETE CASCADE;
+
+
+--
+-- Name: node_files node_files_instance_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.node_files
+    ADD CONSTRAINT node_files_instance_id_fkey FOREIGN KEY (instance_id) REFERENCES public.process_instances(id) ON DELETE CASCADE;
+
+
+--
+-- Name: node_files node_files_template_node_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.node_files
+    ADD CONSTRAINT node_files_template_node_id_fkey FOREIGN KEY (template_node_id) REFERENCES public.template_nodes(id) ON DELETE CASCADE;
+
+
+--
+-- Name: process_instances process_instances_origin_instance_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.process_instances
+    ADD CONSTRAINT process_instances_origin_instance_id_fkey FOREIGN KEY (origin_instance_id) REFERENCES public.process_instances(id);
+
+
+--
+-- Name: process_instances process_instances_owner_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.process_instances
+    ADD CONSTRAINT process_instances_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.team_members(id) ON DELETE SET NULL;
+
+
+--
+-- Name: process_instances process_instances_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.process_instances
+    ADD CONSTRAINT process_instances_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id);
+
+
+--
+-- Name: process_instances process_instances_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.process_instances
+    ADD CONSTRAINT process_instances_template_id_fkey FOREIGN KEY (template_id) REFERENCES public.process_templates(id) ON DELETE CASCADE;
+
+
+--
+-- Name: profit_split_config profit_split_config_finder_member_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.profit_split_config
+    ADD CONSTRAINT profit_split_config_finder_member_id_fkey FOREIGN KEY (finder_member_id) REFERENCES public.team_members(id) ON DELETE SET NULL;
+
+
+--
+-- Name: profit_split_config profit_split_config_lider_member_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.profit_split_config
+    ADD CONSTRAINT profit_split_config_lider_member_id_fkey FOREIGN KEY (lider_member_id) REFERENCES public.team_members(id) ON DELETE SET NULL;
+
+
+--
+-- Name: profit_split_config profit_split_config_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.profit_split_config
+    ADD CONSTRAINT profit_split_config_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id);
+
+
+--
+-- Name: profit_split_config profit_split_config_responsable_member_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.profit_split_config
+    ADD CONSTRAINT profit_split_config_responsable_member_id_fkey FOREIGN KEY (responsable_member_id) REFERENCES public.team_members(id) ON DELETE SET NULL;
+
+
+--
+-- Name: project_images project_images_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_images
+    ADD CONSTRAINT project_images_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
+
+
+--
+-- Name: project_investors project_investors_investor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_investors
+    ADD CONSTRAINT project_investors_investor_id_fkey FOREIGN KEY (investor_id) REFERENCES public.investors(id) ON DELETE CASCADE;
+
+
+--
+-- Name: project_investors project_investors_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_investors
+    ADD CONSTRAINT project_investors_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
+
+
+--
+-- Name: projects projects_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.projects
+    ADD CONSTRAINT projects_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects(id) ON DELETE SET NULL;
+
+
+--
+-- Name: prospect_images prospect_images_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospect_images
+    ADD CONSTRAINT prospect_images_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects(id) ON DELETE CASCADE;
+
+
+--
+-- Name: remodel_costs remodel_costs_zone_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.remodel_costs
+    ADD CONSTRAINT remodel_costs_zone_id_fkey FOREIGN KEY (zone_id) REFERENCES public.zones(id);
+
+
+--
+-- Name: signals signals_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signals
+    ADD CONSTRAINT signals_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects(id);
+
+
+--
+-- Name: sonar_scan_signals sonar_scan_signals_scan_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sonar_scan_signals
+    ADD CONSTRAINT sonar_scan_signals_scan_id_fkey FOREIGN KEY (scan_id) REFERENCES public.sonar_scans(id);
+
+
+--
+-- Name: sonar_scan_signals sonar_scan_signals_signal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sonar_scan_signals
+    ADD CONSTRAINT sonar_scan_signals_signal_id_fkey FOREIGN KEY (signal_id) REFERENCES public.sonar_signals(id);
+
+
+--
+-- Name: team_members team_members_manager_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.team_members
+    ADD CONSTRAINT team_members_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.team_members(id) ON DELETE SET NULL;
+
+
+--
+-- Name: template_nodes template_nodes_depends_on_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.template_nodes
+    ADD CONSTRAINT template_nodes_depends_on_id_fkey FOREIGN KEY (depends_on_id) REFERENCES public.template_nodes(id) ON DELETE SET NULL;
+
+
+--
+-- Name: template_nodes template_nodes_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.template_nodes
+    ADD CONSTRAINT template_nodes_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.template_nodes(id) ON DELETE CASCADE;
+
+
+--
+-- Name: template_nodes template_nodes_source_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.template_nodes
+    ADD CONSTRAINT template_nodes_source_template_id_fkey FOREIGN KEY (source_template_id) REFERENCES public.process_templates(id);
+
+
+--
+-- Name: template_nodes template_nodes_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.template_nodes
+    ADD CONSTRAINT template_nodes_template_id_fkey FOREIGN KEY (template_id) REFERENCES public.process_templates(id) ON DELETE CASCADE;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict dbmate
+
+
+--
+-- Dbmate schema migrations
+--
+
+INSERT INTO public.schema_migrations (version) VALUES
+    ('000'),
+    ('001'),
+    ('002'),
+    ('003'),
+    ('004'),
+    ('005'),
+    ('006'),
+    ('007'),
+    ('008'),
+    ('009'),
+    ('010'),
+    ('011'),
+    ('012');
