@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r api/requirements.txt && \
     chmod -R o+rx /ms-playwright
 
 # Non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r --gid 999 appuser && useradd -r --uid 999 -g appuser appuser
 
 # Install dbmate for running migrations (K8s Job / init container)
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
