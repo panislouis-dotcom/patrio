@@ -7,6 +7,7 @@ const topTabs = [
   { path: '/prospectos', label: 'PROSPECTOS' },
   { path: '/proyectos', label: 'PROYECTOS' },
   { path: '/inversionistas', label: 'INVERSIONISTAS' },
+  { path: '/proveedores', label: 'PROVEEDORES' },
   { path: '/procesos', label: 'PROCESOS' },
   { path: '/equipo', label: 'EQUIPO' },
 ]

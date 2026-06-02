@@ -18,6 +18,9 @@ import { ProcesoNodeDetail } from './components/ProcesoNodeDetail'
 import { OrgTab } from './components/OrgTab'
 import { InversoresTab } from './components/InversoresTab'
 import { InversorDetailPage } from './components/InversorDetailPage'
+import { ProveedoresPage } from './components/ProveedoresPage'
+import { ProveedoresTab } from './components/ProveedoresTab'
+import { TiposPage } from './components/TiposPage'
 import { ComparablesTab } from './components/ComparablesTab'
 import { ComparableForm } from './components/ComparableForm'
 import { AnalysisView } from './components/AnalysisView'
@@ -59,6 +62,11 @@ function AppShell() {
           </Route>
           <Route path="/inversionistas" element={<ProtectedRoute><InversoresTab /></ProtectedRoute>} />
           <Route path="/inversionistas/:id" element={<ProtectedRoute><InversorDetailPage /></ProtectedRoute>} />
+          <Route path="/proveedores" element={<ProtectedRoute><ProveedoresPage /></ProtectedRoute>}>
+            <Route index element={<Navigate to="lista" replace />} />
+            <Route path="lista" element={<ProveedoresTab />} />
+            <Route path="tipos" element={<TiposPage />} />
+          </Route>
           <Route path="/equipo" element={<ProtectedRoute><OrgTab /></ProtectedRoute>} />
           <Route path="/prospectos/comparables" element={<ProtectedRoute><ComparablesTab /></ProtectedRoute>} />
           <Route path="/prospectos/comparables/nuevo" element={<ProtectedRoute><ComparableForm /></ProtectedRoute>} />

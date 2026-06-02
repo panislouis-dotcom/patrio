@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, ProjectImage } from './types'
+import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, ProjectImage, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion } from './types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -344,6 +344,7 @@ export async function updateNode(nid: number, data: {
   sortOrder?: number
   dependsOnId?: number | null
   durationDays?: number | null
+  supplierCategoryId?: number | null
 }): Promise<TemplateNode> {
   const res = await authFetch(`${BASE}/api/process/nodes/${nid}`, {
     method: 'PATCH',
@@ -440,6 +441,7 @@ export async function deleteInstanceFile(fid: number): Promise<void> {
 export async function updateNodeState(iid: number, nid: number, data: {
   status?: string
   assigneeId?: number | null
+  supplierId?: number | null
   actualStart?: string | null
   actualEnd?: string | null
   notes?: string
@@ -758,4 +760,151 @@ export async function deleteUser(id: number): Promise<void> {
     const err = await res.json().catch(() => ({})) as { detail?: string }
     throw new Error(err.detail ?? `API error: ${res.status}`)
   }
+}
+
+// ── Proveedor Categories ──────────────────────────────────────────────────────
+
+export async function getCategories(): Promise<ProveedorCategory[]> {
+  const res = await authFetch(`${BASE}/api/proveedor-categories`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function createCategory(data: { name: string; description?: string }): Promise<ProveedorCategory> {
+  const res = await authFetch(`${BASE}/api/proveedor-categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function updateCategory(id: number, data: Partial<Pick<ProveedorCategory, 'name' | 'description'>>): Promise<ProveedorCategory> {
+  const res = await authFetch(`${BASE}/api/proveedor-categories/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function deleteCategory(id: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/proveedor-categories/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+
+// ── Proveedores ───────────────────────────────────────────────────────────────
+
+export async function getProveedores(categoryId?: number): Promise<Proveedor[]> {
+  const url = categoryId != null
+    ? `${BASE}/api/proveedores?category_id=${categoryId}`
+    : `${BASE}/api/proveedores`
+  const res = await authFetch(url)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getProveedor(id: number): Promise<Proveedor> {
+  const res = await authFetch(`${BASE}/api/proveedores/${id}`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getProveedorAssignments(id: number): Promise<import('./types').ProveedorAssignment[]> {
+  const res = await authFetch(`${BASE}/api/proveedores/${id}/assignments`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function createProveedor(data: Partial<Proveedor> & { name: string }): Promise<Proveedor> {
+  const res = await authFetch(`${BASE}/api/proveedores`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function updateProveedor(id: number, data: Partial<Proveedor>): Promise<Proveedor> {
+  const res = await authFetch(`${BASE}/api/proveedores/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function deleteProveedor(id: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/proveedores/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+
+export async function setProveedorCategories(id: number, categoryIds: number[]): Promise<Proveedor> {
+  const res = await authFetch(`${BASE}/api/proveedores/${id}/categories`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ categoryIds }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function uploadProveedorPhoto(id: number, file: File): Promise<ProveedorPhoto> {
+  const fd = new FormData()
+  fd.append('file', file, file.name)
+  const res = await authFetch(`${BASE}/api/proveedores/${id}/photos`, { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function deleteProveedorPhoto(proveedorId: number, photoId: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/proveedores/${proveedorId}/photos/${photoId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+
+// ── Cotizaciones ──────────────────────────────────────────────────────────────
+
+export async function getCotizaciones(stateId: number): Promise<Cotizacion[]> {
+  const res = await authFetch(`${BASE}/api/instance-node-states/${stateId}/cotizaciones`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function createCotizacion(stateId: number, data: Partial<Cotizacion>): Promise<Cotizacion> {
+  const res = await authFetch(`${BASE}/api/instance-node-states/${stateId}/cotizaciones`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function updateCotizacion(id: number, data: Partial<Cotizacion>): Promise<Cotizacion> {
+  const res = await authFetch(`${BASE}/api/cotizaciones/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function selectCotizacion(id: number, instanceNodeStateId: number): Promise<Cotizacion> {
+  const res = await authFetch(`${BASE}/api/cotizaciones/${id}/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instanceNodeStateId }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function deleteCotizacion(id: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/cotizaciones/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
 }

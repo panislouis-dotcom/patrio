@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from api.config import ALLOWED_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD_HASH
-from api.routes import prospects, projects, sonar, team, processes, profit, investors, users, comparables, analyses, documents
+from api.routes import prospects, projects, sonar, team, processes, profit, investors, users, comparables, analyses, documents, proveedores
 from api.routes.auth import router as auth_router
 from api.db import get_db
 from api.process_db import sync_periodic_series
@@ -89,6 +89,7 @@ app.include_router(users.router)
 app.include_router(comparables.router)
 app.include_router(analyses.router)
 app.include_router(documents.router)
+app.include_router(proveedores.router)
 app.include_router(auth_router)
 
 

@@ -33,6 +33,7 @@ class NodeCreate(BaseModel):
     dependsOnId: Optional[int] = None
     durationDays: Optional[int] = None
     sourceTemplateId: Optional[int] = None
+    supplierCategoryId: Optional[int] = None
 
 class NodeUpdate(BaseModel):
     name: Optional[str] = None
@@ -41,6 +42,7 @@ class NodeUpdate(BaseModel):
     dependsOnId: Optional[int] = None
     durationDays: Optional[int] = None
     sourceTemplateId: Optional[int] = None
+    supplierCategoryId: Optional[int] = None
 
 class InstanceCreate(BaseModel):
     name: str
@@ -72,6 +74,7 @@ class NodeStateUpdate(BaseModel):
     actualEnd: Optional[str] = None
     notes: Optional[str] = None
     durationOverrideDays: Optional[int] = None
+    supplierId: Optional[int] = None
 
 class CommentCreate(BaseModel):
     body: str

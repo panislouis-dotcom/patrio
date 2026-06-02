@@ -3,7 +3,7 @@ from typing import Optional
 from api.db import get_db, _row_to_dict, _camel_to_snake
 
 TEMPLATE_RAW_FIELDS = {"name", "description"}
-NODE_RAW_FIELDS = {"name", "description", "sortOrder", "dependsOnId", "durationDays", "parentId", "sourceTemplateId"}
+NODE_RAW_FIELDS = {"name", "description", "sortOrder", "dependsOnId", "durationDays", "parentId", "sourceTemplateId", "supplierCategoryId"}
 INSTANCE_RAW_FIELDS = {
     "name", "startDate", "status", "notes",
     "templateId", "projectId", "ownerId",
@@ -16,7 +16,7 @@ def _derive_task_type(row: dict) -> str:
     if row.get('projectId'): return 'proyecto'
     if row.get('frequencyDays'): return 'periodica'
     return 'one_time'
-STATE_RAW_FIELDS = {"status", "assigneeId", "actualStart", "actualEnd", "notes", "durationOverrideDays"}
+STATE_RAW_FIELDS = {"status", "assigneeId", "actualStart", "actualEnd", "notes", "durationOverrideDays", "supplierId"}
 
 
 # ─── Templates ────────────────────────────────────
@@ -422,18 +422,15 @@ def create_instance_file(
     ext = _Path(file_name).suffix or (mimetypes.guess_extension(content_type) or "")
     rel_path = f"instance/{instance_id}/{uuid4().hex}{ext}"
     full_path = _NODE_FILES_DIR / rel_path
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(content)
     with get_db() as conn:
-        cur = conn.execute(
+        row = conn.execute(
             """INSERT INTO instance_files
                (instance_id, file_path, file_name, content_type)
-               VALUES (%s, %s, %s, %s) RETURNING id""",
+               VALUES (%s, %s, %s, %s) RETURNING *""",
             (instance_id, rel_path, file_name, content_type),
-        )
-        fid = cur.fetchone()["id"]
-    with get_db() as conn:
-        row = conn.execute("SELECT * FROM instance_files WHERE id = %s", (fid,)).fetchone()
+        ).fetchone()
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(content)
     return _row_to_dict(row)
 
 

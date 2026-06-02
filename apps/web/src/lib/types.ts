@@ -188,6 +188,7 @@ export interface TemplateNode {
   durationDays: number | null
   sourceTemplateId: number | null
   createdAt: string
+  supplierCategoryId: number | null
 }
 
 export interface InstanceFile {
@@ -231,6 +232,7 @@ export interface NodeState {
   notes: string
   updatedAt: string
   durationOverrideDays: number | null
+  supplierId: number | null
 }
 
 export interface GanttNode extends TemplateNode {
@@ -489,4 +491,69 @@ export interface AnalysisRequest {
   tasaInteresCredito?: number
   plazoCreditoMeses?: number
   gastosOperativosPct?: number
+}
+
+// ── Proveedores ───────────────────────────────────────────────────────────────
+
+export type ProveedorStatus = 'activo' | 'inactivo' | 'vetado'
+
+export interface ProveedorCategory {
+  id: number
+  name: string
+  description: string
+  createdAt: string
+}
+
+export interface ProveedorPhoto {
+  id: number
+  proveedorId: number
+  filePath: string
+  fileName: string
+  contentType: string
+  uploadedAt: string
+}
+
+export interface Proveedor {
+  id: number
+  name: string
+  phone: string
+  email: string
+  website: string
+  zona: string
+  status: ProveedorStatus
+  vetoReason: string | null
+  ratingCalidad: number | null
+  ratingPuntualidad: number | null
+  ratingPrecio: number | null
+  notes: string
+  categories: ProveedorCategory[]
+  photos: ProveedorPhoto[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Cotizacion {
+  id: number
+  instanceNodeStateId: number
+  proveedorId: number | null
+  proveedorNameOverride: string
+  proveedorName: string | null
+  monto: number
+  moneda: 'MXN' | 'USD'
+  descripcion: string
+  notes: string
+  fechaCotizacion: string | null
+  validezDias: number | null
+  isSelected: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ProveedorAssignment {
+  stateId: number
+  instanceId: number
+  instanceName: string
+  nodeId: number
+  nodeName: string
+  status: string
 }

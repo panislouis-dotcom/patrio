@@ -9,9 +9,11 @@ import {
   deleteNodeFile,
   updateNodeState,
   fetchTeam,
+  getProveedores,
 } from '../lib/api'
-import type { NodeDetail, NodeFile, NodeComment, NodeState, TeamMember } from '../lib/types'
+import type { NodeDetail, NodeFile, NodeComment, NodeState, TeamMember, Proveedor } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { CotizacionesSection } from './CotizacionesSection'
 import { computeDepths, getSubtree } from '../lib/treeUtils'
 import { PROCESS_STATUS_COLOR, PROCESS_STATUS_LABEL } from '../lib/status'
 import { GanttChart } from './GanttChart'
@@ -98,6 +100,7 @@ export function ProcesoNodeDetail() {
 
   const [detail, setDetail] = useState<NodeDetail | null>(null)
   const [team, setTeam] = useState<TeamMember[]>([])
+  const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [loading, setLoading] = useState(true)
 
   // Notes state
@@ -114,9 +117,10 @@ export function ProcesoNodeDetail() {
 
   // Load data on mount
   useEffect(() => {
-    Promise.all([fetchNodeDetail(iidNum, nidNum), fetchTeam()]).then(([d, t]) => {
+    Promise.all([fetchNodeDetail(iidNum, nidNum), fetchTeam(), getProveedores()]).then(([d, t, p]) => {
       setDetail(d)
       setTeam(t)
+      setProveedores(p)
       setLoading(false)
     })
   }, [iidNum, nidNum])
@@ -332,7 +336,7 @@ export function ProcesoNodeDetail() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {['TAREA', 'ESTADO', 'RESPONSABLE', 'INICIO REAL', 'FIN REAL'].map(h => (
+              {['TAREA', 'ESTADO', 'RESPONSABLE', 'PROVEEDOR', 'INICIO REAL', 'FIN REAL'].map(h => (
                 <th
                   key={h}
                   style={{
@@ -413,6 +417,16 @@ export function ProcesoNodeDetail() {
                     </select>
                   </td>
                   <td style={{ padding: '6px 10px' }}>
+                    <select
+                      value={s?.supplierId ?? ''}
+                      onChange={e => handleStateChange(n.id, 'supplierId', e.target.value ? Number(e.target.value) : null)}
+                      style={inputStyle}
+                    >
+                      <option value="">— Sin proveedor</option>
+                      {proveedores.filter(p => p.status !== 'vetado').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding: '6px 10px' }}>
                     <input
                       type="date"
                       value={s?.actualStart ?? ''}
@@ -462,6 +476,14 @@ export function ProcesoNodeDetail() {
           }}
         />
       </div>
+
+      {/* ── Cotizaciones ──────────────────────────────────────────────────────── */}
+      {nodeState && (
+        <div>
+          <div style={sectionLabel}>COTIZACIONES</div>
+          <CotizacionesSection stateId={nodeState.id} />
+        </div>
+      )}
 
       {/* ── Fotos de referencia (read-only) ─────────────────────────────────── */}
       {referenceFiles.length > 0 && (

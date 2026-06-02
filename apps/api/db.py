@@ -119,10 +119,21 @@ def _row_to_dict(row) -> dict | None:
 def get_prospects() -> list[dict]:
     with get_db() as conn:
         rows = conn.execute(PROSPECTS_QUERY).fetchall()
+        if not rows:
+            return []
+        ids = [r["id"] for r in rows]
+        placeholders = ",".join(["%s"] * len(ids))
+        img_rows = conn.execute(
+            f"SELECT * FROM prospect_images WHERE prospect_id IN ({placeholders}) ORDER BY sort_order, uploaded_at",
+            ids,
+        ).fetchall()
+    imgs_by_id: dict[int, list] = {}
+    for ir in img_rows:
+        imgs_by_id.setdefault(ir["prospect_id"], []).append(_row_to_dict(ir))
     result = []
     for r in rows:
         d = _row_to_dict(r)
-        d["images"] = get_prospect_images(d["id"])
+        d["images"] = imgs_by_id.get(d["id"], [])
         result.append(d)
     return result
 
@@ -265,7 +276,7 @@ PROJECTS_RAW_FIELDS = {
 }
 
 
-def _parse_project(row) -> dict:
+def _parse_project(row, images: list | None = None) -> dict:
     """Convert a projects row into a camelCase dict with computed fields."""
     d = _row_to_dict(row)
 
@@ -317,7 +328,7 @@ def _parse_project(row) -> dict:
     d["unrealizedGainPct"] = unrealized_gain_pct
     d["holdMonthsActual"] = hold_months_actual
     d["roi"] = roi
-    d["images"] = get_project_images(d["id"])
+    d["images"] = images if images is not None else get_project_images(d["id"])
 
     return d
 
@@ -325,7 +336,18 @@ def _parse_project(row) -> dict:
 def get_projects() -> list[dict]:
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM projects ORDER BY acquisition_date DESC").fetchall()
-    return [_parse_project(r) for r in rows]
+        if not rows:
+            return []
+        ids = [r["id"] for r in rows]
+        placeholders = ",".join(["%s"] * len(ids))
+        img_rows = conn.execute(
+            f"SELECT * FROM project_images WHERE project_id IN ({placeholders}) ORDER BY sort_order, uploaded_at",
+            ids,
+        ).fetchall()
+    imgs_by_id: dict[int, list] = {}
+    for ir in img_rows:
+        imgs_by_id.setdefault(ir["project_id"], []).append(_row_to_dict(ir))
+    return [_parse_project(r, imgs_by_id.get(r["id"], [])) for r in rows]
 
 
 def get_project(project_id: int) -> dict | None:

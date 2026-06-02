@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { BASE, fetchTemplatePreview, fetchTemplates, createNode, updateNode, deleteNode, fetchNodeFiles, uploadNodeFile, deleteNodeFile } from '../lib/api'
-import type { ProcessTemplate, TemplateNode, GanttNode, NodeFile } from '../lib/types'
+import { BASE, fetchTemplatePreview, fetchTemplates, createNode, updateNode, deleteNode, fetchNodeFiles, uploadNodeFile, deleteNodeFile, getCategories } from '../lib/api'
+import type { ProcessTemplate, TemplateNode, GanttNode, NodeFile, ProveedorCategory } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { GanttChart } from './GanttChart'
 import { getSubtree } from '../lib/treeUtils'
@@ -153,7 +153,7 @@ function AddNodeForm({
 }
 
 function TreeNode({
-  node, nodes, templateId, depth, onRefresh, onFocus,
+  node, nodes, templateId, depth, onRefresh, onFocus, categories,
 }: {
   node: GanttNode
   nodes: GanttNode[]
@@ -161,6 +161,7 @@ function TreeNode({
   depth: number
   onRefresh: () => void
   onFocus: (id: number) => void
+  categories: ProveedorCategory[]
 }) {
   const children = nodes.filter(n => n.parentId === node.id).sort((a, b) => a.sortOrder - b.sortOrder)
   const isLeaf = children.length === 0
@@ -171,6 +172,7 @@ function TreeNode({
   const [editName, setEditName] = useState(node.name)
   const [editDur, setEditDur] = useState<string>(node.durationDays !== null ? String(node.durationDays) : '')
   const [editDepOn, setEditDepOn] = useState<number | null>(node.dependsOnId)
+  const [editSupplierCatId, setEditSupplierCatId] = useState<number | null>(node.supplierCategoryId)
   const [saving, setSaving] = useState(false)
   const [addingChild, setAddingChild] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -181,8 +183,9 @@ function TreeNode({
       setEditName(node.name)
       setEditDur(node.durationDays !== null ? String(node.durationDays) : '')
       setEditDepOn(node.dependsOnId)
+      setEditSupplierCatId(node.supplierCategoryId)
     }
-  }, [node.name, node.durationDays, node.dependsOnId, editing])
+  }, [node.name, node.durationDays, node.dependsOnId, node.supplierCategoryId, editing])
 
   const validDeps = nodes.filter(n => n.parentId === node.parentId && n.id !== node.id && !wouldCreateCycle(n.id, node.id, nodes))
 
@@ -193,6 +196,7 @@ function TreeNode({
         name: editName.trim(),
         durationDays: isLeaf ? (editDur !== '' ? Number(editDur) : null) : node.durationDays,
         dependsOnId: editDepOn,
+        supplierCategoryId: editSupplierCatId,
       })
       setEditing(false)
       onRefresh()
@@ -252,6 +256,14 @@ function TreeNode({
                 {validDeps.map(s => <option key={s.id} value={s.id}>→ {s.name}</option>)}
               </select>
             )}
+            <select
+              value={editSupplierCatId ?? ''}
+              onChange={e => setEditSupplierCatId(e.target.value ? Number(e.target.value) : null)}
+              style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '3px 4px', outline: 'none', maxWidth: '100px', flexShrink: 1 }}
+            >
+              <option value="">↑ —</option>
+              {categories.map(c => <option key={c.id} value={c.id}>↑ {c.name}</option>)}
+            </select>
             <button onClick={e => { e.stopPropagation(); saveEdit() }} disabled={saving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '3px 8px', flexShrink: 0 }}>
               {saving ? '…' : 'OK'}
             </button>
@@ -287,6 +299,11 @@ function TreeNode({
             <span style={{ fontFamily: fonts.label, fontSize: '9px', color: isDefinir ? colors.tertiary : colors.secondary }}>
               {isDefinir ? '?' : `${node.ganttDuration}d`}
             </span>
+            {node.supplierCategoryId != null && (
+              <span style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.tertiary, letterSpacing: '0.06em', background: colors.surfaceAlt, border: `1px solid ${colors.border}`, padding: '1px 5px', flexShrink: 0 }}>
+                {categories.find(c => c.id === node.supplierCategoryId)?.name ?? '?'}
+              </span>
+            )}
             {!isSubTemplateNode && (
               <div style={{ display: 'flex', gap: '4px' }}>
                 <button onClick={e => { e.stopPropagation(); setAddingChild(true) }} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px' }}>
@@ -328,6 +345,7 @@ function TreeNode({
           depth={depth + 1}
           onRefresh={onRefresh}
           onFocus={onFocus}
+          categories={categories}
         />
       ))}
     </div>
@@ -341,6 +359,7 @@ export function ProcesoTemplateEditor() {
 
   const [template, setTemplate] = useState<ProcessTemplate | null>(null)
   const [nodes, setNodes] = useState<GanttNode[]>([])
+  const [categories, setCategories] = useState<ProveedorCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [addingRoot, setAddingRoot] = useState(false)
   const [focusNodeId, setFocusNodeId] = useState<number | null>(null)
@@ -360,6 +379,10 @@ export function ProcesoTemplateEditor() {
     setFocusDescription(n?.description ?? '')
     fetchNodeFiles(focusNodeId).then(setFocusFiles)
   }, [focusNodeId])
+
+  useEffect(() => {
+    getCategories().then(setCategories).catch(console.error)
+  }, [])
 
   useEffect(() => {
     fetchTemplatePreview(templateId).then(({ template: t, nodes: n }) => {
@@ -441,6 +464,7 @@ export function ProcesoTemplateEditor() {
               depth={focusNodeId ? 0 : 1}
               onRefresh={refresh}
               onFocus={setFocusNodeId}
+              categories={categories}
             />
           ))}
           {addingRoot && (
@@ -489,6 +513,27 @@ export function ProcesoTemplateEditor() {
                 rows={5}
                 style={{ width: '100%', background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', padding: '8px', outline: 'none', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box' as const }}
               />
+            </div>
+            {/* Supplier category */}
+            <div>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em', marginBottom: '8px' }}>TIPO DE PROVEEDOR</div>
+              <select
+                value={nodes.find(n => n.id === focusNodeId)?.supplierCategoryId ?? ''}
+                onChange={async e => {
+                  const val = e.target.value ? Number(e.target.value) : null
+                  await updateNode(focusNodeId, { supplierCategoryId: val })
+                  refresh()
+                }}
+                style={{ background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', padding: '6px 8px', outline: 'none', width: '100%' }}
+              >
+                <option value="">— Sin tipo requerido</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              {categories.length === 0 && (
+                <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, marginTop: '6px', letterSpacing: '0.06em' }}>
+                  Crea categorías en PROVEEDORES para poder asignar.
+                </div>
+              )}
             </div>
             {/* Reference photos */}
             <div>
