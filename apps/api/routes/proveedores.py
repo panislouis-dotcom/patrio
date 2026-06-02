@@ -17,10 +17,9 @@ from api.db_proveedores import (
     # cotizaciones
     get_cotizaciones, create_cotizacion, update_cotizacion, select_cotizacion, delete_cotizacion,
 )
+from api import storage
 
 router = APIRouter()
-
-_FILES_BASE = Path(__file__).parent.parent.parent.parent / "data" / "files"
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 _ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 _MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
@@ -193,11 +192,9 @@ async def upload_photo(
     if ext.lower() not in _ALLOWED_EXT:
         ext = ""  # Don't trust client-supplied extension if not in allowed set
     relative_path = f"proveedores/{proveedor_id}/{uuid4().hex}{ext}"
-    full_path = _FILES_BASE / relative_path
     try:
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(content)
-    except OSError as exc:
+        storage.upload(relative_path, content, file.content_type or "image/jpeg")
+    except Exception as exc:
         raise HTTPException(status_code=500, detail="Failed to store image") from exc
     return add_proveedor_photo(proveedor_id, relative_path, file.filename or "", file.content_type or "image/jpeg")
 

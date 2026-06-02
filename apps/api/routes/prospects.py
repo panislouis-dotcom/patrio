@@ -7,8 +7,7 @@ from pydantic import BaseModel
 from api.auth import get_current_user
 from api.db import get_prospects, get_prospect, update_prospect, create_prospect, add_prospect_image, delete_prospect_image, delete_prospect
 from api.checks import run_checks
-
-_FILES_BASE = Path(__file__).parent.parent.parent.parent / "data" / "files"
+from api import storage
 
 router = APIRouter()
 
@@ -164,11 +163,9 @@ async def upload_prospect_image(
         raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
     ext = Path(file.filename).suffix if file.filename else ""
     relative_path = f"prospects/{prospect_id}/{uuid4().hex}{ext}"
-    full_path = _FILES_BASE / relative_path
     try:
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(content)
-    except OSError as exc:
+        storage.upload(relative_path, content, file.content_type or "image/jpeg")
+    except Exception as exc:
         raise HTTPException(status_code=500, detail="Failed to store image") from exc
     return add_prospect_image(prospect_id, relative_path, file.filename or "", file.content_type or "image/jpeg")
 

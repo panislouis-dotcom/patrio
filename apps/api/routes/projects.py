@@ -5,10 +5,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from api.auth import get_current_user
 from api.db import get_projects, get_project, update_project, create_project, delete_project, add_project_image, delete_project_image, update_project_image_type
+from api import storage
 
 router = APIRouter()
-
-_FILES_BASE = Path(__file__).parent.parent.parent.parent / "data" / "files"
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 _MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
 
@@ -113,11 +112,9 @@ async def upload_project_image(
         raise HTTPException(status_code=422, detail="image_type must be 'antes' or 'despues'")
     ext = Path(file.filename).suffix if file.filename else ""
     relative_path = f"projects/{project_id}/{uuid4().hex}{ext}"
-    full_path = _FILES_BASE / relative_path
     try:
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(content)
-    except OSError as exc:
+        storage.upload(relative_path, content, file.content_type or "image/jpeg")
+    except Exception as exc:
         raise HTTPException(status_code=500, detail="Failed to store image") from exc
     return add_project_image(project_id, relative_path, file.filename or "", file.content_type or "image/jpeg", image_type)
 

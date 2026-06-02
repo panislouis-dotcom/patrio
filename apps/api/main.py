@@ -3,8 +3,7 @@ import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
 from pathlib import Path
 from api.config import ALLOWED_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD_HASH
 from api.routes import prospects, projects, sonar, team, processes, profit, investors, users, comparables, analyses, documents, proveedores
@@ -74,9 +73,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-FILES_DIR = Path(__file__).parent.parent.parent / "data" / "files"
-FILES_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/files", StaticFiles(directory=str(FILES_DIR)), name="files")
+from api import storage as _storage
 
 app.include_router(prospects.router)
 app.include_router(projects.router)
@@ -96,6 +93,17 @@ app.include_router(auth_router)
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/files/{path:path}", include_in_schema=False)
+def serve_file(path: str):
+    url = _storage.serve_url(path)
+    if url:
+        return RedirectResponse(url=url, status_code=302)
+    full = _storage._ROOT / path
+    if not full.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(full))
 
 
 # Serve React frontend in production container (not present in local dev)

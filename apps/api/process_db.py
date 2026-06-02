@@ -329,8 +329,7 @@ def get_instance_states(iid: int) -> list[dict]:
 # ─── Node files ───────────────────────────────────────────────────────────────
 
 from pathlib import Path as _Path
-
-_NODE_FILES_DIR = _Path(__file__).parent.parent.parent / "data" / "files"
+from api import storage as _storage
 
 
 def create_node_file(
@@ -345,8 +344,6 @@ def create_node_file(
         rel_path = f"nodes/{template_node_id}/instances/{instance_id}/{file_name}"
     else:
         rel_path = f"nodes/{template_node_id}/reference/{file_name}"
-    full_path = _NODE_FILES_DIR / rel_path
-
     # Commit DB row first — prevents orphaned files if FK or other constraint fails
     with get_db() as conn:
         cur = conn.execute(
@@ -357,8 +354,7 @@ def create_node_file(
         )
         fid = cur.fetchone()["id"]
 
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(content)
+    _storage.upload(rel_path, content, content_type)
     return get_node_file(fid)
 
 
@@ -393,9 +389,7 @@ def get_node_files(template_node_id: int, instance_id: int | None = None) -> lis
 def delete_node_file(fid: int) -> None:
     record = get_node_file(fid)
     if record:
-        full_path = _NODE_FILES_DIR / record["filePath"]
-        if full_path.exists():
-            full_path.unlink()
+        _storage.delete(record["filePath"])
     with get_db() as conn:
         conn.execute("DELETE FROM node_files WHERE id = %s", (fid,))
 
@@ -421,7 +415,6 @@ def create_instance_file(
     import mimetypes
     ext = _Path(file_name).suffix or (mimetypes.guess_extension(content_type) or "")
     rel_path = f"instance/{instance_id}/{uuid4().hex}{ext}"
-    full_path = _NODE_FILES_DIR / rel_path
     with get_db() as conn:
         row = conn.execute(
             """INSERT INTO instance_files
@@ -429,8 +422,7 @@ def create_instance_file(
                VALUES (%s, %s, %s, %s) RETURNING *""",
             (instance_id, rel_path, file_name, content_type),
         ).fetchone()
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(content)
+    _storage.upload(rel_path, content, content_type)
     return _row_to_dict(row)
 
 
@@ -438,9 +430,7 @@ def delete_instance_file(fid: int) -> None:
     with get_db() as conn:
         row = conn.execute("SELECT file_path FROM instance_files WHERE id = %s", (fid,)).fetchone()
     if row:
-        full_path = _NODE_FILES_DIR / row["file_path"]
-        if full_path.exists():
-            full_path.unlink()
+        _storage.delete(row["file_path"])
     with get_db() as conn:
         conn.execute("DELETE FROM instance_files WHERE id = %s", (fid,))
 
