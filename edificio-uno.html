@@ -133,6 +133,8 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
 .mant-table tr:hover td{background:var(--warm)}
 .mant-ok{color:#2D7D46;font-size:.72rem;font-weight:500}
 .mant-pend{color:var(--amber);font-size:.72rem;font-weight:500}
+.mant-urg{color:var(--red);font-size:.72rem;font-weight:600}
+.alert-red{background:var(--red-light);border:1px solid var(--red);color:#7F1D1D}
 
 /* LEVANTAMIENTO */
 .lev-table{width:100%;border-collapse:collapse;font-size:.82rem}
@@ -629,6 +631,9 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
     <div class="badge">Plan 2026</div>
   </div>
 
+  <div class="alert alert-red">
+    ⚠ <span>Mantenimiento de <strong>boilers programado: Junio 2026</strong> — 6 equipos (2 Cozzy + Parisino 1, Parisino 2, Depa Esquina, Penthouse).</span>
+  </div>
   <div class="alert alert-amber">
     ⚠ <span>Próximo mantenimiento de A/C programado: <strong>Agosto 2026</strong> — todos los equipos. Planear con anticipación.</span>
   </div>
@@ -651,6 +656,11 @@ body{font-family:var(--fb);background:var(--warm);color:var(--text);min-height:1
         <tr><td>A/C</td><td>Parisino 1</td><td>Mirage Magnum Inverter 22</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
         <tr><td>A/C</td><td>Parisino 2</td><td>Mirage Inverter 32</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
         <tr><td>A/C</td><td>Penthouse</td><td>Mirage Inverter 32</td><td>Ago 2025</td><td>Ago 2026</td><td>Anual</td><td><span class="mant-pend">Pendiente</span></td></tr>
+        <tr style="background:var(--red-light)"><td>Boiler (×2)</td><td>Cozzy</td><td>—</td><td>—</td><td>Jun 2026</td><td>Anual</td><td><span class="mant-urg">Programado</span></td></tr>
+        <tr style="background:var(--red-light)"><td>Boiler</td><td>Parisino 1</td><td>—</td><td>—</td><td>Jun 2026</td><td>Anual</td><td><span class="mant-urg">Programado</span></td></tr>
+        <tr style="background:var(--red-light)"><td>Boiler</td><td>Parisino 2</td><td>—</td><td>—</td><td>Jun 2026</td><td>Anual</td><td><span class="mant-urg">Programado</span></td></tr>
+        <tr style="background:var(--red-light)"><td>Boiler</td><td>Depa Esquina</td><td>—</td><td>—</td><td>Jun 2026</td><td>Anual</td><td><span class="mant-urg">Programado</span></td></tr>
+        <tr style="background:var(--red-light)"><td>Boiler</td><td>Penthouse</td><td>—</td><td>—</td><td>Jun 2026</td><td>Anual</td><td><span class="mant-urg">Programado</span></td></tr>
         <tr><td>Señalización</td><td>Edificio general</td><td>Etiquetas + impresión</td><td>—</td><td>8 abr 2026</td><td>Única vez</td><td><span class="mant-pend">Pendiente</span></td></tr>
       </tbody>
     </table>
