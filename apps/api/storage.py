@@ -5,9 +5,9 @@ Configure S3 via environment variables (all four required to enable S3):
   S3_BUCKET      e.g. refigan-files
   S3_ACCESS_KEY
   S3_SECRET_KEY
-  S3_PUBLIC_URL  e.g. https://refigan-files.fsn1.your-objectstorage.com  (for redirect-based serving)
 
 When S3_ENDPOINT is not set, files are stored under data/files/ on local disk.
+Files are always served proxied through the API — no public bucket access needed.
 """
 import os
 from pathlib import Path
@@ -18,7 +18,6 @@ _S3_ENDPOINT = os.getenv("S3_ENDPOINT", "")
 _S3_BUCKET = os.getenv("S3_BUCKET", "")
 _S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
 _S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
-_S3_PUBLIC_URL = os.getenv("S3_PUBLIC_URL", "").rstrip("/")
 
 _client = None
 
@@ -62,8 +61,20 @@ def delete(key: str) -> None:
             p.unlink()
 
 
-def serve_url(key: str) -> str | None:
-    """Return a direct S3 public URL for the key, or None when using local disk."""
-    if s3_enabled() and _S3_PUBLIC_URL:
-        return f"{_S3_PUBLIC_URL}/{key}"
-    return None
+def stream(key: str) -> tuple[bytes, str]:
+    """Return (content, content_type) for a stored file. Raises FileNotFoundError if missing."""
+    if s3_enabled():
+        from botocore.exceptions import ClientError
+        try:
+            obj = _s3().get_object(Bucket=_S3_BUCKET, Key=key)
+            return obj["Body"].read(), obj.get("ContentType", "application/octet-stream")
+        except ClientError as e:
+            if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                raise FileNotFoundError(key)
+            raise
+    p = _ROOT / key
+    if not p.is_file():
+        raise FileNotFoundError(key)
+    import mimetypes
+    content_type = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
+    return p.read_bytes(), content_type
