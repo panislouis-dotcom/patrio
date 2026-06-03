@@ -253,14 +253,15 @@ def get_proveedor_photos(proveedor_id: int) -> list[dict]:
     return [{_snake_to_camel(k): v for k, v in dict(r).items()} for r in rows]
 
 
-def delete_proveedor_photo(photo_id: int, proveedor_id: int) -> None:
+def delete_proveedor_photo(photo_id: int, proveedor_id: int) -> str:
     with get_db() as conn:
-        result = conn.execute(
-            "DELETE FROM proveedor_photos WHERE id = %s AND proveedor_id = %s",
+        row = conn.execute(
+            "DELETE FROM proveedor_photos WHERE id = %s AND proveedor_id = %s RETURNING file_path",
             (photo_id, proveedor_id),
-        )
-        if result.rowcount == 0:
+        ).fetchone()
+        if row is None:
             raise ValueError(f"Photo {photo_id} not found for proveedor {proveedor_id}")
+    return row["file_path"]
 
 
 # ─── Cotizacion functions ─────────────────────────────────────────────────────

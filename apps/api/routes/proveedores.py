@@ -202,9 +202,10 @@ async def upload_photo(
 @router.delete("/api/proveedores/{proveedor_id}/photos/{photo_id}", status_code=204)
 def remove_photo(proveedor_id: int, photo_id: int, _: dict = Depends(get_current_user)):
     try:
-        delete_proveedor_photo(photo_id, proveedor_id)
+        file_path = delete_proveedor_photo(photo_id, proveedor_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Photo not found")
+    storage.delete(file_path)
 
 
 # ── Cotizaciones Routes ───────────────────────────────────────────────────────

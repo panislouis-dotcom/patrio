@@ -126,9 +126,10 @@ async def remove_project_image(
     _: dict = Depends(get_current_user),
 ):
     try:
-        delete_project_image(image_id, project_id)
+        file_path = delete_project_image(image_id, project_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Image not found")
+    storage.delete(file_path)
 
 
 class ImageTypeUpdate(BaseModel):

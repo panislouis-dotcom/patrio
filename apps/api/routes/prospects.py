@@ -177,6 +177,7 @@ async def remove_prospect_image(
     _: dict = Depends(get_current_user),
 ):
     try:
-        delete_prospect_image(image_id, prospect_id)
+        file_path = delete_prospect_image(image_id, prospect_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Image not found")
+    storage.delete(file_path)

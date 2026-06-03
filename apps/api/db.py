@@ -182,14 +182,15 @@ def add_prospect_image(prospect_id: int, file_path: str, file_name: str, content
     return _row_to_dict(row)
 
 
-def delete_prospect_image(image_id: int, prospect_id: int) -> None:
+def delete_prospect_image(image_id: int, prospect_id: int) -> str:
     with get_db() as conn:
-        result = conn.execute(
-            "DELETE FROM prospect_images WHERE id = %s AND prospect_id = %s",
+        row = conn.execute(
+            "DELETE FROM prospect_images WHERE id = %s AND prospect_id = %s RETURNING file_path",
             (image_id, prospect_id),
-        )
-        if result.rowcount == 0:
+        ).fetchone()
+        if row is None:
             raise ValueError(f"Image {image_id} not found for prospect {prospect_id}")
+    return row["file_path"]
 
 
 def get_project_images(project_id: int) -> list[dict]:
@@ -211,14 +212,15 @@ def add_project_image(project_id: int, file_path: str, file_name: str, content_t
     return _row_to_dict(row)
 
 
-def delete_project_image(image_id: int, project_id: int) -> None:
+def delete_project_image(image_id: int, project_id: int) -> str:
     with get_db() as conn:
-        result = conn.execute(
-            "DELETE FROM project_images WHERE id = %s AND project_id = %s",
+        row = conn.execute(
+            "DELETE FROM project_images WHERE id = %s AND project_id = %s RETURNING file_path",
             (image_id, project_id),
-        )
-        if result.rowcount == 0:
+        ).fetchone()
+        if row is None:
             raise ValueError(f"Image {image_id} not found for project {project_id}")
+    return row["file_path"]
 
 
 def update_project_image_type(image_id: int, project_id: int, image_type: str) -> dict:
