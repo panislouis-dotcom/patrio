@@ -2,12 +2,11 @@ name: Deploy
 on:
   push:
     branches: [main]
-permissions: {}
+permissions:
+  id-token: write
+  contents: read
 jobs:
   build:
     uses: edlgg/edg-infra/.github/workflows/build-push.yml@main
     with:
       service: refigan
-    permissions:
-      id-token: write
-      contents: read
