@@ -40,6 +40,22 @@ html { margin: 0; padding: 0; background: #F2F0EB; }
 body { font-family: 'Public Sans', sans-serif; background: #F2F0EB; color: #1A1A1A; font-size: 12pt; line-height: 1.75;
        width: 210mm; overflow: hidden; }
 
+.img-hero { display: block; width: 100%; object-fit: contain; object-position: center center;
+            background: #F2F0EB; }
+
+/* ── Oportunidad: hero expands to fill remaining page space ─────────── */
+.section-oportunidad               { display: flex; flex-direction: column; overflow: hidden; }
+.section-oportunidad .section-header  { flex-shrink: 0; }
+.section-oportunidad .img-hero     { flex: 1; min-height: 0; }
+.section-oportunidad .content-section { flex-shrink: 0; padding: 20px 80px 24px; }
+
+.img-strip-wrap { margin-top: 24px; page-break-inside: avoid; break-inside: avoid; }
+.img-strip-label { font-family: 'Space Grotesk', sans-serif; font-size: 6.5pt; letter-spacing: 0.18em;
+                   text-transform: uppercase; color: #7A7260; margin-bottom: 6px; }
+.img-strip     { display: flex; gap: 6px; }
+.img-strip img { flex: 1; height: 150px; object-fit: contain; object-position: top center;
+                 background: #F2F0EB; min-width: 0; }
+
 .cover { height: 297mm; background: #1A2319; padding: 72px 80px; page-break-after: always; break-after: always;
          display: flex; flex-direction: column; justify-content: space-between; }
 .footer-section { height: 297mm; background: #1A2319; padding: 64px 80px; page-break-before: always; break-before: always;
@@ -55,10 +71,37 @@ h1 { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 36pt; color
 .cover-footer { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
                 letter-spacing: 0.08em; color: rgba(242,240,235,0.4); }
 
-.page-section         { page-break-inside: avoid; break-inside: avoid; }
+.page-section         { height: 297mm; overflow: hidden; page-break-after: always; break-after: always; }
 .section-vision       { --section-color: #A2571D; }
 .section-track        { --section-color: #654F6F; }
 .section-oportunidad  { --section-color: #5C5D8D; }
+
+/* ── Track Record: compact text, bigger images ──────────────────────── */
+.section-track .content-section      { padding: 20px 80px 20px; }
+.section-track h2                    { font-size: 12pt; margin-bottom: 8px; }
+.section-track .metric-grid          { margin-top: 10px; }
+.section-track .metric-card          { padding: 11px 16px; }
+.section-track .metric-value.compact { font-size: 16pt; }
+.section-track .metric-label         { margin-top: 4px; font-size: 6pt; }
+.section-track .two-col              { margin-top: 12px; gap: 28px; }
+.section-track .col-label            { margin-bottom: 8px; font-size: 6.5pt; }
+.section-track table.timeline td     { font-size: 8pt; padding: 3px 0; }
+.section-track table.timeline td.tdate { font-size: 6.5pt; padding-right: 16px; }
+.section-track table.budget td       { font-size: 8pt; padding: 3px 0; }
+.section-track .img-strip-wrap  { margin-top: 10px; }
+.section-track .img-strip-label { margin-bottom: 4px; }
+.section-track .img-strip img   { height: 185px; }
+
+.section-divider      { height: 297mm; page-break-after: always; break-after: always;
+                        display: flex; flex-direction: column; align-items: center; justify-content: center;
+                        text-align: center; padding: 80px; gap: 24px; }
+.divider-label        { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
+                        letter-spacing: 0.45em; text-transform: uppercase; color: rgba(242,240,235,0.5); }
+.divider-title        { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 52pt;
+                        color: #F2F0EB; line-height: 1.0; }
+.divider-rule         { width: 40px; height: 1px; background: rgba(242,240,235,0.3); }
+.divider-count        { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
+                        letter-spacing: 0.2em; color: rgba(242,240,235,0.35); }
 
 .section-header { padding: 24px 80px; background: var(--section-color);
                   page-break-after: avoid; break-after: avoid; }
@@ -131,6 +174,31 @@ def _fmt_mxn(val) -> str:
         return "—"
 
 
+def _fmt_mxn_compact(val) -> str:
+    """Format as $2.4M or $850K for compact metric cards."""
+    try:
+        v = int(val or 0)
+        if abs(v) >= 1_000_000:
+            return f"${v / 1_000_000:.1f}M"
+        if abs(v) >= 1_000:
+            return f"${v / 1_000:.0f}K"
+        return f"${v:,}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _img_strip(images: list[dict], label: str, max_imgs: int = 3) -> str:
+    """Render a labeled horizontal strip of images, preserving aspect ratio via object-fit: contain."""
+    imgs = [img for img in images if img.get("dataUri")][:max_imgs]
+    if not imgs:
+        return ""
+    tags = "".join(f'<img src="{img["dataUri"]}" alt="">' for img in imgs)
+    return f"""<div class="img-strip-wrap">
+  <div class="img-strip-label">{label}</div>
+  <div class="img-strip">{tags}</div>
+</div>"""
+
+
 def _parse_milestones(raw) -> list[tuple[str, str]]:
     try:
         data = json.loads(raw) if isinstance(raw, str) else (raw or {})
@@ -150,6 +218,16 @@ def _parse_budget(raw) -> list[tuple[str, int]]:
 # ---------------------------------------------------------------------------
 # Section builders
 # ---------------------------------------------------------------------------
+
+def _section_divider(label: str, title: str, color: str, count: int) -> str:
+    unit = "proyecto" if count == 1 else "proyectos" if "TRACK" in label.upper() else "oportunidad" if count == 1 else "oportunidades"
+    return f"""<div class="section-divider" style="background:{color}">
+  <div class="divider-label">{label}</div>
+  <div class="divider-title">{title}</div>
+  <div class="divider-rule"></div>
+  <div class="divider-count">{count:02d} {unit}</div>
+</div>"""
+
 
 def _cover(month_year: str) -> str:
     return f"""<div class="cover">
@@ -183,14 +261,17 @@ def _vision() -> str:
 def _track_record_section(i: int, project: dict) -> str:
     name = project.get("name", "")
     address = project.get("address", "")
-    total_inv = project.get("totalInvestment", 0)
-    current_val = project.get("currentValuation", 0)
-    gain = (current_val or 0) - (total_inv or 0)
+    total_inv = float(project.get("totalInvestment") or 0)
+    current_val = float(project.get("currentValuation") or 0)
+    gain = current_val - total_inv
+    multiplier = f"{current_val / total_inv:.2f}×" if total_inv else "—"
+    hold_months = int(project.get("holdMonthsActual") or 0)
+    duration = f"{hold_months}m" if hold_months else "—"
 
     milestones = _parse_milestones(project.get("milestones", "{}"))
     timeline_rows = "\n".join(
-        f'      <tr><td class="tdate">{date}</td><td class="tdesc">{desc}</td></tr>'
-        for date, desc in milestones
+        f'      <tr><td class="tdate">{d}</td><td class="tdesc">{desc}</td></tr>'
+        for d, desc in milestones
     )
 
     budget = _parse_budget(project.get("budget", "{}"))
@@ -199,6 +280,11 @@ def _track_record_section(i: int, project: dict) -> str:
         for category, amount in budget
     )
 
+    images = project.get("images", [])
+    antes = [img for img in images if img.get("imageType") == "antes"]
+    despues = [img for img in images if img.get("imageType") == "despues"]
+    images_html = _img_strip(antes, "ANTES") + _img_strip(despues, "DESPUÉS")
+
     return f"""<div class="page-section section-track">
   <div class="section-header">
     <div class="band-label">TRACK RECORD · {i:02d}</div>
@@ -206,18 +292,22 @@ def _track_record_section(i: int, project: dict) -> str:
   </div>
   <section class="content-section">
     <h2>{address}</h2>
-    <div class="metric-grid metric-grid-3">
+    <div class="metric-grid metric-grid-4">
       <div class="metric-card">
-        <div class="metric-value">{_fmt_mxn(total_inv)}</div>
+        <div class="metric-value compact">{_fmt_mxn_compact(total_inv)}</div>
         <div class="metric-label">Inversión Total</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value">{_fmt_mxn(current_val)}</div>
+        <div class="metric-value compact">{_fmt_mxn_compact(current_val)}</div>
         <div class="metric-label">Valuación Actual</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value">{_fmt_mxn(gain)}</div>
+        <div class="metric-value compact">{_fmt_mxn_compact(gain)}</div>
         <div class="metric-label">Ganancia</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value compact">{multiplier}</div>
+        <div class="metric-label">Multiplicador · {duration}</div>
       </div>
     </div>
     <div class="two-col">
@@ -234,6 +324,7 @@ def _track_record_section(i: int, project: dict) -> str:
         </table>
       </div>
     </div>
+    {images_html}
   </section>
 </div>"""
 
@@ -242,18 +333,55 @@ def _oportunidad_section(prospect: dict) -> str:
     name = prospect.get("name", "")
     address = prospect.get("address", "")
     city = prospect.get("city", "")
-    hold_months = prospect.get("holdMonths", 0)
-    cap_rate = prospect.get("capRate") or 0
-    total_inv = prospect.get("totalInvestment", 0)
-    projected_sale = prospect.get("projectedSale", 0)
-    rent_monthly = prospect.get("rentMonthly", 0)
+    hold_months = int(prospect.get("holdMonths") or 0)
+    cap_rate = float(prospect.get("capRate") or 0)
+    total_inv = float(prospect.get("totalInvestment") or 0)
+    projected_sale = float(prospect.get("projectedSale") or 0)
+    rent_monthly = float(prospect.get("rentMonthly") or 0)
     notes = prospect.get("notes", "")
+    sqm_land = float(prospect.get("sqmLand") or 0)
+    sqm_const = float(prospect.get("sqmConstruction") or 0)
+    prop_type = prospect.get("type", "")
+
+    projected_gain = projected_sale - total_inv
+    profit_pct = (projected_gain / total_inv * 100) if total_inv else 0
+    annualized_roi = 0.0
+    if total_inv and projected_sale and hold_months:
+        try:
+            annualized_roi = ((projected_sale / total_inv) ** (12.0 / hold_months) - 1) * 100
+        except Exception:
+            annualized_roi = 0.0
+
+    roi_str = f"{annualized_roi:.1f}%" if annualized_roi else "—"
+    cap_str = f"{cap_rate * 100:.1f}%" if cap_rate else "—"
+    sqm_detail = ""
+    if sqm_land or sqm_const:
+        parts = []
+        if sqm_land:
+            parts.append(f"{int(sqm_land):,} m² terreno")
+        if sqm_const:
+            parts.append(f"{int(sqm_const):,} m² construcción")
+        sqm_detail = " · ".join(parts)
+    type_detail = prop_type.capitalize() if prop_type else ""
+
+    images = prospect.get("images", [])
+    hero = next((img for img in images if img.get("dataUri")), None)
+    hero_html = f'<img class="img-hero" src="{hero["dataUri"]}" alt="">' if hero else ""
+
+    financials_rows = ""
+    if rent_monthly:
+        financials_rows += f"<tr><td>Renta mensual est.</td><td class=\"bnum\">{_fmt_mxn(rent_monthly)}</td></tr>"
+    financials_rows += f"<tr><td>Valuación proyectada</td><td class=\"bnum\">{_fmt_mxn_compact(projected_sale)}</td></tr>"
+    financials_rows += f"<tr><td>Ganancia estimada</td><td class=\"bnum\">{_fmt_mxn_compact(projected_gain)} ({profit_pct:.0f}%)</td></tr>"
+    if cap_rate:
+        financials_rows += f"<tr><td>Cap rate</td><td class=\"bnum\">{cap_str}</td></tr>"
 
     return f"""<div class="page-section section-oportunidad">
   <div class="section-header">
     <div class="band-label">OPORTUNIDAD</div>
     <div class="band-title">{name}</div>
   </div>
+  {hero_html}
   <section class="content-section">
     <div class="metric-grid metric-grid-4">
       <div class="metric-card">
@@ -261,28 +389,32 @@ def _oportunidad_section(prospect: dict) -> str:
         <div class="metric-label">Plazo</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value compact">{cap_rate * 100:.1f}%</div>
-        <div class="metric-label">Cap Rate</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value compact">{_fmt_mxn(total_inv)}</div>
+        <div class="metric-value compact">{_fmt_mxn_compact(total_inv)}</div>
         <div class="metric-label">Inversión Total</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value compact">{_fmt_mxn(projected_sale)}</div>
-        <div class="metric-label">Valuación Proyectada</div>
+        <div class="metric-value compact">{_fmt_mxn_compact(projected_gain)}</div>
+        <div class="metric-label">Ganancia Estimada</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value compact">{roi_str}</div>
+        <div class="metric-label">ROI Anualizado</div>
       </div>
     </div>
     <div class="two-col">
       <div>
         <div class="col-label">FINANCIEROS</div>
-        <p>Renta Mensual: {_fmt_mxn(rent_monthly)}</p>
-        <p class="caption">{notes}</p>
+        <table class="budget">
+{financials_rows}
+        </table>
+        {f'<p class="caption" style="margin-top:12px">{notes}</p>' if notes else ""}
       </div>
       <div>
         <div class="col-label">UBICACIÓN</div>
         <p>{address}</p>
         <p class="caption">{city}</p>
+        {f'<p class="caption">{sqm_detail}</p>' if sqm_detail else ""}
+        {f'<p class="caption">{type_detail}</p>' if type_detail else ""}
       </div>
     </div>
   </section>
@@ -313,10 +445,14 @@ def build_prospectus_html(projects: list[dict], prospects: list[dict]) -> str:
     fonts_css = _build_fonts_css()
     body_css = _BODY_CSS
     parts = [_cover(month_year), _vision()]
-    for i, p in enumerate(projects, 1):
-        parts.append(_track_record_section(i, p))
-    for p in prospects:
-        parts.append(_oportunidad_section(p))
+    if projects:
+        parts.append(_section_divider("Track Record", "Proyectos<br>Realizados", "#654F6F", len(projects)))
+        for i, p in enumerate(projects, 1):
+            parts.append(_track_record_section(i, p))
+    if prospects:
+        parts.append(_section_divider("Oportunidades", "Próximas<br>Inversiones", "#5C5D8D", len(prospects)))
+        for p in prospects:
+            parts.append(_oportunidad_section(p))
     parts.append(_cta(month_year))
     body_html = "\n".join(parts)
     return f"""<!DOCTYPE html>
