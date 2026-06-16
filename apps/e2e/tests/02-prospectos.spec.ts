@@ -46,24 +46,24 @@ test.describe('Prospectos', () => {
     await page.getByText('+ NUEVO').click()
     await expect(page.getByText('Nuevo prospecto')).toBeVisible()
 
-    // Fill Nombre (autoFocus input — first field in modal)
-    await page.getByPlaceholder('ej. 20000').waitFor({ state: 'visible' })
-    // Fill name using the label scoped approach
-    const nombreLabel = page.getByText('Nombre').first()
-    await nombreLabel.locator('..').locator('input').fill(PROSPECT_NAME)
+    // Skip AI analysis — go directly to step 2 form
+    await page.getByText('LLENAR MANUALMENTE ▸').click()
 
-    // Fill Dirección
-    const direccionLabel = page.getByText('Dirección')
-    await direccionLabel.locator('..').locator('input').fill('Calle Test 123')
+    // Step 2: fill the prospect form fields
+    await page.getByPlaceholder('Nombre del prospecto').waitFor({ state: 'visible' })
+    await page.getByPlaceholder('Nombre del prospecto').fill(PROSPECT_NAME)
+    await page.getByPlaceholder('Calle, colonia, ciudad').fill('Calle Test 123')
 
-    // Fill Renta mensual
-    await page.getByPlaceholder('ej. 20000').fill('25000')
+    // Fill required numeric fields (saveBlockers: landPrice, projectedSale, rentMonthly)
+    const numericInputs = page.locator('input[type="number"]')
+    await numericInputs.nth(3).fill('1000000')  // Precio terreno
+    await numericInputs.nth(4).fill('2000000')  // Venta proyectada
+    await numericInputs.nth(5).fill('10000')    // Renta mensual
 
     await page.getByText('GUARDAR').click()
 
     // Modal should close and the name appears in the table
     await expect(page.getByText('Nuevo prospecto')).not.toBeVisible()
-    // The name may appear in the table row AND in other contexts — first() handles it
     await expect(page.getByText(PROSPECT_NAME).first()).toBeVisible()
   })
 

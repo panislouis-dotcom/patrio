@@ -4,18 +4,16 @@ import path from 'path'
 const AUTH_FILE = path.join(__dirname, '.auth/user.json')
 
 setup('authenticate', async ({ page }) => {
+  const email = process.env.E2E_USER
+  const password = process.env.E2E_PASS
+  if (!email || !password) throw new Error('E2E_USER and E2E_PASS env vars must be set')
+
   const response = await page.request.post('http://localhost:8000/api/auth/login', {
-    data: {
-      email: process.env.E2E_USER ?? 'test@refigan.com',
-      password: process.env.E2E_PASS ?? 'testpassword',
-    },
+    data: { email, password },
   })
 
   if (!response.ok()) {
-    throw new Error(
-      `E2E login failed (${response.status()}). Is the stack running? ` +
-      `Set E2E_USER and E2E_PASS env vars if credentials differ from defaults.`
-    )
+    throw new Error(`E2E login failed (${response.status()}). Is the stack running?`)
   }
 
   const { access_token } = (await response.json()) as { access_token: string }

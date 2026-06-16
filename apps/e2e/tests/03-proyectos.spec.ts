@@ -43,8 +43,8 @@ test.describe('Proyectos', () => {
     await firstRow.click()
     await expect(page).toHaveURL(/\/proyectos\/\d+/)
 
-    // Key section visible: GANANCIA NO REALIZADA hero metric on the left panel
-    await expect(page.getByText('GANANCIA NO REALIZADA')).toBeVisible()
+    // Key section visible: ROI ANUAL hero metric on the left panel
+    await expect(page.getByText('ROI ANUAL').first()).toBeVisible()
 
     // Back button should be visible
     await expect(page.getByText('← PROYECTOS')).toBeVisible()

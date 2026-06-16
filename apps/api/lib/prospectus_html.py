@@ -3,12 +3,16 @@ import base64
 import json
 import os
 import tempfile
+from markupsafe import escape as _esc
 
 _FONTS_DIR = Path(__file__).resolve().parent.parent / "fonts"
 
 
 def _font_b64(name: str) -> str:
-    return base64.b64encode((_FONTS_DIR / name).read_bytes()).decode()
+    path = (_FONTS_DIR / name).resolve()
+    if not path.is_relative_to(_FONTS_DIR):
+        raise ValueError(f"Font path escapes fonts directory: {name!r}")
+    return base64.b64encode(path.read_bytes()).decode()
 
 
 def _build_fonts_css() -> str:
@@ -199,6 +203,62 @@ def _img_strip(images: list[dict], label: str, max_imgs: int = 3) -> str:
 </div>"""
 
 
+def _metric_card(value: str, label: str) -> str:
+    return (
+        f'      <div class="metric-card">\n'
+        f'        <div class="metric-value compact">{value}</div>\n'
+        f'        <div class="metric-label">{label}</div>\n'
+        f'      </div>'
+    )
+
+
+def _timeline_html(milestones: list[tuple[str, str]]) -> str:
+    rows = "\n".join(
+        f'        <tr><td class="tdate">{_esc(d)}</td><td class="tdesc">{_esc(desc)}</td></tr>'
+        for d, desc in milestones
+    )
+    return f'<div class="col-label">CRONOLOGÍA</div>\n        <table class="timeline">\n{rows}\n        </table>'
+
+
+def _budget_html(budget: list[tuple[str, int]]) -> str:
+    rows = "\n".join(
+        f'        <tr><td>{_esc(cat)}</td><td class="bnum">{_fmt_mxn(amt)}</td></tr>'
+        for cat, amt in budget
+    )
+    return f'<div class="col-label">PRESUPUESTO</div>\n        <table class="budget">\n{rows}\n        </table>'
+
+
+def _annualized_roi(total_inv: float, projected_sale: float, hold_months: int) -> float:
+    if not (total_inv and projected_sale and hold_months):
+        return 0.0
+    try:
+        return ((projected_sale / total_inv) ** (12.0 / hold_months) - 1) * 100
+    except Exception:
+        return 0.0
+
+
+def _sqm_detail(sqm_land: float, sqm_const: float) -> str:
+    parts = []
+    if sqm_land:
+        parts.append(f"{int(sqm_land):,} m² terreno")
+    if sqm_const:
+        parts.append(f"{int(sqm_const):,} m² construcción")
+    return " · ".join(parts)
+
+
+def _financials_rows(rent_monthly: float, projected_sale: float, projected_gain: float,
+                     profit_pct: float, cap_rate: float) -> str:
+    rows = ""
+    if rent_monthly:
+        rows += f'        <tr><td>Renta mensual est.</td><td class="bnum">{_fmt_mxn(rent_monthly)}</td></tr>\n'
+    rows += f'        <tr><td>Valuación proyectada</td><td class="bnum">{_fmt_mxn_compact(projected_sale)}</td></tr>\n'
+    rows += f'        <tr><td>Ganancia estimada</td><td class="bnum">{_fmt_mxn_compact(projected_gain)} ({profit_pct:.0f}%)</td></tr>\n'
+    if cap_rate:
+        rows += f'        <tr><td>Cap rate</td><td class="bnum">{cap_rate * 100:.1f}%</td></tr>\n'
+    return rows
+
+
+
 def _parse_milestones(raw) -> list[tuple[str, str]]:
     try:
         data = json.loads(raw) if isinstance(raw, str) else (raw or {})
@@ -259,8 +319,8 @@ def _vision() -> str:
 
 
 def _track_record_section(i: int, project: dict) -> str:
-    name = project.get("name", "")
-    address = project.get("address", "")
+    name = _esc(project.get("name", ""))
+    address = _esc(project.get("address", ""))
     total_inv = float(project.get("totalInvestment") or 0)
     current_val = float(project.get("currentValuation") or 0)
     gain = current_val - total_inv
@@ -268,17 +328,14 @@ def _track_record_section(i: int, project: dict) -> str:
     hold_months = int(project.get("holdMonthsActual") or 0)
     duration = f"{hold_months}m" if hold_months else "—"
 
-    milestones = _parse_milestones(project.get("milestones", "{}"))
-    timeline_rows = "\n".join(
-        f'      <tr><td class="tdate">{d}</td><td class="tdesc">{desc}</td></tr>'
-        for d, desc in milestones
-    )
-
-    budget = _parse_budget(project.get("budget", "{}"))
-    budget_rows = "\n".join(
-        f"      <tr><td>{category}</td><td class=\"bnum\">{_fmt_mxn(amount)}</td></tr>"
-        for category, amount in budget
-    )
+    metrics_html = "\n".join([
+        _metric_card(_fmt_mxn_compact(total_inv), "Inversión Total"),
+        _metric_card(_fmt_mxn_compact(current_val), "Valuación Actual"),
+        _metric_card(_fmt_mxn_compact(gain), "Ganancia"),
+        _metric_card(multiplier, f"Multiplicador · {duration}"),
+    ])
+    timeline_html = _timeline_html(_parse_milestones(project.get("milestones", "{}")))
+    budget_html = _budget_html(_parse_budget(project.get("budget", "{}")))
 
     images = project.get("images", [])
     antes = [img for img in images if img.get("imageType") == "antes"]
@@ -293,36 +350,11 @@ def _track_record_section(i: int, project: dict) -> str:
   <section class="content-section">
     <h2>{address}</h2>
     <div class="metric-grid metric-grid-4">
-      <div class="metric-card">
-        <div class="metric-value compact">{_fmt_mxn_compact(total_inv)}</div>
-        <div class="metric-label">Inversión Total</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value compact">{_fmt_mxn_compact(current_val)}</div>
-        <div class="metric-label">Valuación Actual</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value compact">{_fmt_mxn_compact(gain)}</div>
-        <div class="metric-label">Ganancia</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value compact">{multiplier}</div>
-        <div class="metric-label">Multiplicador · {duration}</div>
-      </div>
+{metrics_html}
     </div>
     <div class="two-col">
-      <div>
-        <div class="col-label">CRONOLOGÍA</div>
-        <table class="timeline">
-{timeline_rows}
-        </table>
-      </div>
-      <div>
-        <div class="col-label">PRESUPUESTO</div>
-        <table class="budget">
-{budget_rows}
-        </table>
-      </div>
+      <div>{timeline_html}</div>
+      <div>{budget_html}</div>
     </div>
     {images_html}
   </section>
@@ -330,51 +362,37 @@ def _track_record_section(i: int, project: dict) -> str:
 
 
 def _oportunidad_section(prospect: dict) -> str:
-    name = prospect.get("name", "")
-    address = prospect.get("address", "")
-    city = prospect.get("city", "")
+    name = _esc(prospect.get("name", ""))
+    address = _esc(prospect.get("address", ""))
+    city = _esc(prospect.get("city", ""))
     hold_months = int(prospect.get("holdMonths") or 0)
     cap_rate = float(prospect.get("capRate") or 0)
     total_inv = float(prospect.get("totalInvestment") or 0)
     projected_sale = float(prospect.get("projectedSale") or 0)
     rent_monthly = float(prospect.get("rentMonthly") or 0)
-    notes = prospect.get("notes", "")
+    notes = _esc(prospect.get("notes", ""))
     sqm_land = float(prospect.get("sqmLand") or 0)
     sqm_const = float(prospect.get("sqmConstruction") or 0)
     prop_type = prospect.get("type", "")
 
     projected_gain = projected_sale - total_inv
     profit_pct = (projected_gain / total_inv * 100) if total_inv else 0
-    annualized_roi = 0.0
-    if total_inv and projected_sale and hold_months:
-        try:
-            annualized_roi = ((projected_sale / total_inv) ** (12.0 / hold_months) - 1) * 100
-        except Exception:
-            annualized_roi = 0.0
-
+    annualized_roi = _annualized_roi(total_inv, projected_sale, hold_months)
     roi_str = f"{annualized_roi:.1f}%" if annualized_roi else "—"
-    cap_str = f"{cap_rate * 100:.1f}%" if cap_rate else "—"
-    sqm_detail = ""
-    if sqm_land or sqm_const:
-        parts = []
-        if sqm_land:
-            parts.append(f"{int(sqm_land):,} m² terreno")
-        if sqm_const:
-            parts.append(f"{int(sqm_const):,} m² construcción")
-        sqm_detail = " · ".join(parts)
-    type_detail = prop_type.capitalize() if prop_type else ""
+    sqm_detail = _sqm_detail(sqm_land, sqm_const)
+    type_detail = _esc(prop_type.capitalize()) if prop_type else ""
+
+    metrics_html = "\n".join([
+        _metric_card(f"{hold_months}m", "Plazo"),
+        _metric_card(_fmt_mxn_compact(total_inv), "Inversión Total"),
+        _metric_card(_fmt_mxn_compact(projected_gain), "Ganancia Estimada"),
+        _metric_card(roi_str, "ROI Anualizado"),
+    ])
+    financials_rows = _financials_rows(rent_monthly, projected_sale, projected_gain, profit_pct, cap_rate)
 
     images = prospect.get("images", [])
     hero = next((img for img in images if img.get("dataUri")), None)
     hero_html = f'<img class="img-hero" src="{hero["dataUri"]}" alt="">' if hero else ""
-
-    financials_rows = ""
-    if rent_monthly:
-        financials_rows += f"<tr><td>Renta mensual est.</td><td class=\"bnum\">{_fmt_mxn(rent_monthly)}</td></tr>"
-    financials_rows += f"<tr><td>Valuación proyectada</td><td class=\"bnum\">{_fmt_mxn_compact(projected_sale)}</td></tr>"
-    financials_rows += f"<tr><td>Ganancia estimada</td><td class=\"bnum\">{_fmt_mxn_compact(projected_gain)} ({profit_pct:.0f}%)</td></tr>"
-    if cap_rate:
-        financials_rows += f"<tr><td>Cap rate</td><td class=\"bnum\">{cap_str}</td></tr>"
 
     return f"""<div class="page-section section-oportunidad">
   <div class="section-header">
@@ -384,22 +402,7 @@ def _oportunidad_section(prospect: dict) -> str:
   {hero_html}
   <section class="content-section">
     <div class="metric-grid metric-grid-4">
-      <div class="metric-card">
-        <div class="metric-value compact">{hold_months}m</div>
-        <div class="metric-label">Plazo</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value compact">{_fmt_mxn_compact(total_inv)}</div>
-        <div class="metric-label">Inversión Total</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value compact">{_fmt_mxn_compact(projected_gain)}</div>
-        <div class="metric-label">Ganancia Estimada</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value compact">{roi_str}</div>
-        <div class="metric-label">ROI Anualizado</div>
-      </div>
+{metrics_html}
     </div>
     <div class="two-col">
       <div>

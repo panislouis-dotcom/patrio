@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "scripts": {
     "test": "playwright test",
+    "test:ci": "playwright test --reporter=list,json",
+    "test:smoke": "playwright test tests/00-smoke.spec.ts",
+    "report": "playwright show-report",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed"
   },

@@ -340,6 +340,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button style={btn(false)} onClick={onClose}>CANCELAR</button>
+              <button style={btn(false)} onClick={() => setStep('review')}>LLENAR MANUALMENTE ▸</button>
               <button style={btn(true, !canAnalyze)} onClick={handleAnalyze} disabled={!canAnalyze}>
                 {parsing ? 'ANALIZANDO…' : 'ANALIZAR ▸'}
               </button>

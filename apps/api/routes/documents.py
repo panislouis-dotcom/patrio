@@ -44,7 +44,7 @@ def _embed_images(items: list[dict]) -> None:
 
 
 @router.post("/prospectus")
-async def generate_prospectus(_: dict = Depends(get_current_user)):
+async def generate_prospectus(current_user: dict = Depends(get_current_user)):
     projects = [p for p in get_projects() if p.get("isFavorite")]
     prospects = [p for p in get_prospects() if p.get("isFavorite")]
     if not projects and not prospects:
