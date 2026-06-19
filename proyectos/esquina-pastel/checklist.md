@@ -1,35 +1,36 @@
 # Checklist — Esquina Pastel
 
-Proyecto en curso. Fase actual: Fase 1 (Pre-proyecto / limpieza).
+**Fase actual: transición Fase 4 (diseño) / Fase 6 (pre-obra, limpieza en curso).**
+
 Marca con [x] lo completado.
 
 ## Fase 1 — Pre-proyecto
-- [ ] Definición de tesis de inversión
-- [ ] Análisis de capital disponible
-- [ ] Definición del vehículo de inversión
-- [ ] Levantamiento de capital
-- [ ] Estructuración legal del vehículo
+- [x] Definición de tesis de inversión
+- [x] Análisis de capital disponible
+- [x] Definición del vehículo de inversión
+- [ ] Levantamiento de capital — **N/A** (no aplicó — cliente ya definido)
+- [x] Estructuración legal del vehículo
 
 ## Fase 2 — Búsqueda y análisis
-- [ ] Mapeo del territorio
-- [ ] Seguimiento del mercado
-- [ ] Identificación de propiedades
-- [ ] Filtro inicial / scoring
-- [ ] Comparación entre propiedades
-- [ ] Visita técnica
+- [x] Mapeo del territorio
+- [x] Seguimiento del mercado
+- [x] Identificación de propiedades
+- [x] Filtro inicial / scoring
+- [x] Comparación entre propiedades
+- [x] Visita técnica
 - [ ] Diseño visual previo
-- [ ] Modelo financiero del deal
+- [x] Modelo financiero del deal
 
 ## Fase 3 — Negociación y cierre
-- [ ] Negociación
-- [ ] Promesa de compra
-- [ ] Due diligence legal
-- [ ] Due diligence técnico
-- [ ] Levantar requisitos del vendedor
-- [ ] Adquisición / escrituración
+- [x] Negociación
+- [ ] Promesa de compra — **N/A** (se omitió deliberadamente — certeza total, sin impedimentos, se fue directo a compra)
+- [x] Due diligence legal
+- [x] Due diligence técnico
+- [x] Levantar requisitos del vendedor
+- [x] Adquisición / escrituración
 
 ## Fase 4 — Diseño y planeación
-- [ ] Anteproyecto arquitectónico
+- [x] Anteproyecto arquitectónico — *(en curso)*
 - [ ] Proyecto ejecutivo
 - [ ] Diseño interior
 - [ ] Presupuesto detallado de obra
