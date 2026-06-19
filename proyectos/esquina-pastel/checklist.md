@@ -1,6 +1,6 @@
 # Checklist — Esquina Pastel
 
-**Fase actual: transición Fase 4 (diseño) / Fase 6 (pre-obra, limpieza en curso).**
+**Fase actual: Fase 4 (diseño, anteproyecto en curso) + Fase 6 (pre-obra, limpieza en curso).**
 
 Marca con [x] lo completado.
 
@@ -30,7 +30,7 @@ Marca con [x] lo completado.
 - [x] Adquisición / escrituración
 
 ## Fase 4 — Diseño y planeación
-- [x] Anteproyecto arquitectónico — *(en curso)*
+- [ ] Anteproyecto arquitectónico — *(en curso)*
 - [ ] Proyecto ejecutivo
 - [ ] Diseño interior
 - [ ] Presupuesto detallado de obra
@@ -44,7 +44,7 @@ Marca con [x] lo completado.
 
 ## Fase 6 — Pre-obra
 - [ ] Altas de servicios
-- [ ] Pre-trabajo de obra
+- [x] Pre-trabajo de obra — *(limpieza en curso desde 2026-06-19)*
 - [ ] Levantamiento topográfico arquitectónico
 
 ## Fase 7 — Ejecución de obra
