@@ -6,14 +6,32 @@ on:
 
 # Build and push a QA-prefixed image so ArgoCD Image Updater on the QA
 # cluster can distinguish it from prod images in the same ECR repo.
-permissions: {}
+# Uses inline steps (not the edlgg-org/edg-infra reusable workflow) because
+# that repo is private in a different org — GitHub blocks cross-org private calls.
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   build:
-    uses: edlgg-org/edg-infra/.github/workflows/build-push.yml@main
-    with:
-      service: refigan
-      tag_prefix: qa-
-    permissions:
-      id-token: write
-      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@99214aa6889fcddfa57764031d71add364327e59  # v6.1.3
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/github-actions-ecr-push
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@fa648b43de3d4d023bcb3f89ed6940096949c419  # v2.1.5
+
+      - name: Build and push
+        env:
+          IMAGE: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/edg/refigan
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 -t "$IMAGE:qa-$SHA" .
+          docker push "$IMAGE:qa-$SHA"
