@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test'
 test.use({ storageState: { cookies: [], origins: [] } })
 
 const E2E_EMAIL = process.env.E2E_USER ?? 'test@refigan.com'
-const E2E_PASS  = process.env.E2E_PASS  ?? 'testpassword'
+const E2E_PASS = process.env.E2E_PASS
+if (!E2E_PASS) throw new Error('E2E_PASS env var must be set')
 
 test('unauthenticated / redirects to /login', async ({ page }) => {
   await page.goto('/')

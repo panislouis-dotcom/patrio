@@ -219,6 +219,7 @@ export function ComparableForm() {
         <div>
           <label style={labelStyle}>Dirección *</label>
           <input
+            data-testid="input-address"
             style={inputStyle}
             type="text"
             value={form.address}
@@ -251,6 +252,7 @@ export function ComparableForm() {
         <div>
           <label style={labelStyle}>m² *</label>
           <input
+            data-testid="input-m2"
             style={inputStyle}
             type="number"
             value={form.m2}
@@ -261,6 +263,7 @@ export function ComparableForm() {
         <div>
           <label style={labelStyle}>Precio (MXN) *</label>
           <input
+            data-testid="input-price"
             style={inputStyle}
             type="number"
             value={form.price}
@@ -271,6 +274,7 @@ export function ComparableForm() {
         <div>
           <label style={labelStyle}>Fecha listado *</label>
           <input
+            data-testid="input-listed-at"
             style={inputStyle}
             type="date"
             value={form.listedAt}
@@ -284,6 +288,7 @@ export function ComparableForm() {
         <div>
           <label style={labelStyle}>URL del listing *</label>
           <input
+            data-testid="input-listing-url"
             style={inputStyle}
             type="text"
             value={form.listingUrl}
@@ -319,6 +324,7 @@ export function ComparableForm() {
         <div>
           <label style={labelStyle}>Ciudad</label>
           <input
+            data-testid="input-city"
             style={inputStyle}
             type="text"
             value={form.city}

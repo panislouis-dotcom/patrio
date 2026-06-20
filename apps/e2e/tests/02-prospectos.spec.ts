@@ -8,6 +8,7 @@ test.describe('Prospectos', () => {
 
   test.beforeAll(async ({ request }) => {
     token = await getToken(request)
+    await deleteProspectByName(request, PROSPECT_NAME, token)
   })
 
   test.afterEach(async ({ request }) => {

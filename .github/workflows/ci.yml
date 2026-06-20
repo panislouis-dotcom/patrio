@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, qa]
   push:
-    branches: [main]
+    branches: [main, qa]
 
 permissions:
   contents: read
@@ -34,7 +34,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: refigan_test
         ports:
           - 5432:5432
@@ -74,7 +74,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: refigan_e2e
         ports:
           - 5432:5432
@@ -96,6 +96,11 @@ jobs:
         run: |
           curl -fsSL https://github.com/amacneil/dbmate/releases/download/v2.33.0/dbmate-linux-amd64 -o /usr/local/bin/dbmate
           chmod +x /usr/local/bin/dbmate
+      - name: Generate CI secrets
+        run: |
+          echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "E2E_PASS=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+
       - name: Run DB migrations
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/refigan_e2e?sslmode=disable
@@ -104,7 +109,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/refigan_e2e
           E2E_USER: test@refigan.com
-          E2E_PASS: testpassword
         run: python scripts/seed-e2e-user.py
       - name: Start API server
         env:
@@ -112,7 +116,8 @@ jobs:
           ALLOWED_ORIGINS: http://localhost:5173
           PYTHONPATH: apps
           ANTHROPIC_API_KEY: ci-placeholder-key
-        run: JWT_SECRET=$(openssl rand -hex 32) uvicorn api.main:app --host 0.0.0.0 --port 8000 &
+          FILES_ROOT: /tmp/refigan-files
+        run: uvicorn api.main:app --host 0.0.0.0 --port 8000 &
       - name: Wait for API
         run: bash scripts/wait-for-api.sh http://localhost:8000/health
 
@@ -144,7 +149,7 @@ jobs:
       - name: Run E2E tests
         env:
           E2E_USER: test@refigan.com
-          E2E_PASS: testpassword
+          E2E_API_BASE_URL: http://localhost:8000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/refigan_e2e
         run: cd apps/e2e && npm test
 
@@ -179,10 +184,10 @@ jobs:
         with:
           header: e2e-report-links
           message: |
-            ### Resultados E2E
+            ### Resultados E2E — Run #${{ github.run_number }}
             | Artefacto | Enlace | Contenido |
             |---|---|---|
             | **Reporte HTML** | [⬇ Descargar](${{ steps.pw_report.outputs.artifact-url }}) | Descomprime → abre `index.html` |
             | **Videos / Trazas** | [⬇ Descargar](${{ steps.pw_results.outputs.artifact-url }}) | Videos de pruebas fallidas |
 
-            > Artefactos expiran en 14 días.
+            > Artefactos expiran en 14 días. · [Ver ejecución](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

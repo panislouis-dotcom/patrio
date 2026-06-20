@@ -47,11 +47,9 @@ test.describe('Sonar', () => {
   })
 
   test('/api/sonar/zones is called on page load', async ({ page }) => {
-    let zonesHit = false
-    await page.route('**/api/sonar/zones', route => { zonesHit = true; route.continue() })
+    const zonesRequest = page.waitForRequest('**/api/sonar/zones', { timeout: 15_000 })
     await page.goto('/prospectos/sonar')
-    await page.waitForTimeout(1500)
-    expect(zonesHit).toBe(true)
+    await zonesRequest  // resolves only when the request fires — proves the endpoint is called on mount
   })
 
   test('state dropdown shows Nuevo León', async ({ page }) => {

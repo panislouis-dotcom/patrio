@@ -1,0 +1,19 @@
+name: Deploy QA
+
+on:
+  push:
+    branches: [qa]
+
+# Build and push a QA-prefixed image so ArgoCD Image Updater on the QA
+# cluster can distinguish it from prod images in the same ECR repo.
+permissions: {}
+
+jobs:
+  build:
+    uses: edlgg/edg-infra/.github/workflows/build-push.yml@main
+    with:
+      service: refigan
+      tag_prefix: qa-
+    permissions:
+      id-token: write
+      contents: read

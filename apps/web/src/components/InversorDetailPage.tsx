@@ -1,195 +1,34 @@
-import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchInvestor, updateInvestor, deleteInvestor, fetchProjects, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment } from '../lib/api'
-import type { Investor, ProjectInvestor, Project, InvestorTemperatura, InvestorCapacidad, InvestorFuente, InvestorConfianza } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
-import { fmtM, fmtMXN } from '../lib/fmt'
+import { fmtM } from '../lib/fmt'
 import { StatRow } from './StatRow'
+import { useInversorDetail } from '../hooks/useInversorDetail'
+import { InversorAddPositionForm } from './InversorAddPositionForm'
+import { InversorPositionRow } from './InversorPositionRow'
 
 export function InversorDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const investorId = Number(id)
 
-  const [investor, setInvestor] = useState<Investor | null>(null)
-  const [positions, setPositions] = useState<ProjectInvestor[]>([])
-  const [allProjects, setAllProjects] = useState<Project[]>([])
-  const [name, setName] = useState('')
-  const [apellidos, setApellidos] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [notes, setNotes] = useState('')
-  const [temperatura, setTemperatura] = useState<InvestorTemperatura | ''>('')
-  const [capacidad, setCapacidad] = useState<InvestorCapacidad | ''>('')
-  const [fuente, setFuente] = useState<InvestorFuente | ''>('')
-  const [confianza, setConfianza] = useState<InvestorConfianza | ''>('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // Add form
-  const [showAdd, setShowAdd] = useState(false)
-  const [addProjectId, setAddProjectId] = useState<string>('')
-  const [addInterested, setAddInterested] = useState<string>('')
-  const [addCommitted, setAddCommitted] = useState<string>('')
-  const [addFunded, setAddFunded] = useState<string>('')
-  const [addRate, setAddRate] = useState<string>('12')
-  const [addDate, setAddDate] = useState<string>('')
-  const [adding, setAdding] = useState(false)
-
-  // Edit row
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editInterested, setEditInterested] = useState<string>('')
-  const [editCommitted, setEditCommitted] = useState<string>('')
-  const [editFunded, setEditFunded] = useState<string>('')
-  const [editRate, setEditRate] = useState<string>('12')
-  const [editDate, setEditDate] = useState<string>('')
-  const [editReturnAmount, setEditReturnAmount] = useState<string>('')
-  const [editReturnDate, setEditReturnDate] = useState<string>('')
-  const [savingEdit, setSavingEdit] = useState(false)
-
-  useEffect(() => {
-    fetchInvestor(investorId).then(data => {
-      setInvestor(data)
-      setPositions(data.positions)
-      setName(data.name)
-      setApellidos(data.apellidos ?? '')
-      setEmail(data.email)
-      setPhone(data.phone)
-      setNotes(data.notes ?? '')
-      setTemperatura(data.temperatura ?? '')
-      setCapacidad(data.capacidad ?? '')
-      setFuente(data.fuente ?? '')
-      setConfianza(data.confianza ?? '')
-    })
-    fetchProjects().then(setAllProjects)
-  }, [investorId])
-
-  async function save() {
-    setSaving(true)
-    setError(null)
-    try {
-      const updated = await updateInvestor(investorId, {
-        name, apellidos, email, phone, notes,
-        temperatura: temperatura || null, capacidad: capacidad || null,
-        fuente: fuente || null, confianza: confianza || null,
-      })
-      setInvestor(updated)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al guardar')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!window.confirm('¿Eliminar inversionista?')) return
-    try {
-      await deleteInvestor(investorId)
-      navigate('/inversionistas')
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al eliminar')
-    }
-  }
-
-  async function handleAddPosition() {
-    if (!addProjectId) return
-    setAdding(true)
-    const projectId = Number(addProjectId)
-    const interested = parseFloat(addInterested) || 0
-    const committed = parseFloat(addCommitted) || 0
-    const funded = parseFloat(addFunded) || 0
-    const rate = parseFloat(addRate) / 100 || 0.12
-    const status: ProjectInvestor['status'] =
-      funded > 0 ? 'fondeado' : committed > 0 ? 'comprometido' : 'interesado'
-    try {
-      const pos = await addProjectInvestor(projectId, {
-        investorId,
-        status,
-        interestedAmount: interested,
-        committedAmount: committed,
-        fundedAmount: funded,
-        interestRateAnnual: rate,
-        investmentDate: addDate || null,
-        notes: '',
-      })
-      setPositions(prev => [...prev, pos])
-      setShowAdd(false)
-      setAddProjectId('')
-      setAddInterested('')
-      setAddCommitted('')
-      setAddFunded('')
-      setAddRate('12')
-      setAddDate('')
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al agregar')
-    } finally {
-      setAdding(false)
-    }
-  }
-
-  function startEdit(pos: ProjectInvestor) {
-    setEditingId(pos.id)
-    setEditInterested(pos.interestedAmount ? String(pos.interestedAmount) : '')
-    setEditCommitted(pos.committedAmount ? String(pos.committedAmount) : '')
-    setEditFunded(pos.fundedAmount ? String(pos.fundedAmount) : '')
-    setEditRate(String(Math.round(pos.interestRateAnnual * 100)))
-    setEditDate(pos.investmentDate ?? '')
-    setEditReturnAmount(pos.returnAmount != null ? String(pos.returnAmount) : '')
-    setEditReturnDate(pos.returnDate ?? '')
-  }
-
-  async function handleSaveEdit(pos: ProjectInvestor) {
-    setSavingEdit(true)
-    const interested = parseFloat(editInterested) || 0
-    const committed = parseFloat(editCommitted) || 0
-    const funded = parseFloat(editFunded) || 0
-    const rate = parseFloat(editRate) / 100 || 0.12
-    const status: ProjectInvestor['status'] =
-      funded > 0 ? 'fondeado' : committed > 0 ? 'comprometido' : 'interesado'
-    try {
-      const updated = await updateProjectInvestment(pos.projectId, pos.id, {
-        status,
-        interestedAmount: interested,
-        committedAmount: committed,
-        fundedAmount: funded,
-        interestRateAnnual: rate,
-        investmentDate: editDate || null,
-        returnAmount: editReturnAmount ? parseFloat(editReturnAmount) : null,
-        returnDate: editReturnDate || null,
-      })
-      setPositions(prev => prev.map(p => p.id === pos.id ? updated : p))
-      setEditingId(null)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al guardar')
-    } finally {
-      setSavingEdit(false)
-    }
-  }
-
-  async function handleRemovePosition(pos: ProjectInvestor) {
-    if (!window.confirm(`¿Quitar esta inversión de "${pos.projectName || `Proyecto ${pos.projectId}`}"?`)) return
-    try {
-      await deleteProjectInvestment(pos.projectId, pos.id)
-      setPositions(prev => prev.filter(p => p.id !== pos.id))
-      if (editingId === pos.id) setEditingId(null)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al eliminar')
-    }
-  }
-
-  async function handleLiquidar(pos: ProjectInvestor) {
-    const today = new Date().toISOString().split('T')[0]
-    try {
-      const updated = await updateProjectInvestment(pos.projectId, pos.id, {
-        returnAmount: pos.expectedReturn,
-        returnDate: today,
-      })
-      setPositions(prev => prev.map(p => p.id === pos.id ? updated : p))
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al liquidar')
-    }
-  }
+  const {
+    investor, positions, allProjects,
+    name, setName, apellidos, setApellidos, email, setEmail, phone, setPhone,
+    notes, setNotes, temperatura, setTemperatura, capacidad, setCapacidad,
+    fuente, setFuente, confianza, setConfianza,
+    saving, error, save, handleDelete,
+    showAdd, setShowAdd,
+    addProjectId, setAddProjectId,
+    addInterested, setAddInterested, addCommitted, setAddCommitted,
+    addFunded, setAddFunded, addRate, setAddRate, addDate, setAddDate,
+    adding, handleAddPosition,
+    editingId, setEditingId,
+    editInterested, setEditInterested, editCommitted, setEditCommitted,
+    editFunded, setEditFunded, editRate, setEditRate, editDate, setEditDate,
+    editReturnAmount, setEditReturnAmount, editReturnDate, setEditReturnDate,
+    savingEdit, startEdit, handleSaveEdit, handleRemovePosition, handleLiquidar,
+  } = useInversorDetail(investorId)
 
   if (!investor) {
     return (
@@ -205,33 +44,13 @@ export function InversorDetailPage() {
     </div>
   )
 
-  const iStyle: React.CSSProperties = {
-    background: colors.surface,
-    border: `1px solid ${colors.border}`,
-    color: colors.neutral,
-    fontFamily: fonts.sans,
-    fontSize: '11px',
-    padding: '3px 5px',
-    outline: 'none',
-    width: '72px',
-    textAlign: 'right',
-  }
-
-  const availableProjects = allProjects
-
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
 
       {/* ── HEADER ── */}
       <div style={{
-        flexShrink: 0,
-        height: '52px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
-        padding: '0 24px',
-        borderBottom: `1px solid ${colors.border}`,
-        background: colors.dark,
+        flexShrink: 0, height: '52px', display: 'flex', alignItems: 'center', gap: '16px',
+        padding: '0 24px', borderBottom: `1px solid ${colors.border}`, background: colors.dark,
       }}>
         <button
           onClick={() => navigate('/inversionistas')}
@@ -245,17 +64,7 @@ export function InversorDetailPage() {
         </span>
         <button
           onClick={handleDelete}
-          style={{
-            background: 'transparent',
-            border: `1px solid tomato`,
-            color: 'tomato',
-            cursor: 'pointer',
-            fontFamily: fonts.label,
-            fontSize: '9px',
-            letterSpacing: '0.1em',
-            padding: '5px 14px',
-            flexShrink: 0,
-          }}
+          style={{ background: 'transparent', border: `1px solid tomato`, color: 'tomato', cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 14px', flexShrink: 0 }}
         >
           ELIMINAR
         </button>
@@ -264,29 +73,22 @@ export function InversorDetailPage() {
       {/* ── MAIN 2-COLUMN GRID ── */}
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '300px 1fr', overflow: 'hidden' }}>
 
-        {/* ── LEFT: Datos editables ── */}
-        <div style={{
-          borderRight: `1px solid ${colors.border}`,
-          overflowY: 'auto',
-          padding: '20px',
-          scrollbarWidth: 'none',
-        }}>
+        {/* ── LEFT: Stats + edit form ── */}
+        <div style={{ borderRight: `1px solid ${colors.border}`, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
           {divider('DATOS')}
-
-          <StatRow label="TOTAL INTERESADO" value={fmtM(positions.reduce((s, p) => s + p.interestedAmount, 0))} />
+          <StatRow label="TOTAL INTERESADO"   value={fmtM(positions.reduce((s, p) => s + p.interestedAmount, 0))} />
           <StatRow label="TOTAL COMPROMETIDO" value={fmtM(positions.reduce((s, p) => s + p.committedAmount, 0))} />
-          <StatRow label="TOTAL FONDEADO" value={fmtM(positions.reduce((s, p) => s + p.fundedAmount, 0))} />
+          <StatRow label="TOTAL FONDEADO"     value={fmtM(positions.reduce((s, p) => s + p.fundedAmount, 0))} />
 
           {divider('RETORNOS')}
-
           {(() => {
             const totalARecibir = positions.reduce((s, p) => s + p.expectedReturn, 0)
-            const totalPagado = positions.reduce((s, p) => s + (p.returnAmount ?? 0), 0)
-            const pendiente = Math.max(0, totalARecibir - totalPagado)
+            const totalPagado   = positions.reduce((s, p) => s + (p.returnAmount ?? 0), 0)
+            const pendiente     = Math.max(0, totalARecibir - totalPagado)
             return (
               <>
                 <StatRow label="TOTAL A RECIBIR" value={fmtM(totalARecibir)} />
-                <StatRow label="TOTAL PAGADO" value={fmtM(totalPagado)} />
+                <StatRow label="TOTAL PAGADO"    value={fmtM(totalPagado)} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
                   <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>PENDIENTE</span>
                   <span style={{ fontFamily: fonts.sans, fontSize: '13px', color: pendiente > 0 ? 'tomato' : colors.primary }}>{fmtM(pendiente)}</span>
@@ -297,73 +99,37 @@ export function InversorDetailPage() {
 
           {divider('EDITAR')}
 
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>NOMBRE</div>
-            <input value={name} onChange={e => setName(e.target.value)} type="text" style={fieldInput} />
-          </div>
-
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>APELLIDOS</div>
-            <input value={apellidos} onChange={e => setApellidos(e.target.value)} type="text" style={fieldInput} />
-          </div>
-
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>EMAIL</div>
-            <input value={email} onChange={e => setEmail(e.target.value)} type="email" style={fieldInput} />
-          </div>
-
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>TELÉFONO</div>
-            <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" style={fieldInput} />
-          </div>
+          {([
+            ['NOMBRE',    name,      setName,      'text' ],
+            ['APELLIDOS', apellidos, setApellidos, 'text' ],
+            ['EMAIL',     email,     setEmail,     'email'],
+            ['TELÉFONO',  phone,     setPhone,     'tel'  ],
+          ] as [string, string, (v: string) => void, string][]).map(([label, val, setter, type]) => (
+            <div key={label} style={{ marginBottom: '14px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>{label}</div>
+              <input value={val} onChange={e => setter(e.target.value)} type={type} style={fieldInput} />
+            </div>
+          ))}
 
           <div style={{ marginBottom: '14px' }}>
             <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>NOTAS</div>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={4} style={{ ...fieldInput, resize: 'vertical' }} />
           </div>
 
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>TEMPERATURA</div>
-            <select value={temperatura} onChange={e => setTemperatura(e.target.value as InvestorTemperatura | '')} style={fieldInput}>
-              <option value="">—</option>
-              <option value="caliente">Caliente</option>
-              <option value="tibio">Tibio</option>
-              <option value="frio">Frío</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>CAPACIDAD</div>
-            <select value={capacidad} onChange={e => setCapacidad(e.target.value as InvestorCapacidad | '')} style={fieldInput}>
-              <option value="">—</option>
-              <option value="<500k">&lt;500k</option>
-              <option value="500k-2M">500k–2M</option>
-              <option value="2M-5M">2M–5M</option>
-              <option value="5M+">5M+</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>FUENTE</div>
-            <select value={fuente} onChange={e => setFuente(e.target.value as InvestorFuente | '')} style={fieldInput}>
-              <option value="">—</option>
-              <option value="red_personal">Red personal</option>
-              <option value="referido">Referido</option>
-              <option value="red_negocios">Red negocios</option>
-              <option value="linkedin">LinkedIn</option>
-              <option value="otro">Otro</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>CONFIANZA</div>
-            <select value={confianza} onChange={e => setConfianza(e.target.value as InvestorConfianza | '')} style={fieldInput}>
-              <option value="">—</option>
-              <option value="bajo">Bajo</option>
-              <option value="medio">Medio</option>
-              <option value="alto">Alto</option>
-            </select>
-          </div>
+          {([
+            ['TEMPERATURA', temperatura, setTemperatura, [['caliente','Caliente'],['tibio','Tibio'],['frio','Frío']]],
+            ['CAPACIDAD',   capacidad,   setCapacidad,   [['<500k','<500k'],['500k-2M','500k–2M'],['2M-5M','2M–5M'],['5M+','5M+']]],
+            ['FUENTE',      fuente,      setFuente,      [['red_personal','Red personal'],['referido','Referido'],['red_negocios','Red negocios'],['linkedin','LinkedIn'],['otro','Otro']]],
+            ['CONFIANZA',   confianza,   setConfianza,   [['bajo','Bajo'],['medio','Medio'],['alto','Alto']]],
+          ] as [string, string, (v: string) => void, [string, string][]][]).map(([label, val, setter, opts]) => (
+            <div key={label} style={{ marginBottom: '14px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '4px' }}>{label}</div>
+              <select value={val} onChange={e => setter(e.target.value)} style={fieldInput}>
+                <option value="">—</option>
+                {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+          ))}
 
           {error && (
             <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginBottom: '8px' }}>{error}</div>
@@ -372,26 +138,16 @@ export function InversorDetailPage() {
           <button
             onClick={save}
             disabled={saving}
-            style={{
-              background: colors.primary,
-              border: 'none',
-              color: colors.neutral,
-              cursor: saving ? 'not-allowed' : 'pointer',
-              fontFamily: fonts.label,
-              fontSize: '9px',
-              letterSpacing: '0.1em',
-              padding: '8px 20px',
-              opacity: saving ? 0.7 : 1,
-            }}
+            style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '8px 20px', opacity: saving ? 0.7 : 1 }}
           >
             {saving ? 'GUARDANDO…' : 'GUARDAR'}
           </button>
         </div>
 
-        {/* ── RIGHT: Proyectos ── */}
+        {/* ── RIGHT: Positions table ── */}
         <div style={{ overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 6px', borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '4px' }}>
-            <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>PROYECTOS</span>
+            <span data-testid="proyectos-section-heading" style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>PROYECTOS</span>
             <button
               onClick={() => { setShowAdd(v => !v); setEditingId(null) }}
               style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: '2px 8px' }}
@@ -400,41 +156,19 @@ export function InversorDetailPage() {
             </button>
           </div>
 
-          {/* Add form */}
-          {showAdd && (() => {
-            const fStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 6px', outline: 'none' }
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px', padding: '10px', background: colors.surface, border: `1px solid ${colors.border}` }}>
-                <select value={addProjectId} onChange={e => setAddProjectId(e.target.value)} style={fStyle}>
-                  <option value="">— seleccionar proyecto —</option>
-                  {availableProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 60px 120px', gap: '6px' }}>
-                  {([['INTERESADO', addInterested, setAddInterested], ['COMPROMETIDO', addCommitted, setAddCommitted], ['FONDEADO', addFunded, setAddFunded]] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
-                    <div key={label}>
-                      <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>{label}</div>
-                      <input type="number" value={val} onChange={e => setter(e.target.value)} placeholder="0" style={{ ...fStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
-                    </div>
-                  ))}
-                  <div>
-                    <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>TASA %</div>
-                    <input type="number" value={addRate} onChange={e => setAddRate(e.target.value)} style={{ ...fStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
-                  </div>
-                  <div>
-                    <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>FECHA</div>
-                    <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)} style={{ ...fStyle, width: '100%', boxSizing: 'border-box' }} />
-                  </div>
-                </div>
-                <button
-                  onClick={handleAddPosition}
-                  disabled={!addProjectId || adding}
-                  style={{ background: !addProjectId ? colors.border : colors.primary, border: 'none', color: colors.neutral, cursor: !addProjectId ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '5px 12px', opacity: adding ? 0.6 : 1 }}
-                >
-                  {adding ? 'GUARDANDO…' : 'AGREGAR'}
-                </button>
-              </div>
-            )
-          })()}
+          {showAdd && (
+            <InversorAddPositionForm
+              allProjects={allProjects}
+              projectId={addProjectId}    setProjectId={setAddProjectId}
+              interested={addInterested}  setInterested={setAddInterested}
+              committed={addCommitted}    setCommitted={setAddCommitted}
+              funded={addFunded}          setFunded={setAddFunded}
+              rate={addRate}              setRate={setAddRate}
+              date={addDate}              setDate={setAddDate}
+              adding={adding}
+              onAdd={handleAddPosition}
+            />
+          )}
 
           {positions.length === 0 && !showAdd ? (
             <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '8px' }}>
@@ -450,64 +184,27 @@ export function InversorDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {positions.map(pos => {
-                  const isEditing = editingId === pos.id
-                  const paid = pos.returnAmount ?? 0
-                  const estado = paid <= 0 ? 'PENDIENTE' : paid >= pos.expectedReturn ? 'LIQUIDADO' : 'PARCIAL'
-                  const estadoColor = paid <= 0 ? colors.secondary : paid >= pos.expectedReturn ? colors.primary : '#c8a000'
-                  return (
-                    <tr key={pos.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                      <td
-                        style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, cursor: 'pointer' }}
-                        onClick={() => navigate(`/proyectos/${pos.projectId}`)}
-                      >
-                        {pos.projectName || `Proyecto ${pos.projectId}`}
-                      </td>
-                      {isEditing ? (
-                        <>
-                          <td style={{ padding: '4px 8px' }}><input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} style={{ ...iStyle, width: '110px', textAlign: 'left' }} /></td>
-                          <td style={{ padding: '4px 8px', textAlign: 'right' }}><input type="number" value={editInterested} onChange={e => setEditInterested(e.target.value)} style={iStyle} /></td>
-                          <td style={{ padding: '4px 8px', textAlign: 'right' }}><input type="number" value={editCommitted} onChange={e => setEditCommitted(e.target.value)} style={iStyle} /></td>
-                          <td style={{ padding: '4px 8px', textAlign: 'right' }}><input type="number" value={editFunded} onChange={e => setEditFunded(e.target.value)} style={iStyle} /></td>
-                          <td style={{ padding: '4px 8px', textAlign: 'right' }}><input type="number" value={editRate} onChange={e => setEditRate(e.target.value)} style={{ ...iStyle, width: '44px' }} /></td>
-                          <td style={{ padding: '4px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
-                          <td style={{ padding: '4px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
-                          <td style={{ padding: '4px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
-                          <td style={{ padding: '4px 8px', textAlign: 'right' }}><input type="number" value={editReturnAmount} onChange={e => setEditReturnAmount(e.target.value)} placeholder="0" style={iStyle} /></td>
-                          <td style={{ padding: '4px 8px' }}><input type="date" value={editReturnDate} onChange={e => setEditReturnDate(e.target.value)} style={{ ...iStyle, width: '110px', textAlign: 'left' }} /></td>
-                          <td style={{ padding: '4px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
-                          <td style={{ padding: '4px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            <button onClick={() => handleSaveEdit(pos)} disabled={savingEdit} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 7px', marginRight: '3px', opacity: savingEdit ? 0.6 : 1 }}>{savingEdit ? '…' : 'OK'}</button>
-                            <button onClick={() => setEditingId(null)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '2px 5px' }}>✕</button>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{pos.investmentDate ?? '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pos.interestedAmount ? fmtMXN(pos.interestedAmount) : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: pos.committedAmount ? colors.tertiary : colors.secondary, textAlign: 'right' }}>{pos.committedAmount ? fmtMXN(pos.committedAmount) : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: pos.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pos.fundedAmount ? fmtMXN(pos.fundedAmount) : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{Math.round(pos.interestRateAnnual * 100)}%</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pos.fundedAmount ? fmtMXN(pos.interestAmount) : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{pos.fundedAmount ? `${pos.returnPct.toFixed(1)}%` : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pos.fundedAmount ? fmtMXN(pos.expectedReturn) : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: pos.returnAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pos.returnAmount ? fmtMXN(pos.returnAmount) : '—'}</td>
-                          <td style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary }}>{pos.returnDate ?? '—'}</td>
-                          <td style={{ padding: '5px 8px', textAlign: 'right' }}>
-                            <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.08em', color: estadoColor }}>{estado}</span>
-                          </td>
-                          <td style={{ padding: '5px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            {estado !== 'LIQUIDADO' && pos.fundedAmount > 0 && (
-                              <button onClick={() => handleLiquidar(pos)} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.05em', padding: '2px 7px', marginRight: '3px' }}>LIQUIDAR</button>
-                            )}
-                            <button onClick={() => startEdit(pos)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.05em', padding: '2px 7px', marginRight: '3px' }}>EDITAR</button>
-                            <button onClick={() => handleRemovePosition(pos)} style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '0 2px' }}>✕</button>
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                  )
-                })}
+                {positions.map(pos => (
+                  <InversorPositionRow
+                    key={pos.id}
+                    pos={pos}
+                    isEditing={editingId === pos.id}
+                    onNavigate={projectId => navigate(`/proyectos/${projectId}`)}
+                    editDate={editDate}                 setEditDate={setEditDate}
+                    editInterested={editInterested}     setEditInterested={setEditInterested}
+                    editCommitted={editCommitted}       setEditCommitted={setEditCommitted}
+                    editFunded={editFunded}             setEditFunded={setEditFunded}
+                    editRate={editRate}                 setEditRate={setEditRate}
+                    editReturnAmount={editReturnAmount} setEditReturnAmount={setEditReturnAmount}
+                    editReturnDate={editReturnDate}     setEditReturnDate={setEditReturnDate}
+                    savingEdit={savingEdit}
+                    onSave={handleSaveEdit}
+                    onCancel={() => setEditingId(null)}
+                    onLiquidar={handleLiquidar}
+                    onRemove={handleRemovePosition}
+                    onStartEdit={startEdit}
+                  />
+                ))}
               </tbody>
             </table>
           )}

@@ -19,7 +19,7 @@ router = APIRouter()
 class ComparableCreate(BaseModel):
     """All required fields must be present — backend rejects if missing."""
     address: str
-    zoneId: int
+    zoneId: Optional[int] = None
     m2: float
     price: int
     listingUrl: str

@@ -1,17 +1,19 @@
 import { test as base } from '@playwright/test'
+import { API_BASE } from '../helpers/api'
 
-const API_BASE = 'http://localhost:8000'
-const APP_BASE = 'http://localhost:5173'
+const APP_BASE = process.env.E2E_APP_BASE_URL ?? 'http://localhost:5173'
 
 let cachedToken: string | null = null
 
 export const test = base.extend({
   page: async ({ page }, use) => {
     if (!cachedToken) {
+      const password = process.env.E2E_PASS
+      if (!password) throw new Error('E2E_PASS env var must be set')
       const res = await page.request.post(`${API_BASE}/api/auth/login`, {
         data: {
           email: process.env.E2E_USER ?? 'test@refigan.com',
-          password: process.env.E2E_PASS ?? 'testpassword',
+          password,
         },
       })
       if (!res.ok()) throw new Error(`Auth fixture login failed: ${res.status()}`)

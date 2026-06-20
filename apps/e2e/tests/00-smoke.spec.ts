@@ -13,7 +13,8 @@ const API_BASE =
     : 'http://localhost:8000')
 
 const E2E_EMAIL = process.env.E2E_USER ?? 'test@refigan.com'
-const E2E_PASS = process.env.E2E_PASS ?? 'testpassword'
+const E2E_PASS = process.env.E2E_PASS
+if (!E2E_PASS) throw new Error('E2E_PASS env var must be set')
 
 // Smoke tests always start unauthenticated
 test.use({ storageState: { cookies: [], origins: [] } })

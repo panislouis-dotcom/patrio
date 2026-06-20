@@ -184,13 +184,19 @@ export function ProveedorDetailPage({ proveedor, allCategories, base, onBack, on
                   ))}
                 </div>
 
-                {/* Tipo */}
-                <div>
-                  <span style={fieldLabel}>TIPO</span>
-                  <div style={{ fontSize: '12px', color: (proveedor.categories ?? []).length > 0 ? colors.neutral : colors.secondary, fontFamily: fonts.sans }}>
-                    {(proveedor.categories ?? [])[0]?.name ?? '—'}
+                {/* Categories */}
+                {(proveedor.categories ?? []).length > 0 && (
+                  <div>
+                    <span style={fieldLabel}>ESPECIALIDADES</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {(proveedor.categories ?? []).map(c => (
+                        <span key={c.id} style={{ background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderRadius: '2px', color: colors.neutral, fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '3px 8px' }}>
+                          {c.name}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Notes */}
                 {proveedor.notes && (
@@ -234,6 +240,7 @@ export function ProveedorDetailPage({ proveedor, allCategories, base, onBack, on
                 <div>
                   <span style={fieldLabel}>STATUS</span>
                   <select
+                    data-testid="status-select"
                     value={form.status}
                     onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
                     style={{ ...fieldInput, cursor: 'pointer' }}
