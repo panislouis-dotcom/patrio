@@ -7,6 +7,7 @@
   - *Nota futura (pendiente):* evaluar si conviene facturar los trabajos bajo nombre propio de Louis o de una empresa. Por ahora se avanza así.
 - **Levantamiento de capital:** no aplicó. El cliente ya estaba definido y se sabía qué buscaba. La tarea fue **encontrar la propiedad que encajara**.
 - **Precio de compra acordado:** $2,830,000 MXN (vía Notaría 97 de Monterrey).
+- **Dimensiones (registradas ante catastro y predial):** terreno **101 m²**, construcción **235 m²**.
 
 ---
 
@@ -17,7 +18,7 @@
 - Tras la visita se inició la recolección de información de la propiedad:
   - Uso de suelo.
   - Contratos actuales de agua, luz y gas.
-  - Metros exactos y planos (si existen).
+  - Metros exactos y planos (si existen). **Registrados ante catastro/predial: terreno 101 m², construcción 235 m².**
   - Número de predial.
 
 ### 2026-05-15 — [Fase 2 — Búsqueda y análisis]

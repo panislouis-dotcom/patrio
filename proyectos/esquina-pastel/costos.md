@@ -62,6 +62,13 @@ Para escriturar al precio pactado de **$2,830,000**, el notario debe **desglosar
 
 **Valor catastral de referencia del inmueble:** $2,260,360.
 
+**Dimensiones registradas (catastro/predial):** terreno **101 m²**, construcción **235 m²**.
+
+**Nota — dos porcentajes distintos del componente comercial (no confundir):**
+- *Por superficie (m²):* la estrategia fiscal mantiene solo **~12.8% como comercial** (30 m² de los 235 m² de construcción); el resto (~87.2%, 205 m²) es habitacional.
+- *Por valor (MXN):* en el desglose del precio, el componente comercial es $439,040 de $2,830,020 = **~15.5%**.
+- Son métricas diferentes (m² vs. pesos) y por eso no coinciden; ambas son consistentes con la misma estrategia de minimizar la porción comercial.
+
 **Explicación:** la parte **comercial** paga más impuestos (es la única sobre la que aplica IVA). Por eso el notario mantiene el **valor comercial lo más bajo posible** y carga el resto del precio sobre **terreno y habitacional**, que tributan más ligero. Esto es una **asignación fiscalmente eficiente y legal** que minimiza el impuesto del comprador.
 
 **Verificación del IVA:** el IVA de $72,246 entre la porción comercial registrada de $439,040 da **16.46%**, que NO es una tasa válida (el IVA es 16% exacto). Esto sugiere que la base comercial real sobre la que el notario calculó el IVA fue ligeramente mayor a $439,040 (un 16% exacto implicaría una base de **~$451,538**). **PENDIENTE:** confirmar con la notaría la base comercial exacta usada para el IVA. Por ahora se registra como observación abierta, no como dato cerrado.

@@ -94,7 +94,7 @@ Manual Maestro de Patrio — capa de conocimiento del framework inmobiliario. Do
 
 **Cómo se hace:** tras una primera visita, recolectar: uso de suelo, contratos actuales de agua/luz/gas, metros exactos y planos (si existen), número de predial. Con esa info se decide si vale la pena avanzar. Si sí, se hace una segunda visita técnica para evaluar calidad y estado.
 
-- **Uso de suelo — hallazgo clave:** el inmueble tiene **USO MIXTO**, lo que multiplica su valor y flexibilidad. Estrategia fiscal adoptada: mantener solo **~12.8% como comercial real** (30 m² de los 235 m² totales de construcción ante catastro) y el resto (**~87.2%, 205 m²**) habitacional. Esto optimiza la carga impositiva sin perder el valor del uso mixto. Dato catastral: **235 m² de construcción**.
+- **Uso de suelo — hallazgo clave:** el inmueble tiene **USO MIXTO**, lo que multiplica su valor y flexibilidad. Estrategia fiscal adoptada: mantener solo **~12.8% como comercial real** (30 m² de los 235 m² totales de construcción ante catastro) y el resto (**~87.2%, 205 m²**) habitacional. Esto optimiza la carga impositiva sin perder el valor del uso mixto. Dato catastral/predial: **terreno 101 m², construcción 235 m²**.
 
 **Errores comunes y cómo resolverlos:** —
 

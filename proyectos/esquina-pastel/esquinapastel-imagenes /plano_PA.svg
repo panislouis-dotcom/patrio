@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1700" viewBox="0 0 1700 1700" font-family="Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="1700" height="1700" fill="white"/>
+<path d="M 606.4,1310.0 L 1400.0,1310.0 L 1400.0,390.0 L 300.0,390.0 L 300.0,984.9 Z M 615.0,1290.0 L 1380.0,1290.0 L 1380.0,410.0 L 320.0,410.0 L 320.0,977.0 Z" fill="#cfcfcf" fill-rule="evenodd" stroke="none"/>
+<polygon points="606.4,1310.0 1400.0,1310.0 1400.0,390.0 300.0,390.0 300.0,984.9" fill="none" stroke="#000" stroke-width="3"/>
+<polygon points="615.0,1290.0 1380.0,1290.0 1380.0,410.0 320.0,410.0 320.0,977.0" fill="none" stroke="#000" stroke-width="2"/>
+<line x1="320.0" y1="1420.0" x2="615.0" y2="1420.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="320.0" y1="1290.0" x2="320.0" y2="1420.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="615.0" y1="1290.0" x2="615.0" y2="1420.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="332.0" y1="1432.0" x2="308.0" y2="1408.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="627.0" y1="1432.0" x2="603.0" y2="1408.0" stroke="#b30000" stroke-width="1.6"/>
+<text x="467.5" y="1420.0" font-size="26" fill="#b30000" text-anchor="middle" transform="rotate(-0.0 467.5 1420.0)" dy="-6">2.95</text>
+<line x1="615.0" y1="1420.0" x2="1380.0" y2="1420.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="615.0" y1="1290.0" x2="615.0" y2="1420.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="1380.0" y1="1290.0" x2="1380.0" y2="1420.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="627.0" y1="1432.0" x2="603.0" y2="1408.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="1392.0" y1="1432.0" x2="1368.0" y2="1408.0" stroke="#b30000" stroke-width="1.6"/>
+<text x="997.5" y="1420.0" font-size="26" fill="#b30000" text-anchor="middle" transform="rotate(-0.0 997.5 1420.0)" dy="-6">7.65</text>
+<line x1="320.0" y1="1510.0" x2="1380.0" y2="1510.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="320.0" y1="1290.0" x2="320.0" y2="1510.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="1380.0" y1="1290.0" x2="1380.0" y2="1510.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="332.0" y1="1522.0" x2="308.0" y2="1498.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="1392.0" y1="1522.0" x2="1368.0" y2="1498.0" stroke="#b30000" stroke-width="1.6"/>
+<text x="850.0" y="1510.0" font-size="28" fill="#b30000" text-anchor="middle" transform="rotate(-0.0 850.0 1510.0)" dy="-6">10.60 int  ·  11.00 ext (frente)</text>
+<line x1="1220.0" y1="1290.0" x2="1220.0" y2="410.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="1380.0" y1="1290.0" x2="1220.0" y2="1290.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="1380.0" y1="410.0" x2="1220.0" y2="410.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="1208.0" y1="1278.0" x2="1232.0" y2="1302.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="1208.0" y1="398.0" x2="1232.0" y2="422.0" stroke="#b30000" stroke-width="1.6"/>
+<text x="1220.0" y="850.0" font-size="28" fill="#b30000" text-anchor="middle" transform="rotate(-90.0 1220.0 850.0)" dy="-6">8.80 int  ·  9.20 ext (este)</text>
+<line x1="450.0" y1="977.0" x2="450.0" y2="410.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="320.0" y1="977.0" x2="450.0" y2="977.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="320.0" y1="410.0" x2="450.0" y2="410.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="462.0" y1="965.0" x2="438.0" y2="989.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="462.0" y1="398.0" x2="438.0" y2="422.0" stroke="#b30000" stroke-width="1.6"/>
+<text x="450.0" y="693.5" font-size="26" fill="#b30000" text-anchor="middle" transform="rotate(-90.0 450.0 693.5)" dy="-6">5.67</text>
+<line x1="450.0" y1="1290.0" x2="450.0" y2="977.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="320.0" y1="1290.0" x2="450.0" y2="1290.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="320.0" y1="977.0" x2="450.0" y2="977.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="462.0" y1="1278.0" x2="438.0" y2="1302.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="462.0" y1="965.0" x2="438.0" y2="989.0" stroke="#b30000" stroke-width="1.6"/>
+<text x="450.0" y="1133.5" font-size="26" fill="#b30000" text-anchor="middle" transform="rotate(-90.0 450.0 1133.5)" dy="-6">3.13</text>
+<line x1="550.0" y1="1290.0" x2="550.0" y2="410.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="320.0" y1="1290.0" x2="550.0" y2="1290.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="320.0" y1="410.0" x2="550.0" y2="410.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="562.0" y1="1278.0" x2="538.0" y2="1302.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="562.0" y1="398.0" x2="538.0" y2="422.0" stroke="#b30000" stroke-width="1.6"/>
+<text x="550.0" y="850.0" font-size="28" fill="#b30000" text-anchor="middle" transform="rotate(-90.0 550.0 850.0)" dy="-6">8.80 int  ·  9.20 ext (fondo · Galeana)</text>
+<line x1="320.0" y1="260.0" x2="1380.0" y2="260.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="320.0" y1="410.0" x2="320.0" y2="260.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="1380.0" y1="410.0" x2="1380.0" y2="260.0" stroke="#b30000" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="332.0" y1="248.0" x2="308.0" y2="272.0" stroke="#b30000" stroke-width="1.6"/>
+<line x1="1392.0" y1="248.0" x2="1368.0" y2="272.0" stroke="#b30000" stroke-width="1.6"/>
+<text x="850.0" y="260.0" font-size="28" fill="#b30000" text-anchor="middle" transform="rotate(-0.0 850.0 260.0)" dy="-6">10.60 (norte)</text>
+<line x1="695.0" y1="1214.6" x2="400.0" y2="901.6" stroke="#0050b3" stroke-width="1.6"/>
+<line x1="615.0" y1="1290.0" x2="695.0" y2="1214.6" stroke="#0050b3" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="320.0" y1="977.0" x2="400.0" y2="901.6" stroke="#0050b3" stroke-width="0.8" stroke-dasharray="3,3"/>
+<line x1="695.6" y1="1197.6" x2="694.5" y2="1231.5" stroke="#0050b3" stroke-width="1.6"/>
+<line x1="400.6" y1="884.6" x2="399.5" y2="918.5" stroke="#0050b3" stroke-width="1.6"/>
+<text x="547.5" y="1058.1" font-size="24" fill="#0050b3" text-anchor="middle" transform="rotate(46.7 547.5 1058.1)" dy="-6">4.30  =  1.20 + 1.90 + 1.20</text>
+<text x="850.0" y="1490.0" font-size="34" fill="#444" text-anchor="middle" font-weight="bold">CALLE MODESTO ARREOLA  (frente)</text>
+<text x="120.0" y="850.0" font-size="34" fill="#444" text-anchor="middle" font-weight="bold" transform="rotate(-90 120.0 850.0)">CALLE GALEANA  (fondo)</text>
+<text x="420.0" y="1190.0" font-size="22" fill="#0050b3" text-anchor="middle">esquina<tspan x="420.0" dy="24">(chaflán)</tspan></text>
+<g stroke="#000" stroke-width="2" fill="#000"><line x1="1680.0" y1="180.0" x2="1680.0" y2="80.0"/><polygon points="1680.0,65.0 1668.0,100.0 1692.0,100.0"/><text x="1680.0" y="55.0" font-size="30" text-anchor="middle" stroke="none">N</text></g>
+<g font-size="20">
+<rect x="40.0" y="1540.0" width="100.0" height="16" fill="#000" stroke="#000" stroke-width="1"/>
+<rect x="140.0" y="1540.0" width="100.0" height="16" fill="#fff" stroke="#000" stroke-width="1"/>
+<rect x="240.0" y="1540.0" width="100.0" height="16" fill="#000" stroke="#000" stroke-width="1"/>
+<rect x="340.0" y="1540.0" width="100.0" height="16" fill="#fff" stroke="#000" stroke-width="1"/>
+<rect x="440.0" y="1540.0" width="100.0" height="16" fill="#000" stroke="#000" stroke-width="1"/>
+<text x="40.0" y="1532.0" font-size="20">0</text>
+<text x="540.0" y="1532.0" font-size="20" text-anchor="middle">5 m</text>
+<text x="40.0" y="1580.0" font-size="22" font-weight="bold">Escala 1:50</text></g>
+<text x="850" y="48" font-size="40" text-anchor="middle" font-weight="bold">PLANTA ALTA — CONTORNO PERIMETRAL (PASO 1)</text>
+<text x="850" y="84" font-size="22" text-anchor="middle" fill="#555">Modesto Arreola y Galeana · Levantamiento · Muros ext. 0.20 m · Cotas en metros</text>
+</svg>
