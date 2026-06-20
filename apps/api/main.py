@@ -13,7 +13,7 @@ from api.routes.auth import router as auth_router
 from api.db import get_db
 from api.process_db import sync_periodic_series
 from api import geo
-
+from api.auth import hash_password
 
 _REQUIRED_ENV = [
     "DATABASE_URL",
@@ -54,11 +54,28 @@ def _seed_admin() -> None:
         )
 
 
+def _seed_smoke_user() -> None:
+    email = os.environ.get("SMOKE_EMAIL")
+    password = os.environ.get("SMOKE_PASS")
+    if not email or not password:
+        return
+    with get_db() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM users WHERE email = %s", (email,)
+        ).fetchone()
+        if exists is None:
+            conn.execute(
+                "INSERT INTO users (email, hashed_password, is_active) VALUES (%s, %s, TRUE)",
+                (email, hash_password(password)),
+            )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _check_env()
     _assert_schema_ready()
     _seed_admin()
+    _seed_smoke_user()
     sync_periodic_series()
     geo.load_colonias()
     yield

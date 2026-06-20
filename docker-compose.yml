@@ -44,6 +44,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      SMOKE_EMAIL: ${SMOKE_EMAIL:-}
+      SMOKE_PASS: ${SMOKE_PASS:-}
     ports:
       - "8000:8000"
     depends_on:

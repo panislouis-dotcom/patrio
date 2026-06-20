@@ -39,9 +39,8 @@ jobs:
       - name: Run smoke tests
         env:
           BASE_URL: https://admin.refigan.com
-          API_BASE_URL: https://admin.refigan.com
-          E2E_USER: ${{ secrets.E2E_USER }}
-          E2E_PASS: ${{ secrets.E2E_PASS }}
+          E2E_USER: smoke@refigan.com
+          E2E_PASS: rfg-smoke-2026
         run: cd apps/e2e && npx playwright test tests/00-smoke.spec.ts
 
       - name: Upload smoke report
