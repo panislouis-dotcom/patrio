@@ -5,6 +5,7 @@ import {
 } from '../lib/api'
 import type { TeamMember, MemberRole, User } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { ApiKeysSection } from './ApiKeysSection'
 
 // ─── Role metadata ───────────────────────────────
 
@@ -682,6 +683,9 @@ export function OrgTab() {
                   ))}
                 </div>
               )}
+              <div style={{ maxWidth: '520px', marginTop: '48px', paddingBottom: '24px' }}>
+                <ApiKeysSection />
+              </div>
             </div>
 
             {/* Detail / Add panel */}
