@@ -10,7 +10,7 @@ permissions: {}
 
 jobs:
   build:
-    uses: edlgg/edg-infra/.github/workflows/build-push.yml@main
+    uses: edlgg-org/edg-infra/.github/workflows/build-push.yml@main
     with:
       service: refigan
       tag_prefix: qa-
