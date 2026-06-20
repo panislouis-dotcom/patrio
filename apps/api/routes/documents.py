@@ -43,7 +43,7 @@ def _embed_images(items: list[dict]) -> None:
                 img["dataUri"] = None
 
 
-@router.post("/prospectus")
+@router.post("/prospectus", operation_id="documents_prospectus")
 async def generate_prospectus(current_user: dict = Depends(get_current_user)):
     projects = [p for p in get_projects() if p.get("isFavorite")]
     prospects = [p for p in get_prospects() if p.get("isFavorite")]

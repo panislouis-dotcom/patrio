@@ -23,17 +23,17 @@ class TeamMemberUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-@router.get("/api/team")
+@router.get("/api/team", operation_id="team_list")
 def list_team(_: dict = Depends(get_current_user)):
     return get_team_members()
 
 
-@router.post("/api/team", status_code=201)
+@router.post("/api/team", status_code=201, operation_id="team_create")
 def post_team_member(body: TeamMemberCreate, _: dict = Depends(get_current_user)):
     return create_team_member(body.model_dump(exclude_none=False))
 
 
-@router.patch("/api/team/{member_id}")
+@router.patch("/api/team/{member_id}", operation_id="team_update")
 def patch_team_member(member_id: int, body: TeamMemberUpdate, _: dict = Depends(get_current_user)):
     payload = body.model_dump(exclude_unset=True)
     updated = update_team_member(member_id, payload)
@@ -42,7 +42,7 @@ def patch_team_member(member_id: int, body: TeamMemberUpdate, _: dict = Depends(
     return updated
 
 
-@router.delete("/api/team/{member_id}", status_code=204)
+@router.delete("/api/team/{member_id}", status_code=204, operation_id="team_delete")
 def delete_team_member_route(member_id: int, _: dict = Depends(get_current_user)):
     member = get_team_member(member_id)
     if member is None:

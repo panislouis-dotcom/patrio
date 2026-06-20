@@ -93,17 +93,17 @@ class SelectCotizacionBody(BaseModel):
 
 # ── Category Routes ───────────────────────────────────────────────────────────
 
-@router.get("/api/proveedor-categories")
+@router.get("/api/proveedor-categories", operation_id="proveedor_categories_list")
 def list_categories(_: dict = Depends(get_current_user)):
     return get_categories()
 
 
-@router.post("/api/proveedor-categories", status_code=201)
+@router.post("/api/proveedor-categories", status_code=201, operation_id="proveedor_categories_create")
 def add_category(body: CategoryCreate, _: dict = Depends(get_current_user)):
     return create_category(body.model_dump())
 
 
-@router.patch("/api/proveedor-categories/{category_id}")
+@router.patch("/api/proveedor-categories/{category_id}", operation_id="proveedor_categories_update")
 def patch_category(category_id: int, body: CategoryUpdate, _: dict = Depends(get_current_user)):
     data = body.model_dump(exclude_unset=True)
     result = update_category(category_id, data)
@@ -112,7 +112,7 @@ def patch_category(category_id: int, body: CategoryUpdate, _: dict = Depends(get
     return result
 
 
-@router.delete("/api/proveedor-categories/{category_id}", status_code=204)
+@router.delete("/api/proveedor-categories/{category_id}", status_code=204, operation_id="proveedor_categories_delete")
 def remove_category(category_id: int, _: dict = Depends(get_current_user)):
     if get_category(category_id) is None:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -121,12 +121,12 @@ def remove_category(category_id: int, _: dict = Depends(get_current_user)):
 
 # ── Proveedor Routes ──────────────────────────────────────────────────────────
 
-@router.get("/api/proveedores")
+@router.get("/api/proveedores", operation_id="proveedores_list")
 def list_proveedores(category_id: Optional[int] = None, _: dict = Depends(get_current_user)):
     return get_proveedores(category_id=category_id)
 
 
-@router.get("/api/proveedores/{proveedor_id}")
+@router.get("/api/proveedores/{proveedor_id}", operation_id="proveedores_get")
 def get_one_proveedor(proveedor_id: int, _: dict = Depends(get_current_user)):
     p = get_proveedor(proveedor_id)
     if p is None:
@@ -134,18 +134,18 @@ def get_one_proveedor(proveedor_id: int, _: dict = Depends(get_current_user)):
     return p
 
 
-@router.get("/api/proveedores/{proveedor_id}/assignments")
+@router.get("/api/proveedores/{proveedor_id}/assignments", operation_id="proveedor_assignments_list")
 def list_assignments(proveedor_id: int, _: dict = Depends(get_current_user)):
     return get_proveedor_assignments(proveedor_id)
 
 
-@router.post("/api/proveedores", status_code=201)
+@router.post("/api/proveedores", status_code=201, operation_id="proveedores_create")
 def add_proveedor(body: ProveedorCreate, _: dict = Depends(get_current_user)):
     created = create_proveedor(body.model_dump())
     return get_proveedor(created["id"])
 
 
-@router.patch("/api/proveedores/{proveedor_id}")
+@router.patch("/api/proveedores/{proveedor_id}", operation_id="proveedores_update")
 def patch_proveedor(proveedor_id: int, body: ProveedorUpdate, _: dict = Depends(get_current_user)):
     data = body.model_dump(exclude_unset=True)
     if "status" in data and data["status"] not in ("activo", "inactivo", "vetado"):
@@ -158,14 +158,14 @@ def patch_proveedor(proveedor_id: int, body: ProveedorUpdate, _: dict = Depends(
         raise HTTPException(status_code=404, detail="Proveedor not found")
 
 
-@router.delete("/api/proveedores/{proveedor_id}", status_code=204)
+@router.delete("/api/proveedores/{proveedor_id}", status_code=204, operation_id="proveedores_delete")
 def remove_proveedor(proveedor_id: int, _: dict = Depends(get_current_user)):
     if get_proveedor(proveedor_id) is None:
         raise HTTPException(status_code=404, detail="Proveedor not found")
     delete_proveedor(proveedor_id)
 
 
-@router.put("/api/proveedores/{proveedor_id}/categories", status_code=200)
+@router.put("/api/proveedores/{proveedor_id}/categories", status_code=200, operation_id="proveedor_categories_set")
 def set_categories(proveedor_id: int, body: SetCategoriesBody, _: dict = Depends(get_current_user)):
     if get_proveedor(proveedor_id) is None:
         raise HTTPException(status_code=404, detail="Proveedor not found")
@@ -175,7 +175,7 @@ def set_categories(proveedor_id: int, body: SetCategoriesBody, _: dict = Depends
 
 # ── Photo Routes ──────────────────────────────────────────────────────────────
 
-@router.post("/api/proveedores/{proveedor_id}/photos", status_code=201)
+@router.post("/api/proveedores/{proveedor_id}/photos", status_code=201, operation_id="proveedor_photos_upload")
 async def upload_photo(
     proveedor_id: int,
     file: UploadFile = File(...),
@@ -199,7 +199,7 @@ async def upload_photo(
     return add_proveedor_photo(proveedor_id, relative_path, file.filename or "", file.content_type or "image/jpeg")
 
 
-@router.delete("/api/proveedores/{proveedor_id}/photos/{photo_id}", status_code=204)
+@router.delete("/api/proveedores/{proveedor_id}/photos/{photo_id}", status_code=204, operation_id="proveedor_photos_delete")
 def remove_photo(proveedor_id: int, photo_id: int, _: dict = Depends(get_current_user)):
     try:
         file_path = delete_proveedor_photo(photo_id, proveedor_id)
@@ -210,17 +210,17 @@ def remove_photo(proveedor_id: int, photo_id: int, _: dict = Depends(get_current
 
 # ── Cotizaciones Routes ───────────────────────────────────────────────────────
 
-@router.get("/api/instance-node-states/{state_id}/cotizaciones")
+@router.get("/api/instance-node-states/{state_id}/cotizaciones", operation_id="cotizaciones_list")
 def list_cotizaciones(state_id: int, _: dict = Depends(get_current_user)):
     return get_cotizaciones(state_id)
 
 
-@router.post("/api/instance-node-states/{state_id}/cotizaciones", status_code=201)
+@router.post("/api/instance-node-states/{state_id}/cotizaciones", status_code=201, operation_id="cotizaciones_create")
 def add_cotizacion(state_id: int, body: CotizacionCreate, _: dict = Depends(get_current_user)):
     return create_cotizacion(state_id, body.model_dump())
 
 
-@router.patch("/api/cotizaciones/{cotizacion_id}")
+@router.patch("/api/cotizaciones/{cotizacion_id}", operation_id="cotizaciones_update")
 def patch_cotizacion(cotizacion_id: int, body: CotizacionUpdate, _: dict = Depends(get_current_user)):
     data = body.model_dump(exclude_unset=True)
     try:
@@ -229,7 +229,7 @@ def patch_cotizacion(cotizacion_id: int, body: CotizacionUpdate, _: dict = Depen
         raise HTTPException(status_code=404, detail="Cotizacion not found")
 
 
-@router.post("/api/cotizaciones/{cotizacion_id}/select", status_code=200)
+@router.post("/api/cotizaciones/{cotizacion_id}/select", status_code=200, operation_id="cotizacion_select")
 def select_quote(cotizacion_id: int, body: SelectCotizacionBody, _: dict = Depends(get_current_user)):
     result = select_cotizacion(cotizacion_id, body.instanceNodeStateId)
     if result is None:
@@ -237,7 +237,7 @@ def select_quote(cotizacion_id: int, body: SelectCotizacionBody, _: dict = Depen
     return result
 
 
-@router.delete("/api/cotizaciones/{cotizacion_id}", status_code=204)
+@router.delete("/api/cotizaciones/{cotizacion_id}", status_code=204, operation_id="cotizaciones_delete")
 def remove_cotizacion(cotizacion_id: int, _: dict = Depends(get_current_user)):
     try:
         delete_cotizacion(cotizacion_id)

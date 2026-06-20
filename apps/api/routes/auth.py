@@ -14,7 +14,7 @@ class LoginRequest(BaseModel):
     password: str
 
 
-@router.post("/api/auth/login")
+@router.post("/api/auth/login", operation_id="auth_login")
 def login(body: LoginRequest):
     with get_db() as conn:
         row = conn.execute(
@@ -31,7 +31,7 @@ def login(body: LoginRequest):
     return {"access_token": create_access_token(body.email), "token_type": "bearer"}
 
 
-@router.get("/api/auth/me")
+@router.get("/api/auth/me", operation_id="auth_me")
 def me(current_user: dict = Depends(get_current_user)):
     return current_user
 
@@ -41,7 +41,7 @@ class ChangePasswordRequest(BaseModel):
     newPassword: str = Field(min_length=8)
 
 
-@router.post("/api/auth/change-password")
+@router.post("/api/auth/change-password", operation_id="auth_change_password")
 def change_password(body: ChangePasswordRequest, current_user: dict = Depends(get_current_user)):
     with get_db() as conn:
         row = conn.execute(
@@ -64,7 +64,7 @@ class CreateApiKeyRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
 
-@router.post("/api/auth/api-keys", status_code=201)
+@router.post("/api/auth/api-keys", status_code=201, operation_id="api_keys_create")
 def create_api_key(body: CreateApiKeyRequest, current_user: dict = Depends(get_current_user)):
     token = generate_api_key()
     key_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -86,7 +86,7 @@ def create_api_key(body: CreateApiKeyRequest, current_user: dict = Depends(get_c
     return {**r, "token": token, "created_at": r["created_at"].isoformat()}
 
 
-@router.get("/api/auth/api-keys")
+@router.get("/api/auth/api-keys", operation_id="api_keys_list")
 def list_api_keys(current_user: dict = Depends(get_current_user)):
     with get_db() as conn:
         rows = conn.execute(
@@ -109,7 +109,7 @@ def list_api_keys(current_user: dict = Depends(get_current_user)):
     ]
 
 
-@router.delete("/api/auth/api-keys/{key_id}", status_code=204)
+@router.delete("/api/auth/api-keys/{key_id}", status_code=204, operation_id="api_keys_revoke")
 def revoke_api_key(key_id: int, current_user: dict = Depends(get_current_user)):
     with get_db() as conn:
         cur = conn.execute(

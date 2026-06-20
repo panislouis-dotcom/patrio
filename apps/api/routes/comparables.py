@@ -66,14 +66,14 @@ class ComparableUpdate(BaseModel):
 
 # ─── Routes ──────────────────────────────────────────
 
-@router.get("/api/zones")
+@router.get("/api/zones", operation_id="zones_list")
 def list_zones(_: dict = Depends(get_current_user)):
     with get_db() as conn:
         rows = conn.execute("SELECT id, name, cities FROM zones ORDER BY name").fetchall()
     return [dict(r) for r in rows]
 
 
-@router.get("/api/comparables")
+@router.get("/api/comparables", operation_id="comparables_list")
 def list_comparables(
     status: Optional[str] = None,
     zone_id: Optional[int] = None,
@@ -82,7 +82,7 @@ def list_comparables(
     return get_comparables(status=status, zone_id=zone_id)
 
 
-@router.get("/api/comparables/{comparable_id}")
+@router.get("/api/comparables/{comparable_id}", operation_id="comparables_get")
 def detail_comparable(comparable_id: int, _: dict = Depends(get_current_user)):
     c = get_comparable(comparable_id)
     if c is None:
@@ -90,7 +90,7 @@ def detail_comparable(comparable_id: int, _: dict = Depends(get_current_user)):
     return c
 
 
-@router.post("/api/comparables", status_code=201)
+@router.post("/api/comparables", status_code=201, operation_id="comparables_create")
 def post_comparable(body: ComparableCreate, _: dict = Depends(get_current_user)):
     data = body.model_dump(exclude_none=False)
     created = create_comparable(data)
@@ -99,7 +99,7 @@ def post_comparable(body: ComparableCreate, _: dict = Depends(get_current_user))
     return created
 
 
-@router.patch("/api/comparables/{comparable_id}")
+@router.patch("/api/comparables/{comparable_id}", operation_id="comparables_update")
 def patch_comparable(
     comparable_id: int,
     body: ComparableUpdate,
@@ -112,7 +112,7 @@ def patch_comparable(
     return updated
 
 
-@router.delete("/api/comparables/{comparable_id}", status_code=204)
+@router.delete("/api/comparables/{comparable_id}", status_code=204, operation_id="comparables_delete")
 def remove_comparable(comparable_id: int, _: dict = Depends(get_current_user)):
     if not delete_comparable(comparable_id):
         raise HTTPException(status_code=404, detail="Comparable not found")

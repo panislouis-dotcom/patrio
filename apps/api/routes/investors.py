@@ -59,17 +59,17 @@ class ProjectInvestorUpdate(BaseModel):
 
 # ── Global investor routes ────────────────────────────────────────────────────
 
-@router.get("/api/investors")
+@router.get("/api/investors", operation_id="investors_list")
 def list_investors(_: dict = Depends(get_current_user)):
     return get_investors()
 
 
-@router.post("/api/investors", status_code=201)
+@router.post("/api/investors", status_code=201, operation_id="investors_create")
 def create_investor_route(body: InvestorCreate, _: dict = Depends(get_current_user)):
     return create_investor(body.model_dump())
 
 
-@router.get("/api/investors/{investor_id}")
+@router.get("/api/investors/{investor_id}", operation_id="investors_get")
 def get_investor_route(investor_id: int, _: dict = Depends(get_current_user)):
     inv = get_investor(investor_id)
     if inv is None:
@@ -77,7 +77,7 @@ def get_investor_route(investor_id: int, _: dict = Depends(get_current_user)):
     return inv
 
 
-@router.put("/api/investors/{investor_id}")
+@router.put("/api/investors/{investor_id}", operation_id="investors_update")
 def update_investor_route(investor_id: int, body: InvestorUpdate, _: dict = Depends(get_current_user)):
     inv = get_investor(investor_id)
     if inv is None:
@@ -85,7 +85,7 @@ def update_investor_route(investor_id: int, body: InvestorUpdate, _: dict = Depe
     return update_investor(investor_id, body.model_dump(exclude_unset=True))
 
 
-@router.delete("/api/investors/{investor_id}", status_code=204)
+@router.delete("/api/investors/{investor_id}", status_code=204, operation_id="investors_delete")
 def delete_investor_route(investor_id: int, _: dict = Depends(get_current_user)):
     inv = get_investor(investor_id)
     if inv is None:
@@ -95,19 +95,19 @@ def delete_investor_route(investor_id: int, _: dict = Depends(get_current_user))
 
 # ── Per-project investor routes ───────────────────────────────────────────────
 
-@router.get("/api/projects/{project_id}/investors")
+@router.get("/api/projects/{project_id}/investors", operation_id="project_investors_list")
 def list_project_investors(project_id: int, _: dict = Depends(get_current_user)):
     return get_project_investors(project_id)
 
 
-@router.post("/api/projects/{project_id}/investors", status_code=201)
+@router.post("/api/projects/{project_id}/investors", status_code=201, operation_id="project_investors_add")
 def add_project_investor_route(project_id: int, body: ProjectInvestorCreate, _: dict = Depends(get_current_user)):
     data = body.model_dump()
     investor_id = data.pop("investorId")
     return add_project_investor(project_id, investor_id, data)
 
 
-@router.put("/api/projects/{project_id}/investors/{investment_id}")
+@router.put("/api/projects/{project_id}/investors/{investment_id}", operation_id="project_investment_update")
 def update_project_investment_route(project_id: int, investment_id: int, body: ProjectInvestorUpdate, _: dict = Depends(get_current_user)):
     try:
         return update_project_investment(investment_id, body.model_dump(exclude_unset=True))
@@ -115,6 +115,6 @@ def update_project_investment_route(project_id: int, investment_id: int, body: P
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.delete("/api/projects/{project_id}/investors/{investment_id}", status_code=204)
+@router.delete("/api/projects/{project_id}/investors/{investment_id}", status_code=204, operation_id="project_investment_delete")
 def delete_project_investment_route(project_id: int, investment_id: int, _: dict = Depends(get_current_user)):
     delete_project_investment(investment_id)

@@ -83,22 +83,22 @@ class CommentCreate(BaseModel):
 
 # ─── Templates ────────────────────────────────────
 
-@router.get("/api/process/templates")
+@router.get("/api/process/templates", operation_id="process_templates_list")
 def list_templates(_: dict = Depends(get_current_user)):
     return get_templates()
 
-@router.post("/api/process/templates", status_code=201)
+@router.post("/api/process/templates", status_code=201, operation_id="process_templates_create")
 def post_template(body: TemplateCreate, _: dict = Depends(get_current_user)):
     return create_template(body.model_dump())
 
-@router.patch("/api/process/templates/{tid}")
+@router.patch("/api/process/templates/{tid}", operation_id="process_templates_update")
 def patch_template(tid: int, body: TemplateUpdate, _: dict = Depends(get_current_user)):
     updated = update_template(tid, body.model_dump(exclude_none=True))
     if updated is None:
         raise HTTPException(status_code=404, detail="Template not found")
     return updated
 
-@router.delete("/api/process/templates/{tid}", status_code=204)
+@router.delete("/api/process/templates/{tid}", status_code=204, operation_id="process_templates_delete")
 def delete_template_route(tid: int, _: dict = Depends(get_current_user)):
     if get_template(tid) is None:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -106,11 +106,11 @@ def delete_template_route(tid: int, _: dict = Depends(get_current_user)):
 
 # ─── Nodes ────────────────────────────────────────
 
-@router.get("/api/process/templates/{tid}/nodes")
+@router.get("/api/process/templates/{tid}/nodes", operation_id="process_template_nodes_list")
 def list_template_nodes(tid: int, _: dict = Depends(get_current_user)):
     return get_template_nodes(tid)
 
-@router.post("/api/process/templates/{tid}/nodes", status_code=201)
+@router.post("/api/process/templates/{tid}/nodes", status_code=201, operation_id="process_template_nodes_create")
 def post_node(tid: int, body: NodeCreate, _: dict = Depends(get_current_user)):
     data = body.model_dump()
     src = data.get('sourceTemplateId')
@@ -124,20 +124,20 @@ def post_node(tid: int, body: NodeCreate, _: dict = Depends(get_current_user)):
     data["templateId"] = tid
     return create_node(data)
 
-@router.patch("/api/process/nodes/{nid}")
+@router.patch("/api/process/nodes/{nid}", operation_id="process_nodes_update")
 def patch_node(nid: int, body: NodeUpdate, _: dict = Depends(get_current_user)):
     updated = update_node(nid, body.model_dump(exclude_unset=True))
     if updated is None:
         raise HTTPException(status_code=404, detail="Node not found")
     return updated
 
-@router.delete("/api/process/nodes/{nid}", status_code=204)
+@router.delete("/api/process/nodes/{nid}", status_code=204, operation_id="process_nodes_delete")
 def delete_node_route(nid: int, _: dict = Depends(get_current_user)):
     if get_node(nid) is None:
         raise HTTPException(status_code=404, detail="Node not found")
     delete_node(nid)
 
-@router.get("/api/process/templates/{tid}/preview")
+@router.get("/api/process/templates/{tid}/preview", operation_id="process_template_preview")
 def get_template_preview(tid: int, _: dict = Depends(get_current_user)):
     template = get_template(tid)
     if template is None:
@@ -148,15 +148,15 @@ def get_template_preview(tid: int, _: dict = Depends(get_current_user)):
 
 # ─── Instances ────────────────────────────────────
 
-@router.get("/api/process/instances")
+@router.get("/api/process/instances", operation_id="process_instances_list")
 def list_instances(project_id: Optional[int] = None, _: dict = Depends(get_current_user)):
     return get_instances(project_id=project_id)
 
-@router.post("/api/process/instances", status_code=201)
+@router.post("/api/process/instances", status_code=201, operation_id="process_instances_create")
 def post_instance(body: InstanceCreate, _: dict = Depends(get_current_user)):
     return create_instance(body.model_dump())
 
-@router.patch("/api/process/instances/{iid}")
+@router.patch("/api/process/instances/{iid}", operation_id="process_instances_update")
 def patch_instance(iid: int, body: InstanceUpdate, _: dict = Depends(get_current_user)):
     from datetime import datetime, timezone
     data = body.model_dump(exclude_unset=True)
@@ -171,7 +171,7 @@ def patch_instance(iid: int, body: InstanceUpdate, _: dict = Depends(get_current
 
     return {"instance": updated}
 
-@router.get("/api/process/instances/{iid}")
+@router.get("/api/process/instances/{iid}", operation_id="process_instances_get")
 def get_instance_detail(iid: int, _: dict = Depends(get_current_user)):
     instance = get_instance(iid)
     if instance is None:
@@ -189,7 +189,7 @@ def get_instance_detail(iid: int, _: dict = Depends(get_current_user)):
 
 # ─── Node detail (subtree) ────────────────────────
 
-@router.get("/api/process/instances/{iid}/nodes/{nid}")
+@router.get("/api/process/instances/{iid}/nodes/{nid}", operation_id="process_instance_node_get")
 def get_node_detail(iid: int, nid: int, _: dict = Depends(get_current_user)):
     instance = get_instance(iid)
     if instance is None:
@@ -213,7 +213,7 @@ def get_node_detail(iid: int, nid: int, _: dict = Depends(get_current_user)):
 
 # ─── Node states ──────────────────────────────────
 
-@router.patch("/api/process/instances/{iid}/nodes/{nid}/state")
+@router.patch("/api/process/instances/{iid}/nodes/{nid}/state", operation_id="process_instance_node_state_update")
 def patch_node_state(iid: int, nid: int, body: NodeStateUpdate, _: dict = Depends(get_current_user)):
     instance = get_instance(iid)
     if instance is None:
@@ -225,11 +225,11 @@ def patch_node_state(iid: int, nid: int, body: NodeStateUpdate, _: dict = Depend
 
 # ─── Node files ───────────────────────────────────
 
-@router.get("/api/process/nodes/{nid}/files")
+@router.get("/api/process/nodes/{nid}/files", operation_id="process_node_files_list")
 def list_node_files(nid: int, instance_id: Optional[int] = None, _: dict = Depends(get_current_user)):
     return get_node_files(nid, instance_id)
 
-@router.post("/api/process/nodes/{nid}/files", status_code=201)
+@router.post("/api/process/nodes/{nid}/files", status_code=201, operation_id="process_node_files_upload")
 async def upload_node_file(
     nid: int,
     file: UploadFile = File(...),
@@ -247,17 +247,17 @@ async def upload_node_file(
         content=content,
     )
 
-@router.delete("/api/process/files/{fid}", status_code=204)
+@router.delete("/api/process/files/{fid}", status_code=204, operation_id="process_files_delete")
 def delete_file_route(fid: int, _: dict = Depends(get_current_user)):
     delete_node_file(fid)
 
 # ─── Instance files ───────────────────────────────────────────
 
-@router.get("/api/process/instances/{iid}/files")
+@router.get("/api/process/instances/{iid}/files", operation_id="process_instance_files_list")
 def list_instance_files(iid: int, _: dict = Depends(get_current_user)):
     return get_instance_files(iid)
 
-@router.post("/api/process/instances/{iid}/files", status_code=201)
+@router.post("/api/process/instances/{iid}/files", status_code=201, operation_id="process_instance_files_upload")
 async def upload_instance_file_route(
     iid: int,
     file: UploadFile = File(...),
@@ -271,23 +271,23 @@ async def upload_instance_file_route(
         content=content,
     )
 
-@router.delete("/api/process/instance-files/{fid}", status_code=204)
+@router.delete("/api/process/instance-files/{fid}", status_code=204, operation_id="process_instance_files_delete")
 def delete_instance_file_route(fid: int, _: dict = Depends(get_current_user)):
     delete_instance_file(fid)
 
 # ─── Node comments ────────────────────────────────
 
-@router.get("/api/process/instances/{iid}/nodes/{nid}/comments")
+@router.get("/api/process/instances/{iid}/nodes/{nid}/comments", operation_id="process_node_comments_list")
 def list_comments(iid: int, nid: int, _: dict = Depends(get_current_user)):
     return get_node_comments(iid, nid)
 
-@router.post("/api/process/instances/{iid}/nodes/{nid}/comments", status_code=201)
+@router.post("/api/process/instances/{iid}/nodes/{nid}/comments", status_code=201, operation_id="process_node_comments_create")
 def post_comment(iid: int, nid: int, body: CommentCreate, _: dict = Depends(get_current_user)):
     instance = get_instance(iid)
     if instance is None:
         raise HTTPException(status_code=404, detail="Instance not found")
     return create_node_comment(iid, nid, body.body, body.author)
 
-@router.delete("/api/process/comments/{cid}", status_code=204)
+@router.delete("/api/process/comments/{cid}", status_code=204, operation_id="process_comments_delete")
 def delete_comment_route(cid: int, _: dict = Depends(get_current_user)):
     delete_node_comment(cid)

@@ -1,9 +1,11 @@
 import os
 import sys
+import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pathlib import Path
 from api.config import ALLOWED_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD_HASH
 from api.routes import prospects, projects, sonar, team, processes, profit, investors, users, comparables, analyses, documents, proveedores
@@ -72,6 +74,39 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+def _status_to_code(status: int) -> str:
+    return {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        409: "CONFLICT",
+        413: "PAYLOAD_TOO_LARGE",
+        415: "UNSUPPORTED_MEDIA_TYPE",
+        422: "VALIDATION_ERROR",
+        500: "INTERNAL_ERROR",
+        502: "BAD_GATEWAY",
+    }.get(status, f"HTTP_{status}")
+
+
+@app.exception_handler(HTTPException)
+async def _http_exc(request: Request, exc: HTTPException) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": _status_to_code(exc.status_code), "message": exc.detail, "request_id": str(uuid.uuid4())}},
+        headers=getattr(exc, "headers", None) or {},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exc(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"error": {"code": "VALIDATION_ERROR", "message": str(exc.errors()), "request_id": str(uuid.uuid4())}},
+    )
+
 
 from api import storage as _storage
 

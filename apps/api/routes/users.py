@@ -35,7 +35,7 @@ def _to_dict(row) -> dict:
     }
 
 
-@router.get("/api/users")
+@router.get("/api/users", operation_id="users_list")
 def list_users(_: dict = Depends(get_current_user)):
     with get_db() as conn:
         rows = conn.execute(
@@ -44,7 +44,7 @@ def list_users(_: dict = Depends(get_current_user)):
     return [_to_dict(r) for r in rows]
 
 
-@router.post("/api/users", status_code=201)
+@router.post("/api/users", status_code=201, operation_id="users_create")
 def create_user(body: UserCreate, _: dict = Depends(get_current_user)):
     with get_db() as conn:
         if conn.execute("SELECT id FROM users WHERE email = %s", (body.email,)).fetchone():
@@ -57,7 +57,7 @@ def create_user(body: UserCreate, _: dict = Depends(get_current_user)):
         return _to_dict(cur.fetchone())
 
 
-@router.patch("/api/users/{user_id}")
+@router.patch("/api/users/{user_id}", operation_id="users_update")
 def update_user(user_id: int, body: UserUpdate, current_user: dict = Depends(get_current_user)):
     with get_db() as conn:
         row = conn.execute(
@@ -86,7 +86,7 @@ def update_user(user_id: int, body: UserUpdate, current_user: dict = Depends(get
     return _to_dict(row)
 
 
-@router.delete("/api/users/{user_id}", status_code=204)
+@router.delete("/api/users/{user_id}", status_code=204, operation_id="users_delete")
 def delete_user(user_id: int, current_user: dict = Depends(get_current_user)):
     with get_db() as conn:
         row = conn.execute("SELECT email FROM users WHERE id = %s", (user_id,)).fetchone()

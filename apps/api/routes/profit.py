@@ -38,17 +38,17 @@ class ProfitConfigUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-@router.get("/api/profit/template")
+@router.get("/api/profit/template", operation_id="profit_template_get")
 def get_template_route(_: dict = Depends(get_current_user)):
     return get_profit_template()
 
 
-@router.put("/api/profit/template")
+@router.put("/api/profit/template", operation_id="profit_template_update")
 def update_template_route(body: ProfitConfigUpdate, _: dict = Depends(get_current_user)):
     return upsert_profit_template(body.model_dump(exclude_unset=True))
 
 
-@router.get("/api/projects/{project_id}/profit")
+@router.get("/api/projects/{project_id}/profit", operation_id="project_profit_get")
 def get_project_profit_route(project_id: int, _: dict = Depends(get_current_user)):
     project = get_project(project_id)
     if project is None:
@@ -60,7 +60,7 @@ def get_project_profit_route(project_id: int, _: dict = Depends(get_current_user
     return {"config": config, "waterfall": waterfall}
 
 
-@router.put("/api/projects/{project_id}/profit")
+@router.put("/api/projects/{project_id}/profit", operation_id="project_profit_update")
 def update_project_profit_route(project_id: int, body: ProfitConfigUpdate, _: dict = Depends(get_current_user)):
     project = get_project(project_id)
     if project is None:

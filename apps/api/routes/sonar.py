@@ -245,7 +245,7 @@ class _RunRequest(BaseModel):
     cves: list[str] = []    # INEGI CVEs; empty = NL-wide
 
 
-@router.post("/api/sonar/run")
+@router.post("/api/sonar/run", operation_id="sonar_run")
 def sonar_run(req: _RunRequest, _: dict = Depends(get_current_user)):
     cves = req.cves or None
     scan_id = sonar_db.create_scan(cves)
@@ -271,7 +271,7 @@ class _ImportRequest(BaseModel):
     stateName: str = ""
 
 
-@router.post("/api/sonar/import", status_code=201)
+@router.post("/api/sonar/import", status_code=201, operation_id="sonar_import")
 def sonar_import(req: _ImportRequest, _: dict = Depends(get_current_user)):
     city = req.municipioName or req.city
     prospect = create_prospect({
@@ -299,7 +299,7 @@ def sonar_import(req: _ImportRequest, _: dict = Depends(get_current_user)):
     return {"prospect": prospect}
 
 
-@router.get("/api/sonar/zones")
+@router.get("/api/sonar/zones", operation_id="sonar_zones")
 def sonar_zones(_: dict = Depends(get_current_user)):
     """Return active municipios grouped by state, derived from ACTIVE_CVES."""
     grouped: dict[str, list[dict]] = {}
@@ -310,18 +310,18 @@ def sonar_zones(_: dict = Depends(get_current_user)):
     return {"states": [{"name": s, "municipios": m} for s, m in grouped.items()]}
 
 
-@router.get("/api/sonar/signals")
+@router.get("/api/sonar/signals", operation_id="sonar_signals")
 def sonar_signals(_: dict = Depends(get_current_user)):
     rows = sonar_db.get_latest_scan_signals()
     return {"signals": [_db_row_to_dict(r) for r in rows]}
 
 
-@router.get("/api/sonar/zone-medians")
+@router.get("/api/sonar/zone-medians", operation_id="sonar_zone_medians")
 def sonar_zone_medians(_: dict = Depends(get_current_user)):
     return {"medians": sonar_db.get_zone_medians()}
 
 
-@router.post("/api/sonar/re-geocode")
+@router.post("/api/sonar/re-geocode", operation_id="sonar_re_geocode")
 def sonar_re_geocode(_: dict = Depends(get_current_user)):
     """Re-geocode all signals to correct stale municipio/colonia assignments.
     Runs in background at 1 req/sec (Nominatim rate limit).
@@ -343,7 +343,7 @@ class _ToComparableRequest(BaseModel):
     condition: Literal['remodelada', 'nueva', 'semi_nueva', 'por_remodelar'] = "semi_nueva"
 
 
-@router.post("/api/sonar/to-comparables", status_code=201)
+@router.post("/api/sonar/to-comparables", status_code=201, operation_id="sonar_to_comparables")
 def sonar_to_comparables(req: _ToComparableRequest, _: dict = Depends(get_current_user)):
     if not req.signal_ids:
         return {"created": 0, "skipped": 0}

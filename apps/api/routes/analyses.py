@@ -40,7 +40,7 @@ class AnalysisRequest(BaseModel):
     gastosOperativosPct: float = 0.30
 
 
-@router.post("/api/analyses", status_code=201)
+@router.post("/api/analyses", status_code=201, operation_id="analyses_create")
 def run_analysis(body: AnalysisRequest, _: dict = Depends(get_current_user)):
     try:
         result = analyze_prospect(
@@ -65,7 +65,7 @@ def run_analysis(body: AnalysisRequest, _: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.get("/api/analyses/{snapshot_id}")
+@router.get("/api/analyses/{snapshot_id}", operation_id="analyses_get")
 def get_analysis(snapshot_id: int, _: dict = Depends(get_current_user)):
     with get_db() as conn:
         row = conn.execute(
@@ -76,7 +76,7 @@ def get_analysis(snapshot_id: int, _: dict = Depends(get_current_user)):
     return _parse_snapshot(row)
 
 
-@router.get("/api/analyses")
+@router.get("/api/analyses", operation_id="analyses_list")
 def list_analyses(
     prospect_id: Optional[int] = None,
     _: dict = Depends(get_current_user),

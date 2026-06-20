@@ -55,12 +55,12 @@ class ProjectCreate(BaseModel):
     prospectId: Optional[int] = None
 
 
-@router.get("/api/projects")
+@router.get("/api/projects", operation_id="projects_list")
 def list_projects(_: dict = Depends(get_current_user)):
     return get_projects()
 
 
-@router.get("/api/projects/{project_id}")
+@router.get("/api/projects/{project_id}", operation_id="projects_get")
 def detail_project(project_id: int, _: dict = Depends(get_current_user)):
     p = get_project(project_id)
     if p is None:
@@ -68,7 +68,7 @@ def detail_project(project_id: int, _: dict = Depends(get_current_user)):
     return p
 
 
-@router.patch("/api/projects/{project_id}")
+@router.patch("/api/projects/{project_id}", operation_id="projects_update")
 def patch_project(project_id: int, body: ProjectUpdate, _: dict = Depends(get_current_user)):
     payload = body.model_dump(exclude_unset=True)
     updated = update_project(project_id, payload)
@@ -77,7 +77,7 @@ def patch_project(project_id: int, body: ProjectUpdate, _: dict = Depends(get_cu
     return updated
 
 
-@router.post("/api/projects", status_code=201)
+@router.post("/api/projects", status_code=201, operation_id="projects_create")
 def post_project(body: ProjectCreate, _: dict = Depends(get_current_user)):
     created = create_project(body.model_dump(exclude_none=False))
     if created is None:
@@ -85,7 +85,7 @@ def post_project(body: ProjectCreate, _: dict = Depends(get_current_user)):
     return created
 
 
-@router.delete("/api/projects/{project_id}", status_code=204)
+@router.delete("/api/projects/{project_id}", status_code=204, operation_id="projects_delete")
 def remove_project(project_id: int, _: dict = Depends(get_current_user)):
     try:
         delete_project(project_id)
@@ -93,7 +93,7 @@ def remove_project(project_id: int, _: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Project not found")
 
 
-@router.post("/api/projects/{project_id}/images", status_code=201)
+@router.post("/api/projects/{project_id}/images", status_code=201, operation_id="project_images_upload")
 async def upload_project_image(
     project_id: int,
     file: UploadFile = File(...),
@@ -119,7 +119,7 @@ async def upload_project_image(
     return add_project_image(project_id, relative_path, file.filename or "", file.content_type or "image/jpeg", image_type)
 
 
-@router.delete("/api/projects/{project_id}/images/{image_id}", status_code=204)
+@router.delete("/api/projects/{project_id}/images/{image_id}", status_code=204, operation_id="project_images_delete")
 async def remove_project_image(
     project_id: int,
     image_id: int,
@@ -136,7 +136,7 @@ class ImageTypeUpdate(BaseModel):
     image_type: str
 
 
-@router.patch("/api/projects/{project_id}/images/{image_id}", status_code=200)
+@router.patch("/api/projects/{project_id}/images/{image_id}", status_code=200, operation_id="project_images_update_type")
 async def patch_project_image_type(
     project_id: int,
     image_id: int,

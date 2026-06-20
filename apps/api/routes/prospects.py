@@ -80,13 +80,32 @@ def _score(p: dict, all_prospects: list[dict]) -> float:
     return round(total * 100)
 
 
-@router.get("/api/prospects")
-def list_prospects(_: dict = Depends(get_current_user)):
-    prospects = get_prospects()
-    return [_with_checks({**p, "score": _score(p, prospects)}) for p in prospects]
+@router.get("/api/prospects", operation_id="prospects_list")
+def list_prospects(
+    status: Optional[str] = None,
+    city: Optional[str] = None,
+    min_roi: Optional[float] = None,
+    max_roi: Optional[float] = None,
+    is_favorite: Optional[bool] = None,
+    _: dict = Depends(get_current_user),
+):
+    all_prospects = get_prospects()
+    scored = [_with_checks({**p, "score": _score(p, all_prospects)}) for p in all_prospects]
+    if status is not None:
+        scored = [p for p in scored if p.get("status") == status]
+    if city is not None:
+        city_lower = city.lower()
+        scored = [p for p in scored if city_lower in (p.get("city") or "").lower()]
+    if min_roi is not None:
+        scored = [p for p in scored if (p.get("roi") or 0) >= min_roi]
+    if max_roi is not None:
+        scored = [p for p in scored if (p.get("roi") or 0) <= max_roi]
+    if is_favorite is not None:
+        scored = [p for p in scored if bool(p.get("isFavorite")) == is_favorite]
+    return scored
 
 
-@router.get("/api/prospects/{prospect_id}")
+@router.get("/api/prospects/{prospect_id}", operation_id="prospects_get")
 def detail_prospect(prospect_id: int, _: dict = Depends(get_current_user)):
     p = get_prospect(prospect_id)
     if p is None:
@@ -95,7 +114,7 @@ def detail_prospect(prospect_id: int, _: dict = Depends(get_current_user)):
     return _with_checks({**p, "score": _score(p, all_prospects)})
 
 
-@router.get("/api/quality")
+@router.get("/api/quality", operation_id="prospects_quality")
 def quality_report(_: dict = Depends(get_current_user)):
     prospects = get_prospects()
     return [
@@ -105,7 +124,7 @@ def quality_report(_: dict = Depends(get_current_user)):
     ]
 
 
-@router.patch("/api/prospects/{prospect_id}")
+@router.patch("/api/prospects/{prospect_id}", operation_id="prospects_update")
 def patch_prospect(prospect_id: int, body: ProspectUpdate, _: dict = Depends(get_current_user)):
     payload = body.model_dump(exclude_none=True)
     updated = update_prospect(prospect_id, payload)
@@ -115,7 +134,7 @@ def patch_prospect(prospect_id: int, body: ProspectUpdate, _: dict = Depends(get
     return _with_checks({**updated, "score": _score(updated, all_prospects)})
 
 
-@router.delete("/api/prospects/{prospect_id}", status_code=204)
+@router.delete("/api/prospects/{prospect_id}", status_code=204, operation_id="prospects_delete")
 def remove_prospect(prospect_id: int, _: dict = Depends(get_current_user)):
     try:
         delete_prospect(prospect_id)
@@ -123,7 +142,7 @@ def remove_prospect(prospect_id: int, _: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Prospect not found")
 
 
-@router.post("/api/prospects", status_code=201)
+@router.post("/api/prospects", status_code=201, operation_id="prospects_create")
 def post_prospect(body: ProspectCreate, _: dict = Depends(get_current_user)):
     created = create_prospect(body.model_dump(exclude_none=False))
     if created is None:
@@ -132,7 +151,7 @@ def post_prospect(body: ProspectCreate, _: dict = Depends(get_current_user)):
     return _with_checks({**created, "score": _score(created, all_prospects)})
 
 
-@router.post("/api/prospects/parse")
+@router.post("/api/prospects/parse", operation_id="prospects_parse")
 async def parse_prospect_route(
     url: str = Form(""),
     text: str = Form(""),
@@ -147,7 +166,7 @@ async def parse_prospect_route(
         raise HTTPException(status_code=502, detail=f"Error al analizar la propiedad: {e}")
 
 
-@router.post("/api/prospects/{prospect_id}/images", status_code=201)
+@router.post("/api/prospects/{prospect_id}/images", status_code=201, operation_id="prospect_images_upload")
 async def upload_prospect_image(
     prospect_id: int,
     file: UploadFile = File(...),
@@ -170,7 +189,7 @@ async def upload_prospect_image(
     return add_prospect_image(prospect_id, relative_path, file.filename or "", file.content_type or "image/jpeg")
 
 
-@router.delete("/api/prospects/{prospect_id}/images/{image_id}", status_code=204)
+@router.delete("/api/prospects/{prospect_id}/images/{image_id}", status_code=204, operation_id="prospect_images_delete")
 async def remove_prospect_image(
     prospect_id: int,
     image_id: int,
