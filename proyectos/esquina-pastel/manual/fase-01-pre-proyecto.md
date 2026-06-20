@@ -3,7 +3,7 @@
 Manual Maestro de Patrio — capa de conocimiento del framework inmobiliario. Documenta el *por qué* y el *cómo* de cada tarea de esta fase. Las secciones con "—" están pendientes de llenar.
 
 ## Definición de tesis de inversión
-**Qué es:** definir el criterio de inversión antes de buscar — tipo de activo, zona, presupuesto y estrategia de salida.
+**Qué es:** definir el criterio de inversión antes de buscar — estrategia, zona, presupuesto, perfil de retorno.
 
 **Por qué importa:** una tesis clara filtra rápido qué propiedades valen la pena y evita perder tiempo en oportunidades que no encajan. Es el primer embudo del proceso.
 
@@ -13,7 +13,15 @@ Manual Maestro de Patrio — capa de conocimiento del framework inmobiliario. Do
 
 **Herramientas y plantillas:** —
 
-**Aprendizajes de proyectos reales:** en Esquina Pastel la tesis fue inmueble tipo *flip* con visión *build & hold*, en Centro de Monterrey / zona Tec, por debajo de valor comercial por necesitar remodelación pero **sin obra pesada**, target **< $4M MXN**. Esta claridad filtró rápido qué propiedades valían la pena.
+**Aprendizajes de proyectos reales (Esquina Pastel):**
+
+*Estrategia:* Adaptive reuse en zonas core de Monterrey (Centro y corredor Tec), con tesis build & hold orientada a renta patrimonial. Se rescatan inmuebles infravalorados que requieren remodelación ligera —sin obra estructural pesada— para reposicionarlos y estabilizarlos como activos generadores de flujo.
+
+*Perfil del inversionista y objetivo:* capital patrimonial buscando un vehículo superior a banca/CETES (~4-5% neto post-impuestos). El inversionista priorizó dos cosas simultáneas: (1) ingreso mensual considerable como complemento de retiro (target **>$50,000 MXN/mes**), y (2) apreciación del capital en el tiempo, con visión de herencia para sus hijos. El inmueble cumple ambos: renta estabilizada + plusvalía del activo.
+
+*Parámetros del deal:* inversión techo **$4M MXN**. Hallazgo clave: el proyecto completo (adquisición + remodelación) se ejecuta por debajo de ese techo, mejorando el retorno proyectado sobre el capital estimado inicialmente.
+
+*Nota:* el inversionista es la familia de Louis (sus papás).
 
 **Referencias (legal/fiscal):** —
 

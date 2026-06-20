@@ -1,6 +1,6 @@
 # Fase 5 — Armado del equipo
 
-Parte del Manual Maestro de Patrio (capa de conocimiento del framework inmobiliario). Pendiente de llenar.
+Parte del Manual Maestro de Patrio (capa de conocimiento del framework inmobiliario).
 
 ## Organigrama del proyecto
 **Qué es:**
@@ -17,7 +17,7 @@ Parte del Manual Maestro de Patrio (capa de conocimiento del framework inmobilia
 
 **Referencias (legal/fiscal):**
 
-**Notas (planeación / decisiones pendientes):**
+**Notas (planeación / decisiones pendientes):** *(en curso)* se arma en paralelo, inicialmente con supuestos, con la intención de presentar al inversionista (los papás de Louis) cómo se propone avanzar el proyecto. Sirve como herramienta de comunicación con el inversionista.
 
 ## Selección de proveedores
 **Qué es:**
@@ -30,7 +30,7 @@ Parte del Manual Maestro de Patrio (capa de conocimiento del framework inmobilia
 
 **Herramientas y plantillas:**
 
-**Aprendizajes de proyectos reales:**
+**Aprendizajes de proyectos reales:** se reutilizan contratistas ya conocidos de proyectos anteriores de Louis, lo que reduce riesgo y tiempo de selección.
 
 **Referencias (legal/fiscal):**
 
