@@ -4,10 +4,10 @@ on:
   push:
     branches: [qa]
 
-# Build and push a QA-prefixed image so ArgoCD Image Updater on the QA
-# cluster can distinguish it from prod images in the same ECR repo.
-# Uses inline steps (not the edlgg-org/edg-infra reusable workflow) because
-# that repo is private in a different org — GitHub blocks cross-org private calls.
+# Build + push QA image, then promote qa→main so ArgoCD deploys to prod.
+# promote-to-prod.yml was removed: workflow_run only fires from the default
+# branch, so a standalone promote workflow can never bootstrap itself onto main.
+# Folding promote into this file (which already lives on qa) avoids that trap.
 permissions:
   id-token: write
   contents: read
@@ -35,3 +35,44 @@ jobs:
           set -euo pipefail
           docker build --platform linux/amd64 -t "$IMAGE:qa-$SHA" .
           docker push "$IMAGE:qa-$SHA"
+
+  promote:
+    name: Promote qa → main
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - name: Configure git identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Clone repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
+
+      - name: Fetch branches
+        working-directory: repo
+        run: git fetch origin
+
+      - name: Show commits being promoted
+        working-directory: repo
+        run: |
+          echo "Commits being promoted from qa to main:"
+          git log --oneline origin/main..origin/qa
+
+      - name: Fast-forward main to qa
+        working-directory: repo
+        run: |
+          git checkout main
+          if ! git merge --ff-only origin/qa; then
+            echo "ERROR: qa is not ahead of main or has diverged. Rebase qa onto main before promoting." >&2
+            exit 1
+          fi
+
+      - name: Push main
+        working-directory: repo
+        run: git push origin main
