@@ -1,10 +1,15 @@
 import base64
 import io
 import logging
+import re
+import unicodedata
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from api.db import get_projects, get_prospects
+from pydantic import BaseModel
+from api.db import get_projects, get_prospects, get_prospect
 from api.lib.prospectus_html import build_prospectus_html, render_to_pdf
+from api.lib.term_sheet_html import build_term_sheet_html
 from api.auth import get_current_user
 from api import storage
 
@@ -64,4 +69,43 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
         content=pdf,
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=prospecto.pdf"},
+    )
+
+
+def _slugify(s: str) -> str:
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+
+
+class TermSheetRequest(BaseModel):
+    investor_name: str
+    investment_amount: float
+    prospect_id: Optional[int] = None
+    rate: float = 0.12
+
+
+@router.post("/term-sheet", operation_id="documents_term_sheet")
+async def generate_term_sheet(body: TermSheetRequest, _: dict = Depends(get_current_user)):
+    if body.prospect_id is not None:
+        prospect = get_prospect(body.prospect_id)
+        if prospect is None:
+            raise HTTPException(status_code=400, detail="Prospect not found")
+    else:
+        candidates = [p for p in get_prospects() if p.get("status") == "evaluating"]
+        if not candidates:
+            raise HTTPException(status_code=400, detail="No evaluating prospects found")
+        prospect = max(candidates, key=lambda p: p.get("roi") or 0)
+
+    html = build_term_sheet_html(prospect, body.investor_name, body.investment_amount, body.rate)
+    try:
+        pdf = await render_to_pdf(html)
+    except Exception:
+        logger.exception("Term sheet PDF generation failed")
+        raise HTTPException(status_code=500, detail="PDF generation failed")
+
+    slug = _slugify(body.investor_name)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=carta-terminos-{slug}.pdf"},
     )
