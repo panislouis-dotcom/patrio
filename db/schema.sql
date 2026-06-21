@@ -90,6 +90,41 @@ ALTER SEQUENCE public.analysis_snapshots_id_seq OWNED BY public.analysis_snapsho
 
 
 --
+-- Name: api_keys; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.api_keys (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    name text NOT NULL,
+    key_hash text NOT NULL,
+    key_prefix text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_used_at timestamp with time zone,
+    revoked boolean DEFAULT false NOT NULL
+);
+
+
+--
+-- Name: api_keys_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.api_keys_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: api_keys_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.api_keys_id_seq OWNED BY public.api_keys.id;
+
+
+--
 -- Name: comparable_check_log; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -130,7 +165,7 @@ ALTER SEQUENCE public.comparable_check_log_id_seq OWNED BY public.comparable_che
 CREATE TABLE public.comparables (
     id bigint NOT NULL,
     address text NOT NULL,
-    zone_id bigint NOT NULL,
+    zone_id bigint,
     m2 real NOT NULL,
     price bigint NOT NULL,
     listing_url text NOT NULL,
@@ -186,6 +221,51 @@ ALTER SEQUENCE public.comparables_id_seq OWNED BY public.comparables.id;
 
 
 --
+-- Name: cotizaciones; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cotizaciones (
+    id bigint NOT NULL,
+    instance_node_state_id bigint NOT NULL,
+    proveedor_id bigint,
+    proveedor_name_override text DEFAULT ''::text NOT NULL,
+    monto numeric(14,2) DEFAULT 0 NOT NULL,
+    moneda text DEFAULT 'MXN'::text NOT NULL,
+    descripcion text DEFAULT ''::text NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    fecha_cotizacion date,
+    validez_dias integer,
+    archivo_path text,
+    archivo_nombre text,
+    is_selected boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT cotizaciones_moneda_check CHECK ((moneda = ANY (ARRAY['MXN'::text, 'USD'::text]))),
+    CONSTRAINT cotizaciones_monto_check CHECK ((monto >= (0)::numeric)),
+    CONSTRAINT cotizaciones_validez_dias_check CHECK ((validez_dias > 0))
+);
+
+
+--
+-- Name: cotizaciones_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.cotizaciones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: cotizaciones_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.cotizaciones_id_seq OWNED BY public.cotizaciones.id;
+
+
+--
 -- Name: instance_files; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -232,7 +312,8 @@ CREATE TABLE public.instance_node_states (
     actual_end text,
     notes text DEFAULT ''::text NOT NULL,
     duration_override_days integer,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    supplier_id bigint
 );
 
 
@@ -800,6 +881,128 @@ ALTER SEQUENCE public.prospects_id_seq OWNED BY public.prospects.id;
 
 
 --
+-- Name: proveedor_categories; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.proveedor_categories (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    description text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT proveedor_categories_name_check CHECK ((name <> ''::text))
+);
+
+
+--
+-- Name: proveedor_categories_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.proveedor_categories_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: proveedor_categories_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.proveedor_categories_id_seq OWNED BY public.proveedor_categories.id;
+
+
+--
+-- Name: proveedor_category_links; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.proveedor_category_links (
+    proveedor_id bigint NOT NULL,
+    category_id bigint NOT NULL
+);
+
+
+--
+-- Name: proveedor_photos; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.proveedor_photos (
+    id bigint NOT NULL,
+    proveedor_id bigint NOT NULL,
+    file_path text NOT NULL,
+    file_name text NOT NULL,
+    content_type text NOT NULL,
+    uploaded_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: proveedor_photos_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.proveedor_photos_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: proveedor_photos_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.proveedor_photos_id_seq OWNED BY public.proveedor_photos.id;
+
+
+--
+-- Name: proveedores; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.proveedores (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    phone text DEFAULT ''::text NOT NULL,
+    email text DEFAULT ''::text NOT NULL,
+    website text DEFAULT ''::text NOT NULL,
+    zona text DEFAULT ''::text NOT NULL,
+    status text DEFAULT 'activo'::text NOT NULL,
+    veto_reason text,
+    rating_calidad smallint,
+    rating_puntualidad smallint,
+    rating_precio smallint,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT proveedores_check CHECK (((status <> 'vetado'::text) OR (veto_reason IS NOT NULL))),
+    CONSTRAINT proveedores_name_check CHECK ((name <> ''::text)),
+    CONSTRAINT proveedores_rating_calidad_check CHECK (((rating_calidad >= 1) AND (rating_calidad <= 5))),
+    CONSTRAINT proveedores_rating_precio_check CHECK (((rating_precio >= 1) AND (rating_precio <= 5))),
+    CONSTRAINT proveedores_rating_puntualidad_check CHECK (((rating_puntualidad >= 1) AND (rating_puntualidad <= 5))),
+    CONSTRAINT proveedores_status_check CHECK ((status = ANY (ARRAY['activo'::text, 'inactivo'::text, 'vetado'::text])))
+);
+
+
+--
+-- Name: proveedores_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.proveedores_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: proveedores_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.proveedores_id_seq OWNED BY public.proveedores.id;
+
+
+--
 -- Name: remodel_costs; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1026,6 +1229,7 @@ CREATE TABLE public.template_nodes (
     source_template_id bigint,
     duration_days integer,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    supplier_category_id bigint,
     CONSTRAINT template_nodes_name_check CHECK ((name <> ''::text))
 );
 
@@ -1122,6 +1326,13 @@ ALTER TABLE ONLY public.analysis_snapshots ALTER COLUMN id SET DEFAULT nextval('
 
 
 --
+-- Name: api_keys id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys ALTER COLUMN id SET DEFAULT nextval('public.api_keys_id_seq'::regclass);
+
+
+--
 -- Name: comparable_check_log id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1133,6 +1344,13 @@ ALTER TABLE ONLY public.comparable_check_log ALTER COLUMN id SET DEFAULT nextval
 --
 
 ALTER TABLE ONLY public.comparables ALTER COLUMN id SET DEFAULT nextval('public.comparables_id_seq'::regclass);
+
+
+--
+-- Name: cotizaciones id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cotizaciones ALTER COLUMN id SET DEFAULT nextval('public.cotizaciones_id_seq'::regclass);
 
 
 --
@@ -1227,6 +1445,27 @@ ALTER TABLE ONLY public.prospects ALTER COLUMN id SET DEFAULT nextval('public.pr
 
 
 --
+-- Name: proveedor_categories id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedor_categories ALTER COLUMN id SET DEFAULT nextval('public.proveedor_categories_id_seq'::regclass);
+
+
+--
+-- Name: proveedor_photos id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedor_photos ALTER COLUMN id SET DEFAULT nextval('public.proveedor_photos_id_seq'::regclass);
+
+
+--
+-- Name: proveedores id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedores ALTER COLUMN id SET DEFAULT nextval('public.proveedores_id_seq'::regclass);
+
+
+--
 -- Name: remodel_costs id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1299,6 +1538,22 @@ ALTER TABLE ONLY public.analysis_snapshots
 
 
 --
+-- Name: api_keys api_keys_key_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_key_hash_key UNIQUE (key_hash);
+
+
+--
+-- Name: api_keys api_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: comparable_check_log comparable_check_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1312,6 +1567,14 @@ ALTER TABLE ONLY public.comparable_check_log
 
 ALTER TABLE ONLY public.comparables
     ADD CONSTRAINT comparables_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: cotizaciones cotizaciones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cotizaciones
+    ADD CONSTRAINT cotizaciones_pkey PRIMARY KEY (id);
 
 
 --
@@ -1424,6 +1687,38 @@ ALTER TABLE ONLY public.prospect_images
 
 ALTER TABLE ONLY public.prospects
     ADD CONSTRAINT prospects_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: proveedor_categories proveedor_categories_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedor_categories
+    ADD CONSTRAINT proveedor_categories_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: proveedor_category_links proveedor_category_links_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedor_category_links
+    ADD CONSTRAINT proveedor_category_links_pkey PRIMARY KEY (proveedor_id, category_id);
+
+
+--
+-- Name: proveedor_photos proveedor_photos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedor_photos
+    ADD CONSTRAINT proveedor_photos_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: proveedores proveedores_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedores
+    ADD CONSTRAINT proveedores_pkey PRIMARY KEY (id);
 
 
 --
@@ -1547,6 +1842,20 @@ ALTER TABLE ONLY public.zones
 
 
 --
+-- Name: api_keys_key_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX api_keys_key_hash ON public.api_keys USING btree (key_hash);
+
+
+--
+-- Name: api_keys_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX api_keys_user_id ON public.api_keys USING btree (user_id);
+
+
+--
 -- Name: idx_check_log_comparable; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1593,6 +1902,27 @@ CREATE INDEX idx_comparables_type_condition ON public.comparables USING btree (p
 --
 
 CREATE INDEX idx_comparables_zone ON public.comparables USING btree (zone_id);
+
+
+--
+-- Name: idx_cotizaciones_node_state; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cotizaciones_node_state ON public.cotizaciones USING btree (instance_node_state_id);
+
+
+--
+-- Name: idx_cotizaciones_proveedor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cotizaciones_proveedor ON public.cotizaciones USING btree (proveedor_id);
+
+
+--
+-- Name: idx_ins_node_state_supplier; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_ins_node_state_supplier ON public.instance_node_states USING btree (supplier_id);
 
 
 --
@@ -1701,6 +2031,20 @@ CREATE INDEX idx_projects_status ON public.projects USING btree (status);
 
 
 --
+-- Name: idx_prov_cat_links_cat; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_prov_cat_links_cat ON public.proveedor_category_links USING btree (category_id);
+
+
+--
+-- Name: idx_proveedor_photos_prov; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_proveedor_photos_prov ON public.proveedor_photos USING btree (proveedor_id);
+
+
+--
 -- Name: idx_signals_prospect; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1757,6 +2101,20 @@ CREATE INDEX idx_team_manager ON public.team_members USING btree (manager_id);
 
 
 --
+-- Name: idx_template_nodes_supplier_cat; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_template_nodes_supplier_cat ON public.template_nodes USING btree (supplier_category_id);
+
+
+--
+-- Name: uq_comparables_listing_url; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_comparables_listing_url ON public.comparables USING btree (listing_url);
+
+
+--
 -- Name: uq_profit_split_project; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1772,11 +2130,35 @@ ALTER TABLE ONLY public.analysis_snapshots
 
 
 --
+-- Name: api_keys api_keys_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: comparables comparables_zone_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.comparables
     ADD CONSTRAINT comparables_zone_id_fkey FOREIGN KEY (zone_id) REFERENCES public.zones(id);
+
+
+--
+-- Name: cotizaciones cotizaciones_instance_node_state_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cotizaciones
+    ADD CONSTRAINT cotizaciones_instance_node_state_id_fkey FOREIGN KEY (instance_node_state_id) REFERENCES public.instance_node_states(id) ON DELETE CASCADE;
+
+
+--
+-- Name: cotizaciones cotizaciones_proveedor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cotizaciones
+    ADD CONSTRAINT cotizaciones_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES public.proveedores(id) ON DELETE SET NULL;
 
 
 --
@@ -1801,6 +2183,14 @@ ALTER TABLE ONLY public.instance_node_states
 
 ALTER TABLE ONLY public.instance_node_states
     ADD CONSTRAINT instance_node_states_instance_id_fkey FOREIGN KEY (instance_id) REFERENCES public.process_instances(id) ON DELETE CASCADE;
+
+
+--
+-- Name: instance_node_states instance_node_states_supplier_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.instance_node_states
+    ADD CONSTRAINT instance_node_states_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.proveedores(id) ON DELETE SET NULL;
 
 
 --
@@ -1948,6 +2338,30 @@ ALTER TABLE ONLY public.prospect_images
 
 
 --
+-- Name: proveedor_category_links proveedor_category_links_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedor_category_links
+    ADD CONSTRAINT proveedor_category_links_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.proveedor_categories(id) ON DELETE CASCADE;
+
+
+--
+-- Name: proveedor_category_links proveedor_category_links_proveedor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedor_category_links
+    ADD CONSTRAINT proveedor_category_links_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES public.proveedores(id) ON DELETE CASCADE;
+
+
+--
+-- Name: proveedor_photos proveedor_photos_proveedor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.proveedor_photos
+    ADD CONSTRAINT proveedor_photos_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES public.proveedores(id) ON DELETE CASCADE;
+
+
+--
 -- Name: remodel_costs remodel_costs_zone_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2012,6 +2426,14 @@ ALTER TABLE ONLY public.template_nodes
 
 
 --
+-- Name: template_nodes template_nodes_supplier_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.template_nodes
+    ADD CONSTRAINT template_nodes_supplier_category_id_fkey FOREIGN KEY (supplier_category_id) REFERENCES public.proveedor_categories(id) ON DELETE SET NULL;
+
+
+--
 -- Name: template_nodes template_nodes_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2043,4 +2465,10 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('009'),
     ('010'),
     ('011'),
-    ('012');
+    ('012'),
+    ('013'),
+    ('014'),
+    ('015'),
+    ('016'),
+    ('017'),
+    ('018');

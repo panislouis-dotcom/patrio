@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { colors, fonts } from '../lib/theme'
 import { changePassword } from '../lib/api'
+import { ApiKeysSection } from './ApiKeysSection'
 
 const topTabs = [
   { path: '/prospectos', label: 'PROSPECTOS' },
@@ -27,7 +28,7 @@ export function TabBar({ onLogout }: TabBarProps) {
   const location = useLocation()
   const inProspectos = location.pathname.startsWith('/prospectos')
 
-  const [showPwForm, setShowPwForm] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [currentPw, setCurrentPw] = useState('')
   const [newPw, setNewPw] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
@@ -37,18 +38,18 @@ export function TabBar({ onLogout }: TabBarProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!showPwForm) return
+    if (!showSettings) return
     function handleClick(e: MouseEvent) {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setShowPwForm(false)
+        setShowSettings(false)
       }
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
-  }, [showPwForm])
+  }, [showSettings])
 
-  function openPwForm() {
-    setShowPwForm(s => !s)
+  function openSettings() {
+    setShowSettings(s => !s)
     setCurrentPw(''); setNewPw(''); setConfirmPw('')
     setPwError(null); setPwSuccess(false)
   }
@@ -120,23 +121,113 @@ export function TabBar({ onLogout }: TabBarProps) {
             {label}
           </NavLink>
         ))}
-        <div ref={panelRef} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'stretch', position: 'relative' }}>
-          <button
-            onClick={openPwForm}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: showPwForm ? colors.neutral : colors.secondary,
-              cursor: 'pointer',
-              fontFamily: fonts.label,
-              fontSize: '9px',
-              letterSpacing: '0.1em',
-              padding: '0 12px',
-              transition: 'color 0.15s',
-            }}
-          >
-            CONTRASEÑA
-          </button>
+
+        {/* Right side: gear + logout */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'stretch' }}>
+          {/* Gear settings button + dropdown */}
+          <div ref={panelRef} style={{ display: 'flex', alignItems: 'stretch', position: 'relative' }}>
+            <button
+              onClick={openSettings}
+              title="Configuración"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: showSettings ? colors.neutral : colors.secondary,
+                cursor: 'pointer',
+                padding: '0 16px',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'color 0.15s',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+
+            {/* Settings dropdown panel */}
+            {showSettings && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '4px',
+                background: colors.dark,
+                border: `1px solid ${colors.border}`,
+                padding: '16px',
+                width: '360px',
+                maxHeight: 'calc(100vh - 80px)',
+                overflowY: 'auto',
+                zIndex: 200,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0',
+              }}>
+                {/* API Keys */}
+                <ApiKeysSection />
+
+                {/* Change password */}
+                <div style={{
+                  fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em',
+                  color: colors.secondary, padding: '16px 0 6px',
+                  borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '8px',
+                }}>
+                  CONTRASEÑA
+                </div>
+                <form onSubmit={handleChangePw} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <input
+                    type="password"
+                    value={currentPw}
+                    onChange={e => setCurrentPw(e.target.value)}
+                    placeholder="Contraseña actual"
+                    style={inputStyle}
+                  />
+                  <input
+                    type="password"
+                    value={newPw}
+                    onChange={e => setNewPw(e.target.value)}
+                    placeholder="Nueva contraseña"
+                    style={inputStyle}
+                  />
+                  <input
+                    type="password"
+                    value={confirmPw}
+                    onChange={e => setConfirmPw(e.target.value)}
+                    placeholder="Confirmar nueva"
+                    style={inputStyle}
+                  />
+                  {pwError && (
+                    <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '10px' }}>{pwError}</div>
+                  )}
+                  {pwSuccess && (
+                    <div style={{ color: colors.primary, fontFamily: fonts.sans, fontSize: '10px' }}>Contraseña actualizada</div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={pwSaving || !currentPw || !newPw || !confirmPw}
+                    style={{
+                      background: (currentPw && newPw && confirmPw) ? colors.primary : colors.border,
+                      border: 'none',
+                      color: colors.neutral,
+                      cursor: (currentPw && newPw && confirmPw) ? 'pointer' : 'not-allowed',
+                      fontFamily: fonts.label,
+                      fontSize: '9px',
+                      letterSpacing: '0.08em',
+                      padding: '6px 12px',
+                      opacity: pwSaving ? 0.6 : 1,
+                      alignSelf: 'flex-start',
+                      marginTop: '2px',
+                    }}
+                  >
+                    {pwSaving ? 'GUARDANDO…' : 'ACTUALIZAR'}
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
+
+          {/* Logout button — always visible to the right of the gear */}
           {onLogout && (
             <button
               onClick={onLogout}
@@ -156,76 +247,9 @@ export function TabBar({ onLogout }: TabBarProps) {
               SALIR
             </button>
           )}
-          {showPwForm && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              right: 0,
-              marginTop: '4px',
-              background: colors.dark,
-              border: `1px solid ${colors.border}`,
-              padding: '16px',
-              width: '240px',
-              zIndex: 200,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-            }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.14em', color: colors.secondary, marginBottom: '4px' }}>
-                CAMBIAR CONTRASEÑA
-              </div>
-              <form onSubmit={handleChangePw} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <input
-                  type="password"
-                  value={currentPw}
-                  onChange={e => setCurrentPw(e.target.value)}
-                  placeholder="Contraseña actual"
-                  autoFocus
-                  style={inputStyle}
-                />
-                <input
-                  type="password"
-                  value={newPw}
-                  onChange={e => setNewPw(e.target.value)}
-                  placeholder="Nueva contraseña"
-                  style={inputStyle}
-                />
-                <input
-                  type="password"
-                  value={confirmPw}
-                  onChange={e => setConfirmPw(e.target.value)}
-                  placeholder="Confirmar nueva"
-                  style={inputStyle}
-                />
-                {pwError && (
-                  <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '10px' }}>{pwError}</div>
-                )}
-                {pwSuccess && (
-                  <div style={{ color: colors.primary, fontFamily: fonts.sans, fontSize: '10px' }}>Contraseña actualizada</div>
-                )}
-                <button
-                  type="submit"
-                  disabled={pwSaving || !currentPw || !newPw || !confirmPw}
-                  style={{
-                    background: (currentPw && newPw && confirmPw) ? colors.primary : colors.border,
-                    border: 'none',
-                    color: colors.neutral,
-                    cursor: (currentPw && newPw && confirmPw) ? 'pointer' : 'not-allowed',
-                    fontFamily: fonts.label,
-                    fontSize: '9px',
-                    letterSpacing: '0.08em',
-                    padding: '6px 12px',
-                    opacity: pwSaving ? 0.6 : 1,
-                    alignSelf: 'flex-start',
-                  }}
-                >
-                  {pwSaving ? 'GUARDANDO…' : 'ACTUALIZAR'}
-                </button>
-              </form>
-            </div>
-          )}
         </div>
       </div>
+
       {inProspectos && (
         <div style={{
           display: 'flex',

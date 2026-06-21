@@ -42,9 +42,8 @@ test('SALIR button logs out and redirects to /login', async ({ page }) => {
   await page.locator('input[type="password"]').fill(E2E_PASS)
   await page.locator('button[type="submit"]').click()
   await expect(page).toHaveURL(/\/prospectos\/tabla/, { timeout: 10_000 })
-  // Open user menu
-  await page.getByText('CONTRASEÑA').click()
-  await page.getByText('SALIR').click()
+  // SALIR is always visible in the tab bar — click directly
+  await page.getByRole('button', { name: 'SALIR' }).click()
   await expect(page).toHaveURL(/\/login/)
   await expect(page.locator('button[type="submit"]')).toBeVisible()
 })
@@ -55,7 +54,8 @@ test('change password panel opens', async ({ page }) => {
   await page.locator('input[type="password"]').fill(E2E_PASS)
   await page.locator('button[type="submit"]').click()
   await expect(page).toHaveURL(/\/prospectos\/tabla/, { timeout: 10_000 })
-  await page.getByText('CONTRASEÑA').click()
+  // Open settings gear dropdown
+  await page.locator('button[title="Configuración"]').click()
   await expect(page.getByPlaceholder('Contraseña actual')).toBeVisible()
-  await expect(page.getByText('CAMBIAR CONTRASEÑA')).toBeVisible()
+  await expect(page.getByPlaceholder('Nueva contraseña')).toBeVisible()
 })
