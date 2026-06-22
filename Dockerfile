@@ -39,5 +39,8 @@ COPY --from=frontend-build /build/dist /app/frontend_dist
 RUN chown -R appuser:appuser /app
 USER appuser
 
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 EXPOSE 8000
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

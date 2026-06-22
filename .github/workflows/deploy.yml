@@ -29,6 +29,6 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          docker build --platform linux/amd64 -t "$IMAGE:$SHA" -t "$IMAGE:latest" .
+          docker build --platform linux/amd64 --build-arg APP_VERSION="$SHA" -t "$IMAGE:$SHA" -t "$IMAGE:latest" .
           docker push "$IMAGE:$SHA"
           docker push "$IMAGE:latest"

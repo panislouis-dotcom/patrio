@@ -147,6 +147,11 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/version")
+def version() -> dict:
+    return {"sha": os.environ.get("APP_VERSION", "dev")}
+
+
 @app.get("/files/{path:path}", include_in_schema=False)
 def serve_file(path: str):
     try:

@@ -33,7 +33,7 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          docker build --platform linux/amd64 -t "$IMAGE:qa-$SHA" .
+          docker build --platform linux/amd64 --build-arg APP_VERSION="$SHA" -t "$IMAGE:qa-$SHA" .
           docker push "$IMAGE:qa-$SHA"
 
   promote:
