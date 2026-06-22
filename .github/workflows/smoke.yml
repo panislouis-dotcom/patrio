@@ -1,5 +1,11 @@
 name: Smoke (Prod)
 
+# Post-deploy verification for prod: confirm the freshly built commit is
+# actually live and healthy. "Deploy" only builds/pushes the image; ArgoCD
+# rolls it out asynchronously, so we poll /api/version until it serves the
+# deployed SHA, then assert /health. Functional/UI coverage lives in ci.yml
+# (full e2e on every PR) — this only answers "did the new version come up?".
+
 on:
   workflow_run:
     workflows: ["Deploy"]
@@ -7,72 +13,42 @@ on:
     branches: [main]
 
 permissions:
-  # commit-comment posts via the contents API, which requires write scope.
-  # With `read`, the "Post commit comment" step 403s and the whole Smoke
-  # job reports failure even when the smoke tests pass.
-  contents: write
+  contents: read
+
+concurrency:
+  group: smoke-prod-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
 
 jobs:
   smoke:
-    name: Prod smoke tests
+    name: Verify prod deploy
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    # Only run when the Deploy workflow succeeded
-    if: github.event.workflow_run.conclusion == 'success'
+    env:
+      PROD_URL: https://admin.refigan.com
+      DEPLOYED_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Wait for the deployed SHA to go live, then check health
+        run: |
+          set -euo pipefail
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: apps/e2e/package-lock.json
+          deadline=$((SECONDS + 600))
+          while (( SECONDS < deadline )); do
+            running_sha="$(curl -sf --max-time 10 "${PROD_URL}/api/version" 2>/dev/null | jq -r '.sha // empty' 2>/dev/null || true)"
+            if [[ "$running_sha" == "$DEPLOYED_SHA" ]]; then
+              echo "Prod is serving ${DEPLOYED_SHA}."
+              health_status="$(curl -sf --max-time 10 "${PROD_URL}/health" 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)"
+              if [[ "$health_status" == "ok" ]]; then
+                echo "Health OK — prod deploy verified."
+                exit 0
+              fi
+              echo "Version is live but /health returned '${health_status:-unreachable}'." >&2
+              exit 1
+            fi
+            echo "Prod serving sha=${running_sha:-unknown}; waiting for ${DEPLOYED_SHA}."
+            sleep 20
+          done
 
-      - name: Install E2E deps
-        run: cd apps/e2e && npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('apps/e2e/package-lock.json') }}
-
-      - name: Install Playwright browsers
-        run: cd apps/e2e && npx playwright install --with-deps chromium
-
-      - name: Run smoke tests
-        env:
-          BASE_URL: https://admin.refigan.com
-          E2E_USER: smoke@refigan.com
-          E2E_PASS: rfg-smoke-2026
-        run: cd apps/e2e && npx playwright test tests/00-smoke.spec.ts
-
-      - name: Upload smoke report
-        id: smoke_report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smoke-report
-          path: apps/e2e/playwright-report/
-          retention-days: 7
-          if-no-files-found: warn
-
-      - name: Post commit comment
-        if: always()
-        uses: peter-evans/commit-comment@v3
-        env:
-          JOB_STATUS: ${{ job.status }}
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
-          ARTIFACT_URL: ${{ steps.smoke_report.outputs.artifact-url }}
-        with:
-          sha: ${{ github.event.workflow_run.head_sha }}
-          body: |
-            ### Smoke tests — ${{ job.status == 'success' && 'PASSED' || 'FAILED' }}
-
-            Triggered by deploy of `${{ github.event.workflow_run.head_sha }}` to [admin.refigan.com](https://admin.refigan.com).
-
-            | | |
-            |---|---|
-            | **Status** | `${{ job.status }}` |
-            | **Report** | [Download artifact](${{ steps.smoke_report.outputs.artifact-url }}) |
-
-            Artifact expires in 7 days.
+          echo "Timed out after 600 s: prod never served ${DEPLOYED_SHA}." >&2
+          echo "Check ArgoCD for a failed PreSync (migrate) Job — it blocks the sync." >&2
+          exit 1
