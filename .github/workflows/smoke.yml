@@ -7,7 +7,10 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  # commit-comment posts via the contents API, which requires write scope.
+  # With `read`, the "Post commit comment" step 403s and the whole Smoke
+  # job reports failure even when the smoke tests pass.
+  contents: write
 
 jobs:
   smoke:

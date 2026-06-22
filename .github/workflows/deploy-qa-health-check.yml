@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: deploy-qa-health-check-${{ github.event.workflow_run.head_sha }}
@@ -21,10 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       QA_APP_URL: https://qa.admin.refigan.com
-      EDG_INFRA_REPOSITORY: ${{ github.repository_owner }}/edg-infra
-      EDG_INFRA_BRANCH: qa
       DEPLOYED_SHA: ${{ github.event.workflow_run.head_sha }}
-      DEPLOY_COMPLETED_AT: ${{ github.event.workflow_run.updated_at }}
 
     steps:
       - name: Resolve PR or create issue for comment target
@@ -64,47 +61,6 @@ jobs:
           echo "kind=issue" >>"$GITHUB_OUTPUT"
           echo "number=$issue_number" >>"$GITHUB_OUTPUT"
 
-      - name: Wait for ArgoCD Image Updater commit on edg-infra
-        id: infra
-        env:
-          GH_TOKEN: ${{ secrets.EDG_INFRA_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "EDG_INFRA_TOKEN secret is required to read ${EDG_INFRA_REPOSITORY}." >&2
-            exit 1
-          fi
-
-          deadline=$((SECONDS + 300))
-          deploy_completed_epoch="$(date -u -d "$DEPLOY_COMPLETED_AT" +%s)"
-
-          while (( SECONDS < deadline )); do
-            commit_json="$(
-              gh api \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "/repos/${EDG_INFRA_REPOSITORY}/commits/${EDG_INFRA_BRANCH}"
-            )"
-
-            commit_sha="$(jq -r '.sha' <<<"$commit_json")"
-            commit_date="$(jq -r '.commit.committer.date // .commit.author.date' <<<"$commit_json")"
-            commit_epoch="$(date -u -d "$commit_date" +%s)"
-            commit_blob="$(jq -r '(.commit.author.name // "") + " " + (.commit.author.email // "") + " " + (.commit.message // "")' <<<"$commit_json" | tr '[:upper:]' '[:lower:]')"
-
-            if (( commit_epoch >= deploy_completed_epoch )) && grep -Eq 'argocd.?image.?updater|image updater' <<<"$commit_blob"; then
-              echo "sha=$commit_sha" >>"$GITHUB_OUTPUT"
-              echo "date=$commit_date" >>"$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            echo "Waiting for Image Updater commit; current head ${commit_sha} from ${commit_date}."
-            sleep 15
-          done
-
-          echo "Timed out after 300 s waiting for Image Updater commit on ${EDG_INFRA_REPOSITORY}@${EDG_INFRA_BRANCH}." >&2
-          exit 1
-
       - name: Poll QA /api/version until new SHA is live
         id: version_check
         run: |
@@ -141,7 +97,6 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TARGET_KIND: ${{ steps.target.outputs.kind }}
           TARGET_NUMBER: ${{ steps.target.outputs.number }}
-          INFRA_SHA: ${{ steps.infra.outputs.sha }}
           RUNNING_SHA: ${{ steps.version_check.outputs.running_sha }}
         run: |
           set -euo pipefail
@@ -153,8 +108,9 @@ jobs:
           | Field | Value |
           |---|---|
           | Commit | \`${DEPLOYED_SHA:0:7}\` |
-          | Image Updater commit | \`${INFRA_SHA}\` |
           | Running SHA | \`${RUNNING_SHA}\` |
+
+          QA is serving the deployed commit at ${QA_APP_URL}.
           EOF
 
           if [[ "$TARGET_KIND" == "pr" ]]; then
@@ -170,7 +126,6 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TARGET_KIND: ${{ steps.target.outputs.kind }}
           TARGET_NUMBER: ${{ steps.target.outputs.number }}
-          INFRA_SHA: ${{ steps.infra.outputs.sha }}
           RUNNING_SHA: ${{ steps.version_check.outputs.running_sha }}
         run: |
           set -euo pipefail
@@ -182,10 +137,9 @@ jobs:
           | Field | Value |
           |---|---|
           | Commit | \`${DEPLOYED_SHA:0:7}\` |
-          | Image Updater commit | \`${INFRA_SHA:-not detected}\` |
           | Running SHA | \`${RUNNING_SHA:-unknown}\` |
 
-          QA did not serve the new SHA within 10 minutes after the Image Updater commit.
+          QA did not serve the new SHA within 10 minutes.
           Check ArgoCD for PreSync (migration) failures: a failed migrate Job blocks the sync.
           EOF
 
