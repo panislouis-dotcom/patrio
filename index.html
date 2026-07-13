@@ -19,9 +19,11 @@
       </button>
       <ul class="nav__menu" id="nav-menu">
         <li class="nav__item">
-          <a href="wizard.html" class="nav__link">Invertir</a>
+          <!-- MODO PITCH: Invertir apunta a la nueva página invertir.html. Reversible: repuntar a wizard.html -->
+          <a href="invertir.html" class="nav__link">Invertir</a>
         </li>
-        <li class="nav__item nav__item--dropdown">
+        <!-- MODO PITCH: Servicios / Comprar-Vender / Asesorías ocultos (reversible: quitar .pitch-oculto) -->
+        <li class="nav__item nav__item--dropdown pitch-oculto">
           <button class="nav__link nav__link--dropdown" aria-expanded="false">
             Servicios
             <i data-lucide="chevron-down" style="width:16px;height:16px;"></i>
@@ -34,10 +36,10 @@
             <li><span class="nav__dropdown-link nav__dropdown-link--disabled">Supervisión de proyecto <span class="nav__badge">Próximamente</span></span></li>
           </ul>
         </li>
-        <li class="nav__item">
+        <li class="nav__item pitch-oculto">
           <span class="nav__link nav__link--disabled">Comprar / Vender <span class="nav__badge">Próximamente</span></span>
         </li>
-        <li class="nav__item">
+        <li class="nav__item pitch-oculto">
           <span class="nav__link nav__link--disabled">Asesorías <span class="nav__badge">Próximamente</span></span>
         </li>
         <li class="nav__item">
@@ -54,8 +56,8 @@
     </video>
     <div class="hero__content">
       <h1 class="hero__headline">Haz crecer<br>tu patrimonio</h1>
-      <p class="hero__subheadline">Descubre qué puedes construir con lo que ya tienes. Sin complicaciones, con expertos reales.</p>
-      <a href="wizard.html" class="btn-primary">
+      <p class="hero__subheadline">Compramos, transformamos y operamos bienes raíces que valen más de lo que cuestan.</p>
+      <a href="invertir.html#calculadora" class="btn-primary">
         Calcular mi proyecto
         <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
       </a>
@@ -63,7 +65,8 @@
   </section>
 
   <!-- ========== LAS 5 ETAPAS ========== -->
-  <section class="section etapas">
+  <!-- MODO PITCH: oculto (reversible: quitar .pitch-oculto) -->
+  <section class="section etapas pitch-oculto">
     <div class="section__inner">
       <div class="etapas__header">
         <h2 class="etapas__title">Tu patrimonio crece en etapas.</h2>
@@ -149,7 +152,8 @@
   </section>
 
   <!-- ========== ADMINISTRACIÓN DE INMUEBLES ========== -->
-  <section class="section admin-servicio" id="administracion">
+  <!-- MODO PITCH: oculto (reversible: quitar .pitch-oculto) -->
+  <section class="section admin-servicio pitch-oculto" id="administracion">
     <div class="section__inner">
 
       <div class="admin-servicio__header">
@@ -240,7 +244,8 @@
   </section>
 
   <!-- ========== CÓMO FUNCIONA ========== -->
-  <section class="section how-it-works">
+  <!-- MODO PITCH: oculto (reversible: quitar .pitch-oculto) -->
+  <section class="section how-it-works pitch-oculto">
     <div class="section__inner">
       <h2 class="section__title">Cómo funciona</h2>
       <p class="section__subtitle">Tres pasos para transformar tu capital en un proyecto real.</p>
@@ -277,7 +282,8 @@
   </section>
 
   <!-- ========== TIPOS DE PROYECTO ========== -->
-  <section class="section">
+  <!-- MODO PITCH: oculto (reversible: quitar .pitch-oculto). Contenía labels "Cap Rate" que contradicen el relabel a "rendimiento sobre costo" -->
+  <section class="section pitch-oculto">
     <div class="section__inner">
       <h2 class="section__title">Tipos de proyecto</h2>
       <p class="section__subtitle">Opciones reales para diferentes niveles de capital y objetivos.</p>
@@ -371,7 +377,8 @@
       <div class="why-pagu__grid">
         <div class="credential">
           <div class="credential__number">&gt;16%</div>
-          <p class="credential__label">Cap Rates logrados en proyectos activos</p>
+          <!-- MODO PITCH: relabel — el >16% es rendimiento (yield) sobre costo, NO cap rate. El cap rate real (~8%) vive en el detalle del proyecto y en el portal. -->
+          <p class="credential__label">Rendimiento sobre costo en proyectos activos</p>
         </div>
         <div class="credential">
           <div class="credential__number">$13,000</div>
@@ -393,15 +400,11 @@
         <p class="section__subtitle" style="max-width:640px;">Estos son algunos de los proyectos que PATRIO ha desarrollado y administrado.</p>
       </div>
 
-      <div class="casos__filters">
-        <button class="casos__filter casos__filter--active" data-filter="todos">Todos</button>
-        <button class="casos__filter" data-filter="inmobiliario">Inmobiliario</button>
-        <button class="casos__filter" data-filter="jardineria">Jardinería</button>
-      </div>
+      <!-- MODO PITCH: filtro de tipo de proyecto ELIMINADO (solo proyectos inmobiliarios). -->
 
       <div class="casos__grid">
 
-        <div class="caso-card" id="caso-inmobiliario-01" data-category="inmobiliario">
+        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-01" data-category="inmobiliario" role="button" tabindex="0" data-title="Edificio UNO — uso mixto" data-portal="1">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600&q=80" alt="Edificio uso mixto Monterrey" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
@@ -414,7 +417,7 @@
           </div>
         </div>
 
-        <div class="caso-card" id="caso-inmobiliario-02" data-category="inmobiliario">
+        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-02" data-category="inmobiliario" role="button" tabindex="0" data-title="Coliving de 6 habitaciones">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80" alt="Coliving habitaciones modernas" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
@@ -427,7 +430,7 @@
           </div>
         </div>
 
-        <div class="caso-card" id="caso-inmobiliario-03" data-category="inmobiliario">
+        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-03" data-category="inmobiliario" role="button" tabindex="0" data-title="Casa familiar renovada">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=600&q=80" alt="Casa familiar moderna Ramos Arizpe" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
@@ -440,7 +443,7 @@
           </div>
         </div>
 
-        <div class="caso-card" id="caso-inmobiliario-04" data-category="inmobiliario">
+        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-04" data-category="inmobiliario" role="button" tabindex="0" data-title="Casa antigua rehabilitada">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=600&q=80" alt="Casa antigua rehabilitada Monterrey" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
@@ -453,7 +456,7 @@
           </div>
         </div>
 
-        <div class="caso-card" id="caso-inmobiliario-05" data-category="inmobiliario">
+        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-05" data-category="inmobiliario" role="button" tabindex="0" data-title="4 departamentos en renta">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&q=80" alt="Departamentos en renta Ramos Arizpe" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
@@ -466,7 +469,8 @@
           </div>
         </div>
 
-        <div class="caso-card" id="caso-jardineria-01" data-category="jardineria">
+        <!-- MODO PITCH: tarjetas de jardinería ocultas (reversible: quitar .pitch-oculto). Solo se muestran proyectos inmobiliarios. -->
+        <div class="caso-card pitch-oculto" id="caso-jardineria-01" data-category="jardineria">
           <div class="caso-card__img">
             <img src="/assets/proyectos/jardineria/jardin-patio-monterrey.jpg" alt="Jardín patio casa moderna" loading="lazy">
             <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
@@ -479,7 +483,7 @@
           </div>
         </div>
 
-        <div class="caso-card" id="caso-jardineria-02" data-category="jardineria">
+        <div class="caso-card pitch-oculto" id="caso-jardineria-02" data-category="jardineria">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=600&q=80" alt="Rancho urbano" loading="lazy">
             <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
@@ -492,7 +496,7 @@
           </div>
         </div>
 
-        <div class="caso-card" id="caso-jardineria-03" data-category="jardineria">
+        <div class="caso-card pitch-oculto" id="caso-jardineria-03" data-category="jardineria">
           <div class="caso-card__img">
             <img src="/assets/proyectos/jardineria/fachada-ramos-arizpe.jpg" alt="Jardín fachada casas privadas" loading="lazy">
             <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
@@ -505,7 +509,7 @@
           </div>
         </div>
 
-        <div class="caso-card" id="caso-jardineria-04" data-category="jardineria">
+        <div class="caso-card pitch-oculto" id="caso-jardineria-04" data-category="jardineria">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=600&q=80" alt="Terraza departamento" loading="lazy">
             <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
@@ -518,7 +522,7 @@
           </div>
         </div>
 
-        <div class="caso-card" id="caso-jardineria-05" data-category="jardineria">
+        <div class="caso-card pitch-oculto" id="caso-jardineria-05" data-category="jardineria">
           <div class="caso-card__img">
             <img src="/assets/proyectos/jardineria/huerto-nogales-saltillo.jpg" alt="Huerto urbano — nogales" loading="lazy">
             <span class="caso-card__badge caso-card__badge--jardineria">Jardinería</span>
@@ -538,11 +542,32 @@
   <!-- ========== CTA FINAL ========== -->
   <section class="cta-final">
     <h2 class="cta-final__title">¿Listo para dar el primer paso?</h2>
-    <a href="wizard.html" class="btn-secondary">
+    <a href="invertir.html#calculadora" class="btn-secondary">
       Calcular mi proyecto
       <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
     </a>
   </section>
+
+  <!-- ========== MODAL DETALLE DE PROYECTO (modo pitch) ========== -->
+  <div class="pmodal" id="proyecto-modal" aria-hidden="true">
+    <div class="pmodal__dialog" role="dialog" aria-modal="true" aria-labelledby="pmodal-title">
+      <button class="pmodal__close" id="pmodal-close" aria-label="Cerrar">
+        <i data-lucide="x" style="width:20px;height:20px;"></i>
+      </button>
+      <div class="pmodal__gallery" id="pmodal-gallery"></div>
+      <div class="pmodal__body">
+        <span class="pmodal__eyebrow">Proyecto</span>
+        <h3 class="pmodal__title" id="pmodal-title"></h3>
+        <p class="pmodal__city" id="pmodal-city"></p>
+        <!-- Imagen-resumen (inversión, valor, rentas, gastos, cap rate): Louis la coloca aquí. -->
+        <div class="pmodal__resumen" id="pmodal-resumen">
+          Imagen-resumen del proyecto — pendiente. (Inversión · valor actual · rentas · gastos · cap rate)
+        </div>
+        <p class="pmodal__desc" id="pmodal-desc"></p>
+        <div id="pmodal-portal"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- ========== FOOTER ========== -->
   <footer class="footer">
@@ -584,17 +609,62 @@
       });
     });
 
-    // Proyectos reales — filter
-    document.querySelectorAll('.casos__filter').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelector('.casos__filter--active').classList.remove('casos__filter--active');
-        btn.classList.add('casos__filter--active');
-        const filter = btn.dataset.filter;
-        document.querySelectorAll('.caso-card').forEach(card => {
-          card.style.display = (filter === 'todos' || card.dataset.category === filter) ? '' : 'none';
-        });
+    // MODO PITCH: Proyectos reales — tarjetas clicables abren detalle en modal.
+    // El filtro de tipo de proyecto se eliminó (solo se muestran inmobiliarios).
+    const PORTAL_URL = 'https://patrio-ten.vercel.app/edificio-uno';
+    const modal = document.getElementById('proyecto-modal');
+    const mTitle = document.getElementById('pmodal-title');
+    const mCity = document.getElementById('pmodal-city');
+    const mDesc = document.getElementById('pmodal-desc');
+    const mGallery = document.getElementById('pmodal-gallery');
+    const mPortal = document.getElementById('pmodal-portal');
+
+    function openProyecto(card) {
+      const img = card.querySelector('.caso-card__img img');
+      const city = card.querySelector('.caso-card__city');
+      const desc = card.querySelector('.caso-card__desc');
+      mTitle.textContent = card.dataset.title || 'Proyecto';
+      mCity.textContent = city ? city.textContent : '';
+      mDesc.textContent = desc ? desc.textContent : '';
+      // Galería: la foto de la tarjeta + placeholder para las fotos que Louis agregará.
+      mGallery.innerHTML = '';
+      if (img) {
+        const g = document.createElement('img');
+        g.src = img.src; g.alt = img.alt || '';
+        mGallery.appendChild(g);
+      }
+      const ph = document.createElement('div');
+      ph.className = 'pmodal__gallery-empty';
+      ph.textContent = 'Galería de imágenes — pendiente (Louis las agrega).';
+      mGallery.appendChild(ph);
+      // Botón de portal solo para Edificio UNO.
+      mPortal.innerHTML = '';
+      if (card.dataset.portal === '1') {
+        const a = document.createElement('a');
+        a.href = PORTAL_URL; a.target = '_blank'; a.rel = 'noopener';
+        a.className = 'btn-primary';
+        a.innerHTML = 'Ver portal del propietario (demo en vivo) <i data-lucide="arrow-up-right" style="width:18px;height:18px;"></i>';
+        mPortal.appendChild(a);
+      }
+      modal.classList.add('pmodal--open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      if (window.lucide) lucide.createIcons();
+    }
+    function closeProyecto() {
+      modal.classList.remove('pmodal--open');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+    document.querySelectorAll('.caso-card--clickable').forEach(card => {
+      card.addEventListener('click', () => openProyecto(card));
+      card.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProyecto(card); }
       });
     });
+    document.getElementById('pmodal-close').addEventListener('click', closeProyecto);
+    modal.addEventListener('click', e => { if (e.target === modal) closeProyecto(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeProyecto(); });
   </script>
 </body>
 </html>
