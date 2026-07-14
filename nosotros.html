@@ -19,9 +19,11 @@
       </button>
       <ul class="nav__menu" id="nav-menu">
         <li class="nav__item">
+          <!-- MODO PITCH: Invertir = wizard.html (misma página existente, ahora en modo pitch) -->
           <a href="wizard.html" class="nav__link">Invertir</a>
         </li>
-        <li class="nav__item nav__item--dropdown">
+        <!-- MODO PITCH: Servicios / Comprar-Vender / Asesorías ocultos (reversible: quitar .pitch-oculto) -->
+        <li class="nav__item nav__item--dropdown pitch-oculto">
           <button class="nav__link nav__link--dropdown" aria-expanded="false">
             Servicios
             <i data-lucide="chevron-down" style="width:16px;height:16px;"></i>
@@ -34,10 +36,10 @@
             <li><span class="nav__dropdown-link nav__dropdown-link--disabled">Supervisión de proyecto <span class="nav__badge">Próximamente</span></span></li>
           </ul>
         </li>
-        <li class="nav__item">
+        <li class="nav__item pitch-oculto">
           <span class="nav__link nav__link--disabled">Comprar / Vender <span class="nav__badge">Próximamente</span></span>
         </li>
-        <li class="nav__item">
+        <li class="nav__item pitch-oculto">
           <span class="nav__link nav__link--disabled">Asesorías <span class="nav__badge">Próximamente</span></span>
         </li>
         <li class="nav__item">
@@ -55,7 +57,7 @@
 
   <!-- ========== LA HISTORIA ========== -->
   <section class="nosotros-historia">
-    <p class="nosotros-historia__text">PATRIO es el resultado natural de años trabajando en todos los niveles del desarrollo inmobiliario — desde la obra hasta la dirección general de proyectos de gran escala. No es una startup que descubrió el sector inmobiliario. Es un equipo que lleva décadas construyendo, invirtiendo y administrando, y que decidió poner ese conocimiento al alcance de más personas.</p>
+    <p class="nosotros-historia__text">PATRIO no aprendió bienes raíces en un curso ni en una hoja de cálculo — lo aprendió en la obra. Somos un equipo que ha trabajado en todos los niveles del desarrollo, desde el campo hasta la dirección de proyectos de gran escala, y hoy pone ese conocimiento a trabajar para ti. Tú pones el capital y eres dueño de todo; nosotros ponemos la experiencia de haberlo hecho, una y otra vez, cada vez mejor.</p>
   </section>
 
   <!-- ========== EL EQUIPO ========== -->
@@ -63,25 +65,31 @@
     <h2 class="nosotros-equipo__title">El equipo</h2>
     <div class="nosotros-equipo__grid">
 
+      <!-- MODO PITCH: equipo reducido a 2 perfiles (Louis + Garza). -->
+      <!-- Formato: nombre · credencial (cursiva) · rol creativo (negrita) · descripción -->
       <div class="equipo-card">
         <div class="equipo-card__foto" id="foto-louis">
           <i data-lucide="user" style="width:48px;height:48px;"></i>
         </div>
         <h3 class="equipo-card__nombre">Louis Panis</h3>
-        <span class="equipo-card__rol">Fundador</span>
-        <p class="equipo-card__desc">Conoce el negocio desde los cimientos — aprendió en obra y creció hacia el desarrollo y la inversión inmobiliaria. Esa trayectoria es lo que guía cada proyecto de PATRIO.</p>
+        <span class="equipo-card__credencial">Ingeniero Industrial y de Sistemas (Tec de Monterrey), con formación internacional en Suecia y Francia.</span>
+        <span class="equipo-card__rol-creativo">“Hacer que las cosas sucedan.”</span>
+        <p class="equipo-card__desc">La cara y el operador de PATRIO. Ha adquirido, remodelado y operado inmuebles de principio a fin, y dirigido proyectos de gran escala bajo régimen de condominio. Especialista en negociar propiedades por debajo de su valor: donde otros ven trámites, él ve el camino más corto a escriturar y arrancar.</p>
       </div>
 
       <div class="equipo-card">
-        <div class="equipo-card__foto" id="foto-carlos">
+        <div class="equipo-card__foto" id="foto-garza">
           <i data-lucide="user" style="width:48px;height:48px;"></i>
         </div>
-        <h3 class="equipo-card__nombre">Carlos Baragaño</h3>
-        <span class="equipo-card__rol">Inversión y Finanzas</span>
-        <p class="equipo-card__desc">Experiencia en estructuración de inversiones y capital privado. Se asegura de que cada proyecto tenga sentido financiero antes de arrancar.</p>
+        <h3 class="equipo-card__nombre">Garza</h3>
+        <!-- Louis: confirmar cifras exactas de Crosspoint desde su sitio antes de publicar. -->
+        <span class="equipo-card__credencial">Ingeniero en computación, cofundador y CTO de Crosspoint (fintech de pagos internacionales, millones en movimiento mensual).</span>
+        <span class="equipo-card__rol-creativo">“Hacer que sucedan bien — a tiempo y en presupuesto.”</span>
+        <p class="equipo-card__desc">El cerebro financiero y tecnológico. Construyó y escaló una plataforma fintech que mueve millones al mes, y ahora pone ese rigor en cada proyecto: seguimiento diario, control de capital y gastos, y la plataforma donde ves todo en vivo. Disciplina de ingeniero, ojo de inversionista.</p>
       </div>
 
-      <div class="equipo-card">
+      <!-- MODO PITCH: perfiles de jardinería/diseño ocultos (reversible: quitar .pitch-oculto) -->
+      <div class="equipo-card pitch-oculto">
         <div class="equipo-card__foto" id="foto-david">
           <i data-lucide="user" style="width:48px;height:48px;"></i>
         </div>
@@ -90,7 +98,7 @@
         <p class="equipo-card__desc">Ingeniero agrónomo apasionado por las plantas y los espacios verdes. Conoce las especies, el suelo y el clima de la región mejor que nadie.</p>
       </div>
 
-      <div class="equipo-card">
+      <div class="equipo-card pitch-oculto">
         <div class="equipo-card__foto" id="foto-maria">
           <i data-lucide="user" style="width:48px;height:48px;"></i>
         </div>

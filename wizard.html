@@ -9,7 +9,392 @@
 </head>
 <body>
 
-  <div class="wizard">
+  <!-- ============================================================= -->
+  <!-- MODO PITCH INVERSIONISTAS (privado) — página Invertir.         -->
+  <!-- El flujo original del wizard (cuestionario + WhatsApp) NO se   -->
+  <!-- borró: sigue abajo dentro de <div class="wizard pitch-oculto">.-->
+  <!-- Reversible: quita .pitch-oculto del wizard y pon .pitch-oculto -->
+  <!-- a este bloque de pitch para volver al cuestionario.            -->
+  <!-- ============================================================= -->
+
+  <!-- ========== NAV (modo pitch) ========== -->
+  <nav class="nav" id="main-nav">
+    <div class="nav__inner">
+      <a href="index.html" class="logo">PATRIO</a>
+      <button class="nav__hamburger" id="nav-toggle" aria-label="Abrir menú">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav__menu" id="nav-menu">
+        <li class="nav__item">
+          <a href="wizard.html" class="nav__link">Invertir</a>
+        </li>
+        <!-- MODO PITCH: Servicios / Comprar-Vender / Asesorías ocultos (reversible: quitar .pitch-oculto) -->
+        <li class="nav__item nav__item--dropdown pitch-oculto">
+          <button class="nav__link nav__link--dropdown" aria-expanded="false">
+            Servicios
+            <i data-lucide="chevron-down" style="width:16px;height:16px;"></i>
+          </button>
+          <ul class="nav__dropdown">
+            <li><a href="jardineria.html" class="nav__dropdown-link">Jardinería</a></li>
+            <li><a href="administracion.html" class="nav__dropdown-link">Administración de inmuebles</a></li>
+          </ul>
+        </li>
+        <li class="nav__item pitch-oculto">
+          <span class="nav__link nav__link--disabled">Comprar / Vender <span class="nav__badge">Próximamente</span></span>
+        </li>
+        <li class="nav__item pitch-oculto">
+          <span class="nav__link nav__link--disabled">Asesorías <span class="nav__badge">Próximamente</span></span>
+        </li>
+        <li class="nav__item">
+          <a href="nosotros.html" class="nav__link">Nosotros</a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ========== HERO INVERTIR (video de fondo) ========== -->
+  <header class="inv-hero">
+    <!-- Video corre offline. .mp4 (H.264) para autoplay confiable; .mov como fallback. -->
+    <video class="inv-hero__bg" autoplay loop muted playsinline disablepictureinpicture>
+      <source src="assets/edificiouno-transform.mp4" type="video/mp4">
+      <source src="assets/edificiouno-transform.mov" type="video/quicktime">
+    </video>
+    <p class="inv-hero__eyebrow">Invertir con PATRIO</p>
+    <h1 class="inv-hero__title">Pagas por un inmueble. Te llevas dos: el doble de valor y renta cada mes.</h1>
+    <p class="inv-hero__subtitle">Tú eres dueño de todo. Nosotros lo hacemos de inicio a fin.</p>
+    <a href="#calculadora" class="btn-primary">
+      Calcular mi proyecto
+      <i data-lucide="arrow-down" style="width:18px;height:18px;"></i>
+    </a>
+  </header>
+
+  <!-- ========== BLOQUE A — MODELO ========== -->
+  <section class="inv-section">
+    <div class="inv-section__inner">
+      <p class="inv-section__eyebrow">El modelo</p>
+      <h2 class="inv-section__title">Compramos barato, transformamos y te lo entregamos operando.</h2>
+      <p class="inv-section__subtitle">Cuatro pasos. Uno solo para ti: decidir. El resto lo hacemos nosotros.</p>
+
+      <!-- Tarjetas con flip 3D: hover en desktop, tap en móvil (clase .flip-card--flipped) -->
+      <div class="inv-steps">
+        <div class="flip-card" tabindex="0" role="button" aria-label="Paso 1: Encontramos la propiedad">
+          <div class="flip-card__inner">
+            <div class="flip-card__front">
+              <span class="flip-card__num">01</span>
+              <h3 class="flip-card__title">Encontramos la propiedad</h3>
+              <span class="flip-card__hint"><i data-lucide="rotate-3d" style="width:13px;height:13px;"></i> Pasa el mouse o toca</span>
+            </div>
+            <div class="flip-card__back">
+              <p class="flip-card__back-text">Nos adaptamos a tu presupuesto y buscamos solo en zonas que ya dominamos. Dedicamos el scouting que haga falta — nunca proponemos algo que no hayamos visitado y evaluado. Negociamos fuerte bajo compra en una sola exhibición, y saltamos la promesa de compra para ir directo a escrituración: menos costo y arrancamos antes.</p>
+            </div>
+          </div>
+        </div>
+        <div class="flip-card" tabindex="0" role="button" aria-label="Paso 2: La remodelamos llave en mano">
+          <div class="flip-card__inner">
+            <div class="flip-card__front">
+              <span class="flip-card__num">02</span>
+              <h3 class="flip-card__title">La remodelamos llave en mano</h3>
+              <span class="flip-card__hint"><i data-lucide="rotate-3d" style="width:13px;height:13px;"></i> Pasa el mouse o toca</span>
+            </div>
+            <div class="flip-card__back">
+              <p class="flip-card__back-text">Sin burocracia: adaptamos lo que ya existe a lo que se puede hacer, sin regímenes ni trámites lentos — solo permiso de remodelación, que sale rápido. Trabajamos con una red de proveedores ya establecida: cotizamos, comparamos y pedimos descuentos para que cada peso rinda.</p>
+            </div>
+          </div>
+        </div>
+        <div class="flip-card" tabindex="0" role="button" aria-label="Paso 3: La operamos o la vendemos">
+          <div class="flip-card__inner">
+            <div class="flip-card__front">
+              <span class="flip-card__num">03</span>
+              <h3 class="flip-card__title">La operamos o la vendemos</h3>
+              <span class="flip-card__hint"><i data-lucide="rotate-3d" style="width:13px;height:13px;"></i> Pasa el mouse o toca</span>
+            </div>
+            <div class="flip-card__back">
+              <p class="flip-card__back-text">Tú eliges. Si rentas, la administramos con experiencia — o te la entregamos lista para que la operes tú, sin obligación. Si vendes, colocamos directo a través de nuestra red de compradores y asesores, para salir rápido y al mejor precio.</p>
+            </div>
+          </div>
+        </div>
+        <div class="flip-card" tabindex="0" role="button" aria-label="Paso 4: Reportamos todo">
+          <div class="flip-card__inner">
+            <div class="flip-card__front">
+              <span class="flip-card__num">04</span>
+              <h3 class="flip-card__title">Reportamos todo</h3>
+              <span class="flip-card__hint"><i data-lucide="rotate-3d" style="width:13px;height:13px;"></i> Pasa el mouse o toca</span>
+            </div>
+            <div class="flip-card__back">
+              <p class="flip-card__back-text">Todo corre sobre nuestra plataforma: ingresos, gastos, avance de obra y rendimiento, en vivo y en un solo lugar. Ves tu proyecto como un tablero — con la transparencia y la tecnología que la inversión inmobiliaria tradicional no te da.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== BLOQUE B — ESTRUCTURAS + FEES ========== -->
+  <section class="inv-section inv-section--warm">
+    <div class="inv-section__inner">
+      <p class="inv-section__eyebrow">Estructura y fees</p>
+      <h2 class="inv-section__title">Dos formas de entrar. Fees claros, sin letra chica.</h2>
+      <p class="inv-section__subtitle">Invierte solo con control total, o en grupo a través de un vehículo dedicado (SPV).</p>
+
+      <!-- Tabla técnica de estructuras -->
+      <div class="inv-tabla-wrap">
+        <table class="inv-tabla">
+          <thead>
+            <tr>
+              <th>Comparativo</th>
+              <th>1 inversionista</th>
+              <th class="inv-tabla__hl">2 a 3 inversionistas</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>Vehículo legal</th>
+              <td>A tu nombre o de tu entidad existente. Sin estructura nueva.</td>
+              <td class="inv-tabla__hl">Persona moral (SPV) constituida específicamente para el proyecto.</td>
+            </tr>
+            <tr>
+              <th>Propiedad del activo</th>
+              <td>100% tuyo.</td>
+              <td class="inv-tabla__hl">Copropiedad en partes iguales vía la SPV (máx. 3).</td>
+            </tr>
+            <tr>
+              <th>Costo de constitución</th>
+              <td>Ninguno adicional.</td>
+              <td class="inv-tabla__hl">~$90,000 una vez (acta, notario, RFC, alta SAT).</td>
+            </tr>
+            <tr>
+              <th>Costo recurrente</th>
+              <td>Ninguno.</td>
+              <td class="inv-tabla__hl">Contador mensual + mantenimiento de la persona moral.</td>
+            </tr>
+            <tr>
+              <th>Fee de gestoría</th>
+              <td>10% / 8% · piso $150K</td>
+              <td class="inv-tabla__hl">12% / 10% · piso $170K (+2 pts por coordinar socios y administrar el vehículo).</td>
+            </tr>
+            <tr>
+              <th>Gobernanza</th>
+              <td>Decides solo, ágil.</td>
+              <td class="inv-tabla__hl">Reglas de la SPV (aportaciones, distribución, salida) en el acta.</td>
+            </tr>
+            <tr>
+              <th>Ticket por persona</th>
+              <td>Alto (cargas el 100%).</td>
+              <td class="inv-tabla__hl">Menor (se divide 2-3 formas).</td>
+            </tr>
+            <tr>
+              <th>Ideal para</th>
+              <td>Quien tiene el capital completo y quiere control y agilidad.</td>
+              <td class="inv-tabla__hl">2-3 personas que quieren entrar juntas, menor ticket, riesgo compartido.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="inv-cierre">En grupo pagas más en total (estructura + fee más alto), pero tu ticket individual baja porque se reparte. Solo = simple y control total; grupo = menor entrada por persona.</p>
+
+      <!-- Fee stack (resumen) -->
+      <div class="inv-fees">
+        <div class="inv-fees__row">
+          <span class="inv-fees__row-name">Fee</span>
+          <span class="inv-fees__cell">1 inversionista</span>
+          <span class="inv-fees__cell">2 a 3 inversionistas</span>
+        </div>
+        <div class="inv-fees__row">
+          <span class="inv-fees__row-name">Adquisición</span>
+          <span class="inv-fees__cell" data-l="1 inversionista">2% del valor de compra</span>
+          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">2% del valor de compra</span>
+        </div>
+        <div class="inv-fees__row">
+          <span class="inv-fees__row-name">Gestoría
+            <small>Sobre el presupuesto de obra (construcción + remodelación + diseño + permisos). No incluye el precio de compra. Marginal por tramos; el piso aplica solo en Desarrollo (ver calculadora).</small>
+          </span>
+          <span class="inv-fees__cell" data-l="1 inversionista">10% hasta $2M · 8% del excedente <br>(piso $150,000 en Desarrollo)</span>
+          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">12% hasta $2M · 10% del excedente <br>(piso $170,000 en Desarrollo)</span>
+        </div>
+        <div class="inv-fees__row">
+          <span class="inv-fees__row-name">Salida (venta)</span>
+          <span class="inv-fees__cell" data-l="1 inversionista">3% del precio de venta</span>
+          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">3% del precio de venta</span>
+        </div>
+        <div class="inv-fees__row">
+          <span class="inv-fees__row-name">Administración (hold)</span>
+          <span class="inv-fees__cell" data-l="1 inversionista">8% de la renta mensual cobrada</span>
+          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">8% de la renta mensual cobrada</span>
+        </div>
+      </div>
+
+      <!-- Costos de estructura y cierre (antes "pass-through") -->
+      <h3 class="inv-costos-titulo">Costos de estructura y cierre</h3>
+      <p class="inv-costos-sub">Los pagas al costo, cero comisión nuestra. (El contador es mensual y va en el escenario de renta, no aquí.)</p>
+      <div class="inv-costos-grid">
+        <div class="inv-costo">
+          <div class="inv-costo__name">Notariales</div>
+          <div class="inv-costo__note">Escrituración, ISAI y avalúo. ~6.5% del valor de compra.</div>
+        </div>
+        <div class="inv-costo">
+          <div class="inv-costo__name">Permisos</div>
+          <div class="inv-costo__note">Permiso de remodelación. Incluidos en el presupuesto de obra.</div>
+        </div>
+        <div class="inv-costo">
+          <div class="inv-costo__name">Constitución de SPV</div>
+          <div class="inv-costo__note">Solo en grupo. ~$90,000 una vez.</div>
+        </div>
+        <div class="inv-costo">
+          <div class="inv-costo__name">Asesoría legal</div>
+          <div class="inv-costo__note">Revisión de contratos y del acta (en grupo).</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== BLOQUE C — CALCULADORA ========== -->
+  <section class="inv-section" id="calculadora">
+    <div class="inv-section__inner">
+      <p class="inv-section__eyebrow">Calculadora</p>
+      <h2 class="inv-section__title">Arma tu proyecto y mira los números en vivo.</h2>
+      <p class="inv-section__subtitle">Mueve los controles. Todo se recalcula al instante — inversión, lo que tomamos nosotros, venta y renta.</p>
+
+      <div class="calc">
+        <!-- Inputs -->
+        <div class="calc__inputs">
+          <div class="calc__field calc__typetoggle">
+            <div class="calc__label">Tipo de proyecto</div>
+            <div class="calc__segmented" id="in-tipo">
+              <button class="calc__seg calc__seg--active" data-tipo="desarrollo">Desarrollo</button>
+              <button class="calc__seg" data-tipo="flip">Flip</button>
+            </div>
+          </div>
+          <div class="calc__field">
+            <div class="calc__label">Valor de compra del inmueble <span class="calc__label-val" id="lbl-inmueble">$2,950,000</span></div>
+            <input type="range" class="calc__range" id="in-inmueble" min="800000" max="15000000" step="50000" value="2950000">
+          </div>
+          <div class="calc__field">
+            <div class="calc__label">Presupuesto de obra <span class="calc__label-val" id="lbl-obra">$1,050,000</span></div>
+            <input type="range" class="calc__range" id="in-obra" min="200000" max="8000000" step="50000" value="1050000">
+          </div>
+          <div class="calc__field">
+            <div class="calc__label">Duración del proyecto <span class="calc__label-val" id="lbl-meses">18 meses</span></div>
+            <input type="range" class="calc__range" id="in-meses" min="6" max="24" step="1" value="18">
+          </div>
+          <div class="calc__field">
+            <div class="calc__label">Uso de suelo comercial</div>
+            <div class="calc__toggle">
+              <label class="calc__switch">
+                <input type="checkbox" id="in-comercial">
+                <span class="calc__switch-track"></span>
+              </label>
+              <span style="font-size:.88rem;color:var(--color-text-secondary);">Sube el costo de adquisición</span>
+            </div>
+          </div>
+          <div class="calc__field" style="margin-bottom:0;">
+            <div class="calc__label">Estructura</div>
+            <div class="calc__segmented" id="in-estructura">
+              <button class="calc__seg calc__seg--active" data-estructura="solo">1 inversionista</button>
+              <button class="calc__seg" data-estructura="grupo">2 a 3</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resultados -->
+        <div class="calc__results">
+          <div class="calc__allin">
+            <div class="calc__allin-label">Inversión all-in del inversionista <span id="o-meses" style="color:#9B9B98;font-weight:400;"></span></div>
+            <div class="calc__allin-value" id="o-allin">$0</div>
+          </div>
+
+          <div class="calc__split">
+            <div class="calc__split-card calc__split-card--fees">
+              <div class="calc__split-label">Lo que tomamos nosotros (fees)</div>
+              <div class="calc__split-value" id="o-fees">$0</div>
+              <div class="calc__split-detail" id="o-fees-detail"></div>
+            </div>
+            <div class="calc__split-card calc__split-card--costs">
+              <div class="calc__split-label">Costos de estructura y cierre</div>
+              <div class="calc__split-value" id="o-costs">$0</div>
+              <div class="calc__split-detail" id="o-costs-detail"></div>
+            </div>
+          </div>
+
+          <!-- Dos paneles SIEMPRE visibles -->
+          <div class="calc__panels">
+            <div class="calc__panel calc__panel--vende">
+              <div class="calc__panel-head">Si vendes</div>
+              <div class="calc__panel-sub">Salida por venta del inmueble</div>
+              <div class="calc__wrow"><span class="calc__wl">Valor de venta</span><span class="calc__wv" id="o-salida">$0</span></div>
+              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Fee de salida (3%)</span><span class="calc__wv" id="o-feesalida">$0</span></div>
+              <div class="calc__wrow calc__wrow--total"><span class="calc__wl">Utilidad del inversionista</span><span class="calc__wv" id="o-utilidad">$0</span></div>
+              <div class="calc__wrow"><span class="calc__wl">Rendimiento total</span><span class="calc__wv" id="o-rend-total">0%</span></div>
+              <div class="calc__wrow"><span class="calc__wl">Rendimiento anualizado</span><span class="calc__wv" id="o-rend-anual">0%</span></div>
+              <div class="calc__panel-sub" style="margin:12px 0 0;">Antes de impuestos. Fees a nosotros: adquisición + gestoría + salida.</div>
+            </div>
+
+            <div class="calc__panel calc__panel--renta">
+              <div class="calc__panel-head">Si rentas</div>
+              <div class="calc__panel-sub">Flujo mensual (vista del inversionista)</div>
+              <div class="calc__wrow"><span class="calc__wl">Renta bruta mensual</span><span class="calc__wv" id="o-renta">$0</span></div>
+              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Fee de administración (8%)</span><span class="calc__wv" id="o-feeadmin">$0</span></div>
+              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Gastos operativos (~8%)</span><span class="calc__wv" id="o-opex">$0</span></div>
+              <div class="calc__wrow calc__wrow--minus" id="row-contador"><span class="calc__wl">Contador (SPV)</span><span class="calc__wv" id="o-contador">$0</span></div>
+              <div class="calc__wrow calc__wrow--total"><span class="calc__wl">Ingreso neto mensual</span><span class="calc__wv" id="o-neto">$0</span></div>
+              <div class="calc__yield">
+                <div class="calc__yield-label">Rendimiento sobre costo (neto)</div>
+                <div class="calc__yield-value" id="o-yield">0%</div>
+              </div>
+              <div class="calc__panel-sub" style="margin:12px 0 0;">Renta estimada; la real sale de comparables del mercado por proyecto.</div>
+            </div>
+          </div>
+
+          <p class="calc__disclaimer">Cifras estimadas con fines ilustrativos. El rendimiento sobre costo es yield sobre la inversión (no cap rate). No constituye oferta ni garantía de rendimiento.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== BLOQUE D — CIERRE PORTAL ========== -->
+  <section class="inv-section inv-section--warm">
+    <div class="inv-section__inner">
+      <div class="inv-portal">
+        <div class="inv-portal__shot">
+          <img src="assets/Screenshotdeportal.png" alt="Portal del Propietario — Edificio UNO" loading="lazy">
+        </div>
+        <div>
+          <p class="inv-section__eyebrow" style="text-align:left;">Cada inversionista recibe su propio portal</p>
+          <h2 class="inv-portal__title">Tu inversión, en vivo, cada mes.</h2>
+          <p class="inv-portal__text">Ves tus ingresos, gastos, utilidad, ocupación y cap rate — en vivo, cada mes, sin perseguir a nadie.</p>
+          <a href="https://patrio-ten.vercel.app/edificio-uno" target="_blank" rel="noopener" class="btn-primary">
+            Ver portal en vivo
+            <i data-lucide="arrow-up-right" style="width:18px;height:18px;"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CTA FINAL ========== -->
+  <section class="inv-cta">
+    <h2 class="inv-cta__title">¿Lo vemos con tus números?</h2>
+    <a href="https://wa.me/528442799436" target="_blank" rel="noopener" class="btn-white">
+      Agenda una llamada
+      <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+    </a>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <a href="index.html" class="logo">PATRIO</a>
+      <p class="footer__text">Una iniciativa de PATRIO</p>
+      <a href="https://wa.me/528442799436" target="_blank" rel="noopener" class="footer__link">
+        <i data-lucide="message-circle" style="width:14px;height:14px;vertical-align:middle;margin-right:4px;"></i>
+        Contáctanos por WhatsApp
+      </a>
+    </div>
+  </footer>
+
+  <!-- ========== FLUJO ORIGINAL DEL WIZARD (oculto en modo pitch) ========== -->
+  <!-- Reversible: quita .pitch-oculto para reactivar el cuestionario + WhatsApp. -->
+  <div class="wizard pitch-oculto">
 
     <!-- Header -->
     <header class="wizard__header">
@@ -1502,5 +1887,184 @@
 
   <script src="js/wizard.js"></script>
   <script>lucide.createIcons();</script>
+
+  <!-- ========== SCRIPTS MODO PITCH (nav + calculadora) ========== -->
+  <script>
+    // Nav hamburger
+    const navToggle = document.getElementById('nav-toggle');
+    const navMenu = document.getElementById('nav-menu');
+    if (navToggle && navMenu) {
+      navToggle.addEventListener('click', () => {
+        const open = navMenu.classList.toggle('nav__menu--open');
+        navToggle.classList.toggle('nav__hamburger--open', open);
+        navToggle.setAttribute('aria-label', open ? 'Cerrar menú' : 'Abrir menú');
+      });
+      navMenu.querySelectorAll('a.nav__link, a.nav__dropdown-link').forEach(link => {
+        link.addEventListener('click', () => {
+          navMenu.classList.remove('nav__menu--open');
+          navToggle.classList.remove('nav__hamburger--open');
+        });
+      });
+    }
+  </script>
+
+  <script>
+  /* ============================================================= */
+  /* CALCULADORA DE INVERSIÓN — 100% offline, sin CDNs.            */
+  /* ============================================================= */
+
+  // ====== CONSTANTES EDITABLES ======
+  // NOTA: los multiplicadores/porcentajes son PLACEHOLDERS con lo que hay hoy.
+  //       Louis dará cifras reales después. Ajustar aquí.
+  const MULT_VALOR_FLIP        = 1.3;   // [PLACEHOLDER] venta ≈ 1.3x la inversión total
+  const MULT_VALOR_DESARROLLO  = 1.7;   // [PLACEHOLDER, conservador] venta ≈ 1.7x la inversión total
+  const RENTA_PCT_MENSUAL      = 0.013; // [PLACEHOLDER] renta mensual ≈ 1.3% de (inmueble + obra)
+  const OPEX_PCT               = 0.08;  // [PLACEHOLDER] gastos operativos ≈ 8% de la renta bruta
+
+  // Fees Patrio (confirmados en el brief)
+  const FEE_ADQUISICION_PCT = 0.02;   // 2% del valor de compra
+  const FEE_SALIDA_PCT      = 0.03;   // 3% del precio de venta
+  const FEE_ADMIN_PCT       = 0.08;   // 8% de la renta mensual cobrada
+
+  // Gestoría marginal por tramos (base = presupuesto de obra, NO incluye compra).
+  // Piso SOLO en Desarrollo; en Flip sin piso.
+  const GESTORIA_TRAMO = 2000000;
+  const GESTORIA = {
+    solo:  { pct1: 0.10, pct2: 0.08, piso: 150000 },
+    grupo: { pct1: 0.12, pct2: 0.10, piso: 170000 },
+  };
+
+  // Costos de estructura y cierre
+  const NOTARIALES_PCT = 0.065;  // notariales + ISAI + avalúo. Fuente refigan: acquisitionCostPct = 0.065
+  const SPV_COSTO      = 90000;  // Constitución de SPV, una sola vez (solo grupo). Brief de Louis.
+  const CONTADOR_MENSUAL = 3500; // [PLACEHOLDER] contador mensual de la SPV (solo grupo). No está en refigan — CONFIRMAR.
+  // [PLACEHOLDER] recargo por uso de suelo comercial. No está en refigan — CONFIRMAR con Louis.
+  const COMERCIAL_RECARGO_PCT = 0.02;
+
+  // ====== HELPERS ======
+  const fmt = n => '$' + Math.round(n).toLocaleString('es-MX');
+  const pct = n => (n * 100).toFixed(1) + '%';
+
+  // Gestoría marginal por tramos (garantiza monotonía: más obra nunca paga menos fee)
+  function gestoria(obra, estructura, tipo) {
+    const t = GESTORIA[estructura];
+    const base = obra <= GESTORIA_TRAMO
+      ? obra * t.pct1
+      : GESTORIA_TRAMO * t.pct1 + (obra - GESTORIA_TRAMO) * t.pct2;
+    return tipo === 'desarrollo' ? Math.max(base, t.piso) : base; // piso solo en Desarrollo
+  }
+
+  // ====== ESTADO + BINDINGS ======
+  const el = id => document.getElementById(id);
+  let estructura = 'solo';
+  let tipo = 'desarrollo';
+
+  function recalcular() {
+    const inmueble  = +el('in-inmueble').value;
+    const obra      = +el('in-obra').value;
+    const meses     = +el('in-meses').value;
+    const comercial = el('in-comercial').checked;
+    const grupo     = estructura === 'grupo';
+
+    // Fees upfront (nuestro ingreso): adquisición + gestoría
+    const feeAdquisicion = inmueble * FEE_ADQUISICION_PCT;
+    const feeGestoria    = gestoria(obra, estructura, tipo);
+    const feesUpfront    = feeAdquisicion + feeGestoria;
+
+    // Costos de estructura y cierre (al costo)
+    const notariales       = inmueble * NOTARIALES_PCT;
+    const comercialRecargo = comercial ? inmueble * COMERCIAL_RECARGO_PCT : 0;
+    const spv              = grupo ? SPV_COSTO : 0;
+    const costosCierre     = notariales + comercialRecargo + spv;
+
+    // Inversión all-in
+    const inversionAllIn = inmueble + obra + feesUpfront + costosCierre;
+
+    // ===== SI VENDES =====
+    const mult        = tipo === 'flip' ? MULT_VALOR_FLIP : MULT_VALOR_DESARROLLO;
+    const valorVenta  = inversionAllIn * mult;
+    const feeSalida   = valorVenta * FEE_SALIDA_PCT;
+    const utilidad    = valorVenta - inversionAllIn - feeSalida; // antes de impuestos
+    const rendTotal   = utilidad / inversionAllIn;
+    const rendAnual   = Math.pow(1 + rendTotal, 12 / meses) - 1;
+
+    // ===== SI RENTAS (waterfall, base = inmueble + obra) =====
+    const rentaBruta = (inmueble + obra) * RENTA_PCT_MENSUAL;
+    const feeAdmin   = rentaBruta * FEE_ADMIN_PCT;
+    const opex       = rentaBruta * OPEX_PCT;
+    const contador   = grupo ? CONTADOR_MENSUAL : 0;
+    const netoMensual = rentaBruta - feeAdmin - opex - contador;
+    const yieldNeto  = (netoMensual * 12) / inversionAllIn; // sobre el neto, no el bruto
+
+    // ===== RENDER =====
+    el('lbl-inmueble').textContent = fmt(inmueble);
+    el('lbl-obra').textContent = fmt(obra);
+    el('lbl-meses').textContent = meses + ' meses';
+    el('o-meses').textContent = ' · ' + meses + ' meses';
+
+    el('o-allin').textContent = fmt(inversionAllIn);
+    el('o-fees').textContent = fmt(feesUpfront);
+    el('o-fees-detail').textContent = `Adquisición ${fmt(feeAdquisicion)} · Gestoría ${fmt(feeGestoria)}`;
+    el('o-costs').textContent = fmt(costosCierre);
+    el('o-costs-detail').textContent = `Notariales ${fmt(notariales)}` +
+      (comercialRecargo ? ` · Comercial ${fmt(comercialRecargo)}` : '') +
+      (spv ? ` · SPV ${fmt(spv)}` : '');
+
+    // Vende
+    el('o-salida').textContent = fmt(valorVenta);
+    el('o-feesalida').textContent = '− ' + fmt(feeSalida);
+    el('o-utilidad').textContent = fmt(utilidad);
+    el('o-rend-total').textContent = pct(rendTotal);
+    el('o-rend-anual').textContent = pct(rendAnual) + '/año';
+
+    // Renta
+    el('o-renta').textContent = fmt(rentaBruta);
+    el('o-feeadmin').textContent = '− ' + fmt(feeAdmin);
+    el('o-opex').textContent = '− ' + fmt(opex);
+    el('o-contador').textContent = '− ' + fmt(contador);
+    el('row-contador').style.display = grupo ? '' : 'none';
+    el('o-neto').textContent = fmt(netoMensual);
+    el('o-yield').textContent = pct(yieldNeto);
+  }
+
+  // Sliders / toggles
+  ['in-inmueble', 'in-obra', 'in-meses'].forEach(id => el(id).addEventListener('input', recalcular));
+  el('in-comercial').addEventListener('change', recalcular);
+
+  function bindSegmented(containerId, apply) {
+    document.querySelectorAll('#' + containerId + ' .calc__seg').forEach(seg => {
+      seg.addEventListener('click', () => {
+        document.querySelector('#' + containerId + ' .calc__seg--active').classList.remove('calc__seg--active');
+        seg.classList.add('calc__seg--active');
+        apply(seg.dataset);
+        recalcular();
+      });
+    });
+  }
+  bindSegmented('in-tipo', d => {
+    tipo = d.tipo;
+    // Al cambiar de tipo, ajusta la duración default: Desarrollo 18m (toman 12-24), Flip 8m (más corto).
+    el('in-meses').value = tipo === 'flip' ? 8 : 18;
+  });
+  bindSegmented('in-estructura', d => { estructura = d.estructura; });
+
+  recalcular(); // precarga default: Esquina Pastel, Desarrollo, 1 inversionista, 18 meses
+  </script>
+
+  <script>
+    // Flip de tarjetas del Bloque A en móvil / teclado (en desktop el hover ya gira)
+    document.querySelectorAll('.flip-card').forEach(card => {
+      card.addEventListener('click', () => card.classList.toggle('flip-card--flipped'));
+      card.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); card.classList.toggle('flip-card--flipped'); }
+      });
+    });
+
+    // Forzar autoplay del video del hero (Chrome bloquea autoplay a veces aunque esté muted)
+    document.querySelectorAll('video[autoplay]').forEach(v => {
+      v.muted = true; v.playsInline = true;
+      const p = v.play(); if (p && p.catch) p.catch(() => {});
+    });
+  </script>
 </body>
 </html>

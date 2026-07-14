@@ -19,8 +19,8 @@
       </button>
       <ul class="nav__menu" id="nav-menu">
         <li class="nav__item">
-          <!-- MODO PITCH: Invertir apunta a la nueva página invertir.html. Reversible: repuntar a wizard.html -->
-          <a href="invertir.html" class="nav__link">Invertir</a>
+          <!-- MODO PITCH: Invertir = wizard.html (misma página existente, ahora en modo pitch) -->
+          <a href="wizard.html" class="nav__link">Invertir</a>
         </li>
         <!-- MODO PITCH: Servicios / Comprar-Vender / Asesorías ocultos (reversible: quitar .pitch-oculto) -->
         <li class="nav__item nav__item--dropdown pitch-oculto">
@@ -57,7 +57,7 @@
     <div class="hero__content">
       <h1 class="hero__headline">Haz crecer<br>tu patrimonio</h1>
       <p class="hero__subheadline">Compramos, transformamos y operamos bienes raíces que valen más de lo que cuestan.</p>
-      <a href="invertir.html#calculadora" class="btn-primary">
+      <a href="wizard.html#calculadora" class="btn-primary">
         Calcular mi proyecto
         <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
       </a>
@@ -376,9 +376,9 @@
 
       <div class="why-pagu__grid">
         <div class="credential">
-          <div class="credential__number">&gt;16%</div>
-          <!-- MODO PITCH: relabel — el >16% es rendimiento (yield) sobre costo, NO cap rate. El cap rate real (~8%) vive en el detalle del proyecto y en el portal. -->
-          <p class="credential__label">Rendimiento sobre costo en proyectos activos</p>
+          <div class="credential__number">&gt;12%</div>
+          <!-- MODO PITCH: alineado al rendimiento NETO sobre costo (~12%) que arroja la calculadora. NO es cap rate. -->
+          <p class="credential__label">Rendimiento neto sobre costo en renta</p>
         </div>
         <div class="credential">
           <div class="credential__number">$13,000</div>
@@ -411,9 +411,10 @@
             <span class="caso-card__city">Monterrey</span>
           </div>
           <div class="caso-card__body">
-            <div class="caso-card__number">$25,000,000</div>
+            <div class="caso-card__number">$19,000,000</div>
             <span class="caso-card__label">valor actual del inmueble</span>
-            <p class="caso-card__desc">Edificio comercial convertido a uso mixto. Inversión de $9M que hoy vale $25M y genera $150,000 al mes.</p>
+            <!-- Cifras alineadas a refigan (seed_edificio_uno): inversión $9.5M, valor $19M, 13 unidades. -->
+            <p class="caso-card__desc">Edificio comercial convertido a uso mixto, 13 unidades. Inversión de $9.5M que hoy vale $19M.</p>
           </div>
         </div>
 
@@ -542,7 +543,7 @@
   <!-- ========== CTA FINAL ========== -->
   <section class="cta-final">
     <h2 class="cta-final__title">¿Listo para dar el primer paso?</h2>
-    <a href="invertir.html#calculadora" class="btn-secondary">
+    <a href="wizard.html#calculadora" class="btn-secondary">
       Calcular mi proyecto
       <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
     </a>
@@ -665,6 +666,12 @@
     document.getElementById('pmodal-close').addEventListener('click', closeProyecto);
     modal.addEventListener('click', e => { if (e.target === modal) closeProyecto(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeProyecto(); });
+
+    // Forzar autoplay del video del hero (Chrome bloquea autoplay a veces aunque esté muted)
+    document.querySelectorAll('video[autoplay]').forEach(v => {
+      v.muted = true; v.playsInline = true;
+      const p = v.play(); if (p && p.catch) p.catch(() => {});
+    });
   </script>
 </body>
 </html>

@@ -2895,13 +2895,20 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 .pmodal__kpi-value { font-family: var(--font-display); font-size: 1.35rem; color: var(--color-text); }
 
 /* ============  PÁGINA INVERTIR (modo pitch)  ============ */
+/* Hero con video de fondo + degradado blanco que funde al fondo crema */
 .inv-hero {
-  background: #1A1A18; color: #F8F7F4; text-align: center;
-  padding: 140px 24px 90px;
+  position: relative; overflow: hidden; text-align: center;
+  padding: 150px 24px 100px; background: var(--color-bg-warm);
 }
-.inv-hero__eyebrow { font-size: .74rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--color-primary-light); margin-bottom: 18px; }
-.inv-hero__title { font-family: var(--font-display); font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.12; max-width: 900px; margin: 0 auto 20px; }
-.inv-hero__subtitle { font-size: 1.05rem; color: #C9C9C4; max-width: 620px; margin: 0 auto 32px; line-height: 1.6; }
+.inv-hero__bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; pointer-events: none; }
+.inv-hero::after {
+  content: ''; position: absolute; inset: 0; z-index: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,.88) 0%, rgba(255,255,255,.82) 55%, var(--color-bg-warm) 100%);
+}
+.inv-hero__eyebrow { position: relative; z-index: 1; font-size: .74rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--color-primary); margin-bottom: 18px; }
+.inv-hero__title { position: relative; z-index: 1; font-family: var(--font-display); font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.12; max-width: 900px; margin: 0 auto 20px; color: var(--color-text); }
+.inv-hero__subtitle { position: relative; z-index: 1; font-size: 1.05rem; color: var(--color-text-secondary); max-width: 620px; margin: 0 auto 32px; line-height: 1.6; }
+.inv-hero .btn-primary { position: relative; z-index: 1; }
 
 .inv-section { padding: var(--space-xl) 24px; }
 .inv-section--warm { background: var(--color-bg-warm); }
@@ -2993,6 +3000,63 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 .btn-white { display: inline-flex; align-items: center; gap: 8px; background: #fff; color: var(--color-primary); padding: 15px 32px; border-radius: var(--radius-md); font-weight: 600; text-decoration: none; transition: transform var(--transition-fast); }
 .btn-white:hover { transform: translateY(-2px); }
 
+/* ---- Bloque A v2: tarjetas con flip 3D ---- */
+.flip-card { perspective: 1200px; min-height: 250px; }
+.flip-card__inner { position: relative; width: 100%; height: 100%; min-height: 250px; transition: transform .6s cubic-bezier(.4,.2,.2,1); transform-style: preserve-3d; }
+.flip-card:hover .flip-card__inner,
+.flip-card--flipped .flip-card__inner { transform: rotateY(180deg); }
+.flip-card__front, .flip-card__back {
+  position: absolute; inset: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden;
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  padding: 26px 24px; display: flex; flex-direction: column;
+}
+.flip-card__front { background: var(--color-white); justify-content: flex-end; }
+.flip-card__back { transform: rotateY(180deg); background: var(--color-primary); color: #fff; justify-content: center; }
+.flip-card__num { font-family: var(--font-display); font-size: 2rem; color: var(--color-primary); }
+.flip-card__title { font-size: 1.05rem; margin-top: 10px; }
+.flip-card__back-text { font-size: .82rem; line-height: 1.55; }
+.flip-card__hint { font-size: .68rem; color: var(--color-text-light); margin-top: 12px; display: flex; align-items: center; gap: 5px; }
+
+/* ---- Bloque B v2: tabla técnica de estructuras ---- */
+.inv-tabla-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--color-border); }
+.inv-tabla { width: 100%; border-collapse: collapse; background: #fff; font-size: .9rem; min-width: 640px; }
+.inv-tabla thead th { background: var(--color-bg-alt); font-family: var(--font-display); font-size: 1.02rem; text-align: left; padding: 16px 18px; }
+.inv-tabla thead th.inv-tabla__hl { color: var(--color-primary); }
+.inv-tabla tbody th { text-align: left; font-weight: 600; color: var(--color-text-light); text-transform: uppercase; font-size: .7rem; letter-spacing: .05em; padding: 14px 18px; border-top: 1px solid var(--color-border); width: 160px; vertical-align: top; }
+.inv-tabla tbody td { padding: 14px 18px; border-top: 1px solid var(--color-border); vertical-align: top; color: var(--color-text); }
+.inv-tabla tbody td.inv-tabla__hl { background: var(--color-primary-light); background: rgba(107,138,94,.06); }
+.inv-cierre { margin-top: 22px; background: var(--color-bg-alt); border-left: 3px solid var(--color-primary); border-radius: var(--radius-md); padding: 16px 20px; font-size: .92rem; line-height: 1.6; color: var(--color-text); }
+.inv-costos-titulo { font-family: var(--font-display); font-size: 1.15rem; margin: 40px 0 4px; }
+.inv-costos-sub { font-size: .85rem; color: var(--color-text-light); margin-bottom: 16px; }
+.inv-costos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.inv-costo { background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 14px 16px; }
+.inv-costo__name { font-weight: 600; font-size: .9rem; }
+.inv-costo__note { font-size: .78rem; color: var(--color-text-light); margin-top: 3px; }
+
+/* ---- Bloque C v2: calculadora dos paneles + waterfall ---- */
+.calc__typetoggle { margin-bottom: 26px; }
+.calc__panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.calc__panel { background: var(--color-white); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 22px 24px; }
+.calc__panel--vende { border-top: 3px solid var(--color-primary); }
+.calc__panel--renta { border-top: 3px solid var(--color-primary-dark); }
+.calc__panel-head { font-family: var(--font-display); font-size: 1.15rem; margin-bottom: 2px; }
+.calc__panel-sub { font-size: .74rem; color: var(--color-text-light); margin-bottom: 14px; }
+.calc__wrow { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--color-border); font-size: .88rem; }
+.calc__wrow:first-of-type { border-top: none; }
+.calc__wl { color: var(--color-text-secondary); }
+.calc__wv { font-weight: 600; white-space: nowrap; }
+.calc__wrow--minus .calc__wv { color: #C0392B; }
+.calc__wrow--total { border-top: 2px solid var(--color-text); margin-top: 4px; padding-top: 12px; }
+.calc__wrow--total .calc__wl { color: var(--color-text); font-weight: 600; }
+.calc__wrow--total .calc__wv { font-family: var(--font-display); font-size: 1.15rem; color: var(--color-primary); }
+.calc__yield { margin-top: 14px; background: var(--color-bg-warm); border-radius: var(--radius-md); padding: 12px 14px; text-align: center; }
+.calc__yield-label { font-size: .68rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-light); }
+.calc__yield-value { font-family: var(--font-display); font-size: 1.6rem; color: var(--color-primary); }
+
+/* ---- Nosotros v2: credencial + rol creativo ---- */
+.equipo-card__credencial { display: block; font-style: italic; font-size: .82rem; color: var(--color-text-secondary); margin-bottom: 8px; line-height: 1.4; }
+.equipo-card__rol-creativo { display: block; font-family: var(--font-display); font-weight: 700; color: var(--color-primary); font-size: 1.05rem; margin-bottom: 12px; }
+
 /* Responsive modo pitch */
 @media (max-width: 900px) {
   .calc { grid-template-columns: 1fr; }
@@ -3002,6 +3066,7 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
   .inv-fees__row { grid-template-columns: 1fr; gap: 4px; }
   .inv-fees__row:first-child { display: none; }
   .inv-fees__cell::before { content: attr(data-l); font-weight: 600; color: var(--color-text-light); margin-right: 6px; }
+  .calc__panels { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .inv-steps { grid-template-columns: 1fr; }
