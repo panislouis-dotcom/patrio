@@ -51,16 +51,12 @@
 
   <!-- ========== HERO ========== -->
   <section class="hero">
-    <video class="hero__bg" autoplay loop muted playsinline disablepictureinpicture>
+    <video class="hero__bg" autoplay loop muted playsinline preload="auto" poster="assets/hero-video-poster.jpg" disablepictureinpicture>
       <source src="assets/hero-video.mp4" type="video/mp4">
     </video>
     <div class="hero__content">
       <h1 class="hero__headline">Haz crecer<br>tu patrimonio</h1>
       <p class="hero__subheadline">Compramos, transformamos y operamos bienes raíces que valen más de lo que cuestan.</p>
-      <a href="wizard.html#calculadora" class="btn-primary">
-        Calcular mi proyecto
-        <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
-      </a>
     </div>
   </section>
 
@@ -376,17 +372,16 @@
 
       <div class="why-pagu__grid">
         <div class="credential">
-          <div class="credential__number">&gt;12%</div>
-          <!-- MODO PITCH: alineado al rendimiento NETO sobre costo (~12%) que arroja la calculadora. NO es cap rate. -->
-          <p class="credential__label">Rendimiento neto sobre costo en renta</p>
+          <div class="credential__number">14</div>
+          <p class="credential__label">Unidades operando y en renta</p>
         </div>
         <div class="credential">
-          <div class="credential__number">$13,000</div>
-          <p class="credential__label">Costo por m² — altamente competitivo</p>
+          <div class="credential__number">2x</div>
+          <p class="credential__label">Valor creado — Edificio UNO pasó de $9.5M a $19M</p>
         </div>
         <div class="credential">
-          <div class="credential__number">7</div>
-          <p class="credential__label">Unidades operando y generando rentas</p>
+          <div class="credential__number">8%</div>
+          <p class="credential__label">Cap Rate Promedio Real</p>
         </div>
       </div>
     </div>
@@ -404,7 +399,7 @@
 
       <div class="casos__grid">
 
-        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-01" data-category="inmobiliario" role="button" tabindex="0" data-title="Edificio UNO — uso mixto" data-portal="1">
+        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-01" data-category="inmobiliario" role="button" tabindex="0" data-title="Edificio UNO — uso mixto" data-portal="1" data-proyecto="edificio-uno">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600&q=80" alt="Edificio uso mixto Monterrey" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
@@ -418,33 +413,34 @@
           </div>
         </div>
 
-        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-02" data-category="inmobiliario" role="button" tabindex="0" data-title="Coliving de 6 habitaciones">
+        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-02" data-category="inmobiliario" role="button" tabindex="0" data-title="Esquina Pastel — usos mixtos" data-proyecto="esquina-pastel">
           <div class="caso-card__img">
-            <img src="https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80" alt="Coliving habitaciones modernas" loading="lazy">
+            <img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600&q=80" alt="Esquina Pastel — proyecto de usos mixtos" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
             <span class="caso-card__city">Monterrey</span>
           </div>
           <div class="caso-card__body">
-            <div class="caso-card__number">$30,000</div>
-            <span class="caso-card__label">ingreso neto mensual</span>
-            <p class="caso-card__desc">Coliving de 6 habitaciones con 95% de ocupancia. Inversión de $3M generando $30,000 netos al mes.</p>
+            <div class="caso-card__number">$4M</div>
+            <span class="caso-card__label">inversión — en desarrollo</span>
+            <p class="caso-card__desc">Esquina Pastel: proyecto de usos mixtos en esquina — comercial en planta baja y vivienda arriba. Actualmente en desarrollo.</p>
           </div>
         </div>
 
-        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-03" data-category="inmobiliario" role="button" tabindex="0" data-title="Casa familiar renovada">
+        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-03" data-category="inmobiliario" role="button" tabindex="0" data-title="Casa Modesto 415" data-proyecto="casa-modesto-415">
           <div class="caso-card__img">
-            <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=600&q=80" alt="Casa familiar moderna Ramos Arizpe" loading="lazy">
+            <img src="assets/proyectos/casa-modesto-415/despues-14.jpeg" alt="Casa Modesto 415 — fachada remodelada" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
-            <span class="caso-card__city">Ramos Arizpe</span>
+            <span class="caso-card__city">Monterrey</span>
           </div>
           <div class="caso-card__body">
-            <div class="caso-card__number">39%</div>
-            <span class="caso-card__label">retorno sobre inversión</span>
-            <p class="caso-card__desc">Casa familiar de 3 recámaras. Inversión de $1.8M vendida en $2.5M en 18 meses de obra.</p>
+            <div class="caso-card__number">415</div>
+            <span class="caso-card__label">Casa Modesto — Centro, Monterrey</span>
+            <p class="caso-card__desc">Casa intervenida de principio a fin — fachada, interiores y azotea. Ábrela para ver la galería del después.</p>
           </div>
         </div>
 
-        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-04" data-category="inmobiliario" role="button" tabindex="0" data-title="Casa antigua rehabilitada">
+        <!-- MODO PITCH: solo se muestran 3 proyectos (Edificio UNO, Esquina Pastel, Casa Modesto 415). Los demás ocultos (reversible). -->
+        <div class="caso-card caso-card--clickable pitch-oculto" id="caso-inmobiliario-04" data-category="inmobiliario" role="button" tabindex="0" data-title="Casa antigua rehabilitada">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=600&q=80" alt="Casa antigua rehabilitada Monterrey" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
@@ -457,7 +453,7 @@
           </div>
         </div>
 
-        <div class="caso-card caso-card--clickable" id="caso-inmobiliario-05" data-category="inmobiliario" role="button" tabindex="0" data-title="4 departamentos en renta">
+        <div class="caso-card caso-card--clickable pitch-oculto" id="caso-inmobiliario-05" data-category="inmobiliario" role="button" tabindex="0" data-title="4 departamentos en renta">
           <div class="caso-card__img">
             <img src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&q=80" alt="Departamentos en renta Ramos Arizpe" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
@@ -555,17 +551,14 @@
       <button class="pmodal__close" id="pmodal-close" aria-label="Cerrar">
         <i data-lucide="x" style="width:20px;height:20px;"></i>
       </button>
-      <div class="pmodal__gallery" id="pmodal-gallery"></div>
       <div class="pmodal__body">
         <span class="pmodal__eyebrow">Proyecto</span>
         <h3 class="pmodal__title" id="pmodal-title"></h3>
         <p class="pmodal__city" id="pmodal-city"></p>
-        <!-- Imagen-resumen (inversión, valor, rentas, gastos, cap rate): Louis la coloca aquí. -->
-        <div class="pmodal__resumen" id="pmodal-resumen">
-          Imagen-resumen del proyecto — pendiente. (Inversión · valor actual · rentas · gastos · cap rate)
-        </div>
         <p class="pmodal__desc" id="pmodal-desc"></p>
         <div id="pmodal-portal"></div>
+        <!-- Secciones Antes / Después (fotos + video) se montan aquí por JS -->
+        <div id="pmodal-media"></div>
       </div>
     </div>
   </div>
@@ -617,8 +610,54 @@
     const mTitle = document.getElementById('pmodal-title');
     const mCity = document.getElementById('pmodal-city');
     const mDesc = document.getElementById('pmodal-desc');
-    const mGallery = document.getElementById('pmodal-gallery');
     const mPortal = document.getElementById('pmodal-portal');
+    const mMedia = document.getElementById('pmodal-media');
+
+    // Media por proyecto (Antes / Después). Casa Modesto 415: fotos + videos del "después".
+    const CASA_BASE = 'assets/proyectos/casa-modesto-415/';
+    const casaAntes = [1, 2, 3].map(n => ({ img: CASA_BASE + 'antes-' + String(n).padStart(2, '0') + '.jpg' }));
+    const casaDespues = [];
+    for (let i = 1; i <= 19; i++) casaDespues.push({ img: CASA_BASE + 'despues-' + String(i).padStart(2, '0') + '.jpeg' });
+    [1, 2, 3].forEach(n => casaDespues.push({ video: CASA_BASE + 'video-' + String(n).padStart(2, '0') + '.mp4' }));
+    const PROYECTO_MEDIA = {
+      'edificio-uno':     { antes: [], despues: [] }, // contenedor listo — Louis agrega fotos reales
+      'casa-modesto-415': { antes: casaAntes, despues: casaDespues },
+      'esquina-pastel':   { antes: [], despues: [] },
+    };
+
+    function renderSection(titulo, items, kind) {
+      const sec = document.createElement('div');
+      sec.className = 'pmodal__mediasec';
+      const h = document.createElement('div');
+      h.className = 'pmodal__mediasec-title';
+      h.innerHTML = '<span class="pmodal__tag pmodal__tag--' + kind + '">' + titulo + '</span>';
+      sec.appendChild(h);
+      if (!items || !items.length) {
+        const e = document.createElement('div');
+        e.className = 'pmodal__empty';
+        e.textContent = kind === 'antes' ? 'Aún no hay fotos del antes.' : 'Próximamente.';
+        sec.appendChild(e);
+        return sec;
+      }
+      const grid = document.createElement('div');
+      grid.className = 'pmodal__grid';
+      items.forEach(it => {
+        if (it.video) {
+          const v = document.createElement('video');
+          v.src = it.video; v.controls = true; v.muted = true; v.playsInline = true; v.preload = 'metadata';
+          grid.appendChild(v);
+        } else {
+          const a = document.createElement('a');
+          a.href = it.img; a.target = '_blank'; a.rel = 'noopener';
+          const img = document.createElement('img');
+          img.src = it.img; img.loading = 'lazy'; img.alt = titulo;
+          a.appendChild(img);
+          grid.appendChild(a);
+        }
+      });
+      sec.appendChild(grid);
+      return sec;
+    }
 
     function openProyecto(card) {
       const img = card.querySelector('.caso-card__img img');
@@ -627,17 +666,7 @@
       mTitle.textContent = card.dataset.title || 'Proyecto';
       mCity.textContent = city ? city.textContent : '';
       mDesc.textContent = desc ? desc.textContent : '';
-      // Galería: la foto de la tarjeta + placeholder para las fotos que Louis agregará.
-      mGallery.innerHTML = '';
-      if (img) {
-        const g = document.createElement('img');
-        g.src = img.src; g.alt = img.alt || '';
-        mGallery.appendChild(g);
-      }
-      const ph = document.createElement('div');
-      ph.className = 'pmodal__gallery-empty';
-      ph.textContent = 'Galería de imágenes — pendiente (Louis las agrega).';
-      mGallery.appendChild(ph);
+
       // Botón de portal solo para Edificio UNO.
       mPortal.innerHTML = '';
       if (card.dataset.portal === '1') {
@@ -647,6 +676,30 @@
         a.innerHTML = 'Ver portal del propietario (demo en vivo) <i data-lucide="arrow-up-right" style="width:18px;height:18px;"></i>';
         mPortal.appendChild(a);
       }
+
+      // Media: si el proyecto tiene galería definida, muestra Antes / Después.
+      mMedia.innerHTML = '';
+      const media = PROYECTO_MEDIA[card.dataset.proyecto];
+      if (media) {
+        mMedia.appendChild(renderSection('Antes', media.antes, 'antes'));
+        mMedia.appendChild(renderSection('Después', media.despues, 'despues'));
+      } else {
+        // Fallback: imagen de la tarjeta + resumen pendiente (p. ej. Edificio UNO).
+        if (img) {
+          const grid = document.createElement('div');
+          grid.className = 'pmodal__grid';
+          const gi = document.createElement('img');
+          gi.src = img.src; gi.alt = img.alt || '';
+          grid.appendChild(gi);
+          mMedia.appendChild(grid);
+        }
+        const res = document.createElement('div');
+        res.className = 'pmodal__resumen';
+        res.textContent = 'Imagen-resumen del proyecto — pendiente. (Inversión · valor actual · rentas · gastos · cap rate)';
+        mMedia.appendChild(res);
+      }
+
+      modal.scrollTop = 0;
       modal.classList.add('pmodal--open');
       modal.setAttribute('aria-hidden', 'false');
       document.body.style.overflow = 'hidden';
@@ -667,11 +720,19 @@
     modal.addEventListener('click', e => { if (e.target === modal) closeProyecto(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeProyecto(); });
 
-    // Forzar autoplay del video del hero (Chrome bloquea autoplay a veces aunque esté muted)
-    document.querySelectorAll('video[autoplay]').forEach(v => {
-      v.muted = true; v.playsInline = true;
-      const p = v.play(); if (p && p.catch) p.catch(() => {});
-    });
+    // Autoplay robusto del video del hero (Chrome a veces bloquea autoplay aunque esté muted)
+    (function () {
+      const vids = document.querySelectorAll('video[autoplay]');
+      const forcePlay = v => { v.muted = true; v.playsInline = true; const p = v.play(); if (p && p.catch) p.catch(() => {}); };
+      vids.forEach(v => {
+        v.muted = true;
+        if (v.readyState >= 2) forcePlay(v);
+        v.addEventListener('loadeddata', () => forcePlay(v), { once: true });
+        v.addEventListener('canplay', () => forcePlay(v), { once: true });
+      });
+      const kick = () => vids.forEach(forcePlay);
+      ['click', 'scroll', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, kick, { once: true, passive: true }));
+    })();
   </script>
 </body>
 </html>

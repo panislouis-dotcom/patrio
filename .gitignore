@@ -6,10 +6,11 @@
 .preview-tools/
 node_modules/
 
-# Material de trabajo pesado / carpetas ajenas al sitio (no versionar aquí)
-Modesto415-Patrio.mp4
-ChatGPT Image*.png
-Proyecto-Trois/
-proyectos/
-refigan/
-memoria-de-obra.html
+# Material de trabajo pesado / carpetas ajenas al sitio (no versionar aquí).
+# Anclado a la raíz con "/" para NO ignorar assets/proyectos (fotos reales del sitio).
+/Modesto415-Patrio.mp4
+/ChatGPT Image*.png
+/Proyecto-Trois/
+/proyectos/
+/refigan/
+/memoria-de-obra.html

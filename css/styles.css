@@ -2894,6 +2894,19 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 .pmodal__kpi-label { font-size: .68rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-light); display: block; margin-bottom: 6px; }
 .pmodal__kpi-value { font-family: var(--font-display); font-size: 1.35rem; color: var(--color-text); }
 
+/* Secciones Antes / Después dentro del modal de proyecto */
+.pmodal__mediasec { margin-top: 26px; }
+.pmodal__mediasec-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.pmodal__tag { font-size: .7rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 5px 13px; border-radius: 999px; }
+.pmodal__tag--antes { background: var(--color-bg-alt); color: var(--color-text-secondary); }
+.pmodal__tag--despues { background: var(--color-primary); color: #fff; }
+.pmodal__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.pmodal__grid a { display: block; line-height: 0; }
+.pmodal__grid img { width: 100%; height: 150px; object-fit: cover; border-radius: var(--radius-sm); display: block; background: var(--color-bg-alt); transition: opacity var(--transition-fast); }
+.pmodal__grid a:hover img { opacity: .88; }
+.pmodal__grid video { width: 100%; height: 150px; object-fit: cover; border-radius: var(--radius-sm); display: block; background: #000; }
+.pmodal__empty { padding: 22px; text-align: center; color: var(--color-text-light); background: var(--color-bg-warm); border: 1px dashed var(--color-border); border-radius: var(--radius-md); font-size: .88rem; }
+
 /* ============  PÁGINA INVERTIR (modo pitch)  ============ */
 /* Hero con video de fondo + degradado blanco que funde al fondo crema */
 .inv-hero {
