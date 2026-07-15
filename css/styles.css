@@ -2934,7 +2934,7 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 .inv-estructura__row-label { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-light); flex: 0 0 92px; }
 .inv-estructura__row-val { font-size: .92rem; color: var(--color-text); }
 
-.inv-fees { background: var(--color-white); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
+.inv-fees { margin-top: 22px; background: var(--color-white); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
 .inv-fees__row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--color-border); align-items: center; }
 .inv-fees__row:first-child { border-top: none; background: var(--color-bg-alt); font-weight: 600; }
 .inv-fees__row-name { font-weight: 500; }
@@ -2967,16 +2967,19 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 .calc__seg--active { border-color: var(--color-primary); background: var(--color-primary); color: #fff; }
 
 .calc__results { display: flex; flex-direction: column; gap: 20px; }
-.calc__allin { background: #1A1A18; color: #F8F7F4; border-radius: var(--radius-lg); padding: 26px 28px; }
-.calc__allin-label { font-size: .72rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #9B9B98; margin-bottom: 8px; }
-.calc__allin-value { font-family: var(--font-display); font-size: 2.4rem; color: #fff; }
-.calc__split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.calc__split-card { border-radius: var(--radius-md); padding: 18px 20px; }
-.calc__split-card--fees { background: var(--color-primary-light); color: #fff; }
-.calc__split-card--costs { background: var(--color-bg-alt); }
-.calc__split-label { font-size: .68rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; opacity: .85; margin-bottom: 6px; }
-.calc__split-value { font-family: var(--font-display); font-size: 1.5rem; }
-.calc__split-detail { font-size: .78rem; margin-top: 8px; opacity: .9; line-height: 1.5; }
+.calc__stmt { background: var(--color-white); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 22px 26px; }
+.calc__stmt-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.calc__stmt-title { font-family: var(--font-display); font-size: 1.15rem; }
+.calc__stmt-meses { font-size: .78rem; color: var(--color-text-light); }
+.calc__wrow--subtotal { font-weight: 600; }
+.calc__wrow--subtotal .calc__wl { color: var(--color-text); }
+.calc__wrow--indent { padding-left: 14px; }
+.calc__tag { display: inline-block; font-size: .58rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; margin-left: 8px; vertical-align: middle; }
+.calc__tag--patrio { background: #E4EBDF; color: var(--color-primary-dark); }
+.calc__tag--costo { background: var(--color-bg-alt); color: var(--color-text-secondary); }
+.calc__hero { margin: 4px 0 14px; }
+.calc__hero-value { font-family: var(--font-display); font-size: 1.9rem; color: var(--color-primary); }
+.calc__hero-sub { font-size: .76rem; color: var(--color-text-light); margin-top: 2px; }
 .calc__scenarios { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .calc__scenario { background: var(--color-white); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 22px 24px; }
 .calc__scenario-head { font-family: var(--font-display); font-size: 1.15rem; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); }
@@ -3049,9 +3052,6 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 .calc__wrow--total { border-top: 2px solid var(--color-text); margin-top: 4px; padding-top: 12px; }
 .calc__wrow--total .calc__wl { color: var(--color-text); font-weight: 600; }
 .calc__wrow--total .calc__wv { font-family: var(--font-display); font-size: 1.15rem; color: var(--color-primary); }
-.calc__yield { margin-top: 14px; background: var(--color-bg-warm); border-radius: var(--radius-md); padding: 12px 14px; text-align: center; }
-.calc__yield-label { font-size: .68rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-light); }
-.calc__yield-value { font-family: var(--font-display); font-size: 1.6rem; color: var(--color-primary); }
 
 /* ---- Nosotros v2: credencial + rol creativo ---- */
 .equipo-card__credencial { display: block; font-style: italic; font-size: .82rem; color: var(--color-text-secondary); margin-bottom: 8px; line-height: 1.4; }
@@ -3070,5 +3070,5 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 }
 @media (max-width: 560px) {
   .inv-steps { grid-template-columns: 1fr; }
-  .calc__scenarios, .calc__split { grid-template-columns: 1fr; }
+  .calc__scenarios { grid-template-columns: 1fr; }
 }

@@ -72,7 +72,7 @@
   <section class="inv-section">
     <div class="inv-section__inner">
       <p class="inv-section__eyebrow">El modelo</p>
-      <h2 class="inv-section__title">Compramos barato, transformamos y te lo entregamos operando.</h2>
+      <h2 class="inv-section__title">Compramos barato, transformamos y lo vendemos o te lo entregamos operando.</h2>
       <p class="inv-section__subtitle">Cuatro pasos. Uno solo para ti: decidir. El resto lo hacemos nosotros.</p>
 
       <!-- Tarjetas con flip 3D: hover en desktop, tap en móvil (clase .flip-card--flipped) -->
@@ -129,8 +129,97 @@
     </div>
   </section>
 
+  <!-- ========== BLOQUE C — CALCULADORA ========== -->
+  <section class="inv-section inv-section--warm" id="calculadora">
+    <div class="inv-section__inner">
+      <p class="inv-section__eyebrow">Calculadora</p>
+      <h2 class="inv-section__title">Arma tu proyecto y mira los números en vivo.</h2>
+      <p class="inv-section__subtitle">Mueve los controles. Todo se recalcula al instante — inversión, lo que tomamos nosotros, venta y renta.</p>
+
+      <div class="calc">
+        <!-- Inputs -->
+        <div class="calc__inputs">
+          <div class="calc__field">
+            <div class="calc__label">Valor de compra del inmueble <span class="calc__label-val" id="lbl-inmueble">$2,950,000</span></div>
+            <input type="range" class="calc__range" id="in-inmueble" min="800000" max="15000000" step="50000" value="2950000">
+          </div>
+          <div class="calc__field">
+            <div class="calc__label">Presupuesto de obra <span class="calc__label-val" id="lbl-obra">$1,050,000</span></div>
+            <input type="range" class="calc__range" id="in-obra" min="200000" max="8000000" step="50000" value="1050000">
+          </div>
+          <div class="calc__field">
+            <div class="calc__label">Duración del proyecto <span class="calc__label-val" id="lbl-meses">18 meses</span></div>
+            <input type="range" class="calc__range" id="in-meses" min="6" max="24" step="1" value="18">
+          </div>
+          <div class="calc__field">
+            <div class="calc__label">Precio de venta <span class="calc__label-val" id="lbl-venta">$7,500,000</span></div>
+            <input type="range" class="calc__range" id="in-venta" min="1000000" max="30000000" step="50000" value="7500000">
+          </div>
+          <div class="calc__field" style="margin-bottom:0;">
+            <div class="calc__label">Estructura</div>
+            <div class="calc__segmented" id="in-estructura">
+              <button class="calc__seg calc__seg--active" data-estructura="solo">1 inversionista</button>
+              <button class="calc__seg" data-estructura="grupo">2 a 3</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resultados -->
+        <div class="calc__results">
+          <!-- Estado de cuenta: cómo se arma tu inversión, línea por línea -->
+          <div class="calc__stmt">
+            <div class="calc__stmt-head">
+              <span class="calc__stmt-title">Tu inversión total</span>
+              <span class="calc__stmt-meses" id="o-meses"></span>
+            </div>
+            <div class="calc__wrow"><span class="calc__wl">Compra del inmueble</span><span class="calc__wv" id="s-compra">$0</span></div>
+            <div class="calc__wrow"><span class="calc__wl">Presupuesto de obra</span><span class="calc__wv" id="s-obra">$0</span></div>
+            <div class="calc__wrow calc__wrow--subtotal"><span class="calc__wl">El proyecto</span><span class="calc__wv" id="s-proyecto">$0</span></div>
+            <div class="calc__wrow calc__wrow--indent"><span class="calc__wl">Búsqueda &amp; Adquisición (<span id="s-adq-pct">3%</span>)<span class="calc__tag calc__tag--patrio">Patrio</span></span><span class="calc__wv" id="s-adq">$0</span></div>
+            <div class="calc__wrow calc__wrow--indent"><span class="calc__wl">Gestoría de obra (<span id="s-gestoria-pct">10%</span>)<span class="calc__tag calc__tag--patrio">Patrio</span></span><span class="calc__wv" id="s-gestoria">$0</span></div>
+            <div class="calc__wrow calc__wrow--indent"><span class="calc__wl">Notariales, ISAI y avalúo<span class="calc__tag calc__tag--costo">Al costo</span></span><span class="calc__wv" id="s-notariales">$0</span></div>
+            <div class="calc__wrow calc__wrow--indent" id="row-spv"><span class="calc__wl">Constitución de SPV<span class="calc__tag calc__tag--costo">Al costo</span></span><span class="calc__wv" id="s-spv">$0</span></div>
+            <div class="calc__wrow calc__wrow--total"><span class="calc__wl">Inversión all-in</span><span class="calc__wv" id="o-allin">$0</span></div>
+          </div>
+
+          <!-- Dos escenarios SIEMPRE visibles -->
+          <div class="calc__panels">
+            <div class="calc__panel calc__panel--vende">
+              <div class="calc__panel-head">Si vendes</div>
+              <div class="calc__panel-sub">Salida por venta del inmueble</div>
+              <div class="calc__hero">
+                <div class="calc__hero-value" id="o-utilidad">$0</div>
+                <div class="calc__hero-sub">Utilidad · <span id="o-rend-total">0%</span> total · <span id="o-rend-anual">0%</span></div>
+              </div>
+              <div class="calc__wrow"><span class="calc__wl">Valor de venta</span><span class="calc__wv" id="o-salida">$0</span></div>
+              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Inversión all-in</span><span class="calc__wv" id="o-allin-vende">$0</span></div>
+              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Fee de salida (<span id="o-feesalida-pct">3%</span>)<span class="calc__tag calc__tag--patrio">Patrio</span></span><span class="calc__wv" id="o-feesalida">$0</span></div>
+              <div class="calc__panel-sub" style="margin:12px 0 0;">Antes de impuestos.</div>
+            </div>
+
+            <div class="calc__panel calc__panel--renta">
+              <div class="calc__panel-head">Si rentas</div>
+              <div class="calc__panel-sub">Flujo mensual (vista del inversionista)</div>
+              <div class="calc__hero">
+                <div class="calc__hero-value"><span id="o-neto">$0</span>/mes</div>
+                <div class="calc__hero-sub">Ingreso neto · <span id="o-yield">0%</span> anual sobre costo</div>
+              </div>
+              <div class="calc__wrow"><span class="calc__wl">Renta bruta mensual</span><span class="calc__wv" id="o-renta">$0</span></div>
+              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Fee de administración (8%)<span class="calc__tag calc__tag--patrio">Patrio</span></span><span class="calc__wv" id="o-feeadmin">$0</span></div>
+              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Gastos operativos (~8%)</span><span class="calc__wv" id="o-opex">$0</span></div>
+              <div class="calc__wrow calc__wrow--minus" id="row-contador"><span class="calc__wl">Contador (SPV)</span><span class="calc__wv" id="o-contador">$0</span></div>
+              <div class="calc__panel-sub" style="margin:12px 0 0;">Renta estimada; la real sale de comparables del mercado por proyecto.</div>
+            </div>
+          </div>
+
+          <p class="calc__disclaimer">Cifras estimadas con fines ilustrativos. El rendimiento sobre costo es yield sobre la inversión (no cap rate). No constituye oferta ni garantía de rendimiento.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ========== BLOQUE B — ESTRUCTURAS + FEES ========== -->
-  <section class="inv-section inv-section--warm">
+  <section class="inv-section">
     <div class="inv-section__inner">
       <p class="inv-section__eyebrow">Estructura y fees</p>
       <h2 class="inv-section__title">Dos formas de entrar. Fees claros, sin letra chica.</h2>
@@ -168,19 +257,9 @@
               <td class="inv-tabla__hl">Contador mensual + mantenimiento de la persona moral.</td>
             </tr>
             <tr>
-              <th>Fee de gestoría</th>
-              <td>10% / 8% · piso $150K</td>
-              <td class="inv-tabla__hl">12% / 10% · piso $170K (+2 pts por coordinar socios y administrar el vehículo).</td>
-            </tr>
-            <tr>
               <th>Gobernanza</th>
               <td>Decides solo, ágil.</td>
               <td class="inv-tabla__hl">Reglas de la SPV (aportaciones, distribución, salida) en el acta.</td>
-            </tr>
-            <tr>
-              <th>Ticket por persona</th>
-              <td>Alto (cargas el 100%).</td>
-              <td class="inv-tabla__hl">Menor (se divide 2-3 formas).</td>
             </tr>
             <tr>
               <th>Ideal para</th>
@@ -191,8 +270,6 @@
         </table>
       </div>
 
-      <p class="inv-cierre">En grupo pagas más en total (estructura + fee más alto), pero tu ticket individual baja porque se reparte. Solo = simple y control total; grupo = menor entrada por persona.</p>
-
       <!-- Fee stack (resumen) -->
       <div class="inv-fees">
         <div class="inv-fees__row">
@@ -201,21 +278,21 @@
           <span class="inv-fees__cell">2 a 3 inversionistas</span>
         </div>
         <div class="inv-fees__row">
-          <span class="inv-fees__row-name">Adquisición</span>
-          <span class="inv-fees__cell" data-l="1 inversionista">2% del valor de compra</span>
-          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">2% del valor de compra</span>
+          <span class="inv-fees__row-name">Búsqueda &amp; Adquisición</span>
+          <span class="inv-fees__cell" data-l="1 inversionista">3% del valor de compra</span>
+          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">4% del valor de compra</span>
         </div>
         <div class="inv-fees__row">
           <span class="inv-fees__row-name">Gestoría
-            <small>Sobre el presupuesto de obra (construcción + remodelación + diseño + permisos). No incluye el precio de compra. Marginal por tramos; el piso aplica solo en Desarrollo (ver calculadora).</small>
+            <small>Sobre el presupuesto de obra (construcción + remodelación + diseño + permisos). No incluye el precio de compra.</small>
           </span>
-          <span class="inv-fees__cell" data-l="1 inversionista">10% hasta $2M · 8% del excedente <br>(piso $150,000 en Desarrollo)</span>
-          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">12% hasta $2M · 10% del excedente <br>(piso $170,000 en Desarrollo)</span>
+          <span class="inv-fees__cell" data-l="1 inversionista">10% del valor de la obra</span>
+          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">12% del valor de la obra</span>
         </div>
         <div class="inv-fees__row">
           <span class="inv-fees__row-name">Salida (venta)</span>
           <span class="inv-fees__cell" data-l="1 inversionista">3% del precio de venta</span>
-          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">3% del precio de venta</span>
+          <span class="inv-fees__cell" data-l="2 a 3 inversionistas">4% del precio de venta</span>
         </div>
         <div class="inv-fees__row">
           <span class="inv-fees__row-name">Administración (hold)</span>
@@ -223,6 +300,8 @@
           <span class="inv-fees__cell" data-l="2 a 3 inversionistas">8% de la renta mensual cobrada</span>
         </div>
       </div>
+
+      <p class="inv-cierre">En grupo pagas más en total (estructura + fee más alto), pero tu ticket individual baja porque se reparte. Solo = simple y control total; grupo = menor entrada por persona.</p>
 
       <!-- Costos de estructura y cierre (antes "pass-through") -->
       <h3 class="inv-costos-titulo">Costos de estructura y cierre</h3>
@@ -243,129 +322,6 @@
         <div class="inv-costo">
           <div class="inv-costo__name">Asesoría legal</div>
           <div class="inv-costo__note">Revisión de contratos y del acta (en grupo).</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ========== BLOQUE C — CALCULADORA ========== -->
-  <section class="inv-section" id="calculadora">
-    <div class="inv-section__inner">
-      <p class="inv-section__eyebrow">Calculadora</p>
-      <h2 class="inv-section__title">Arma tu proyecto y mira los números en vivo.</h2>
-      <p class="inv-section__subtitle">Mueve los controles. Todo se recalcula al instante — inversión, lo que tomamos nosotros, venta y renta.</p>
-
-      <div class="calc">
-        <!-- Inputs -->
-        <div class="calc__inputs">
-          <div class="calc__field calc__typetoggle">
-            <div class="calc__label">Tipo de proyecto</div>
-            <div class="calc__segmented" id="in-tipo">
-              <button class="calc__seg calc__seg--active" data-tipo="desarrollo">Desarrollo</button>
-              <button class="calc__seg" data-tipo="flip">Flip</button>
-            </div>
-          </div>
-          <div class="calc__field">
-            <div class="calc__label">Valor de compra del inmueble <span class="calc__label-val" id="lbl-inmueble">$2,950,000</span></div>
-            <input type="range" class="calc__range" id="in-inmueble" min="800000" max="15000000" step="50000" value="2950000">
-          </div>
-          <div class="calc__field">
-            <div class="calc__label">Presupuesto de obra <span class="calc__label-val" id="lbl-obra">$1,050,000</span></div>
-            <input type="range" class="calc__range" id="in-obra" min="200000" max="8000000" step="50000" value="1050000">
-          </div>
-          <div class="calc__field">
-            <div class="calc__label">Duración del proyecto <span class="calc__label-val" id="lbl-meses">18 meses</span></div>
-            <input type="range" class="calc__range" id="in-meses" min="6" max="24" step="1" value="18">
-          </div>
-          <div class="calc__field">
-            <div class="calc__label">Uso de suelo comercial</div>
-            <div class="calc__toggle">
-              <label class="calc__switch">
-                <input type="checkbox" id="in-comercial">
-                <span class="calc__switch-track"></span>
-              </label>
-              <span style="font-size:.88rem;color:var(--color-text-secondary);">Sube el costo de adquisición</span>
-            </div>
-          </div>
-          <div class="calc__field" style="margin-bottom:0;">
-            <div class="calc__label">Estructura</div>
-            <div class="calc__segmented" id="in-estructura">
-              <button class="calc__seg calc__seg--active" data-estructura="solo">1 inversionista</button>
-              <button class="calc__seg" data-estructura="grupo">2 a 3</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Resultados -->
-        <div class="calc__results">
-          <div class="calc__allin">
-            <div class="calc__allin-label">Inversión all-in del inversionista <span id="o-meses" style="color:#9B9B98;font-weight:400;"></span></div>
-            <div class="calc__allin-value" id="o-allin">$0</div>
-          </div>
-
-          <div class="calc__split">
-            <div class="calc__split-card calc__split-card--fees">
-              <div class="calc__split-label">Lo que tomamos nosotros (fees)</div>
-              <div class="calc__split-value" id="o-fees">$0</div>
-              <div class="calc__split-detail" id="o-fees-detail"></div>
-            </div>
-            <div class="calc__split-card calc__split-card--costs">
-              <div class="calc__split-label">Costos de estructura y cierre</div>
-              <div class="calc__split-value" id="o-costs">$0</div>
-              <div class="calc__split-detail" id="o-costs-detail"></div>
-            </div>
-          </div>
-
-          <!-- Dos paneles SIEMPRE visibles -->
-          <div class="calc__panels">
-            <div class="calc__panel calc__panel--vende">
-              <div class="calc__panel-head">Si vendes</div>
-              <div class="calc__panel-sub">Salida por venta del inmueble</div>
-              <div class="calc__wrow"><span class="calc__wl">Valor de venta</span><span class="calc__wv" id="o-salida">$0</span></div>
-              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Fee de salida (3%)</span><span class="calc__wv" id="o-feesalida">$0</span></div>
-              <div class="calc__wrow calc__wrow--total"><span class="calc__wl">Utilidad del inversionista</span><span class="calc__wv" id="o-utilidad">$0</span></div>
-              <div class="calc__wrow"><span class="calc__wl">Rendimiento total</span><span class="calc__wv" id="o-rend-total">0%</span></div>
-              <div class="calc__wrow"><span class="calc__wl">Rendimiento anualizado</span><span class="calc__wv" id="o-rend-anual">0%</span></div>
-              <div class="calc__panel-sub" style="margin:12px 0 0;">Antes de impuestos. Fees a nosotros: adquisición + gestoría + salida.</div>
-            </div>
-
-            <div class="calc__panel calc__panel--renta">
-              <div class="calc__panel-head">Si rentas</div>
-              <div class="calc__panel-sub">Flujo mensual (vista del inversionista)</div>
-              <div class="calc__wrow"><span class="calc__wl">Renta bruta mensual</span><span class="calc__wv" id="o-renta">$0</span></div>
-              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Fee de administración (8%)</span><span class="calc__wv" id="o-feeadmin">$0</span></div>
-              <div class="calc__wrow calc__wrow--minus"><span class="calc__wl">Gastos operativos (~8%)</span><span class="calc__wv" id="o-opex">$0</span></div>
-              <div class="calc__wrow calc__wrow--minus" id="row-contador"><span class="calc__wl">Contador (SPV)</span><span class="calc__wv" id="o-contador">$0</span></div>
-              <div class="calc__wrow calc__wrow--total"><span class="calc__wl">Ingreso neto mensual</span><span class="calc__wv" id="o-neto">$0</span></div>
-              <div class="calc__yield">
-                <div class="calc__yield-label">Rendimiento sobre costo (neto)</div>
-                <div class="calc__yield-value" id="o-yield">0%</div>
-              </div>
-              <div class="calc__panel-sub" style="margin:12px 0 0;">Renta estimada; la real sale de comparables del mercado por proyecto.</div>
-            </div>
-          </div>
-
-          <p class="calc__disclaimer">Cifras estimadas con fines ilustrativos. El rendimiento sobre costo es yield sobre la inversión (no cap rate). No constituye oferta ni garantía de rendimiento.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ========== BLOQUE D — CIERRE PORTAL ========== -->
-  <section class="inv-section inv-section--warm">
-    <div class="inv-section__inner">
-      <div class="inv-portal">
-        <div class="inv-portal__shot">
-          <img src="assets/Screenshotdeportal.png" alt="Portal del Propietario — Edificio UNO" loading="lazy">
-        </div>
-        <div>
-          <p class="inv-section__eyebrow" style="text-align:left;">Cada inversionista recibe su propio portal</p>
-          <h2 class="inv-portal__title">Tu inversión, en vivo, cada mes.</h2>
-          <p class="inv-portal__text">Ves tus ingresos, gastos, utilidad, ocupación y cap rate — en vivo, cada mes, sin perseguir a nadie.</p>
-          <a href="https://patrio-ten.vercel.app/edificio-uno" target="_blank" rel="noopener" class="btn-primary">
-            Ver portal en vivo
-            <i data-lucide="arrow-up-right" style="width:18px;height:18px;"></i>
-          </a>
         </div>
       </div>
     </div>
@@ -1916,74 +1872,61 @@
   // ====== CONSTANTES EDITABLES ======
   // NOTA: los multiplicadores/porcentajes son PLACEHOLDERS con lo que hay hoy.
   //       Louis dará cifras reales después. Ajustar aquí.
-  const MULT_VALOR_FLIP        = 1.3;   // [PLACEHOLDER] venta ≈ 1.3x la inversión total
-  const MULT_VALOR_DESARROLLO  = 1.7;   // [PLACEHOLDER, conservador] venta ≈ 1.7x la inversión total
   const RENTA_PCT_MENSUAL      = 0.013; // [PLACEHOLDER] renta mensual ≈ 1.3% de (inmueble + obra)
   const OPEX_PCT               = 0.08;  // [PLACEHOLDER] gastos operativos ≈ 8% de la renta bruta
 
   // Fees Patrio (confirmados en el brief)
-  const FEE_ADQUISICION_PCT = 0.02;   // 2% del valor de compra
-  const FEE_SALIDA_PCT      = 0.03;   // 3% del precio de venta
+  // Búsqueda & Adquisición (% del valor de compra) y Salida (% del precio de venta), por estructura
+  const FEE_ADQUISICION_PCT = { solo: 0.03, grupo: 0.04 };
+  const FEE_SALIDA_PCT      = { solo: 0.03, grupo: 0.04 };
   const FEE_ADMIN_PCT       = 0.08;   // 8% de la renta mensual cobrada
 
-  // Gestoría marginal por tramos (base = presupuesto de obra, NO incluye compra).
-  // Piso SOLO en Desarrollo; en Flip sin piso.
-  const GESTORIA_TRAMO = 2000000;
+  // Gestoría plana (base = presupuesto de obra, NO incluye compra).
   const GESTORIA = {
-    solo:  { pct1: 0.10, pct2: 0.08, piso: 150000 },
-    grupo: { pct1: 0.12, pct2: 0.10, piso: 170000 },
+    solo:  { pct: 0.10 },
+    grupo: { pct: 0.12 },
   };
 
   // Costos de estructura y cierre
   const NOTARIALES_PCT = 0.065;  // notariales + ISAI + avalúo. Fuente refigan: acquisitionCostPct = 0.065
   const SPV_COSTO      = 90000;  // Constitución de SPV, una sola vez (solo grupo). Brief de Louis.
   const CONTADOR_MENSUAL = 3500; // [PLACEHOLDER] contador mensual de la SPV (solo grupo). No está en refigan — CONFIRMAR.
-  // [PLACEHOLDER] recargo por uso de suelo comercial. No está en refigan — CONFIRMAR con Louis.
-  const COMERCIAL_RECARGO_PCT = 0.02;
 
   // ====== HELPERS ======
   const fmt = n => '$' + Math.round(n).toLocaleString('es-MX');
   const pct = n => (n * 100).toFixed(1) + '%';
 
-  // Gestoría marginal por tramos (garantiza monotonía: más obra nunca paga menos fee)
-  function gestoria(obra, estructura, tipo) {
-    const t = GESTORIA[estructura];
-    const base = obra <= GESTORIA_TRAMO
-      ? obra * t.pct1
-      : GESTORIA_TRAMO * t.pct1 + (obra - GESTORIA_TRAMO) * t.pct2;
-    return tipo === 'desarrollo' ? Math.max(base, t.piso) : base; // piso solo en Desarrollo
+  function gestoria(obra, estructura) {
+    return obra * GESTORIA[estructura].pct;
   }
 
   // ====== ESTADO + BINDINGS ======
   const el = id => document.getElementById(id);
   let estructura = 'solo';
-  let tipo = 'desarrollo';
 
   function recalcular() {
     const inmueble  = +el('in-inmueble').value;
     const obra      = +el('in-obra').value;
     const meses     = +el('in-meses').value;
-    const comercial = el('in-comercial').checked;
+    const venta     = +el('in-venta').value;
     const grupo     = estructura === 'grupo';
 
     // Fees upfront (nuestro ingreso): adquisición + gestoría
-    const feeAdquisicion = inmueble * FEE_ADQUISICION_PCT;
-    const feeGestoria    = gestoria(obra, estructura, tipo);
+    const feeAdquisicion = inmueble * FEE_ADQUISICION_PCT[estructura];
+    const feeGestoria    = gestoria(obra, estructura);
     const feesUpfront    = feeAdquisicion + feeGestoria;
 
     // Costos de estructura y cierre (al costo)
-    const notariales       = inmueble * NOTARIALES_PCT;
-    const comercialRecargo = comercial ? inmueble * COMERCIAL_RECARGO_PCT : 0;
-    const spv              = grupo ? SPV_COSTO : 0;
-    const costosCierre     = notariales + comercialRecargo + spv;
+    const notariales   = inmueble * NOTARIALES_PCT;
+    const spv          = grupo ? SPV_COSTO : 0;
+    const costosCierre = notariales + spv;
 
     // Inversión all-in
     const inversionAllIn = inmueble + obra + feesUpfront + costosCierre;
 
     // ===== SI VENDES =====
-    const mult        = tipo === 'flip' ? MULT_VALOR_FLIP : MULT_VALOR_DESARROLLO;
-    const valorVenta  = inversionAllIn * mult;
-    const feeSalida   = valorVenta * FEE_SALIDA_PCT;
+    const valorVenta  = venta;
+    const feeSalida   = valorVenta * FEE_SALIDA_PCT[estructura];
     const utilidad    = valorVenta - inversionAllIn - feeSalida; // antes de impuestos
     const rendTotal   = utilidad / inversionAllIn;
     const rendAnual   = Math.pow(1 + rendTotal, 12 / meses) - 1;
@@ -1999,37 +1942,44 @@
     // ===== RENDER =====
     el('lbl-inmueble').textContent = fmt(inmueble);
     el('lbl-obra').textContent = fmt(obra);
+    el('lbl-venta').textContent = fmt(venta);
     el('lbl-meses').textContent = meses + ' meses';
-    el('o-meses').textContent = ' · ' + meses + ' meses';
+    el('o-meses').textContent = meses + ' meses';
 
+    // Estado de cuenta
+    el('s-compra').textContent = fmt(inmueble);
+    el('s-obra').textContent = fmt(obra);
+    el('s-proyecto').textContent = fmt(inmueble + obra);
+    el('s-adq-pct').textContent = (FEE_ADQUISICION_PCT[estructura] * 100) + '%';
+    el('s-adq').textContent = fmt(feeAdquisicion);
+    el('s-gestoria-pct').textContent = (GESTORIA[estructura].pct * 100) + '%';
+    el('s-gestoria').textContent = fmt(feeGestoria);
+    el('s-notariales').textContent = fmt(notariales);
+    el('row-spv').style.display = grupo ? '' : 'none';
+    el('s-spv').textContent = fmt(spv);
     el('o-allin').textContent = fmt(inversionAllIn);
-    el('o-fees').textContent = fmt(feesUpfront);
-    el('o-fees-detail').textContent = `Adquisición ${fmt(feeAdquisicion)} · Gestoría ${fmt(feeGestoria)}`;
-    el('o-costs').textContent = fmt(costosCierre);
-    el('o-costs-detail').textContent = `Notariales ${fmt(notariales)}` +
-      (comercialRecargo ? ` · Comercial ${fmt(comercialRecargo)}` : '') +
-      (spv ? ` · SPV ${fmt(spv)}` : '');
 
     // Vende
-    el('o-salida').textContent = fmt(valorVenta);
-    el('o-feesalida').textContent = '− ' + fmt(feeSalida);
     el('o-utilidad').textContent = fmt(utilidad);
     el('o-rend-total').textContent = pct(rendTotal);
     el('o-rend-anual').textContent = pct(rendAnual) + '/año';
+    el('o-salida').textContent = fmt(valorVenta);
+    el('o-allin-vende').textContent = '− ' + fmt(inversionAllIn);
+    el('o-feesalida-pct').textContent = (FEE_SALIDA_PCT[estructura] * 100) + '%';
+    el('o-feesalida').textContent = '− ' + fmt(feeSalida);
 
     // Renta
+    el('o-neto').textContent = fmt(netoMensual);
+    el('o-yield').textContent = pct(yieldNeto);
     el('o-renta').textContent = fmt(rentaBruta);
     el('o-feeadmin').textContent = '− ' + fmt(feeAdmin);
     el('o-opex').textContent = '− ' + fmt(opex);
     el('o-contador').textContent = '− ' + fmt(contador);
     el('row-contador').style.display = grupo ? '' : 'none';
-    el('o-neto').textContent = fmt(netoMensual);
-    el('o-yield').textContent = pct(yieldNeto);
   }
 
   // Sliders / toggles
-  ['in-inmueble', 'in-obra', 'in-meses'].forEach(id => el(id).addEventListener('input', recalcular));
-  el('in-comercial').addEventListener('change', recalcular);
+  ['in-inmueble', 'in-obra', 'in-meses', 'in-venta'].forEach(id => el(id).addEventListener('input', recalcular));
 
   function bindSegmented(containerId, apply) {
     document.querySelectorAll('#' + containerId + ' .calc__seg').forEach(seg => {
@@ -2041,14 +1991,9 @@
       });
     });
   }
-  bindSegmented('in-tipo', d => {
-    tipo = d.tipo;
-    // Al cambiar de tipo, ajusta la duración default: Desarrollo 18m (toman 12-24), Flip 8m (más corto).
-    el('in-meses').value = tipo === 'flip' ? 8 : 18;
-  });
   bindSegmented('in-estructura', d => { estructura = d.estructura; });
 
-  recalcular(); // precarga default: Esquina Pastel, Desarrollo, 1 inversionista, 18 meses
+  recalcular(); // precarga default: Esquina Pastel, 1 inversionista, 18 meses
   </script>
 
   <script>
