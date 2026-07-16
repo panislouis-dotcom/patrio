@@ -55,17 +55,13 @@
   <!-- ========== HERO INVERTIR (video de fondo) ========== -->
   <header class="inv-hero">
     <!-- Video corre offline. .mp4 (H.264) para autoplay confiable; .mov como fallback. -->
-    <video class="inv-hero__bg" autoplay loop muted playsinline disablepictureinpicture>
+    <video class="inv-hero__bg" autoplay loop muted playsinline preload="auto" poster="assets/edificiouno-transform-poster.jpg" disablepictureinpicture>
       <source src="assets/edificiouno-transform.mp4" type="video/mp4">
       <source src="assets/edificiouno-transform.mov" type="video/quicktime">
     </video>
     <p class="inv-hero__eyebrow">Invertir con PATRIO</p>
     <h1 class="inv-hero__title">Pagas por un inmueble. Te llevas dos: el doble de valor y renta cada mes.</h1>
-    <p class="inv-hero__subtitle">Tú eres dueño de todo. Nosotros lo hacemos de inicio a fin.</p>
-    <a href="#calculadora" class="btn-primary">
-      Calcular mi proyecto
-      <i data-lucide="arrow-down" style="width:18px;height:18px;"></i>
-    </a>
+    <p class="inv-hero__subtitle">Tú eres dueño de todo. Nosotros lo hacemos realidad, de principio a fin.</p>
   </header>
 
   <!-- ========== BLOQUE A — MODELO ========== -->
@@ -239,7 +235,7 @@
             <tr>
               <th>Vehículo legal</th>
               <td>A tu nombre o de tu entidad existente. Sin estructura nueva.</td>
-              <td class="inv-tabla__hl">Persona moral (SPV) constituida específicamente para el proyecto.</td>
+              <td class="inv-tabla__hl">Persona moral (SPV = sociedad creada solo para este proyecto).</td>
             </tr>
             <tr>
               <th>Propiedad del activo</th>
@@ -249,7 +245,7 @@
             <tr>
               <th>Costo de constitución</th>
               <td>Ninguno adicional.</td>
-              <td class="inv-tabla__hl">~$90,000 una vez (acta, notario, RFC, alta SAT).</td>
+              <td class="inv-tabla__hl">~$100,000 una vez, puede reducirse (acta, notario, RFC, alta SAT).</td>
             </tr>
             <tr>
               <th>Costo recurrente</th>
@@ -284,7 +280,7 @@
         </div>
         <div class="inv-fees__row">
           <span class="inv-fees__row-name">Gestoría
-            <small>Sobre el presupuesto de obra (construcción + remodelación + diseño + permisos). No incluye el precio de compra.</small>
+            <small>El fee de gestoría se calcula sobre el presupuesto de obra —lo que cuesta remodelar o construir—, no sobre el valor del inmueble. Lo definimos desde el inicio y lo trabajamos como propio: nos enfocamos en ejecutar y generar ahorros, sin sorpresas.</small>
           </span>
           <span class="inv-fees__cell" data-l="1 inversionista">10% del valor de la obra</span>
           <span class="inv-fees__cell" data-l="2 a 3 inversionistas">12% del valor de la obra</span>
@@ -301,11 +297,11 @@
         </div>
       </div>
 
-      <p class="inv-cierre">En grupo pagas más en total (estructura + fee más alto), pero tu ticket individual baja porque se reparte. Solo = simple y control total; grupo = menor entrada por persona.</p>
+      <p class="inv-cierre">En grupo pagas más en total (estructura + fee más alto), pero tu ticket individual baja porque se reparte entre 2-3. Solo = simple y control total; grupo = capital y riesgo compartidos.</p>
 
       <!-- Costos de estructura y cierre (antes "pass-through") -->
       <h3 class="inv-costos-titulo">Costos de estructura y cierre</h3>
-      <p class="inv-costos-sub">Los pagas al costo, cero comisión nuestra. (El contador es mensual y va en el escenario de renta, no aquí.)</p>
+      <p class="inv-costos-sub">Los pagas al costo, cero comisión nuestra.</p>
       <div class="inv-costos-grid">
         <div class="inv-costo">
           <div class="inv-costo__name">Notariales</div>
@@ -317,13 +313,14 @@
         </div>
         <div class="inv-costo">
           <div class="inv-costo__name">Constitución de SPV</div>
-          <div class="inv-costo__note">Solo en grupo. ~$90,000 una vez.</div>
+          <div class="inv-costo__note">Solo en grupo. ~$100,000 una vez, puede reducirse.</div>
         </div>
         <div class="inv-costo">
           <div class="inv-costo__name">Asesoría legal</div>
           <div class="inv-costo__note">Revisión de contratos y del acta (en grupo).</div>
         </div>
       </div>
+      <p class="inv-cierre">Los costos notariales son tuyos y tú decides: usa a nuestros notarios de confianza (rápidos y con buen precio) o trae el tuyo. Como todo queda a tu nombre, la elección es tuya.</p>
     </div>
   </section>
 
@@ -1889,7 +1886,7 @@
 
   // Costos de estructura y cierre
   const NOTARIALES_PCT = 0.065;  // notariales + ISAI + avalúo. Fuente refigan: acquisitionCostPct = 0.065
-  const SPV_COSTO      = 90000;  // Constitución de SPV, una sola vez (solo grupo). Brief de Louis.
+  const SPV_COSTO      = 100000;  // Constitución de SPV, una sola vez (solo grupo). ~$100K, puede reducirse. Brief de Louis.
   const CONTADOR_MENSUAL = 3500; // [PLACEHOLDER] contador mensual de la SPV (solo grupo). No está en refigan — CONFIRMAR.
 
   // ====== HELPERS ======
@@ -2005,11 +2002,19 @@
       });
     });
 
-    // Forzar autoplay del video del hero (Chrome bloquea autoplay a veces aunque esté muted)
-    document.querySelectorAll('video[autoplay]').forEach(v => {
-      v.muted = true; v.playsInline = true;
-      const p = v.play(); if (p && p.catch) p.catch(() => {});
-    });
+    // Autoplay robusto del video del hero (Chrome a veces bloquea autoplay aunque esté muted)
+    (function () {
+      const vids = document.querySelectorAll('video[autoplay]');
+      const forcePlay = v => { v.muted = true; v.playsInline = true; const p = v.play(); if (p && p.catch) p.catch(() => {}); };
+      vids.forEach(v => {
+        v.muted = true;
+        if (v.readyState >= 2) forcePlay(v);
+        v.addEventListener('loadeddata', () => forcePlay(v), { once: true });
+        v.addEventListener('canplay', () => forcePlay(v), { once: true });
+      });
+      const kick = () => vids.forEach(forcePlay);
+      ['click', 'scroll', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, kick, { once: true, passive: true }));
+    })();
   </script>
 </body>
 </html>
