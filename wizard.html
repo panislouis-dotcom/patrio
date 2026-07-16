@@ -136,20 +136,20 @@
         <!-- Inputs -->
         <div class="calc__inputs">
           <div class="calc__field">
-            <div class="calc__label">Valor de compra del inmueble <span class="calc__label-val" id="lbl-inmueble">$2,950,000</span></div>
-            <input type="range" class="calc__range" id="in-inmueble" min="800000" max="15000000" step="50000" value="2950000">
+            <div class="calc__label">Valor de compra del inmueble <span class="calc__label-val" id="lbl-inmueble">$2,500,000</span></div>
+            <input type="range" class="calc__range" id="in-inmueble" min="800000" max="15000000" step="50000" value="2500000">
           </div>
           <div class="calc__field">
-            <div class="calc__label">Presupuesto de obra <span class="calc__label-val" id="lbl-obra">$1,050,000</span></div>
-            <input type="range" class="calc__range" id="in-obra" min="200000" max="8000000" step="50000" value="1050000">
+            <div class="calc__label">Presupuesto de obra <span class="calc__label-val" id="lbl-obra">$400,000</span></div>
+            <input type="range" class="calc__range" id="in-obra" min="200000" max="8000000" step="50000" value="400000">
           </div>
           <div class="calc__field">
-            <div class="calc__label">Duración del proyecto <span class="calc__label-val" id="lbl-meses">18 meses</span></div>
-            <input type="range" class="calc__range" id="in-meses" min="6" max="24" step="1" value="18">
+            <div class="calc__label">Duración del proyecto <span class="calc__label-val" id="lbl-meses">8 meses</span></div>
+            <input type="range" class="calc__range" id="in-meses" min="6" max="24" step="1" value="8">
           </div>
           <div class="calc__field">
-            <div class="calc__label">Precio de venta <span class="calc__label-val" id="lbl-venta">$7,500,000</span></div>
-            <input type="range" class="calc__range" id="in-venta" min="1000000" max="30000000" step="50000" value="7500000">
+            <div class="calc__label">Precio de venta <span class="calc__label-val" id="lbl-venta">$3,700,000</span></div>
+            <input type="range" class="calc__range" id="in-venta" min="1000000" max="30000000" step="50000" value="3700000">
           </div>
           <div class="calc__field" style="margin-bottom:0;">
             <div class="calc__label">Estructura</div>
@@ -1990,7 +1990,7 @@
   }
   bindSegmented('in-estructura', d => { estructura = d.estructura; });
 
-  recalcular(); // precarga default: Esquina Pastel, 1 inversionista, 18 meses
+  recalcular(); // precarga default: 1 inversionista, 8 meses
   </script>
 
   <script>
