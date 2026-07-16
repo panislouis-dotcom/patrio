@@ -5,6 +5,8 @@
 # Herramientas de preview (Playwright + node_modules)
 .preview-tools/
 node_modules/
+.playwright-mcp/
+.superpowers/
 
 # Material de trabajo pesado / carpetas ajenas al sitio (no versionar aquí).
 # Anclado a la raíz con "/" para NO ignorar assets/proyectos (fotos reales del sitio).
