@@ -875,6 +875,11 @@ button {
   line-height: 1.1;
   margin-bottom: 4px;
 }
+/* Cuando el título de la tarjeta es el NOMBRE del proyecto (no una cifra) */
+.caso-card__number--nombre {
+  font-size: 26px;
+  color: var(--color-text);
+}
 
 .caso-card__label {
   display: block;

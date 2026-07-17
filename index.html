@@ -455,13 +455,13 @@
 
         <div class="caso-card caso-card--clickable" id="caso-inmobiliario-01" data-category="inmobiliario" role="button" tabindex="0" data-title="Edificio UNO — uso mixto" data-portal="1" data-proyecto="edificio-uno">
           <div class="caso-card__img">
-            <img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600&q=80" alt="Edificio uso mixto Monterrey" loading="lazy">
+            <img src="assets/proyectos/edificio-uno/despues-01.jpg" alt="Edificio UNO — uso mixto (después)" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
             <span class="caso-card__city">Monterrey</span>
           </div>
           <div class="caso-card__body">
-            <div class="caso-card__number">$19,000,000</div>
-            <span class="caso-card__label">valor actual del inmueble</span>
+            <div class="caso-card__number caso-card__number--nombre">Edificio UNO</div>
+            <span class="caso-card__label">Uso mixto · 13 unidades · hoy vale $19M</span>
             <!-- Cifras alineadas a refigan (seed_edificio_uno): inversión $9.5M, valor $19M, 13 unidades. -->
             <p class="caso-card__desc">Edificio comercial convertido a uso mixto, 13 unidades. Inversión de $9.5M que hoy vale $19M.</p>
           </div>
@@ -469,13 +469,13 @@
 
         <div class="caso-card caso-card--clickable" id="caso-inmobiliario-02" data-category="inmobiliario" role="button" tabindex="0" data-title="Esquina Pastel — usos mixtos" data-proyecto="esquina-pastel">
           <div class="caso-card__img">
-            <img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600&q=80" alt="Esquina Pastel — proyecto de usos mixtos" loading="lazy">
+            <img src="assets/proyectos/esquina-pastel/antes-01.jpg" alt="Esquina Pastel — usos mixtos (antes)" loading="lazy">
             <span class="caso-card__badge caso-card__badge--inmobiliario">Inmobiliario</span>
             <span class="caso-card__city">Monterrey</span>
           </div>
           <div class="caso-card__body">
-            <div class="caso-card__number">$4M</div>
-            <span class="caso-card__label">inversión — en desarrollo</span>
+            <div class="caso-card__number caso-card__number--nombre">Esquina Pastel</div>
+            <span class="caso-card__label">Usos mixtos · en desarrollo</span>
             <p class="caso-card__desc">Esquina Pastel: proyecto de usos mixtos en esquina — comercial en planta baja y vivienda arriba. Actualmente en desarrollo.</p>
           </div>
         </div>
@@ -487,8 +487,8 @@
             <span class="caso-card__city">Monterrey</span>
           </div>
           <div class="caso-card__body">
-            <div class="caso-card__number">415</div>
-            <span class="caso-card__label">Casa Modesto — Centro, Monterrey</span>
+            <div class="caso-card__number caso-card__number--nombre">Casa Modesto 415</div>
+            <span class="caso-card__label">Casa remodelada · Centro, Monterrey</span>
             <p class="caso-card__desc">Casa intervenida de principio a fin — fachada, interiores y azotea. Ábrela para ver la galería del después.</p>
           </div>
         </div>
@@ -868,14 +868,23 @@
 
     // Media por proyecto (Antes / Después). Casa Modesto 415: fotos + videos del "después".
     const CASA_BASE = 'assets/proyectos/casa-modesto-415/';
-    const casaAntes = [1, 2, 3].map(n => ({ img: CASA_BASE + 'antes-' + String(n).padStart(2, '0') + '.jpg' }));
+    const casaAntes = [1, 2, 3, 4].map(n => ({ img: CASA_BASE + 'antes-' + String(n).padStart(2, '0') + '.jpg' }));
     const casaDespues = [];
     for (let i = 1; i <= 19; i++) casaDespues.push({ img: CASA_BASE + 'despues-' + String(i).padStart(2, '0') + '.jpeg' });
     [1, 2, 3].forEach(n => casaDespues.push({ video: CASA_BASE + 'video-' + String(n).padStart(2, '0') + '.mp4' }));
+    // Edificio UNO: 7 fotos del antes; 13 fotos del después + el video "transform" (antes→después) al final.
+    const EDIF_BASE = 'assets/proyectos/edificio-uno/';
+    const edifAntes = [1, 2, 3, 4, 5, 6, 7].map(n => ({ img: EDIF_BASE + 'antes-' + String(n).padStart(2, '0') + '.jpg' }));
+    const edifDespues = [];
+    for (let i = 1; i <= 13; i++) edifDespues.push({ img: EDIF_BASE + 'despues-' + String(i).padStart(2, '0') + '.jpg' });
+    edifDespues.push({ video: 'assets/edificiouno-transform.mp4' });
+    // Esquina Pastel: 9 fotos del antes (en desarrollo, sin después aún).
+    const ESQ_BASE = 'assets/proyectos/esquina-pastel/';
+    const esqAntes = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ img: ESQ_BASE + 'antes-' + String(n).padStart(2, '0') + '.jpg' }));
     const PROYECTO_MEDIA = {
-      'edificio-uno':     { antes: [], despues: [] }, // contenedor listo — Louis agrega fotos reales
+      'edificio-uno':     { antes: edifAntes, despues: edifDespues },
       'casa-modesto-415': { antes: casaAntes, despues: casaDespues },
-      'esquina-pastel':   { antes: [], despues: [] },
+      'esquina-pastel':   { antes: esqAntes, despues: [] },
     };
 
     function renderSection(titulo, items, kind) {
