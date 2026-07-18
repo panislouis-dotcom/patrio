@@ -210,7 +210,7 @@ strong {{
   break-inside: avoid;
 }}
 .summary-table tr {{
-  border-bottom: 1px solid rgba(26,35,25,0.08);
+  border-bottom: 1px solid rgba(26,26,26,0.08);
 }}
 .summary-table tr:last-child {{
   border-bottom: none;
@@ -249,7 +249,7 @@ strong {{
   text-transform: uppercase;
   color: #6B6B6B;
   padding: 8px 12px 8px 0;
-  border-bottom: 1px solid rgba(26,35,25,0.15);
+  border-bottom: 1px solid rgba(26,26,26,0.15);
   text-align: left;
 }}
 .scenario-table td {{
@@ -257,7 +257,7 @@ strong {{
   font-size: 9.5pt;
   color: #1A1A1A;
   padding: 10px 12px 10px 0;
-  border-bottom: 1px solid rgba(26,35,25,0.07);
+  border-bottom: 1px solid rgba(26,26,26,0.07);
 }}
 .scenario-table .num {{
   font-family: 'Inter', sans-serif;
