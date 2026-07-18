@@ -17,10 +17,11 @@ services:
 
   migrate:
     image: ghcr.io/amacneil/dbmate:latest
+    command: ["--no-dump-schema", "--migrations-dir", "/db/migrations", "up"]
     volumes:
       - ./db:/db
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
     depends_on:
       db:
         condition: service_healthy
