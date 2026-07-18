@@ -6,8 +6,8 @@ colors:
   tertiary: "#A16A3C"
   accent1: "#8C6D87"
   accent2: "#697692"
-  neutral: "#1A1A1A"
-  dark: "#FFFFFF"
+  neutral: "#F2F0EB"
+  dark: "#1A1A1A"
 typography:
   h1:
     fontFamily: Playfair Display
@@ -50,8 +50,8 @@ warm clay and slate as secondary accents.
 - **Tertiary (#A16A3C):** Muted terracotta — the signature accent. CTAs, section bands, key numbers.
 - **Accent1 (#8C6D87):** Muted mauve — for contrast moments, badges, secondary CTAs.
 - **Accent2 (#697692):** Muted slate — for data highlights, links, secondary indicators.
-- **Neutral (#1A1A1A):** Near-black — primary body text on light backgrounds.
-- **Dark (#FFFFFF):** Pure white — the page foundation.
+- **Neutral (#F2F0EB):** Pale linen — the page foundation.
+- **Dark (#1A1A1A):** Near-black ink — cover, footer, and body text on light backgrounds.
 
 ## Typography
 
