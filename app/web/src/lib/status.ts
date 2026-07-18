@@ -4,7 +4,7 @@ import { colors } from './theme'
 export const PROSPECT_STATUS_COLOR: Record<string, string> = {
   evaluating: colors.tertiary,
   passed: colors.primary,
-  converted: '#654F6F',
+  converted: colors.accent1,
 }
 
 export const PROSPECT_STATUS_LABEL: Record<string, string> = {
@@ -16,7 +16,7 @@ export const PROSPECT_STATUS_LABEL: Record<string, string> = {
 // Project statuses (used in ProjectsTab, ProjectDetailPage)
 export const PROJECT_STATUS_COLOR: Record<string, string> = {
   construction: '#D4891A',
-  stabilizing: '#654F6F',
+  stabilizing: colors.accent1,
   operating: colors.primary,
   exited: colors.secondary,
 }
