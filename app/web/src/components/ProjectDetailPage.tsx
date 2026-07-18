@@ -261,7 +261,7 @@ export function ProjectDetailPage() {
     </div>
   )
 
-  const barColors = [colors.primary, '#654F6F', '#5C5D8D', colors.tertiary, colors.secondary]
+  const barColors = [colors.primary, colors.accent1, colors.accent2, colors.tertiary, colors.secondary]
 
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
@@ -826,7 +826,7 @@ export function ProjectDetailPage() {
                                   {(() => {
                                     const paid = pi.returnAmount ?? 0
                                     const estado = paid <= 0 ? 'PENDIENTE' : paid >= pi.expectedReturn ? 'LIQUIDADO' : 'PARCIAL'
-                                    const estadoColor = paid <= 0 ? colors.secondary : paid >= pi.expectedReturn ? colors.primary : '#c8a000'
+                                    const estadoColor = paid <= 0 ? colors.secondary : paid >= pi.expectedReturn ? colors.primary : '#8A6D00'
                                     return (
                                       <>
                                         <td style={{ padding: '5px 5px', fontFamily: fonts.sans, fontSize: '10px', color: colors.secondary }}>{pi.investmentDate ?? '—'}</td>

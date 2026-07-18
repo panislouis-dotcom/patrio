@@ -242,7 +242,7 @@ export function ProspectDetailPage() {
     { label: 'Construcción', amount: p.constructionTotal },
   ].filter(item => item.amount > 0)
 
-  const barColors = [colors.primary, '#654F6F', '#5C5D8D', colors.tertiary, colors.secondary]
+  const barColors = [colors.primary, colors.accent1, colors.accent2, colors.tertiary, colors.secondary]
 
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
