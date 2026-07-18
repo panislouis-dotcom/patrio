@@ -101,7 +101,7 @@ export function TabBar({ onLogout }: TabBarProps) {
           color: colors.primary,
           borderRight: `1px solid ${colors.border}`,
         }}>
-          REFIGAN
+          PATRIO
         </span>
         {topTabs.map(({ path, label }) => (
           <NavLink
