@@ -30,7 +30,7 @@ Read these before touching the DB or writing HTML:
 ## Step 2 — Query the DB
 
 ```bash
-source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
+source .env && docker exec patrio-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
 SELECT
   name, address, hold_months,
   land_price * (1 + acquisition_cost_pct/100.0)
@@ -101,28 +101,28 @@ with open('/tmp/term_sheet_XXXXXX.html', 'w') as f:
 
 ```css
 @font-face {
-  font-family: 'EB Garamond';
+  font-family: 'Playfair Display';
   font-style: normal;
   font-weight: 400;
-  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/eb-garamond-regular.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/playfair-display-regular.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'EB Garamond';
+  font-family: 'Playfair Display';
   font-style: italic;
   font-weight: 400;
-  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/eb-garamond-italic.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/playfair-display-italic.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'Public Sans';
+  font-family: 'Inter';
   font-style: normal;
   font-weight: 100 900;
-  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/public-sans.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/inter-400.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'Space Grotesk';
+  font-family: 'Inter';
   font-style: normal;
   font-weight: 300 700;
-  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/space-grotesk.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/inter-600.woff2') format('woff2');
 }
 ```
 
@@ -132,9 +132,9 @@ with open('/tmp/term_sheet_XXXXXX.html', 'w') as f:
 @page { size: A4; margin: 0; }
 
 body {
-  font-family: 'Public Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   background: #F2F0EB;
-  color: #1A2319;
+  color: #1A1A1A;
   font-size: 12pt;
   line-height: 1.75;
   margin: 0;
@@ -148,7 +148,7 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
 ```css
 .cover {
   height: 297mm;
-  background: #1A2319;
+  background: #1A1A1A;
   padding: 72px 80px;
   page-break-after: always;
   break-after: always;
@@ -171,13 +171,13 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
     <div class="cover-meta">Documento Confidencial · Solo para uso del destinatario</div>
   </div>
 
-  <div class="cover-footer">Distribución Restringida · Refigan Capital · [Año]</div>
+  <div class="cover-footer">Distribución Restringida · Patrio · [Año]</div>
 </div>
 ```
 
 ```css
 .wordmark {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 10pt;
   font-weight: 400;
   letter-spacing: 0.55em;
@@ -185,7 +185,7 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
   color: #F2F0EB;
 }
 .cover-prelabel {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 7pt;
   font-weight: 400;
   letter-spacing: 0.25em;
@@ -194,7 +194,7 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
   margin-bottom: 20px;
 }
 .cover-investor {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 36pt;
   font-weight: 400;
   color: #F2F0EB;
@@ -202,7 +202,7 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
   margin: 0 0 16px 0;
 }
 .cover-project {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 9pt;
   font-weight: 400;
   letter-spacing: 0.08em;
@@ -210,14 +210,14 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
   margin-bottom: 12px;
 }
 .cover-meta {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 7pt;
   font-weight: 400;
   letter-spacing: 0.08em;
   color: rgba(242,240,235,0.45);
 }
 .cover-footer {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 7pt;
   font-weight: 400;
   letter-spacing: 0.08em;
@@ -237,7 +237,7 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
   break-after: avoid;
 }
 .band-label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 7pt;
   font-weight: 400;
   letter-spacing: 0.25em;
@@ -246,7 +246,7 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
   margin-bottom: 8px;
 }
 .band-title {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 30pt;
   font-weight: 400;
   color: #F2F0EB;
@@ -289,26 +289,26 @@ Always wrap each `section-band` + `content-section` pair in a `.page-section`:
 
 ```css
 .section-label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 7pt;
   font-weight: 400;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-bottom: 12px;
 }
 .section-h2 {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 16pt;
   font-weight: 400;
-  color: #1A2319;
+  color: #1A1A1A;
   line-height: 1.2;
   margin: 0 0 20px 0;
 }
 p {
   max-width: 560px;
   margin-bottom: 14px;
-  color: #1A2319;
+  color: #1A1A1A;
 }
 ```
 
@@ -346,20 +346,20 @@ p {
   border-bottom: none;
 }
 .summary-key {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 7pt;
   font-weight: 400;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   padding: 10px 24px 10px 0;
   width: 38%;
   vertical-align: top;
 }
 .summary-val {
-  font-family: 'Public Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 9.5pt;
-  color: #1A2319;
+  color: #1A1A1A;
   padding: 10px 0;
   vertical-align: top;
 }
@@ -441,25 +441,25 @@ strong {
   break-inside: avoid;
 }
 .scenario-table th {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 7pt;
   font-weight: 400;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   padding: 8px 12px 8px 0;
   border-bottom: 1px solid rgba(26,35,25,0.15);
   text-align: left;
 }
 .scenario-table td {
-  font-family: 'Public Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 9.5pt;
-  color: #1A2319;
+  color: #1A1A1A;
   padding: 10px 12px 10px 0;
   border-bottom: 1px solid rgba(26,35,25,0.07);
 }
 .scenario-table .num {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 9.5pt;
   color: #6B8A5E;
   text-align: right;
@@ -467,7 +467,7 @@ strong {
 }
 .scenario-note {
   font-size: 9pt;
-  color: #7A7260;
+  color: #6B6B6B;
   font-style: italic;
   max-width: 480px;
   margin-top: 4px;
@@ -486,8 +486,8 @@ strong {
   </div>
   <div class="content-section">
     <p>El único evento de salida es la <strong>venta de la propiedad</strong>. No existe un mecanismo de rescate anticipado ni reembolso parcial antes de ese evento.</p>
-    <p>Una vez concretada la venta, Refigan liquidará el capital más los rendimientos acumulados dentro de los <strong>5 días hábiles</strong> siguientes al cierre de la operación.</p>
-    <p>La fecha de venta no está garantizada y depende de condiciones de mercado fuera del control de Refigan.</p>
+    <p>Una vez concretada la venta, Patrio liquidará el capital más los rendimientos acumulados dentro de los <strong>5 días hábiles</strong> siguientes al cierre de la operación.</p>
+    <p>La fecha de venta no está garantizada y depende de condiciones de mercado fuera del control de Patrio.</p>
   </div>
 </div>
 ```
@@ -501,7 +501,7 @@ strong {
   <div class="risk-list">
     <div class="risk-item">
       <div class="risk-title">Riesgo de plazo</div>
-      <div class="risk-body">La venta puede tomar más tiempo del estimado. Este plazo está fuera del control de Refigan. El rendimiento sigue acumulando durante cualquier retraso.</div>
+      <div class="risk-body">La venta puede tomar más tiempo del estimado. Este plazo está fuera del control de Patrio. El rendimiento sigue acumulando durante cualquier retraso.</div>
     </div>
     <div class="risk-item">
       <div class="risk-title">Iliquidez</div>
@@ -513,7 +513,7 @@ strong {
 
 ```css
 .risk-section {
-  border-left: 3px solid #A2571D;
+  border-left: 3px solid #A16A3C;
   padding-left: 44px;  /* 80px - 3px border - 33px offset = 44px to keep text aligned */
   margin-left: 33px;
 }
@@ -527,18 +527,18 @@ strong {
   break-inside: avoid;
 }
 .risk-title {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 8pt;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #A2571D;
+  color: #A16A3C;
   margin-bottom: 4px;
 }
 .risk-body {
-  font-family: 'Public Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 10pt;
-  color: #1A2319;
+  color: #1A1A1A;
   line-height: 1.6;
   max-width: 480px;
 }
@@ -560,7 +560,7 @@ strong {
       <div class="sig-date">Fecha: _______________</div>
     </div>
     <div class="sig-block">
-      <div class="sig-name">Refigan Capital</div>
+      <div class="sig-name">Patrio</div>
       <div class="sig-line"></div>
       <div class="sig-label">REPRESENTANTE</div>
       <div class="sig-date">Cargo: _______________</div>
@@ -577,7 +577,7 @@ strong {
 }
 .agreement-text {
   font-style: italic;
-  color: #7A7260;
+  color: #6B6B6B;
   max-width: 520px;
   margin-bottom: 48px;
 }
@@ -591,29 +591,29 @@ strong {
   break-inside: avoid;
 }
 .sig-name {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 13pt;
   font-weight: 400;
-  color: #1A2319;
+  color: #1A1A1A;
   margin-bottom: 40px;
 }
 .sig-line {
-  border-bottom: 1px solid #1A2319;
+  border-bottom: 1px solid #1A1A1A;
   margin-bottom: 10px;
 }
 .sig-label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 7pt;
   font-weight: 400;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-bottom: 8px;
 }
 .sig-date {
-  font-family: 'Public Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 9pt;
-  color: #7A7260;
+  color: #6B6B6B;
 }
 ```
 
