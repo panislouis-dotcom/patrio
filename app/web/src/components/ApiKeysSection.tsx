@@ -125,7 +125,7 @@ export function ApiKeysSection() {
       {/* Revealed token — shown once */}
       {revealedKey && (
         <div style={{
-          background: '#0d1f0d',
+          background: '#EEF2EA',
           border: `1px solid ${colors.primary}`,
           padding: '10px 12px',
           marginBottom: '12px',
