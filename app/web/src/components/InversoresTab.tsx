@@ -237,7 +237,7 @@ export function InversoresTab() {
                 <td style={{ padding: '5px 10px', color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', whiteSpace: 'nowrap' }}>{inv.apellidos || '—'}</td>
                 <td style={{ padding: '5px 10px', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px', whiteSpace: 'nowrap' }}>{inv.email || '—'}</td>
                 <td style={{ padding: '5px 10px', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px', whiteSpace: 'nowrap' }}>{inv.phone || '—'}</td>
-                <td style={{ padding: '5px 10px', fontFamily: fonts.label, fontSize: '10px', whiteSpace: 'nowrap', color: inv.temperatura === 'caliente' ? '#e06c3a' : inv.temperatura === 'tibio' ? '#c8a000' : inv.temperatura === 'frio' ? '#5b9bd5' : colors.secondary }}>{inv.temperatura ?? '—'}</td>
+                <td style={{ padding: '5px 10px', fontFamily: fonts.label, fontSize: '10px', whiteSpace: 'nowrap', color: inv.temperatura === 'caliente' ? '#C6511F' : inv.temperatura === 'tibio' ? '#8F7200' : inv.temperatura === 'frio' ? '#3079BC' : colors.secondary}}>{inv.temperatura ?? '—'}</td>
                 <td style={{ padding: '5px 10px', color: colors.secondary, fontFamily: fonts.label, fontSize: '10px', whiteSpace: 'nowrap' }}>{inv.capacidad ?? '—'}</td>
                 <td style={{ padding: '5px 10px', color: colors.secondary, fontFamily: fonts.label, fontSize: '10px', whiteSpace: 'nowrap' }}>{inv.fuente ? inv.fuente.replace('_', ' ') : '—'}</td>
                 <td style={{ padding: '5px 10px', fontFamily: fonts.label, fontSize: '10px', whiteSpace: 'nowrap', color: inv.confianza === 'alto' ? colors.primary : inv.confianza === 'medio' ? colors.tertiary : colors.secondary }}>{inv.confianza ?? '—'}</td>

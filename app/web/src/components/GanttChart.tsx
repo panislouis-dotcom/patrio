@@ -6,7 +6,7 @@ const STATUS_BAR_COLOR: Record<string, string> = {
   pending: colors.secondary,
   in_progress: colors.tertiary,
   done: colors.primary,
-  skipped: '#3a3a3a',
+  skipped: colors.secondary,
 }
 
 interface GanttChartProps {
