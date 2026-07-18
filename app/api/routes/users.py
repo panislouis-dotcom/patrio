@@ -92,6 +92,10 @@ def delete_user(user_id: int, current_user: dict = Depends(get_current_user)):
         row = conn.execute("SELECT email FROM users WHERE id = %s", (user_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
-        if dict(row)["email"] == current_user["email"]:
+        target_email = dict(row)["email"]
+        if target_email == current_user["email"]:
             raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta")
+        # Only the admin may delete other users' accounts
+        if current_user["email"] != ADMIN_EMAIL:
+            raise HTTPException(status_code=403, detail="Sin permisos para eliminar este usuario")
         conn.execute("DELETE FROM users WHERE id = %s", (user_id,))

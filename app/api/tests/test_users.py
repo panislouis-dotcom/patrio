@@ -84,10 +84,23 @@ def test_delete_self_400(client, self_user_id):
     assert r.status_code == 400
 
 
-def test_delete_other_user(client, test_user):
+def test_delete_other_user_non_admin_403(client, test_user):
+    # bypass_auth returns test@test.com (not admin, not the target user)
     r = client.delete(f"/api/users/{test_user['id']}")
-    assert r.status_code == 204
-    # fixture teardown will be a no-op
+    assert r.status_code == 403
+
+
+def test_delete_other_user_admin_204(client, test_user):
+    from api.main import app
+    from api.auth import get_current_user
+    from api.config import ADMIN_EMAIL
+    app.dependency_overrides[get_current_user] = lambda: {"id": 99, "email": ADMIN_EMAIL}
+    try:
+        r = client.delete(f"/api/users/{test_user['id']}")
+        assert r.status_code == 204
+        # fixture teardown will be a no-op
+    finally:
+        app.dependency_overrides[get_current_user] = lambda: {"id": 1, "email": "test@test.com"}
 
 
 def test_delete_nonexistent_404(client):

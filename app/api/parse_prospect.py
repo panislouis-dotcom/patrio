@@ -13,9 +13,12 @@ No DB writes — safe to call speculatively from any route.
 
 import base64
 import io
+import ipaddress
 import json
 import logging
 import os
+import socket
+from urllib.parse import urlparse
 
 import anthropic
 import httpx
@@ -88,15 +91,79 @@ Rules:
 - Return only JSON — no markdown, no explanation"""
 
 
-def _fetch_url_text(url: str) -> str:
-    """Fetch URL and return cleaned plain text, truncated to 4000 chars."""
+_MAX_REDIRECTS = 5
+
+
+def _is_safe_url(url: str) -> bool:
+    """Return True only for an http(s) URL whose host resolves entirely to
+    public IPs. Rejects non-http(s) schemes and any host resolving to a
+    private, loopback, link-local, reserved, multicast, or unspecified
+    address (blocks RFC1918, 127.0.0.0/8, 169.254.0.0/16 cloud metadata,
+    and IPv6 equivalents). SSRF guard for _fetch_url_text.
+    """
     try:
-        r = httpx.get(url, timeout=15, follow_redirects=True, headers=_BROWSER_HEADERS)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "lxml")
-        for tag in soup(["script", "style", "nav", "footer", "header", "meta", "link"]):
-            tag.decompose()
-        return soup.get_text(separator=" ", strip=True)[:4000]
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, parsed.port, proto=socket.IPPROTO_TCP)
+    except Exception:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return False
+    return True
+
+
+def _fetch_url_text(url: str) -> str:
+    """Fetch URL and return cleaned plain text, truncated to 4000 chars.
+
+    Follows redirects manually, re-validating every hop against private/internal
+    IP ranges so a validated-safe public URL cannot redirect into an internal
+    address (SSRF). On any failure or blocked target, logs a warning and returns
+    "" — the caller treats an empty result as "fetch blocked".
+    """
+    try:
+        with httpx.Client(
+            timeout=15, follow_redirects=False, headers=_BROWSER_HEADERS
+        ) as client:
+            current = url
+            for _ in range(_MAX_REDIRECTS + 1):
+                if not _is_safe_url(current):
+                    logger.warning("_fetch_url_text blocked unsafe URL: %s", current)
+                    return ""
+                r = client.get(current)
+                if r.is_redirect:
+                    location = r.headers.get("location")
+                    if not location:
+                        break
+                    current = str(r.url.join(location))
+                    continue
+                r.raise_for_status()
+                soup = BeautifulSoup(r.text, "lxml")
+                for tag in soup(["script", "style", "nav", "footer", "header", "meta", "link"]):
+                    tag.decompose()
+                return soup.get_text(separator=" ", strip=True)[:4000]
+            logger.warning("_fetch_url_text exceeded max redirects for %s", url)
+            return ""
     except Exception as e:
         logger.warning("_fetch_url_text failed for %s: %s", url, e)
         return ""
