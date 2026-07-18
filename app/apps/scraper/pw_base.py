@@ -1,0 +1,58 @@
+"""Shared Playwright browser context for all PW-based scrapers."""
+import re
+from contextlib import contextmanager
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
+from .base import parse_sqm as parse_sqm  # re-export for PW scrapers
+
+try:
+    from playwright_stealth import stealth_sync as _stealth_sync
+    _STEALTH_AVAILABLE = True
+except ImportError:
+    _STEALTH_AVAILABLE = False
+
+
+_LAUNCH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+]
+
+_CONTEXT_OPTS = dict(
+    user_agent=(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    viewport={"width": 1280, "height": 800},
+    locale="es-MX",
+)
+
+
+def stealth_page(ctx: BrowserContext) -> Page:
+    """Create a new page with stealth patches applied."""
+    page = ctx.new_page()
+    if _STEALTH_AVAILABLE:
+        _stealth_sync(page)
+    return page
+
+
+@contextmanager
+def pw_browser():
+    """Yield a Playwright browser context; caller is responsible for closing pages."""
+    with sync_playwright() as pw:
+        browser: Browser = pw.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+        try:
+            ctx: BrowserContext = browser.new_context(**_CONTEXT_OPTS)
+            yield ctx
+        finally:
+            browser.close()
+
+
+def parse_price(text: str) -> float:
+    """Extract numeric value from price strings like 'MN 6,400,000' or 'MXN18,000,000'."""
+    digits = re.sub(r"[^\d.]", "", text.replace(",", ""))
+    try:
+        return float(digits)
+    except ValueError:
+        return 0.0
+
+

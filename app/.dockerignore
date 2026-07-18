@@ -1,0 +1,7 @@
+data/files/
+data/refigan.db
+data/*.db
+node_modules/
+**/__pycache__/
+**/.pytest_cache/
+.env

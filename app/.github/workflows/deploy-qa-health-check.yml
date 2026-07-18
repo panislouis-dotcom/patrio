@@ -1,0 +1,150 @@
+name: Deploy QA Health Check
+
+on:
+  workflow_run:
+    workflows: ["Deploy QA"]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: deploy-qa-health-check-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  health-check:
+    name: Verify QA deploy
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      QA_APP_URL: https://qa.admin.refigan.com
+      DEPLOYED_SHA: ${{ github.event.workflow_run.head_sha }}
+
+    steps:
+      - name: Resolve PR or create issue for comment target
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pulls_json="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/${REPOSITORY}/commits/${DEPLOYED_SHA}/pulls"
+          )"
+
+          pr_number="$(jq -r '.[0].number // empty' <<<"$pulls_json")"
+
+          if [[ -n "$pr_number" ]]; then
+            echo "kind=pr" >>"$GITHUB_OUTPUT"
+            echo "number=$pr_number" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          issue_json="$(
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/${REPOSITORY}/issues" \
+              -f "title=QA deploy health check for ${DEPLOYED_SHA:0:7}" \
+              -f "body=Tracking QA health check for commit ${DEPLOYED_SHA}. No associated PR was found."
+          )"
+          issue_number="$(jq -r '.number' <<<"$issue_json")"
+
+          echo "kind=issue" >>"$GITHUB_OUTPUT"
+          echo "number=$issue_number" >>"$GITHUB_OUTPUT"
+
+      - name: Poll QA /api/version until new SHA is live
+        id: version_check
+        run: |
+          set -euo pipefail
+
+          deadline=$((SECONDS + 600))
+
+          while (( SECONDS < deadline )); do
+            response="$(curl -sf --max-time 10 "${QA_APP_URL}/api/version" 2>/dev/null || true)"
+
+            if [[ -n "$response" ]]; then
+              running_sha="$(jq -r '.sha // empty' <<<"$response" 2>/dev/null || true)"
+              if [[ "$running_sha" == "$DEPLOYED_SHA" ]]; then
+                echo "running_sha=$running_sha" >>"$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo "QA is serving sha=${running_sha:-unknown}; waiting for ${DEPLOYED_SHA}."
+            else
+              echo "QA /api/version not reachable yet (pod restarting or sync in progress)."
+            fi
+
+            sleep 20
+          done
+
+          final_sha="$(curl -sf --max-time 10 "${QA_APP_URL}/api/version" 2>/dev/null | jq -r '.sha // "unreachable"' 2>/dev/null || echo 'unreachable')"
+          echo "running_sha=$final_sha" >>"$GITHUB_OUTPUT"
+          echo "Timed out after 600 s. QA never served ${DEPLOYED_SHA}." >&2
+          exit 1
+
+      - name: Post success comment
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_KIND: ${{ steps.target.outputs.kind }}
+          TARGET_NUMBER: ${{ steps.target.outputs.number }}
+          RUNNING_SHA: ${{ steps.version_check.outputs.running_sha }}
+        run: |
+          set -euo pipefail
+
+          body_file="$(mktemp)"
+          cat >"$body_file" <<EOF
+          ### QA deploy passed
+
+          | Field | Value |
+          |---|---|
+          | Commit | \`${DEPLOYED_SHA:0:7}\` |
+          | Running SHA | \`${RUNNING_SHA}\` |
+
+          QA is serving the deployed commit at ${QA_APP_URL}.
+          EOF
+
+          if [[ "$TARGET_KIND" == "pr" ]]; then
+            gh pr comment "$TARGET_NUMBER" --repo "$REPOSITORY" --body-file "$body_file"
+          else
+            gh issue comment "$TARGET_NUMBER" --repo "$REPOSITORY" --body-file "$body_file"
+          fi
+
+      - name: Post failure comment
+        if: ${{ failure() && steps.target.outputs.number != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_KIND: ${{ steps.target.outputs.kind }}
+          TARGET_NUMBER: ${{ steps.target.outputs.number }}
+          RUNNING_SHA: ${{ steps.version_check.outputs.running_sha }}
+        run: |
+          set -euo pipefail
+
+          body_file="$(mktemp)"
+          cat >"$body_file" <<EOF
+          ### QA deploy failed
+
+          | Field | Value |
+          |---|---|
+          | Commit | \`${DEPLOYED_SHA:0:7}\` |
+          | Running SHA | \`${RUNNING_SHA:-unknown}\` |
+
+          QA did not serve the new SHA within 10 minutes.
+          Check ArgoCD for PreSync (migration) failures: a failed migrate Job blocks the sync.
+          EOF
+
+          if [[ "$TARGET_KIND" == "pr" ]]; then
+            gh pr comment "$TARGET_NUMBER" --repo "$REPOSITORY" --body-file "$body_file"
+          else
+            gh issue comment "$TARGET_NUMBER" --repo "$REPOSITORY" --body-file "$body_file"
+          fi

@@ -1,0 +1,559 @@
+export const PROPERTY_TYPES = ['Casa', 'Departamento', 'Local', 'Edificio', 'Lote', 'Bodega'] as const
+
+export interface PropertyImage {
+  id: number
+  filePath: string
+  fileName: string
+  contentType: string
+  sortOrder: number
+  uploadedAt: string
+}
+
+export type ImageType = 'antes' | 'despues'
+
+export interface ProjectImage extends PropertyImage {
+  imageType: ImageType
+}
+
+export interface Issue {
+  field: string
+  message: string
+  severity: 'error' | 'warning'
+}
+
+export interface Prospect {
+  id: number
+  name: string
+  address: string
+  city: string
+  status: string
+  type: string
+  url: string
+  latitude: number
+  longitude: number
+  sqmLand: number
+  sqmConstruction: number
+  landPrice: number
+  acquisitionCostPct: number
+  acquisitionCosts: number
+  acquisitionTotal: number
+  permitsCost: number
+  subdivisionCost: number
+  constructionBase: number
+  constructionTotal: number
+  constructionCostPerSqm: number
+  constructionOverhead: number
+  totalInvestment: number
+  projectedSale: number
+  profit: number
+  roi: number | null
+  capRate: number | null
+  landPricePerSqm: number
+  salePerSqm: number
+  investmentPerSqm: number
+  rentMonthly: number
+  rentAnnual: number
+  holdMonths: number
+  notes: string
+  isFavorite: boolean
+  images: PropertyImage[]
+  score: number
+  issues: Issue[]
+}
+
+export interface ScoreWeights {
+  roi: number       // 0-1
+  capRate: number   // 0-1
+  profit: number    // 0-1
+}
+
+export interface QualityEntry {
+  id: number
+  name: string
+  issues: Issue[]
+}
+
+export type RawFields = Pick<Prospect,
+  | 'name' | 'address' | 'city' | 'status' | 'type' | 'url'
+  | 'latitude' | 'longitude' | 'sqmLand' | 'sqmConstruction'
+  | 'landPrice' | 'acquisitionCostPct' | 'permitsCost' | 'subdivisionCost'
+  | 'constructionCostPerSqm' | 'constructionOverhead'
+  | 'projectedSale' | 'rentMonthly' | 'holdMonths' | 'notes'
+>
+
+export interface Project {
+  id: number
+  name: string
+  type: string
+  address: string
+  city: string
+  status: string
+  totalUnits: number
+  acquisitionDate: string      // YYYY-MM
+  conclusionDate: string       // YYYY-MM (primera renta o venta)
+  totalInvestment: number
+  currentValuation: number
+  valuationDate: string        // YYYY-MM
+  url: string
+  latitude: number
+  longitude: number
+  milestones: Record<string, string>   // {"YYYY-MM": "label"}
+  budget: Record<string, number>       // {"category": amount}
+  notes: string
+  isFavorite: boolean
+  images: ProjectImage[]
+  unrealizedGain: number
+  unrealizedGainPct: number
+  holdMonthsActual: number
+  roi: number | null
+  prospectId: number | null
+}
+
+export type RawProjectFields = Pick<Project,
+  | 'name' | 'type' | 'address' | 'city' | 'status' | 'url'
+  | 'latitude' | 'longitude' | 'totalUnits'
+  | 'acquisitionDate' | 'conclusionDate'
+  | 'totalInvestment' | 'currentValuation' | 'valuationDate'
+  | 'notes'
+>
+
+export type MemberRole = 'director' | 'responsable_proyecto' | 'lider_proyecto' | 'maestro' | 'ayudante' | 'finder'
+
+export interface TeamMember {
+  id: number
+  name: string
+  role: MemberRole
+  managerId: number | null
+  email: string
+  notes: string
+  createdAt: string
+}
+
+export interface ParsedProspect {
+  name:             string
+  address:          string
+  city:             string
+  type:             string
+  price:            number   // total asking price → maps to landPrice on save
+  sqmLand:          number
+  sqmConstruction:  number
+  notes:            string
+  url:              string
+  status:           string
+  latitude:         number
+  longitude:        number
+  municipioCve:     string
+  municipioName:    string
+  colonia:          string
+  stateName:        string
+}
+
+export interface SonarZone  { cve: string; name: string }
+export interface SonarState { name: string; municipios: SonarZone[] }
+
+export interface SonarSignal {
+  id:            number
+  url:           string
+  portal:        string
+  title:         string
+  address:       string
+  municipioCve:  string
+  municipioName: string
+  colonia:       string
+  stateName:     string
+  lat:           number | null
+  lon:           number | null
+  price:         number
+  sqmLand:       number
+  lastPrice:     number | null
+  firstSeen:     string | null
+  lastSeen:      string | null
+}
+
+export interface ProcessTemplate {
+  id: number
+  name: string
+  description: string
+  createdAt: string
+}
+
+export interface TemplateNode {
+  id: number
+  templateId: number
+  parentId: number | null
+  name: string
+  description: string
+  sortOrder: number
+  dependsOnId: number | null
+  durationDays: number | null
+  sourceTemplateId: number | null
+  createdAt: string
+  supplierCategoryId: number | null
+}
+
+export interface InstanceFile {
+  id: number
+  instanceId: number
+  filePath: string
+  fileName: string
+  contentType: string
+  uploadedAt: string
+}
+
+export interface ProcessInstance {
+  id: number
+  templateId: number | null
+  templateName: string | null
+  projectId: number | null
+  projectName: string | null
+  ownerId: number | null
+  ownerName: string | null
+  taskType: 'proyecto' | 'periodica' | 'one_time'
+  name: string
+  startDate: string
+  dueDate: string | null
+  frequencyDays: number | null
+  completedAt: string | null
+  originInstanceId: number | null
+  durationLockedAt: string | null
+  status: string
+  notes: string
+  createdAt: string
+}
+
+export interface NodeState {
+  id: number
+  instanceId: number
+  templateNodeId: number
+  status: 'pending' | 'in_progress' | 'done' | 'skipped'
+  assigneeId: number | null
+  actualStart: string | null
+  actualEnd: string | null
+  notes: string
+  updatedAt: string
+  durationOverrideDays: number | null
+  supplierId: number | null
+}
+
+export interface GanttNode extends TemplateNode {
+  ganttStart: number
+  ganttDuration: number
+  isDefinir: boolean
+}
+
+export interface InstanceDetail {
+  instance: ProcessInstance
+  nodes: GanttNode[]
+  states: NodeState[]
+}
+
+export interface NodeFile {
+  id: number
+  templateNodeId: number
+  instanceId: number | null
+  filePath: string
+  fileName: string
+  contentType: string
+  type: 'reference' | 'evidence'
+  uploadedAt: string
+}
+
+export interface NodeComment {
+  id: number
+  instanceId: number
+  templateNodeId: number
+  body: string
+  author: string
+  createdAt: string
+}
+
+export interface NodeDetail {
+  instance: ProcessInstance
+  node: TemplateNode
+  allNodes: GanttNode[]
+  states: NodeState[]
+  files: NodeFile[]
+  comments: NodeComment[]
+}
+
+export interface ProfitSplitConfig {
+  id: number | null
+  projectId: number | null
+  exitPrice: number | null
+  investorCapital: number | null
+  investorRateAnnual: number
+  investorMonths: number | null
+  isrRate: number
+  finderFeePct: number
+  directorPct: number
+  responsablePct: number
+  liderPct: number
+  maestroPct: number
+  ayudantePct: number
+  finderMemberId: number | null
+  responsableMemberId: number | null
+  liderMemberId: number | null
+  maestroMemberIds: number[]
+  ayudanteMemberIds: number[]
+  maestroCount: number | null
+  ayudanteCount: number | null
+  plannedEndDate: string | null
+  actualEndDate: string | null
+  bufferDays: number
+  notes: string
+}
+
+export interface ProfitSplit {
+  label: string
+  id: number | null
+  name: string
+  role: string | null
+  pct: number
+  base: number
+  bonus: number
+  total: number
+}
+
+export interface ProfitScenario {
+  splits: ProfitSplit[]
+  companyResidual: number
+}
+
+export interface InvestorBreakdownEntry {
+  investorId: number | null
+  name: string
+  fundedAmount: number
+  interestRateAnnual: number
+  cuota: number
+  totalReturn: number
+}
+
+export interface ProfitWaterfall {
+  exitPrice: number
+  investment: number
+  grossProfit: number
+  investorCuota: number
+  operatorGross: number
+  isr: number
+  netProfit: number
+  distributable: number
+  activeTier: number | null    // null = not concluded yet; 0 | 0.25 | 0.50 when concluded
+  months: number
+  investorBreakdown: InvestorBreakdownEntry[]
+  scenarios: {
+    sin_bono: ProfitScenario
+    bono_25: ProfitScenario
+    bono_50: ProfitScenario
+  }
+}
+
+export type InvestorTemperatura = 'caliente' | 'tibio' | 'frio'
+export type InvestorCapacidad = '<500k' | '500k-2M' | '2M-5M' | '5M+'
+export type InvestorFuente = 'red_personal' | 'referido' | 'red_negocios' | 'linkedin' | 'otro'
+export type InvestorConfianza = 'bajo' | 'medio' | 'alto'
+
+export interface Investor {
+  id: number
+  name: string
+  apellidos: string
+  email: string
+  phone: string
+  notes: string
+  temperatura: InvestorTemperatura | null
+  capacidad: InvestorCapacidad | null
+  fuente: InvestorFuente | null
+  confianza: InvestorConfianza | null
+  createdAt: string
+  totalInterested: number
+  totalCommitted: number
+  totalFunded: number
+}
+
+export interface User {
+  id: number
+  email: string
+  isActive: boolean
+  createdAt: string
+}
+
+export interface ProjectInvestor {
+  id: number
+  projectId: number
+  investorId: number
+  investorName: string
+  projectName: string
+  status: 'interesado' | 'comprometido' | 'fondeado'
+  interestedAmount: number
+  committedAmount: number
+  fundedAmount: number
+  interestRateAnnual: number
+  investmentDate: string | null
+  returnAmount: number | null
+  returnDate: string | null
+  notes: string
+  createdAt: string
+  // Computed server-side by project_investor_metrics view
+  holdMonths: number
+  interestAmount: number
+  expectedReturn: number
+  returnPct: number
+}
+
+export interface Zone {
+  id: number
+  name: string
+  cities: string[]
+}
+
+export interface Comparable {
+  id: number
+  address: string
+  zoneId: number
+  m2: number
+  price: number
+  pricePerM2: number
+  listingUrl: string
+  sourcePortal: string
+  listedAt: string
+  capturedAt: string
+  neighborhood: string
+  city: string
+  lat: number | null
+  lng: number | null
+  bedrooms: number | null
+  bathrooms: number | null
+  parkingSpots: number | null
+  propertyType: string
+  condition: string
+  styleTags: string[]
+  status: 'active' | 'sold' | 'withdrawn' | 'expired'
+  lastCheckedAt: string | null
+  lastSeenActive: string
+  soldAt: string | null
+  checkFailureCount: number
+  notes: string
+  createdAt: string
+}
+
+export interface AnalysisSnapshot {
+  id: number
+  prospectId: number
+  generatedAt: string
+  purchasePrice: number
+  remodelCostEstimate: number
+  remodelCostPerM2: number
+  interventionLevel: string
+  transactionCosts: number
+  financingCosts: number
+  totalCost: number
+  holdingPeriodMonths: number
+  exitPriceManual: number | null
+  exitPriceCalculatedLow: number | null
+  exitPriceCalculatedMid: number | null
+  exitPriceCalculatedHigh: number | null
+  exitPriceSource: 'manual' | 'calculated' | 'blended'
+  exitPriceUsed: number
+  manualVsMarketDeltaPct: number | null
+  arvManualOverride: number | null
+  comparableCount: number
+  comparableIds: number[]
+  avgCompDistanceKm: number | null
+  grossMargin: number | null
+  roiPct: number | null
+  irrPct: number | null
+  capRatePct: number | null
+  confidenceScore: number
+  confidenceNotes: string
+  dataQualityWarnings: string[]
+  rentaMensualEstimada: number | null
+  tasaInteresCredito: number | null
+  plazoCreditoMeses: number | null
+  financiamientoPct: number | null
+  gastosOperativosPct: number | null
+  noiAnual: number | null
+  debtServiceAnual: number | null
+  cashFlowAnual: number | null
+  cashOnCashYr1Pct: number | null
+  breakEvenMonths: number | null
+  npv10yr: number | null
+  irr10yrPct: number | null
+}
+
+export interface AnalysisRequest {
+  prospectId: number
+  interventionLevel?: string
+  holdingPeriodMonths?: number
+  transactionCostPct?: number
+  exitPriceSource?: 'manual' | 'calculated' | 'blended'
+  arvManualOverride?: number | null
+  rentaMensualEstimada?: number | null
+  financiamientoPct?: number
+  tasaInteresCredito?: number
+  plazoCreditoMeses?: number
+  gastosOperativosPct?: number
+}
+
+// ── Proveedores ───────────────────────────────────────────────────────────────
+
+export type ProveedorStatus = 'activo' | 'inactivo' | 'vetado'
+
+export interface ProveedorCategory {
+  id: number
+  name: string
+  description: string
+  createdAt: string
+}
+
+export interface ProveedorPhoto {
+  id: number
+  proveedorId: number
+  filePath: string
+  fileName: string
+  contentType: string
+  uploadedAt: string
+}
+
+export interface Proveedor {
+  id: number
+  name: string
+  phone: string
+  email: string
+  website: string
+  zona: string
+  status: ProveedorStatus
+  vetoReason: string | null
+  ratingCalidad: number | null
+  ratingPuntualidad: number | null
+  ratingPrecio: number | null
+  notes: string
+  categories: ProveedorCategory[]
+  photos: ProveedorPhoto[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Cotizacion {
+  id: number
+  instanceNodeStateId: number
+  proveedorId: number | null
+  proveedorNameOverride: string
+  proveedorName: string | null
+  monto: number
+  moneda: 'MXN' | 'USD'
+  descripcion: string
+  notes: string
+  fechaCotizacion: string | null
+  validezDias: number | null
+  isSelected: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ProveedorAssignment {
+  stateId: number
+  instanceId: number
+  instanceName: string
+  nodeId: number
+  nodeName: string
+  status: string
+}

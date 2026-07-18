@@ -1,0 +1,75 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: ghcr.io/amacneil/dbmate:latest
+    volumes:
+      - ./db:/db
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: python:3.12-slim
+    working_dir: /app/apps
+    volumes:
+      - ./apps/api:/app/apps/api
+      - ./apps/scraper:/app/apps/scraper
+      - ./data:/app/data
+      - pip-cache:/root/.cache/pip
+      - playwright-browsers:/root/.cache/ms-playwright
+    command: >
+      sh -c "pip install --no-cache-dir -r api/requirements.txt -q &&
+             DEBIAN_FRONTEND=noninteractive playwright install chromium --with-deps &&
+             uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      SMOKE_EMAIL: ${SMOKE_EMAIL:-}
+      SMOKE_PASS: ${SMOKE_PASS:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./apps/web:/app
+      - node-modules:/app/node_modules
+    command: sh -c "npm install --silent && npx vite --host 0.0.0.0"
+    environment:
+      VITE_API_BASE: ${VITE_API_BASE}
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:
+  pip-cache:
+  node-modules:
+  playwright-browsers:
