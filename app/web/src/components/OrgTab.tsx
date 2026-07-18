@@ -634,7 +634,7 @@ export function OrgTab() {
             onClick={openAdd}
             style={{
               ...btnBase('primary'),
-              background: panelMode === 'add' ? '#5a7a4e' : colors.primary,
+              boxShadow: panelMode === 'add' ? `inset 0 0 0 2px ${colors.neutral}` : 'none',
               padding: '5px 12px',
             }}
           >
