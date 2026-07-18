@@ -424,6 +424,97 @@ git commit -m "fix(reskin): verify/darken semantic status colors for contrast on
 
 ---
 
+### Task 7b: Fix `'tomato'` CSS named-color contrast across 17 files
+
+**Files:**
+- Modify: `app/web/src/components/SonarTab.tsx` (5 occurrences)
+- Modify: `app/web/src/components/SmartProspectModal.tsx` (3)
+- Modify: `app/web/src/components/ProspectTable.tsx` (3)
+- Modify: `app/web/src/components/OrgTab.tsx` (3)
+- Modify: `app/web/src/components/UserManagementSection.tsx` (2)
+- Modify: `app/web/src/components/ProjectsTab.tsx` (2)
+- Modify: `app/web/src/components/InversorDetailPage.tsx` (2)
+- Modify: `app/web/src/components/ComparablesTab.tsx` (2)
+- Modify: `app/web/src/components/ApiKeysSection.tsx` (2)
+- Modify: `app/web/src/components/TabBar.tsx` (1)
+- Modify: `app/web/src/components/QuickCaptureModal.tsx` (1)
+- Modify: `app/web/src/components/ProspectDetailPage.tsx` (1)
+- Modify: `app/web/src/components/ProspectAnalysisSection.tsx` (1)
+- Modify: `app/web/src/components/ProcesoTemplateEditor.tsx` (1)
+- Modify: `app/web/src/components/InversoresTab.tsx` (1)
+- Modify: `app/web/src/components/ComparableForm.tsx` (1)
+- Modify: `app/web/src/components/AnalysisView.tsx` (1)
+
+**Context:** Discovered during Task 7's review — the app uses the CSS named color `'tomato'`
+(`#FF6347`) as its error/danger color throughout, in 17 files (32 occurrences total),
+missed by every prior hex-literal grep in this plan because it's a CSS keyword, not a hex
+code. Computed via the real sRGB relative-luminance formula: `'tomato'` vs `#FFFFFF` =
+**2.95:1** — a real WCAG AA failure for text (needs 4.5:1), the exact same class of bug
+Task 7 just fixed for `#ef4444`/`#f59e0b`/etc. This is the same reskin-induced problem
+(colors tuned to read fine on the old dark background now fail on the new white one), just
+expressed as a named color instead of a hex literal. Per the same disposition rule Task 7
+used: this is a semantic/status color, not a brand-palette token — do not replace with a
+`theme.ts` reference, only change the literal value (and only where used as small text/icon
+foreground; backgrounds and larger elements can stay as bright tomato since they aren't
+subject to the 4.5:1 AA text-contrast bar).
+
+Darkened value (computed via the same lightness-reduction-at-fixed-hue method as Task 7,
+targeting >4.5:1 with margin): **`#E62300`** — hue preserved at 9.1° (tomato's original
+hue), contrast against `#FFFFFF` = **4.56:1**.
+
+- [ ] **Step 1: Find every occurrence and its usage context**
+
+Run: `grep -n -B2 -A1 "tomato" app/web/src/components/{SonarTab,SmartProspectModal,ProspectTable,OrgTab,UserManagementSection,ProjectsTab,InversorDetailPage,ComparablesTab,ApiKeysSection,TabBar,QuickCaptureModal,ProspectDetailPage,ProspectAnalysisSection,ProcesoTemplateEditor,InversoresTab,ComparableForm,AnalysisView}.tsx`
+
+- [ ] **Step 2: Classify and fix each occurrence**
+
+For each match, look at the property it's assigned to:
+- `color: 'tomato'` (text/icon foreground) → replace with `'#E62300'`
+- `border: `1px solid tomato`` or similar border color on text-adjacent UI (e.g. an outlined
+  button whose text is also tomato) → replace with `'#E62300'` for consistency with the
+  paired text color
+- `background: 'tomato'` (e.g. `SonarTab.tsx:477`, `ComparablesTab.tsx:181` — solid-fill
+  badges/buttons) → **leave unchanged**, backgrounds aren't subject to the AA text-contrast
+  bar and a bright tomato badge/button reads fine
+- Ternary expressions returning `'tomato'` as one branch (e.g.
+  `state.phase === 'error' ? 'tomato' : ...`) → check what the ternary's *result* is used
+  for (its own `color`/`background` assignment) and apply the same rule
+
+Use a single project-wide `sed` pass for the `color:`/text-usage cases since the literal
+string `'tomato'` doesn't appear in any `background:` context in most files — but hand-check
+every file's diff afterward against the grep output from Step 1, since a small number of
+files (`SonarTab.tsx`, `ComparablesTab.tsx`) have both a text usage and a background usage
+and need different treatment on different lines.
+
+- [ ] **Step 3: Verify TypeScript compiles**
+
+Run: `cd app/web && npx tsc --noEmit`
+Expected: no errors
+
+- [ ] **Step 4: Verify no `'tomato'` text-color usage remains (backgrounds are fine to keep)**
+
+Run: `grep -n "color: 'tomato'\|color:'tomato'\|solid tomato" app/web/src/components/*.tsx`
+Expected: no output (all text/border usages converted; any remaining `'tomato'` matches
+should only be `background: 'tomato'` lines — spot-check with
+`grep -n "tomato" app/web/src/components/*.tsx` and confirm every surviving match is a
+`background:` assignment).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/web/src/components/SonarTab.tsx app/web/src/components/SmartProspectModal.tsx app/web/src/components/ProspectTable.tsx app/web/src/components/OrgTab.tsx app/web/src/components/UserManagementSection.tsx app/web/src/components/ProjectsTab.tsx app/web/src/components/InversorDetailPage.tsx app/web/src/components/ComparablesTab.tsx app/web/src/components/ApiKeysSection.tsx app/web/src/components/TabBar.tsx app/web/src/components/QuickCaptureModal.tsx app/web/src/components/ProspectDetailPage.tsx app/web/src/components/ProspectAnalysisSection.tsx app/web/src/components/ProcesoTemplateEditor.tsx app/web/src/components/InversoresTab.tsx app/web/src/components/ComparableForm.tsx app/web/src/components/AnalysisView.tsx
+git commit -m "fix(reskin): darken 'tomato' named-color error text for contrast on white bg
+
+Discovered during Task 7's review — 'tomato' (#FF6347) is used as the
+app's error/danger color across 17 files and was missed by every
+hex-literal grep since it's a CSS keyword. At 2.95:1 contrast on the
+new white background it fails WCAG AA for text; darkened to #E62300
+(4.56:1, same hue) wherever used as text/icon/border color. Background
+fills left unchanged — not subject to the text-contrast bar."
+```
+
+---
+
 ### Task 8: Hardcoded-hex sweep — dark-theme surface tints, part 1 (`ApiKeysSection.tsx`, `CotizacionesSection.tsx`, `ProveedorDetailPage.tsx`)
 
 **Files:**
