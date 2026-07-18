@@ -28,13 +28,10 @@ test.describe('Prospect Detail', () => {
 
   test('clicking first table row navigates to detail URL', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) {
-      test.skip()
-      return
-    }
-    await rows.first().click()
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
+    await firstRow.click()
     await expect(page).toHaveURL(/\/prospectos\/tabla\/\d+/)
   })
 
@@ -42,9 +39,9 @@ test.describe('Prospect Detail', () => {
 
   test('header shows back button and action buttons', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -57,9 +54,9 @@ test.describe('Prospect Detail', () => {
 
   test('left panel shows INFO, EDITAR, and ANÁLISIS tab buttons', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -72,9 +69,9 @@ test.describe('Prospect Detail', () => {
 
   test('INFO tab (default) shows ROI ANUAL, PROFIT, CAP RATE, INVERSIÓN labels', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -87,9 +84,9 @@ test.describe('Prospect Detail', () => {
 
   test('INFO tab shows TERRENO and CONSTRUCCIÓN stat labels', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -101,9 +98,9 @@ test.describe('Prospect Detail', () => {
 
   test('EDITAR tab shows form fields when clicked', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -117,9 +114,9 @@ test.describe('Prospect Detail', () => {
 
   test('EDITAR tab — editing Notas and saving persists value', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -151,9 +148,9 @@ test.describe('Prospect Detail', () => {
 
   test('ANÁLISIS tab shows analysis section with CORRER ANÁLISIS button', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -166,9 +163,9 @@ test.describe('Prospect Detail', () => {
 
   test('ANÁLISIS tab — CORRER ANÁLISIS toggle shows form fields', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -186,9 +183,9 @@ test.describe('Prospect Detail', () => {
 
   test('center panel shows MAPA and FOTOS tab buttons', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -198,9 +195,9 @@ test.describe('Prospect Detail', () => {
 
   test('MAPA tab — renders map or "SIN COORDENADAS" message', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -217,9 +214,9 @@ test.describe('Prospect Detail', () => {
 
   test('FOTOS tab — clicking FOTOS shows photo upload area', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -233,9 +230,9 @@ test.describe('Prospect Detail', () => {
 
   test('back button returns to /prospectos/tabla', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
 
@@ -247,9 +244,9 @@ test.describe('Prospect Detail', () => {
 
   test('switching through all left tabs and back to INFO stays on same detail URL', async ({ page }) => {
     await page.goto('/prospectos/tabla')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return }
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return }
 
     await goToFirstDetail(page)
     const url = page.url()

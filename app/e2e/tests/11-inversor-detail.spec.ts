@@ -20,9 +20,11 @@ test.describe('Inversor Detail Page', () => {
   // ── Helper: check investor rows exist ─────────────────────────────────────
   async function requireInvestors(page: Parameters<Parameters<typeof test>[1]>[0]) {
     await page.goto('/inversionistas')
-    const rows = page.locator('table tbody tr')
-    const count = await rows.count()
-    if (count === 0) { test.skip(); return false }
+    // .count() does not auto-wait; wait for the row to render before deciding
+    // there's no data, otherwise React's async fetch races the check.
+    const firstRow = page.locator('table tbody tr').first()
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) { test.skip(); return false }
     return true
   }
 
@@ -184,8 +186,14 @@ test.describe('Inversor Detail Page', () => {
 
     // Use count() to avoid strict mode violation — getByText('PROYECTO') can match nav links too.
     // A table header <th> with "PROYECTO" text is unambiguous.
-    const hasTable = await page.locator('th').filter({ hasText: /^PROYECTO$/ }).count() > 0
-    const hasEmpty = await page.locator('text=Sin proyectos asociados').count() > 0
+    const projectsHeader = page.locator('th').filter({ hasText: /^PROYECTO$/ })
+    const emptyState = page.locator('text=Sin proyectos asociados')
+    // .count() does not auto-wait; wait for whichever state renders before reading,
+    // otherwise React's async fetch races the counts and the assertion fails spuriously.
+    await projectsHeader.or(emptyState).first().waitFor({ state: 'visible', timeout: 8_000 })
+
+    const hasTable = await projectsHeader.count() > 0
+    const hasEmpty = await emptyState.count() > 0
     expect(hasTable || hasEmpty).toBe(true)
   })
 

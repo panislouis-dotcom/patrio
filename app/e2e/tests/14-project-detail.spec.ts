@@ -5,10 +5,11 @@ import type { Page } from '@playwright/test'
 // Returns false if no project rows exist (graceful skip), true otherwise.
 async function navigateToFirstProject(page: Page): Promise<boolean> {
   await page.goto('/proyectos')
-  const rowCount = await page.locator('table tbody tr').count()
-  if (rowCount === 0) return false
   const firstRow = page.locator('table tbody tr').first()
-  await firstRow.waitFor({ state: 'visible' })
+  // .count() does not auto-wait; wait for the row to actually render before
+  // deciding there's no data, otherwise React's async fetch races the check.
+  const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+  if (!appeared) return false
   await firstRow.click()
   await page.waitForURL(/\/proyectos\/\d+/)
   return true

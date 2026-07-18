@@ -49,10 +49,12 @@ test.describe('Procesos', () => {
 
   test('click template row — navigates to /procesos/plantillas/:id', async ({ page }) => {
     await page.goto('/procesos/plantillas')
-    // Only run if at least one template exists in seed data
+    // Only run if at least one template exists in seed data.
+    // .count() does not auto-wait; wait for the row to render before deciding
+    // there's no data, otherwise React's async fetch races the check.
     const firstRow = page.locator('table tbody tr').first()
-    const count = await page.locator('table tbody tr').count()
-    if (count === 0) {
+    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+    if (!appeared) {
       // No seed templates — skip by just verifying the list page loads
       await expect(page.getByText('PLANTILLAS DE PROCESO')).toBeVisible()
       return
