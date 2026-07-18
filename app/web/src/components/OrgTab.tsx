@@ -455,7 +455,7 @@ function MemberPanel({
             {mode === 'edit' && (
               <button onClick={() => setMode('view')} style={btnBase('ghost')}>CANCELAR</button>
             )}
-            {error && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: 'tomato' }}>{error}</span>}
+            {error && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: '#E62300' }}>{error}</span>}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -482,7 +482,7 @@ function MemberPanel({
               </div>
 
               {userError && (
-                <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '10px', marginBottom: '8px' }}>{userError}</div>
+                <div style={{ color: '#E62300', fontFamily: fonts.sans, fontSize: '10px', marginBottom: '8px' }}>{userError}</div>
               )}
 
               {linkedUser ? (
@@ -549,7 +549,7 @@ function MemberPanel({
                       {userSaving ? '…' : 'CREAR'}
                     </button>
                   </div>
-                  {userError && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: 'tomato' }}>{userError}</span>}
+                  {userError && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: '#E62300' }}>{userError}</span>}
                 </div>
               ) : (
                 <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega un email para habilitar acceso.</div>

@@ -333,7 +333,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
             </div>
 
             {parseError && (
-              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: 'tomato', marginBottom: '16px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: '#E62300', marginBottom: '16px' }}>
                 {parseError}
               </div>
             )}
@@ -477,7 +477,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
             {saveBlockers.length > 0 && (
               <div style={{ marginBottom: '12px' }}>
                 {saveBlockers.map((b, i) => (
-                  <div key={i} style={{ fontFamily: fonts.label, fontSize: '9px', color: 'tomato', letterSpacing: '0.05em', lineHeight: '1.8' }}>
+                  <div key={i} style={{ fontFamily: fonts.label, fontSize: '9px', color: '#E62300', letterSpacing: '0.05em', lineHeight: '1.8' }}>
                     ✕ {b}
                   </div>
                 ))}
@@ -485,7 +485,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
             )}
 
             {saveError && (
-              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: 'tomato', marginBottom: '16px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: '#E62300', marginBottom: '16px' }}>
                 {saveError}
               </div>
             )}

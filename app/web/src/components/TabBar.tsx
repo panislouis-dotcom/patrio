@@ -198,7 +198,7 @@ export function TabBar({ onLogout }: TabBarProps) {
                     style={inputStyle}
                   />
                   {pwError && (
-                    <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '10px' }}>{pwError}</div>
+                    <div style={{ color: '#E62300', fontFamily: fonts.sans, fontSize: '10px' }}>{pwError}</div>
                   )}
                   {pwSuccess && (
                     <div style={{ color: colors.primary, fontFamily: fonts.sans, fontSize: '10px' }}>Contraseña actualizada</div>

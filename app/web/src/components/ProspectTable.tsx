@@ -57,7 +57,7 @@ export function ProspectTable() {
   )
 
   if (loading) return <div style={{ padding: '32px', color: colors.secondary }}>Cargando…</div>
-  if (error) return <div style={{ padding: '32px', color: 'tomato' }}>Error: {error}</div>
+  if (error) return <div style={{ padding: '32px', color: '#E62300' }}>Error: {error}</div>
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 49px)' }}>
@@ -69,7 +69,7 @@ export function ProspectTable() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {(totalErrors > 0 || totalWarnings > 0) && (
               <div style={{ display: 'flex', gap: '8px', fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em' }}>
-                {totalErrors > 0 && <span style={{ color: 'tomato' }}>🔴 {totalErrors}</span>}
+                {totalErrors > 0 && <span style={{ color: '#E62300' }}>🔴 {totalErrors}</span>}
                 {totalWarnings > 0 && <span style={{ color: '#a46a14' }}>⚠️ {totalWarnings}</span>}
               </div>
             )}
@@ -135,7 +135,7 @@ export function ProspectTable() {
             {sorted.map(p => {
               const errors = p.issues.filter(i => i.severity === 'error').length
               const warnings = p.issues.filter(i => i.severity === 'warning').length
-              const roiColor = (p.roi ?? 0) < 0 ? 'tomato' : (p.roi ?? 0) > 0.15 ? colors.tertiary : colors.neutral
+              const roiColor = (p.roi ?? 0) < 0 ? '#E62300' : (p.roi ?? 0) > 0.15 ? colors.tertiary : colors.neutral
               const statusDot = PROSPECT_STATUS_COLOR[p.status] ?? colors.secondary
 
               return (

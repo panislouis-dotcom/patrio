@@ -197,7 +197,7 @@ export function AnalysisView() {
     return <div style={{ padding: '32px', color: colors.secondary, fontFamily: fonts.sans }}>Cargando análisis...</div>
   }
   if (error || !snap) {
-    return <div style={{ padding: '32px', color: 'tomato', fontFamily: fonts.sans }}>{error ?? 'No encontrado'}</div>
+    return <div style={{ padding: '32px', color: '#E62300', fontFamily: fonts.sans }}>{error ?? 'No encontrado'}</div>
   }
 
   const showBuildHold = (snap.rentaMensualEstimada ?? 0) > 0

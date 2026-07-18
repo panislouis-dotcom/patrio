@@ -120,7 +120,7 @@ export function ApiKeysSection() {
       </div>
 
       {loading && <div style={{ ...labelStyle, padding: '8px 0' }}>Cargando…</div>}
-      {error && <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '11px', marginBottom: '8px' }}>{error}</div>}
+      {error && <div style={{ color: '#E62300', fontFamily: fonts.sans, fontSize: '11px', marginBottom: '8px' }}>{error}</div>}
 
       {/* Revealed token — shown once */}
       {revealedKey && (
@@ -229,7 +229,7 @@ export function ApiKeysSection() {
           {creating ? 'CREANDO…' : '+ CREAR KEY'}
         </button>
       </form>
-      {createError && <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '10px', marginTop: '4px' }}>{createError}</div>}
+      {createError && <div style={{ color: '#E62300', fontFamily: fonts.sans, fontSize: '10px', marginTop: '4px' }}>{createError}</div>}
     </div>
   )
 }

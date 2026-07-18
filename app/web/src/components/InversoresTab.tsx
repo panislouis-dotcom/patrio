@@ -93,7 +93,7 @@ export function InversoresTab() {
   }
 
   if (loading) return <div style={{ padding: '32px', color: colors.secondary }}>Cargando…</div>
-  if (error) return <div style={{ padding: '32px', color: 'tomato' }}>Error: {error}</div>
+  if (error) return <div style={{ padding: '32px', color: '#E62300' }}>Error: {error}</div>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 49px)' }}>

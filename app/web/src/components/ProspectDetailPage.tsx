@@ -198,7 +198,7 @@ export function ProspectDetailPage() {
   }
   if (!isNew && (error || !prospect)) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: 'tomato', fontFamily: fonts.sans, fontSize: '13px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: '#E62300', fontFamily: fonts.sans, fontSize: '13px' }}>
         {error ?? 'No encontrado'}
       </div>
     )

@@ -63,7 +63,7 @@ export function ComparablesTab() {
   }, [])
 
   if (loading) return <div style={{ padding: '32px', color: colors.secondary, fontFamily: fonts.sans }}>Cargando comparables...</div>
-  if (error) return <div style={{ padding: '32px', color: 'tomato', fontFamily: fonts.sans }}>Error: {error}</div>
+  if (error) return <div style={{ padding: '32px', color: '#E62300', fontFamily: fonts.sans }}>Error: {error}</div>
 
   const filtered = filterStatus ? comps.filter(c => c.status === filterStatus) : comps
 

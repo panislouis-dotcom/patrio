@@ -111,7 +111,7 @@ export function UserManagementSection({ members }: Props) {
       ) : (
         <>
           {error && (
-            <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '11px', marginBottom: '8px' }}>{error}</div>
+            <div style={{ color: '#E62300', fontFamily: fonts.sans, fontSize: '11px', marginBottom: '8px' }}>{error}</div>
           )}
 
           {/* Users table */}
@@ -240,7 +240,7 @@ export function UserManagementSection({ members }: Props) {
               style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
             />
             {addError && (
-              <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '10px' }}>{addError}</div>
+              <div style={{ color: '#E62300', fontFamily: fonts.sans, fontSize: '10px' }}>{addError}</div>
             )}
             <button
               type="submit"

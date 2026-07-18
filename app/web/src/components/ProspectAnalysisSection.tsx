@@ -149,7 +149,7 @@ export function ProspectAnalysisSection({ prospectId }: Props) {
             </div>
           </div>
           {error && (
-            <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '10px', marginBottom: '8px' }}>{error}</div>
+            <div style={{ color: '#E62300', fontFamily: fonts.sans, fontSize: '10px', marginBottom: '8px' }}>{error}</div>
           )}
           <button
             onClick={handleRun}

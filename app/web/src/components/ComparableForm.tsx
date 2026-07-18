@@ -29,7 +29,7 @@ const labelStyle: React.CSSProperties = {
 const errorTextStyle: React.CSSProperties = {
   fontFamily: fonts.sans,
   fontSize: '10px',
-  color: 'tomato',
+  color: '#E62300',
   marginTop: '4px',
 }
 
