@@ -3,7 +3,7 @@
 Download INEGI AGEB urbano GeoJSON for Mexican states.
 
 Source: INEGI Marco Geoestadístico 2025 via gaia.inegi.org.mx REST API.
-Output: apps/data/geo/agebs/{state_code}_{state_name}.geojson
+Output: app/api/geo_data/agebs/{state_code}_{state_name}.geojson
 
 NOTE: AGEB data gives administrative boundaries by code.
 Colonia names come from Nominatim geocoding (see api/geo.py), not from this data.

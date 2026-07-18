@@ -6,13 +6,13 @@ Configure S3 via environment variables (all four required to enable S3):
   S3_ACCESS_KEY
   S3_SECRET_KEY
 
-When S3_ENDPOINT is not set, files are stored under data/files/ on local disk.
+When S3_ENDPOINT is not set, files are stored under var/files/ (relative to this module) on local disk.
 Files are always served proxied through the API — no public bucket access needed.
 """
 import os
 from pathlib import Path
 
-_ROOT = Path(__file__).parent.parent.parent / "data" / "files"
+_ROOT = Path(__file__).parent / "var" / "files"
 
 _S3_ENDPOINT = os.getenv("S3_ENDPOINT", "")
 _S3_BUCKET = os.getenv("S3_BUCKET", "")

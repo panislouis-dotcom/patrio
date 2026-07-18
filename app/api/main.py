@@ -162,7 +162,7 @@ def serve_file(path: str):
 
 
 # Serve React frontend in production container (not present in local dev)
-FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend_dist"
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend_dist"
 if FRONTEND_DIR.exists():
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):

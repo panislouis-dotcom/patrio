@@ -101,7 +101,7 @@ def geocode(address: str, state_hint: str = "") -> Optional[tuple[float, float, 
 
 # ---------------------------------------------------------------------------
 # Optional: load INEGI AGEB shapefile for offline/high-volume use
-# Place .shp in apps/data/geo/colonias_inegi_2024/ to enable.
+# Place .shp in app/api/geo_data/colonias_inegi_2024/ to enable.
 # If absent, Nominatim geocoding provides colonia names at query time.
 # ---------------------------------------------------------------------------
 
@@ -109,7 +109,7 @@ _colonias_gdf = None
 _Point = None
 
 from pathlib import Path
-_GEO_DIR = Path(__file__).parent.parent / "data" / "geo" / "colonias_inegi_2024"
+_GEO_DIR = Path(__file__).parent / "geo_data" / "colonias_inegi_2024"
 
 
 def load_colonias() -> bool:
