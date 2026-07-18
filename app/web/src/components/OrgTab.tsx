@@ -69,7 +69,7 @@ const btnBase = (variant: 'primary' | 'ghost' | 'danger'): React.CSSProperties =
     variant === 'primary' ? colors.primary :
     variant === 'danger' ? '#8B2020' :
     'transparent',
-  color: colors.neutral,
+  color: variant === 'danger' ? colors.surfaceAlt : colors.neutral,
   fontFamily: fonts.label,
   fontSize: '9px',
   letterSpacing: '0.08em',
