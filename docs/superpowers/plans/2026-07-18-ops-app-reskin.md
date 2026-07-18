@@ -618,6 +618,394 @@ file/token responsible, don't do a broad re-sweep).
 
 ---
 
+## Scope expansion: investor-document generation code (Tasks 12-16)
+
+**Discovered during Task 4's review, confirmed with user.** `docs/DESIGN.md` is not the
+only place the old theme lives — two production Python modules generate real investor
+PDFs and hardcode the old palette/fonts directly, independent of DESIGN.md:
+`app/api/lib/prospectus_html.py` (493 lines, imported by `app/api/routes/documents.py`)
+and `app/api/lib/term_sheet_html.py` (473 lines, same route file), plus 4 AI-skill
+markdown files that describe the same templates for Claude to regenerate on request
+(`app/.claude/skills/generate-prospectus.md`, `generate-term-sheet.md`,
+`flip-quick-look.md`, `flip-proyecto.md`). Task 4 also introduced a real bug: DESIGN.md's
+`neutral`/`dark` keys got the same "keep key names, flip values" treatment as
+`theme.ts`, but DESIGN.md's consumers use these two words as literal, human-readable CSS
+value placeholders (e.g. `background: neutral; color: dark;` in
+`generate-prospectus.md:68`) — flipping their meaning silently inverts generated pages
+(black background, white cover) instead of leaving them in the old (but internally
+consistent) theme. User confirmed: fix this properly and rebrand the whole investor-
+document pipeline now, not defer it.
+
+**Global substitution table** (applies across Tasks 12-15 — this is the single source of
+truth for every hex/font swap in this section):
+
+| Old value | New value | Note |
+|---|---|---|
+| `#A2571D` | `#A16A3C` | tertiary |
+| `#654F6F` | `#8C6D87` | accent1 |
+| `#5C5D8D` | `#697692` | accent2 |
+| `#7A7260` | `#6B6B6B` | secondary |
+| `#F2F0EB` | `#F2F0EB` | neutral — **unchanged**, see DESIGN.md fix below |
+| `#1A2319` | `#1A1A1A` | dark — was two different near-blacks (`#1A2319` for cover/footer surfaces, `#1A1A1A` already used ad-hoc for body/heading text in `prospectus_html.py`); unify both to `#1A1A1A` |
+| `#1A1A1A` | `#1A1A1A` | already correct where it appears — no change |
+| `#6B8A5E` | `#6B8A5E` | primary — unchanged, already patrio sage |
+| `EB Garamond` (regular) | `Playfair Display` | |
+| `EB Garamond` (italic) | `Playfair Display` (italic) | |
+| `Public Sans` | `Inter` | |
+| `Space Grotesk` | `Inter` | label-caps role collapses into Inter, matching the Task 1 `theme.ts` decision |
+| `eb-garamond-regular.woff2` | `playfair-display-regular.woff2` | |
+| `eb-garamond-italic.woff2` | `playfair-display-italic.woff2` | |
+| `public-sans.woff2` | `inter-400.woff2` (400-weight body text) | Public Sans was one variable file; Inter is sourced as 3 static-weight files instead (see Task 12) |
+| — (new, no old equivalent) | `inter-500.woff2` | for medium-weight UI text (buttons, `font-weight: 500` usages) |
+| `space-grotesk.woff2` | `inter-600.woff2` for label-caps (uppercase, tracked, small text — wants more visual weight than body) | replaces the retired Space Grotesk font-face entirely |
+
+### Task 12: Fix DESIGN.md's neutral/dark inversion + stage new font files
+
+**Files:**
+- Modify: `docs/DESIGN.md`
+- Create: `app/api/fonts/playfair-display-regular.woff2`
+- Create: `app/api/fonts/playfair-display-italic.woff2`
+- Create: `app/api/fonts/inter-400.woff2`
+- Create: `app/api/fonts/inter-500.woff2`
+- Create: `app/api/fonts/inter-600.woff2`
+
+**Context:** The 5 font files have already been sourced (downloaded from Google Fonts,
+verified as valid WOFF2 via `file`) and staged at
+`/private/tmp/claude-501/-Users-eduardo-Documents-repos-patrio/5bf80381-451f-4b67-a6e9-5b679fbb1b45/scratchpad/fonts/`.
+Copy them into the repo rather than re-downloading (avoids non-determinism/network
+flakiness in your environment).
+
+- [ ] **Step 1: Copy the staged font files into the repo**
+
+```bash
+cp /private/tmp/claude-501/-Users-eduardo-Documents-repos-patrio/5bf80381-451f-4b67-a6e9-5b679fbb1b45/scratchpad/fonts/playfair-display-regular.woff2 app/api/fonts/
+cp /private/tmp/claude-501/-Users-eduardo-Documents-repos-patrio/5bf80381-451f-4b67-a6e9-5b679fbb1b45/scratchpad/fonts/playfair-display-italic.woff2 app/api/fonts/
+cp /private/tmp/claude-501/-Users-eduardo-Documents-repos-patrio/5bf80381-451f-4b67-a6e9-5b679fbb1b45/scratchpad/fonts/inter-400.woff2 app/api/fonts/
+cp /private/tmp/claude-501/-Users-eduardo-Documents-repos-patrio/5bf80381-451f-4b67-a6e9-5b679fbb1b45/scratchpad/fonts/inter-500.woff2 app/api/fonts/
+cp /private/tmp/claude-501/-Users-eduardo-Documents-repos-patrio/5bf80381-451f-4b67-a6e9-5b679fbb1b45/scratchpad/fonts/inter-600.woff2 app/api/fonts/
+file app/api/fonts/playfair-display-regular.woff2 app/api/fonts/playfair-display-italic.woff2 app/api/fonts/inter-400.woff2 app/api/fonts/inter-500.woff2 app/api/fonts/inter-600.woff2
+```
+Expected: all 5 report "Web Open Font Format (Version 2)".
+
+**Note:** leave the 4 old font files (`eb-garamond-regular.woff2`, `eb-garamond-italic.woff2`,
+`public-sans.woff2`, `space-grotesk.woff2`) in place for this step — Task 13 removes their
+references from code; delete the files themselves only after Tasks 13-15 land and nothing
+references them (`grep -rn "eb-garamond\|public-sans\|space-grotesk" app/api app/.claude/skills`
+returns nothing).
+
+- [ ] **Step 2: Fix DESIGN.md's color tokens**
+
+In `docs/DESIGN.md`'s YAML front-matter, change only these two values (everything else
+from Task 4 stays as-is):
+
+```yaml
+colors:
+  primary: "#6B8A5E"
+  secondary: "#6B6B6B"
+  tertiary: "#A16A3C"
+  accent1: "#8C6D87"
+  accent2: "#697692"
+  neutral: "#F2F0EB"
+  dark: "#1A1A1A"
+```
+
+(`neutral` goes from `#1A1A1A` back to `#F2F0EB` — the pale page-foundation color, matching
+its name and its pre-existing value from before Task 4. `dark` goes from `#FFFFFF` to
+`#1A1A1A` — the near-black ink/cover-surface color, matching its name. This restores the
+non-inverted semantics the 4 skill files and the 2 Python modules expect when they use
+`neutral`/`dark` as literal words, not opaque IDs — unlike `theme.ts`, which keeps its
+role-flip because its 42 consumers treat `colors.dark`/`colors.neutral` as opaque token
+IDs, not literal English words in generated output.)
+
+Also update the **Colors** section prose to match:
+```markdown
+- **Neutral (#F2F0EB):** Pale linen — the page foundation.
+- **Dark (#1A1A1A):** Near-black ink — cover, footer, and body text on light backgrounds.
+```
+(Replace the existing Neutral/Dark bullet lines with these two — leave Primary/Secondary/
+Tertiary/Accent1/Accent2 bullets exactly as Task 4 left them.)
+
+- [ ] **Step 3: Verify YAML still parses**
+
+Run: `python3 -c "import yaml; d = open('docs/DESIGN.md').read().split('---')[1]; print(yaml.safe_load(d))"`
+Expected: `neutral` prints `#F2F0EB`, `dark` prints `#1A1A1A`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docs/DESIGN.md app/api/fonts/playfair-display-regular.woff2 app/api/fonts/playfair-display-italic.woff2 app/api/fonts/inter-400.woff2 app/api/fonts/inter-500.woff2 app/api/fonts/inter-600.woff2
+git commit -m "fix(reskin): correct DESIGN.md neutral/dark inversion, add Playfair/Inter font files
+
+DESIGN.md's neutral/dark tokens are used as literal English-word CSS
+value placeholders by the document-generation skills and Python
+modules (unlike theme.ts's opaque colors.* references), so the
+role-flip pattern used elsewhere in this reskin actively inverts
+generated document colors here. Restores neutral=pale bg,
+dark=near-black ink, matching what those consumers expect."
+```
+
+---
+
+### Task 13: Rewrite `app/api/lib/prospectus_html.py`
+
+**Files:**
+- Modify: `app/api/lib/prospectus_html.py`
+
+- [ ] **Step 1: Replace the font-loading table**
+
+Find the `fonts` list inside `_build_fonts_css()` (near the top of the file):
+
+```python
+    fonts = [
+        ("EB Garamond", "400", "normal", "eb-garamond-regular.woff2"),
+        ("EB Garamond", "400", "italic", "eb-garamond-italic.woff2"),
+        ("Public Sans", "100 900", "normal", "public-sans.woff2"),
+        ("Space Grotesk", "300 700", "normal", "space-grotesk.woff2"),
+    ]
+```
+
+Replace with:
+
+```python
+    fonts = [
+        ("Playfair Display", "400", "normal", "playfair-display-regular.woff2"),
+        ("Playfair Display", "400", "italic", "playfair-display-italic.woff2"),
+        ("Inter", "400", "normal", "inter-400.woff2"),
+        ("Inter", "500", "normal", "inter-500.woff2"),
+        ("Inter", "600", "normal", "inter-600.woff2"),
+    ]
+```
+
+- [ ] **Step 2: Apply the global substitution table to every CSS rule in this file**
+
+Using the substitution table above (in the "Scope expansion" section header), replace
+every occurrence in this file of:
+- `#A2571D` → `#A16A3C`
+- `#654F6F` → `#8C6D87`
+- `#5C5D8D` → `#697692`
+- `#7A7260` → `#6B6B6B`
+- `#1A2319` → `#1A1A1A`
+- `'EB Garamond'` (and `EB Garamond` without quotes in font-family lists) → `'Playfair Display'`
+- `'Public Sans'` → `'Inter'`
+- `'Space Grotesk'` → `'Inter'`
+
+Leave `#F2F0EB`, `#6B8A5E`, and any already-correct `#1A1A1A` untouched — they don't change.
+
+You can do this with `sed` for speed, then hand-verify the result, e.g.:
+```bash
+sed -i '' \
+  -e "s/#A2571D/#A16A3C/g" \
+  -e "s/#654F6F/#8C6D87/g" \
+  -e "s/#5C5D8D/#697692/g" \
+  -e "s/#7A7260/#6B6B6B/g" \
+  -e "s/#1A2319/#1A1A1A/g" \
+  -e "s/EB Garamond/Playfair Display/g" \
+  -e "s/Public Sans/Inter/g" \
+  -e "s/Space Grotesk/Inter/g" \
+  app/api/lib/prospectus_html.py
+```
+(macOS `sed -i ''` syntax — adjust to `sed -i` without the empty string if your environment
+is Linux.) The font-loading table you already hand-edited in Step 1 will also get touched
+by this sed pass (e.g. `"EB Garamond"` inside the tuple becomes `"Playfair Display"`) —
+that's fine, it's idempotent since you already wrote the correct end state in Step 1;
+just re-verify Step 1's table still reads exactly as specified after running sed.
+
+- [ ] **Step 3: Verify no old references remain**
+
+Run: `grep -n "#A2571D\|#654F6F\|#5C5D8D\|#7A7260\|#1A2319\|EB Garamond\|Public Sans\|Space Grotesk\|eb-garamond\|public-sans\|space-grotesk" app/api/lib/prospectus_html.py`
+Expected: no output.
+
+- [ ] **Step 4: Verify Python syntax and imports are valid**
+
+Run: `cd app/api && python3 -c "import lib.prospectus_html"` (adjust the working directory /
+PYTHONPATH to however this project normally runs its API — check `makefile` for the
+established `PYTHONPATH=.:app` pattern used elsewhere in this repo, e.g.
+`PYTHONPATH=.:app python3 -c "from api.lib import prospectus_html"` from the repo root).
+Expected: no exception (confirms the file parses and `_build_fonts_css()` doesn't raise —
+note this function reads the actual font files on import-adjacent calls, so this also
+smoke-tests that Task 12's font files are present and readable).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/lib/prospectus_html.py
+git commit -m "fix(reskin): recolor/refont prospectus_html.py to patrio's light theme"
+```
+
+---
+
+### Task 14: Rewrite `app/api/lib/term_sheet_html.py`
+
+**Files:**
+- Modify: `app/api/lib/term_sheet_html.py`
+
+**Context:** This file already imports `_build_fonts_css` from `prospectus_html.py` (fixed
+in Task 13) — no font-loading-table changes needed here, only the file's own hardcoded CSS
+color/font-family literals.
+
+- [ ] **Step 1: Apply the same substitution table**
+
+```bash
+sed -i '' \
+  -e "s/#A2571D/#A16A3C/g" \
+  -e "s/#654F6F/#8C6D87/g" \
+  -e "s/#5C5D8D/#697692/g" \
+  -e "s/#7A7260/#6B6B6B/g" \
+  -e "s/#1A2319/#1A1A1A/g" \
+  -e "s/EB Garamond/Playfair Display/g" \
+  -e "s/Public Sans/Inter/g" \
+  -e "s/Space Grotesk/Inter/g" \
+  app/api/lib/term_sheet_html.py
+```
+
+- [ ] **Step 2: Verify no old references remain**
+
+Run: `grep -n "#A2571D\|#654F6F\|#5C5D8D\|#7A7260\|#1A2319\|EB Garamond\|Public Sans\|Space Grotesk\|eb-garamond\|public-sans\|space-grotesk" app/api/lib/term_sheet_html.py`
+Expected: no output.
+
+- [ ] **Step 3: Verify Python syntax**
+
+Run: `PYTHONPATH=.:app python3 -c "from api.lib import term_sheet_html"` from the repo root
+(matching the makefile's established `PYTHONPATH` convention).
+Expected: no exception.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/api/lib/term_sheet_html.py
+git commit -m "fix(reskin): recolor/refont term_sheet_html.py to patrio's light theme"
+```
+
+---
+
+### Task 15: Update the 4 document-generation skill files
+
+**Files:**
+- Modify: `app/.claude/skills/generate-prospectus.md`
+- Modify: `app/.claude/skills/generate-term-sheet.md`
+- Modify: `app/.claude/skills/flip-quick-look.md`
+- Modify: `app/.claude/skills/flip-proyecto.md`
+
+**Context:** These are instructions for an AI agent (not executed code), describing the
+same visual templates as Tasks 13-14's Python. Keep them in sync so a future
+Claude-authored regeneration of these Python files (per each skill's own "any logic that
+lives outside this skill will drift" warning) doesn't reintroduce the old theme.
+
+- [ ] **Step 1: Apply the same substitution table to all 4 files**
+
+```bash
+for f in generate-prospectus generate-term-sheet flip-quick-look flip-proyecto; do
+  sed -i '' \
+    -e "s/#A2571D/#A16A3C/g" \
+    -e "s/#654F6F/#8C6D87/g" \
+    -e "s/#5C5D8D/#697692/g" \
+    -e "s/#7A7260/#6B6B6B/g" \
+    -e "s/#1A2319/#1A1A1A/g" \
+    -e "s/EB Garamond/Playfair Display/g" \
+    -e "s/Public Sans/Inter/g" \
+    -e "s/Space Grotesk/Inter/g" \
+    -e "s#files/fonts/eb-garamond-regular.woff2#files/fonts/playfair-display-regular.woff2#g" \
+    -e "s#files/fonts/eb-garamond-italic.woff2#files/fonts/playfair-display-italic.woff2#g" \
+    -e "s#files/fonts/public-sans.woff2#files/fonts/inter-400.woff2#g" \
+    -e "s#files/fonts/space-grotesk.woff2#files/fonts/inter-600.woff2#g" \
+    -e "s#fonts/eb-garamond-regular.woff2#fonts/playfair-display-regular.woff2#g" \
+    -e "s#fonts/eb-garamond-italic.woff2#fonts/playfair-display-italic.woff2#g" \
+    -e "s#fonts/public-sans.woff2#fonts/inter-400.woff2#g" \
+    -e "s#fonts/space-grotesk.woff2#fonts/inter-600.woff2#g" \
+    app/.claude/skills/$f.md
+done
+```
+
+- [ ] **Step 2: Fix the stale absolute path bug in `generate-term-sheet.md`**
+
+This file hardcodes an absolute path to the old, retired repo location:
+`file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/...` — this predates this
+reskin (a leftover from sub-project 1's migration that was missed) and is broken
+regardless of theme. Find every `file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/`
+occurrence and replace with `file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/`
+(matching this repo's actual current font directory, confirmed at Task 12).
+
+```bash
+sed -i '' "s#file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/#file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/#g" app/.claude/skills/generate-term-sheet.md
+```
+
+- [ ] **Step 3: Verify no old references remain in any of the 4 files**
+
+Run: `grep -rn "#A2571D\|#654F6F\|#5C5D8D\|#7A7260\|#1A2319\|EB Garamond\|Public Sans\|Space Grotesk\|eb-garamond\|public-sans\|space-grotesk\|repos/refigan" app/.claude/skills/generate-prospectus.md app/.claude/skills/generate-term-sheet.md app/.claude/skills/flip-quick-look.md app/.claude/skills/flip-proyecto.md`
+Expected: no output.
+
+- [ ] **Step 4: Read each file's diff and sanity-check prose that references color names by their old English description**
+
+The sed pass only touches hex codes and font names — it won't catch prose like "Dark full-
+bleed page" or "the sage green `#6B8A5E`" (unchanged value, fine) or any place the old
+docs described a color by feel rather than hex (e.g. "burnt terracotta"). Read through
+`git diff` for all 4 files and fix any such prose reference by hand so the written
+description still matches the (now-changed) actual colors. This is a judgment step, not
+mechanical — there's no fixed list to check off, just read what changed and confirm the
+surrounding sentences still make sense.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/.claude/skills/generate-prospectus.md app/.claude/skills/generate-term-sheet.md app/.claude/skills/flip-quick-look.md app/.claude/skills/flip-proyecto.md
+git commit -m "fix(reskin): recolor/refont the 4 document-generation skills to match
+
+Also fixes a pre-existing stale absolute path in generate-term-sheet.md
+pointing at the retired refigan repo instead of patrio's actual
+app/api/fonts/ location."
+```
+
+---
+
+### Task 16: Verify investor-document generation end-to-end
+
+**Files:** None modified — verification only.
+
+- [ ] **Step 1: Smoke-test both document builders directly**
+
+From the repo root:
+```bash
+PYTHONPATH=.:app python3 -c "
+from api.lib.prospectus_html import build_prospectus_html
+from api.lib.term_sheet_html import build_term_sheet_html
+projects = [{'name': 'Test Project', 'address': 'Test 123', 'valuation': 1000000}]
+prospects = []
+html = build_prospectus_html(projects, prospects)
+assert '#A2571D' not in html and '#654F6F' not in html and '#5C5D8D' not in html
+assert 'EB Garamond' not in html and 'Public Sans' not in html and 'Space Grotesk' not in html
+assert 'Playfair Display' in html and 'Inter' in html
+print('prospectus OK, length', len(html))
+term_sheet = build_term_sheet_html({'name': 'Test', 'address': 'Test 123', 'holdMonths': 12}, 'Test Investor', 500000, 0.10)
+assert '#A2571D' not in term_sheet and 'EB Garamond' not in term_sheet
+print('term sheet OK, length', len(term_sheet))
+"
+```
+If the actual function signatures differ from this sketch (check by reading the function
+definitions in both files first — `def build_prospectus_html(...)` and
+`def build_term_sheet_html(...)`), adjust the test call's arguments to match the real
+signature while keeping the same assertions (no old hex/font strings present, new ones
+present). This is testing real code with a lightweight fabricated input, not a fixture
+that exists elsewhere in the repo.
+
+- [ ] **Step 2: If `render_to_pdf` is easy to smoke-test in this environment, do so**
+
+`prospectus_html.py` also exports `render_to_pdf` (imported by `documents.py`). If a
+headless Chromium/Playwright binary is already available in this environment (check
+`app/e2e`'s existing Playwright setup — it's already used for the ops-app e2e tests, so a
+compatible browser binary likely exists), render the smoke-test HTML from Step 1 to an
+actual PDF and confirm it doesn't raise. If no such binary is readily available in this
+sandboxed environment, skip this step and note it as a gap in your final report — this is
+a "nice to have" deeper check, not a blocker, since Step 1 already verifies the HTML/CSS
+content itself is correct.
+
+- [ ] **Step 3: Report results**
+
+No commit needed (verification only) unless Step 1/2 surfaces a real bug, in which case
+fix it under the specific task it belongs to (Task 13 or 14) with a new commit there, not
+here.
+
+---
+
 ## Definition of Done
 
 - `theme.ts`, `index.html`, `favicon.svg`, `docs/DESIGN.md` updated per Tasks 1-4.
@@ -625,4 +1013,9 @@ file/token responsible, don't do a broad re-sweep).
   documented reason for leaving it unchanged.
 - Vitest and Playwright suites green (Task 10).
 - Manual visual pass complete with user sign-off on screenshots (Task 11).
+- `docs/DESIGN.md`'s neutral/dark inversion fixed, new font files staged (Task 12).
+- `prospectus_html.py` and `term_sheet_html.py` recolored/refonted, no old hex/font
+  references remain, Python smoke-tests pass (Tasks 13-14, 16).
+- All 4 document-generation skill markdown files updated to match, including the
+  pre-existing stale `repos/refigan` path bug fixed (Task 15).
 - All commits on branch `repo-consolidation-refigan` (PR #2) — no new branch, no new PR.
