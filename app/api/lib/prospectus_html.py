@@ -311,10 +311,10 @@ def _vision() -> str:
   <section class="content-section">
     <h3>VISIÓN</h3>
     <h2>La brecha entre lo que recibes y lo que genera el mercado</h2>
-    <p>CETES ronda el 9% anual. Los bancos prestan al 15% a desarrolladores. La diferencia existe, y alguien la captura. Ese espacio es donde Refigan opera.</p>
-    <p>Refigan ofrece rendimiento fijo ~12% anual, respaldado por inmuebles reales en el Centro de Monterrey y otras zonas de oportunidad. Plazo definido, activo tangible, salida clara — sin la volatilidad de mercados financieros.</p>
-    <p>Cada inversión financia un edificio real. Refigan identifica y desarrolla oportunidades en el Centro de Monterrey y otras zonas de oportunidad, siguiendo una metodología de adquisición probada.</p>
-    <div class="impact-block"><p>Restaurar un edificio histórico no es solo una operación financiera. Es devolver vida a una estructura que guarda la historia de una ciudad. Cada proyecto de Refigan rescata una pieza del patrimonio urbano de Monterrey — y la convierte en un espacio digno, habitado, vivo.</p></div>
+    <p>CETES ronda el 9% anual. Los bancos prestan al 15% a desarrolladores. La diferencia existe, y alguien la captura. Ese espacio es donde Patrio opera.</p>
+    <p>Patrio ofrece rendimiento fijo ~12% anual, respaldado por inmuebles reales en el Centro de Monterrey y otras zonas de oportunidad. Plazo definido, activo tangible, salida clara — sin la volatilidad de mercados financieros.</p>
+    <p>Cada inversión financia un edificio real. Patrio identifica y desarrolla oportunidades en el Centro de Monterrey y otras zonas de oportunidad, siguiendo una metodología de adquisición probada.</p>
+    <div class="impact-block"><p>Restaurar un edificio histórico no es solo una operación financiera. Es devolver vida a una estructura que guarda la historia de una ciudad. Cada proyecto de Patrio rescata una pieza del patrimonio urbano de Monterrey — y la convierte en un espacio digno, habitado, vivo.</p></div>
   </section>
 </div>"""
 
@@ -429,7 +429,7 @@ def _cta(month_year: str) -> str:
     return f"""<div class="footer-section">
   <div>
     <h2>Hablemos de su próxima inversión</h2>
-    <p>Refigan opera desde <strong>San Pedro Garza García</strong> e invierte en el Centro de Monterrey y otras zonas con oportunidades. Fondeos cerrados, plazos definidos, rendimientos fijos.</p>
+    <p>Patrio opera desde <strong>San Pedro Garza García</strong> e invierte en el Centro de Monterrey y otras zonas con oportunidades. Fondeos cerrados, plazos definidos, rendimientos fijos.</p>
     <p>Documento preparado exclusivamente para prospectos e inversionistas autorizados. Los rendimientos proyectados son estimados y no constituyen una garantía.</p>
   </div>
   <div class="footer-disclaimer">
