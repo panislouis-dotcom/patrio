@@ -18,7 +18,7 @@ reset-db: ## Drop schema and re-run all migrations from scratch
 	$(PSQL) -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 	docker compose run --rm migrate
 
-reset-test-db: ## Wipe and recreate the test DB (refigan_test), then migrate
+reset-test-db: ## Wipe and recreate the test DB, then migrate
 	-docker exec -i $(PG_CTR) psql -U $(PG_USER) -d postgres -c "DROP DATABASE IF EXISTS $(TEST_PG_DB);"
 	docker exec -i $(PG_CTR) psql -U $(PG_USER) -d postgres -c "CREATE DATABASE $(TEST_PG_DB);"
 	docker compose run --rm -e DATABASE_URL=$(TEST_DB_URL_COMPOSE) migrate
