@@ -101,6 +101,16 @@ Leaving it stale would contradict the same repo's own guideline #1 ("value conce
 data integrity above all") — a design doc that describes a theme the code no longer has is
 worse than no doc.
 
+**Discovered during planning, confirmed with user:** `docs/DESIGN.md` is not only the ops
+app's own style reference — it's the live source of truth read by four document-generation
+skills (`app/.claude/skills/generate-prospectus.md`, `generate-term-sheet.md`,
+`flip-quick-look.md`, `flip-proyecto.md`) that produce investor-facing PDFs, each stating
+"never hardcode colors — derive from DESIGN.md tokens." Rewriting it therefore also changes
+the branding those documents pick up on next generation. Flagged to the user explicitly;
+confirmed decision: rewrite it anyway, accepting that investor-document branding moves to
+the new light theme as a consequence of this reskin, rather than carving DESIGN.md out of
+scope.
+
 ## 4. Icons — out of scope
 
 Verified: no icon library (`lucide`, `heroicons`, `react-icons`, `feather`) is installed
