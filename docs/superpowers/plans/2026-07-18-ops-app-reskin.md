@@ -834,6 +834,46 @@ git commit -m "fix(reskin): recolor/refont prospectus_html.py to patrio's light 
 
 ---
 
+### Task 13b: Fix "Refigan" brand text in `app/api/lib/prospectus_html.py`
+
+**Files:**
+- Modify: `app/api/lib/prospectus_html.py`
+
+**Context:** Task 13 fixed colors/fonts only. A quality reviewer flagged that the file's
+body-copy prose still names the retired brand ("Refigan opera", "Refigan ofrece
+rendimiento...") in 5 places (lines 314-317, 432). Confirmed with the user: the entity name
+in generated documents should simply be "Patrio" (no "Capital" suffix).
+
+- [ ] **Step 1: Replace all "Refigan" occurrences with "Patrio"**
+
+```bash
+sed -i '' "s/Refigan/Patrio/g" app/api/lib/prospectus_html.py
+```
+
+- [ ] **Step 2: Verify no old references remain and Spanish grammar still reads correctly**
+
+Run: `grep -in "refigan" app/api/lib/prospectus_html.py`
+Expected: no output.
+
+Run: `grep -n "Patrio" app/api/lib/prospectus_html.py` and read each matched line in context
+(via `git diff`) to confirm the substitution didn't break Spanish grammar/agreement (a
+straight word-for-word swap of a proper noun should be safe, but verify by eye — e.g. "Ese
+espacio es donde Patrio opera." still reads naturally).
+
+- [ ] **Step 3: Verify Python syntax**
+
+Run: `PYTHONPATH=.:app python3 -c "from api.lib import prospectus_html"` from the repo root.
+Expected: no exception.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/api/lib/prospectus_html.py
+git commit -m "fix(reskin): rebrand Refigan to Patrio in prospectus body copy"
+```
+
+---
+
 ### Task 14: Rewrite `app/api/lib/term_sheet_html.py`
 
 **Files:**
@@ -843,7 +883,14 @@ git commit -m "fix(reskin): recolor/refont prospectus_html.py to patrio's light 
 in Task 13) — no font-loading-table changes needed here, only the file's own hardcoded CSS
 color/font-family literals.
 
-- [ ] **Step 1: Apply the same substitution table**
+- [ ] **Step 1: Apply the same substitution table, plus the Refigan→Patrio brand rename**
+
+This file also names the retired brand directly — including as the signing entity in the
+signature block (`<div class="sig-name">Refigan Capital</div>`, line 464) and the cover
+footer (`Distribución Restringida · Refigan Capital · {year_label}`, line 370). Confirmed
+with the user: the entity name in generated documents should simply be "Patrio" (no
+"Capital" suffix) — `s/Refigan Capital/Patrio/g` runs before the bare `s/Refigan/Patrio/g`
+so the two-word phrase collapses to "Patrio" rather than "Patrio Capital".
 
 ```bash
 sed -i '' \
@@ -855,13 +902,19 @@ sed -i '' \
   -e "s/EB Garamond/Playfair Display/g" \
   -e "s/Public Sans/Inter/g" \
   -e "s/Space Grotesk/Inter/g" \
+  -e "s/Refigan Capital/Patrio/g" \
+  -e "s/Refigan/Patrio/g" \
   app/api/lib/term_sheet_html.py
 ```
 
 - [ ] **Step 2: Verify no old references remain**
 
-Run: `grep -n "#A2571D\|#654F6F\|#5C5D8D\|#7A7260\|#1A2319\|EB Garamond\|Public Sans\|Space Grotesk\|eb-garamond\|public-sans\|space-grotesk" app/api/lib/term_sheet_html.py`
+Run: `grep -in "#A2571D\|#654F6F\|#5C5D8D\|#7A7260\|#1A2319\|EB Garamond\|Public Sans\|Space Grotesk\|eb-garamond\|public-sans\|space-grotesk\|refigan" app/api/lib/term_sheet_html.py`
 Expected: no output.
+
+Also read the 5 changed lines via `git diff` (originally lines 370, 431, 432, 442, 464) to
+confirm the Spanish grammar still reads naturally after the substitution (a proper-noun
+swap should be safe, but verify by eye).
 
 - [ ] **Step 3: Verify Python syntax**
 
@@ -873,7 +926,10 @@ Expected: no exception.
 
 ```bash
 git add app/api/lib/term_sheet_html.py
-git commit -m "fix(reskin): recolor/refont term_sheet_html.py to patrio's light theme"
+git commit -m "fix(reskin): recolor/refont term_sheet_html.py to patrio's light theme
+
+Also rebrands Refigan/Refigan Capital to Patrio in the signature block
+and cover footer."
 ```
 
 ---
@@ -891,7 +947,13 @@ same visual templates as Tasks 13-14's Python. Keep them in sync so a future
 Claude-authored regeneration of these Python files (per each skill's own "any logic that
 lives outside this skill will drift" warning) doesn't reintroduce the old theme.
 
-- [ ] **Step 1: Apply the same substitution table to all 4 files**
+- [ ] **Step 1: Apply the same substitution table to all 4 files, plus the Refigan→Patrio brand rename**
+
+`generate-prospectus.md` (13 matches) and `generate-term-sheet.md` (10 matches) also name
+the retired brand directly in their prose/template instructions — same rename as Tasks 13b
+and 14: "Refigan Capital" → "Patrio" (two-word phrase first, then the bare word).
+`flip-quick-look.md` and `flip-proyecto.md` have 0 matches — the extra `sed` passes are
+harmless no-ops on those two files.
 
 ```bash
 for f in generate-prospectus generate-term-sheet flip-quick-look flip-proyecto; do
@@ -904,6 +966,8 @@ for f in generate-prospectus generate-term-sheet flip-quick-look flip-proyecto; 
     -e "s/EB Garamond/Playfair Display/g" \
     -e "s/Public Sans/Inter/g" \
     -e "s/Space Grotesk/Inter/g" \
+    -e "s/Refigan Capital/Patrio/g" \
+    -e "s/Refigan/Patrio/g" \
     -e "s#files/fonts/eb-garamond-regular.woff2#files/fonts/playfair-display-regular.woff2#g" \
     -e "s#files/fonts/eb-garamond-italic.woff2#files/fonts/playfair-display-italic.woff2#g" \
     -e "s#files/fonts/public-sans.woff2#files/fonts/inter-400.woff2#g" \
@@ -931,7 +995,7 @@ sed -i '' "s#file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/#fil
 
 - [ ] **Step 3: Verify no old references remain in any of the 4 files**
 
-Run: `grep -rn "#A2571D\|#654F6F\|#5C5D8D\|#7A7260\|#1A2319\|EB Garamond\|Public Sans\|Space Grotesk\|eb-garamond\|public-sans\|space-grotesk\|repos/refigan" app/.claude/skills/generate-prospectus.md app/.claude/skills/generate-term-sheet.md app/.claude/skills/flip-quick-look.md app/.claude/skills/flip-proyecto.md`
+Run: `grep -rin "#A2571D\|#654F6F\|#5C5D8D\|#7A7260\|#1A2319\|EB Garamond\|Public Sans\|Space Grotesk\|eb-garamond\|public-sans\|space-grotesk\|repos/refigan\|refigan" app/.claude/skills/generate-prospectus.md app/.claude/skills/generate-term-sheet.md app/.claude/skills/flip-quick-look.md app/.claude/skills/flip-proyecto.md`
 Expected: no output.
 
 - [ ] **Step 4: Read each file's diff and sanity-check prose that references color names by their old English description**
@@ -952,7 +1016,8 @@ git commit -m "fix(reskin): recolor/refont the 4 document-generation skills to m
 
 Also fixes a pre-existing stale absolute path in generate-term-sheet.md
 pointing at the retired refigan repo instead of patrio's actual
-app/api/fonts/ location."
+app/api/fonts/ location, and rebrands Refigan/Refigan Capital to Patrio
+in generate-prospectus.md and generate-term-sheet.md prose."
 ```
 
 ---
@@ -974,9 +1039,11 @@ html = build_prospectus_html(projects, prospects)
 assert '#A2571D' not in html and '#654F6F' not in html and '#5C5D8D' not in html
 assert 'EB Garamond' not in html and 'Public Sans' not in html and 'Space Grotesk' not in html
 assert 'Playfair Display' in html and 'Inter' in html
+assert 'Refigan' not in html
 print('prospectus OK, length', len(html))
 term_sheet = build_term_sheet_html({'name': 'Test', 'address': 'Test 123', 'holdMonths': 12}, 'Test Investor', 500000, 0.10)
 assert '#A2571D' not in term_sheet and 'EB Garamond' not in term_sheet
+assert 'Refigan' not in term_sheet
 print('term sheet OK, length', len(term_sheet))
 "
 ```
