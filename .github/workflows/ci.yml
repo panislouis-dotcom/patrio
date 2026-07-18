@@ -56,11 +56,11 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: app/web/package-lock.json
       - name: Install web deps
-        run: cd apps/web && npm ci
+        run: cd app/web && npm ci
       - name: Type check
-        run: cd apps/web && npx tsc --noEmit
+        run: cd app/web && npx tsc --noEmit
 
   api-tests:
     name: API tests
@@ -82,14 +82,14 @@ jobs:
           --health-retries 10
     env:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/refigan_test
-      PYTHONPATH: ".:apps"
+      PYTHONPATH: ".:app"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
       - name: Install API deps
-        run: pip install -r apps/api/requirements.txt
+        run: pip install -r app/api/requirements.txt
       - name: Install dbmate
         run: |
           curl -fsSL https://github.com/amacneil/dbmate/releases/download/v2.33.0/dbmate-linux-amd64 -o /usr/local/bin/dbmate
@@ -97,7 +97,7 @@ jobs:
       - name: Generate CI secrets
         run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Run API tests
-        run: python -m pytest apps/api/tests/ -q
+        run: python -m pytest app/api/tests/ -q
 
   e2e:
     name: E2E tests
@@ -128,7 +128,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install API deps
-        run: pip install -r apps/api/requirements.txt
+        run: pip install -r app/api/requirements.txt
       - name: Install dbmate
         run: |
           curl -fsSL https://github.com/amacneil/dbmate/releases/download/v2.33.0/dbmate-linux-amd64 -o /usr/local/bin/dbmate
@@ -151,7 +151,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/refigan_e2e
           ALLOWED_ORIGINS: http://localhost:5173
-          PYTHONPATH: apps
+          PYTHONPATH: app
           ANTHROPIC_API_KEY: ci-placeholder-key
           FILES_ROOT: /tmp/refigan-files
         run: uvicorn api.main:app --host 0.0.0.0 --port 8000 &
@@ -164,12 +164,12 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: |
-            apps/web/package-lock.json
-            apps/e2e/package-lock.json
+            app/web/package-lock.json
+            app/e2e/package-lock.json
       - name: Build web app
-        run: cd apps/web && npm ci && npm run build
+        run: cd app/web && npm ci && npm run build
       - name: Start Vite preview
-        run: cd apps/web && npx vite preview --host 0.0.0.0 --port 5173 &
+        run: cd app/web && npx vite preview --host 0.0.0.0 --port 5173 &
       - name: Wait for web
         run: npx wait-on http://localhost:5173 --timeout 15000
 
@@ -178,17 +178,17 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('apps/e2e/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('app/e2e/package-lock.json') }}
       - name: Install E2E deps
-        run: cd apps/e2e && npm ci
+        run: cd app/e2e && npm ci
       - name: Install Playwright browsers
-        run: cd apps/e2e && npx playwright install --with-deps chromium
+        run: cd app/e2e && npx playwright install --with-deps chromium
       - name: Run E2E tests
         env:
           E2E_USER: test@refigan.com
           E2E_API_BASE_URL: http://localhost:8000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/refigan_e2e
-        run: cd apps/e2e && npm test
+        run: cd app/e2e && npm test
 
       # ── Reports ─────────────────────────────────────────────────────
       - name: Upload test results (videos / traces)
@@ -197,7 +197,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: playwright-test-results
-          path: apps/e2e/test-results/
+          path: app/e2e/test-results/
           retention-days: 14
           if-no-files-found: warn
       - name: Upload Playwright HTML report
@@ -206,14 +206,14 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: playwright-report
-          path: apps/e2e/playwright-report/
+          path: app/e2e/playwright-report/
           retention-days: 14
           if-no-files-found: warn
       - name: E2E summary comment
         if: always() && github.event_name == 'pull_request'
         uses: daun/playwright-report-summary@8bb85779022480a59ed8d33d9a4b8bda1c67666b  # v4
         with:
-          report-file: apps/e2e/test-results/results.json
+          report-file: app/e2e/test-results/results.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Report links comment
         if: always() && github.event_name == 'pull_request'
