@@ -91,4 +91,4 @@ Edificio Uno
 
 ### Timeline Row
 
-Date in label-caps (secondary) / event description in body-md (neutral). Minimal left border in tertiary.
+Date in label-caps (secondary) / event description in body-md (primary). Minimal left border in tertiary.
