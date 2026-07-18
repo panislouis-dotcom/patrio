@@ -70,7 +70,7 @@ export function ProspectTable() {
             {(totalErrors > 0 || totalWarnings > 0) && (
               <div style={{ display: 'flex', gap: '8px', fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em' }}>
                 {totalErrors > 0 && <span style={{ color: 'tomato' }}>🔴 {totalErrors}</span>}
-                {totalWarnings > 0 && <span style={{ color: '#D4891A' }}>⚠️ {totalWarnings}</span>}
+                {totalWarnings > 0 && <span style={{ color: '#a46a14' }}>⚠️ {totalWarnings}</span>}
               </div>
             )}
             <button
@@ -185,7 +185,7 @@ export function ProspectTable() {
                   <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.primary, fontFamily: fonts.label, fontSize: '11px' }}>{fmtPct(p.capRate)}</td>
 
                   {/* Profit */}
-                  <td style={{ padding: '5px 10px', textAlign: 'right', color: p.profit < 500_000 ? '#D4891A' : colors.neutral, fontFamily: fonts.label, fontSize: '11px' }}>{fmtM(p.profit)}</td>
+                  <td style={{ padding: '5px 10px', textAlign: 'right', color: p.profit < 500_000 ? '#a46a14' : colors.neutral, fontFamily: fonts.label, fontSize: '11px' }}>{fmtM(p.profit)}</td>
 
                   {/* Inversión */}
                   <td style={{ padding: '5px 10px', textAlign: 'right', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>{fmtM(p.totalInvestment)}</td>
