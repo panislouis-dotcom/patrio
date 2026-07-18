@@ -1,6 +1,5 @@
-data/files/
-data/refigan.db
-data/*.db
+app/api/var/files/
+*.db
 node_modules/
 **/__pycache__/
 **/.pytest_cache/

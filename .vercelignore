@@ -1,0 +1,6 @@
+app/
+db/
+docker-compose.yml
+Dockerfile
+makefile
+scripts/

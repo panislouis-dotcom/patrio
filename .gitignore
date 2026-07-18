@@ -14,5 +14,22 @@ node_modules/
 /ChatGPT Image*.png
 /Proyecto-Trois/
 /proyectos/
-/refigan/
 /memoria-de-obra.html
+
+# App (from refigan)
+*.db
+*.db-shm
+*.db-wal
+dist/
+.vite/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+app/api/var/files/**
+!app/api/var/files/.gitkeep
+00Tree.html
+.env
+docs/superpowers/.coverage

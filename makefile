@@ -1,5 +1,5 @@
 DB_URL            ?= $(shell grep '^DATABASE_URL=' .env | cut -d= -f2-)
-PG_CTR            ?= refigan-db-1
+PG_CTR            ?= patrio-db-1
 PG_USER           ?= $(shell grep '^POSTGRES_USER=' .env | cut -d= -f2)
 PG_DB             ?= $(shell grep '^POSTGRES_DB=' .env | cut -d= -f2)
 TEST_PG_DB        ?= $(shell grep '^TEST_DATABASE_URL=' .env | cut -d= -f2- | sed 's|.*/||')
@@ -26,7 +26,7 @@ reset-test-db: ## Wipe and recreate the test DB (refigan_test), then migrate
 full-reset: reset-db seed-db ## Drop schema, recreate, and apply all seeds
 
 seed-db: ## Apply all seed_*.sql files
-	@for f in $$(find data -name "seed_*.sql" | sort); do \
+	@for f in $$(find db/seeds -name "seed_*.sql" | sort); do \
 		printf "  ▸ %-60s" "$$f"; \
 		if out=$$($(PSQL) -f - < "$$f" 2>&1); then \
 			echo "✓"; \
@@ -39,32 +39,32 @@ seed-db: ## Apply all seed_*.sql files
 
 create-user: ## Create a user (prompts for email and password)
 	@read -p "Email: " email; read -s -p "Password: " pw; echo; \
-	DATABASE_URL="$(DB_URL)" PYTHONPATH=.:apps .venv/bin/python -m api.create_user "$$email" "$$pw"
+	DATABASE_URL="$(DB_URL)" PYTHONPATH=.:app .venv/bin/python -m api.create_user "$$email" "$$pw"
 
 shell: ## Open psql shell
 	docker exec -it $(PG_CTR) psql -U $(PG_USER) -d $(PG_DB)
 
 api: ## Start FastAPI backend (port 8000)
-	PYTHONPATH=.:apps .venv/bin/uvicorn api.main:app --reload --loop asyncio
+	PYTHONPATH=.:app .venv/bin/uvicorn api.main:app --reload --loop asyncio
 
 dev: ## Start React frontend (port 5173)
-	cd apps/web && npm run dev
+	cd app/web && npm run dev
 
 test: ## Run Python test suite
-	PYTHONPATH=.:apps .venv/bin/pytest apps/api/tests/ -v
+	PYTHONPATH=.:app .venv/bin/pytest app/api/tests/ -v
 
 test-all: ## Run all tests: pytest + vitest + playwright e2e (requires stack running)
 	@echo "\n── pytest ──────────────────────────────────"
-	PYTHONPATH=.:apps .venv/bin/pytest apps/api/tests/ -v
+	PYTHONPATH=.:app .venv/bin/pytest app/api/tests/ -v
 	@echo "\n── vitest ──────────────────────────────────"
-	cd apps/web && npm run test
+	cd app/web && npm run test
 	@echo "\n── playwright ──────────────────────────────"
 	cd $(E2E_DIR) && npx playwright test
 
 app: ## Start both API and frontend
 	make -j2 api dev
 
-E2E_DIR = apps/e2e
+E2E_DIR = app/e2e
 
 e2e: ## Run Playwright e2e suite (requires: docker compose up or make app)
 	cd $(E2E_DIR) && npx playwright test

@@ -1,17 +1,17 @@
 # Stage 1: Build React frontend
 FROM node:20-alpine AS frontend-build
 WORKDIR /build
-COPY apps/web/package*.json ./
+COPY app/web/package*.json ./
 RUN npm ci
-COPY apps/web/ ./
+COPY app/web/ ./
 RUN VITE_API_BASE="" npm run build
 
 # Stage 2: Python API
 FROM python:3.12-slim AS production
 
 # Install Python deps + Playwright browser while still root
-WORKDIR /app/apps
-COPY apps/api/requirements.txt ./api/requirements.txt
+WORKDIR /app
+COPY app/api/requirements.txt ./api/requirements.txt
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN pip install --no-cache-dir -r api/requirements.txt && \
     playwright install chromium --with-deps && \
@@ -27,8 +27,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Application code
-COPY apps/api/ ./api/
-COPY apps/scraper/ ./scraper/
+COPY app/api/ ./api/
+COPY app/scraper/ ./scraper/
 
 # DB schema + migrations (used by dbmate)
 COPY db/ /app/db/
