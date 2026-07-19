@@ -12,6 +12,8 @@ import { NumericInput } from './NumericInput'
 import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL, PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
 import { fmtMXN } from '../lib/fmt'
 import { StatRow } from './StatRow'
+import { MetricHero } from './finance/MetricHero'
+import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { ProjectPhotoGallery } from './ProjectPhotoGallery'
 
 export function ProjectDetailPage() {
@@ -251,6 +253,8 @@ export function ProjectDetailPage() {
   const gainPositive = gain >= 0
   const roi = project.roi ?? null
   const roiColor = roi != null && roi > 0.5 ? colors.primary : roi != null && roi > 0.25 ? colors.tertiary : '#c0392b'
+  const roiTotal = project.unrealizedGainPct
+  const roiTotalColor = roiTotal > 0.5 ? colors.primary : roiTotal > 0.25 ? colors.tertiary : '#c0392b'
   const lat = project.latitude as number | null
   const lng = project.longitude as number | null
   const hasMap = lat && lng
@@ -260,8 +264,6 @@ export function ProjectDetailPage() {
       {label}
     </div>
   )
-
-  const barColors = [colors.primary, colors.accent1, colors.accent2, colors.tertiary, colors.secondary]
 
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
@@ -369,25 +371,21 @@ export function ProjectDetailPage() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
 
               {/* Hero ROI */}
-              <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
-                <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roi != null ? roiColor : colors.secondary, lineHeight: 1 }}>
-                  {roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-                  <div style={{ flex: 1, height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%',
-                      width: barsReady && roi != null ? `${Math.min(100, Math.max(0, roi * 100))}%` : '0%',
-                      background: roi != null ? roiColor : colors.border,
-                      transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                    }} />
-                  </div>
-                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, flexShrink: 0 }}>
-                    {gainPositive ? '+' : ''}{fmtMXN(gain)}
-                  </span>
-                </div>
-              </div>
+              <MetricHero
+                label="ROI ANUAL"
+                value={roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
+                color={roi != null ? roiColor : colors.secondary}
+                barPct={roi != null ? roi * 100 : 0}
+                barsReady={barsReady}
+                caption={`${gainPositive ? '+' : ''}${fmtMXN(gain)}`}
+              />
+
+              <MetricHero
+                label="ROI TOTAL"
+                value={roiTotal !== 0 ? `${roiTotal > 0 ? '+' : ''}${(roiTotal * 100).toFixed(1)}%` : '—'}
+                color={roiTotal !== 0 ? roiTotalColor : colors.secondary}
+                size={24}
+              />
 
               <StatRow label="INVERSIÓN" value={fmtMXN((field('totalInvestment') as number) ?? 0)} />
               <StatRow label="VALORACIÓN" value={fmtMXN((field('currentValuation') as number) ?? 0)} />
@@ -409,42 +407,44 @@ export function ProjectDetailPage() {
               <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{field('address') as string}</div>
               <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>{field('city') as string}</div>
 
-              {/* Presupuesto */}
-              {Object.keys(budget).length > 0 && (
+              {/* Underwriting superset — shown only when the project carries a breakdown */}
+              {project.landPrice != null ? (
                 <>
-                  {divider('PRESUPUESTO')}
-                  <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>
-                    {fmtMXN(budgetTotal)}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {Object.entries(budget).sort(([, a], [, b]) => b - a).map(([cat, amount], i) => {
-                      const pct = budgetTotal > 0 ? (amount / budgetTotal) * 100 : 0
-                      return (
-                        <div key={cat}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                            <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>
-                              {cat.toUpperCase()}
-                            </span>
-                            <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(amount)}</span>
-                          </div>
-                          <div style={{ height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
-                            <div style={{
-                              height: '100%',
-                              width: barsReady ? `${pct}%` : '0%',
-                              background: barColors[i % barColors.length],
-                              borderRadius: '2px',
-                              transition: `width 0.9s cubic-bezier(0.4, 0, 0.2, 1) ${i * 70}ms`,
-                            }} />
-                          </div>
-                          <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.border, marginTop: '3px', textAlign: 'right' }}>
-                            {pct.toFixed(0)}%
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <InvestmentBreakdown
+                    label="INVERSIÓN"
+                    total={project.totalInvestment}
+                    barsReady={barsReady}
+                    items={[
+                      { label: 'Precio terreno', amount: project.landPrice ?? 0 },
+                      { label: 'Costos adq.', amount: project.acquisitionCosts ?? 0 },
+                      { label: 'Permisos', amount: project.permitsCost ?? 0 },
+                      { label: 'Subdivisión', amount: project.subdivisionCost ?? 0 },
+                      { label: 'Construcción', amount: project.constructionTotal ?? 0 },
+                    ]}
+                  />
+                  {divider('MÉTRICAS')}
+                  <StatRow label="INVERSIÓN/m²" value={fmtMXN(project.investmentPerSqm ?? 0)} />
+                  <StatRow label="VENTA/m²" value={fmtMXN(project.salePerSqm ?? 0)} />
+                  <StatRow label="COSTO PROPIEDAD" value={fmtMXN(project.landPrice ?? 0)} />
+                  {divider('PROYECCIÓN')}
+                  <StatRow label="VENTA PROYECTADA" value={fmtMXN(project.projectedSale ?? 0)} />
+                  <StatRow label="PROFIT PROYECTADO" value={fmtMXN(project.projectedProfit ?? 0)} />
+                  <StatRow label="ROI PROYECTADO" value={project.projectedRoi != null ? `${(project.projectedRoi * 100).toFixed(1)}%` : '—'} />
+                  <StatRow label="CAP RATE" value={project.capRate != null ? `${(project.capRate * 100).toFixed(1)}%` : '—'} />
                 </>
+              ) : (
+                <div style={{ marginTop: '20px', fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>
+                  Agrega el desglose de inversión en EDITAR.
+                </div>
               )}
+
+              {/* Presupuesto */}
+              <InvestmentBreakdown
+                label="PRESUPUESTO"
+                total={budgetTotal}
+                barsReady={barsReady}
+                items={Object.entries(budget).sort(([, a], [, b]) => b - a).map(([cat, amount]) => ({ label: cat, amount }))}
+              />
 
               {/* Hitos */}
               {milestoneEntries.length > 0 && (
@@ -665,6 +665,49 @@ export function ProjectDetailPage() {
                   />
                 </div>
               ))}
+
+              {/* Underwriting breakdown (optional) — a project ⊇ a prospect */}
+              {divider('DESGLOSE (OPCIONAL)')}
+              {([
+                { key: 'landPrice', label: 'Precio terreno ($)' },
+                { key: 'sqmLand', label: 'Terreno (m²)' },
+                { key: 'sqmConstruction', label: 'Construcción (m²)' },
+                { key: 'constructionCostPerSqm', label: 'Costo constr./m² ($)' },
+                { key: 'permitsCost', label: 'Permisos ($)' },
+                { key: 'subdivisionCost', label: 'Subdivisión ($)' },
+                { key: 'projectedSale', label: 'Venta proyectada ($)' },
+                { key: 'rentMonthly', label: 'Renta mensual ($)' },
+                { key: 'holdMonths', label: 'Plazo (meses)' },
+              ] as const).map(({ key, label }) => (
+                <div key={key} style={{ marginBottom: '8px' }}>
+                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
+                  <NumericInput
+                    value={(field(key as keyof Project) as number) ?? undefined}
+                    onChange={n => setField(key as keyof Project, n ?? null)}
+                    style={fieldInput}
+                  />
+                </div>
+              ))}
+
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>COSTOS ADQ. (%)</div>
+                <NumericInput
+                  value={field('acquisitionCostPct') != null ? (field('acquisitionCostPct') as number) * 100 : undefined}
+                  onChange={n => setField('acquisitionCostPct', n != null ? n / 100 : null)}
+                  step={0.1}
+                  style={fieldInput}
+                />
+              </div>
+
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>OVERHEAD CONSTRUCCIÓN</div>
+                <NumericInput
+                  value={(field('constructionOverhead') as number) ?? undefined}
+                  onChange={n => setField('constructionOverhead', n ?? null)}
+                  step={0.01}
+                  style={fieldInput}
+                />
+              </div>
 
               <div style={{ marginBottom: '8px' }}>
                 <LatLonPicker
