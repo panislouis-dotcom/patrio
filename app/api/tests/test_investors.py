@@ -84,3 +84,40 @@ def test_requires_auth(client):
         assert r.status_code == 401
     finally:
         app.dependency_overrides[get_current_user] = lambda: {"id": 1, "email": "test@test.com"}
+
+
+def test_project_investor_metrics_match_finance_module(client, test_project):
+    """The API's position metrics equal finance.investor of the same position —
+    the parity oracle after project_investor_metrics is dropped (migration 020)."""
+    from decimal import Decimal
+    from api.db import get_db
+    from api.investor_db import get_project_investors
+    from api.finance import investor as fin_investor
+    with get_db() as conn:
+        inv = conn.execute(
+            "INSERT INTO investors (name) VALUES ('[TEST] Parity') RETURNING id").fetchone()
+        conn.execute(
+            """INSERT INTO project_investors (project_id, investor_id, status, funded_amount,
+                   interest_rate_annual, investment_date)
+               VALUES (%s,%s,'fondeado',1000000,0.12,'2025-01-01')""",
+            (test_project["id"], inv["id"]))
+        proj = conn.execute(
+            "SELECT acquisition_date, conclusion_date FROM projects WHERE id=%s",
+            (test_project["id"],)).fetchone()
+
+    # Expected from the finance module, using the project's own acquisition/conclusion dates.
+    hm = fin_investor.hold_months(proj["acquisition_date"], proj["conclusion_date"])
+    exp_interest = fin_investor.cuota(1000000, 0.12, hm)
+    exp_return = fin_investor.expected_return(1000000, 0.12, hm)
+    exp_pct = fin_investor.return_pct(0.12, hm)
+
+    positions = get_project_investors(test_project["id"])
+    pos = next(p for p in positions if p["investorId"] == inv["id"])
+    assert pos["holdMonths"] == hm
+    assert Decimal(str(pos["interestAmount"])) == exp_interest
+    assert Decimal(str(pos["expectedReturn"])) == exp_return
+    assert Decimal(str(pos["returnPct"])) == exp_pct
+
+    with get_db() as conn:
+        conn.execute("DELETE FROM project_investors WHERE investor_id=%s", (inv["id"],))
+        conn.execute("DELETE FROM investors WHERE id=%s", (inv["id"],))

@@ -20,6 +20,43 @@ def test_prospect_has_required_fields(client, test_prospect):
         assert field in p, f"Missing field: {field}"
 
 
+def test_prospect_has_roi_total_field(client, test_prospect):
+    r = client.get(f"/api/prospects/{test_prospect['id']}")
+    p = r.json()
+    assert "roiTotal" in p
+
+
+def test_prospect_roi_total_matches_simple_return_formula(client):
+    r = client.post("/api/prospects", json={
+        "name": "[TEST] ROI Total Fixture",
+        "address": "Calle Test 456, Monterrey",
+        "city": "Monterrey",
+        "status": "evaluating",
+        "landPrice": 1_000_000,
+        "acquisitionCostPct": 0,
+        "permitsCost": 0,
+        "subdivisionCost": 0,
+        "sqmConstruction": 100,
+        "constructionCostPerSqm": 5000,
+        "constructionOverhead": 1,
+        "projectedSale": 2_000_000,
+    })
+    assert r.status_code == 201
+    prospect = r.json()
+    try:
+        # cost = 1,000,000*(1+0) + 0 + 0 + 100*5000*1 = 1,500,000
+        # roiTotal = (2,000,000 - 1,500,000) / 1,500,000 = 0.3333
+        assert prospect["totalInvestment"] == 1_500_000
+        assert prospect["roiTotal"] == 0.3333
+        # sanity: annualized roi should differ from roiTotal for a non-12-month hold
+        assert prospect["holdMonths"] == 12  # default
+        # at exactly 12 months, CAGR and simple return coincide
+        assert prospect["roi"] == prospect["roiTotal"]
+    finally:
+        with get_db() as conn:
+            conn.execute("DELETE FROM prospects WHERE id = %s", (prospect["id"],))
+
+
 def test_prospect_has_issues_list(client, test_prospect):
     r = client.get(f"/api/prospects/{test_prospect['id']}")
     p = r.json()
