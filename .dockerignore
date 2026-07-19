@@ -1,0 +1,6 @@
+app/api/var/files/
+*.db
+node_modules/
+**/__pycache__/
+**/.pytest_cache/
+.env

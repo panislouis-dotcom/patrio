@@ -1,0 +1,55 @@
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from api.auth import get_current_user
+from api.db import get_team_members, get_team_member, create_team_member, update_team_member, delete_team_member
+
+router = APIRouter()
+
+
+class TeamMemberCreate(BaseModel):
+    name: str
+    role: str
+    managerId: Optional[int] = None
+    email: str = ""
+    notes: str = ""
+
+
+class TeamMemberUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    managerId: Optional[int] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.get("/api/team", operation_id="team_list")
+def list_team(_: dict = Depends(get_current_user)):
+    return get_team_members()
+
+
+@router.post("/api/team", status_code=201, operation_id="team_create")
+def post_team_member(body: TeamMemberCreate, _: dict = Depends(get_current_user)):
+    return create_team_member(body.model_dump(exclude_none=False))
+
+
+@router.patch("/api/team/{member_id}", operation_id="team_update")
+def patch_team_member(member_id: int, body: TeamMemberUpdate, _: dict = Depends(get_current_user)):
+    payload = body.model_dump(exclude_unset=True)
+    updated = update_team_member(member_id, payload)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    return updated
+
+
+@router.delete("/api/team/{member_id}", status_code=204, operation_id="team_delete")
+def delete_team_member_route(member_id: int, _: dict = Depends(get_current_user)):
+    member = get_team_member(member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    try:
+        delete_team_member(member_id)
+    except Exception as e:
+        if "foreign key" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Member is referenced by active records")
+        raise

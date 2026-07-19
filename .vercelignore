@@ -1,0 +1,9 @@
+app/
+db/
+docker-compose.yml
+Dockerfile
+makefile
+scripts/
+docs/
+.github/
+.env.example

@@ -1,0 +1,6 @@
+-- migrate:up
+
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE projects  ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- migrate:down
