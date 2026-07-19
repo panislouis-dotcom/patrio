@@ -321,7 +321,7 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
               style={{
                 fontFamily: fonts.sans,
                 fontSize: '12px',
-                color: issue.severity === 'error' ? '#ef4444' : '#f59e0b',
+                color: issue.severity === 'error' ? '#eb1616' : '#a56a07',
                 padding: '4px 0',
               }}
             >
@@ -333,7 +333,7 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
 
       {/* ── Save error ───────────────────────────────────────────────── */}
       {saveError && (
-        <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: '#ef4444', marginBottom: '12px' }}>
+        <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: '#eb1616', marginBottom: '12px' }}>
           {saveError}
         </div>
       )}

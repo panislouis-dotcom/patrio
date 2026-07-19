@@ -315,7 +315,7 @@ function TreeNode({
                 <button
                   onClick={e => { e.stopPropagation(); handleDelete() }}
                   disabled={deleting}
-                  style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: 'tomato', cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px', opacity: deleting ? 0.5 : 1 }}
+                  style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: '#E62300', cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 6px', opacity: deleting ? 0.5 : 1 }}
                 >
                   BORRAR
                 </button>

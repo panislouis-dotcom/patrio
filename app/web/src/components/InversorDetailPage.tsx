@@ -64,7 +64,7 @@ export function InversorDetailPage() {
         </span>
         <button
           onClick={handleDelete}
-          style={{ background: 'transparent', border: `1px solid tomato`, color: 'tomato', cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 14px', flexShrink: 0 }}
+          style={{ background: 'transparent', border: `1px solid #E62300`, color: '#E62300', cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 14px', flexShrink: 0 }}
         >
           ELIMINAR
         </button>
@@ -91,7 +91,7 @@ export function InversorDetailPage() {
                 <StatRow label="TOTAL PAGADO"    value={fmtM(totalPagado)} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
                   <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>PENDIENTE</span>
-                  <span style={{ fontFamily: fonts.sans, fontSize: '13px', color: pendiente > 0 ? 'tomato' : colors.primary }}>{fmtM(pendiente)}</span>
+                  <span style={{ fontFamily: fonts.sans, fontSize: '13px', color: pendiente > 0 ? '#E62300' : colors.primary }}>{fmtM(pendiente)}</span>
                 </div>
               </>
             )

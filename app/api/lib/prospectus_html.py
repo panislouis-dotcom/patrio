@@ -18,10 +18,11 @@ def _font_b64(name: str) -> str:
 def _build_fonts_css() -> str:
     # (family, weight_range, style, filename)
     fonts = [
-        ("EB Garamond", "400", "normal", "eb-garamond-regular.woff2"),
-        ("EB Garamond", "400", "italic", "eb-garamond-italic.woff2"),
-        ("Public Sans", "100 900", "normal", "public-sans.woff2"),
-        ("Space Grotesk", "300 700", "normal", "space-grotesk.woff2"),
+        ("Playfair Display", "400", "normal", "playfair-display-regular.woff2"),
+        ("Playfair Display", "400", "italic", "playfair-display-italic.woff2"),
+        ("Inter", "400", "normal", "inter-400.woff2"),
+        ("Inter", "500", "normal", "inter-500.woff2"),
+        ("Inter", "600", "normal", "inter-600.woff2"),
     ]
     blocks = []
     for family, weight, style, filename in fonts:
@@ -41,7 +42,7 @@ _BODY_CSS = """
 @page { size: A4; margin: 0; }
 html { margin: 0; padding: 0; background: #F2F0EB; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Public Sans', sans-serif; background: #F2F0EB; color: #1A1A1A; font-size: 12pt; line-height: 1.75;
+body { font-family: 'Inter', sans-serif; background: #F2F0EB; color: #1A1A1A; font-size: 12pt; line-height: 1.75;
        width: 210mm; overflow: hidden; }
 
 .img-hero { display: block; width: 100%; object-fit: contain; object-position: center center;
@@ -54,31 +55,31 @@ body { font-family: 'Public Sans', sans-serif; background: #F2F0EB; color: #1A1A
 .section-oportunidad .content-section { flex-shrink: 0; padding: 20px 80px 24px; }
 
 .img-strip-wrap { margin-top: 24px; page-break-inside: avoid; break-inside: avoid; }
-.img-strip-label { font-family: 'Space Grotesk', sans-serif; font-size: 6.5pt; letter-spacing: 0.18em;
-                   text-transform: uppercase; color: #7A7260; margin-bottom: 6px; }
+.img-strip-label { font-family: 'Inter', sans-serif; font-size: 6.5pt; letter-spacing: 0.18em;
+                   text-transform: uppercase; color: #6B6B6B; margin-bottom: 6px; }
 .img-strip     { display: flex; gap: 6px; }
 .img-strip img { flex: 1; height: 150px; object-fit: contain; object-position: top center;
                  background: #F2F0EB; min-width: 0; }
 
-.cover { height: 297mm; background: #1A2319; padding: 72px 80px; page-break-after: always; break-after: always;
+.cover { height: 297mm; background: #1A1A1A; padding: 72px 80px; page-break-after: always; break-after: always;
          display: flex; flex-direction: column; justify-content: space-between; }
-.footer-section { height: 297mm; background: #1A2319; padding: 64px 80px; page-break-before: always; break-before: always;
+.footer-section { height: 297mm; background: #1A1A1A; padding: 64px 80px; page-break-before: always; break-before: always;
                   display: flex; flex-direction: column; justify-content: space-between; }
 
-.wordmark { font-family: 'Space Grotesk', sans-serif; font-size: 10pt; font-weight: 400;
+.wordmark { font-family: 'Inter', sans-serif; font-size: 10pt; font-weight: 400;
             letter-spacing: 0.55em; text-transform: uppercase; color: #F2F0EB; }
-.cover-prelabel { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
+.cover-prelabel { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
                   letter-spacing: 0.25em; text-transform: uppercase; color: rgba(242,240,235,0.8); margin-bottom: 16px; }
-h1 { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 36pt; color: #F2F0EB; line-height: 1.05; }
-.cover-meta   { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
+h1 { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 36pt; color: #F2F0EB; line-height: 1.05; }
+.cover-meta   { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
                 letter-spacing: 0.08em; color: rgba(242,240,235,0.6); margin-top: 20px; }
-.cover-footer { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
+.cover-footer { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
                 letter-spacing: 0.08em; color: rgba(242,240,235,0.4); }
 
 .page-section         { height: 297mm; overflow: hidden; page-break-after: always; break-after: always; }
-.section-vision       { --section-color: #A2571D; }
-.section-track        { --section-color: #654F6F; }
-.section-oportunidad  { --section-color: #5C5D8D; }
+.section-vision       { --section-color: #A16A3C; }
+.section-track        { --section-color: #8C6D87; }
+.section-oportunidad  { --section-color: #697692; }
 
 /* ── Track Record: compact text, bigger images ──────────────────────── */
 .section-track .content-section      { padding: 20px 80px 20px; }
@@ -99,29 +100,29 @@ h1 { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 36pt; color
 .section-divider      { height: 297mm; page-break-after: always; break-after: always;
                         display: flex; flex-direction: column; align-items: center; justify-content: center;
                         text-align: center; padding: 80px; gap: 24px; }
-.divider-label        { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
+.divider-label        { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
                         letter-spacing: 0.45em; text-transform: uppercase; color: rgba(242,240,235,0.5); }
-.divider-title        { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 52pt;
+.divider-title        { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 52pt;
                         color: #F2F0EB; line-height: 1.0; }
 .divider-rule         { width: 40px; height: 1px; background: rgba(242,240,235,0.3); }
-.divider-count        { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
+.divider-count        { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
                         letter-spacing: 0.2em; color: rgba(242,240,235,0.35); }
 
 .section-header { padding: 24px 80px; background: var(--section-color);
                   page-break-after: avoid; break-after: avoid; }
-.band-label { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
+.band-label { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
               letter-spacing: 0.25em; text-transform: uppercase; color: rgba(242,240,235,0.8); margin-bottom: 8px; }
-.band-title { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 30pt;
+.band-title { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 30pt;
               color: #F2F0EB; line-height: 1.1; }
 
 .content-section { padding: 48px 80px; page-break-inside: avoid; break-inside: avoid; }
-h2 { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 16pt;
+h2 { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 16pt;
      color: #1A1A1A; line-height: 1.2; margin-bottom: 20px; }
-h3 { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; font-weight: 400;
-     letter-spacing: 0.18em; text-transform: uppercase; color: #7A7260; margin-bottom: 12px; }
-p { font-family: 'Public Sans', sans-serif; font-size: 12pt; color: #1A1A1A;
+h3 { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
+     letter-spacing: 0.18em; text-transform: uppercase; color: #6B6B6B; margin-bottom: 12px; }
+p { font-family: 'Inter', sans-serif; font-size: 12pt; color: #1A1A1A;
     max-width: 540px; margin-bottom: 14px; }
-p.caption { font-size: 9pt; color: #7A7260; }
+p.caption { font-size: 9pt; color: #6B6B6B; }
 strong { color: var(--section-color); font-weight: 500; }
 
 .metric-grid   { display: grid; border: 1px solid rgba(26,26,26,0.1);
@@ -130,39 +131,39 @@ strong { color: var(--section-color); font-weight: 500; }
 .metric-grid-4 { grid-template-columns: repeat(4, 1fr); }
 .metric-card   { padding: 24px 20px; border-right: 1px solid rgba(26,26,26,0.1); }
 .metric-card:last-child { border-right: none; }
-.metric-value  { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 28pt;
+.metric-value  { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 28pt;
                  color: var(--section-color); line-height: 1; }
 .metric-value.compact { font-size: 20pt; }
-.metric-label  { font-family: 'Space Grotesk', sans-serif; font-size: 6.5pt;
-                 letter-spacing: 0.18em; text-transform: uppercase; color: #7A7260; margin-top: 6px; }
+.metric-label  { font-family: 'Inter', sans-serif; font-size: 6.5pt;
+                 letter-spacing: 0.18em; text-transform: uppercase; color: #6B6B6B; margin-top: 6px; }
 
 .two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 56px;
              margin-top: 32px; page-break-inside: avoid; break-inside: avoid; }
-.col-label { font-family: 'Space Grotesk', sans-serif; font-size: 7pt;
-             letter-spacing: 0.18em; text-transform: uppercase; color: #7A7260; margin-bottom: 16px; }
+.col-label { font-family: 'Inter', sans-serif; font-size: 7pt;
+             letter-spacing: 0.18em; text-transform: uppercase; color: #6B6B6B; margin-bottom: 16px; }
 
 table.timeline           { width: 100%; border-collapse: collapse; }
 table.timeline td        { font-size: 9.5pt; padding: 6px 0; vertical-align: top; }
-table.timeline td.tdate  { font-family: 'Space Grotesk', sans-serif; font-size: 7pt; color: #7A7260;
+table.timeline td.tdate  { font-family: 'Inter', sans-serif; font-size: 7pt; color: #6B6B6B;
                            letter-spacing: 0.12em; text-transform: uppercase;
                            width: 88px; padding-left: 14px; padding-right: 32px;
-                           border-left: 2px solid #654F6F; }
-table.timeline td.tdesc  { font-family: 'Public Sans', sans-serif; color: #1A1A1A; }
+                           border-left: 2px solid #8C6D87; }
+table.timeline td.tdesc  { font-family: 'Inter', sans-serif; color: #1A1A1A; }
 
 table.budget             { width: 100%; border-collapse: collapse; }
 table.budget tr          { border-bottom: 1px solid rgba(26,26,26,0.08); }
-table.budget td          { font-family: 'Public Sans', sans-serif; font-size: 9.5pt; padding: 5px 0; }
-table.budget td.bnum     { font-family: 'Space Grotesk', sans-serif; color: var(--section-color);
+table.budget td          { font-family: 'Inter', sans-serif; font-size: 9.5pt; padding: 5px 0; }
+table.budget td.bnum     { font-family: 'Inter', sans-serif; color: var(--section-color);
                            text-align: right; font-weight: 500; }
 
 .impact-block     { border-left: 3px solid var(--section-color); padding-left: 24px; margin: 28px 0; }
-.impact-block p   { font-family: 'EB Garamond', serif; font-style: italic; font-size: 11pt;
-                    color: #7A7260; line-height: 1.7; max-width: 540px; margin-bottom: 0; }
+.impact-block p   { font-family: 'Playfair Display', serif; font-style: italic; font-size: 11pt;
+                    color: #6B6B6B; line-height: 1.7; max-width: 540px; margin-bottom: 0; }
 
-.footer-section h2     { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 16pt; color: #F2F0EB; }
+.footer-section h2     { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 16pt; color: #F2F0EB; }
 .footer-section p      { color: rgba(242,240,235,0.7); }
 .footer-section strong { color: #4A7A4A; }
-.footer-disclaimer     { font-family: 'Space Grotesk', sans-serif; font-size: 7pt;
+.footer-disclaimer     { font-family: 'Inter', sans-serif; font-size: 7pt;
                          letter-spacing: 0.08em; color: rgba(242,240,235,0.3); }
 """
 
@@ -310,10 +311,10 @@ def _vision() -> str:
   <section class="content-section">
     <h3>VISIÓN</h3>
     <h2>La brecha entre lo que recibes y lo que genera el mercado</h2>
-    <p>CETES ronda el 9% anual. Los bancos prestan al 15% a desarrolladores. La diferencia existe, y alguien la captura. Ese espacio es donde Refigan opera.</p>
-    <p>Refigan ofrece rendimiento fijo ~12% anual, respaldado por inmuebles reales en el Centro de Monterrey y otras zonas de oportunidad. Plazo definido, activo tangible, salida clara — sin la volatilidad de mercados financieros.</p>
-    <p>Cada inversión financia un edificio real. Refigan identifica y desarrolla oportunidades en el Centro de Monterrey y otras zonas de oportunidad, siguiendo una metodología de adquisición probada.</p>
-    <div class="impact-block"><p>Restaurar un edificio histórico no es solo una operación financiera. Es devolver vida a una estructura que guarda la historia de una ciudad. Cada proyecto de Refigan rescata una pieza del patrimonio urbano de Monterrey — y la convierte en un espacio digno, habitado, vivo.</p></div>
+    <p>CETES ronda el 9% anual. Los bancos prestan al 15% a desarrolladores. La diferencia existe, y alguien la captura. Ese espacio es donde Patrio opera.</p>
+    <p>Patrio ofrece rendimiento fijo ~12% anual, respaldado por inmuebles reales en el Centro de Monterrey y otras zonas de oportunidad. Plazo definido, activo tangible, salida clara — sin la volatilidad de mercados financieros.</p>
+    <p>Cada inversión financia un edificio real. Patrio identifica y desarrolla oportunidades en el Centro de Monterrey y otras zonas de oportunidad, siguiendo una metodología de adquisición probada.</p>
+    <div class="impact-block"><p>Restaurar un edificio histórico no es solo una operación financiera. Es devolver vida a una estructura que guarda la historia de una ciudad. Cada proyecto de Patrio rescata una pieza del patrimonio urbano de Monterrey — y la convierte en un espacio digno, habitado, vivo.</p></div>
   </section>
 </div>"""
 
@@ -428,7 +429,7 @@ def _cta(month_year: str) -> str:
     return f"""<div class="footer-section">
   <div>
     <h2>Hablemos de su próxima inversión</h2>
-    <p>Refigan opera desde <strong>San Pedro Garza García</strong> e invierte en el Centro de Monterrey y otras zonas con oportunidades. Fondeos cerrados, plazos definidos, rendimientos fijos.</p>
+    <p>Patrio opera desde <strong>San Pedro Garza García</strong> e invierte en el Centro de Monterrey y otras zonas con oportunidades. Fondeos cerrados, plazos definidos, rendimientos fijos.</p>
     <p>Documento preparado exclusivamente para prospectos e inversionistas autorizados. Los rendimientos proyectados son estimados y no constituyen una garantía.</p>
   </div>
   <div class="footer-disclaimer">
@@ -449,11 +450,11 @@ def build_prospectus_html(projects: list[dict], prospects: list[dict]) -> str:
     body_css = _BODY_CSS
     parts = [_cover(month_year), _vision()]
     if projects:
-        parts.append(_section_divider("Track Record", "Proyectos<br>Realizados", "#654F6F", len(projects)))
+        parts.append(_section_divider("Track Record", "Proyectos<br>Realizados", "#8C6D87", len(projects)))
         for i, p in enumerate(projects, 1):
             parts.append(_track_record_section(i, p))
     if prospects:
-        parts.append(_section_divider("Oportunidades", "Próximas<br>Inversiones", "#5C5D8D", len(prospects)))
+        parts.append(_section_divider("Oportunidades", "Próximas<br>Inversiones", "#697692", len(prospects)))
         for p in prospects:
             parts.append(_oportunidad_section(p))
     parts.append(_cta(month_year))

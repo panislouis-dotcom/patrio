@@ -198,7 +198,7 @@ export function ProspectDetailPage() {
   }
   if (!isNew && (error || !prospect)) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: 'tomato', fontFamily: fonts.sans, fontSize: '13px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: '#E62300', fontFamily: fonts.sans, fontSize: '13px' }}>
         {error ?? 'No encontrado'}
       </div>
     )
@@ -242,7 +242,7 @@ export function ProspectDetailPage() {
     { label: 'Construcción', amount: p.constructionTotal },
   ].filter(item => item.amount > 0)
 
-  const barColors = [colors.primary, '#654F6F', '#5C5D8D', colors.tertiary, colors.secondary]
+  const barColors = [colors.primary, colors.accent1, colors.accent2, colors.tertiary, colors.secondary]
 
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
@@ -642,7 +642,7 @@ export function ProspectDetailPage() {
                   scrollWheelZoom={false}
                 >
                   <TileLayer
-                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                     attribution='&copy; <a href="https://carto.com/">CARTO</a>'
                   />
                   <CircleMarker

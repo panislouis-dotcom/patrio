@@ -11,7 +11,7 @@ import { PROCESS_STATUS_COLOR, PROCESS_STATUS_LABEL } from '../lib/status'
 const STATUS_COLOR: Record<string, string> = {
   activo: colors.primary,
   inactivo: colors.secondary,
-  vetado: '#d44',
+  vetado: '#B33333',
 }
 
 interface Props {
@@ -133,7 +133,7 @@ export function ProveedorDetailPage({ proveedor, allCategories, base, onBack, on
         <span style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', color: STATUS_COLOR[proveedor.status] }}>
           {proveedor.status.toUpperCase()}
         </span>
-        <button onClick={handleDelete} style={{ background: 'transparent', border: `1px solid #d44`, borderRadius: '2px', color: '#d44', cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '5px 10px' }}>ELIMINAR</button>
+        <button onClick={handleDelete} style={{ background: 'transparent', border: `1px solid #d44`, borderRadius: '2px', color: '#B33333', cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.08em', padding: '5px 10px' }}>ELIMINAR</button>
       </div>
 
       {/* Body: 360px left + flex-1 right */}
@@ -208,8 +208,8 @@ export function ProveedorDetailPage({ proveedor, allCategories, base, onBack, on
 
                 {/* Veto reason */}
                 {proveedor.status === 'vetado' && proveedor.vetoReason && (
-                  <div style={{ background: '#2a1111', border: '1px solid #d44', borderRadius: '4px', padding: '10px 12px' }}>
-                    <span style={{ ...fieldLabel, color: '#d44' }}>RAZÓN DE VETO</span>
+                  <div style={{ background: '#FBEAEA', border: '1px solid #d44', borderRadius: '4px', padding: '10px 12px' }}>
+                    <span style={{ ...fieldLabel, color: '#B33333' }}>RAZÓN DE VETO</span>
                     <div style={{ fontSize: '12px', color: colors.neutral, fontFamily: fonts.sans }}>{proveedor.vetoReason}</div>
                   </div>
                 )}
@@ -254,7 +254,7 @@ export function ProveedorDetailPage({ proveedor, allCategories, base, onBack, on
                 {/* Veto reason — only show when vetado */}
                 {form.status === 'vetado' && (
                   <div>
-                    <span style={{ ...fieldLabel, color: '#d44' }}>RAZÓN DE VETO *</span>
+                    <span style={{ ...fieldLabel, color: '#B33333' }}>RAZÓN DE VETO *</span>
                     <input
                       value={form.vetoReason}
                       onChange={e => setForm(f => ({ ...f, vetoReason: e.target.value }))}

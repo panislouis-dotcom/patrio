@@ -69,7 +69,7 @@ const btnBase = (variant: 'primary' | 'ghost' | 'danger'): React.CSSProperties =
     variant === 'primary' ? colors.primary :
     variant === 'danger' ? '#8B2020' :
     'transparent',
-  color: colors.neutral,
+  color: variant === 'danger' ? colors.surfaceAlt : colors.neutral,
   fontFamily: fonts.label,
   fontSize: '9px',
   letterSpacing: '0.08em',
@@ -105,8 +105,8 @@ function OrgNode({
         onMouseLeave={() => setHover(false)}
         style={{
           width: '190px',
-          background: isSelected ? '#243424' : hover ? '#1d2e1d' : colors.surfaceAlt,
-          border: `1px solid ${isSelected ? roleColor : hover ? '#3a4e3a' : colors.border}`,
+          background: isSelected ? colors.surfaceAlt : hover ? colors.border : colors.surfaceAlt,
+          border: `1px solid ${isSelected ? roleColor : hover ? colors.surface : colors.border}`,
           borderTop: `4px solid ${roleColor}`,
           padding: '11px 14px 10px',
           cursor: 'pointer',
@@ -119,7 +119,7 @@ function OrgNode({
           <div style={{
             position: 'absolute', top: '9px', right: '9px',
             width: '6px', height: '6px', borderRadius: '50%',
-            background: linkedUser.isActive ? colors.primary : '#4a4a4a',
+            background: linkedUser.isActive ? colors.primary : colors.secondary,
           }} />
         )}
 
@@ -455,7 +455,7 @@ function MemberPanel({
             {mode === 'edit' && (
               <button onClick={() => setMode('view')} style={btnBase('ghost')}>CANCELAR</button>
             )}
-            {error && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: 'tomato' }}>{error}</span>}
+            {error && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: '#E62300' }}>{error}</span>}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -482,7 +482,7 @@ function MemberPanel({
               </div>
 
               {userError && (
-                <div style={{ color: 'tomato', fontFamily: fonts.sans, fontSize: '10px', marginBottom: '8px' }}>{userError}</div>
+                <div style={{ color: '#E62300', fontFamily: fonts.sans, fontSize: '10px', marginBottom: '8px' }}>{userError}</div>
               )}
 
               {linkedUser ? (
@@ -490,7 +490,7 @@ function MemberPanel({
                   {/* Status */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: linkedUser.isActive ? colors.primary : '#4a4a4a', flexShrink: 0 }} />
+                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: linkedUser.isActive ? colors.primary : colors.secondary, flexShrink: 0 }} />
                       <span style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', color: linkedUser.isActive ? colors.primary : colors.secondary }}>
                         {linkedUser.isActive ? 'ACTIVO' : 'INACTIVO'}
                       </span>
@@ -549,7 +549,7 @@ function MemberPanel({
                       {userSaving ? '…' : 'CREAR'}
                     </button>
                   </div>
-                  {userError && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: 'tomato' }}>{userError}</span>}
+                  {userError && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: '#E62300' }}>{userError}</span>}
                 </div>
               ) : (
                 <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega un email para habilitar acceso.</div>
@@ -634,7 +634,7 @@ export function OrgTab() {
             onClick={openAdd}
             style={{
               ...btnBase('primary'),
-              background: panelMode === 'add' ? '#5a7a4e' : colors.primary,
+              boxShadow: panelMode === 'add' ? `inset 0 0 0 2px ${colors.neutral}` : 'none',
               padding: '5px 12px',
             }}
           >

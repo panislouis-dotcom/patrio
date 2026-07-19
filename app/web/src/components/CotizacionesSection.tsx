@@ -89,7 +89,7 @@ export function CotizacionesSection({ stateId }: Props) {
     background: variant === 'primary' ? colors.primary : 'transparent',
     border: variant === 'danger' ? '1px solid #d44' : variant === 'ghost' ? `1px solid ${colors.border}` : 'none',
     borderRadius: '2px',
-    color: variant === 'danger' ? '#d44' : colors.neutral,
+    color: variant === 'danger' ? '#B33333' : colors.neutral,
     cursor: 'pointer',
     fontFamily: fonts.label,
     fontSize: '9px',
@@ -180,7 +180,7 @@ export function CotizacionesSection({ stateId }: Props) {
         <div
           key={cot.id}
           style={{
-            background: cot.isSelected ? '#0f2f1a' : colors.surfaceAlt,
+            background: cot.isSelected ? '#EEF2EA' : colors.surfaceAlt,
             border: `1px solid ${cot.isSelected ? colors.primary : colors.border}`,
             borderRadius: '4px',
             padding: '10px 12px',

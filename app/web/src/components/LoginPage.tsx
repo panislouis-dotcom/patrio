@@ -61,8 +61,8 @@ export function LoginPage() {
       <div style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
         {/* Logo / brand */}
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: fonts.serif, fontSize: '32px', color: colors.neutral, letterSpacing: '0.02em' }}>
-            Refigan
+          <div style={{ fontFamily: fonts.sans, fontSize: '22px', fontWeight: 500, color: colors.neutral, letterSpacing: '0.35em', textTransform: 'uppercase' }}>
+            Patrio
           </div>
           <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.2em', color: colors.secondary, marginTop: '6px' }}>
             PLATAFORMA INTERNA

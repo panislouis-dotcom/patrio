@@ -84,16 +84,16 @@ Write the HTML file to `files/flip-quick-look.html`. Use this exact structure:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quick Look — [PROPERTY NAME OR ADDRESS]</title>
 <style>
-@font-face { font-family: 'EB Garamond'; src: url('fonts/eb-garamond-regular.woff2') format('woff2'); }
-@font-face { font-family: 'Public Sans'; src: url('fonts/public-sans.woff2') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; src: url('fonts/space-grotesk.woff2') format('woff2'); }
+@font-face { font-family: 'Playfair Display'; src: url('fonts/playfair-display-regular.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; src: url('fonts/inter-400.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; src: url('fonts/inter-600.woff2') format('woff2'); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'Public Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   background: #F2F0EB;
-  color: #1A2319;
+  color: #1A1A1A;
   padding: 16px;
   max-width: 480px;
   margin: 0 auto;
@@ -105,19 +105,19 @@ body {
 }
 
 .header h1 {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 1.5rem;
   font-weight: 400;
-  color: #1A2319;
+  color: #1A1A1A;
   margin-bottom: 4px;
 }
 
 .header .label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
 }
 
 .signal {
@@ -131,11 +131,11 @@ body {
 }
 
 .signal .signal-label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-top: 8px;
 }
 
@@ -145,18 +145,18 @@ body {
 }
 
 .hero-metric .value {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 2.5rem;
-  color: #A2571D;
+  color: #A16A3C;
   font-weight: 400;
 }
 
 .hero-metric .label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-top: 4px;
 }
 
@@ -175,17 +175,17 @@ body {
 }
 
 .metric-card .value {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 1.5rem;
-  color: #1A2319;
+  color: #1A1A1A;
 }
 
 .metric-card .label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.65rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-top: 4px;
 }
 
@@ -197,11 +197,11 @@ body {
 }
 
 .breakdown h2 {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-bottom: 12px;
 }
 
@@ -219,7 +219,7 @@ body {
 
 .breakdown-row.total {
   font-weight: 600;
-  border-top: 2px solid #1A2319;
+  border-top: 2px solid #1A1A1A;
   border-bottom: none;
   padding-top: 12px;
   margin-top: 4px;
@@ -235,7 +235,7 @@ body {
 
 .assumptions p {
   font-size: 0.75rem;
-  color: #7A7260;
+  color: #6B6B6B;
   line-height: 1.5;
 }
 </style>

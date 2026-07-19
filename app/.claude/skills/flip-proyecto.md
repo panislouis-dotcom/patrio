@@ -133,16 +133,16 @@ Write the HTML file to `files/flip-proyecto.html`. Use this structure:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Proyecto — [PROJECT NAME]</title>
 <style>
-@font-face { font-family: 'EB Garamond'; src: url('fonts/eb-garamond-regular.woff2') format('woff2'); }
-@font-face { font-family: 'Public Sans'; src: url('fonts/public-sans.woff2') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; src: url('fonts/space-grotesk.woff2') format('woff2'); }
+@font-face { font-family: 'Playfair Display'; src: url('fonts/playfair-display-regular.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; src: url('fonts/inter-400.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; src: url('fonts/inter-600.woff2') format('woff2'); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'Public Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   background: #F2F0EB;
-  color: #1A2319;
+  color: #1A1A1A;
   padding: 16px;
   max-width: 480px;
   margin: 0 auto;
@@ -153,29 +153,29 @@ body {
 .header {
   text-align: center;
   padding: 32px 0 24px;
-  border-bottom: 1px solid #7A7260;
+  border-bottom: 1px solid #6B6B6B;
   margin-bottom: 32px;
 }
 
 .header .wordmark {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.65rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-bottom: 16px;
 }
 
 .header h1 {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 2rem;
   font-weight: 400;
-  color: #1A2319;
+  color: #1A1A1A;
 }
 
 .header .address {
   font-size: 0.85rem;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-top: 4px;
 }
 
@@ -185,11 +185,11 @@ body {
 }
 
 .header .signal-label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
 }
 
 /* --- SECTIONS --- */
@@ -198,16 +198,16 @@ body {
 }
 
 .section-label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-bottom: 8px;
 }
 
 .section h2 {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 1.5rem;
   font-weight: 400;
   margin-bottom: 16px;
@@ -229,17 +229,17 @@ body {
 }
 
 .hero-metric .value {
-  font-family: 'EB Garamond', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 1.3rem;
-  color: #A2571D;
+  color: #A16A3C;
 }
 
 .hero-metric .label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.6rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-top: 4px;
 }
 
@@ -265,7 +265,7 @@ body {
 
 .table-row.total {
   font-weight: 600;
-  border-top: 2px solid #1A2319;
+  border-top: 2px solid #1A1A1A;
   border-bottom: none;
   padding-top: 12px;
   margin-top: 4px;
@@ -273,12 +273,12 @@ body {
 
 .table-row.subtotal {
   font-weight: 500;
-  color: #A2571D;
+  color: #A16A3C;
 }
 
 .table-row .pct {
   font-size: 0.75rem;
-  color: #7A7260;
+  color: #6B6B6B;
   margin-left: 8px;
 }
 
@@ -298,7 +298,7 @@ body {
 /* --- TIMELINE --- */
 .timeline {
   padding-left: 16px;
-  border-left: 2px solid #A2571D;
+  border-left: 2px solid #A16A3C;
 }
 
 .timeline-item {
@@ -314,15 +314,15 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #A2571D;
+  background: #A16A3C;
 }
 
 .timeline-item .date {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7A7260;
+  color: #6B6B6B;
 }
 
 .timeline-item .desc {
@@ -355,7 +355,7 @@ body {
 }
 
 .waterfall-row .op {
-  color: #7A7260;
+  color: #6B6B6B;
   font-size: 0.8rem;
   min-width: 16px;
 }
@@ -367,7 +367,7 @@ body {
   padding: 16px;
   border-left: 3px solid #6B8A5E;
   font-size: 0.8rem;
-  color: #7A7260;
+  color: #6B6B6B;
   line-height: 1.6;
 }
 </style>
@@ -431,11 +431,11 @@ body {
   <!-- Visual bar -->
   <div class="dist-bar">
     <span style="width:47.4%; background:#6B8A5E;"></span>
-    <span style="width:30.9%; background:#A2571D;"></span>
-    <span style="width:5.4%; background:#654F6F;"></span>
-    <span style="width:5.0%; background:#5C5D8D;"></span>
-    <span style="width:4.7%; background:#7A7260;"></span>
-    <span style="width:6.6%; background:#1A2319;"></span>
+    <span style="width:30.9%; background:#A16A3C;"></span>
+    <span style="width:5.4%; background:#8C6D87;"></span>
+    <span style="width:5.0%; background:#697692;"></span>
+    <span style="width:4.7%; background:#6B6B6B;"></span>
+    <span style="width:6.6%; background:#1A1A1A;"></span>
   </div>
 
   <div class="table-card">

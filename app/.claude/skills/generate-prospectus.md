@@ -1,9 +1,9 @@
 ---
 name: generate-prospectus
-description: Use when asked to generate, update, or rebuild the Refigan investor prospectus document.
+description: Use when asked to generate, update, or rebuild the Patrio investor prospectus document.
 ---
 
-# Generate Refigan Investor Prospectus
+# Generate Patrio Investor Prospectus
 
 ## Overview
 
@@ -19,13 +19,13 @@ Read these two files before touching anything else:
 ## Step 2 — Query the DB
 
 ```bash
-source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
+source .env && docker exec patrio-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
 SELECT name, address, total_investment, current_valuation,
        total_units, acquisition_date, milestones, budget
 FROM projects WHERE is_favorite = true
 ORDER BY acquisition_date;"
 
-source .env && docker exec refigan-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
+source .env && docker exec patrio-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
 SELECT
   name, address, hold_months,
   land_price * (1 + acquisition_cost_pct/100.0)
@@ -48,14 +48,14 @@ Build the HTML using the design tokens from `docs/DESIGN.md`. Apply them directl
 ### Document structure
 
 ```text
-Cover page       → dark espresso background, wordmark, headline, date
+Cover page       → dark near-black background, wordmark, headline, date
 Visión section   → problem → emotion → solution (see copywriting rules below)
 Track Record     → ONE page-section per project, each with its own band showing project name
                    Band label: "TRACK RECORD · 01", title: project name
                    Content: narrative h2 + paragraph + 3-col KPI grid + two-col (timeline | budget)
 Oportunidad      → section band + 4-col KPI grid (Plazo, Cap Rate, Inversión Total, Valuación Proyectada) + two-col (financials | characteristics)
                    Do NOT show ROI — reveals internal margin. Use Plazo (investment_date → sale_date, in months) instead.
-CTA              → dark espresso background, contact
+CTA              → dark near-black background, contact
 ```
 
 ### CSS rules (derive values from DESIGN.md tokens)
@@ -65,7 +65,7 @@ CTA              → dark espresso background, contact
 /* DO NOT use @page bleed or named pages — Chromium headless ignores them unreliably. */
 @page { size: A4; margin: 0; }
 
-body { font-family: Public Sans; background: neutral; color: dark; font-size: 12pt; line-height: 1.75; }
+body { font-family: Inter; background: neutral; color: dark; font-size: 12pt; line-height: 1.75; }
 
 /* Cover and back-cover: height: 297mm (exact A4) fills the full sheet */
 /* page-break-after/before: always forces each onto its own dedicated page */
@@ -87,9 +87,9 @@ body { font-family: Public Sans; background: neutral; color: dark; font-size: 12
 Each section uses a `--section-color` CSS custom property that controls both the band background AND the accent color within the section (strong text, metric values, budget numbers). Set it on the `.page-section` container:
 
 ```css
-.section-vision      { --section-color: #A2571D; }  /* tertiary */
-.section-track       { --section-color: #654F6F; }  /* accent1  */
-.section-oportunidad { --section-color: #5C5D8D; }  /* accent2  */
+.section-vision      { --section-color: #A16A3C; }  /* tertiary */
+.section-track       { --section-color: #8C6D87; }  /* accent1  */
+.section-oportunidad { --section-color: #697692; }  /* accent2  */
 ```
 
 Then in the shared rules:
@@ -102,9 +102,9 @@ strong           { color: var(--section-color); }
 
 | Section | Class | Color token | Hex |
 |---|---|---|---|
-| Visión | .section-vision | tertiary | #A2571D |
-| Track Record | .section-track | accent1 | #654F6F |
-| Oportunidad | .section-oportunidad | accent2 | #5C5D8D |
+| Visión | .section-vision | tertiary | #A16A3C |
+| Track Record | .section-track | accent1 | #8C6D87 |
+| Oportunidad | .section-oportunidad | accent2 | #697692 |
 
 Text on all bands stays `neutral` (#F2F0EB) — all three backgrounds are dark enough for legibility.
 
@@ -146,20 +146,20 @@ Text on all bands stays `neutral` (#F2F0EB) — all three backgrounds are dark e
 All sizes are for print (pt units). Never use px for type.
 
 ```text
-Cover h1         36pt  EB Garamond  color: neutral   line-height: 1.05  NO max-width (full content width so heading fits in 2 lines)
-Band title       30pt  EB Garamond  color: neutral   line-height: 1.1
-Section h2       16pt  EB Garamond  color: dark      line-height: 1.2  margin-bottom: 20px  NO max-width (full width so long headings fit in 1 line)
-Section label h3  7pt  Space Grotesk     color: secondary  letter-spacing: 0.18em  uppercase  margin-bottom: 12px
-Wordmark         10pt  Space Grotesk     color: neutral   letter-spacing: 0.55em  uppercase
-Band label        7pt  Space Grotesk     color: neutral@80%  letter-spacing: 0.25em  uppercase  margin-bottom: 8px
-Body p          12pt  Public Sans      color: dark      max-width: 540px  margin-bottom: 14px
-Caption p        9pt   Public Sans       color: secondary
-Metric value hero 28pt  EB Garamond  color: tertiary  line-height: 1
-Metric value compact 20pt  EB Garamond  color: tertiary  (use in 4-col grids so long numbers fit)
-Metric label      6.5pt  Space Grotesk   color: secondary  letter-spacing: 0.18em  uppercase  margin-top: 6px
-Table body        9.5pt  Public Sans
-Table num         9.5pt  Space Grotesk   color: tertiary   text-align: right  font-weight: 500
-Timeline date     7pt   Space Grotesk    color: secondary  letter-spacing: 0.12em  uppercase
+Cover h1         36pt  Playfair Display  color: neutral   line-height: 1.05  NO max-width (full content width so heading fits in 2 lines)
+Band title       30pt  Playfair Display  color: neutral   line-height: 1.1
+Section h2       16pt  Playfair Display  color: dark      line-height: 1.2  margin-bottom: 20px  NO max-width (full width so long headings fit in 1 line)
+Section label h3  7pt  Inter     color: secondary  letter-spacing: 0.18em  uppercase  margin-bottom: 12px
+Wordmark         10pt  Inter     color: neutral   letter-spacing: 0.55em  uppercase
+Band label        7pt  Inter     color: neutral@80%  letter-spacing: 0.25em  uppercase  margin-bottom: 8px
+Body p          12pt  Inter      color: dark      max-width: 540px  margin-bottom: 14px
+Caption p        9pt   Inter       color: secondary
+Metric value hero 28pt  Playfair Display  color: tertiary  line-height: 1
+Metric value compact 20pt  Playfair Display  color: tertiary  (use in 4-col grids so long numbers fit)
+Metric label      6.5pt  Inter   color: secondary  letter-spacing: 0.18em  uppercase  margin-top: 6px
+Table body        9.5pt  Inter
+Table num         9.5pt  Inter   color: tertiary   text-align: right  font-weight: 500
+Timeline date     7pt   Inter    color: secondary  letter-spacing: 0.12em  uppercase
 ```
 
 ### Spacing rules
@@ -185,13 +185,13 @@ Timeline date     7pt   Space Grotesk    color: secondary  letter-spacing: 0.12e
 ```html
 <div class="metric-card">
   <div class="metric-value">$19,000,000</div>   <!-- 28pt tertiary -->
-  <div class="metric-label">VALUACIÓN ACTUAL</div>  <!-- 6.5pt secondary Space Grotesk -->
+  <div class="metric-label">VALUACIÓN ACTUAL</div>  <!-- 6.5pt secondary Inter -->
 </div>
 ```
 
 ### Component: timeline row
 
-Left border 2px solid primary (sage). Date in Space Grotesk 7pt secondary. Description in Public Sans 9.5pt dark.
+Left border 2px solid primary (sage). Date in Inter 7pt secondary. Description in Inter 9.5pt dark.
 
 ### Typography extras
 
@@ -222,7 +222,7 @@ The `.cover` has **three direct flex children**: wordmark (top), cover-main (mid
 ```css
 .cover {
   height: 297mm;
-  background: #1A2319;
+  background: #1A1A1A;
   padding: 72px 80px;
   page-break-after: always;
   break-after: always;
@@ -234,7 +234,7 @@ The `.cover` has **three direct flex children**: wordmark (top), cover-main (mid
 .cover-main {}
 
 .cover-prelabel {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 7pt;
   font-weight: 400;
   letter-spacing: 0.25em;
@@ -246,17 +246,17 @@ The `.cover` has **three direct flex children**: wordmark (top), cover-main (mid
 
 The `cover-prelabel` sits directly above the h1 — it anchors the document type and date before the reader hits the headline. Update the year/month whenever regenerating.
 
-**Cover-meta and cover-footer must NOT use `text-transform: uppercase`.** They are mixed-case body-size text (not label caps). Using uppercase makes them look heavy and bureaucratic. They are set in Space Grotesk at 7pt with modest letter-spacing but no case transformation:
+**Cover-meta and cover-footer must NOT use `text-transform: uppercase`.** They are mixed-case body-size text (not label caps). Using uppercase makes them look heavy and bureaucratic. They are set in Inter at 7pt with modest letter-spacing but no case transformation:
 
 ```css
-.cover-meta   { font-family: 'Space Grotesk'; font-size: 7pt; font-weight: 400; letter-spacing: 0.08em; color: rgba(242,240,235,0.6); }
-.cover-footer { font-family: 'Space Grotesk'; font-size: 7pt; font-weight: 400; letter-spacing: 0.08em; color: rgba(242,240,235,0.4); }
+.cover-meta   { font-family: 'Inter'; font-size: 7pt; font-weight: 400; letter-spacing: 0.08em; color: rgba(242,240,235,0.6); }
+.cover-footer { font-family: 'Inter'; font-size: 7pt; font-weight: 400; letter-spacing: 0.08em; color: rgba(242,240,235,0.4); }
 ```
 
-**Impact block uses EB Garamond Italic** — the editorial pull-quote treatment that sets it apart from body copy:
+**Impact block uses Playfair Display Italic** — the editorial pull-quote treatment that sets it apart from body copy:
 
 ```css
-.impact-block p { font-family: 'EB Garamond'; font-style: italic; font-size: 11pt; color: #7A7260; line-height: 1.7; margin-bottom: 0; }
+.impact-block p { font-family: 'Playfair Display'; font-style: italic; font-size: 11pt; color: #6B6B6B; line-height: 1.7; margin-bottom: 0; }
 ```
 
 ### Cover title
@@ -278,15 +278,15 @@ Use this verbatim copy every time. Do not paraphrase.
 **Content section:**
 - Section label (h3): `VISIÓN`
 - Content h2: `La brecha entre lo que recibes y lo que genera el mercado`
-- p1: `CETES ronda el 9% anual. Los bancos prestan al 15% a desarrolladores. La diferencia existe, y alguien la captura. Ese espacio es donde Refigan opera.`
-- p2: `Refigan ofrece rendimiento fijo ~12% anual, respaldado por inmuebles reales en el Centro de Monterrey y otras zonas de oportunidad. Plazo definido, activo tangible, salida clara — sin la volatilidad de mercados financieros.`
-- p3: `Cada inversión financia un edificio real. Refigan identifica y desarrolla oportunidades en el Centro de Monterrey y otras zonas de oportunidad, siguiendo una metodología de adquisición probada.`
-- Impact block (EB Garamond italic, left border in section color): `Restaurar un edificio histórico no es solo una operación financiera. Es devolver vida a una estructura que guarda la historia de una ciudad. Cada proyecto de Refigan rescata una pieza del patrimonio urbano de Monterrey — y la convierte en un espacio digno, habitado, vivo.`
+- p1: `CETES ronda el 9% anual. Los bancos prestan al 15% a desarrolladores. La diferencia existe, y alguien la captura. Ese espacio es donde Patrio opera.`
+- p2: `Patrio ofrece rendimiento fijo ~12% anual, respaldado por inmuebles reales en el Centro de Monterrey y otras zonas de oportunidad. Plazo definido, activo tangible, salida clara — sin la volatilidad de mercados financieros.`
+- p3: `Cada inversión financia un edificio real. Patrio identifica y desarrolla oportunidades en el Centro de Monterrey y otras zonas de oportunidad, siguiendo una metodología de adquisición probada.`
+- Impact block (Playfair Display italic, left border in section color): `Restaurar un edificio histórico no es solo una operación financiera. Es devolver vida a una estructura que guarda la historia de una ciudad. Cada proyecto de Patrio rescata una pieza del patrimonio urbano de Monterrey — y la convierte en un espacio digno, habitado, vivo.`
 
 ### CTA / Footer section — exact copy
 
 - h2: `Hablemos de su próxima inversión`
-- p1: `Refigan opera desde **San Pedro Garza García** e invierte en el Centro de Monterrey y otras zonas con oportunidades. Fondeos cerrados, plazos definidos, rendimientos fijos.`
+- p1: `Patrio opera desde **San Pedro Garza García** e invierte en el Centro de Monterrey y otras zonas con oportunidades. Fondeos cerrados, plazos definidos, rendimientos fijos.`
 - p2: `Documento preparado exclusivamente para prospectos e inversionistas autorizados. Los rendimientos proyectados son estimados y no constituyen una garantía.`
 - Disclaimer (bottom): `Documento Confidencial · Distribución Restringida · [Month Year]` + second line about confidentiality.
 
@@ -303,42 +303,42 @@ Use this verbatim copy every time. Do not paraphrase.
 
 Font files are stored at `files/fonts/` (already downloaded — do not re-download):
 ```
-files/fonts/eb-garamond-regular.woff2  ← EB Garamond Regular
-files/fonts/eb-garamond-italic.woff2   ← EB Garamond Italic (impact block)
-files/fonts/public-sans.woff2          ← Public Sans variable (100–900)
-files/fonts/space-grotesk.woff2        ← Space Grotesk variable (300–700)
+files/fonts/playfair-display-regular.woff2  ← Playfair Display Regular
+files/fonts/playfair-display-italic.woff2   ← Playfair Display Italic (impact block)
+files/fonts/inter-400.woff2          ← Inter variable (100–900)
+files/fonts/inter-600.woff2        ← Inter variable (300–700)
 ```
 
 Declare them in the HTML `<style>` block before any other CSS:
 
 ```css
 @font-face {
-  font-family: 'EB Garamond';
+  font-family: 'Playfair Display';
   font-style: normal;
   font-weight: 400;
-  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/eb-garamond-regular.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/playfair-display-regular.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'EB Garamond';
+  font-family: 'Playfair Display';
   font-style: italic;
   font-weight: 400;
-  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/eb-garamond-italic.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/playfair-display-italic.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'Public Sans';
+  font-family: 'Inter';
   font-style: normal;
   font-weight: 100 900;
-  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/public-sans.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/inter-400.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'Space Grotesk';
+  font-family: 'Inter';
   font-style: normal;
   font-weight: 300 700;
-  src: url('file:///Users/eduardo/Documents/repos/refigan/data/files/fonts/space-grotesk.woff2') format('woff2');
+  src: url('file:///Users/eduardo/Documents/repos/patrio/app/api/fonts/inter-600.woff2') format('woff2');
 }
 ```
 
-**Always add `font-weight: 400` explicitly to every heading rule** (h1, h2, band h2, metric-value). Without it, browsers synthesize bold when the intended weight isn't available, making the elegant EB Garamond look heavy.
+**Always add `font-weight: 400` explicitly to every heading rule** (h1, h2, band h2, metric-value). Without it, browsers synthesize bold when the intended weight isn't available, making the elegant Playfair Display look heavy.
 
 Add `--allow-file-access-from-files` to the Chrome render command so local font paths load correctly.
 
@@ -383,4 +383,4 @@ Confirm `files/prospectus.pdf` exists before reporting done.
 - Do not put `<br>` inside headings
 - Do not show raw float numbers — always format as currency
 - Do not use `<link href="fonts.googleapis.com">` — headless Chrome can't load CDN fonts; use local `@font-face` instead
-- Do not omit `font-weight: 400` from heading rules — without it the browser synthesizes bold, making EB Garamond look heavy
+- Do not omit `font-weight: 400` from heading rules — without it the browser synthesizes bold, making Playfair Display look heavy

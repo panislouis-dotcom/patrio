@@ -201,7 +201,7 @@ export function QuickCaptureModal({ onClose, onCreated, initialValues }: Props) 
 
         {error && (
           <div style={{
-            color: 'tomato',
+            color: '#E62300',
             fontFamily: fonts.sans,
             fontSize: '12px',
             marginBottom: '16px',

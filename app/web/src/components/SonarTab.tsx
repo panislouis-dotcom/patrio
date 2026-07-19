@@ -158,7 +158,7 @@ type DedupPhase =
 function PortalRow({ name, state, pulse }: { name: string; state: PortalPhase; pulse: boolean }) {
   const lbl: React.CSSProperties = { fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase' as const }
   const icon      = state.phase === 'done' ? '✓' : state.phase === 'error' ? '✕' : state.phase === 'scanning' ? '●' : '·'
-  const iconColor = state.phase === 'done' ? colors.tertiary : state.phase === 'error' ? 'tomato' : state.phase === 'scanning' ? colors.primary : colors.border
+  const iconColor = state.phase === 'done' ? colors.tertiary : state.phase === 'error' ? '#E62300' : state.phase === 'scanning' ? colors.primary : colors.border
   const nameColor = state.phase === 'pending' ? colors.border : colors.secondary
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '5px 0' }}>
@@ -173,7 +173,7 @@ function PortalRow({ name, state, pulse }: { name: string; state: PortalPhase; p
           {state.skipped > 0 && <span style={{ opacity: 0.5 }}> · {state.skipped} descartadas</span>}
         </span>
       )}
-      {state.phase === 'error' && <span style={{ ...lbl, color: 'tomato', opacity: 0.8 }}>error</span>}
+      {state.phase === 'error' && <span style={{ ...lbl, color: '#E62300', opacity: 0.8 }}>error</span>}
     </div>
   )
 }
@@ -675,7 +675,7 @@ export function SonarTab() {
                         <span style={{ color: colors.neutral, fontFamily: fonts.label, fontSize: '11px' }}>{fmtM(s.price)}</span>
                         {priceChanged && (
                           <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2px' }}>
-                            <span style={{ fontSize: '9px', color: priceDrop ? colors.primary : 'tomato' }}>
+                            <span style={{ fontSize: '9px', color: priceDrop ? colors.primary : '#E62300' }}>
                               {priceDrop ? '↓' : '↑'}
                             </span>
                             <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textDecoration: 'line-through', opacity: 0.7 }}>
@@ -693,7 +693,7 @@ export function SonarTab() {
                           const pct = ((s.ppsqm - median) / median) * 100
                           const cheaper = pct < 0
                           return (
-                            <span style={{ color: cheaper ? colors.primary : 'tomato' }}>
+                            <span style={{ color: cheaper ? colors.primary : '#E62300' }}>
                               {cheaper ? '' : '+'}{pct.toFixed(0)}%
                             </span>
                           )

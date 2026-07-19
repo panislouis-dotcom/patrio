@@ -43,7 +43,7 @@ export function ProjectsTab() {
   )
 
   if (loading) return <div style={{ padding: '32px', color: colors.secondary }}>Cargando…</div>
-  if (error) return <div style={{ padding: '32px', color: 'tomato' }}>Error: {error}</div>
+  if (error) return <div style={{ padding: '32px', color: '#E62300' }}>Error: {error}</div>
 
   const totalInvestment = projects.reduce((s, p) => s + p.totalInvestment, 0)
   const totalValuation = projects.reduce((s, p) => s + p.currentValuation, 0)
@@ -85,7 +85,7 @@ export function ProjectsTab() {
           </thead>
           <tbody>
             {sorted.map(p => {
-              const gainColor = p.unrealizedGain >= 0 ? colors.tertiary : 'tomato'
+              const gainColor = p.unrealizedGain >= 0 ? colors.tertiary : '#E62300'
 
               return (
                 <tr

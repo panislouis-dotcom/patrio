@@ -53,7 +53,7 @@ export function InversorPositionRow({
 }: Props) {
   const paid = pos.returnAmount ?? 0
   const estado = paid <= 0 ? 'PENDIENTE' : paid >= pos.expectedReturn ? 'LIQUIDADO' : 'PARCIAL'
-  const estadoColor = paid <= 0 ? colors.secondary : paid >= pos.expectedReturn ? colors.primary : '#c8a000'
+  const estadoColor = paid <= 0 ? colors.secondary : paid >= pos.expectedReturn ? colors.primary : '#907300'
 
   return (
     <tr key={pos.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
