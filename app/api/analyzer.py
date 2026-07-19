@@ -19,6 +19,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from api.db import get_db
+from api.finance.analysis import (
+    percentile as _percentile, irr_newton as _irr_newton,
+    npv as _npv, monthly_payment as _monthly_payment,
+)
 
 
 # ─── Exceptions ──────────────────────────────────────
@@ -90,46 +94,8 @@ class AnalysisResult:
 
 
 # ─── Helpers ─────────────────────────────────────────
-
-def _percentile(values: list[float], p: float) -> float:
-    """Calculate percentile using linear interpolation."""
-    if not values:
-        return 0.0
-    sorted_v = sorted(values)
-    k = (len(sorted_v) - 1) * p
-    f = math.floor(k)
-    c = math.ceil(k)
-    if f == c:
-        return sorted_v[int(k)]
-    return sorted_v[f] * (c - k) + sorted_v[c] * (k - f)
-
-
-def _irr_newton(cashflows: list[float], guess: float = 0.1, max_iter: int = 100, tol: float = 1e-6) -> Optional[float]:
-    """Calculate IRR using Newton-Raphson method."""
-    rate = guess
-    for _ in range(max_iter):
-        npv = sum(cf / (1 + rate) ** t for t, cf in enumerate(cashflows))
-        dnpv = sum(-t * cf / (1 + rate) ** (t + 1) for t, cf in enumerate(cashflows))
-        if abs(dnpv) < 1e-12:
-            return None
-        new_rate = rate - npv / dnpv
-        if abs(new_rate - rate) < tol:
-            return new_rate
-        rate = new_rate
-    return None
-
-
-def _npv(rate: float, cashflows: list[float]) -> float:
-    """Net present value."""
-    return sum(cf / (1 + rate) ** t for t, cf in enumerate(cashflows))
-
-
-def _monthly_payment(principal: float, annual_rate: float, months: int) -> float:
-    """Fixed monthly payment for an amortizing loan."""
-    if annual_rate <= 0 or months <= 0 or principal <= 0:
-        return 0.0
-    r = annual_rate / 12
-    return principal * r * (1 + r) ** months / ((1 + r) ** months - 1)
+# The numerical primitives (_percentile, _irr_newton, _npv, _monthly_payment)
+# now live in api.finance.analysis and are imported above under the same names.
 
 
 # ─── Core functions ──────────────────────────────────
@@ -205,9 +171,9 @@ def find_comparables(
     factor = 1.0 - listing_haircut
     for c in comps:
         if c.get("price_per_m2") is not None:
-            c["price_per_m2"] = c["price_per_m2"] * factor
+            c["price_per_m2"] = float(c["price_per_m2"]) * factor
         if c.get("price") is not None:
-            c["price"] = c["price"] * factor
+            c["price"] = float(c["price"]) * factor
 
     return comps, avg_dist_km
 
@@ -358,10 +324,13 @@ def analyze_prospect(
         raise ProspectNotFound(f"Prospect {prospect_id} not found")
 
     p = dict(prospect)
-    purchase_price = p["land_price"]
-    sqm_construction = p["sqm_construction"]
-    projected_sale = p["projected_sale"]
-    rent_monthly = p["rent_monthly"] or 0
+    # Coerce money to float at the single load boundary: rows from NUMERIC
+    # columns arrive as Decimal, and the analyzer's iterative float models
+    # (IRR/NPV/amortization) can't mix Decimal with float literals.
+    purchase_price = float(p["land_price"])
+    sqm_construction = float(p["sqm_construction"])
+    projected_sale = float(p["projected_sale"])
+    rent_monthly = float(p["rent_monthly"] or 0)
 
     # Data quality check: projected_sale placeholder
     if projected_sale and projected_sale < purchase_price * 0.10:
@@ -416,7 +385,7 @@ def analyze_prospect(
         warnings.append("Sin costo de remodelación para zona exacta, usando fallback")
 
     if remodel_data:
-        cost_per_m2 = remodel_data["cost_per_m2_mxn"]
+        cost_per_m2 = float(remodel_data["cost_per_m2_mxn"])
         remodel_updated_at = remodel_data.get("updated_at")
     else:
         cost_per_m2 = 9000  # absolute fallback

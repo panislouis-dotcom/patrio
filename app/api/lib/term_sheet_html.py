@@ -15,7 +15,7 @@ def _fmt_mxn(n: float) -> str:
 
 
 def _calc_return(amount: float, rate: float, months: int) -> float:
-    return round(amount * rate * (months / 12))
+    return round(float(amount) * float(rate) * (months / 12))
 
 
 def build_term_sheet_html(
@@ -24,6 +24,11 @@ def build_term_sheet_html(
     investment_amount: float,
     rate: float,
 ) -> str:
+    # Coerce money at the boundary: callers may pass Decimal (NUMERIC columns),
+    # and downstream '+'/'*' below mixes these with float literals.
+    investment_amount = float(investment_amount)
+    rate = float(rate)
+
     now = datetime.now()
     month_label = f"{_MONTHS_ES[now.month]} {now.year}"
     year_label = str(now.year)
