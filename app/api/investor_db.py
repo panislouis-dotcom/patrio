@@ -1,10 +1,44 @@
 from .db import get_db, _snake_to_camel, _camel_to_snake
+from api.finance import investor as fin_investor
 
 INVESTOR_RAW_FIELDS = {"name", "apellidos", "email", "phone", "notes", "temperatura", "capacidad", "fuente", "confianza"}
 PROJECT_INVESTOR_RAW_FIELDS = {
     "status", "interestedAmount", "committedAmount", "fundedAmount",
     "interestRateAnnual", "investmentDate", "returnAmount", "returnDate", "notes"
 }
+
+# Base-table join replacing the dropped project_investor_metrics view; return
+# metrics (holdMonths / interestAmount / expectedReturn / returnPct) computed in Python.
+_POSITION_SELECT = """
+SELECT pi.*,
+       i.name || CASE WHEN COALESCE(i.apellidos, '') != '' THEN ' ' || i.apellidos ELSE '' END AS investor_name,
+       p.name AS project_name,
+       p.acquisition_date AS acquisition_ym,
+       p.conclusion_date  AS conclusion_date_raw
+FROM project_investors pi
+JOIN projects p ON p.id = pi.project_id
+JOIN investors i ON i.id = pi.investor_id
+"""
+
+
+def _parse_position(r) -> dict:
+    d = {_snake_to_camel(k): v for k, v in dict(r).items()}
+    acq = d.pop("acquisitionYm", None)
+    conc = d.pop("conclusionDateRaw", None)
+    hm = fin_investor.hold_months(acq, conc) if acq else 0
+    funded = d.get("fundedAmount") or 0
+    rate = d.get("interestRateAnnual") or 0
+    d["holdMonths"] = hm
+    d["interestAmount"] = fin_investor.cuota(funded, rate, hm)
+    d["expectedReturn"] = fin_investor.expected_return(funded, rate, hm)
+    d["returnPct"] = fin_investor.return_pct(rate, hm)
+    return d
+
+
+def _get_position(investment_id: int) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute(_POSITION_SELECT + " WHERE pi.id = %s", (investment_id,)).fetchone()
+    return _parse_position(row) if row else None
 
 
 def get_investors() -> list[dict]:
@@ -38,21 +72,13 @@ def get_investor(investor_id: int) -> dict | None:
         if investor_row is None:
             return None
         position_rows = conn.execute(
-            """
-            SELECT * FROM project_investor_metrics
-            WHERE investor_id = %s
-            ORDER BY project_id, investment_date
-            """,
+            _POSITION_SELECT + " WHERE pi.investor_id = %s ORDER BY pi.project_id, pi.investment_date",
             (investor_id,),
         ).fetchall()
 
     investor = {_snake_to_camel(k): v for k, v in dict(investor_row).items()}
-    investor["positions"] = [
-        {_snake_to_camel(k): v for k, v in dict(r).items()} for r in position_rows
-    ]
-    investor["totalInterested"] = sum(p.get("interestedAmount") or 0 for p in investor["positions"])
-    investor["totalCommitted"] = sum(p.get("committedAmount") or 0 for p in investor["positions"])
-    investor["totalFunded"] = sum(p.get("fundedAmount") or 0 for p in investor["positions"])
+    investor["positions"] = [_parse_position(r) for r in position_rows]
+    investor.update(fin_investor.totals(investor["positions"]))
     return investor
 
 
@@ -117,16 +143,15 @@ def get_project_investors(project_id: int) -> list[dict]:
 
     Returns list sorted by status (fondeado first), then name.
     """
-    query = """
-    SELECT * FROM project_investor_metrics
-    WHERE project_id = %s
+    query = _POSITION_SELECT + """
+    WHERE pi.project_id = %s
     ORDER BY
-      CASE status WHEN 'fondeado' THEN 0 WHEN 'comprometido' THEN 1 ELSE 2 END,
+      CASE pi.status WHEN 'fondeado' THEN 0 WHEN 'comprometido' THEN 1 ELSE 2 END,
       investor_name
     """
     with get_db() as conn:
         rows = conn.execute(query, (project_id,)).fetchall()
-    return [{_snake_to_camel(k): v for k, v in dict(r).items()} for r in rows]
+    return [_parse_position(r) for r in rows]
 
 
 def add_project_investor(project_id: int, investor_id: int, data: dict) -> dict:
@@ -162,12 +187,7 @@ def add_project_investor(project_id: int, investor_id: int, data: dict) -> dict:
         )
         row_id = cur.fetchone()["id"]
 
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT * FROM project_investor_metrics WHERE id = %s",
-            (row_id,),
-        ).fetchone()
-    return {_snake_to_camel(k): v for k, v in dict(row).items()}
+    return _get_position(row_id)
 
 
 def update_project_investment(investment_id: int, data: dict) -> dict:
@@ -180,14 +200,10 @@ def update_project_investment(investment_id: int, data: dict) -> dict:
         with get_db() as conn:
             conn.execute(f"UPDATE project_investors SET {columns} WHERE id = %s", values)
 
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT * FROM project_investor_metrics WHERE id = %s",
-            (investment_id,),
-        ).fetchone()
+    row = _get_position(investment_id)
     if row is None:
         raise ValueError(f"Investment {investment_id} not found")
-    return {_snake_to_camel(k): v for k, v in dict(row).items()}
+    return row
 
 
 def delete_project_investment(investment_id: int) -> None:
