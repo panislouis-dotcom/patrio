@@ -24,8 +24,10 @@ export function ProspectMap() {
       .finally(() => setLoading(false))
   }, [])
 
-  const withCoords = prospects.filter(p => p.latitude !== 0 && p.longitude !== 0)
-  const noCoords = prospects.filter(p => p.latitude === 0 || p.longitude === 0)
+  // Archived (converted) prospects belong to a project now — drop them from the map.
+  const active = prospects.filter(p => p.status !== 'converted')
+  const withCoords = active.filter(p => p.latitude !== 0 && p.longitude !== 0)
+  const noCoords = active.filter(p => p.latitude === 0 || p.longitude === 0)
 
   if (loading) return <div style={{ padding: '32px', color: colors.secondary }}>Cargando…</div>
 

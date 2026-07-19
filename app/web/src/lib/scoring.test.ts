@@ -12,7 +12,7 @@ function makeProspect(overrides: Partial<Prospect>): Prospect {
     acquisitionTotal: 0, permitsCost: 0, subdivisionCost: 0, constructionBase: 0,
     constructionTotal: 0, constructionCostPerSqm: 6000, constructionOverhead: 1.3,
     totalInvestment: 0, projectedSale: 0, profit: 1000000, roi: 0.25,
-    capRate: 0.07, landPricePerSqm: 0, salePerSqm: 0, investmentPerSqm: 0,
+    roiTotal: 0.25, capRate: 0.07, landPricePerSqm: 0, salePerSqm: 0, investmentPerSqm: 0,
     rentMonthly: 20000, rentAnnual: 0, holdMonths: 18,
     notes: '', isFavorite: false, images: [], score: 0, issues: [],
     ...overrides,
