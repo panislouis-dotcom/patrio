@@ -17,7 +17,7 @@ import {
 import { snapPoint } from '../lib/floorplan/snapping'
 import { calibrationFromLine, modelToPx } from '../lib/floorplan/calibrate'
 import { toGeometryJson } from '../lib/floorplan/export'
-import { uploadFloorplanImage, BASE } from '../lib/api'
+import { BASE } from '../lib/api'
 import FloorPlanCanvas from './FloorPlanCanvas'
 import FloorPlanPanel from './FloorPlanPanel'
 import { EmptyState, ReferenceControls } from './FloorPlanReference'
@@ -50,14 +50,14 @@ export interface PlanApi {
 }
 
 interface Props {
-  projectId: number
   initial: FloorPlanModel | Record<string, never>
   onSave: (m: FloorPlanModel) => void | Promise<void>
+  onUploadImage: (file: File) => Promise<{ imageKey: string }>
   onReady?: (api: PlanApi) => void
   onDirtyChange?: (dirty: boolean) => void
 }
 
-export default function FloorPlanEditor({ projectId, initial, onSave, onReady, onDirtyChange }: Props) {
+export default function FloorPlanEditor({ initial, onSave, onUploadImage, onReady, onDirtyChange }: Props) {
   const [entered, setEntered] = useState(!isEmpty(initial as FloorPlanModel))
   const [uploading, setUploading] = useState(false)
   const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null)
@@ -119,7 +119,7 @@ export default function FloorPlanEditor({ projectId, initial, onSave, onReady, o
   async function onUpload(file: File) {
     setUploading(true)
     try {
-      const { imageKey } = await uploadFloorplanImage(projectId, file)
+      const { imageKey } = await onUploadImage(file)
       const m = emptyModel()
       m.floors[0].reference = { imageKey, scale_m_per_px: 0.01, origin_px: [0, 0], opacity: 0.5 }
       dispatch({ type: 'SET_MODEL', model: m })

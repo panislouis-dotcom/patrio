@@ -55,7 +55,7 @@ describe('connected drag', () => {
   it('moving a shared corner moves every wall that touches it', () => {
     const model = modelWithRectangleAndDivider()
     const onSave = vi.fn()
-    const { container } = render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={onSave} />)
     const svg = container.querySelector('svg')!
     const vertexHandle = svg.querySelector('[data-el="vertex"]')!
     const id = vertexHandle.getAttribute('data-id')!
@@ -79,7 +79,7 @@ describe('edge-midpoint split without a following drag', () => {
   it('clicking a wall midpoint to add a corner, then releasing without moving, produces exactly one undo step', () => {
     const model = modelWithRectangleAndDivider()
     const onSave = vi.fn()
-    const { container } = render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={onSave} />)
     const svg = container.querySelector('svg')!
     const before = svg.querySelectorAll('[data-el="edge"]').length
     const midHandle = svg.querySelector('[data-el="edgeMid"]')!
@@ -102,7 +102,7 @@ describe('wall-body drag does not force-straighten a diagonal wall', () => {
     addEdge(f, v1, v2, 0.10)
     const model = { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
     const onSave = vi.fn()
-    const { container } = render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={onSave} />)
     const svg = container.querySelector('svg')!
     const edgeLine = svg.querySelector('[data-el="edge"]')!
     fireEvent.pointerDown(edgeLine, pointerAt(model.floors, 2.5, 2))
@@ -123,7 +123,7 @@ describe('undo/redo — one step per drag gesture', () => {
   it('a single Ctrl+Z reverts an entire multi-frame drag', () => {
     const model = modelWithRectangleAndDivider()
     const onSave = vi.fn()
-    const { container } = render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={onSave} />)
     const svg = container.querySelector('svg')!
     const vertexHandle = svg.querySelectorAll('[data-el="vertex"]')[0]
     const before = { cx: vertexHandle.getAttribute('cx'), cy: vertexHandle.getAttribute('cy') }
@@ -157,7 +157,7 @@ describe('T-junction creation via drag-near-edge', () => {
     addEdge(f, dividerTop, dividerFree, 0.10)
     const model = { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
     const onSave = vi.fn()
-    const { container } = render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={onSave} />)
     const svg = container.querySelector('svg')!
     const vertexHandles = Array.from(svg.querySelectorAll('[data-el="vertex"]'))
     const freeHandle = vertexHandles.find(h => h.getAttribute('data-id') === dividerFree)! // the not-yet-attached end

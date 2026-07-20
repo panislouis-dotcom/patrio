@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from api.auth import get_current_user
-from api.db import get_prospects, get_prospect, update_prospect, create_prospect, add_prospect_image, delete_prospect_image, delete_prospect
+from api.db import get_prospects, get_prospect, update_prospect, create_prospect, add_prospect_image, delete_prospect_image, delete_prospect, get_prospect_geometry, set_prospect_geometry
 from api.checks import run_checks
 from api import storage
 
@@ -13,6 +13,8 @@ router = APIRouter()
 
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 _MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
+_FLOORPLAN_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+_FLOORPLAN_ALLOWED_MIME = set(_FLOORPLAN_EXT)  # no GIF: not a sane format for a technical drawing
 
 
 class ProspectUpdate(BaseModel):
@@ -221,3 +223,41 @@ async def remove_prospect_image(
     except ValueError:
         raise HTTPException(status_code=404, detail="Image not found")
     storage.delete(file_path)
+
+
+class GeometryBody(BaseModel):
+    geometry: dict  # deep schema is validated in the TS engine (single source of truth)
+
+
+@router.get("/api/prospects/{prospect_id}/geometry", operation_id="prospects_get_geometry")
+def get_prospect_geometry_route(prospect_id: int, _: dict = Depends(get_current_user)):
+    geo = get_prospect_geometry(prospect_id)
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+    return geo
+
+
+@router.put("/api/prospects/{prospect_id}/geometry", operation_id="prospects_set_geometry")
+def put_prospect_geometry_route(prospect_id: int, body: GeometryBody,
+                                 _: dict = Depends(get_current_user)):
+    saved = set_prospect_geometry(prospect_id, body.geometry)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+    return saved
+
+
+@router.post("/api/prospects/{prospect_id}/floorplan-image", status_code=201,
+             operation_id="prospects_upload_floorplan_image")
+async def upload_prospect_floorplan_image(prospect_id: int, file: UploadFile = File(...),
+                                           _: dict = Depends(get_current_user)):
+    if get_prospect_geometry(prospect_id) is None:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+    if file.content_type not in _FLOORPLAN_ALLOWED_MIME:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
+    content = await file.read(_MAX_IMAGE_SIZE + 1)
+    if len(content) > _MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    ext = _FLOORPLAN_EXT[file.content_type]
+    key = f"prospects/{prospect_id}/floorplan/{uuid4().hex}{ext}"
+    storage.upload(key, content, file.content_type)
+    return {"imageKey": key}

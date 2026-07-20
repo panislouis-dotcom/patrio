@@ -438,6 +438,25 @@ def set_project_geometry(project_id: int, geometry: dict) -> dict | None:
     return None if row is None else (row["geometry"] or {})
 
 
+def get_prospect_geometry(prospect_id: int) -> dict | None:
+    """Return the stored geometry model ({} when unset), or None if no such prospect."""
+    with get_db() as conn:
+        row = conn.execute("SELECT geometry FROM prospects WHERE id = %s", (prospect_id,)).fetchone()
+    if row is None:
+        return None
+    return row["geometry"] or {}
+
+
+def set_prospect_geometry(prospect_id: int, geometry: dict) -> dict | None:
+    """Whole-blob replace of a prospect's geometry. Returns the stored model, or None."""
+    with get_db() as conn:
+        row = conn.execute(
+            "UPDATE prospects SET geometry = %s WHERE id = %s RETURNING geometry",
+            (Json(geometry), prospect_id),
+        ).fetchone()
+    return None if row is None else (row["geometry"] or {})
+
+
 def update_project(project_id: int, data: dict) -> dict | None:
     """Update a project record with the provided data.
 
@@ -547,8 +566,10 @@ def convert_prospect(prospect_id: int, fields: dict) -> dict:
         new = conn.execute(
             f"INSERT INTO projects ({columns}) VALUES ({placeholders}) RETURNING id",
             list(snake.values())).fetchone()
-        conn.execute("UPDATE prospects SET status='converted' WHERE id=%s", (prospect_id,))
         new_id = new["id"]
+        if p["geometry"]:
+            conn.execute("UPDATE projects SET geometry = %s WHERE id = %s", (Json(p["geometry"]), new_id))
+        conn.execute("UPDATE prospects SET status='converted' WHERE id=%s", (prospect_id,))
     return get_project(new_id)
 
 

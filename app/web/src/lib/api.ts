@@ -948,3 +948,27 @@ export async function uploadFloorplanImage(id: number, file: File): Promise<{ im
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
+
+export async function fetchProspectGeometry(id: number): Promise<FloorPlanModel | Record<string, never>> {
+  const res = await authFetch(`${BASE}/api/prospects/${id}/geometry`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function saveProspectGeometry(id: number, geometry: FloorPlanModel): Promise<FloorPlanModel> {
+  const res = await authFetch(`${BASE}/api/prospects/${id}/geometry`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ geometry }),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function uploadProspectFloorplanImage(id: number, file: File): Promise<{ imageKey: string }> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await authFetch(`${BASE}/api/prospects/${id}/floorplan-image`, { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}

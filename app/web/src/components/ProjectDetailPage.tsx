@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { BASE, fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit, uploadProjectImage, deleteProjectImage, updateProjectImageType, fetchProjectGeometry, saveProjectGeometry } from '../lib/api'
+import { BASE, fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit, uploadProjectImage, deleteProjectImage, updateProjectImageType, fetchProjectGeometry, saveProjectGeometry, uploadFloorplanImage } from '../lib/api'
 import type { Project, ProcessInstance, TeamMember, ProjectInvestor, Investor, ProfitWaterfall } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { ProjectProfitSection } from './ProjectProfitSection'
@@ -1021,9 +1021,9 @@ export function ProjectDetailPage() {
           {/* PLANO tab */}
           {centerTab === 'plano' && geometry !== null && (
             <FloorPlanEditor
-              projectId={projectId}
               initial={geometry}
               onSave={async m => { const saved = await saveProjectGeometry(projectId, m); setGeometry(saved) }}
+              onUploadImage={file => uploadFloorplanImage(projectId, file)}
               onReady={onPlanReady}
               onDirtyChange={setPlanDirty}
             />

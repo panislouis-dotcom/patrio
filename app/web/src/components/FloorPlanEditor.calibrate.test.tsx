@@ -40,7 +40,7 @@ describe('reference underlay controls', () => {
   it('renders the opacity slider and Calibrate toggle when a reference image is set', () => {
     const model = modelWithReference()
     const onSave = vi.fn()
-    render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
+    render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={onSave} />)
     expect(screen.getByLabelText('Underlay opacity')).toBeTruthy()
     expect(screen.getByText('Calibrate')).toBeTruthy()
   })
@@ -52,7 +52,7 @@ describe('calibration flow', () => {
     const onSave = vi.fn()
     let api: PlanApi | null = null
     const { container } = render(
-      <FloorPlanEditor projectId={1} initial={model} onSave={onSave} onReady={a => { api = a }} />,
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={onSave} onReady={a => { api = a }} />,
     )
     const svg = container.querySelector('svg')!
 
