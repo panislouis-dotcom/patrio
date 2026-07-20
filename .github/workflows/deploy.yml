@@ -24,12 +24,16 @@ jobs:
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@fa648b43de3d4d023bcb3f89ed6940096949c419  # v2.1.5
 
+      # Also tags qa-<sha>: ArgoCD Image Updater on the QA cluster watches for that
+      # pattern and writes the new tag back to edg-infra's qa branch, so every merge to
+      # main auto-deploys to QA (patrio has no separate qa branch to gate on).
       - name: Build and push
         env:
           IMAGE: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/edg/refigan
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          docker build --platform linux/amd64 --build-arg APP_VERSION="$SHA" -t "$IMAGE:$SHA" -t "$IMAGE:latest" .
+          docker build --platform linux/amd64 --build-arg APP_VERSION="$SHA" -t "$IMAGE:$SHA" -t "$IMAGE:latest" -t "$IMAGE:qa-$SHA" .
           docker push "$IMAGE:$SHA"
           docker push "$IMAGE:latest"
+          docker push "$IMAGE:qa-$SHA"
