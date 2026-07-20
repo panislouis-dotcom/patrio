@@ -34,13 +34,18 @@ export function ProspectTable() {
     setProspects(prev => computeScores(prev, weights))
   }, [weights])
 
-  const sorted = [...prospects].sort((a, b) => {
+  // Converted prospects are archived (a project now carries their data); keep
+  // them out of the active pipeline. They stay reachable via the project's
+  // prospect_id link and by direct URL — the record is never deleted.
+  const active = prospects.filter(p => p.status !== 'converted')
+
+  const sorted = [...active].sort((a, b) => {
     const diff = (a[sortKey] as number) - (b[sortKey] as number)
     return sortAsc ? diff : -diff
   })
 
-  const totalErrors = prospects.flatMap(p => p.issues).filter(i => i.severity === 'error').length
-  const totalWarnings = prospects.flatMap(p => p.issues).filter(i => i.severity === 'warning').length
+  const totalErrors = active.flatMap(p => p.issues).filter(i => i.severity === 'error').length
+  const totalWarnings = active.flatMap(p => p.issues).filter(i => i.severity === 'warning').length
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(a => !a)

@@ -12,7 +12,23 @@ _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 _MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
-class ProjectUpdate(BaseModel):
+class _UnderwritingInputs(BaseModel):
+    """The 11 prospect underwriting inputs a project may carry (Project ⊇ Prospect).
+    All optional — a project without a breakdown falls back to its stored total."""
+    sqmLand: Optional[float] = None
+    sqmConstruction: Optional[float] = None
+    landPrice: Optional[float] = None
+    acquisitionCostPct: Optional[float] = None
+    permitsCost: Optional[float] = None
+    subdivisionCost: Optional[float] = None
+    constructionCostPerSqm: Optional[float] = None
+    constructionOverhead: Optional[float] = None
+    projectedSale: Optional[float] = None
+    holdMonths: Optional[int] = None
+    rentMonthly: Optional[float] = None
+
+
+class ProjectUpdate(_UnderwritingInputs):
     name: Optional[str] = None
     type: Optional[str] = None
     address: Optional[str] = None
@@ -34,7 +50,7 @@ class ProjectUpdate(BaseModel):
     isFavorite: Optional[bool] = None
 
 
-class ProjectCreate(BaseModel):
+class ProjectCreate(_UnderwritingInputs):
     name: str
     type: str
     address: str
@@ -43,7 +59,7 @@ class ProjectCreate(BaseModel):
     totalUnits: int
     acquisitionDate: str
     conclusionDate: str
-    totalInvestment: float
+    totalInvestment: float = 0.0  # computed from the breakdown on conversion
     currentValuation: float
     valuationDate: str
     url: str = "https://refigan.mx"

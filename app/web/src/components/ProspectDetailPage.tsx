@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { BASE, fetchProspect, updateProspect, createProspect, deleteProspect, createProject, uploadProspectImage, deleteProspectImage } from '../lib/api'
+import { BASE, fetchProspect, updateProspect, createProspect, deleteProspect, convertProspect, uploadProspectImage, deleteProspectImage } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { fmtMXN } from '../lib/fmt'
+import { MetricHero } from './finance/MetricHero'
+import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { LatLonPicker } from './LatLonPicker'
 import { NumericInput } from './NumericInput'
 import { ProspectForm } from './ProspectForm'
 import { ProspectAnalysisSection } from './ProspectAnalysisSection'
 import { StatRow } from './StatRow'
 import { PhotoGallery } from './PhotoGallery'
-import { PROSPECT_STATUS_COLOR, PROSPECT_STATUS_LABEL } from '../lib/status'
+import { PROSPECT_STATUS_COLOR, PROSPECT_STATUS_LABEL, PROJECT_STATUS_LABEL } from '../lib/status'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
   city: 'Monterrey',
@@ -56,7 +58,7 @@ export function ProspectDetailPage() {
     totalUnits: 1,
     acquisitionDate: '', conclusionDate: '',
     currentValuation: 0, valuationDate: '',
-    status: 'activo',
+    status: 'construction',
   })
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
@@ -141,7 +143,7 @@ export function ProspectDetailPage() {
       conclusionDate: yyyymm(concDate),
       currentValuation: p.projectedSale || 0,
       valuationDate: currentMonth,
-      status: 'activo',
+      status: 'construction',
     })
     setConvertError(null)
     setConvertModal(true)
@@ -152,19 +154,17 @@ export function ProspectDetailPage() {
     setConverting(true)
     setConvertError(null)
     try {
-      const project = await createProject({
-        name: p.name,
-        address: p.address,
-        city: p.city,
-        url: p.url || 'https://refigan.mx',
-        latitude: p.latitude,
-        longitude: p.longitude,
-        notes: p.notes || '-',
-        totalInvestment: p.acquisitionTotal,
-        prospectId: p.id,
-        ...convertFields,
+      // Atomic + lossless: the server carries the full underwriting from the
+      // prospect and archives it (status='converted') — no client-side copy/delete.
+      const project = await convertProspect(p.id, {
+        type: convertFields.type,
+        totalUnits: convertFields.totalUnits,
+        acquisitionDate: convertFields.acquisitionDate,
+        conclusionDate: convertFields.conclusionDate,
+        currentValuation: convertFields.currentValuation,
+        valuationDate: convertFields.valuationDate,
+        status: convertFields.status,
       })
-      await deleteProspect(p.id)
       navigate(`/proyectos/${project.id}`)
     } catch (e) {
       setConvertError(e instanceof Error ? e.message : 'Error al crear proyecto')
@@ -224,6 +224,8 @@ export function ProspectDetailPage() {
   const hasCoords = p.latitude !== 0 && p.longitude !== 0
   const roi = p.roi ?? null
   const roiColor = roi != null && roi > 0.5 ? colors.primary : roi != null && roi > 0.25 ? colors.tertiary : '#c0392b'
+  const roiTotal = p.roiTotal ?? null
+  const roiTotalColor = roiTotal != null && roiTotal > 0.5 ? colors.primary : roiTotal != null && roiTotal > 0.25 ? colors.tertiary : '#c0392b'
   const hasEdits = Object.keys(edits).length > 0
   const errors = p.issues.filter(i => i.severity === 'error')
   const warnings = p.issues.filter(i => i.severity === 'warning')
@@ -241,8 +243,6 @@ export function ProspectDetailPage() {
     { label: 'Subdivisión', amount: p.subdivisionCost },
     { label: 'Construcción', amount: p.constructionTotal },
   ].filter(item => item.amount > 0)
-
-  const barColors = [colors.primary, colors.accent1, colors.accent2, colors.tertiary, colors.secondary]
 
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
@@ -354,25 +354,21 @@ export function ProspectDetailPage() {
           {leftTab === 'info' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
               {/* Hero ROI */}
-              <div style={{ paddingBottom: '16px', borderBottom: `1px solid ${colors.border}`, marginBottom: '4px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '10px' }}>ROI ANUAL</div>
-                <div style={{ fontFamily: fonts.serif, fontSize: '42px', color: roi != null ? roiColor : colors.secondary, lineHeight: 1 }}>
-                  {roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-                  <div style={{ flex: 1, height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%',
-                      width: barsReady && roi != null ? `${Math.min(100, Math.max(0, roi * 100))}%` : '0%',
-                      background: roiColor,
-                      transition: 'width 1.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                    }} />
-                  </div>
-                  <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, flexShrink: 0 }}>
-                    Score {p.score ?? '—'}
-                  </span>
-                </div>
-              </div>
+              <MetricHero
+                label="ROI ANUAL"
+                value={roi != null ? `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%` : '—'}
+                color={roi != null ? roiColor : colors.secondary}
+                barPct={roi != null ? roi * 100 : 0}
+                barsReady={barsReady}
+                caption={`Score ${p.score ?? '—'}`}
+              />
+
+              <MetricHero
+                label="ROI TOTAL"
+                value={roiTotal != null ? `${roiTotal > 0 ? '+' : ''}${(roiTotal * 100).toFixed(1)}%` : '—'}
+                color={roiTotal != null ? roiTotalColor : colors.secondary}
+                size={24}
+              />
 
               <StatRow label="PROFIT" value={fmtMXN(p.profit)} />
               <StatRow label="CAP RATE" value={(p.capRate ?? 0) > 0 ? `${((p.capRate ?? 0) * 100).toFixed(1)}%` : '—'} />
@@ -388,39 +384,7 @@ export function ProspectDetailPage() {
               <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>{p.city}</div>
 
               {/* Investment breakdown bars */}
-              {investmentItems.length > 0 && (
-                <div style={{ marginTop: '20px' }}>
-                  {divider('INVERSIÓN TOTAL')}
-                  <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>{fmtMXN(p.totalInvestment)}</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {investmentItems.map(({ label, amount }, i) => {
-                      const pct = p.totalInvestment > 0 ? (amount / p.totalInvestment) * 100 : 0
-                      return (
-                        <div key={label}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                            <span style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>
-                              {label.toUpperCase()}
-                            </span>
-                            <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{fmtMXN(amount)}</span>
-                          </div>
-                          <div style={{ height: '3px', background: colors.border, borderRadius: '2px', overflow: 'hidden' }}>
-                            <div style={{
-                              height: '100%',
-                              width: barsReady ? `${pct}%` : '0%',
-                              background: barColors[i % barColors.length],
-                              borderRadius: '2px',
-                              transition: `width 0.9s cubic-bezier(0.4, 0, 0.2, 1) ${i * 70}ms`,
-                            }} />
-                          </div>
-                          <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.border, marginTop: '3px', textAlign: 'right' }}>
-                            {pct.toFixed(0)}%
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
+              <InvestmentBreakdown label="INVERSIÓN TOTAL" total={p.totalInvestment} items={investmentItems} barsReady={barsReady} />
 
               {/* Venta + Profit summary */}
               <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
@@ -752,10 +716,9 @@ export function ProspectDetailPage() {
                 onChange={e => setConvertFields(prev => ({ ...prev, status: e.target.value }))}
                 style={{ width: '100%', boxSizing: 'border-box', background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', padding: '6px 10px', outline: 'none', cursor: 'pointer' }}
               >
-                <option value="activo">Activo</option>
-                <option value="en_proceso">En proceso</option>
-                <option value="pausado">Pausado</option>
-                <option value="concluido">Concluido</option>
+                {Object.entries(PROJECT_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </div>
 

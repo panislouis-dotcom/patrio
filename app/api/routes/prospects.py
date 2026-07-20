@@ -62,6 +62,18 @@ class ProspectCreate(BaseModel):
     notes: str = "-"
 
 
+class ConvertRequest(BaseModel):
+    """Project-only lifecycle inputs for converting a prospect. The underwriting
+    (land price, areas, costs, projected sale) carries over from the prospect."""
+    type: str
+    totalUnits: int = 1
+    acquisitionDate: str
+    conclusionDate: str
+    currentValuation: Optional[float] = None
+    valuationDate: Optional[str] = None
+    status: str = "construction"
+
+
 def _with_checks(p: dict) -> dict:
     issues = [asdict(i) for i in run_checks(p)]
     return {**p, "issues": issues}
@@ -149,6 +161,15 @@ def post_prospect(body: ProspectCreate, _: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Prospect created but not retrievable")
     all_prospects = get_prospects()
     return _with_checks({**created, "score": _score(created, all_prospects)})
+
+
+@router.post("/api/prospects/{prospect_id}/convert", status_code=201, operation_id="prospects_convert")
+def convert_prospect_route(prospect_id: int, body: ConvertRequest, _: dict = Depends(get_current_user)):
+    from api.db import convert_prospect
+    try:
+        return convert_prospect(prospect_id, body.model_dump(exclude_none=True))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Prospect not found")
 
 
 @router.post("/api/prospects/parse", operation_id="prospects_parse")

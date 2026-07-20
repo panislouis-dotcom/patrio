@@ -233,7 +233,7 @@ def _annualized_roi(total_inv: float, projected_sale: float, hold_months: int) -
     if not (total_inv and projected_sale and hold_months):
         return 0.0
     try:
-        return ((projected_sale / total_inv) ** (12.0 / hold_months) - 1) * 100
+        return ((float(projected_sale) / float(total_inv)) ** (12.0 / hold_months) - 1) * 100
     except Exception:
         return 0.0
 

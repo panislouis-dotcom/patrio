@@ -25,7 +25,7 @@ def test_waterfall_gross_profit_math():
 def test_waterfall_isr_applied():
     result = compute_waterfall(_PROJECT, _CONFIG, _TEAM)
     if result["operatorGross"] > 0:
-        assert abs(result["isr"] - result["operatorGross"] * 0.30) < 1.0
+        assert abs(float(result["isr"]) - float(result["operatorGross"]) * 0.30) < 1.0
 
 
 def test_waterfall_zero_exit_no_crash():

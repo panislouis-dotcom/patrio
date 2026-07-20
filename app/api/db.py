@@ -1,4 +1,5 @@
 import json
+import threading
 from contextlib import contextmanager
 from datetime import datetime, date
 
@@ -6,19 +7,30 @@ import psycopg2
 import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 
-from api.config import DATABASE_URL
+from api.config import DATABASE_URL, DB_POOL_MIN, DB_POOL_MAX
+from api.finance import underwriting
+from api.finance.quantize import to_decimal, frac4
+from api.finance.analysis import roi_cagr
 
 _pool: ThreadedConnectionPool | None = None
+# Gates connection acquisition so at most DB_POOL_MAX callers hold a connection
+# at once. psycopg2's ThreadedConnectionPool.getconn() *raises* when exhausted
+# rather than waiting; the semaphore makes over-capacity callers block until a
+# connection frees, turning a hard 500 ceiling into graceful queueing.
+_pool_slots = threading.BoundedSemaphore(DB_POOL_MAX)
+_pool_lock = threading.Lock()
 
 
 def _get_pool() -> ThreadedConnectionPool:
     global _pool
     if _pool is None:
-        _pool = ThreadedConnectionPool(
-            minconn=1,
-            maxconn=10,
-            dsn=DATABASE_URL,
-        )
+        with _pool_lock:
+            if _pool is None:
+                _pool = ThreadedConnectionPool(
+                    minconn=DB_POOL_MIN,
+                    maxconn=DB_POOL_MAX,
+                    dsn=DATABASE_URL,
+                )
     return _pool
 
 
@@ -37,29 +49,24 @@ class _ConnProxy:
 @contextmanager
 def get_db():
     pool = _get_pool()
-    conn = pool.getconn()
+    # Block here when DB_POOL_MAX connections are already checked out, instead of
+    # letting getconn() raise PoolError. Released in finally, paired 1:1.
+    _pool_slots.acquire()
     try:
-        conn.autocommit = False
-        yield _ConnProxy(conn)
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+        conn = pool.getconn()
+        try:
+            conn.autocommit = False
+            yield _ConnProxy(conn)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            pool.putconn(conn)
     finally:
-        pool.putconn(conn)
+        _pool_slots.release()
 
 
-PROSPECTS_QUERY = """
-SELECT
-    pm.*,
-    p.latitude,
-    p.longitude,
-    p.construction_cost_per_sqm,
-    p.construction_overhead,
-    p.is_favorite
-FROM prospect_metrics pm
-JOIN prospects p ON pm.id = p.id
-"""
 
 RAW_FIELDS = {
     "name",
@@ -116,9 +123,30 @@ def _row_to_dict(row) -> dict | None:
     return {_snake_to_camel(k): v for k, v in dict(row).items()}
 
 
+def _parse_prospect(row, images: list | None = None) -> dict:
+    """Base prospects row → camelCase dict with underwriting metrics computed in Python."""
+    d = _row_to_dict(row)
+    m = underwriting.metrics(dict(row))
+    d["acquisitionCosts"] = m["acquisition_costs"]
+    d["acquisitionTotal"] = m["acquisition_total"]
+    d["constructionBase"] = m["construction_base"]
+    d["constructionTotal"] = m["construction_total"]
+    d["totalInvestment"] = m["total_investment"]
+    d["profit"] = m["profit"]
+    d["roi"] = m["roi"]
+    d["roiTotal"] = m["roi_total"]
+    d["capRate"] = m["cap_rate"]
+    d["landPricePerSqm"] = m["land_price_per_sqm"]
+    d["salePerSqm"] = m["sale_per_sqm"]
+    d["investmentPerSqm"] = m["investment_per_sqm"]
+    d["rentAnnual"] = m["rent_annual"]
+    d["images"] = images if images is not None else get_prospect_images(d["id"])
+    return d
+
+
 def get_prospects() -> list[dict]:
     with get_db() as conn:
-        rows = conn.execute(PROSPECTS_QUERY).fetchall()
+        rows = conn.execute("SELECT * FROM prospects").fetchall()
         if not rows:
             return []
         ids = [r["id"] for r in rows]
@@ -130,24 +158,13 @@ def get_prospects() -> list[dict]:
     imgs_by_id: dict[int, list] = {}
     for ir in img_rows:
         imgs_by_id.setdefault(ir["prospect_id"], []).append(_row_to_dict(ir))
-    result = []
-    for r in rows:
-        d = _row_to_dict(r)
-        d["images"] = imgs_by_id.get(d["id"], [])
-        result.append(d)
-    return result
+    return [_parse_prospect(r, imgs_by_id.get(r["id"], [])) for r in rows]
 
 
 def get_prospect(prospect_id: int) -> dict | None:
     with get_db() as conn:
-        row = conn.execute(
-            f"{PROSPECTS_QUERY} WHERE pm.id = %s", (prospect_id,)
-        ).fetchone()
-    if not row:
-        return None
-    d = _row_to_dict(row)
-    d["images"] = get_prospect_images(d["id"])
-    return d
+        row = conn.execute("SELECT * FROM prospects WHERE id = %s", (prospect_id,)).fetchone()
+    return _parse_prospect(row) if row else None
 
 
 def delete_prospect(prospect_id: int) -> None:
@@ -275,7 +292,26 @@ PROJECTS_RAW_FIELDS = {
     "acquisitionDate", "conclusionDate",
     "totalInvestment", "currentValuation", "valuationDate",
     "milestones", "budget", "notes", "prospectId", "isFavorite",
+    # Underwriting superset (Project ⊇ Prospect) — the 11 prospect inputs
+    "sqmLand", "sqmConstruction", "landPrice", "acquisitionCostPct",
+    "permitsCost", "subdivisionCost", "constructionCostPerSqm",
+    "constructionOverhead", "projectedSale", "holdMonths", "rentMonthly",
 }
+
+
+def _normalize_project_data(data: dict) -> dict:
+    """Filter camelCase input to PROJECTS_RAW_FIELDS, convert keys to snake_case,
+    serialize JSON fields, and normalize the DATE column. Single home for the
+    project write-column prep shared by create/update/convert."""
+    filtered = {k: v for k, v in data.items() if k in PROJECTS_RAW_FIELDS}
+    snake = {_camel_to_snake(k): v for k, v in filtered.items()}
+    for f in ("milestones", "budget"):
+        if f in snake and not isinstance(snake[f], str):
+            snake[f] = json.dumps(snake[f])
+    # Frontend sends YYYY-MM; the conclusion_date DATE column needs YYYY-MM-01
+    if "conclusion_date" in snake and isinstance(snake["conclusion_date"], str) and len(snake["conclusion_date"]) == 7:
+        snake["conclusion_date"] += "-01"
+    return snake
 
 
 def _parse_project(row, images: list | None = None) -> dict:
@@ -295,11 +331,37 @@ def _parse_project(row, images: list | None = None) -> dict:
     except json.JSONDecodeError:
         d["budget"] = {}
 
-    # Computed fields
-    total_investment = d.get("totalInvestment") or 0.0
-    current_valuation = d.get("currentValuation") or 0.0
+    # Underwriting superset (Project ⊇ Prospect). A project carrying the full
+    # breakdown derives its *projected* metrics identically to a prospect, and its
+    # computed total_investment overrides the stored fallback. Breakdown-less
+    # projects (land_price NULL) keep the stored total and expose NULL derived fields.
+    _UW_NULL = ("acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
+                "landPricePerSqm", "salePerSqm", "investmentPerSqm", "capRate", "rentAnnual",
+                "projectedProfit", "projectedRoi", "projectedRoiTotal")
+    if d.get("landPrice") is not None:
+        m = underwriting.metrics(dict(row))
+        d["totalInvestment"] = m["total_investment"]  # computed overrides stored fallback
+        d["acquisitionCosts"] = m["acquisition_costs"]
+        d["acquisitionTotal"] = m["acquisition_total"]
+        d["constructionBase"] = m["construction_base"]
+        d["constructionTotal"] = m["construction_total"]
+        d["landPricePerSqm"] = m["land_price_per_sqm"]
+        d["salePerSqm"] = m["sale_per_sqm"]
+        d["investmentPerSqm"] = m["investment_per_sqm"]
+        d["capRate"] = m["cap_rate"]
+        d["rentAnnual"] = m["rent_annual"]
+        d["projectedProfit"] = m["profit"]
+        d["projectedRoi"] = m["roi"]
+        d["projectedRoiTotal"] = m["roi_total"]
+    else:
+        for k in _UW_NULL:
+            d[k] = None
+
+    # Computed fields — money as Decimal, CAGR via shared float primitive
+    total_investment = to_decimal(d.get("totalInvestment"))
+    current_valuation = to_decimal(d.get("currentValuation"))
     unrealized_gain = current_valuation - total_investment
-    unrealized_gain_pct = round(unrealized_gain / total_investment, 4) if total_investment != 0 else 0
+    unrealized_gain_pct = frac4(unrealized_gain / total_investment) if total_investment != 0 else 0
 
     # Months from acquisition to conclusion (or today for active projects)
     # conclusion_date is DATE in PostgreSQL — psycopg2 returns datetime.date; format to YYYY-MM for frontend
@@ -322,14 +384,12 @@ def _parse_project(row, images: list | None = None) -> dict:
     except (ValueError, AttributeError):
         hold_months_actual = 0
 
-    roi = None
-    if total_investment > 0 and current_valuation > 0 and hold_months_actual > 0:
-        roi = round((current_valuation / total_investment) ** (12.0 / hold_months_actual) - 1, 4)
+    roi = roi_cagr(total_investment, current_valuation, hold_months_actual)
 
     d["unrealizedGain"] = unrealized_gain
     d["unrealizedGainPct"] = unrealized_gain_pct
     d["holdMonthsActual"] = hold_months_actual
-    d["roi"] = roi
+    d["roi"] = frac4(roi) if roi is not None else None
     d["images"] = images if images is not None else get_project_images(d["id"])
 
     return d
@@ -413,23 +473,10 @@ def create_project(data: dict) -> dict:
     Returns:
         The created project
     """
-    filtered_data = {k: v for k, v in data.items() if k in PROJECTS_RAW_FIELDS}
+    snake_case_data = _normalize_project_data(data)
 
-    if not filtered_data:
+    if not snake_case_data:
         raise ValueError("No valid fields provided for create_project")
-
-    snake_case_data = {_camel_to_snake(k): v for k, v in filtered_data.items()}
-
-    # Serialize JSON fields
-    for snake_field in ("milestones", "budget"):
-        if snake_field in snake_case_data and not isinstance(snake_case_data[snake_field], str):
-            snake_case_data[snake_field] = json.dumps(snake_case_data[snake_field])
-
-    # Frontend sends YYYY-MM; DATE column needs YYYY-MM-01
-    if "conclusion_date" in snake_case_data and isinstance(snake_case_data["conclusion_date"], str):
-        val = snake_case_data["conclusion_date"]
-        if len(val) == 7:
-            snake_case_data["conclusion_date"] = val + "-01"
 
     columns = ", ".join(snake_case_data.keys())
     placeholders = ", ".join(["%s"] * len(snake_case_data))
@@ -441,6 +488,48 @@ def create_project(data: dict) -> dict:
         project_id = cur.fetchone()["id"]
 
     return get_project(project_id)
+
+
+def convert_prospect(prospect_id: int, fields: dict) -> dict:
+    """Atomically create a project from a prospect's full underwriting, link it,
+    and archive the prospect (status='converted'). Never deletes the prospect.
+
+    `fields` (camelCase) carries the project-only lifecycle inputs the prospect
+    lacks: type, totalUnits, acquisitionDate, conclusionDate, currentValuation,
+    valuationDate, status. The 11 underwriting inputs come from the prospect.
+    """
+    _UW = ("sqm_land", "sqm_construction", "land_price", "acquisition_cost_pct",
+           "permits_cost", "subdivision_cost", "construction_cost_per_sqm",
+           "construction_overhead", "projected_sale", "hold_months", "rent_monthly")
+    with get_db() as conn:
+        prow = conn.execute("SELECT * FROM prospects WHERE id=%s", (prospect_id,)).fetchone()
+        if not prow:
+            raise ValueError(f"Prospect {prospect_id} not found")
+        p = dict(prow)
+        data = {
+            "name": p["name"], "address": p["address"], "city": p["city"],
+            "url": p.get("url") or "https://refigan.mx",
+            "latitude": p.get("latitude") or 0.0, "longitude": p.get("longitude") or 0.0,
+            "notes": p.get("notes") or "-", "prospectId": prospect_id,
+        }
+        # Carry the 11 underwriting inputs (snake→camel so PROJECTS_RAW_FIELDS accepts them)
+        for k in _UW:
+            data[_snake_to_camel(k)] = p[k]
+        data.update(fields)  # project-only lifecycle inputs (camelCase)
+        # Stored total_investment fallback = computed underwriting total (kept in sync)
+        data["totalInvestment"] = underwriting.metrics(p)["total_investment"]
+        data.setdefault("currentValuation", data["totalInvestment"])
+        data.setdefault("valuationDate", data.get("acquisitionDate"))
+
+        snake = _normalize_project_data(data)
+        columns = ", ".join(snake.keys())
+        placeholders = ", ".join(["%s"] * len(snake))
+        new = conn.execute(
+            f"INSERT INTO projects ({columns}) VALUES ({placeholders}) RETURNING id",
+            list(snake.values())).fetchone()
+        conn.execute("UPDATE prospects SET status='converted' WHERE id=%s", (prospect_id,))
+        new_id = new["id"]
+    return get_project(new_id)
 
 
 def create_prospect(data: dict) -> dict:

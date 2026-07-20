@@ -47,6 +47,7 @@ export interface Prospect {
   projectedSale: number
   profit: number
   roi: number | null
+  roiTotal: number | null
   capRate: number | null
   landPricePerSqm: number
   salePerSqm: number
@@ -107,6 +108,32 @@ export interface Project {
   holdMonthsActual: number
   roi: number | null
   prospectId: number | null
+  // Underwriting superset (Project ⊇ Prospect) — null when the project has no breakdown.
+  // Raw inputs:
+  sqmLand: number | null
+  sqmConstruction: number | null
+  landPrice: number | null
+  acquisitionCostPct: number | null
+  permitsCost: number | null
+  subdivisionCost: number | null
+  constructionCostPerSqm: number | null
+  constructionOverhead: number | null
+  projectedSale: number | null
+  rentMonthly: number | null
+  holdMonths: number | null
+  // Derived breakdown + projected outcomes:
+  acquisitionCosts: number | null
+  acquisitionTotal: number | null
+  constructionBase: number | null
+  constructionTotal: number | null
+  rentAnnual: number | null
+  landPricePerSqm: number | null
+  salePerSqm: number | null
+  investmentPerSqm: number | null
+  capRate: number | null
+  projectedProfit: number | null
+  projectedRoi: number | null
+  projectedRoiTotal: number | null
 }
 
 export type RawProjectFields = Pick<Project,
@@ -115,6 +142,9 @@ export type RawProjectFields = Pick<Project,
   | 'acquisitionDate' | 'conclusionDate'
   | 'totalInvestment' | 'currentValuation' | 'valuationDate'
   | 'notes'
+  | 'sqmLand' | 'sqmConstruction' | 'landPrice' | 'acquisitionCostPct'
+  | 'permitsCost' | 'subdivisionCost' | 'constructionCostPerSqm'
+  | 'constructionOverhead' | 'projectedSale' | 'holdMonths' | 'rentMonthly'
 >
 
 export type MemberRole = 'director' | 'responsable_proyecto' | 'lider_proyecto' | 'maestro' | 'ayudante' | 'finder'
