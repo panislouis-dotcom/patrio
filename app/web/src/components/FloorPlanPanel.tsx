@@ -4,7 +4,7 @@ import { colors, fonts } from '../lib/theme'
 import type { Action, Sel, UI } from '../lib/floorplan/reducer'
 import type { FloorGraph, FloorPlanModel } from '../lib/floorplan/types'
 import type { RoomArea } from '../lib/floorplan/rooms'
-import { exteriorEdgeIds, traceFaces } from '../lib/floorplan/rooms'
+import { traceFaces } from '../lib/floorplan/rooms'
 import { shoelace } from '../lib/floorplan/geometry'
 
 const PANEL_W = 280
@@ -39,12 +39,10 @@ function Field({ label, value, onCommit, step = 0.05 }: {
 
 function grossAreaM2(floor: FloorGraph): number {
   const faces = traceFaces(floor)
-  const extEdges = exteriorEdgeIds(floor)
-  const outer = faces.find(f => f.edgeIds.every(id => extEdges.has(id)) && f.edgeIds.length === extEdges.size)
-    ?? faces.reduce((a, b) => (Math.abs(b.area) > Math.abs(a.area) ? b : a), faces[0])
-  if (!outer) return 0
+  if (faces.length === 0) return 0
+  const outer = faces.reduce((a, b) => (Math.abs(b.area) > Math.abs(a.area) ? b : a))
   const pts = outer.vertexIds.map(id => [floor.vertices[id].x, floor.vertices[id].y] as [number, number])
-  return Math.abs(shoelace(pts))
+  return shoelace(pts)
 }
 
 function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>) {
@@ -53,7 +51,7 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
     const v = floor.vertices[sel.id]
     if (!v) return null
     return (
-      <Section title="Vértice seleccionado">
+      <Section title="Vértice seleccionado" key={sel.id}>
         <Field label="X (m)" value={v.x} onCommit={x => dispatch({ type: 'SET_VERTEX_POINT', id: sel.id, x, y: v.y })} />
         <Field label="Y (m)" value={v.y} onCommit={y => dispatch({ type: 'SET_VERTEX_POINT', id: sel.id, x: v.x, y })} />
       </Section>
@@ -63,7 +61,7 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
     const e = floor.edges[sel.id]
     if (!e) return null
     return (
-      <Section title="Muro seleccionado">
+      <Section title="Muro seleccionado" key={sel.id}>
         <Field label="Espesor (m)" value={e.thickness} step={0.01}
           onCommit={value => dispatch({ type: 'SET_EDGE_THICKNESS', edgeId: sel.id, value })} />
       </Section>
@@ -73,7 +71,7 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
   const o = e?.openings[sel.index]
   if (!o) return null
   return (
-    <Section title={o.kind === 'door' ? 'Puerta seleccionada' : 'Ventana seleccionada'}>
+    <Section title={o.kind === 'door' ? 'Puerta seleccionada' : 'Ventana seleccionada'} key={`${sel.edgeId}:${sel.index}`}>
       <Field label="Ancho (m)" value={o.width} step={0.05}
         onCommit={value => dispatch({ type: 'SET_OPENING_FIELD', edgeId: sel.edgeId, index: sel.index, key: 'width', value })} />
     </Section>
