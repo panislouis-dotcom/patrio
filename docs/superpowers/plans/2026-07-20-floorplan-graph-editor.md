@@ -2246,8 +2246,30 @@ This is where the redesign's payoff shows most directly: no `attachedA`/`attache
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import FloorPlanEditor from './FloorPlanEditor'
-import { emptyModel, emptyFloorGraph } from '../lib/floorplan/types'
+import { emptyFloorGraph, type FloorGraph } from '../lib/floorplan/types'
 import { addVertex, addEdge } from '../lib/floorplan/graph'
+import { viewTransform } from '../lib/floorplan/viewTransform'
+
+// Must match FloorPlanEditor.tsx's own W/H/MARGIN constants exactly, since pointerAt below
+// replicates the component's px()/py() forward transform to build client coordinates.
+const EDITOR_W = 900, EDITOR_H = 560, EDITOR_MARGIN = 48
+
+// jsdom (as pinned in this repo) has no PointerEvent constructor, so @testing-library's
+// fireEvent.pointerDown/Move/Up silently fall back to a plain `Event`, which drops
+// clientX/clientY entirely (they aren't valid `EventInit` properties). Polyfill with a
+// MouseEvent subclass — jsdom's MouseEvent DOES honor clientX/clientY from its init dict —
+// so the coordinates these tests pass through fireEvent actually reach the component.
+if (typeof window.PointerEvent === 'undefined') {
+  class PointerEventPolyfill extends MouseEvent {
+    pointerId: number
+    constructor(type: string, params: PointerEventInit = {}) {
+      super(type, params)
+      this.pointerId = params.pointerId ?? 0
+    }
+  }
+  // @ts-expect-error -- jsdom doesn't ship a real PointerEvent
+  window.PointerEvent = PointerEventPolyfill
+}
 
 function modelWithRectangleAndDivider() {
   const f = emptyFloorGraph('Test')
@@ -2256,14 +2278,21 @@ function modelWithRectangleAndDivider() {
   return { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
 }
 
-function pointerAt(svg: SVGSVGElement, worldX: number, worldY: number) {
-  // In jsdom, getScreenCTM/getBoundingClientRect are non-functional, so FloorPlanEditor's
-  // pointerToWorld treats client coords as user-space directly (see its own comment) — the
-  // viewTransform used here is [900x560, margin 48] fit to this model's own bounding box, so
-  // callers pass MODEL coordinates and this helper converts through the same px()/py() the
-  // component itself uses, keeping the test independent of that internal transform's exact
-  // numbers.
-  return { clientX: worldX, clientY: worldY }
+// In jsdom, getScreenCTM() is undefined and getBoundingClientRect() is all-zero, so
+// FloorPlanEditor's pointerToWorld() fallback treats clientX/clientY as raw SVG
+// user-space pixels and runs them straight through t.userToWorld() (see that function's
+// own comment). To land a synthetic pointer event at a known MODEL (world) coordinate,
+// this helper pre-computes the same viewTransform() the component derives from `floors`
+// and forward-transforms via its px()/py() — the exact inverse of userToWorld() by
+// construction — so the round trip lands exactly on (worldX, worldY) regardless of this
+// transform's concrete numbers. Callers must keep every point of a multi-frame gesture
+// within the model's original bounding box, since the component recomputes this same
+// transform from the LIVE (possibly mid-drag) vertex positions on every render — once a
+// dragged point would move the box, a helper computed once up front would drift from the
+// component's own live transform.
+function pointerAt(floors: FloorGraph[], worldX: number, worldY: number) {
+  const t = viewTransform(floors, { width: EDITOR_W, height: EDITOR_H, margin: EDITOR_MARGIN })
+  return { clientX: t.px(worldX), clientY: t.py(worldY) }
 }
 
 describe('connected drag', () => {
@@ -2276,10 +2305,10 @@ describe('connected drag', () => {
     const id = vertexHandle.getAttribute('data-id')!
     void id
     // Full assertion of "did every attached wall follow" happens via the reducer/graph unit
-    // tests (Task 2's moveVertex test) — this test's job is to prove the COMPONENT wires a
+    // tests (moveVertex test) — this test's job is to prove the COMPONENT wires a
     // real pointer gesture through to that same code path without regressing it.
-    fireEvent.pointerDown(vertexHandle, pointerAt(svg, 0, 0))
-    fireEvent.pointerMove(svg, pointerAt(svg, 50, 50))
+    fireEvent.pointerDown(vertexHandle, pointerAt(model.floors, 0, 0))
+    fireEvent.pointerMove(svg, pointerAt(model.floors, 1.5, 1))
     fireEvent.pointerUp(svg)
     expect(svg.querySelectorAll('[data-el="vertex"]').length).toBeGreaterThan(0)
   })
@@ -2295,8 +2324,8 @@ describe('wall-body drag does not force-straighten a diagonal wall', () => {
     const { container } = render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
     const svg = container.querySelector('svg')!
     const edgeLine = svg.querySelector('[data-el="edge"]')!
-    fireEvent.pointerDown(edgeLine, pointerAt(svg, 2.5, 2))
-    fireEvent.pointerMove(svg, pointerAt(svg, 2.8, 2.3))
+    fireEvent.pointerDown(edgeLine, pointerAt(model.floors, 2.5, 2))
+    fireEvent.pointerMove(svg, pointerAt(model.floors, 2.8, 2.3))
     fireEvent.pointerUp(svg)
     const handles = Array.from(svg.querySelectorAll('[data-el="vertex"]'))
     expect(handles).toHaveLength(2)
@@ -2317,10 +2346,13 @@ describe('undo/redo — one step per drag gesture', () => {
     const svg = container.querySelector('svg')!
     const vertexHandle = svg.querySelectorAll('[data-el="vertex"]')[0]
     const before = { cx: vertexHandle.getAttribute('cx'), cy: vertexHandle.getAttribute('cy') }
-    fireEvent.pointerDown(vertexHandle, pointerAt(svg, 0, 0))
-    fireEvent.pointerMove(svg, pointerAt(svg, 20, 10))
-    fireEvent.pointerMove(svg, pointerAt(svg, 40, 25))
-    fireEvent.pointerMove(svg, pointerAt(svg, 55, 30))
+    // Every intermediate point stays inside the model's original bounding box (x:[0,6],
+    // y:[0,4]) so the component's live, bbox-derived viewTransform never shifts mid-gesture
+    // — keeping it identical to the one `pointerAt` used to build these client coordinates.
+    fireEvent.pointerDown(vertexHandle, pointerAt(model.floors, 0, 0))
+    fireEvent.pointerMove(svg, pointerAt(model.floors, 1, 0.5))
+    fireEvent.pointerMove(svg, pointerAt(model.floors, 2, 1))
+    fireEvent.pointerMove(svg, pointerAt(model.floors, 2.5, 1.2))
     fireEvent.pointerUp(svg)
     const moved = svg.querySelectorAll('[data-el="vertex"]')[0]
     expect(moved.getAttribute('cx')).not.toBe(before.cx)
@@ -2347,15 +2379,23 @@ describe('T-junction creation via drag-near-edge', () => {
     const { container } = render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
     const svg = container.querySelector('svg')!
     const vertexHandles = Array.from(svg.querySelectorAll('[data-el="vertex"]'))
-    const freeHandle = vertexHandles.find(h => Number(h.getAttribute('cy')) > 0)! // the not-yet-attached end
-    fireEvent.pointerDown(freeHandle, pointerAt(svg, 3, 3.9))
-    fireEvent.pointerMove(svg, pointerAt(svg, 3, 4))
+    const freeHandle = vertexHandles.find(h => h.getAttribute('data-id') === dividerFree)! // the not-yet-attached end
+    fireEvent.pointerDown(freeHandle, pointerAt(model.floors, 3, 3.9))
+    fireEvent.pointerMove(svg, pointerAt(model.floors, 3, 4))
     fireEvent.pointerUp(svg)
-    // a T-junction split turns 1 exterior edge into 2 — 5 edges total instead of 4
-    expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(5)
+    // Before the drag: 4 rectangle edges + 1 divider edge = 5. The T-junction split reuses
+    // the divider's free vertex as the split point on the exterior wall it landed on,
+    // turning that ONE exterior edge into TWO (+1) while the divider edge itself is
+    // untouched — 6 edges total.
+    expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(6)
   })
 })
 ```
+
+**Corrections found during independent verification of this task's implementer (all confirmed real, not implementer self-report):**
+- **jsdom has no `PointerEvent` constructor**, so `fireEvent.pointerDown/Move/Up` silently fell back to a plain `Event` that drops `clientX`/`clientY` (not valid `EventInit` keys). Two of the four original interaction tests "passed" vacuously because they didn't check position/count values that distinguish "the gesture worked" from "it silently did nothing." Fixed by installing a `MouseEvent`-subclass `PointerEvent` polyfill in each test file that fires pointer gestures (jsdom's real `MouseEvent` does honor `clientX`/`clientY`).
+- **The naive `pointerAt` helper (`{clientX: worldX, clientY: worldY}` verbatim) doesn't land at the intended model coordinate.** `pointerToWorld`'s jsdom fallback path still runs the raw `clientX`/`clientY` through `t.userToWorld(...)`, which is `viewTransform`'s exact mathematical inverse of `px`/`py` (confirmed by reading `viewTransform.ts:22-27`: `px(x) = margin + (x-minx)*scale`, `userToWorld(ux,...) = (ux-margin)/scale + minx`). So the correct way to land a synthetic event at model coordinate `(worldX, worldY)` is to forward-transform through `t.px(worldX)`/`t.py(worldY)` first, not pass world coordinates directly as client coordinates. Fixed as shown above.
+- **The T-junction test's original `freeHandle` lookup (`cy > 0`) and expected edge count (5) were both wrong.** The heuristic matched every vertex in that model (all have `cy > 0` in screen space), grabbing an arbitrary handle instead of the intended free endpoint — fixed by selecting on `data-id === dividerFree`. The expected edge count was also arithmetically wrong: before the drag there are already 4 rectangle edges + 1 divider edge = 5 (not 4); a genuine T-junction split turns ONE of those into two, giving 6 total, not 5. Fixed as shown above.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -2683,7 +2723,13 @@ export default function FloorPlanEditor({ projectId, initial, onSave, onReady, o
       const atM = gridSnap(projectAt([p1.x, p1.y], [p2.x, p2.y], pt))
       edge.openings[drag.openingIndex!].offset = atM / L
     }
-    dispatch({ type: dragMovedRef.current ? 'DRAG_MODEL' : 'SET_MODEL', model: m })
+    // Every frame of a gesture — including the first — dispatches DRAG_MODEL, never
+    // SET_MODEL: per reducer.ts's own contract, dragBase is captured by the FIRST
+    // DRAG_MODEL frame and held through every subsequent one, then consumed by a single
+    // COMMITTING SET_MODEL once the gesture ends (see onPointerUp). Committing on every
+    // frame here would let each later frame's DRAG_MODEL re-capture dragBase from the
+    // previous frame's result instead of the true pre-gesture state, corrupting undo.
+    dispatch({ type: 'DRAG_MODEL', model: m })
     dragMovedRef.current = true
     dispatch({ type: 'SET_GUIDES', guides })
   }
@@ -2692,6 +2738,11 @@ export default function FloorPlanEditor({ projectId, initial, onSave, onReady, o
     if (ui.calibrating) { calDragRef.current = false; return }
     const drag = ui.drag
     if (!drag) return
+    // Resolve the structural decision (vertex-merge / T-junction split) once, against the
+    // live end-of-drag position, then commit the WHOLE gesture — every intermediate
+    // DRAG_MODEL frame plus this resolution — as exactly one SET_MODEL, which is what
+    // consumes reducer.ts's dragBase into a single undo step for the entire drag.
+    let finalModel = model
     if (drag.kind === 'vertex' && dragMovedRef.current) {
       const f = model.floors[model.activeFloor]
       const v = f.vertices[drag.id!]
@@ -2699,7 +2750,7 @@ export default function FloorPlanEditor({ projectId, initial, onSave, onReady, o
       if (nearV) {
         const m = clone(model); const mf = m.floors[m.activeFloor]
         mergeVertexInto(mf, drag.id!, nearV.id)
-        dispatch({ type: 'DRAG_MODEL', model: m })
+        finalModel = m
         dispatch({ type: 'SET_SEL', sel: { t: 'vertex', id: nearV.id } })
       } else {
         const incidentEdges = new Set(Object.values(f.edges).filter(e => e.v1 === drag.id || e.v2 === drag.id).map(e => e.id))
@@ -2708,10 +2759,11 @@ export default function FloorPlanEditor({ projectId, initial, onSave, onReady, o
           const m = clone(model); const mf = m.floors[m.activeFloor]
           mf.vertices[drag.id!].x = nearEdge.x; mf.vertices[drag.id!].y = nearEdge.y
           splitEdgeAtVertex(mf, nearEdge.edgeId, drag.id!)
-          dispatch({ type: 'DRAG_MODEL', model: m })
+          finalModel = m
         }
       }
     }
+    if (dragMovedRef.current) dispatch({ type: 'SET_MODEL', model: finalModel })
     dispatch({ type: 'SET_DRAG', drag: null })
     dispatch({ type: 'SET_GUIDES', guides: [] })
   }
@@ -2792,14 +2844,20 @@ export default function FloorPlanEditor({ projectId, initial, onSave, onReady, o
 }
 ```
 
+**Confirmed bug found and fixed during independent verification (not implementer self-report — traced through `reducer.ts`'s own documented `dragBase` contract at `EditorState.dragBase`'s comment, and reproduced the exact failure the fix resolves):** the code above previously dispatched `SET_MODEL` on a drag gesture's FIRST move-frame and `DRAG_MODEL` on every subsequent frame, with `onPointerUp` only ever dispatching `DRAG_MODEL` for the post-drag structural resolution (merge/split) and never a committing `SET_MODEL`. This is backwards relative to `reducer.ts`'s contract ("`dragBase`: set by the first `DRAG_MODEL` frame ... consumed by the committing `SET_MODEL`"): the first-frame `SET_MODEL` call pushed the true pre-drag state into `past` and cleared `dragBase` immediately, so the SECOND frame's `DRAG_MODEL` then re-captured `dragBase` from the state as of the end of frame 1 — not the true pre-gesture origin. A subsequent Ctrl+Z would then revert only to "after frame 1," not to where the drag actually started. Fixed to match the contract exactly, as shown above: `onPointerMove` always dispatches `DRAG_MODEL` (every frame, including the first, correctly capturing `dragBase` once as the true origin and holding it), and `onPointerUp` resolves any structural change into a `finalModel` and commits the ENTIRE gesture as exactly one `SET_MODEL` call (only when `dragMovedRef.current` is true, i.e. an actual drag — not a bare click) — this is what consumes `dragBase` into a single correct undo step.
+
 - [ ] **Step 4: Port the two remaining old test files, adapted to the new selectors/model shape**
 
 `FloorPlanEditor.test.tsx` (basic render/tool-switch smoke tests) and `FloorPlanEditor.calibrate.test.tsx` (calibration flow) existed in the old implementation. Recreate them against the new component using the same `data-el="vertex"|"edge"|"opening"`-based queries as the interaction tests above rather than the old `data-el="wall"|"fp"|"wallend"` ones. Do not skip this step — write real assertions covering: (a) the empty-state upload/start-blank landing screen renders when `initial` is `{}`, (b) clicking a tool button changes `ui.tool` (visible via the button's active style), (c) the full calibrate flow (upload triggers calibrating mode, drawing a line + entering a length + Apply sets `reference.scale_m_per_px`). Follow the exact structure of the interaction tests above (render, `fireEvent`, assert on the resulting DOM) — there is no old file to diff against since it was discarded with the rest of PR #5, so these are new tests written directly against this task's component.
 
+Both files were written and independently verified this session:
+- `FloorPlanEditor.test.tsx` (3 tests): the empty-state landing screen (renders no `<svg>` for `initial={{}}`, shows "Start blank", clicking it reveals the canvas), tool selection (clicking a tool button swaps its background to `colors.primary` via `btn(active)`, deactivating the previous tool — note: jsdom normalizes inline hex colors read back through `.style` to `rgb(...)`, so tests compare against that normalized form, not the raw hex literal), and UNDO/REDO buttons `disabled` on a fresh model with no history.
+- `FloorPlanEditor.calibrate.test.tsx` (2 tests): confirms `ReferenceControls` renders (`"Underlay opacity"` labeled slider, `"Calibrate"` button — both confirmed against `FloorPlanReference.tsx`'s real JSX, not guessed) when `floor.reference` is set, then drives the full flow — toggle Calibrate on, draw a line via pointerDown/Move/Up, enter a length via the `"Length (m)"`-placeholder input, click Apply — and asserts via `onReady`'s `PlanApi.getModel()` that `reference.scale_m_per_px` changed to the arithmetically-verified expected value (a 0.1→0.9 draft line at the model's original `scale_m_per_px: 0.01` is 80px; entering a real length of 2m gives `2/80 = 0.025`).
+
 - [ ] **Step 5: Run all three test files to verify they pass**
 
 Run: `cd app/web && npx vitest run src/components/FloorPlanEditor.test.tsx src/components/FloorPlanEditor.interaction.test.tsx src/components/FloorPlanEditor.calibrate.test.tsx`
-Expected: PASS. If the T-junction interaction test's `freeHandle` lookup or the connected-drag test's coordinate math doesn't match on the first run (jsdom's pointer-coordinate handling has sharp edges — see the component's own `pointerToWorld` comment), adjust the test's `pointerAt` helper or asserted coordinates to match actual rendered attribute values — read them back with a debug `console.log(container.innerHTML)` if needed rather than guessing, then remove the debug line before committing.
+Expected: PASS (verified: 3/3, 4/4, 2/2 — 9/9 total). If the T-junction interaction test's `freeHandle` lookup or the connected-drag test's coordinate math doesn't match on the first run (jsdom's pointer-coordinate handling has sharp edges — see the component's own `pointerToWorld` comment), adjust the test's `pointerAt` helper or asserted coordinates to match actual rendered attribute values — read them back with a debug `console.log(container.innerHTML)` if needed rather than guessing, then remove the debug line before committing.
 
 - [ ] **Step 6: Commit**
 
