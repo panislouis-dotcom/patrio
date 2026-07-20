@@ -3020,7 +3020,7 @@ git add app/web/src/components/FloorPlanPanel.tsx app/web/src/components/FloorPl
 git commit -m "feat(web): add FloorPlanPanel inspector, floor globals, and stats"
 ```
 
-## Task 13: Re-add backend geometry storage, API client, and `ProjectDetailPage.tsx` wiring
+## Task 13: Re-add backend geometry storage and `ProjectDetailPage.tsx` wiring
 
 **Files:**
 - Create: `db/migrations/021_project_geometry.sql`
@@ -3029,10 +3029,11 @@ git commit -m "feat(web): add FloorPlanPanel inspector, floor globals, and stats
 - Create: `app/api/tests/test_project_geometry.py`
 - Create: `app/api/tests/test_project_geometry_routes.py`
 - Create: `app/api/tests/test_floorplan_image.py`
-- Modify: `app/web/src/lib/api.ts`
 - Modify: `app/web/src/components/ProjectDetailPage.tsx`
 
 As corrected in "Before Task 1" above: this entire layer was added by the old, now-discarded branch and does not exist on `origin/main`, which Task 1 reset onto. It stores `geometry` as an opaque `jsonb` blob end to end and never inspects `FloorPlanModel`'s internal shape, so none of it needs to change for the graph rewrite — it only needs to be re-added, once. The code below was read directly from the pre-reset worktree before Task 1 ran, so it's exact, not reconstructed from memory.
+
+**Reordering note (found during execution, before Task 11 was dispatched):** `app/web/src/lib/api.ts`'s three geometry client functions (`fetchProjectGeometry`, `saveProjectGeometry`, `uploadFloorplanImage`) were pulled forward and already landed as their own commit (`cec4bd9`) BEFORE Task 11, because Task 11's `FloorPlanEditor.tsx` imports `uploadFloorplanImage` directly — and Task 13's `ProjectDetailPage.tsx` wiring in turn needs `FloorPlanEditor` to exist, so the original ordering (`api.ts` client functions inside Task 13, after Task 11) was circular. The three functions only need `authFetch`/`BASE` (pre-existing) and the `FloorPlanModel` type (Task 2), so they don't need the backend routes below to exist yet for typechecking — safe to land standalone. Task 13 below therefore no longer has an `api.ts` step; only the backend (Python) files and `ProjectDetailPage.tsx`'s wiring remain.
 
 - [ ] **Step 1: Add the migration**
 
@@ -3265,52 +3266,20 @@ git add db/migrations/021_project_geometry.sql app/api/db.py app/api/routes/proj
 git commit -m "feat(db,api): re-add project geometry storage and floorplan-image upload endpoint"
 ```
 
-- [ ] **Step 8: Add the `api.ts` client functions**
+- [ ] **Step 8: Wire the `plano` tab into `ProjectDetailPage.tsx`**
 
-Add `import type { FloorPlanModel } from './floorplan/types'` near the top of `app/web/src/lib/api.ts` (alongside the file's other type imports), then append near the end of the file:
-
-```ts
-// ── Floor-plan geometry ──
-
-export async function fetchProjectGeometry(id: number): Promise<FloorPlanModel | Record<string, never>> {
-  const res = await authFetch(`${BASE}/api/projects/${id}/geometry`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function saveProjectGeometry(id: number, geometry: FloorPlanModel): Promise<FloorPlanModel> {
-  const res = await authFetch(`${BASE}/api/projects/${id}/geometry`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ geometry }),
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function uploadFloorplanImage(id: number, file: File): Promise<{ imageKey: string }> {
-  const fd = new FormData()
-  fd.append('file', file)
-  const res = await authFetch(`${BASE}/api/projects/${id}/floorplan-image`, { method: 'POST', body: fd })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-```
-
-`authFetch` and `BASE` already exist in this file (used by every other client function here) — no new imports beyond the `FloorPlanModel` type.
-
-- [ ] **Step 9: Wire the `plano` tab into `ProjectDetailPage.tsx`**
+(`api.ts`'s `fetchProjectGeometry`/`saveProjectGeometry`/`uploadFloorplanImage` — formerly this task's own Step 8 — already landed ahead of Task 11; see the reordering note above. `ProjectDetailPage.tsx` below imports them as already-existing functions, not as something this step adds.)
 
 Four small, targeted edits to the existing file (it has substantial unrelated financial-layer JSX — do not restructure anything else):
 
-**9a.** Add two imports near the other component/type imports:
+**8a.** Add two imports near the other component/type imports:
 ```ts
 import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
 import type { FloorPlanModel } from '../lib/floorplan/types'
 ```
 And extend the existing `../lib/api` import line to also pull in `fetchProjectGeometry, saveProjectGeometry`.
 
-**9b.** Extend the `centerTab` state and add three new pieces of state, right after the existing `const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')` line:
+**8b.** Extend the `centerTab` state and add three new pieces of state, right after the existing `const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')` line:
 ```ts
 const [centerTab, setCenterTab] = useState<'mapa' | 'fotos' | 'plano'>('mapa')
 const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
@@ -3319,7 +3288,7 @@ const [planDirty, setPlanDirty] = useState(false)
 ```
 (`useRef` must be added to the existing `import { useEffect, useState } from 'react'` line if not already present.)
 
-**9c.** In the initial-load `Promise.all([...])` (the one fetching `fetchProject`, `fetchInstances`, `fetchTeam`, etc.), add `fetchProjectGeometry(projectId)` as one more parallel call, and set `geo` from its resolved value:
+**8c.** In the initial-load `Promise.all([...])` (the one fetching `fetchProject`, `fetchInstances`, `fetchTeam`, etc.), add `fetchProjectGeometry(projectId)` as one more parallel call, and set `geo` from its resolved value:
 ```ts
 Promise.all([
   fetchProject(projectId),
@@ -3342,7 +3311,7 @@ Promise.all([
 }).catch(e => setError(e instanceof Error ? e.message : 'Error al cargar el proyecto'))
 ```
 
-**9d.** Extend the existing `save()` handler to also flush a dirty plan through the editor's imperative handle, and add the `onPlanReady` callback:
+**8d.** Extend the existing `save()` handler to also flush a dirty plan through the editor's imperative handle, and add the `onPlanReady` callback:
 ```ts
 // inside save(), after the existing hasEdits branch, before the try block's closing:
 if (planApiRef.current?.isDirty()) {
@@ -3357,7 +3326,7 @@ const onPlanReady = useCallback((api: PlanApi) => { planApiRef.current = api }, 
 ```
 (`useCallback` must be added to the `react` import if not already present.) Also extend whatever condition currently shows the GUARDAR button from `hasEdits` to `(hasEdits || planDirty)`, so a dirty plan alone is enough to surface Save.
 
-**9e.** Add `'plano'` to the tab-bar array and its render block, at the end of the existing center-column tabs section:
+**8e.** Add `'plano'` to the tab-bar array and its render block, at the end of the existing center-column tabs section:
 ```tsx
 {(['mapa', 'fotos', 'plano'] as const).map(tab => (
   <button key={tab} onClick={() => setCenterTab(tab)} style={{
@@ -3384,17 +3353,17 @@ and, alongside the existing `{centerTab === 'mapa' && (...)}` / `{centerTab === 
 )}
 ```
 
-- [ ] **Step 10: Type-check and confirm the new tab renders**
+- [ ] **Step 9: Type-check and confirm the new tab renders**
 
 ```bash
 cd app/web && npx tsc --noEmit
 ```
 Expected: zero errors. This is the real check that Task 11's `FloorPlanEditor` props (`projectId`, `initial`, `onSave`, `onReady`, `onDirtyChange`) line up exactly with what this call site passes — if they don't, fix the call site here rather than changing Task 11's component (its `PlanApi`/prop shape is the one thing this whole rewrite promised to keep stable for this page).
 
-- [ ] **Step 11: Commit the frontend wiring**
+- [ ] **Step 10: Commit the frontend wiring**
 
 ```bash
-git add app/web/src/lib/api.ts app/web/src/components/ProjectDetailPage.tsx
+git add app/web/src/components/ProjectDetailPage.tsx
 git commit -m "feat(web): wire the graph-model FloorPlanEditor into ProjectDetailPage's plano tab"
 ```
 
