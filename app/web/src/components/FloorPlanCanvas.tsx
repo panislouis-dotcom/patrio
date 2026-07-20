@@ -1,5 +1,5 @@
 // app/web/src/components/FloorPlanCanvas.tsx
-import { forwardRef } from 'react'
+import { forwardRef, useRef } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
 import type { FloorPlanModel, FloorGraph } from '../lib/floorplan/types'
@@ -11,6 +11,12 @@ import type { UI } from '../lib/floorplan/reducer'
 import { BASE } from '../lib/api'
 
 const f2 = (v: number) => (Math.round(v * 100) / 100).toFixed(2)
+
+function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }) {
+  const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
+  const ux = (p2.x - p1.x) / L, uy = (p2.y - p1.y) / L
+  return { L, ux, uy, nx: -uy, ny: ux }
+}
 
 export interface CanvasProps {
   model: FloorPlanModel
@@ -40,6 +46,10 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
   const vertices = Object.values(floor.vertices)
   const edges = Object.values(floor.edges)
   const gel: React.ReactNode[] = []
+  // Guards against the browser firing a native blur on the room-rename <input> when it
+  // unmounts right after Enter/Escape (React's onBlur delegation still sees it), which
+  // would otherwise re-commit/wrongly-commit the value a keyboard handler already resolved.
+  const roomEditHandledRef = useRef(false)
 
   // ── reference underlay (bottom layer) ──
   let underlay: React.ReactNode = null
@@ -98,8 +108,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
   // ── openings ──
   edges.forEach(e => {
     const p1 = floor.vertices[e.v1], p2 = floor.vertices[e.v2]
-    const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
-    const ux = (p2.x - p1.x) / L, uy = (p2.y - p1.y) / L, nx = -uy, ny = ux
+    const { L, ux, uy, nx, ny } = edgeAxis(p1, p2)
     e.openings.forEach((op, i) => {
       const atM = op.offset * L
       const cx = p1.x + ux * atM, cy = p1.y + uy * atM, hw = op.width / 2
@@ -139,10 +148,13 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
             }}
             onKeyDown={e => {
               e.stopPropagation()
-              if (e.key === 'Enter') { e.preventDefault(); onRoomCommit(rg.cx, rg.cy, (e.target as HTMLInputElement).value) }
-              else if (e.key === 'Escape') { e.preventDefault(); onRoomCancel() }
+              if (e.key === 'Enter') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCommit(rg.cx, rg.cy, (e.target as HTMLInputElement).value) }
+              else if (e.key === 'Escape') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCancel() }
             }}
-            onBlur={e => onRoomCommit(rg.cx, rg.cy, e.target.value)}
+            onBlur={e => {
+              if (roomEditHandledRef.current) { roomEditHandledRef.current = false; return }
+              onRoomCommit(rg.cx, rg.cy, e.target.value)
+            }}
           />
         </foreignObject>,
       )
@@ -198,8 +210,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
     // opening widths
     edges.forEach(e => {
       const p1 = floor.vertices[e.v1], p2 = floor.vertices[e.v2]
-      const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
-      const ux = (p2.x - p1.x) / L, uy = (p2.y - p1.y) / L, nx = -uy, ny = ux
+      const { L, ux, uy, nx, ny } = edgeAxis(p1, p2)
       e.openings.forEach((op, i) => {
         const atM = op.offset * L, cx = p1.x + ux * atM, cy = p1.y + uy * atM
         gel.push(<text key={`opw${e.id}-${i}`} x={px(cx + nx * 0.34)} y={py(cy + ny * 0.34) + 3} textAnchor="middle"
