@@ -6,7 +6,7 @@ import {
   reducer, initialState, removeEdgeFromFloor, removeOpeningFromFloor, removeVertexFromFloor, type Tool,
 } from '../lib/floorplan/reducer'
 import { isEmpty, emptyModel, clone, genId, type FloorPlanModel, type FloorGraph } from '../lib/floorplan/types'
-import { viewTransform } from '../lib/floorplan/viewTransform'
+import { viewTransform, type Camera } from '../lib/floorplan/viewTransform'
 import { roomAreas } from '../lib/floorplan/rooms'
 import { cornerAngles } from '../lib/floorplan/dimensions'
 import { projectAt, pointAt } from '../lib/floorplan/geometry'
@@ -26,6 +26,7 @@ import { btn } from './floorplanStyles'
 const W = 900, H = 560, MARGIN = 48
 const TOOLS: Tool[] = ['select', 'wall', 'door', 'window', 'delete']
 const MIN_CAL_PX = 1e-6
+const ZOOM_STEP = 1.25
 
 /** Nearest edge to a point, WITHOUT the T-junction endpoint-guard — used only for
  * placing a door/window opening on whatever wall the user clicks near, matching the old
@@ -149,7 +150,21 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     return Math.hypot(p1px[0] - p0px[0], p1px[1] - p0px[1]) > MIN_CAL_PX
   })()
 
-  const t = useMemo(() => viewTransform(model.floors, { width: W, height: H, margin: MARGIN }), [model.floors])
+  const t = useMemo(
+    () => viewTransform(model.floors, { width: W, height: H, margin: MARGIN }, ui.camera),
+    [model.floors, ui.camera],
+  )
+  /** The camera to zoom FROM: the live camera if the user has already taken manual control,
+   * or a value seeded from the current auto-fit view otherwise -- the reducer has no access
+   * to the live viewTransform calculation, only this component does. */
+  function seedCamera(): Camera {
+    const c = t.userToWorld(W / 2, H / 2)
+    return { scale: t.scale, centerX: c.x, centerY: c.y }
+  }
+  function onZoomButton(dir: 1 | -1) {
+    const seed = seedCamera()
+    dispatch({ type: 'ZOOM_AT', anchor: { x: seed.centerX, y: seed.centerY }, factor: dir > 0 ? ZOOM_STEP : 1 / ZOOM_STEP, seed })
+  }
   const rooms = useMemo(() => roomAreas(floor), [floor])
   const angles = useMemo(() => cornerAngles(floor), [floor])
   const geoJson = useMemo(() => JSON.stringify(toGeometryJson(model), null, 1), [model])
@@ -427,13 +442,18 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       )}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           <FloorPlanCanvas
             ref={svgRef} model={model} floor={floor} t={t} rooms={rooms} angles={angles} ui={ui} editName={editName}
             imgNatural={imgNatural} calDraft={calDraft}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onMouseDown={onMouseDown}
             onRoomCommit={onRoomCommit} onRoomCancel={onRoomCancel}
           />
+          <div style={{ position: 'absolute', bottom: '12px', right: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <button aria-label="Zoom in" onClick={() => onZoomButton(1)} style={{ ...btn(false), padding: '4px 10px', fontSize: '14px' }}>+</button>
+            <button aria-label="Fit to screen" onClick={() => dispatch({ type: 'RESET_CAMERA' })} style={{ ...btn(false), padding: '4px 10px', fontSize: '11px' }}>⤢</button>
+            <button aria-label="Zoom out" onClick={() => onZoomButton(-1)} style={{ ...btn(false), padding: '4px 10px', fontSize: '14px' }}>−</button>
+          </div>
         </div>
         <FloorPlanPanel model={model} floor={floor} rooms={rooms} geoJson={geoJson} ui={ui} dispatch={dispatch} />
       </div>

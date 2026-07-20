@@ -171,3 +171,38 @@ describe('T-junction creation via drag-near-edge', () => {
     expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(6)
   })
 })
+
+describe('zoom buttons', () => {
+  it('clicking + zooms in around the canvas center, pushing off-center vertices farther from center on screen', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const vertexHandle = container.querySelectorAll('[data-el="vertex"]')[0] // (0,0) -- far from canvas center
+    const beforeCx = Number(vertexHandle.getAttribute('cx'))
+    fireEvent.click(container.querySelector('[aria-label="Zoom in"]')!)
+    const afterCx = Number(container.querySelectorAll('[data-el="vertex"]')[0].getAttribute('cx'))
+    expect(Math.abs(afterCx - 450)).toBeGreaterThan(Math.abs(beforeCx - 450)) // 450 = W/2
+  })
+
+  it('clicking - zooms out, pulling vertices closer to the canvas center', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const vertexHandle = container.querySelectorAll('[data-el="vertex"]')[0]
+    const beforeCx = Number(vertexHandle.getAttribute('cx'))
+    fireEvent.click(container.querySelector('[aria-label="Zoom out"]')!)
+    const afterCx = Number(container.querySelectorAll('[data-el="vertex"]')[0].getAttribute('cx'))
+    expect(Math.abs(afterCx - 450)).toBeLessThan(Math.abs(beforeCx - 450))
+  })
+
+  it('the fit button restores the original auto-fit view after zooming', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const vertexHandle = container.querySelectorAll('[data-el="vertex"]')[0]
+    const beforeCx = vertexHandle.getAttribute('cx'), beforeCy = vertexHandle.getAttribute('cy')
+    fireEvent.click(container.querySelector('[aria-label="Zoom in"]')!)
+    fireEvent.click(container.querySelector('[aria-label="Zoom in"]')!)
+    fireEvent.click(container.querySelector('[aria-label="Fit to screen"]')!)
+    const after = container.querySelectorAll('[data-el="vertex"]')[0]
+    expect(after.getAttribute('cx')).toBe(beforeCx)
+    expect(after.getAttribute('cy')).toBe(beforeCy)
+  })
+})
