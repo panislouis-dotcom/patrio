@@ -3,6 +3,7 @@ import { clone, genId } from './types'
 import { deleteVertex, deleteEdge, splitEdgeAtVertex } from './graph'
 import { exteriorEdgeIds } from './rooms'
 import type { Guide } from './snapping'
+import type { Camera } from './viewTransform'
 
 export type Tool = 'select' | 'wall' | 'door' | 'window' | 'delete'
 export type Sel =
@@ -31,6 +32,7 @@ export interface UI {
   snapGuides: Guide[]
   showDims: boolean
   calibrating: boolean
+  camera: Camera | null
 }
 
 export interface EditorState {
@@ -46,11 +48,14 @@ export interface EditorState {
 }
 
 const MAX_HISTORY = 50
+const MIN_SCALE = 8
+const MAX_SCALE = 4000
+const clampScale = (v: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, v))
 
 export function initialState(model: FloorPlanModel): EditorState {
   return {
     model,
-    ui: { tool: 'select', sel: null, drag: null, editRoom: null, snapGuides: [], showDims: true, calibrating: false },
+    ui: { tool: 'select', sel: null, drag: null, editRoom: null, snapGuides: [], showDims: true, calibrating: false, camera: null },
     dirty: false,
     past: [], future: [],
     dragBase: null,
@@ -80,6 +85,9 @@ export type Action =
   | { type: 'SET_EDIT_ROOM'; editRoom: { cx: number; cy: number } | null }
   | { type: 'SET_CALIBRATING'; on: boolean }
   | { type: 'SET_REFERENCE_FIELD'; key: 'opacity' | 'scale_m_per_px'; value: number }
+  | { type: 'SET_CAMERA'; camera: Camera }
+  | { type: 'ZOOM_AT'; anchor: { x: number; y: number }; factor: number; seed: Camera }
+  | { type: 'RESET_CAMERA' }
   | { type: 'DELETE_SEL' }
   | { type: 'MARK_SAVED' }
 
@@ -108,6 +116,15 @@ export function reducer(s: EditorState, a: Action): EditorState {
     case 'SET_GUIDES': return uiChange(s, { snapGuides: a.guides })
     case 'SET_EDIT_ROOM': return uiChange(s, { editRoom: a.editRoom })
     case 'SET_CALIBRATING': return uiChange(s, { calibrating: a.on })
+    case 'SET_CAMERA': return uiChange(s, { camera: a.camera })
+    case 'RESET_CAMERA': return uiChange(s, { camera: null })
+    case 'ZOOM_AT': {
+      const cam = s.ui.camera ?? a.seed
+      const newScale = clampScale(cam.scale * a.factor)
+      const centerX = a.anchor.x + (cam.centerX - a.anchor.x) * (cam.scale / newScale)
+      const centerY = a.anchor.y + (cam.centerY - a.anchor.y) * (cam.scale / newScale)
+      return uiChange(s, { camera: { scale: newScale, centerX, centerY } })
+    }
     case 'SET_MODEL': return modelChange(s, a.model)
     case 'DRAG_MODEL': return { ...s, model: a.model, dirty: true, dragBase: s.dragBase ?? s.model }
     case 'UNDO': {
