@@ -1,5 +1,5 @@
 from decimal import Decimal
-from api.db import get_db, get_project
+from api.db import get_db, get_project, set_prospect_geometry, get_project_geometry
 
 
 def test_project_without_breakdown_falls_back_to_stored(test_project):
@@ -56,6 +56,45 @@ def test_convert_is_atomic_and_lossless(client, test_prospect):
     still = client.get(f"/api/prospects/{pid}")
     assert still.status_code == 200
     assert still.json()["status"] == "converted"
+
+    with get_db() as conn:
+        conn.execute("DELETE FROM projects WHERE id=%s", (project["id"],))
+
+
+def test_convert_carries_geometry_to_new_project(client, test_prospect):
+    pid = test_prospect["id"]
+    model = {
+        "schemaVersion": 2, "slab_m": 0.15, "activeFloor": 0,
+        "floors": [{
+            "name": "Planta Baja", "height_m": 2.60, "extWall_m": 0.15, "intWall_m": 0.10,
+            "vertices": {"v1": {"id": "v1", "x": 0, "y": 0}, "v2": {"id": "v2", "x": 5, "y": 0}},
+            "edges": {"e1": {"id": "e1", "v1": "v1", "v2": "v2", "thickness": 0.15, "openings": []}},
+            "rooms": [],
+        }],
+    }
+    set_prospect_geometry(pid, model)
+
+    r = client.post(f"/api/prospects/{pid}/convert", json={
+        "type": "ground_up", "totalUnits": 1, "acquisitionDate": "2025-01",
+        "conclusionDate": "2026-07", "currentValuation": 2500000, "valuationDate": "2026-01",
+        "status": "construction"})
+    assert r.status_code == 201
+    project = r.json()
+    assert get_project_geometry(project["id"]) == model
+
+    with get_db() as conn:
+        conn.execute("DELETE FROM projects WHERE id=%s", (project["id"],))
+
+
+def test_convert_with_no_geometry_leaves_project_geometry_empty(client, test_prospect):
+    pid = test_prospect["id"]
+    r = client.post(f"/api/prospects/{pid}/convert", json={
+        "type": "ground_up", "totalUnits": 1, "acquisitionDate": "2025-01",
+        "conclusionDate": "2026-07", "currentValuation": 2500000, "valuationDate": "2026-01",
+        "status": "construction"})
+    assert r.status_code == 201
+    project = r.json()
+    assert get_project_geometry(project["id"]) == {}
 
     with get_db() as conn:
         conn.execute("DELETE FROM projects WHERE id=%s", (project["id"],))

@@ -1,4 +1,5 @@
 import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, ProjectImage, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion } from './types'
+import type { FloorPlanModel } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -920,4 +921,54 @@ export async function selectCotizacion(id: number, instanceNodeStateId: number):
 export async function deleteCotizacion(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/cotizaciones/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await res.text())
+}
+
+// ── Floor-plan geometry ──
+
+export async function fetchProjectGeometry(id: number): Promise<FloorPlanModel | Record<string, never>> {
+  const res = await authFetch(`${BASE}/api/projects/${id}/geometry`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function saveProjectGeometry(id: number, geometry: FloorPlanModel): Promise<FloorPlanModel> {
+  const res = await authFetch(`${BASE}/api/projects/${id}/geometry`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ geometry }),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function uploadFloorplanImage(id: number, file: File): Promise<{ imageKey: string }> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await authFetch(`${BASE}/api/projects/${id}/floorplan-image`, { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchProspectGeometry(id: number): Promise<FloorPlanModel | Record<string, never>> {
+  const res = await authFetch(`${BASE}/api/prospects/${id}/geometry`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function saveProspectGeometry(id: number, geometry: FloorPlanModel): Promise<FloorPlanModel> {
+  const res = await authFetch(`${BASE}/api/prospects/${id}/geometry`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ geometry }),
+  })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function uploadProspectFloorplanImage(id: number, file: File): Promise<{ imageKey: string }> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await authFetch(`${BASE}/api/prospects/${id}/floorplan-image`, { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
 }

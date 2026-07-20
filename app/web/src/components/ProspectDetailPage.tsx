@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { BASE, fetchProspect, updateProspect, createProspect, deleteProspect, convertProspect, uploadProspectImage, deleteProspectImage } from '../lib/api'
+import { BASE, fetchProspect, updateProspect, createProspect, deleteProspect, convertProspect, uploadProspectImage, deleteProspectImage, fetchProspectGeometry, saveProspectGeometry, uploadProspectFloorplanImage } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -15,6 +15,8 @@ import { ProspectForm } from './ProspectForm'
 import { ProspectAnalysisSection } from './ProspectAnalysisSection'
 import { StatRow } from './StatRow'
 import { PhotoGallery } from './PhotoGallery'
+import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
+import type { FloorPlanModel } from '../lib/floorplan/types'
 import { PROSPECT_STATUS_COLOR, PROSPECT_STATUS_LABEL, PROJECT_STATUS_LABEL } from '../lib/status'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
@@ -62,20 +64,26 @@ export function ProspectDetailPage() {
   })
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
-  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')
+  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos' | 'plano'>('mapa')
   const [leftTab, setLeftTab] = useState<'info' | 'editar' | 'analisis'>('info')
+  const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
+  const planApiRef = useRef<PlanApi | null>(null)
+  const [planDirty, setPlanDirty] = useState(false)
 
   useEffect(() => {
     if (isNew) { setLoading(false); return }
-    fetchProspect(Number(id))
-      .then(p => {
+    Promise.all([fetchProspect(Number(id)), fetchProspectGeometry(Number(id))])
+      .then(([p, geo]) => {
         setProspect(p)
+        setGeometry(geo)
         setTimeout(() => setMounted(true), 40)
         setTimeout(() => setBarsReady(true), 420)
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [id, isNew])
+
+  const onPlanReady = useCallback((api: PlanApi) => { planApiRef.current = api }, [])
 
   async function handleFormSave(data: RawFields) {
     setSaving(true)
@@ -91,13 +99,21 @@ export function ProspectDetailPage() {
   }
 
   async function handleInlineSave() {
-    if (Object.keys(edits).length === 0 || !prospect) return
+    if ((Object.keys(edits).length === 0 && !planApiRef.current?.isDirty()) || !prospect) return
     setSaving(true)
     setSaveError(null)
     try {
-      const updated = await updateProspect(Number(id), edits)
-      setProspect(updated)
-      setEdits({})
+      if (Object.keys(edits).length > 0) {
+        const updated = await updateProspect(Number(id), edits)
+        setProspect(updated)
+        setEdits({})
+      }
+      if (planApiRef.current?.isDirty()) {
+        const saved = await saveProspectGeometry(Number(id), planApiRef.current.getModel())
+        setGeometry(saved)
+        planApiRef.current.markSaved()
+        setPlanDirty(false)
+      }
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
@@ -307,7 +323,7 @@ export function ProspectDetailPage() {
             ELIMINAR
           </button>
         )}
-        {hasEdits && (
+        {(hasEdits || planDirty) && (
           <button
             onClick={handleInlineSave}
             disabled={saving}
@@ -582,7 +598,7 @@ export function ProspectDetailPage() {
         <div style={{ ...fade(160), display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Tab bar */}
           <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
-            {(['mapa', 'fotos'] as const).map(tab => (
+            {(['mapa', 'fotos', 'plano'] as const).map(tab => (
               <button key={tab} onClick={() => setCenterTab(tab)} style={{
                 background: 'transparent', border: 'none',
                 borderBottom: centerTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
@@ -637,6 +653,17 @@ export function ProspectDetailPage() {
                 await deleteProspectImage(p.id, imageId)
                 setProspect(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
               }}
+            />
+          )}
+
+          {/* PLANO tab */}
+          {centerTab === 'plano' && geometry !== null && (
+            <FloorPlanEditor
+              initial={geometry}
+              onSave={async m => { const saved = await saveProspectGeometry(p.id, m); setGeometry(saved) }}
+              onUploadImage={file => uploadProspectFloorplanImage(p.id, file)}
+              onReady={onPlanReady}
+              onDirtyChange={setPlanDirty}
             />
           )}
         </div>
