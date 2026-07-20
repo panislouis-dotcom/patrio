@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyModel, isEmpty, clone, floorElev } from './types'
+import { emptyModel, isEmpty, clone, floorElev, type FloorPlanModel } from './types'
 
 describe('emptyModel', () => {
   it('creates one floor with an empty graph', () => {
@@ -20,6 +20,16 @@ describe('isEmpty', () => {
   })
   it('treats a real model as non-empty', () => {
     expect(isEmpty(emptyModel())).toBe(false)
+  })
+  it('treats leftover schemaVersion-1 geometry from the old wall-list editor as empty', () => {
+    // Real shape seen in production: the old editor's blob has no `activeFloor` at all (it
+    // used `active` instead) and each floor has `walls`/`footprint`, not `vertices`/`edges`.
+    // Trusting this as a v2 model crashes FloorPlanEditor on `model.floors[model.activeFloor]`.
+    const legacy = {
+      schemaVersion: 1, active: 0, slab_m: 0.15, extWall_m: 0.15, intWall_m: 0.10,
+      floors: [{ name: 'Planta Baja', height_m: 2.6, rooms: [], openings: [], footprint: [], walls: [] }],
+    }
+    expect(isEmpty(legacy as unknown as FloorPlanModel)).toBe(true)
   })
 })
 

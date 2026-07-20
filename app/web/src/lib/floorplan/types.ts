@@ -65,7 +65,13 @@ export function emptyModel(): FloorPlanModel {
 }
 
 export function isEmpty(m: FloorPlanModel | Record<string, never>): boolean {
-  return !m || !('floors' in m) || !Array.isArray(m.floors) || m.floors.length === 0
+  // Also treat anything that isn't a recognized schemaVersion-2 model as "empty" (falls back
+  // to the blank-start landing screen) rather than trusting its shape -- e.g. leftover
+  // schemaVersion-1 geometry saved by the old, discarded wall-list editor. This is a
+  // deliberate greenfield boundary, not a migration: old data is left untouched in storage
+  // (nothing writes until the user saves again) but is never read as if it were a v2 model.
+  return !m || !('schemaVersion' in m) || m.schemaVersion !== 2 ||
+    !('floors' in m) || !Array.isArray(m.floors) || m.floors.length === 0
 }
 
 export const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o))
