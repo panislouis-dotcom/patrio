@@ -4,12 +4,14 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from api.auth import get_current_user
-from api.db import get_projects, get_project, update_project, create_project, delete_project, add_project_image, delete_project_image, update_project_image_type
+from api.db import get_projects, get_project, update_project, create_project, delete_project, add_project_image, delete_project_image, update_project_image_type, get_project_geometry, set_project_geometry
 from api import storage
 
 router = APIRouter()
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 _MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
+_FLOORPLAN_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+_FLOORPLAN_ALLOWED_MIME = set(_FLOORPLAN_EXT)  # no GIF: not a sane format for a technical drawing
 
 
 class _UnderwritingInputs(BaseModel):
@@ -133,6 +135,44 @@ async def upload_project_image(
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Failed to store image") from exc
     return add_project_image(project_id, relative_path, file.filename or "", file.content_type or "image/jpeg", image_type)
+
+
+class GeometryBody(BaseModel):
+    geometry: dict  # deep schema is validated in the TS engine (single source of truth)
+
+
+@router.get("/api/projects/{project_id}/geometry", operation_id="projects_get_geometry")
+def get_geometry(project_id: int, _: dict = Depends(get_current_user)):
+    geo = get_project_geometry(project_id)
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return geo
+
+
+@router.put("/api/projects/{project_id}/geometry", operation_id="projects_set_geometry")
+def put_geometry(project_id: int, body: GeometryBody,
+                 _: dict = Depends(get_current_user)):
+    saved = set_project_geometry(project_id, body.geometry)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return saved
+
+
+@router.post("/api/projects/{project_id}/floorplan-image", status_code=201,
+             operation_id="projects_upload_floorplan_image")
+async def upload_floorplan_image(project_id: int, file: UploadFile = File(...),
+                                  _: dict = Depends(get_current_user)):
+    if get_project_geometry(project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if file.content_type not in _FLOORPLAN_ALLOWED_MIME:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
+    content = await file.read(_MAX_IMAGE_SIZE + 1)
+    if len(content) > _MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    ext = _FLOORPLAN_EXT[file.content_type]
+    key = f"projects/{project_id}/floorplan/{uuid4().hex}{ext}"
+    storage.upload(key, content, file.content_type)
+    return {"imageKey": key}
 
 
 @router.delete("/api/projects/{project_id}/images/{image_id}", status_code=204, operation_id="project_images_delete")

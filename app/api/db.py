@@ -5,6 +5,7 @@ from datetime import datetime, date
 
 import psycopg2
 import psycopg2.extras
+from psycopg2.extras import Json
 from psycopg2.pool import ThreadedConnectionPool
 
 from api.config import DATABASE_URL, DB_POOL_MIN, DB_POOL_MAX
@@ -416,6 +417,25 @@ def get_project(project_id: int) -> dict | None:
     with get_db() as conn:
         row = conn.execute("SELECT * FROM projects WHERE id = %s", (project_id,)).fetchone()
     return _parse_project(row) if row else None
+
+
+def get_project_geometry(project_id: int) -> dict | None:
+    """Return the stored geometry model ({} when unset), or None if no such project."""
+    with get_db() as conn:
+        row = conn.execute("SELECT geometry FROM projects WHERE id = %s", (project_id,)).fetchone()
+    if row is None:
+        return None
+    return row["geometry"] or {}
+
+
+def set_project_geometry(project_id: int, geometry: dict) -> dict | None:
+    """Whole-blob replace of a project's geometry. Returns the stored model, or None."""
+    with get_db() as conn:
+        row = conn.execute(
+            "UPDATE projects SET geometry = %s WHERE id = %s RETURNING geometry",
+            (Json(geometry), project_id),
+        ).fetchone()
+    return None if row is None else (row["geometry"] or {})
 
 
 def update_project(project_id: int, data: dict) -> dict | None:
