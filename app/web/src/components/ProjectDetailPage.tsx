@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
-import { BASE, fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit, uploadProjectImage, deleteProjectImage, updateProjectImageType } from '../lib/api'
+import { BASE, fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit, uploadProjectImage, deleteProjectImage, updateProjectImageType, fetchProjectGeometry, saveProjectGeometry } from '../lib/api'
 import type { Project, ProcessInstance, TeamMember, ProjectInvestor, Investor, ProfitWaterfall } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { ProjectProfitSection } from './ProjectProfitSection'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
 import { LatLonPicker } from './LatLonPicker'
+import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
+import type { FloorPlanModel } from '../lib/floorplan/types'
 import { NumericInput } from './NumericInput'
 import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL, PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
 import { fmtMXN } from '../lib/fmt'
@@ -49,7 +51,10 @@ export function ProjectDetailPage() {
   const [editReturnDate, setEditReturnDate] = useState<string>('')
   const [savingId, setSavingId] = useState<number | null>(null)
   const [leftTab, setLeftTab] = useState<'info' | 'editar' | 'finanzas'>('info')
-  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos'>('mapa')
+  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos' | 'plano'>('mapa')
+  const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
+  const planApiRef = useRef<PlanApi | null>(null)
+  const [planDirty, setPlanDirty] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
@@ -66,13 +71,15 @@ export function ProjectDetailPage() {
       fetchProjectInvestors(projectId),
       fetchInvestors(),
       fetchProjectProfit(projectId),
-    ]).then(([p, inst, t, pis, allInv, { waterfall: wf }]) => {
+      fetchProjectGeometry(projectId),
+    ]).then(([p, inst, t, pis, allInv, { waterfall: wf }, geo]) => {
       setProject(p)
       setInstances(inst)
       setTeam(t)
       setProjectInvestors(pis)
       setAllInvestors(allInv)
       setWaterfall(wf)
+      setGeometry(geo)
       setTimeout(() => setMounted(true), 40)
       setTimeout(() => setBarsReady(true), 420)
     }).catch(e => setError(e instanceof Error ? e.message : 'Error al cargar el proyecto'))
@@ -96,12 +103,20 @@ export function ProjectDetailPage() {
       ])
       setProjectInvestors(pis)
       setWaterfall(wf)
+      if (planApiRef.current?.isDirty()) {
+        const saved = await saveProjectGeometry(projectId, planApiRef.current.getModel())
+        setGeometry(saved)
+        planApiRef.current.markSaved()
+        setPlanDirty(false)
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
       setSaving(false)
     }
   }
+
+  const onPlanReady = useCallback((api: PlanApi) => { planApiRef.current = api }, [])
 
   async function handleDelete() {
     setDeleting(true)
@@ -322,7 +337,7 @@ export function ProjectDetailPage() {
             ELIMINAR
           </button>
         )}
-        {hasEdits && (
+        {(hasEdits || planDirty) && (
           <button
             onClick={save}
             disabled={saving}
@@ -941,7 +956,7 @@ export function ProjectDetailPage() {
         <div style={{ ...fade(160), display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Tab bar */}
           <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
-            {(['mapa', 'fotos'] as const).map(tab => (
+            {(['mapa', 'fotos', 'plano'] as const).map(tab => (
               <button key={tab} onClick={() => setCenterTab(tab)} style={{
                 background: 'transparent', border: 'none',
                 borderBottom: centerTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
@@ -1000,6 +1015,17 @@ export function ProjectDetailPage() {
                 const updated = await updateProjectImageType(project.id, imageId, newType)
                 setProject(prev => prev ? { ...prev, images: prev.images.map(i => i.id === imageId ? updated : i) } : prev)
               }}
+            />
+          )}
+
+          {/* PLANO tab */}
+          {centerTab === 'plano' && geometry !== null && (
+            <FloorPlanEditor
+              projectId={projectId}
+              initial={geometry}
+              onSave={async m => { const saved = await saveProjectGeometry(projectId, m); setGeometry(saved) }}
+              onReady={onPlanReady}
+              onDirtyChange={setPlanDirty}
             />
           )}
         </div>
