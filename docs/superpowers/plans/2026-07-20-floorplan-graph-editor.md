@@ -2303,14 +2303,39 @@ describe('connected drag', () => {
     const svg = container.querySelector('svg')!
     const vertexHandle = svg.querySelector('[data-el="vertex"]')!
     const id = vertexHandle.getAttribute('data-id')!
-    void id
+    const before = { cx: vertexHandle.getAttribute('cx'), cy: vertexHandle.getAttribute('cy') }
     // Full assertion of "did every attached wall follow" happens via the reducer/graph unit
     // tests (moveVertex test) — this test's job is to prove the COMPONENT wires a
-    // real pointer gesture through to that same code path without regressing it.
+    // real pointer gesture through to that same code path without regressing it, which
+    // requires re-querying THIS SAME vertex (by its captured id) after the gesture and
+    // confirming its rendered position actually changed — a bare "some vertex handle still
+    // exists" check would pass even if the drag wiring did nothing at all.
     fireEvent.pointerDown(vertexHandle, pointerAt(model.floors, 0, 0))
     fireEvent.pointerMove(svg, pointerAt(model.floors, 1.5, 1))
     fireEvent.pointerUp(svg)
-    expect(svg.querySelectorAll('[data-el="vertex"]').length).toBeGreaterThan(0)
+    const moved = svg.querySelector(`[data-el="vertex"][data-id="${id}"]`)!
+    expect(moved.getAttribute('cx')).not.toBe(before.cx)
+    expect(moved.getAttribute('cy')).not.toBe(before.cy)
+  })
+})
+
+describe('edge-midpoint split without a following drag', () => {
+  it('clicking a wall midpoint to add a corner, then releasing without moving, produces exactly one undo step', () => {
+    const model = modelWithRectangleAndDivider()
+    const onSave = vi.fn()
+    const { container } = render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
+    const svg = container.querySelector('svg')!
+    const before = svg.querySelectorAll('[data-el="edge"]').length
+    const midHandle = svg.querySelector('[data-el="edgeMid"]')!
+    // Click-and-release with NO pointermove in between — the ordinary "just add a corner
+    // here" gesture. This must not leave the drag machinery thinking a real drag happened.
+    fireEvent.pointerDown(midHandle, pointerAt(model.floors, 3, 0))
+    fireEvent.pointerUp(svg)
+    expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(before + 1) // the split committed
+    // A single Ctrl+Z must fully revert the split in one step — not leave a spurious
+    // duplicate history entry that makes the first Ctrl+Z a no-op.
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(before)
   })
 })
 
@@ -2396,6 +2421,7 @@ describe('T-junction creation via drag-near-edge', () => {
 - **jsdom has no `PointerEvent` constructor**, so `fireEvent.pointerDown/Move/Up` silently fell back to a plain `Event` that drops `clientX`/`clientY` (not valid `EventInit` keys). Two of the four original interaction tests "passed" vacuously because they didn't check position/count values that distinguish "the gesture worked" from "it silently did nothing." Fixed by installing a `MouseEvent`-subclass `PointerEvent` polyfill in each test file that fires pointer gestures (jsdom's real `MouseEvent` does honor `clientX`/`clientY`).
 - **The naive `pointerAt` helper (`{clientX: worldX, clientY: worldY}` verbatim) doesn't land at the intended model coordinate.** `pointerToWorld`'s jsdom fallback path still runs the raw `clientX`/`clientY` through `t.userToWorld(...)`, which is `viewTransform`'s exact mathematical inverse of `px`/`py` (confirmed by reading `viewTransform.ts:22-27`: `px(x) = margin + (x-minx)*scale`, `userToWorld(ux,...) = (ux-margin)/scale + minx`). So the correct way to land a synthetic event at model coordinate `(worldX, worldY)` is to forward-transform through `t.px(worldX)`/`t.py(worldY)` first, not pass world coordinates directly as client coordinates. Fixed as shown above.
 - **The T-junction test's original `freeHandle` lookup (`cy > 0`) and expected edge count (5) were both wrong.** The heuristic matched every vertex in that model (all have `cy > 0` in screen space), grabbing an arbitrary handle instead of the intended free endpoint — fixed by selecting on `data-id === dividerFree`. The expected edge count was also arithmetically wrong: before the drag there are already 4 rectangle edges + 1 divider edge = 5 (not 4); a genuine T-junction split turns ONE of those into two, giving 6 total, not 5. Fixed as shown above.
+- **A second real regression, found by a follow-up code-quality review AFTER the fixes above already landed, and confirmed by reverting the fix and watching the added regression test fail exactly as predicted:** the `edgeMid` handler in `onPointerDown` (the "click a wall midpoint to add a corner" gesture) unconditionally set `dragMovedRef.current = true` right after committing the split via its own `SET_MODEL` — a leftover from the ORIGINAL (pre-`dragBase`-fix) `onPointerUp`, which only ever dispatched `DRAG_MODEL` for the merge/split resolution and so never actually committed anything extra when nothing had moved. Once `onPointerUp` was corrected to unconditionally commit one `SET_MODEL` whenever `dragMovedRef.current` is true, that same leftover flag turned into a real bug: clicking a wall midpoint and releasing WITHOUT ever moving the pointer (an entirely ordinary "just add a corner here" gesture) produced a spurious second, no-op `SET_MODEL` commit — pushing the post-split model into `past` a second time as if it were the pre-split state, making the first Ctrl+Z after such a click a visible no-op (the user has to press it twice). Fixed by removing the forced `dragMovedRef.current = true` from the `edgeMid` handler (shown above) — the ref now stays `false` unless a real `onPointerMove` frame actually fires, matching its only remaining purpose ("did the pointer actually move this gesture").
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -2654,7 +2680,12 @@ export default function FloorPlanEditor({ projectId, initial, onSave, onReady, o
       const newVertexId = genId()
       f.vertices[newVertexId] = { id: newVertexId, x: sx, y: sy }
       splitEdgeAtVertex(f, edgeId, newVertexId)
-      dragMovedRef.current = true
+      // Do NOT force dragMovedRef here: the split itself already commits via its own
+      // SET_MODEL below. dragMovedRef must stay false unless a real onPointerMove frame
+      // follows — otherwise a click-and-release-without-dragging on this handle would make
+      // onPointerUp unconditionally commit a second, no-op SET_MODEL (the model unchanged
+      // since the split), producing a duplicate history entry that makes the first Ctrl+Z
+      // a visible no-op.
       dispatch({ type: 'SET_MODEL', model: m })
       dispatch({ type: 'SET_SEL', sel: { t: 'vertex', id: newVertexId } })
       dispatch({ type: 'SET_DRAG', drag: { kind: 'vertex', id: newVertexId } })
@@ -2857,7 +2888,7 @@ Both files were written and independently verified this session:
 - [ ] **Step 5: Run all three test files to verify they pass**
 
 Run: `cd app/web && npx vitest run src/components/FloorPlanEditor.test.tsx src/components/FloorPlanEditor.interaction.test.tsx src/components/FloorPlanEditor.calibrate.test.tsx`
-Expected: PASS (verified: 3/3, 4/4, 2/2 — 9/9 total). If the T-junction interaction test's `freeHandle` lookup or the connected-drag test's coordinate math doesn't match on the first run (jsdom's pointer-coordinate handling has sharp edges — see the component's own `pointerToWorld` comment), adjust the test's `pointerAt` helper or asserted coordinates to match actual rendered attribute values — read them back with a debug `console.log(container.innerHTML)` if needed rather than guessing, then remove the debug line before committing.
+Expected: PASS (verified: 3/3, 5/5, 2/2 — 10/10 total; the interaction file grew from 4 to 5 tests with the `edgeMid`-without-drag regression test above). If the T-junction interaction test's `freeHandle` lookup or the connected-drag test's coordinate math doesn't match on the first run (jsdom's pointer-coordinate handling has sharp edges — see the component's own `pointerToWorld` comment), adjust the test's `pointerAt` helper or asserted coordinates to match actual rendered attribute values — read them back with a debug `console.log(container.innerHTML)` if needed rather than guessing, then remove the debug line before committing.
 
 - [ ] **Step 6: Commit**
 

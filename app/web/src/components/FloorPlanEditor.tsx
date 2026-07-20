@@ -247,7 +247,12 @@ export default function FloorPlanEditor({ projectId, initial, onSave, onReady, o
       const newVertexId = genId()
       f.vertices[newVertexId] = { id: newVertexId, x: sx, y: sy }
       splitEdgeAtVertex(f, edgeId, newVertexId)
-      dragMovedRef.current = true
+      // Do NOT force dragMovedRef here: the split itself already commits via its own
+      // SET_MODEL below. dragMovedRef must stay false unless a real onPointerMove frame
+      // follows — otherwise a click-and-release-without-dragging on this handle would make
+      // onPointerUp unconditionally commit a second, no-op SET_MODEL (the model unchanged
+      // since the split), producing a duplicate history entry that makes the first Ctrl+Z
+      // a visible no-op.
       dispatch({ type: 'SET_MODEL', model: m })
       dispatch({ type: 'SET_SEL', sel: { t: 'vertex', id: newVertexId } })
       dispatch({ type: 'SET_DRAG', drag: { kind: 'vertex', id: newVertexId } })

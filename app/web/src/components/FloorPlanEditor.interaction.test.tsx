@@ -59,14 +59,39 @@ describe('connected drag', () => {
     const svg = container.querySelector('svg')!
     const vertexHandle = svg.querySelector('[data-el="vertex"]')!
     const id = vertexHandle.getAttribute('data-id')!
-    void id
+    const before = { cx: vertexHandle.getAttribute('cx'), cy: vertexHandle.getAttribute('cy') }
     // Full assertion of "did every attached wall follow" happens via the reducer/graph unit
     // tests (moveVertex test) — this test's job is to prove the COMPONENT wires a
-    // real pointer gesture through to that same code path without regressing it.
+    // real pointer gesture through to that same code path without regressing it, which
+    // requires re-querying THIS SAME vertex (by its captured id) after the gesture and
+    // confirming its rendered position actually changed — a bare "some vertex handle still
+    // exists" check would pass even if the drag wiring did nothing at all.
     fireEvent.pointerDown(vertexHandle, pointerAt(model.floors, 0, 0))
     fireEvent.pointerMove(svg, pointerAt(model.floors, 1.5, 1))
     fireEvent.pointerUp(svg)
-    expect(svg.querySelectorAll('[data-el="vertex"]').length).toBeGreaterThan(0)
+    const moved = svg.querySelector(`[data-el="vertex"][data-id="${id}"]`)!
+    expect(moved.getAttribute('cx')).not.toBe(before.cx)
+    expect(moved.getAttribute('cy')).not.toBe(before.cy)
+  })
+})
+
+describe('edge-midpoint split without a following drag', () => {
+  it('clicking a wall midpoint to add a corner, then releasing without moving, produces exactly one undo step', () => {
+    const model = modelWithRectangleAndDivider()
+    const onSave = vi.fn()
+    const { container } = render(<FloorPlanEditor projectId={1} initial={model} onSave={onSave} />)
+    const svg = container.querySelector('svg')!
+    const before = svg.querySelectorAll('[data-el="edge"]').length
+    const midHandle = svg.querySelector('[data-el="edgeMid"]')!
+    // Click-and-release with NO pointermove in between — the ordinary "just add a corner
+    // here" gesture. This must not leave the drag machinery thinking a real drag happened.
+    fireEvent.pointerDown(midHandle, pointerAt(model.floors, 3, 0))
+    fireEvent.pointerUp(svg)
+    expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(before + 1) // the split committed
+    // A single Ctrl+Z must fully revert the split in one step — not leave a spurious
+    // duplicate history entry that makes the first Ctrl+Z a no-op.
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(before)
   })
 })
 
