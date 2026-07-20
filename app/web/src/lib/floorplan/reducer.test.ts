@@ -54,6 +54,30 @@ describe('DRAG_MODEL', () => {
     expect(s.past).toHaveLength(1)
     expect(s.past[0].floors[0].name).toBe('Test') // history captured the state BEFORE this whole gesture, not the mid-drag frames
   })
+
+  it('UNDO mid-drag cancels the gesture back to its pre-drag baseline without touching past/future', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_MODEL', model: { ...model, floors: [{ ...model.floors[0], name: 'B' }] } })
+    expect(s.past).toHaveLength(1) // past[0] = 'Test'
+    s = reducer(s, { type: 'DRAG_MODEL', model: { ...model, floors: [{ ...model.floors[0], name: 'C' }] } })
+    s = reducer(s, { type: 'DRAG_MODEL', model: { ...model, floors: [{ ...model.floors[0], name: 'D' }] } })
+    s = reducer(s, { type: 'UNDO' })
+    expect(s.model.floors[0].name).toBe('B') // cancels the drag back to the pre-gesture baseline, not two steps back
+    expect(s.past).toHaveLength(1) // untouched — 'Test' was never discarded
+    expect(s.future).toHaveLength(0) // the uncommitted mid-drag frame 'D' is discarded, not stashed in future
+  })
+
+  it('REDO mid-drag also cancels the gesture back to its pre-drag baseline', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_MODEL', model: { ...model, floors: [{ ...model.floors[0], name: 'B' }] } })
+    s = reducer(s, { type: 'DRAG_MODEL', model: { ...model, floors: [{ ...model.floors[0], name: 'C' }] } })
+    s = reducer(s, { type: 'REDO' })
+    expect(s.model.floors[0].name).toBe('B')
+    expect(s.past).toHaveLength(1)
+    expect(s.future).toHaveLength(0)
+  })
 })
 
 describe('SPLIT_EDGE_AT_POINT', () => {
@@ -64,6 +88,22 @@ describe('SPLIT_EDGE_AT_POINT', () => {
     s = reducer(s, { type: 'SPLIT_EDGE_AT_POINT', edgeId, x: 2, y: 0 })
     expect(Object.keys(s.model.floors[0].edges)).toHaveLength(5)
     expect(s.ui.sel?.t).toBe('vertex')
+  })
+})
+
+describe('SET_FLOOR_FIELD', () => {
+  it('sets height_m as a number', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_FLOOR_FIELD', key: 'height_m', value: '2.8' })
+    expect(s.model.floors[0].height_m).toBe(2.8)
+  })
+
+  it('sets name as a string', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_FLOOR_FIELD', key: 'name', value: 'Sótano' })
+    expect(s.model.floors[0].name).toBe('Sótano')
   })
 })
 

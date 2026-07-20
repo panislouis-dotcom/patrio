@@ -111,6 +111,11 @@ export function reducer(s: EditorState, a: Action): EditorState {
     case 'SET_MODEL': return modelChange(s, a.model)
     case 'DRAG_MODEL': return { ...s, model: a.model, dirty: true, dragBase: s.dragBase ?? s.model }
     case 'UNDO': {
+      // Mid-gesture: undo cancels the in-flight drag back to its pre-gesture baseline
+      // instead of popping history, so the uncommitted drag frame never pollutes past/future.
+      if (s.dragBase != null) {
+        return { ...s, model: s.dragBase, dirty: true, dragBase: null, ui: { ...s.ui, sel: null, drag: null, editRoom: null } }
+      }
       if (s.past.length === 0) return s
       const prev = s.past[s.past.length - 1]
       return {
@@ -120,6 +125,9 @@ export function reducer(s: EditorState, a: Action): EditorState {
       }
     }
     case 'REDO': {
+      if (s.dragBase != null) {
+        return { ...s, model: s.dragBase, dirty: true, dragBase: null, ui: { ...s.ui, sel: null, drag: null, editRoom: null } }
+      }
       if (s.future.length === 0) return s
       const next = s.future[0]
       return {
@@ -149,8 +157,9 @@ export function reducer(s: EditorState, a: Action): EditorState {
       return { ...s, model: m, ui: { ...s.ui, sel: null, editRoom: null } }
     }
     case 'SET_FLOOR_FIELD': {
-      const m = clone(s.model)
-      ;(F(m) as any)[a.key] = a.key === 'height_m' ? Number(a.value) : a.value
+      const m = clone(s.model); const f = F(m)
+      if (a.key === 'height_m') f.height_m = Number(a.value)
+      else f.name = String(a.value)
       return modelChange(s, m)
     }
     case 'SET_FLOOR_PARAM': {
