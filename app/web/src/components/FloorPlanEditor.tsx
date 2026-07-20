@@ -27,6 +27,7 @@ const W = 900, H = 560, MARGIN = 48
 const TOOLS: Tool[] = ['select', 'wall', 'door', 'window', 'delete']
 const MIN_CAL_PX = 1e-6
 const ZOOM_STEP = 1.25
+const WHEEL_ZOOM_STEP = 1.08
 
 /** Nearest edge to a point, WITHOUT the T-junction endpoint-guard — used only for
  * placing a door/window opening on whatever wall the user clicks near, matching the old
@@ -202,6 +203,20 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     const sy = rect.height ? (e.clientY - rect.top) * (H / rect.height) : e.clientY - rect.top
     return t.userToWorld(sx, sy)
   }
+
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const onWheelNative = (e: WheelEvent) => {
+      e.preventDefault()
+      const anchor = pointerToWorld(e)
+      const seed = seedCamera()
+      const factor = e.deltaY < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP
+      dispatch({ type: 'ZOOM_AT', anchor, factor, seed })
+    }
+    svg.addEventListener('wheel', onWheelNative, { passive: false })
+    return () => svg.removeEventListener('wheel', onWheelNative)
+  }, [t])
 
   const attr = (el: Element, k: string) => el.getAttribute(k)
 

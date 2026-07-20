@@ -206,3 +206,30 @@ describe('zoom buttons', () => {
     expect(after.getAttribute('cy')).toBe(beforeCy)
   })
 })
+
+describe('scroll-wheel zoom', () => {
+  it('scrolling up over a vertex zooms in anchored at the cursor, keeping that vertex fixed on screen', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const anchorPos = pointerAt(model.floors, 0, 0) // vertex a=(0,0)'s own screen position
+    const before = svg.querySelectorAll('[data-el="vertex"]')
+    const beforeAnchorCx = before[0].getAttribute('cx'), beforeAnchorCy = before[0].getAttribute('cy')
+    const beforeFarCx = Number(before[2].getAttribute('cx')) // vertex c=(6,4), far from the anchor
+    fireEvent.wheel(svg, { ...anchorPos, deltaY: -100 })
+    const after = svg.querySelectorAll('[data-el="vertex"]')
+    expect(Number(after[0].getAttribute('cx'))).toBeCloseTo(Number(beforeAnchorCx))
+    expect(Number(after[0].getAttribute('cy'))).toBeCloseTo(Number(beforeAnchorCy))
+    expect(Number(after[2].getAttribute('cx'))).toBeGreaterThan(beforeFarCx) // scale increased, far corner pushed further away
+  })
+
+  it('scrolling down zooms out', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const beforeFarCx = Number(svg.querySelectorAll('[data-el="vertex"]')[2].getAttribute('cx'))
+    fireEvent.wheel(svg, { ...pointerAt(model.floors, 0, 0), deltaY: 100 })
+    const afterFarCx = Number(svg.querySelectorAll('[data-el="vertex"]')[2].getAttribute('cx'))
+    expect(afterFarCx).toBeLessThan(beforeFarCx)
+  })
+})
