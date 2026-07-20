@@ -28,6 +28,7 @@ const TOOLS: Tool[] = ['select', 'wall', 'door', 'window', 'delete']
 const MIN_CAL_PX = 1e-6
 const ZOOM_STEP = 1.25
 const WHEEL_ZOOM_STEP = 1.08
+const PAN_DRAG_THRESHOLD = 4 // SVG user-space px before a background press counts as a pan, not a click
 
 /** Nearest edge to a point, WITHOUT the T-junction endpoint-guard — used only for
  * placing a door/window opening on whatever wall the user clicks near, matching the old
@@ -69,6 +70,8 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   // One history-creating SET_MODEL per drag gesture; every subsequent pointermove frame in
   // the same gesture uses DRAG_MODEL (no push). Reset once at the top of onPointerDown.
   const dragMovedRef = useRef(false)
+  const panRef = useRef<{ startUx: number; startUy: number; camera: Camera } | null>(null)
+  const panMovedRef = useRef(false)
   const [state, dispatch] = useReducer(reducer, undefined, () =>
     initialState(isEmpty(initial as FloorPlanModel) ? emptyModel() : (initial as FloorPlanModel)))
   const svgRef = useRef<SVGSVGElement>(null)
@@ -189,19 +192,28 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     }
   }
 
-  const pointerToWorld = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
+  /** Screen client coords -> SVG user-space (viewBox) coords, independent of the camera --
+   * the pre-userToWorld half of pointerToWorld, split out so pan-drag can diff two
+   * user-space points using the FIXED start-of-gesture camera instead of the live one
+   * (which is being updated every frame of the pan itself). */
+  const pointerToUser = (e: { clientX: number; clientY: number }): { ux: number; uy: number } => {
     const svg = svgRef.current
-    if (!svg) return { x: 0, y: 0 }
+    if (!svg) return { ux: 0, uy: 0 }
     const ctm = typeof svg.getScreenCTM === 'function' ? svg.getScreenCTM() : null
     if (ctm) {
       const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY
       const u = p.matrixTransform(ctm.inverse())
-      return t.userToWorld(u.x, u.y)
+      return { ux: u.x, uy: u.y }
     }
     const rect = svg.getBoundingClientRect()
     const sx = rect.width ? (e.clientX - rect.left) * (W / rect.width) : e.clientX - rect.left
     const sy = rect.height ? (e.clientY - rect.top) * (H / rect.height) : e.clientY - rect.top
-    return t.userToWorld(sx, sy)
+    return { ux: sx, uy: sy }
+  }
+
+  const pointerToWorld = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
+    const { ux, uy } = pointerToUser(e)
+    return t.userToWorld(ux, uy)
   }
 
   useEffect(() => {
@@ -313,7 +325,10 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       dispatch({ type: 'SET_SEL', sel: { t: 'opening', edgeId, index } })
       dispatch({ type: 'SET_DRAG', drag: { kind: 'opening', id: edgeId, openingIndex: index } })
     } else {
-      dispatch({ type: 'SET_SEL', sel: null }); dispatch({ type: 'SET_DRAG', drag: null })
+      const { ux, uy } = pointerToUser(e)
+      const centerWorld = t.userToWorld(W / 2, H / 2)
+      panRef.current = { startUx: ux, startUy: uy, camera: { scale: t.scale, centerX: centerWorld.x, centerY: centerWorld.y } }
+      panMovedRef.current = false
     }
     const svg = svgRef.current
     if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId) } catch { /* jsdom */ } }
@@ -324,6 +339,16 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       if (!calDragRef.current) return
       const p = pointerToWorld(e)
       setCalDraft(d => d ? { p0: d.p0, p1: [p.x, p.y] } : d)
+      return
+    }
+    if (panRef.current) {
+      const { ux, uy } = pointerToUser(e)
+      const dxUser = ux - panRef.current.startUx, dyUser = uy - panRef.current.startUy
+      if (Math.abs(dxUser) > PAN_DRAG_THRESHOLD || Math.abs(dyUser) > PAN_DRAG_THRESHOLD) panMovedRef.current = true
+      if (panMovedRef.current) {
+        const { scale, centerX, centerY } = panRef.current.camera
+        dispatch({ type: 'SET_CAMERA', camera: { scale, centerX: centerX - dxUser / scale, centerY: centerY + dyUser / scale } })
+      }
       return
     }
     const drag = ui.drag
@@ -364,6 +389,11 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
 
   const onPointerUp = () => {
     if (ui.calibrating) { calDragRef.current = false; return }
+    if (panRef.current) {
+      if (!panMovedRef.current) { dispatch({ type: 'SET_SEL', sel: null }); dispatch({ type: 'SET_DRAG', drag: null }) }
+      panRef.current = null
+      return
+    }
     const drag = ui.drag
     if (!drag) return
     // Resolve the structural decision (vertex-merge / T-junction split) once, against the

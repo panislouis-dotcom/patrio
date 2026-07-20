@@ -233,3 +233,36 @@ describe('scroll-wheel zoom', () => {
     expect(afterFarCx).toBeLessThan(beforeFarCx)
   })
 })
+
+describe('pan via drag on empty canvas', () => {
+  it('clicking empty canvas with no movement still clears the selection', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const vertexHandle = svg.querySelectorAll('[data-el="vertex"]')[0]
+    fireEvent.pointerDown(vertexHandle, pointerAt(model.floors, 0, 0))
+    fireEvent.pointerUp(svg)
+    expect(svg.querySelectorAll('[data-el="vertex"]')[0].getAttribute('r')).toBe('6') // selected
+    // (850, 30) is well outside the model's auto-fit bounding box (screen x:[48,744], y:[48,512]
+    // for this model), so it hits no vertex/edge/room element -- truly empty canvas.
+    fireEvent.pointerDown(svg, { clientX: 850, clientY: 30 })
+    fireEvent.pointerUp(svg)
+    expect(svg.querySelectorAll('[data-el="vertex"]')[0].getAttribute('r')).toBe('4.5') // deselected
+  })
+
+  it('dragging on empty canvas pans the view instead of clearing the selection', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const vertexHandle = svg.querySelectorAll('[data-el="vertex"]')[0]
+    fireEvent.pointerDown(vertexHandle, pointerAt(model.floors, 0, 0))
+    fireEvent.pointerUp(svg)
+    const beforeCx = Number(vertexHandle.getAttribute('cx'))
+    fireEvent.pointerDown(svg, { clientX: 850, clientY: 30 })
+    fireEvent.pointerMove(svg, { clientX: 800, clientY: 80 })
+    fireEvent.pointerUp(svg)
+    const after = svg.querySelectorAll('[data-el="vertex"]')[0]
+    expect(Number(after.getAttribute('cx'))).not.toBe(beforeCx) // the view panned
+    expect(after.getAttribute('r')).toBe('6') // selection preserved, NOT cleared by the drag
+  })
+})
