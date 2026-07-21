@@ -27,10 +27,14 @@ export function ProjectPhotoGallery({ images, base, onUpload, onDelete, onFlipTy
   const despuesRef = useRef<HTMLInputElement>(null)
   const lightboxRef = useRef<HTMLDivElement>(null)
 
-  const visible = filter === 'all' ? images : images.filter(img => img.imageType === filter)
+  const antes = images.filter(img => img.imageType === 'antes')
+  const despues = images.filter(img => img.imageType === 'despues')
+  // 'all' orders antes-first so the strip and the prev/next navigation both tell the before → after story
+  const visible = filter === 'antes' ? antes : filter === 'despues' ? despues : [...antes, ...despues]
   const total = visible.length
   const safeIdx = total > 0 ? Math.min(selected, total - 1) : 0
   const current = visible[safeIdx] ?? null
+  const counts = { all: images.length, antes: antes.length, despues: despues.length } as const
 
   useEffect(() => { setSelected(0) }, [filter])
   useEffect(() => { if (lightbox && lightboxRef.current) lightboxRef.current.focus() }, [lightbox])
@@ -63,6 +67,51 @@ export function ProjectPhotoGallery({ images, base, onUpload, onDelete, onFlipTy
     else if (e.key === 'ArrowRight') next()
   }
 
+  function renderThumb(img: ProjectImage, i: number) {
+    return (
+      <div key={img.id} style={{ position: 'relative', flexShrink: 0 }}
+        onMouseEnter={() => setHoveredThumb(img.id)} onMouseLeave={() => setHoveredThumb(null)}>
+        <img src={`${base}/files/${img.filePath}`} alt="" onClick={() => setSelected(i)}
+          style={{ width: '52px', height: '52px', objectFit: 'cover', cursor: 'pointer', display: 'block',
+            outline: i === safeIdx ? `2px solid ${colors.primary}` : 'none', outlineOffset: '-2px',
+            borderBottom: `3px solid ${TYPE_COLOR[img.imageType]}`, boxSizing: 'border-box' }} />
+        <button onClick={() => handleDelete(img.id)} style={{ position: 'absolute', top: '2px', right: '2px', width: '16px', height: '16px', background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>&times;</button>
+        {hoveredThumb === img.id && (
+          <button onClick={() => handleFlip(img)} disabled={flipping === img.id}
+            style={{ position: 'absolute', top: '2px', right: '20px', width: '16px', height: '16px', background: 'rgba(0,0,0,0.7)', border: 'none', color: colors.secondary, cursor: flipping === img.id ? 'wait' : 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+            {flipping === img.id ? '…' : '⇄'}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  function uploadButton(type: ImageType) {
+    const ref = type === 'antes' ? antesRef : despuesRef
+    const color = TYPE_COLOR[type]
+    return (
+      <button onClick={() => ref.current?.click()} disabled={uploading !== null}
+        style={{ flexShrink: 0, width: '52px', height: '52px', background: 'transparent', border: `1px dashed ${color}55`, color: uploading === type ? colors.secondary : color, cursor: uploading !== null ? 'wait' : 'pointer', fontFamily: fonts.label, fontSize: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', letterSpacing: '0.06em' }}>
+        <span style={{ fontSize: '16px', lineHeight: 1 }}>{uploading === type ? '…' : '+'}</span>
+        <span>{type}</span>
+      </button>
+    )
+  }
+
+  // A labeled group (ANTES / DESPUÉS) with its own count, thumbnails, and upload button.
+  // startIndex maps each thumb to its position in `visible` so selection stays in sync.
+  function thumbGroup(type: ImageType, thumbs: ProjectImage[], startIndex: number) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+        <span style={{ flexShrink: 0, alignSelf: 'center', fontFamily: fonts.label, fontSize: '8px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: TYPE_COLOR[type], padding: '0 4px', whiteSpace: 'nowrap' }}>
+          {TYPE_LABEL[type]}<span style={{ opacity: 0.5, marginLeft: '3px' }}>{thumbs.length}</span>
+        </span>
+        {thumbs.map((img, k) => renderThumb(img, startIndex + k))}
+        {uploadButton(type)}
+      </div>
+    )
+  }
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Filter bar */}
@@ -76,6 +125,7 @@ export function ProjectPhotoGallery({ images, base, onUpload, onDelete, onFlipTy
             color: filter === f ? colors.neutral : colors.secondary, cursor: 'pointer',
           }}>
             {f === 'all' ? 'TODAS' : f === 'antes' ? 'ANTES' : 'DESPUÉS'}
+            <span style={{ marginLeft: '4px', opacity: 0.5 }}>{counts[f]}</span>
           </button>
         ))}
       </div>
@@ -104,40 +154,15 @@ export function ProjectPhotoGallery({ images, base, onUpload, onDelete, onFlipTy
         )}
       </div>
 
-      {/* Thumbnail strip */}
+      {/* Thumbnail strip — grouped by type so the before → after story reads clearly */}
       <div style={{ flexShrink: 0, display: 'flex', gap: '4px', padding: '8px', overflowX: 'auto', background: colors.dark, borderTop: `1px solid ${colors.border}`, scrollbarWidth: 'none', alignItems: 'center' }}>
-        {visible.map((img, i) => (
-          <div key={img.id} style={{ position: 'relative', flexShrink: 0 }}
-            onMouseEnter={() => setHoveredThumb(img.id)} onMouseLeave={() => setHoveredThumb(null)}>
-            <img src={`${base}/files/${img.filePath}`} alt="" onClick={() => setSelected(i)}
-              style={{ width: '52px', height: '52px', objectFit: 'cover', cursor: 'pointer', display: 'block', border: i === safeIdx ? `2px solid ${colors.primary}` : '2px solid transparent', boxSizing: 'border-box' }} />
-            {/* type dot */}
-            <div style={{ position: 'absolute', bottom: '3px', left: '3px', width: '7px', height: '7px', borderRadius: '50%', background: TYPE_COLOR[img.imageType] }} />
-            {/* delete */}
-            <button onClick={() => handleDelete(img.id)} style={{ position: 'absolute', top: '2px', right: '2px', width: '16px', height: '16px', background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>&times;</button>
-            {/* flip — on hover */}
-            {hoveredThumb === img.id && (
-              <button onClick={() => handleFlip(img)} disabled={flipping === img.id}
-                style={{ position: 'absolute', top: '2px', right: '20px', width: '16px', height: '16px', background: 'rgba(0,0,0,0.7)', border: 'none', color: colors.secondary, cursor: flipping === img.id ? 'wait' : 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
-                {flipping === img.id ? '…' : '⇄'}
-              </button>
-            )}
-          </div>
-        ))}
-
-        {/* Upload ANTES */}
-        <button onClick={() => antesRef.current?.click()} disabled={uploading !== null}
-          style={{ flexShrink: 0, width: '52px', height: '52px', background: 'transparent', border: `1px dashed ${colors.tertiary}55`, color: uploading === 'antes' ? colors.secondary : colors.tertiary, cursor: uploading !== null ? 'wait' : 'pointer', fontFamily: fonts.label, fontSize: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', letterSpacing: '0.06em' }}>
-          <span style={{ fontSize: '16px', lineHeight: 1 }}>{uploading === 'antes' ? '…' : '+'}</span>
-          <span>antes</span>
-        </button>
-
-        {/* Upload DESPUÉS */}
-        <button onClick={() => despuesRef.current?.click()} disabled={uploading !== null}
-          style={{ flexShrink: 0, width: '52px', height: '52px', background: 'transparent', border: `1px dashed ${colors.primary}55`, color: uploading === 'despues' ? colors.secondary : colors.primary, cursor: uploading !== null ? 'wait' : 'pointer', fontFamily: fonts.label, fontSize: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', letterSpacing: '0.06em' }}>
-          <span style={{ fontSize: '16px', lineHeight: 1 }}>{uploading === 'despues' ? '…' : '+'}</span>
-          <span>después</span>
-        </button>
+        {filter === 'all' ? (
+          <>
+            {thumbGroup('antes', antes, 0)}
+            <div style={{ width: '1px', alignSelf: 'stretch', background: colors.border, flexShrink: 0, margin: '2px 4px' }} />
+            {thumbGroup('despues', despues, antes.length)}
+          </>
+        ) : filter === 'antes' ? thumbGroup('antes', antes, 0) : thumbGroup('despues', despues, 0)}
 
         <input ref={antesRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => handleUpload('antes', e)} />
         <input ref={despuesRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => handleUpload('despues', e)} />
