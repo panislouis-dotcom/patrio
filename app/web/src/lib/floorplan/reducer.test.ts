@@ -169,3 +169,74 @@ describe('removeVertexFromFloor / removeEdgeFromFloor / removeOpeningFromFloor',
     expect(f.edges[e].openings).toHaveLength(0)
   })
 })
+
+describe('camera actions (view-only, never touch history)', () => {
+  it('starts with no camera (auto-fit)', () => {
+    const { model } = modelWithRectangle()
+    expect(initialState(model).ui.camera).toBeNull()
+  })
+
+  it('SET_CAMERA sets the camera without pushing history or marking dirty', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_CAMERA', camera: { scale: 100, centerX: 2, centerY: 1 } })
+    expect(s.ui.camera).toEqual({ scale: 100, centerX: 2, centerY: 1 })
+    expect(s.past).toHaveLength(0)
+    expect(s.dirty).toBe(false)
+  })
+
+  it('RESET_CAMERA clears the camera back to auto-fit (null)', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_CAMERA', camera: { scale: 100, centerX: 2, centerY: 1 } })
+    s = reducer(s, { type: 'RESET_CAMERA' })
+    expect(s.ui.camera).toBeNull()
+    expect(s.past).toHaveLength(0)
+  })
+
+  it('ZOOM_AT zooms around the anchor, keeping the anchor point\'s world position fixed', () => {
+    const { model } = modelWithRectangle()
+    const s = reducer(initialState(model), {
+      type: 'ZOOM_AT', anchor: { x: 4, y: 0 }, factor: 2, seed: { scale: 100, centerX: 0, centerY: 0 },
+    })
+    expect(s.ui.camera).toEqual({ scale: 200, centerX: 2, centerY: 0 })
+    expect(s.past).toHaveLength(0)
+    expect(s.dirty).toBe(false)
+  })
+
+  it('ZOOM_AT uses the provided seed only while camera is still null', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, {
+      type: 'ZOOM_AT', anchor: { x: 0, y: 0 }, factor: 1.5, seed: { scale: 50, centerX: 0, centerY: 0 },
+    })
+    expect(s.ui.camera!.scale).toBe(75)
+    // second zoom: camera is no longer null, so the (now-stale) seed must be ignored
+    s = reducer(s, {
+      type: 'ZOOM_AT', anchor: { x: 0, y: 0 }, factor: 2, seed: { scale: 999, centerX: 0, centerY: 0 },
+    })
+    expect(s.ui.camera!.scale).toBe(150)
+  })
+
+  it('ZOOM_AT clamps scale to sane bounds instead of zooming without limit', () => {
+    const { model } = modelWithRectangle()
+    const zoomedIn = reducer(initialState(model), {
+      type: 'ZOOM_AT', anchor: { x: 0, y: 0 }, factor: 1e9, seed: { scale: 100, centerX: 0, centerY: 0 },
+    })
+    expect(zoomedIn.ui.camera!.scale).toBeLessThan(1e9)
+    const zoomedOut = reducer(initialState(model), {
+      type: 'ZOOM_AT', anchor: { x: 0, y: 0 }, factor: 1e-9, seed: { scale: 100, centerX: 0, centerY: 0 },
+    })
+    expect(zoomedOut.ui.camera!.scale).toBeGreaterThan(0)
+  })
+
+  it('SWITCH_FLOOR and ADD_FLOOR preserve the camera (view state is shared across floors, not reset)', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_CAMERA', camera: { scale: 100, centerX: 2, centerY: 1 } })
+    s = reducer(s, { type: 'ADD_FLOOR' })
+    expect(s.ui.camera).toEqual({ scale: 100, centerX: 2, centerY: 1 })
+    s = reducer(s, { type: 'SWITCH_FLOOR', index: 0 })
+    expect(s.ui.camera).toEqual({ scale: 100, centerX: 2, centerY: 1 })
+  })
+})

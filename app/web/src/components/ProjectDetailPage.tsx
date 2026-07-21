@@ -1020,13 +1020,15 @@ export function ProjectDetailPage() {
 
           {/* PLANO tab */}
           {centerTab === 'plano' && geometry !== null && (
-            <FloorPlanEditor
-              initial={geometry}
-              onSave={async m => { const saved = await saveProjectGeometry(projectId, m); setGeometry(saved) }}
-              onUploadImage={file => uploadFloorplanImage(projectId, file)}
-              onReady={onPlanReady}
-              onDirtyChange={setPlanDirty}
-            />
+            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+              <FloorPlanEditor
+                initial={geometry}
+                onSave={async m => { const saved = await saveProjectGeometry(projectId, m); setGeometry(saved) }}
+                onUploadImage={file => uploadFloorplanImage(projectId, file)}
+                onReady={onPlanReady}
+                onDirtyChange={setPlanDirty}
+              />
+            </div>
           )}
         </div>
 

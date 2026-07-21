@@ -171,3 +171,98 @@ describe('T-junction creation via drag-near-edge', () => {
     expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(6)
   })
 })
+
+describe('zoom buttons', () => {
+  it('clicking + zooms in around the canvas center, pushing off-center vertices farther from center on screen', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const vertexHandle = container.querySelectorAll('[data-el="vertex"]')[0] // (0,0) -- far from canvas center
+    const beforeCx = Number(vertexHandle.getAttribute('cx'))
+    fireEvent.click(container.querySelector('[aria-label="Zoom in"]')!)
+    const afterCx = Number(container.querySelectorAll('[data-el="vertex"]')[0].getAttribute('cx'))
+    expect(Math.abs(afterCx - 450)).toBeGreaterThan(Math.abs(beforeCx - 450)) // 450 = W/2
+  })
+
+  it('clicking - zooms out, pulling vertices closer to the canvas center', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const vertexHandle = container.querySelectorAll('[data-el="vertex"]')[0]
+    const beforeCx = Number(vertexHandle.getAttribute('cx'))
+    fireEvent.click(container.querySelector('[aria-label="Zoom out"]')!)
+    const afterCx = Number(container.querySelectorAll('[data-el="vertex"]')[0].getAttribute('cx'))
+    expect(Math.abs(afterCx - 450)).toBeLessThan(Math.abs(beforeCx - 450))
+  })
+
+  it('the fit button restores the original auto-fit view after zooming', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const vertexHandle = container.querySelectorAll('[data-el="vertex"]')[0]
+    const beforeCx = vertexHandle.getAttribute('cx'), beforeCy = vertexHandle.getAttribute('cy')
+    fireEvent.click(container.querySelector('[aria-label="Zoom in"]')!)
+    fireEvent.click(container.querySelector('[aria-label="Zoom in"]')!)
+    fireEvent.click(container.querySelector('[aria-label="Fit to screen"]')!)
+    const after = container.querySelectorAll('[data-el="vertex"]')[0]
+    expect(after.getAttribute('cx')).toBe(beforeCx)
+    expect(after.getAttribute('cy')).toBe(beforeCy)
+  })
+})
+
+describe('scroll-wheel zoom', () => {
+  it('scrolling up over a vertex zooms in anchored at the cursor, keeping that vertex fixed on screen', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const anchorPos = pointerAt(model.floors, 0, 0) // vertex a=(0,0)'s own screen position
+    const before = svg.querySelectorAll('[data-el="vertex"]')
+    const beforeAnchorCx = before[0].getAttribute('cx'), beforeAnchorCy = before[0].getAttribute('cy')
+    const beforeFarCx = Number(before[2].getAttribute('cx')) // vertex c=(6,4), far from the anchor
+    fireEvent.wheel(svg, { ...anchorPos, deltaY: -100 })
+    const after = svg.querySelectorAll('[data-el="vertex"]')
+    expect(Number(after[0].getAttribute('cx'))).toBeCloseTo(Number(beforeAnchorCx))
+    expect(Number(after[0].getAttribute('cy'))).toBeCloseTo(Number(beforeAnchorCy))
+    expect(Number(after[2].getAttribute('cx'))).toBeGreaterThan(beforeFarCx) // scale increased, far corner pushed further away
+  })
+
+  it('scrolling down zooms out', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const beforeFarCx = Number(svg.querySelectorAll('[data-el="vertex"]')[2].getAttribute('cx'))
+    fireEvent.wheel(svg, { ...pointerAt(model.floors, 0, 0), deltaY: 100 })
+    const afterFarCx = Number(svg.querySelectorAll('[data-el="vertex"]')[2].getAttribute('cx'))
+    expect(afterFarCx).toBeLessThan(beforeFarCx)
+  })
+})
+
+describe('pan via drag on empty canvas', () => {
+  it('clicking empty canvas with no movement still clears the selection', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const vertexHandle = svg.querySelectorAll('[data-el="vertex"]')[0]
+    fireEvent.pointerDown(vertexHandle, pointerAt(model.floors, 0, 0))
+    fireEvent.pointerUp(svg)
+    expect(svg.querySelectorAll('[data-el="vertex"]')[0].getAttribute('r')).toBe('6') // selected
+    // (850, 30) is well outside the model's auto-fit bounding box (screen x:[48,744], y:[48,512]
+    // for this model), so it hits no vertex/edge/room element -- truly empty canvas.
+    fireEvent.pointerDown(svg, { clientX: 850, clientY: 30 })
+    fireEvent.pointerUp(svg)
+    expect(svg.querySelectorAll('[data-el="vertex"]')[0].getAttribute('r')).toBe('4.5') // deselected
+  })
+
+  it('dragging on empty canvas pans the view instead of clearing the selection', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const vertexHandle = svg.querySelectorAll('[data-el="vertex"]')[0]
+    fireEvent.pointerDown(vertexHandle, pointerAt(model.floors, 0, 0))
+    fireEvent.pointerUp(svg)
+    const beforeCx = Number(vertexHandle.getAttribute('cx'))
+    fireEvent.pointerDown(svg, { clientX: 850, clientY: 30 })
+    fireEvent.pointerMove(svg, { clientX: 800, clientY: 80 })
+    fireEvent.pointerUp(svg)
+    const after = svg.querySelectorAll('[data-el="vertex"]')[0]
+    expect(Number(after.getAttribute('cx'))).not.toBe(beforeCx) // the view panned
+    expect(after.getAttribute('r')).toBe('6') // selection preserved, NOT cleared by the drag
+  })
+})
