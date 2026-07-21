@@ -488,7 +488,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
         />
       )}
 
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           <FloorPlanCanvas
             ref={svgRef} model={model} floor={floor} t={t} rooms={rooms} angles={angles} ui={ui} editName={editName}
