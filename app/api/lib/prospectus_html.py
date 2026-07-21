@@ -7,6 +7,11 @@ from markupsafe import escape as _esc
 
 _FONTS_DIR = Path(__file__).resolve().parent.parent / "fonts"
 
+_MESES = [
+    "", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+]
+
 
 def _font_b64(name: str) -> str:
     path = (_FONTS_DIR / name).resolve()
@@ -38,403 +43,403 @@ def _build_fonts_css() -> str:
     return "\n".join(blocks)
 
 
+# ── Patrio brand palette (from the marketing site + DESIGN.md) ───────────────
+#   green #6B8A5E · green-dark #5A7A4E · green tints #F0F4EE / #E4EBDF
+#   ink #1A1A1A · secondary #6B6B6B · border #E5E2DC · warm #F8F7F4 · white
+#   terracotta #A16A3C used only as a hairline warm accent.
 _BODY_CSS = """
 @page { size: A4; margin: 0; }
-html { margin: 0; padding: 0; background: #F2F0EB; }
+:root {
+  --green: #6B8A5E; --green-dark: #5A7A4E; --green-tint: #F0F4EE; --green-wash: #E4EBDF;
+  --ink: #1A1A1A; --sec: #6B6B6B; --border: #E5E2DC; --warm: #F8F7F4; --terra: #A16A3C;
+  --pad: 20mm;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Inter', sans-serif; background: #F2F0EB; color: #1A1A1A; font-size: 12pt; line-height: 1.75;
-       width: 210mm; overflow: hidden; }
+html { background: #FFFFFF; }
+body { font-family: 'Inter', sans-serif; background: #FFFFFF; color: var(--ink);
+       font-size: 10.5pt; line-height: 1.62; width: 210mm; -webkit-print-color-adjust: exact; }
 
-.img-hero { display: block; width: 100%; object-fit: contain; object-position: center center;
-            background: #F2F0EB; }
+.page-block { page-break-after: always; break-after: always; overflow: hidden; }
+.page-block:last-child { page-break-after: auto; break-after: auto; }
 
-/* ── Oportunidad: hero expands to fill remaining page space ─────────── */
-.section-oportunidad               { display: flex; flex-direction: column; overflow: hidden; }
-.section-oportunidad .section-header  { flex-shrink: 0; }
-.section-oportunidad .img-hero     { flex: 1; min-height: 0; }
-.section-oportunidad .content-section { flex-shrink: 0; padding: 20px 80px 24px; }
+/* ── Shared type ─────────────────────────────────────────────────────────── */
+.kicker { font-family: 'Inter', sans-serif; font-size: 6.5pt; font-weight: 600;
+          letter-spacing: 0.26em; text-transform: uppercase; color: var(--sec); }
+.serif  { font-family: 'Playfair Display', serif; font-weight: 400; }
 
-.img-strip-wrap { margin-top: 24px; page-break-inside: avoid; break-inside: avoid; }
-.img-strip-label { font-family: 'Inter', sans-serif; font-size: 6.5pt; letter-spacing: 0.18em;
-                   text-transform: uppercase; color: #6B6B6B; margin-bottom: 6px; }
-.img-strip     { display: flex; gap: 6px; }
-.img-strip img { flex: 1; height: 150px; object-fit: contain; object-position: top center;
-                 background: #F2F0EB; min-width: 0; }
+/* ── Section band (green) ────────────────────────────────────────────────── */
+.band { background: var(--green); color: #fff; padding: 13mm var(--pad) 10mm; }
+.band .kicker { color: rgba(255,255,255,0.72); margin-bottom: 8px; }
+.band h2 { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 23pt;
+           color: #fff; line-height: 1.04; }
+.band .sub { font-family: 'Inter', sans-serif; font-size: 8.5pt; color: rgba(255,255,255,0.82);
+             margin-top: 7px; letter-spacing: 0.02em; }
 
-.cover { height: 297mm; background: #1A1A1A; padding: 72px 80px; page-break-after: always; break-after: always;
-         display: flex; flex-direction: column; justify-content: space-between; }
-.footer-section { height: 297mm; background: #1A1A1A; padding: 64px 80px; page-break-before: always; break-before: always;
-                  display: flex; flex-direction: column; justify-content: space-between; }
+/* ── Metric grid ─────────────────────────────────────────────────────────── */
+.metrics { display: grid; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+.metrics-4 { grid-template-columns: repeat(4, 1fr); }
+.metrics-5 { grid-template-columns: repeat(5, 1fr); }
+.metric { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+          padding: 5mm 5mm 5.5mm; }
+.metric .v { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 20pt;
+             color: var(--green-dark); line-height: 1; }
+.metric .v small { font-size: 11pt; color: var(--green); }
+.metric .l { font-family: 'Inter', sans-serif; font-size: 5.8pt; font-weight: 600;
+             letter-spacing: 0.15em; text-transform: uppercase; color: var(--sec); margin-top: 6px; }
 
-.wordmark { font-family: 'Inter', sans-serif; font-size: 10pt; font-weight: 400;
-            letter-spacing: 0.55em; text-transform: uppercase; color: #F2F0EB; }
-.cover-prelabel { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
-                  letter-spacing: 0.25em; text-transform: uppercase; color: rgba(242,240,235,0.8); margin-bottom: 16px; }
-h1 { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 36pt; color: #F2F0EB; line-height: 1.05; }
-.cover-meta   { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
-                letter-spacing: 0.08em; color: rgba(242,240,235,0.6); margin-top: 20px; }
-.cover-footer { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
-                letter-spacing: 0.08em; color: rgba(242,240,235,0.4); }
+/* ── Image strips ────────────────────────────────────────────────────────── */
+.strip-label { font-family: 'Inter', sans-serif; font-size: 6pt; font-weight: 600;
+               letter-spacing: 0.18em; text-transform: uppercase; color: var(--sec); margin-bottom: 5px; }
+.strip { display: flex; gap: 4px; }
+.strip img { flex: 1; min-width: 0; object-fit: cover; object-position: center;
+             background: var(--warm); display: block; }
 
-.page-section         { height: 297mm; overflow: hidden; page-break-after: always; break-after: always; }
-.section-vision       { --section-color: #A16A3C; }
-.section-track        { --section-color: #8C6D87; }
-.section-oportunidad  { --section-color: #697692; }
+/* ── Data tables ─────────────────────────────────────────────────────────── */
+table.kv { width: 100%; border-collapse: collapse; }
+table.kv td { font-family: 'Inter', sans-serif; font-size: 8.5pt; padding: 4.5px 0;
+              border-bottom: 1px solid var(--border); }
+table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
+.col-label { font-family: 'Inter', sans-serif; font-size: 6.5pt; font-weight: 600;
+             letter-spacing: 0.16em; text-transform: uppercase; color: var(--green-dark);
+             margin-bottom: 9px; }
 
-/* ── Track Record: compact text, bigger images ──────────────────────── */
-.section-track .content-section      { padding: 20px 80px 20px; }
-.section-track h2                    { font-size: 12pt; margin-bottom: 8px; }
-.section-track .metric-grid          { margin-top: 10px; }
-.section-track .metric-card          { padding: 11px 16px; }
-.section-track .metric-value.compact { font-size: 16pt; }
-.section-track .metric-label         { margin-top: 4px; font-size: 6pt; }
-.section-track .two-col              { margin-top: 12px; gap: 28px; }
-.section-track .col-label            { margin-bottom: 8px; font-size: 6.5pt; }
-.section-track table.timeline td     { font-size: 8pt; padding: 3px 0; }
-.section-track table.timeline td.tdate { font-size: 6.5pt; padding-right: 16px; }
-.section-track table.budget td       { font-size: 8pt; padding: 3px 0; }
-.section-track .img-strip-wrap  { margin-top: 10px; }
-.section-track .img-strip-label { margin-bottom: 4px; }
-.section-track .img-strip img   { height: 185px; }
+/* ══ COVER ═══════════════════════════════════════════════════════════════ */
+.cover { height: 297mm; padding: 24mm var(--pad) 20mm; display: flex; flex-direction: column; }
+.cover-top { display: flex; align-items: baseline; justify-content: space-between; }
+.wordmark { font-family: 'Inter', sans-serif; font-size: 12pt; font-weight: 600;
+            letter-spacing: 0.5em; text-transform: uppercase; color: var(--ink); }
+.wordmark-tag { font-family: 'Inter', sans-serif; font-style: italic; font-weight: 400;
+                font-size: 8pt; color: var(--sec); }
+.cover-rule { height: 2px; background: var(--green); width: 54px; margin-top: 14px; }
+.cover-main { margin-top: auto; margin-bottom: auto; }
+.cover-main .kicker { margin-bottom: 16px; }
+.cover h1 { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 40pt;
+            color: var(--ink); line-height: 1.06; letter-spacing: -0.01em; max-width: 150mm; }
+.cover-lede { font-family: 'Inter', sans-serif; font-size: 11pt; color: var(--sec);
+              margin-top: 18px; max-width: 130mm; line-height: 1.7; }
+.cover-lede b { color: var(--green-dark); font-weight: 600; }
 
-.section-divider      { height: 297mm; page-break-after: always; break-after: always;
-                        display: flex; flex-direction: column; align-items: center; justify-content: center;
-                        text-align: center; padding: 80px; gap: 24px; }
-.divider-label        { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
-                        letter-spacing: 0.45em; text-transform: uppercase; color: rgba(242,240,235,0.5); }
-.divider-title        { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 52pt;
-                        color: #F2F0EB; line-height: 1.0; }
-.divider-rule         { width: 40px; height: 1px; background: rgba(242,240,235,0.3); }
-.divider-count        { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
-                        letter-spacing: 0.2em; color: rgba(242,240,235,0.35); }
+.vp { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+      border: 1px solid var(--border); background: var(--green-tint); margin-top: 26px; }
+.vp-item { padding: 9mm 8mm; border-right: 1px solid var(--border); }
+.vp-item:last-child { border-right: none; }
+.vp-v { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 22pt; color: var(--green-dark); line-height: 1; }
+.vp-l { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 600; letter-spacing: 0.12em;
+        text-transform: uppercase; color: var(--ink); margin-top: 8px; }
+.vp-d { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec); margin-top: 4px; line-height: 1.4; }
 
-.section-header { padding: 24px 80px; background: var(--section-color);
-                  page-break-after: avoid; break-after: avoid; }
-.band-label { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
-              letter-spacing: 0.25em; text-transform: uppercase; color: rgba(242,240,235,0.8); margin-bottom: 8px; }
-.band-title { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 30pt;
-              color: #F2F0EB; line-height: 1.1; }
+.cover-foot { margin-top: 22px; font-family: 'Inter', sans-serif; font-size: 6.5pt;
+              letter-spacing: 0.06em; color: var(--sec); display: flex; justify-content: space-between; }
 
-.content-section { padding: 48px 80px; page-break-inside: avoid; break-inside: avoid; }
-h2 { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 16pt;
-     color: #1A1A1A; line-height: 1.2; margin-bottom: 20px; }
-h3 { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 400;
-     letter-spacing: 0.18em; text-transform: uppercase; color: #6B6B6B; margin-bottom: 12px; }
-p { font-family: 'Inter', sans-serif; font-size: 12pt; color: #1A1A1A;
-    max-width: 540px; margin-bottom: 14px; }
-p.caption { font-size: 9pt; color: #6B6B6B; }
-strong { color: var(--section-color); font-weight: 500; }
+/* ══ TRACK RECORD — half-page project cards, 2 per sheet ═════════════════ */
+.sheet { height: 297mm; display: flex; flex-direction: column; }
+.proj { height: 148.5mm; display: flex; flex-direction: column; overflow: hidden;
+        border-bottom: 1px solid var(--border); }
+.proj:last-child { border-bottom: none; }
+.proj .band { padding: 8mm var(--pad) 6.5mm; background: var(--green); }
+.proj .band h2 { font-size: 17pt; }
+.proj .band .sub { margin-top: 5px; font-size: 8pt; }
+.proj-body { flex: 1; min-height: 0; padding: 6mm var(--pad) 6mm; display: flex; flex-direction: column; }
+.proj .metrics { margin-bottom: 5mm; }
+.proj .metric { padding: 3.6mm 5mm; }
+.proj .metric .v { font-size: 16pt; }
+.proj-imgs { flex: 1; min-height: 0; display: flex; gap: 7mm; }
+.proj-imgs > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.proj-imgs .strip { flex: 1; min-height: 0; }
+.proj-imgs .strip img { height: 100%; }
 
-.metric-grid   { display: grid; border: 1px solid rgba(26,26,26,0.1);
-                 page-break-inside: avoid; break-inside: avoid; margin-top: 24px; }
-.metric-grid-3 { grid-template-columns: repeat(3, 1fr); }
-.metric-grid-4 { grid-template-columns: repeat(4, 1fr); }
-.metric-card   { padding: 24px 20px; border-right: 1px solid rgba(26,26,26,0.1); }
-.metric-card:last-child { border-right: none; }
-.metric-value  { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 28pt;
-                 color: var(--section-color); line-height: 1; }
-.metric-value.compact { font-size: 20pt; }
-.metric-label  { font-family: 'Inter', sans-serif; font-size: 6.5pt;
-                 letter-spacing: 0.18em; text-transform: uppercase; color: #6B6B6B; margin-top: 6px; }
+/* Portfolio summary (fills an odd trailing half) */
+.summary { height: 148.5mm; background: var(--green-tint); padding: 14mm var(--pad);
+           display: flex; flex-direction: column; justify-content: center; }
+.summary .kicker { color: var(--green-dark); }
+.summary h3 { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 20pt;
+              color: var(--ink); margin: 8px 0 10mm; }
+.summary .metrics { border-color: rgba(90,122,78,0.25); }
+.summary .metric { border-color: rgba(90,122,78,0.25); background: rgba(255,255,255,0.5); }
 
-.two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 56px;
-             margin-top: 32px; page-break-inside: avoid; break-inside: avoid; }
-.col-label { font-family: 'Inter', sans-serif; font-size: 7pt;
-             letter-spacing: 0.18em; text-transform: uppercase; color: #6B6B6B; margin-bottom: 16px; }
+/* ══ OPPORTUNITY — full page ═════════════════════════════════════════════ */
+.opp { height: 297mm; display: flex; flex-direction: column; }
+.opp .hero { width: 100%; height: 78mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
+.opp-body { flex: 1; min-height: 0; padding: 8mm var(--pad) 7mm; display: flex; flex-direction: column; }
+.opp .metrics { margin-bottom: 7mm; }
+.opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm; }
+.opp-note { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec);
+            font-style: italic; line-height: 1.55; border-left: 2px solid var(--terra);
+            padding-left: 10px; margin-top: auto; }
+.opp .strip { margin-top: 6mm; }
+.opp .strip img { height: 32mm; }
 
-table.timeline           { width: 100%; border-collapse: collapse; }
-table.timeline td        { font-size: 9.5pt; padding: 6px 0; vertical-align: top; }
-table.timeline td.tdate  { font-family: 'Inter', sans-serif; font-size: 7pt; color: #6B6B6B;
-                           letter-spacing: 0.12em; text-transform: uppercase;
-                           width: 88px; padding-left: 14px; padding-right: 32px;
-                           border-left: 2px solid #8C6D87; }
-table.timeline td.tdesc  { font-family: 'Inter', sans-serif; color: #1A1A1A; }
-
-table.budget             { width: 100%; border-collapse: collapse; }
-table.budget tr          { border-bottom: 1px solid rgba(26,26,26,0.08); }
-table.budget td          { font-family: 'Inter', sans-serif; font-size: 9.5pt; padding: 5px 0; }
-table.budget td.bnum     { font-family: 'Inter', sans-serif; color: var(--section-color);
-                           text-align: right; font-weight: 500; }
-
-.impact-block     { border-left: 3px solid var(--section-color); padding-left: 24px; margin: 28px 0; }
-.impact-block p   { font-family: 'Playfair Display', serif; font-style: italic; font-size: 11pt;
-                    color: #6B6B6B; line-height: 1.7; max-width: 540px; margin-bottom: 0; }
-
-.footer-section h2     { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 16pt; color: #F2F0EB; }
-.footer-section p      { color: rgba(242,240,235,0.7); }
-.footer-section strong { color: #4A7A4A; }
-.footer-disclaimer     { font-family: 'Inter', sans-serif; font-size: 7pt;
-                         letter-spacing: 0.08em; color: rgba(242,240,235,0.3); }
+/* ══ CLOSING ═════════════════════════════════════════════════════════════ */
+.closing { height: 297mm; background: var(--green); color: #fff; padding: 30mm var(--pad);
+           display: flex; flex-direction: column; justify-content: space-between; }
+.closing .kicker { color: rgba(255,255,255,0.7); }
+.closing h2 { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 30pt;
+              color: #fff; line-height: 1.1; margin: 12px 0 18px; max-width: 150mm; }
+.closing p { font-family: 'Inter', sans-serif; font-size: 10pt; color: rgba(255,255,255,0.9);
+             max-width: 135mm; margin-bottom: 12px; line-height: 1.7; }
+.closing .wordmark { color: #fff; margin-bottom: 10px; }
+.closing-disc { font-family: 'Inter', sans-serif; font-size: 6.5pt; letter-spacing: 0.05em;
+                color: rgba(255,255,255,0.6); line-height: 1.6; }
 """
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Formatting helpers
 # ---------------------------------------------------------------------------
+
+def _num(val) -> float:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return 0.0
+
 
 def _fmt_mxn(val) -> str:
     try:
-        return f"${int(val or 0):,}"
+        return f"${int(round(_num(val))):,}"
     except (TypeError, ValueError):
         return "—"
 
 
 def _fmt_mxn_compact(val) -> str:
     """Format as $2.4M or $850K for compact metric cards."""
-    try:
-        v = int(val or 0)
-        if abs(v) >= 1_000_000:
-            return f"${v / 1_000_000:.1f}M"
-        if abs(v) >= 1_000:
-            return f"${v / 1_000:.0f}K"
-        return f"${v:,}"
-    except (TypeError, ValueError):
-        return "—"
+    v = _num(val)
+    if abs(v) >= 1_000_000:
+        return f"${v / 1_000_000:.1f}M"
+    if abs(v) >= 1_000:
+        return f"${v / 1_000:.0f}K"
+    return f"${int(v):,}"
 
 
-def _img_strip(images: list[dict], label: str, max_imgs: int = 3) -> str:
-    """Render a labeled horizontal strip of images, preserving aspect ratio via object-fit: contain."""
-    imgs = [img for img in images if img.get("dataUri")][:max_imgs]
+def _fmt_pct(frac, decimals: int = 1) -> str:
+    """A stored fraction (0.6722) → '67.2%'."""
+    return f"{_num(frac) * 100:.{decimals}f}%"
+
+
+def _fmt_mult(a, b) -> str:
+    a, b = _num(a), _num(b)
+    return f"{a / b:.2f}×" if b else "—"
+
+
+def _chunk(seq, n):
+    return [seq[i:i + n] for i in range(0, len(seq), n)]
+
+
+def _imgs_by_type(images, kind=None):
+    out = []
+    for img in images:
+        if not img.get("dataUri"):
+            continue
+        if kind is None or img.get("imageType") == kind:
+            out.append(img)
+    return out
+
+
+def _metric(value: str, label: str) -> str:
+    return (f'<div class="metric"><div class="v">{value}</div>'
+            f'<div class="l">{_esc(label)}</div></div>')
+
+
+def _strip(images, label: str, limit: int) -> str:
+    imgs = images[:limit]
     if not imgs:
         return ""
-    tags = "".join(f'<img src="{img["dataUri"]}" alt="">' for img in imgs)
-    return f"""<div class="img-strip-wrap">
-  <div class="img-strip-label">{label}</div>
-  <div class="img-strip">{tags}</div>
-</div>"""
+    tags = "".join(f'<img src="{i["dataUri"]}" alt="">' for i in imgs)
+    lab = f'<div class="strip-label">{_esc(label)}</div>' if label else ""
+    return f'{lab}<div class="strip">{tags}</div>'
 
 
-def _metric_card(value: str, label: str) -> str:
-    return (
-        f'      <div class="metric-card">\n'
-        f'        <div class="metric-value compact">{value}</div>\n'
-        f'        <div class="metric-label">{label}</div>\n'
-        f'      </div>'
-    )
-
-
-def _timeline_html(milestones: list[tuple[str, str]]) -> str:
-    rows = "\n".join(
-        f'        <tr><td class="tdate">{_esc(d)}</td><td class="tdesc">{_esc(desc)}</td></tr>'
-        for d, desc in milestones
-    )
-    return f'<div class="col-label">CRONOLOGÍA</div>\n        <table class="timeline">\n{rows}\n        </table>'
-
-
-def _budget_html(budget: list[tuple[str, int]]) -> str:
-    rows = "\n".join(
-        f'        <tr><td>{_esc(cat)}</td><td class="bnum">{_fmt_mxn(amt)}</td></tr>'
-        for cat, amt in budget
-    )
-    return f'<div class="col-label">PRESUPUESTO</div>\n        <table class="budget">\n{rows}\n        </table>'
-
-
-def _annualized_roi(total_inv: float, projected_sale: float, hold_months: int) -> float:
-    if not (total_inv and projected_sale and hold_months):
-        return 0.0
-    try:
-        return ((float(projected_sale) / float(total_inv)) ** (12.0 / hold_months) - 1) * 100
-    except Exception:
-        return 0.0
-
-
-def _sqm_detail(sqm_land: float, sqm_const: float) -> str:
-    parts = []
-    if sqm_land:
-        parts.append(f"{int(sqm_land):,} m² terreno")
-    if sqm_const:
-        parts.append(f"{int(sqm_const):,} m² construcción")
-    return " · ".join(parts)
-
-
-def _financials_rows(rent_monthly: float, projected_sale: float, projected_gain: float,
-                     profit_pct: float, cap_rate: float) -> str:
+def _kv_rows(pairs) -> str:
     rows = ""
-    if rent_monthly:
-        rows += f'        <tr><td>Renta mensual est.</td><td class="bnum">{_fmt_mxn(rent_monthly)}</td></tr>\n'
-    rows += f'        <tr><td>Valuación proyectada</td><td class="bnum">{_fmt_mxn_compact(projected_sale)}</td></tr>\n'
-    rows += f'        <tr><td>Ganancia estimada</td><td class="bnum">{_fmt_mxn_compact(projected_gain)} ({profit_pct:.0f}%)</td></tr>\n'
-    if cap_rate:
-        rows += f'        <tr><td>Cap rate</td><td class="bnum">{cap_rate * 100:.1f}%</td></tr>\n'
-    return rows
-
-
-
-def _parse_milestones(raw) -> list[tuple[str, str]]:
-    try:
-        data = json.loads(raw) if isinstance(raw, str) else (raw or {})
-        return sorted(data.items())
-    except Exception:
-        return []
-
-
-def _parse_budget(raw) -> list[tuple[str, int]]:
-    try:
-        data = json.loads(raw) if isinstance(raw, str) else (raw or {})
-        return sorted(data.items(), key=lambda x: x[1], reverse=True)[:5]
-    except Exception:
-        return []
+    for label, value in pairs:
+        if value is None:
+            continue
+        rows += f'<tr><td>{_esc(label)}</td><td class="n">{value}</td></tr>'
+    return f'<table class="kv">{rows}</table>'
 
 
 # ---------------------------------------------------------------------------
 # Section builders
 # ---------------------------------------------------------------------------
 
-def _section_divider(label: str, title: str, color: str, count: int) -> str:
-    unit = "proyecto" if count == 1 else "proyectos" if "TRACK" in label.upper() else "oportunidad" if count == 1 else "oportunidades"
-    return f"""<div class="section-divider" style="background:{color}">
-  <div class="divider-label">{label}</div>
-  <div class="divider-title">{title}</div>
-  <div class="divider-rule"></div>
-  <div class="divider-count">{count:02d} {unit}</div>
-</div>"""
-
-
 def _cover(month_year: str) -> str:
-    return f"""<div class="cover">
-  <div class="wordmark">R E F I G A N</div>
+    return f"""<div class="page-block cover">
+  <div class="cover-top">
+    <div>
+      <div class="wordmark">P A T R I O</div>
+      <div class="cover-rule"></div>
+    </div>
+    <div class="wordmark-tag">Los expertos en tu patrimonio</div>
+  </div>
   <div class="cover-main">
-    <div class="cover-prelabel">Prospecto de Inversión · {month_year}</div>
-    <h1>Renta Fija con Garantía Inmobiliaria</h1>
-    <div class="cover-meta">San Pedro Garza García, NL · Distribución Restringida</div>
+    <div class="kicker">Prospecto de Inversión · {month_year}</div>
+    <h1>Haz crecer tu patrimonio</h1>
+    <p class="cover-lede">Compramos, transformamos y operamos bienes raíces que valen más de lo que cuestan.
+      Tú pones el capital y eres dueño de todo — nosotros lo hacemos realidad, de principio a fin.</p>
+    <div class="vp">
+      <div class="vp-item"><div class="vp-v">14</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
+      <div class="vp-item"><div class="vp-v">2&times;</div><div class="vp-l">Valor creado</div><div class="vp-d">Edificio Uno: $9.5M &rarr; $19M</div></div>
+      <div class="vp-item"><div class="vp-v">8%</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">real, no proyectado</div></div>
+    </div>
   </div>
-  <div class="cover-footer">Documento Confidencial · Solo para uso de prospectos e inversionistas autorizados</div>
+  <div class="cover-foot">
+    <span>San Pedro Garza García, NL · Distribución restringida</span>
+    <span>Documento confidencial</span>
+  </div>
 </div>"""
 
 
-def _vision() -> str:
-    return """<div class="page-section section-vision">
-  <div class="section-header">
-    <div class="band-label">PROPUESTA DE VALOR</div>
-    <div class="band-title">Tu capital merece más que CETES</div>
-  </div>
-  <section class="content-section">
-    <h3>VISIÓN</h3>
-    <h2>La brecha entre lo que recibes y lo que genera el mercado</h2>
-    <p>CETES ronda el 9% anual. Los bancos prestan al 15% a desarrolladores. La diferencia existe, y alguien la captura. Ese espacio es donde Patrio opera.</p>
-    <p>Patrio ofrece rendimiento fijo ~12% anual, respaldado por inmuebles reales en el Centro de Monterrey y otras zonas de oportunidad. Plazo definido, activo tangible, salida clara — sin la volatilidad de mercados financieros.</p>
-    <p>Cada inversión financia un edificio real. Patrio identifica y desarrolla oportunidades en el Centro de Monterrey y otras zonas de oportunidad, siguiendo una metodología de adquisición probada.</p>
-    <div class="impact-block"><p>Restaurar un edificio histórico no es solo una operación financiera. Es devolver vida a una estructura que guarda la historia de una ciudad. Cada proyecto de Patrio rescata una pieza del patrimonio urbano de Monterrey — y la convierte en un espacio digno, habitado, vivo.</p></div>
-  </section>
-</div>"""
+def _track_card(i: int, p: dict) -> str:
+    name = _esc(p.get("name", ""))
+    address = _esc(p.get("address", ""))
+    city = _esc(p.get("city", ""))
+    ptype = _esc(str(p.get("type", "")).capitalize())
+    units = int(_num(p.get("totalUnits")))
+    total_inv = p.get("totalInvestment")
+    current_val = p.get("currentValuation")
+    gain = _num(current_val) - _num(total_inv)
+    gain_pct = _num(p.get("unrealizedGainPct"))
+    hold = int(_num(p.get("holdMonthsActual")))
 
+    sub_bits = [b for b in [address, city] if b]
+    meta_bits = [b for b in [ptype, f"{units} unidades" if units else "", f"{hold} meses" if hold else ""] if b]
+    sub = " · ".join(sub_bits)
+    if meta_bits:
+        sub += "  —  " + " · ".join(meta_bits)
 
-def _track_record_section(i: int, project: dict) -> str:
-    name = _esc(project.get("name", ""))
-    address = _esc(project.get("address", ""))
-    total_inv = float(project.get("totalInvestment") or 0)
-    current_val = float(project.get("currentValuation") or 0)
-    gain = current_val - total_inv
-    multiplier = f"{current_val / total_inv:.2f}×" if total_inv else "—"
-    hold_months = int(project.get("holdMonthsActual") or 0)
-    duration = f"{hold_months}m" if hold_months else "—"
-
-    metrics_html = "\n".join([
-        _metric_card(_fmt_mxn_compact(total_inv), "Inversión Total"),
-        _metric_card(_fmt_mxn_compact(current_val), "Valuación Actual"),
-        _metric_card(_fmt_mxn_compact(gain), "Ganancia"),
-        _metric_card(multiplier, f"Multiplicador · {duration}"),
+    metrics = "".join([
+        _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
+        _metric(_fmt_mxn_compact(current_val), "Valuación actual"),
+        _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct(gain_pct, 0)}</small>', "Plusvalía"),
+        _metric(_fmt_mult(current_val, total_inv), "Multiplicador"),
     ])
-    timeline_html = _timeline_html(_parse_milestones(project.get("milestones", "{}")))
-    budget_html = _budget_html(_parse_budget(project.get("budget", "{}")))
 
-    images = project.get("images", [])
-    antes = [img for img in images if img.get("imageType") == "antes"]
-    despues = [img for img in images if img.get("imageType") == "despues"]
-    images_html = _img_strip(antes, "ANTES") + _img_strip(despues, "DESPUÉS")
+    images = p.get("images", [])
+    antes = _imgs_by_type(images, "antes")
+    despues = _imgs_by_type(images, "despues")
+    if antes and despues:
+        imgs_html = (f'<div>{_strip(antes, "Antes", 2)}</div>'
+                     f'<div>{_strip(despues, "Después", 2)}</div>')
+    else:
+        gallery = _imgs_by_type(images)
+        imgs_html = f'<div>{_strip(gallery, "Proyecto", 4)}</div>' if gallery else ""
+    imgs_block = f'<div class="proj-imgs">{imgs_html}</div>' if imgs_html else ""
 
-    return f"""<div class="page-section section-track">
-  <div class="section-header">
-    <div class="band-label">TRACK RECORD · {i:02d}</div>
-    <div class="band-title">{name}</div>
+    return f"""<div class="proj">
+  <div class="band">
+    <div class="kicker">Track Record · {i:02d}</div>
+    <h2>{name}</h2>
+    <div class="sub">{sub}</div>
   </div>
-  <section class="content-section">
-    <h2>{address}</h2>
-    <div class="metric-grid metric-grid-4">
-{metrics_html}
-    </div>
-    <div class="two-col">
-      <div>{timeline_html}</div>
-      <div>{budget_html}</div>
-    </div>
-    {images_html}
-  </section>
+  <div class="proj-body">
+    <div class="metrics metrics-4">{metrics}</div>
+    {imgs_block}
+  </div>
 </div>"""
 
 
-def _oportunidad_section(prospect: dict) -> str:
-    name = _esc(prospect.get("name", ""))
-    address = _esc(prospect.get("address", ""))
-    city = _esc(prospect.get("city", ""))
-    hold_months = int(prospect.get("holdMonths") or 0)
-    cap_rate = float(prospect.get("capRate") or 0)
-    total_inv = float(prospect.get("totalInvestment") or 0)
-    projected_sale = float(prospect.get("projectedSale") or 0)
-    rent_monthly = float(prospect.get("rentMonthly") or 0)
-    notes = _esc(prospect.get("notes", ""))
-    sqm_land = float(prospect.get("sqmLand") or 0)
-    sqm_const = float(prospect.get("sqmConstruction") or 0)
-    prop_type = prospect.get("type", "")
-
-    projected_gain = projected_sale - total_inv
-    profit_pct = (projected_gain / total_inv * 100) if total_inv else 0
-    annualized_roi = _annualized_roi(total_inv, projected_sale, hold_months)
-    roi_str = f"{annualized_roi:.1f}%" if annualized_roi else "—"
-    sqm_detail = _sqm_detail(sqm_land, sqm_const)
-    type_detail = _esc(prop_type.capitalize()) if prop_type else ""
-
-    metrics_html = "\n".join([
-        _metric_card(f"{hold_months}m", "Plazo"),
-        _metric_card(_fmt_mxn_compact(total_inv), "Inversión Total"),
-        _metric_card(_fmt_mxn_compact(projected_gain), "Ganancia Estimada"),
-        _metric_card(roi_str, "ROI Anualizado"),
+def _summary_card(projects: list[dict]) -> str:
+    inv = sum(_num(p.get("totalInvestment")) for p in projects)
+    val = sum(_num(p.get("currentValuation")) for p in projects)
+    gain = val - inv
+    pct = (gain / inv) if inv else 0
+    metrics = "".join([
+        _metric(str(len(projects)), "Proyectos"),
+        _metric(_fmt_mxn_compact(inv), "Capital invertido"),
+        _metric(_fmt_mxn_compact(val), "Valuación actual"),
+        _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct(pct, 0)}</small>', "Plusvalía total"),
     ])
-    financials_rows = _financials_rows(rent_monthly, projected_sale, projected_gain, profit_pct, cap_rate)
-
-    images = prospect.get("images", [])
-    hero = next((img for img in images if img.get("dataUri")), None)
-    hero_html = f'<img class="img-hero" src="{hero["dataUri"]}" alt="">' if hero else ""
-
-    return f"""<div class="page-section section-oportunidad">
-  <div class="section-header">
-    <div class="band-label">OPORTUNIDAD</div>
-    <div class="band-title">{name}</div>
-  </div>
-  {hero_html}
-  <section class="content-section">
-    <div class="metric-grid metric-grid-4">
-{metrics_html}
-    </div>
-    <div class="two-col">
-      <div>
-        <div class="col-label">FINANCIEROS</div>
-        <table class="budget">
-{financials_rows}
-        </table>
-        {f'<p class="caption" style="margin-top:12px">{notes}</p>' if notes else ""}
-      </div>
-      <div>
-        <div class="col-label">UBICACIÓN</div>
-        <p>{address}</p>
-        <p class="caption">{city}</p>
-        {f'<p class="caption">{sqm_detail}</p>' if sqm_detail else ""}
-        {f'<p class="caption">{type_detail}</p>' if type_detail else ""}
-      </div>
-    </div>
-  </section>
+    return f"""<div class="summary">
+  <div class="kicker">Portafolio</div>
+  <h3>Proyectos reales. Resultados reales.</h3>
+  <div class="metrics metrics-4">{metrics}</div>
 </div>"""
 
 
-def _cta(month_year: str) -> str:
-    return f"""<div class="footer-section">
+def _opportunity(p: dict) -> str:
+    name = _esc(p.get("name", ""))
+    address = _esc(p.get("address", ""))
+    city = _esc(p.get("city", ""))
+    ptype = _esc(str(p.get("type", "")))
+    hold = int(_num(p.get("holdMonths")))
+    total_inv = p.get("totalInvestment")
+    projected_sale = p.get("projectedSale")
+    profit = p.get("profit")
+    profit_pct = (_num(profit) / _num(total_inv)) if _num(total_inv) else 0
+    roi_total = _num(p.get("roiTotal"))
+    cap_rate = _num(p.get("capRate"))
+    rent_m = p.get("rentMonthly")
+    rent_a = p.get("rentAnnual")
+    sqm_land = _num(p.get("sqmLand"))
+    sqm_con = _num(p.get("sqmConstruction"))
+    land_ppsqm = p.get("landPricePerSqm")
+    sale_ppsqm = p.get("salePerSqm")
+    inv_ppsqm = p.get("investmentPerSqm")
+
+    metrics = "".join([
+        _metric(f"{hold}m" if hold else "—", "Plazo"),
+        _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
+        _metric(_fmt_mxn_compact(projected_sale), "Venta proyectada"),
+        _metric(f'{_fmt_mxn_compact(profit)} <small>{_fmt_pct(profit_pct, 0)}</small>', "Ganancia est."),
+        _metric(_fmt_pct(cap_rate, 1), "Cap rate"),
+    ])
+
+    financieros = _kv_rows([
+        ("ROI proyectado", _fmt_pct(roi_total, 1) if roi_total else None),
+        ("Renta mensual est.", _fmt_mxn(rent_m) if _num(rent_m) else None),
+        ("Renta anual est.", _fmt_mxn(rent_a) if _num(rent_a) else None),
+        ("Precio terreno / m²", _fmt_mxn(land_ppsqm) if _num(land_ppsqm) else None),
+        ("Venta / m²", _fmt_mxn(sale_ppsqm) if _num(sale_ppsqm) else None),
+        ("Inversión / m²", _fmt_mxn(inv_ppsqm) if _num(inv_ppsqm) else None),
+    ])
+    ubicacion = _kv_rows([
+        ("Dirección", address or None),
+        ("Ciudad", city or None),
+        ("Tipo", ptype or None),
+        ("Terreno", f"{int(sqm_land):,} m²" if sqm_land else None),
+        ("Construcción", f"{int(sqm_con):,} m²" if sqm_con else None),
+    ])
+
+    images = _imgs_by_type(p.get("images", []))
+    hero = f'<img class="hero" src="{images[0]["dataUri"]}" alt="">' if images else ""
+    strip = _strip(images[1:], "Galería", 4) if len(images) > 1 else ""
+    notes = _esc(p.get("notes", ""))
+    note_html = f'<div class="opp-note">{notes}</div>' if notes else ""
+
+    return f"""<div class="page-block opp">
+  <div class="band">
+    <div class="kicker">Oportunidad Activa</div>
+    <h2>{name}</h2>
+    <div class="sub">{address}{(' · ' + city) if city else ''}</div>
+  </div>
+  {hero}
+  <div class="opp-body">
+    <div class="metrics metrics-5">{metrics}</div>
+    <div class="opp-cols">
+      <div><div class="col-label">Financieros</div>{financieros}</div>
+      <div><div class="col-label">Ubicación · Propiedad</div>{ubicacion}</div>
+    </div>
+    {strip}
+    {note_html}
+  </div>
+</div>"""
+
+
+def _closing(month_year: str) -> str:
+    return f"""<div class="page-block closing">
   <div>
-    <h2>Hablemos de su próxima inversión</h2>
-    <p>Patrio opera desde <strong>San Pedro Garza García</strong> e invierte en el Centro de Monterrey y otras zonas con oportunidades. Fondeos cerrados, plazos definidos, rendimientos fijos.</p>
-    <p>Documento preparado exclusivamente para prospectos e inversionistas autorizados. Los rendimientos proyectados son estimados y no constituyen una garantía.</p>
+    <div class="wordmark">P A T R I O</div>
+    <div class="kicker">Conversemos</div>
+    <h2>¿Lo vemos con tus números?</h2>
+    <p>Compramos barato, transformamos y lo vendemos o te lo entregamos operando. Cuatro pasos —
+       uno solo para ti: decidir. El resto lo hacemos nosotros: scouting, obra llave en mano,
+       operación o venta, y todo reportado en vivo.</p>
+    <p><b>Los expertos en tu patrimonio.</b></p>
   </div>
-  <div class="footer-disclaimer">
-    Documento Confidencial · Distribución Restringida · {month_year}<br>
-    Este documento es de uso exclusivo del destinatario. Su distribución o reproducción sin autorización está prohibida.
+  <div class="closing-disc">
+    Documento confidencial · Distribución restringida · {month_year}<br>
+    Preparado exclusivamente para prospectos e inversionistas autorizados. Los rendimientos proyectados
+    son estimados y no constituyen una garantía. Prohibida su distribución o reproducción sin autorización.
   </div>
 </div>"""
 
@@ -445,27 +450,34 @@ def _cta(month_year: str) -> str:
 
 def build_prospectus_html(projects: list[dict], prospects: list[dict]) -> str:
     from datetime import date
-    month_year = date.today().strftime("%B %Y")
-    fonts_css = _build_fonts_css()
-    body_css = _BODY_CSS
-    parts = [_cover(month_year), _vision()]
+    today = date.today()
+    month_year = f"{_MESES[today.month].capitalize()} {today.year}"
+
+    parts = [_cover(month_year)]
+
     if projects:
-        parts.append(_section_divider("Track Record", "Proyectos<br>Realizados", "#8C6D87", len(projects)))
-        for i, p in enumerate(projects, 1):
-            parts.append(_track_record_section(i, p))
-    if prospects:
-        parts.append(_section_divider("Oportunidades", "Próximas<br>Inversiones", "#697692", len(prospects)))
-        for p in prospects:
-            parts.append(_oportunidad_section(p))
-    parts.append(_cta(month_year))
+        cards = [(_track_card(i, p), p) for i, p in enumerate(projects, 1)]
+        pairs = _chunk(cards, 2)
+        for pi, pair in enumerate(pairs):
+            body = "".join(c for c, _ in pair)
+            # Fill an odd trailing half with a portfolio summary card.
+            if len(pair) == 1 and pi == len(pairs) - 1:
+                body += _summary_card(projects)
+            parts.append(f'<div class="page-block sheet">{body}</div>')
+
+    for p in prospects:
+        parts.append(_opportunity(p))
+
+    parts.append(_closing(month_year))
+
     body_html = "\n".join(parts)
     return f"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <style>
-{fonts_css}
-{body_css}
+{_build_fonts_css()}
+{_BODY_CSS}
 </style>
 </head>
 <body>{body_html}</body>
