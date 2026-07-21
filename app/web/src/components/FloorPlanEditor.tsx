@@ -326,8 +326,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       dispatch({ type: 'SET_DRAG', drag: { kind: 'opening', id: edgeId, openingIndex: index } })
     } else {
       const { ux, uy } = pointerToUser(e)
-      const centerWorld = t.userToWorld(W / 2, H / 2)
-      panRef.current = { startUx: ux, startUy: uy, camera: { scale: t.scale, centerX: centerWorld.x, centerY: centerWorld.y } }
+      panRef.current = { startUx: ux, startUy: uy, camera: seedCamera() }
       panMovedRef.current = false
     }
     const svg = svgRef.current
@@ -347,6 +346,9 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       if (Math.abs(dxUser) > PAN_DRAG_THRESHOLD || Math.abs(dyUser) > PAN_DRAG_THRESHOLD) panMovedRef.current = true
       if (panMovedRef.current) {
         const { scale, centerX, centerY } = panRef.current.camera
+        // Dragging right (dxUser > 0) moves the camera center LEFT so the content follows the
+        // pointer, hence centerX subtracts; centerY ADDS because userToWorld flips the Y axis
+        // relative to screen space (screen-down is world-up), so the two signs differ.
         dispatch({ type: 'SET_CAMERA', camera: { scale, centerX: centerX - dxUser / scale, centerY: centerY + dyUser / scale } })
       }
       return
