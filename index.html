@@ -369,7 +369,7 @@
     <div class="inv-section__inner">
       <p class="inv-section__eyebrow">El modelo</p>
       <h2 class="inv-section__title">Compramos por debajo de valor, transformamos, y entregamos operando o vendemos.</h2>
-      <p class="inv-section__subtitle">Cuatro etapas. Tú decides; nosotros ejecutamos.</p>
+      <p class="inv-section__subtitle">Cinco etapas. Tú decides; nosotros ejecutamos.</p>
 
       <!-- Tarjetas con flip 3D: hover en desktop, tap en móvil (clase .flip-card--flipped) -->
       <div class="inv-steps">
@@ -397,22 +397,34 @@
             </div>
           </div>
         </div>
-        <div class="flip-card" tabindex="0" role="button" aria-label="Paso 3: La operamos o la vendemos">
+        <div class="flip-card" tabindex="0" role="button" aria-label="Paso 3: La administramos (hold)">
           <div class="flip-card__inner">
             <div class="flip-card__front">
               <span class="flip-card__num">03</span>
-              <h3 class="flip-card__title">La operamos o la vendemos</h3>
+              <h3 class="flip-card__title">La administramos (hold)</h3>
               <span class="flip-card__hint"><i data-lucide="rotate-3d" style="width:13px;height:13px;"></i> Pasa el mouse o toca</span>
             </div>
             <div class="flip-card__back">
-              <p class="flip-card__back-text">La decisión es tuya. Si rentas, asumimos la administración completa o te entregamos el inmueble listo para que lo operes tú, sin obligación. Si vendes, colocamos la propiedad a través de nuestra red de compradores y asesores inmobiliarios.</p>
+              <p class="flip-card__back-text">La decisión es tuya. Si la retienes en renta, asumimos la administración completa del inmueble: cobranza, pagos, mantenimiento con nuestra red de proveedores y cumplimiento normativo. O te lo entregamos listo para que lo operes tú, sin obligación.</p>
             </div>
           </div>
         </div>
-        <div class="flip-card" tabindex="0" role="button" aria-label="Paso 4: Reportamos todo">
+        <div class="flip-card" tabindex="0" role="button" aria-label="Paso 4: O la vendemos">
           <div class="flip-card__inner">
             <div class="flip-card__front">
               <span class="flip-card__num">04</span>
+              <h3 class="flip-card__title">O la vendemos</h3>
+              <span class="flip-card__hint"><i data-lucide="rotate-3d" style="width:13px;height:13px;"></i> Pasa el mouse o toca</span>
+            </div>
+            <div class="flip-card__back">
+              <p class="flip-card__back-text">Si prefieres vender, colocamos la propiedad a través de nuestra red de compradores y asesores inmobiliarios.</p>
+            </div>
+          </div>
+        </div>
+        <div class="flip-card" tabindex="0" role="button" aria-label="Paso 5: Reportamos todo">
+          <div class="flip-card__inner">
+            <div class="flip-card__front">
+              <span class="flip-card__num">05</span>
               <h3 class="flip-card__title">Reportamos todo</h3>
               <span class="flip-card__hint"><i data-lucide="rotate-3d" style="width:13px;height:13px;"></i> Pasa el mouse o toca</span>
             </div>
@@ -809,6 +821,8 @@
         <h3 class="pmodal__title" id="pmodal-title"></h3>
         <p class="pmodal__city" id="pmodal-city"></p>
         <p class="pmodal__desc" id="pmodal-desc"></p>
+        <!-- Grid de indicadores clave (stats) — se monta por JS desde PROYECTOS_KPIS -->
+        <div id="pmodal-kpis"></div>
         <div id="pmodal-portal"></div>
         <!-- Secciones Antes / Después (fotos + video) se montan aquí por JS -->
         <div id="pmodal-media"></div>
@@ -865,6 +879,119 @@
     const mDesc = document.getElementById('pmodal-desc');
     const mPortal = document.getElementById('pmodal-portal');
     const mMedia = document.getElementById('pmodal-media');
+    const mKpis = document.getElementById('pmodal-kpis');
+
+    // ====== KPIs DE PROYECTO (fase 1: datos locales) ======
+    // FASE 2: reemplazar este objeto por un fetch al backend (admin.refigan.com).
+    // La estructura de datos y el render ya están desacoplados para que sea un cambio trivial.
+    const PROYECTOS_KPIS = {
+      'esquina-pastel': {
+        estado: 'en desarrollo',
+        opera: false,
+        inversion: 4186050,
+        valoracion: 7000000,
+        roi: 67.2,
+        unidades: 6,
+        plazoMeses: 12,
+      },
+      'edificio-uno': {
+        estado: 'operando',
+        opera: true,
+        inversion: 9500000,
+        valoracion: 19000000,
+        roi: 100.0,
+        unidades: 13,
+        plazoMeses: 29,
+        capRate: null,   // JALAR de FINANZAS de Refigan (NOI anual / valoración)
+      },
+      'casa-modesto-415': {
+        estado: 'operando',
+        opera: true,
+        inversion: 3700000,
+        valoracion: 6200000,
+        roi: 66.2,
+        plazoMeses: 24,
+        capRate: null,   // JALAR de FINANZAS de Refigan (NOI anual / valoración)
+      },
+    };
+
+    // Orden de las 6 cards por proyecto.
+    const PROYECTOS_KPI_CARDS = {
+      'esquina-pastel':   ['inversion', 'valoracion', 'equityMultiple', 'roi', 'plusvalia', 'unidades'],
+      'edificio-uno':     ['inversion', 'valoracion', 'equityMultiple', 'capRate', 'plusvalia', 'unidades'],
+      'casa-modesto-415': ['inversion', 'valoracion', 'equityMultiple', 'capRate', 'plusvalia', 'roi'],
+    };
+
+    // --- Formateadores ---
+    const round1 = n => Math.round(n * 10) / 10;
+    // $4.2M / $19M / $2.8M — millones, 1 decimal, sin ".0"
+    const fmtMoneyM = n => '$' + round1(n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    // 1.7x / 2.0x — equity multiple con 1 decimal
+    const fmtX = n => round1(n).toFixed(1) + 'x';
+    // 67.2% / 100% — porcentaje, 1 decimal, sin ".0"
+    const fmtPct = n => round1(n).toFixed(1).replace(/\.0$/, '') + '%';
+
+    // Devuelve { value, label } para una card, calculando los derivados en código.
+    function kpiCard(key, d) {
+      switch (key) {
+        case 'inversion':
+          return { value: fmtMoneyM(d.inversion), label: 'Inversión' };
+        case 'valoracion':
+          return { value: fmtMoneyM(d.valoracion), label: d.opera ? 'Valoración' : 'Valoración proyectada' };
+        case 'equityMultiple':
+          return { value: fmtX(d.valoracion / d.inversion), label: 'Equity Multiple' };
+        case 'roi':
+          return { value: fmtPct(d.roi), label: d.opera ? 'ROI' : 'ROI proyectado' };
+        case 'plusvalia':
+          return { value: fmtMoneyM(d.valoracion - d.inversion), label: 'Plusvalía' };
+        case 'unidades':
+          return { value: String(d.unidades), label: d.unidades === 1 ? 'Unidad' : 'Unidades' };
+        case 'capRate':
+          // Sin dato real en Refigan todavía → placeholder visible, NO inventar.
+          return { value: (d.capRate == null ? '—' : fmtPct(d.capRate)), label: 'Cap Rate', empty: d.capRate == null };
+        default:
+          return null;
+      }
+    }
+
+    function renderKpis(proyecto) {
+      mKpis.innerHTML = '';
+      const d = PROYECTOS_KPIS[proyecto];
+      const order = PROYECTOS_KPI_CARDS[proyecto];
+      if (!d || !order) return;
+
+      const grid = document.createElement('div');
+      grid.className = 'pkpi-grid';
+      order.forEach(key => {
+        const c = kpiCard(key, d);
+        if (!c) return;
+        const card = document.createElement('div');
+        card.className = 'pkpi';
+        const v = document.createElement('div');
+        v.className = 'pkpi__value' + (c.empty ? ' pkpi__value--empty' : '');
+        v.textContent = c.value;
+        const l = document.createElement('p');
+        l.className = 'pkpi__label';
+        l.textContent = c.label;
+        card.appendChild(v);
+        card.appendChild(l);
+        grid.appendChild(card);
+      });
+      mKpis.appendChild(grid);
+
+      // Leyenda al pie: los financieros son proyección, no retorno cobrado.
+      const notes = document.createElement('div');
+      notes.className = 'pkpi-notes';
+      const legends = ['Cifras de valoración proyectada, ganancia no realizada.'];
+      if (proyecto === 'esquina-pastel') legends.push('Primera renta estimada 2027.');
+      legends.forEach(text => {
+        const p = document.createElement('p');
+        p.className = 'pkpi-note';
+        p.textContent = text;
+        notes.appendChild(p);
+      });
+      mKpis.appendChild(notes);
+    }
 
     // Media por proyecto (Antes / Después). Casa Modesto 415: fotos + videos del "después".
     const CASA_BASE = 'assets/proyectos/casa-modesto-415/';
@@ -928,6 +1055,9 @@
       mTitle.textContent = card.dataset.title || 'Proyecto';
       mCity.textContent = city ? city.textContent : '';
       mDesc.textContent = desc ? desc.textContent : '';
+
+      // Grid de indicadores clave (stats) desde PROYECTOS_KPIS.
+      renderKpis(card.dataset.proyecto);
 
       // Botón de portal solo para Edificio UNO.
       mPortal.innerHTML = '';

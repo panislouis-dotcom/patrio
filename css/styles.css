@@ -2899,6 +2899,47 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 .pmodal__kpi-label { font-size: .68rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-light); display: block; margin-bottom: 6px; }
 .pmodal__kpi-value { font-family: var(--font-display); font-size: 1.35rem; color: var(--color-text); }
 
+/* Grid de indicadores clave (stats) del proyecto — reutiliza los tokens de .credential (home) */
+.pkpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  padding: 22px 20px;
+  background: var(--color-bg-warm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.pkpi { text-align: center; }
+.pkpi__value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 30px;
+  color: var(--color-primary);
+  line-height: 1.05;
+  margin-bottom: 4px;
+}
+.pkpi__value--empty { color: var(--color-text-light); }
+.pkpi__label {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.35;
+}
+.pkpi-notes { margin: 10px 2px 24px; }
+.pkpi-note {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-text-light);
+  line-height: 1.5;
+  margin: 0;
+}
+.pkpi-note + .pkpi-note { margin-top: 2px; }
+@media (min-width: 600px) {
+  .pkpi-grid { grid-template-columns: repeat(3, 1fr); gap: 18px 16px; }
+  .pkpi__value { font-size: 34px; }
+}
+
 /* Secciones Antes / Después dentro del modal de proyecto */
 .pmodal__mediasec { margin-top: 26px; }
 .pmodal__mediasec-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -2935,8 +2976,8 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 .inv-section__title { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.4rem); text-align: center; max-width: 820px; margin: 0 auto 12px; line-height: 1.2; }
 .inv-section__subtitle { text-align: center; color: var(--color-text-secondary); max-width: 640px; margin: 0 auto 48px; line-height: 1.6; }
 
-/* Bloque A — 4 pasos del modelo */
-.inv-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+/* Bloque A — 5 pasos del modelo */
+.inv-steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; }
 .inv-step { background: var(--color-white); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 28px 22px; }
 .inv-step__num { font-family: var(--font-display); font-size: 2rem; color: var(--color-primary); display: block; margin-bottom: 12px; }
 .inv-step__title { font-size: 1.05rem; margin-bottom: 8px; }
