@@ -180,6 +180,16 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .closing .wordmark { color: #fff; margin-bottom: 10px; }
 .closing-disc { font-family: 'Inter', sans-serif; font-size: 6.5pt; letter-spacing: 0.05em;
                 color: rgba(255,255,255,0.6); line-height: 1.6; }
+
+/* ══ Portfolio footnote + partner bios (summary card) ════════════════════ */
+.valuation-note { font-family: 'Inter', sans-serif; font-size: 7pt; font-style: italic;
+                  color: var(--sec); line-height: 1.45; margin-top: 7mm; }
+.partners { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-top: 8mm;
+            padding-top: 7mm; border-top: 1px solid rgba(90,122,78,0.25); }
+.partner-name  { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 13pt; color: var(--ink); }
+.partner-quote { font-family: 'Playfair Display', serif; font-style: italic; font-size: 10pt;
+                 color: var(--green-dark); margin: 3px 0 5px; }
+.partner-bio   { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec); line-height: 1.5; }
 """
 
 
@@ -219,6 +229,39 @@ def _fmt_pct(frac, decimals: int = 1) -> str:
 def _fmt_mult(a, b) -> str:
     a, b = _num(a), _num(b)
     return f"{a / b:.2f}×" if b else "—"
+
+
+def _pretty_type(raw) -> str:
+    """Human label from a raw DB enum: 'adaptive_reuse' → 'Adaptive reuse'."""
+    return str(raw or "").replace("_", " ").strip().capitalize()
+
+
+# Real operating cap rate = NOI anual / valuación actual, for projects already
+# operating & renting. Development (pre-obra) projects have no cap rate → "—";
+# it is never fabricated. Interim source: net monthly rent per operating project
+# lives here until Refigan's finance tab captures rent_monthly on the project
+# ficha (then p["rentMonthly"] is used and these fall away). Casa Modesto has no
+# operating expenses, so NOI = gross rent. Edificio Uno keeps its established
+# dashboard cap rate (~8%) since its net rent is not captured here.
+_OPERATING_RENT_MONTHLY = {
+    "Casa Modesto 415": 31000,
+    "Casa Centro": 31000,
+}
+_OPERATING_CAP_RATE = {
+    "Edificio Uno": 0.08,
+}
+
+
+def _operating_cap_rate(p: dict):
+    """Fraction (0.06) for a renting project, or None → shown as '—'."""
+    if str(p.get("status")) != "operating":
+        return None
+    name = p.get("name", "")
+    val = _num(p.get("currentValuation"))
+    rent = _num(p.get("rentMonthly")) or _OPERATING_RENT_MONTHLY.get(name, 0)
+    if rent and val:
+        return (rent * 12) / val
+    return _OPERATING_CAP_RATE.get(name)
 
 
 def _chunk(seq, n):
@@ -289,11 +332,11 @@ def _cover(month_year: str) -> str:
 </div>"""
 
 
-def _track_card(i: int, p: dict) -> str:
+def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
-    ptype = _esc(str(p.get("type", "")).capitalize())
+    ptype = _esc(_pretty_type(p.get("type")))
     units = int(_num(p.get("totalUnits")))
     total_inv = p.get("totalInvestment")
     current_val = p.get("currentValuation")
@@ -307,11 +350,19 @@ def _track_card(i: int, p: dict) -> str:
     if meta_bits:
         sub += "  —  " + " · ".join(meta_bits)
 
+    # Development projects (pre-obra) read as PROJECTED, not realized.
+    val_label = "Valuación proyectada" if projected else "Valuación actual"
+    gain_label = "Plusvalía proyectada" if projected else "Plusvalía"
+    mult_label = "Multiplicador proy." if projected else "Multiplicador"
+    cap = _operating_cap_rate(p)
+    cap_value = _fmt_pct(cap, 1) if cap is not None else "—"
+
     metrics = "".join([
         _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
-        _metric(_fmt_mxn_compact(current_val), "Valuación actual"),
-        _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct(gain_pct, 0)}</small>', "Plusvalía"),
-        _metric(_fmt_mult(current_val, total_inv), "Multiplicador"),
+        _metric(_fmt_mxn_compact(current_val), val_label),
+        _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct(gain_pct, 0)}</small>', gain_label),
+        _metric(_fmt_mult(current_val, total_inv), mult_label),
+        _metric(cap_value, "Cap rate"),
     ])
 
     images = p.get("images", [])
@@ -327,12 +378,12 @@ def _track_card(i: int, p: dict) -> str:
 
     return f"""<div class="proj">
   <div class="band">
-    <div class="kicker">Track Record · {i:02d}</div>
+    <div class="kicker">{_esc(kicker)}</div>
     <h2>{name}</h2>
     <div class="sub">{sub}</div>
   </div>
   <div class="proj-body">
-    <div class="metrics metrics-4">{metrics}</div>
+    <div class="metrics metrics-5">{metrics}</div>
     {imgs_block}
   </div>
 </div>"""
@@ -353,6 +404,18 @@ def _summary_card(projects: list[dict]) -> str:
   <div class="kicker">Portafolio</div>
   <h3>Proyectos reales. Resultados reales.</h3>
   <div class="metrics metrics-4">{metrics}</div>
+  <div class="partners">
+    <div>
+      <div class="partner-name">Louis Panis</div>
+      <div class="partner-quote">“Hacer que las cosas sucedan.”</div>
+      <div class="partner-bio">Ha adquirido, remodelado y operado inmuebles de principio a fin, y dirigido proyectos de gran escala bajo régimen de condominio.</div>
+    </div>
+    <div>
+      <div class="partner-name">Garza</div>
+      <div class="partner-quote">“Hacer que sucedan bien — a tiempo y en presupuesto.”</div>
+    </div>
+  </div>
+  <div class="valuation-note">Valuaciones estimadas con base en comparables de mercado, no avalúo formal. Plusvalía no realizada.</div>
 </div>"""
 
 
@@ -360,7 +423,7 @@ def _opportunity(p: dict) -> str:
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
-    ptype = _esc(str(p.get("type", "")))
+    ptype = _esc(_pretty_type(p.get("type")))
     hold = int(_num(p.get("holdMonths")))
     total_inv = p.get("totalInvestment")
     projected_sale = p.get("projectedSale")
@@ -455,15 +518,28 @@ def build_prospectus_html(projects: list[dict], prospects: list[dict]) -> str:
 
     parts = [_cover(month_year)]
 
+    # Track record = projects already operating (realized results).
+    # En desarrollo = projects still pre-obra (projected figures, not achieved).
+    operating = [p for p in projects if str(p.get("status")) == "operating"]
+    development = [p for p in projects if str(p.get("status")) != "operating"]
+    # Strongest → weakest by value multiplier (valuación / inversión).
+    operating.sort(
+        key=lambda p: (_num(p.get("currentValuation")) / _num(p.get("totalInvestment")))
+        if _num(p.get("totalInvestment")) else 0,
+        reverse=True,
+    )
+
     if projects:
-        cards = [(_track_card(i, p), p) for i, p in enumerate(projects, 1)]
-        pairs = _chunk(cards, 2)
-        for pi, pair in enumerate(pairs):
-            body = "".join(c for c, _ in pair)
-            # Fill an odd trailing half with a portfolio summary card.
-            if len(pair) == 1 and pi == len(pairs) - 1:
-                body += _summary_card(projects)
-            parts.append(f'<div class="page-block sheet">{body}</div>')
+        cards = [_project_card(i, p, f"Track Record · {i:02d}", projected=False)
+                 for i, p in enumerate(operating, 1)]
+        cards += [_project_card(j, p, f"En Desarrollo · {j:02d}", projected=True)
+                  for j, p in enumerate(development, 1)]
+        # Portfolio summary (realized track record) carries the valuation footnote
+        # and the partner bios, and fills the trailing half-sheet.
+        if operating:
+            cards.append(_summary_card(operating))
+        for pair in _chunk(cards, 2):
+            parts.append(f'<div class="page-block sheet">{"".join(pair)}</div>')
 
     for p in prospects:
         parts.append(_opportunity(p))
