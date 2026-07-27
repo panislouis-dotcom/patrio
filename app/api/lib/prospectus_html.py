@@ -320,8 +320,8 @@ def _cover(month_year: str) -> str:
     <p class="cover-lede">Compramos, transformamos y operamos bienes raíces que valen más de lo que cuestan.
       Tú pones el capital y eres dueño de todo — nosotros lo hacemos realidad, de principio a fin.</p>
     <div class="vp">
-      <div class="vp-item"><div class="vp-v">14</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
-      <div class="vp-item"><div class="vp-v">2&times;</div><div class="vp-l">Valor creado</div><div class="vp-d">Edificio Uno: $9.5M &rarr; $19M</div></div>
+      <div class="vp-item"><div class="vp-v">23</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
+      <div class="vp-item"><!-- Valor creado — en blanco por ahora --></div>
       <div class="vp-item"><div class="vp-v">8%</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">real, no proyectado</div></div>
     </div>
   </div>
