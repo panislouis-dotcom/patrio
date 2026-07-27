@@ -340,7 +340,6 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     units = int(_num(p.get("totalUnits")))
     total_inv = p.get("totalInvestment")
     current_val = p.get("currentValuation")
-    gain = _num(current_val) - _num(total_inv)
     gain_pct = _num(p.get("unrealizedGainPct"))
     hold = int(_num(p.get("holdMonthsActual")))
 
@@ -352,16 +351,15 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
 
     # Development projects (pre-obra) read as PROJECTED, not realized.
     val_label = "Valuación proyectada" if projected else "Valuación actual"
-    gain_label = "Plusvalía proyectada" if projected else "Plusvalía"
-    mult_label = "Multiplicador proy." if projected else "Multiplicador"
+    roi_label = "ROI proyectado" if projected else "ROI"
+    roi_value = f"{gain_pct * 100:.1f}".rstrip("0").rstrip(".") + "%"
     cap = _operating_cap_rate(p)
     cap_value = _fmt_pct(cap, 1) if cap is not None else "—"
 
     metrics = "".join([
         _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
         _metric(_fmt_mxn_compact(current_val), val_label),
-        _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct(gain_pct, 0)}</small>', gain_label),
-        _metric(_fmt_mult(current_val, total_inv), mult_label),
+        _metric(roi_value, roi_label),
         _metric(cap_value, "Cap rate"),
     ])
 
@@ -383,7 +381,7 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     <div class="sub">{sub}</div>
   </div>
   <div class="proj-body">
-    <div class="metrics metrics-5">{metrics}</div>
+    <div class="metrics metrics-4">{metrics}</div>
     {imgs_block}
   </div>
 </div>"""
