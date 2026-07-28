@@ -499,6 +499,15 @@ def update_project(project_id: int, data: dict) -> dict | None:
 
     with get_db() as conn:
         conn.execute(query, values)
+        # While a breakdown exists it owns the total, and _parse_project displays the
+        # computed one. Persist it in the same transaction so the stored column never
+        # drifts: it is what resurfaces — as the total and as the cap rate denominator —
+        # the day the breakdown is cleared and the project returns to a manual total.
+        row = conn.execute("SELECT * FROM projects WHERE id = %s", (project_id,)).fetchone()
+        if row is not None and row["land_price"] is not None:
+            conn.execute(
+                "UPDATE projects SET total_investment = %s WHERE id = %s",
+                (underwriting.metrics(dict(row))["total_investment"], project_id))
 
     return get_project(project_id)
 

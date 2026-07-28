@@ -50,6 +50,40 @@ def test_project_with_breakdown_computes_total(test_project):
     assert Decimal(str(p["rentAnnual"])) == expected["rent_annual"]
 
 
+def test_update_persists_the_computed_total_investment(client, test_project):
+    """While a breakdown exists it owns the stored total, so the column never goes
+    stale behind the computed figure the read path displays."""
+    from api.finance import underwriting
+    pid = test_project["id"]
+    r = client.patch(f"/api/projects/{pid}", json=dict(
+        landPrice=1000000, acquisitionCostPct=0.065, permitsCost=50000, subdivisionCost=25000,
+        sqmConstruction=200, constructionCostPerSqm=9000, constructionOverhead=1.3,
+        projectedSale=2500000, holdMonths=18, rentMonthly=18000, sqmLand=300))
+    assert r.status_code == 200
+
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM projects WHERE id=%s", (pid,)).fetchone()
+    expected = underwriting.metrics(dict(row))["total_investment"]
+    assert Decimal(str(row["total_investment"])) == expected == Decimal("3480000")
+
+
+def test_clearing_the_breakdown_keeps_the_total_it_computed(client, test_project):
+    """Back to manual mode: the fallback total is the last one the breakdown produced,
+    not the manual figure from before it — and cap rate follows that total."""
+    pid = test_project["id"]
+    client.patch(f"/api/projects/{pid}", json=dict(
+        landPrice=1000000, acquisitionCostPct=0.065, permitsCost=50000, subdivisionCost=25000,
+        sqmConstruction=200, constructionCostPerSqm=9000, constructionOverhead=1.3,
+        projectedSale=2500000, holdMonths=18, rentMonthly=18000, sqmLand=300))
+
+    r = client.patch(f"/api/projects/{pid}", json={"landPrice": None})
+    assert r.status_code == 200
+    p = r.json()
+    assert p["landPrice"] is None
+    assert Decimal(str(p["totalInvestment"])) == Decimal("3480000")  # not the fixture's 5,000,000
+    assert Decimal(str(p["capRate"])) == Decimal("0.0621")  # 216,000 / 3,480,000
+
+
 def test_convert_is_atomic_and_lossless(client, test_prospect):
     pid = test_prospect["id"]
     with get_db() as conn:
