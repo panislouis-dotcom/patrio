@@ -226,6 +226,11 @@ def _fmt_pct(frac, decimals: int = 1) -> str:
     return f"{_num(frac) * 100:.{decimals}f}%"
 
 
+def _fmt_pct_or_dash(frac, decimals: int = 1) -> str:
+    """No value means no metric — '—', never a fabricated 0.0%."""
+    return _fmt_pct(frac, decimals) if frac is not None else "—"
+
+
 def _fmt_mult(a, b) -> str:
     a, b = _num(a), _num(b)
     return f"{a / b:.2f}×" if b else "—"
@@ -328,13 +333,12 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     # Only a renting project has a realized cap rate; pre-obra shows "—" rather
     # than a projected yield dressed up as one.
     cap = p.get("capRate") if str(p.get("status")) == "operating" else None
-    cap_value = _fmt_pct(cap, 1) if cap is not None else "—"
 
     metrics = "".join([
         _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
         _metric(_fmt_mxn_compact(current_val), val_label),
         _metric(roi_value, roi_label),
-        _metric(cap_value, "Cap rate"),
+        _metric(_fmt_pct_or_dash(cap), "Cap rate"),
     ])
 
     images = p.get("images", [])
@@ -402,7 +406,7 @@ def _opportunity(p: dict) -> str:
     profit = p.get("profit")
     profit_pct = (_num(profit) / _num(total_inv)) if _num(total_inv) else 0
     roi_total = _num(p.get("roiTotal"))
-    cap_rate = _num(p.get("capRate"))
+    cap_rate = p.get("capRate")
     rent_m = p.get("rentMonthly")
     rent_a = p.get("rentAnnual")
     sqm_land = _num(p.get("sqmLand"))
@@ -416,7 +420,7 @@ def _opportunity(p: dict) -> str:
         _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
         _metric(_fmt_mxn_compact(projected_sale), "Venta proyectada"),
         _metric(f'{_fmt_mxn_compact(profit)} <small>{_fmt_pct(profit_pct, 0)}</small>', "Ganancia est."),
-        _metric(_fmt_pct(cap_rate, 1), "Cap rate"),
+        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate"),
     ])
 
     financieros = _kv_rows([

@@ -10,7 +10,7 @@ from psycopg2.pool import ThreadedConnectionPool
 
 from api.config import DATABASE_URL, DB_POOL_MIN, DB_POOL_MAX
 from api.finance import underwriting
-from api.finance.quantize import to_decimal, frac4, money0
+from api.finance.quantize import to_decimal, frac4
 from api.finance.analysis import roi_cagr
 
 _pool: ThreadedConnectionPool | None = None
@@ -360,7 +360,7 @@ def _parse_project(row, images: list | None = None) -> dict:
             d[k] = None
         rent = d.get("rentMonthly")
         d["capRate"] = underwriting.cap_rate(rent, d.get("totalInvestment"))
-        d["rentAnnual"] = money0(to_decimal(rent) * 12) if rent else None
+        d["rentAnnual"] = underwriting.rent_annual(rent)
 
     # Computed fields — money as Decimal, CAGR via shared float primitive
     total_investment = to_decimal(d.get("totalInvestment"))

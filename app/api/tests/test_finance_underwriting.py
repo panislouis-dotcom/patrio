@@ -98,6 +98,7 @@ def test_metrics_zero_guards_return_none():
     assert m["roi"] is None
     assert m["roi_total"] is None
     assert m["cap_rate"] is None
+    assert m["rent_annual"] is None
     assert m["land_price_per_sqm"] is None
 
 
@@ -106,14 +107,23 @@ def test_cap_rate_is_yield_on_cost():
     assert uw.cap_rate(18_000, 3_480_000) == Decimal("0.0621")
 
 
-def test_cap_rate_none_without_investment():
+def test_cap_rate_none_without_positive_investment():
     assert uw.cap_rate(18_000, 0) is None
     assert uw.cap_rate(18_000, None) is None
+    assert uw.cap_rate(18_000, -3_480_000) is None
 
 
-def test_cap_rate_none_without_rent():
+def test_cap_rate_none_without_positive_rent():
     assert uw.cap_rate(0, 3_480_000) is None
     assert uw.cap_rate(None, 3_480_000) is None
+    assert uw.cap_rate(-18_000, 3_480_000) is None
+
+
+def test_rent_annual_is_twelve_months_or_nothing():
+    assert uw.rent_annual(18_000) == Decimal("216000")
+    assert uw.rent_annual(0) is None
+    assert uw.rent_annual(None) is None
+    assert uw.rent_annual(-18_000) is None
 
 
 def test_metrics_cap_rate_ignores_projected_sale():

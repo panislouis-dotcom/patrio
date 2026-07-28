@@ -1,7 +1,7 @@
 """Integration tests for /api/documents routes. This endpoint has no auth."""
 from unittest import mock
 
-from api.db import get_db, get_project
+from api.db import get_db, get_project, get_prospect
 from api.lib.prospectus_html import build_prospectus_html
 
 
@@ -94,3 +94,24 @@ def test_prospectus_cap_rate_is_a_dash_without_rent(test_project):
     project = _operating(test_project["id"], None)
     assert project["capRate"] is None
     assert _cap_rate_metric("—") in build_prospectus_html([project], [])
+
+
+def test_opportunity_prints_the_prospect_cap_rate(test_prospect):
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE prospects SET land_price=1000000, acquisition_cost_pct=0.065,
+                   permits_cost=50000, subdivision_cost=25000, sqm_construction=200,
+                   construction_cost_per_sqm=9000, construction_overhead=1.3,
+                   rent_monthly=18000 WHERE id=%s""", (test_prospect["id"],))
+    # 216,000 rent over 3,480,000 invested = 6.21%
+    assert _cap_rate_metric("6.2%") in build_prospectus_html([], [get_prospect(test_prospect["id"])])
+
+
+def test_opportunity_cap_rate_is_a_dash_without_rent(test_prospect):
+    """A prospect that will not rent has no cap rate — the card must not print 0.0%."""
+    with get_db() as conn:
+        conn.execute("UPDATE prospects SET land_price=1000000, rent_monthly=0 WHERE id=%s",
+                     (test_prospect["id"],))
+    prospect = get_prospect(test_prospect["id"])
+    assert prospect["capRate"] is None
+    assert _cap_rate_metric("—") in build_prospectus_html([], [prospect])

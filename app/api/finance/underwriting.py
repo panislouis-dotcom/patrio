@@ -9,7 +9,8 @@ rent*12*0.70 / projected_sale. One formula now serves prospects, projects and
 the investor prospectus, and it answers the question an investor actually asks
 ("what does this yield on the money I put in?") without the fabricated 30% opex
 haircut. The 0.70 factor is gone; net-of-opex cap rate belongs in the analyzer,
-which models real NOI."""
+which models real NOI. rent_annual diverges from the view the same way: None
+where the view reported 0, because a property that does not rent has no rent."""
 from decimal import Decimal
 
 from .quantize import money, money0, frac4, to_decimal
@@ -36,13 +37,19 @@ def investment_raw(land_price, acquisition_cost_pct, permits_cost, subdivision_c
     )
 
 
+def rent_annual(rent_monthly) -> Decimal | None:
+    """Gross annual rent in whole pesos, or None when the property does not rent."""
+    rent = to_decimal(rent_monthly)
+    return money0(rent * Decimal(12)) if rent > 0 else None
+
+
 def cap_rate(rent_monthly, total_investment) -> Decimal | None:
-    """Yield on cost: gross annual rent / total investment. None when either side
-    is missing or zero — a property that does not rent has no cap rate, and 0 would
-    read as a real (terrible) yield."""
+    """Yield on cost: gross annual rent / total investment. None unless both sides
+    are positive — a property that does not rent has no cap rate, and 0 would read
+    as a real (terrible) yield."""
     rent = to_decimal(rent_monthly)
     inv = to_decimal(total_investment)
-    if rent == 0 or inv == 0:
+    if rent <= 0 or inv <= 0:
         return None
     return frac4(rent * Decimal(12) / inv)
 
@@ -80,5 +87,5 @@ def metrics(inputs: dict) -> dict:
         "land_price_per_sqm": money(lp / sqm_land) if sqm_land > 0 else None,
         "sale_per_sqm": money(ps / sqm_land) if sqm_land > 0 else None,
         "investment_per_sqm": money(inv_raw / sqm_land) if sqm_land > 0 else None,
-        "rent_annual": money0(to_decimal(g["rent_monthly"]) * Decimal(12)),
+        "rent_annual": rent_annual(g["rent_monthly"]),
     }
