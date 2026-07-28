@@ -8,7 +8,8 @@ interface Props {
 }
 
 export function MapPanel({ lat, lon, markerColor }: Props) {
-  // 0,0 is the "never geocoded" sentinel both prospects and projects use.
+  // Both pages read a 0 coordinate as "never geocoded", so a single 0 hides the
+  // map rather than pointing at the equator or the prime meridian.
   const hasCoords = lat != null && lon != null && lat !== 0 && lon !== 0
 
   return (

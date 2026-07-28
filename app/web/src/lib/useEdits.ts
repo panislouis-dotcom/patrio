@@ -7,6 +7,11 @@ import { useCallback, useState } from 'react'
  * `null` shows as cleared instead of falling back to the stale loaded value.
  * Reverting a field is therefore `setField(key, undefined)`, which removes the
  * key from the payload entirely.
+ *
+ * Only pass `null` where the endpoint accepts it: prospect PATCHes drop nulls
+ * (`exclude_none`) over NOT NULL columns, so those callers must clear with
+ * `setField(key, undefined)` — a `null` would read as cleared in the UI while
+ * the server quietly kept the old value.
  */
 export function useEdits<T extends object>(base: T | null) {
   const [edits, setEdits] = useState<Partial<T>>({})
