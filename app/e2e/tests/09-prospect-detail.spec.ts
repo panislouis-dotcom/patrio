@@ -1,91 +1,84 @@
 import { test, expect } from '../fixtures/auth'
+import type { Page } from '@playwright/test'
+import { detailRow, fieldInput, enterEditMode } from '../helpers/detail'
 
-test.describe('Prospect Detail Page', () => {
-  async function goToFirstProspect(page: import('@playwright/test').Page) {
+/**
+ * Smoke over whatever prospect the table happens to rank first: it covers the
+ * table → detail hop and the shape of the page, never the numbers. The seeded
+ * fixture in 15-prospect-detail.spec.ts owns the derived-value assertions.
+ */
+test.describe('Prospect Detail Page (smoke)', () => {
+  async function goToFirstProspect(page: Page) {
     await page.goto('/prospectos/tabla')
     const firstRow = page.locator('table tbody tr').first()
-    await firstRow.waitFor({ state: 'visible', timeout: 8000 })
+    await firstRow.waitFor({ state: 'visible', timeout: 8_000 })
     await firstRow.click()
     await expect(page).toHaveURL(/\/prospectos\/tabla\/\d+/)
   }
 
-  test('detail page shows INFO tab active by default', async ({ page }) => {
+  test('clicking the first table row opens the detail page', async ({ page }) => {
     await goToFirstProspect(page)
-    // Left tab bar has INFO / EDITAR / ANÁLISIS buttons
-    await expect(page.locator('button').filter({ hasText: 'INFO' })).toBeVisible({ timeout: 6000 })
-    await expect(page.locator('button').filter({ hasText: 'EDITAR' })).toBeVisible()
-    await expect(page.locator('button').filter({ hasText: 'ANÁLISIS' }).first()).toBeVisible()
+
+    await expect(detailRow(page, 'ROI ANUAL')).toBeVisible()
   })
 
-  test('INFO tab shows ROI ANUAL and PROFIT metrics', async ({ page }) => {
+  test('left column offers GENERAL and ANÁLISIS, with GENERAL active by default', async ({ page }) => {
     await goToFirstProspect(page)
-    // The INFO tab renders ROI ANUAL label and PROFIT stat
-    await expect(page.getByText('ROI ANUAL').first()).toBeVisible({ timeout: 6000 })
-    await expect(page.getByText('PROFIT').first()).toBeVisible()
+
+    await expect(page.getByRole('button', { name: 'GENERAL', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'ANÁLISIS', exact: true })).toBeVisible()
+
+    // GENERAL is the default panel — its heroes and derived rows are on screen
+    await expect(detailRow(page, 'ROI TOTAL')).toBeVisible()
+    await expect(detailRow(page, 'CAP RATE')).toBeVisible()
+    await expect(detailRow(page, 'INVERSIÓN')).toBeVisible()
   })
 
-  test('header shows back button and CONVERTIR action', async ({ page }) => {
+  test('header shows the back link, CONVERTIR and the edit actions', async ({ page }) => {
     await goToFirstProspect(page)
-    // Back button
-    await expect(page.getByText('← PROSPECTOS').first()).toBeVisible({ timeout: 6000 })
-    // Convert button
-    await expect(page.getByText('CONVERTIR ▸ PROYECTO')).toBeVisible()
+
+    await expect(page.getByText('← PROSPECTOS')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'CONVERTIR ▸ PROYECTO' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'EDITAR', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'ELIMINAR', exact: true })).toBeVisible()
   })
 
-  test('click EDITAR tab — shows inline editable fields', async ({ page }) => {
+  test('EDITAR reveals the in-place inputs and VER puts them away', async ({ page }) => {
     await goToFirstProspect(page)
-    await page.locator('button').filter({ hasText: 'EDITAR' }).click()
-    // EDITAR tab content: text inputs for NOMBRE, DIRECCIÓN, etc.
-    await expect(page.getByText('NOMBRE').first()).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('DIRECCIÓN').first()).toBeVisible()
+    await expect(detailRow(page, 'DIRECCIÓN')).toBeVisible()
+
+    await enterEditMode(page)
+    await expect(fieldInput(page, 'DIRECCIÓN')).toBeVisible()
+
+    await page.getByRole('button', { name: 'VER', exact: true }).click()
+
+    await expect(page.getByRole('button', { name: 'EDITAR', exact: true })).toBeVisible()
+    await expect(fieldInput(page, 'DIRECCIÓN')).toHaveCount(0)
   })
 
-  test('editing a field in EDITAR tab reveals GUARDAR ▸ in header', async ({ page }) => {
+  test('ANÁLISIS tab renders its section without leaving the detail page', async ({ page }) => {
     await goToFirstProspect(page)
-    await page.locator('button').filter({ hasText: 'EDITAR' }).click()
-    // Type something into the first text input to trigger edits state
-    const inputs = page.locator('input[type="text"]')
-    await inputs.first().waitFor({ state: 'visible', timeout: 5000 })
-    const originalValue = await inputs.first().inputValue()
-    await inputs.first().fill(originalValue + ' ')
-    // GUARDAR ▸ button should appear in the header
-    await expect(page.getByText('GUARDAR ▸')).toBeVisible({ timeout: 5000 })
+    const url = page.url()
+
+    await page.getByRole('button', { name: 'ANÁLISIS', exact: true }).click()
+
+    await expect(page.getByRole('button', { name: 'CORRER ANÁLISIS' })).toBeVisible()
+    expect(page.url()).toBe(url)
   })
 
-  test('click ANÁLISIS tab — analysis section renders', async ({ page }) => {
+  test('center column offers the MAPA / FOTOS / PLANO tabs', async ({ page }) => {
     await goToFirstProspect(page)
-    await page.locator('button').filter({ hasText: 'ANÁLISIS' }).click()
-    // ProspectAnalysisSection mounts inside the left panel
-    // At minimum the container appears without crashing
-    await page.waitForTimeout(500)
-    // The left panel content area should still be present
-    await expect(page.locator('button').filter({ hasText: 'ANÁLISIS' }).first()).toBeVisible()
+
+    await expect(page.getByRole('button', { name: 'MAPA' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'FOTOS' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'PLANO' })).toBeVisible()
   })
 
-  test('center panel has MAPA and FOTOS tabs', async ({ page }) => {
+  test('← PROSPECTOS returns to the table', async ({ page }) => {
     await goToFirstProspect(page)
-    // Center panel tab bar
-    await expect(page.locator('button').filter({ hasText: 'MAPA' })).toBeVisible({ timeout: 6000 })
-    await expect(page.locator('button').filter({ hasText: 'FOTOS' })).toBeVisible()
-  })
 
-  test('click FOTOS tab in center panel — gallery renders', async ({ page }) => {
-    await goToFirstProspect(page)
-    await page.locator('button').filter({ hasText: 'FOTOS' }).click()
-    // PhotoGallery renders — at minimum no crash occurs
-    await page.waitForTimeout(400)
-    await expect(page.locator('button').filter({ hasText: 'FOTOS' })).toBeVisible()
-  })
+    await page.getByText('← PROSPECTOS').click()
 
-  test('back navigation — ← PROSPECTOS returns to table', async ({ page }) => {
-    await goToFirstProspect(page)
-    await page.getByText('← PROSPECTOS').first().click()
     await expect(page).toHaveURL(/\/prospectos\/tabla$/)
-  })
-
-  test('detail page shows ELIMINAR button in header', async ({ page }) => {
-    await goToFirstProspect(page)
-    // There is a top-level ELIMINAR button that triggers confirm flow
-    await expect(page.getByText('ELIMINAR').first()).toBeVisible({ timeout: 6000 })
   })
 })

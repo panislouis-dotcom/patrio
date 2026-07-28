@@ -26,9 +26,71 @@ export async function deleteProspectByName(
     headers: await authHeaders(token),
   })
   const list = await res.json() as Array<{ name: string; id: number }>
-  const target = list.find(p => p.name === name)
-  if (target) {
+  for (const target of list.filter(p => p.name === name)) {
     await request.delete(`${API_BASE}/api/prospects/${target.id}`, {
+      headers: await authHeaders(token),
+    })
+  }
+}
+
+export async function createProspect(
+  request: APIRequestContext,
+  data: Record<string, unknown>,
+  token: string,
+): Promise<{ id: number }> {
+  const res = await request.post(`${API_BASE}/api/prospects`, {
+    headers: await authHeaders(token),
+    data,
+  })
+  if (!res.ok()) throw new Error(`createProspect failed: ${res.status()} ${await res.text()}`)
+  return res.json() as Promise<{ id: number }>
+}
+
+export async function deleteProspect(
+  request: APIRequestContext,
+  id: number,
+  token: string,
+): Promise<void> {
+  await request.delete(`${API_BASE}/api/prospects/${id}`, {
+    headers: await authHeaders(token),
+  })
+}
+
+export async function createProject(
+  request: APIRequestContext,
+  data: Record<string, unknown>,
+  token: string,
+): Promise<{ id: number }> {
+  const res = await request.post(`${API_BASE}/api/projects`, {
+    headers: await authHeaders(token),
+    data,
+  })
+  if (!res.ok()) throw new Error(`createProject failed: ${res.status()} ${await res.text()}`)
+  return res.json() as Promise<{ id: number }>
+}
+
+export async function deleteProject(
+  request: APIRequestContext,
+  id: number,
+  token: string,
+): Promise<void> {
+  await request.delete(`${API_BASE}/api/projects/${id}`, {
+    headers: await authHeaders(token),
+  })
+}
+
+/** Deletes every match, so a retried worker never trips over its own leftovers. */
+export async function deleteProjectByName(
+  request: APIRequestContext,
+  name: string,
+  token: string,
+): Promise<void> {
+  const res = await request.get(`${API_BASE}/api/projects`, {
+    headers: await authHeaders(token),
+  })
+  const list = await res.json() as Array<{ name: string; id: number }>
+  for (const target of list.filter(p => p.name === name)) {
+    await request.delete(`${API_BASE}/api/projects/${target.id}`, {
       headers: await authHeaders(token),
     })
   }
