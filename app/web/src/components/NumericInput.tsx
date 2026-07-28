@@ -8,9 +8,11 @@ interface Props {
   placeholder?: string
   /** Provide for decimal fields (e.g. step=0.1 for percentages). Omit for integers/currency. */
   step?: number
+  /** Names the box where the visible label is not tied to it, e.g. an in-place edit row. */
+  ariaLabel?: string
 }
 
-export function NumericInput({ value, onChange, style, placeholder, step }: Props) {
+export function NumericInput({ value, onChange, style, placeholder, step, ariaLabel }: Props) {
   const isDecimal = step != null && step < 1
 
   function fmt(n: number | undefined): string {
@@ -32,6 +34,7 @@ export function NumericInput({ value, onChange, style, placeholder, step }: Prop
       inputMode={isDecimal ? 'decimal' : 'numeric'}
       value={focused ? raw : fmt(value)}
       placeholder={placeholder}
+      aria-label={ariaLabel}
       style={style}
       onChange={e => {
         const s = e.target.value

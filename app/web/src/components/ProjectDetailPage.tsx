@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
 import { BASE, fetchProject, updateProject, deleteProject, fetchInstances, updateInstance, fetchTeam, fetchProjectInvestors, fetchInvestors, addProjectInvestor, updateProjectInvestment, deleteProjectInvestment, fetchProjectProfit, uploadProjectImage, deleteProjectImage, updateProjectImageType, fetchProjectGeometry, saveProjectGeometry, uploadFloorplanImage } from '../lib/api'
-import type { Project, ProcessInstance, TeamMember, ProjectInvestor, Investor, ProfitWaterfall } from '../lib/types'
+import type { Project, RawProjectFields, ProcessInstance, TeamMember, ProjectInvestor, Investor, ProfitWaterfall } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { ProjectProfitSection } from './ProjectProfitSection'
 import { colors, fonts } from '../lib/theme'
@@ -12,11 +11,32 @@ import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
 import type { FloorPlanModel } from '../lib/floorplan/types'
 import { NumericInput } from './NumericInput'
 import { PROJECT_STATUS_COLOR, PROJECT_STATUS_LABEL, PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
-import { fmtMXN } from '../lib/fmt'
+import { fmtMXN, fmtPct } from '../lib/fmt'
 import { StatRow } from './StatRow'
 import { MetricHero } from './finance/MetricHero'
 import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { ProjectPhotoGallery } from './ProjectPhotoGallery'
+import { useEdits } from '../lib/useEdits'
+import { DetailHeader } from './detail/DetailHeader'
+import { EditableRow } from './detail/EditableRow'
+import { MapPanel } from './detail/MapPanel'
+import { MediaTabs } from './detail/MediaTabs'
+import { SectionDivider } from './detail/SectionDivider'
+
+/**
+ * The editable columns, split by what the database accepts, so every row below
+ * is forced to declare which group its field belongs to:
+ *
+ *  - `TextKey` / `NumKey` are NOT NULL columns. An emptied box means `''` or `0`
+ *    — never `null`, which the PATCH (exclude_unset) would happily write.
+ *  - `NullableNumKey` are the underwriting columns, all nullable: an emptied box
+ *    sends `null` and genuinely clears the column.
+ */
+type TextKey = { [K in keyof RawProjectFields]-?: RawProjectFields[K] extends string ? K : never }[keyof RawProjectFields]
+type NumKey = { [K in keyof RawProjectFields]-?: RawProjectFields[K] extends number ? K : never }[keyof RawProjectFields]
+type NullableNumKey = { [K in keyof RawProjectFields]-?: null extends RawProjectFields[K] ? K : never }[keyof RawProjectFields]
+
+const fmtNum = (n: number | null | undefined) => (n != null ? String(n) : '—')
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -24,7 +44,8 @@ export function ProjectDetailPage() {
   const projectId = Number(id)
 
   const [project, setProject] = useState<Project | null>(null)
-  const [edits, setEdits] = useState<Partial<Project>>({})
+  const { edits, field, setField, hasEdits, clear } = useEdits<RawProjectFields>(project)
+  const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
@@ -50,13 +71,10 @@ export function ProjectDetailPage() {
   const [editReturnAmount, setEditReturnAmount] = useState<string>('')
   const [editReturnDate, setEditReturnDate] = useState<string>('')
   const [savingId, setSavingId] = useState<number | null>(null)
-  const [leftTab, setLeftTab] = useState<'info' | 'editar' | 'finanzas'>('info')
-  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos' | 'plano'>('mapa')
+  const [leftTab, setLeftTab] = useState<'general' | 'finanzas'>('general')
   const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
   const planApiRef = useRef<PlanApi | null>(null)
   const [planDirty, setPlanDirty] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
   const [showLinkTask, setShowLinkTask] = useState(false)
   const [allInstances, setAllInstances] = useState<ProcessInstance[]>([])
@@ -85,17 +103,13 @@ export function ProjectDetailPage() {
     }).catch(e => setError(e instanceof Error ? e.message : 'Error al cargar el proyecto'))
   }, [projectId])
 
-  const field = (key: keyof Project) => (edits as Record<string, unknown>)[key] ?? (project ? (project as unknown as Record<string, unknown>)[key] : undefined)
-  const setField = (key: keyof Project, value: unknown) => setEdits(prev => ({ ...prev, [key]: value }))
-  const hasEdits = Object.keys(edits).length > 0
-
   async function save() {
     setSaving(true)
     setError(null)
     try {
       const updated = await updateProject(projectId, edits)
       setProject(updated)
-      setEdits({})
+      clear()
       // Dates affect hold_months in the view — refresh dependent data
       const [pis, { waterfall: wf }] = await Promise.all([
         fetchProjectInvestors(projectId),
@@ -109,6 +123,7 @@ export function ProjectDetailPage() {
         planApiRef.current.markSaved()
         setPlanDirty(false)
       }
+      setEditing(false)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
@@ -119,14 +134,8 @@ export function ProjectDetailPage() {
   const onPlanReady = useCallback((api: PlanApi) => { planApiRef.current = api }, [])
 
   async function handleDelete() {
-    setDeleting(true)
-    try {
-      await deleteProject(Number(id))
-      navigate('/proyectos')
-    } catch {
-      setDeleting(false)
-      setConfirmDelete(false)
-    }
+    await deleteProject(projectId)
+    navigate('/proyectos')
   }
 
   async function handleLinkTask() {
@@ -270,94 +279,108 @@ export function ProjectDetailPage() {
   const roiColor = roi != null && roi > 0.5 ? colors.primary : roi != null && roi > 0.25 ? colors.tertiary : '#c0392b'
   const roiTotal = project.unrealizedGainPct
   const roiTotalColor = roiTotal > 0.5 ? colors.primary : roiTotal > 0.25 ? colors.tertiary : '#c0392b'
-  const lat = project.latitude as number | null
-  const lng = project.longitude as number | null
-  const hasMap = lat && lng
+  const url = field('url') ?? ''
+  // Investment is derived from the breakdown as soon as there is a land price —
+  // clearing PRECIO TERRENO hands the field back to manual capture, live.
+  const hasBreakdown = field('landPrice') != null
+  const acquisitionCostPct = field('acquisitionCostPct')
+  const conclusionLabel = ['flip', 'land'].includes(field('type') ?? '') ? 'FECHA DE VENTA' : 'PRIMERA RENTA'
 
-  const divider = (label: string) => (
-    <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, padding: '12px 0 6px', borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '4px' }}>
-      {label}
-    </div>
+  /** NOT NULL text column: an emptied box stays an empty string. */
+  const textRow = (label: string, key: TextKey, placeholder?: string) => (
+    <EditableRow
+      label={label}
+      editing={editing}
+      value={field(key) || '—'}
+      input={
+        <input
+          value={field(key) ?? ''}
+          onChange={e => setField(key, e.target.value)}
+          placeholder={placeholder}
+          aria-label={label}
+          style={fieldInput}
+        />
+      }
+    />
+  )
+
+  /** NOT NULL numeric column: an emptied box coerces to 0. */
+  const numRow = (label: string, key: NumKey, format: (n: number | undefined) => string) => (
+    <EditableRow
+      label={label}
+      editing={editing}
+      value={format(field(key))}
+      input={
+        <NumericInput
+          value={field(key) || undefined}
+          onChange={n => setField(key, n ?? 0)}
+          ariaLabel={label}
+          style={fieldInput}
+        />
+      }
+    />
+  )
+
+  /** Nullable underwriting column: an emptied box sends null and clears it. */
+  const underwritingRow = (label: string, key: NullableNumKey, format: (n: number | null | undefined) => string, step?: number) => (
+    <EditableRow
+      label={label}
+      editing={editing}
+      value={format(field(key))}
+      input={
+        <NumericInput
+          value={field(key) ?? undefined}
+          onChange={n => setField(key, n ?? null)}
+          step={step}
+          ariaLabel={label}
+          style={fieldInput}
+        />
+      }
+    />
+  )
+
+  const selectRow = (label: string, key: 'type' | 'status', value: string, options: React.ReactNode) => (
+    <EditableRow
+      label={label}
+      editing={editing}
+      value={value}
+      input={
+        <select
+          value={field(key) ?? ''}
+          onChange={e => setField(key, e.target.value)}
+          aria-label={label}
+          style={{ ...fieldInput, cursor: 'pointer' }}
+        >
+          {options}
+        </select>
+      }
+    />
   )
 
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
 
-      {/* ── HEADER ── */}
-      <div style={{
-        ...fade(0),
-        flexShrink: 0,
-        height: '52px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
-        padding: '0 24px',
-        borderBottom: `1px solid ${colors.border}`,
-        background: colors.dark,
-      }}>
-        <button
-          onClick={() => navigate('/proyectos')}
-          style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: 0, flexShrink: 0 }}
-        >
-          ← PROYECTOS
-        </button>
-        <span style={{ color: colors.border }}>·</span>
-        <span style={{ fontFamily: fonts.serif, fontSize: '20px', color: colors.neutral, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {field('name') as string}
-        </span>
-        <span style={{
-          fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.12em',
-          padding: '3px 10px', flexShrink: 0,
-          background: PROJECT_STATUS_COLOR[field('status') as string] ?? colors.border,
-          color: colors.neutral,
-        }}>
-          {PROJECT_STATUS_LABEL[field('status') as string] ?? String(field('status') ?? '').toUpperCase()}
-        </span>
-        {confirmDelete ? (
-          <>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
-            >
-              CANCELAR
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              style={{ background: '#c0392b', border: 'none', color: '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '6px 16px', opacity: deleting ? 0.7 : 1, flexShrink: 0 }}
-            >
-              {deleting ? 'BORRANDO…' : '¿CONFIRMAR BORRADO?'}
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
-          >
-            ELIMINAR
-          </button>
-        )}
-        {(hasEdits || planDirty) && (
-          <button
-            onClick={save}
-            disabled={saving}
-            style={{
-              background: colors.primary, border: 'none', color: colors.neutral,
-              cursor: saving ? 'not-allowed' : 'pointer',
-              fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em',
-              padding: '6px 16px', opacity: saving ? 0.7 : 1,
-              transition: 'opacity 0.2s', flexShrink: 0,
-            }}
-          >
-            {saving ? 'GUARDANDO…' : 'GUARDAR ▸'}
-          </button>
-        )}
-      </div>
+      <DetailHeader
+        style={fade(0)}
+        backLabel="PROYECTOS"
+        onBack={() => navigate('/proyectos')}
+        title={field('name') ?? ''}
+        editingTitle={{ value: field('name') ?? '', onChange: v => setField('name', v) }}
+        statusLabel={PROJECT_STATUS_LABEL[field('status') ?? ''] ?? (field('status') ?? '').toUpperCase()}
+        statusColor={PROJECT_STATUS_COLOR[field('status') ?? ''] ?? colors.border}
+        editing={editing}
+        onToggleEdit={() => setEditing(v => !v)}
+        hasChanges={hasEdits || planDirty}
+        saving={saving}
+        onSave={save}
+        onCancel={() => { clear(); setEditing(false) }}
+        onDelete={handleDelete}
+      />
 
       {/* ── MAIN 2-COLUMN GRID ── */}
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '360px 1fr', overflow: 'hidden' }}>
 
-        {/* ── LEFT: Tabbed (INFO / EDITAR / FINANZAS) ── */}
+        {/* ── LEFT: Tabbed (GENERAL / FINANZAS) ── */}
         <div style={{
           ...fade(80),
           borderRight: `1px solid ${colors.border}`,
@@ -368,7 +391,7 @@ export function ProjectDetailPage() {
 
           {/* Tab bar */}
           <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
-            {(['info', 'editar', 'finanzas'] as const).map(tab => (
+            {(['general', 'finanzas'] as const).map(tab => (
               <button key={tab} onClick={() => setLeftTab(tab)} style={{
                 background: 'transparent', border: 'none',
                 borderBottom: leftTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
@@ -376,14 +399,18 @@ export function ProjectDetailPage() {
                 cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
                 letterSpacing: '0.12em', padding: '10px 16px 8px', textTransform: 'uppercase' as const,
               }}>
-                {tab === 'info' ? 'INFO' : tab === 'editar' ? 'EDITAR' : 'FINANZAS'}
+                {tab.toUpperCase()}
               </button>
             ))}
           </div>
 
-          {/* ── INFO tab ── */}
-          {leftTab === 'info' && (
+          {/* ── GENERAL tab ── */}
+          {leftTab === 'general' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
+
+              {error && (
+                <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginBottom: '12px' }}>{error}</div>
+              )}
 
               {/* Hero ROI */}
               <MetricHero
@@ -402,31 +429,111 @@ export function ProjectDetailPage() {
                 size={24}
               />
 
-              <StatRow label="INVERSIÓN" value={fmtMXN((field('totalInvestment') as number) ?? 0)} />
-              <StatRow label="VALORACIÓN" value={fmtMXN((field('currentValuation') as number) ?? 0)} />
-              <StatRow label="PLAZO" value={project.holdMonthsActual ? `${project.holdMonthsActual} meses` : '—'} />
-              <StatRow label="UNIDADES" value={field('totalUnits') as React.ReactNode} />
-              <StatRow label="TIPO" value={field('type') as React.ReactNode} />
-
-              {divider('FECHAS')}
-              <StatRow label="ADQUISICIÓN" value={field('acquisitionDate') as React.ReactNode} />
-              {project.conclusionDate && (
-                <StatRow
-                  label={['flip', 'land'].includes(project.type) ? 'FECHA DE VENTA' : 'PRIMERA RENTA'}
-                  value={field('conclusionDate') as React.ReactNode}
-                />
+              {/* Investment is either derived from the breakdown or captured by hand */}
+              <EditableRow
+                label="INVERSIÓN"
+                editing={editing}
+                value={fmtMXN(field('totalInvestment'))}
+                hint={editing ? (hasBreakdown ? 'CALCULADA DEL DESGLOSE' : 'CAPTURA MANUAL') : undefined}
+                input={hasBreakdown ? undefined : (
+                  <NumericInput
+                    value={field('totalInvestment') || undefined}
+                    onChange={n => setField('totalInvestment', n ?? 0)}
+                    ariaLabel="INVERSIÓN"
+                    style={fieldInput}
+                  />
+                )}
+              />
+              {numRow('VALORACIÓN', 'currentValuation', fmtMXN)}
+              {underwritingRow('RENTA/MES', 'rentMonthly', fmtMXN)}
+              {project.capRate != null && (
+                <EditableRow label="CAP RATE" editing={editing} value={fmtPct(project.capRate)} />
               )}
-              {project.valuationDate && <StatRow label="VALUACIÓN" value={field('valuationDate') as React.ReactNode} />}
+              <EditableRow
+                label="PLAZO REAL"
+                editing={editing}
+                value={project.holdMonthsActual ? `${project.holdMonthsActual} meses` : '—'}
+                hint={editing ? 'DERIVADO DE FECHAS' : undefined}
+              />
+              {numRow('UNIDADES', 'totalUnits', fmtNum)}
+              {selectRow('TIPO', 'type', field('type') || '—', (
+                <>
+                  <option value="">— sin tipo —</option>
+                  {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </>
+              ))}
+              {selectRow('ESTADO', 'status', PROJECT_STATUS_LABEL[field('status') ?? ''] ?? (field('status') || '—'), (
+                Object.entries(PROJECT_STATUS_LABEL).map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)
+              ))}
 
-              {divider('UBICACIÓN')}
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{field('address') as string}</div>
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>{field('city') as string}</div>
+              <SectionDivider label="FECHAS" />
+              {textRow('ADQUISICIÓN', 'acquisitionDate', 'YYYY-MM')}
+              {textRow(conclusionLabel, 'conclusionDate', 'YYYY-MM')}
+              {textRow('VALUACIÓN', 'valuationDate', 'YYYY-MM')}
 
-              {/* Underwriting superset — shown only when the project carries a breakdown */}
-              {project.landPrice != null ? (
+              <SectionDivider label="UBICACIÓN" />
+              {textRow('DIRECCIÓN', 'address')}
+              {textRow('CIUDAD', 'city')}
+              <EditableRow
+                label="URL"
+                editing={editing}
+                value={url ? (
+                  <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: colors.secondary, textDecoration: 'none' }}>VER FUENTE ↗</a>
+                ) : '—'}
+                input={
+                  <input
+                    value={url}
+                    onChange={e => setField('url', e.target.value)}
+                    aria-label="URL"
+                    style={fieldInput}
+                  />
+                }
+              />
+              {editing && (
+                <div style={{ marginTop: '12px' }}>
+                  <LatLonPicker
+                    lat={Number(field('latitude')) || 0}
+                    lon={Number(field('longitude')) || 0}
+                    onChange={(newLat, newLon) => {
+                      setField('latitude', newLat)
+                      setField('longitude', newLon)
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Underwriting superset — raw inputs while editing, derived blocks while viewing */}
+              {editing ? (
+                <>
+                  <SectionDivider label="DESGLOSE DE INVERSIÓN" />
+                  {underwritingRow('PRECIO TERRENO', 'landPrice', fmtMXN)}
+                  {underwritingRow('TERRENO (m²)', 'sqmLand', fmtNum)}
+                  {underwritingRow('CONSTRUCCIÓN (m²)', 'sqmConstruction', fmtNum)}
+                  {underwritingRow('COSTO CONSTR./m²', 'constructionCostPerSqm', fmtMXN)}
+                  {underwritingRow('PERMISOS', 'permitsCost', fmtMXN)}
+                  {underwritingRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN)}
+                  {underwritingRow('VENTA PROYECTADA', 'projectedSale', fmtMXN)}
+                  <EditableRow
+                    label="COSTOS ADQ. (%)"
+                    editing={editing}
+                    value={fmtPct(acquisitionCostPct)}
+                    input={
+                      <NumericInput
+                        value={acquisitionCostPct != null ? acquisitionCostPct * 100 : undefined}
+                        onChange={n => setField('acquisitionCostPct', n != null ? n / 100 : null)}
+                        step={0.1}
+                        ariaLabel="COSTOS ADQ. (%)"
+                        style={fieldInput}
+                      />
+                    }
+                  />
+                  {underwritingRow('OVERHEAD CONSTRUCCIÓN', 'constructionOverhead', fmtNum, 0.01)}
+                  {underwritingRow('PLAZO PROYECTADO (MESES)', 'holdMonths', fmtNum)}
+                </>
+              ) : hasBreakdown ? (
                 <>
                   <InvestmentBreakdown
-                    label="INVERSIÓN"
+                    label="DESGLOSE DE INVERSIÓN"
                     total={project.totalInvestment}
                     barsReady={barsReady}
                     items={[
@@ -437,20 +544,22 @@ export function ProjectDetailPage() {
                       { label: 'Construcción', amount: project.constructionTotal ?? 0 },
                     ]}
                   />
-                  {divider('MÉTRICAS')}
-                  <StatRow label="INVERSIÓN/m²" value={fmtMXN(project.investmentPerSqm ?? 0)} />
-                  <StatRow label="VENTA/m²" value={fmtMXN(project.salePerSqm ?? 0)} />
-                  <StatRow label="COSTO PROPIEDAD" value={fmtMXN(project.landPrice ?? 0)} />
-                  {divider('PROYECCIÓN')}
-                  <StatRow label="VENTA PROYECTADA" value={fmtMXN(project.projectedSale ?? 0)} />
-                  <StatRow label="PROFIT PROYECTADO" value={fmtMXN(project.projectedProfit ?? 0)} />
-                  <StatRow label="ROI PROYECTADO" value={project.projectedRoi != null ? `${(project.projectedRoi * 100).toFixed(1)}%` : '—'} />
-                  <StatRow label="CAP RATE" value={project.capRate != null ? `${(project.capRate * 100).toFixed(1)}%` : '—'} />
+                  <SectionDivider label="MÉTRICAS" />
+                  <StatRow label="INVERSIÓN/m²" value={fmtMXN(project.investmentPerSqm)} />
+                  <StatRow label="VENTA/m²" value={fmtMXN(project.salePerSqm)} />
+                  <StatRow label="COSTO PROPIEDAD" value={fmtMXN(project.landPrice)} />
+                  <SectionDivider label="PROYECCIÓN" />
+                  <StatRow label="VENTA PROYECTADA" value={fmtMXN(project.projectedSale)} />
+                  <StatRow label="PROFIT PROYECTADO" value={fmtMXN(project.projectedProfit)} />
+                  <StatRow label="ROI PROYECTADO" value={fmtPct(project.projectedRoi)} />
                 </>
               ) : (
-                <div style={{ marginTop: '20px', fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>
-                  Agrega el desglose de inversión en EDITAR.
-                </div>
+                <>
+                  <SectionDivider label="DESGLOSE DE INVERSIÓN" />
+                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>
+                    Agrega el desglose de inversión en EDITAR para calcular la inversión y las métricas.
+                  </div>
+                </>
               )}
 
               {/* Presupuesto */}
@@ -490,26 +599,18 @@ export function ProjectDetailPage() {
               )}
 
               {/* Notas */}
-              {project.notes && (
-                <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>NOTAS</div>
-                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>
-                    {project.notes}
-                  </div>
-                </div>
-              )}
-
-              {/* URL */}
-              {project.url && (
-                <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-                  <a
-                    href={project.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary, textDecoration: 'none' }}
-                  >
-                    VER FUENTE ↗
-                  </a>
+              <SectionDivider label="NOTAS" />
+              {editing ? (
+                <textarea
+                  value={field('notes') ?? ''}
+                  onChange={e => setField('notes', e.target.value)}
+                  rows={3}
+                  aria-label="NOTAS"
+                  style={{ ...fieldInput, resize: 'vertical' }}
+                />
+              ) : (
+                <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>
+                  {field('notes') || '—'}
                 </div>
               )}
 
@@ -598,156 +699,6 @@ export function ProjectDetailPage() {
                   </table>
                 )}
               </div>
-
-            </div>
-          )}
-
-          {/* ── EDITAR tab ── */}
-          {leftTab === 'editar' && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
-
-              {([
-                { key: 'name', label: 'Nombre', type: 'text' },
-                { key: 'address', label: 'Dirección', type: 'text' },
-                { key: 'city', label: 'Ciudad', type: 'text' },
-              ] as const).map(({ key, label, type }) => (
-                <div key={key} style={{ marginBottom: '8px' }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-                  <input
-                    value={(field(key as keyof Project) as string) ?? ''}
-                    onChange={e => setField(key as keyof Project, e.target.value)}
-                    type={type}
-                    style={fieldInput}
-                  />
-                </div>
-              ))}
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>TIPO</div>
-                <select
-                  value={(edits.type as string) ?? (project.type ?? '')}
-                  onChange={e => setField('type', e.target.value)}
-                  style={{ ...fieldInput, cursor: 'pointer' }}
-                >
-                  <option value="">— sin tipo —</option>
-                  {PROPERTY_TYPES.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>ESTADO</div>
-                <select
-                  value={(field('status') as string) ?? ''}
-                  onChange={e => setField('status', e.target.value)}
-                  style={{ ...fieldInput, cursor: 'pointer' }}
-                >
-                  {Object.entries(PROJECT_STATUS_LABEL).map(([val, lbl]) => (
-                    <option key={val} value={val}>{lbl}</option>
-                  ))}
-                </select>
-              </div>
-
-              {([
-                { key: 'totalInvestment', label: 'Inversión ($)' },
-                { key: 'currentValuation', label: 'Valoración ($)' },
-                { key: 'totalUnits', label: 'Unidades' },
-              ] as const).map(({ key, label }) => (
-                <div key={key} style={{ marginBottom: '8px' }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-                  <NumericInput
-                    value={(field(key as keyof Project) as number) || undefined}
-                    onChange={n => setField(key as keyof Project, n ?? 0)}
-                    style={fieldInput}
-                  />
-                </div>
-              ))}
-
-              {([
-                { key: 'acquisitionDate' as keyof Project, label: 'Adquisición (YYYY-MM)' },
-                { key: 'conclusionDate' as keyof Project, label: (['flip', 'land'].includes(field('type') as string) ? 'Fecha de venta (YYYY-MM)' : 'Primera renta (YYYY-MM)') },
-                { key: 'valuationDate' as keyof Project, label: 'Valuación (YYYY-MM)' },
-              ]).map(({ key, label }) => (
-                <div key={key} style={{ marginBottom: '8px' }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-                  <input
-                    value={(field(key) as string) ?? ''}
-                    onChange={e => setField(key, e.target.value)}
-                    type="text"
-                    placeholder="YYYY-MM"
-                    style={fieldInput}
-                  />
-                </div>
-              ))}
-
-              {/* Underwriting breakdown (optional) — a project ⊇ a prospect */}
-              {divider('DESGLOSE (OPCIONAL)')}
-              {([
-                { key: 'landPrice', label: 'Precio terreno ($)' },
-                { key: 'sqmLand', label: 'Terreno (m²)' },
-                { key: 'sqmConstruction', label: 'Construcción (m²)' },
-                { key: 'constructionCostPerSqm', label: 'Costo constr./m² ($)' },
-                { key: 'permitsCost', label: 'Permisos ($)' },
-                { key: 'subdivisionCost', label: 'Subdivisión ($)' },
-                { key: 'projectedSale', label: 'Venta proyectada ($)' },
-                { key: 'rentMonthly', label: 'Renta mensual ($)' },
-                { key: 'holdMonths', label: 'Plazo (meses)' },
-              ] as const).map(({ key, label }) => (
-                <div key={key} style={{ marginBottom: '8px' }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-                  <NumericInput
-                    value={(field(key as keyof Project) as number) ?? undefined}
-                    onChange={n => setField(key as keyof Project, n ?? null)}
-                    style={fieldInput}
-                  />
-                </div>
-              ))}
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>COSTOS ADQ. (%)</div>
-                <NumericInput
-                  value={field('acquisitionCostPct') != null ? (field('acquisitionCostPct') as number) * 100 : undefined}
-                  onChange={n => setField('acquisitionCostPct', n != null ? n / 100 : null)}
-                  step={0.1}
-                  style={fieldInput}
-                />
-              </div>
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>OVERHEAD CONSTRUCCIÓN</div>
-                <NumericInput
-                  value={(field('constructionOverhead') as number) ?? undefined}
-                  onChange={n => setField('constructionOverhead', n ?? null)}
-                  step={0.01}
-                  style={fieldInput}
-                />
-              </div>
-
-              <div style={{ marginBottom: '8px' }}>
-                <LatLonPicker
-                  lat={Number(field('latitude')) || 0}
-                  lon={Number(field('longitude')) || 0}
-                  onChange={(newLat, newLon) => {
-                    setField('latitude', newLat)
-                    setField('longitude', newLon)
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
-                <textarea
-                  value={(field('notes') as string) ?? ''}
-                  onChange={e => setField('notes', e.target.value)}
-                  rows={3}
-                  style={{ ...fieldInput, resize: 'vertical' }}
-                />
-              </div>
-
-              {error && (
-                <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginTop: '8px' }}>{error}</div>
-              )}
 
             </div>
           )}
@@ -952,54 +903,11 @@ export function ProjectDetailPage() {
 
         </div>
 
-        {/* ── CENTER: Mapa / Fotos ── */}
-        <div style={{ ...fade(160), display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Tab bar */}
-          <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
-            {(['mapa', 'fotos', 'plano'] as const).map(tab => (
-              <button key={tab} onClick={() => setCenterTab(tab)} style={{
-                background: 'transparent', border: 'none',
-                borderBottom: centerTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
-                color: centerTab === tab ? colors.neutral : colors.secondary,
-                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
-                letterSpacing: '0.12em', padding: '10px 16px 8px', marginBottom: '-1px',
-              }}>
-                {tab.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          {/* MAPA tab */}
-          {centerTab === 'mapa' && (
-            <div style={{ flex: 1, position: 'relative' }}>
-              {hasMap ? (
-                <MapContainer
-                  center={[lat, lng]}
-                  zoom={15}
-                  style={{ height: '100%', width: '100%' }}
-                  scrollWheelZoom={false}
-                >
-                  <TileLayer
-                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                  />
-                  <CircleMarker
-                    center={[lat, lng]}
-                    radius={12}
-                    pathOptions={{ color: colors.primary, fillColor: colors.primary, fillOpacity: 0.7, weight: 2 }}
-                  />
-                </MapContainer>
-              ) : (
-                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
-                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* FOTOS tab */}
-          {centerTab === 'fotos' && (
+        {/* ── CENTER: Mapa / Fotos / Plano ── */}
+        <MediaTabs
+          style={fade(160)}
+          mapa={<MapPanel lat={project.latitude} lon={project.longitude} markerColor={colors.primary} />}
+          fotos={
             <ProjectPhotoGallery
               images={project.images}
               base={BASE}
@@ -1016,10 +924,8 @@ export function ProjectDetailPage() {
                 setProject(prev => prev ? { ...prev, images: prev.images.map(i => i.id === imageId ? updated : i) } : prev)
               }}
             />
-          )}
-
-          {/* PLANO tab */}
-          {centerTab === 'plano' && geometry !== null && (
+          }
+          plano={geometry !== null && (
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               <FloorPlanEditor
                 initial={geometry}
@@ -1030,7 +936,7 @@ export function ProjectDetailPage() {
               />
             </div>
           )}
-        </div>
+        />
 
       </div>
     </div>
