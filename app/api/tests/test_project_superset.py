@@ -67,6 +67,30 @@ def test_update_persists_the_computed_total_investment(client, test_project):
     assert Decimal(str(row["total_investment"])) == expected == Decimal("3480000")
 
 
+def test_create_persists_the_computed_total_investment(client):
+    """A project born with a breakdown stores the computed total right away — it
+    should not take a PATCH to stop showing the 0 the client sent."""
+    from api.finance import underwriting
+    r = client.post("/api/projects", json=dict(
+        name="[TEST] Alta con desglose", type="ground_up", address="Av. Test 200, Monterrey",
+        city="Monterrey", status="construction", totalUnits=1, acquisitionDate="2025-01",
+        conclusionDate="2026-06", totalInvestment=0, currentValuation=5000000,
+        valuationDate="2026-01",
+        landPrice=1000000, acquisitionCostPct=0.065, permitsCost=50000, subdivisionCost=25000,
+        sqmConstruction=200, constructionCostPerSqm=9000, constructionOverhead=1.3,
+        projectedSale=2500000, holdMonths=18, rentMonthly=18000, sqmLand=300))
+    assert r.status_code == 201
+    project_id = r.json()["id"]
+    try:
+        with get_db() as conn:
+            row = conn.execute("SELECT * FROM projects WHERE id=%s", (project_id,)).fetchone()
+        expected = underwriting.metrics(dict(row))["total_investment"]
+        assert Decimal(str(row["total_investment"])) == expected == Decimal("3480000")
+    finally:
+        with get_db() as conn:
+            conn.execute("DELETE FROM projects WHERE id=%s", (project_id,))
+
+
 def test_clearing_the_breakdown_keeps_the_total_it_computed(client, test_project):
     """Back to manual mode: the fallback total is the last one the breakdown produced,
     not the manual figure from before it — and cap rate follows that total."""

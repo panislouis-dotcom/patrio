@@ -461,6 +461,22 @@ def set_prospect_geometry(prospect_id: int, geometry: dict) -> dict | None:
     return None if row is None else (row["geometry"] or {})
 
 
+def _sync_stored_total_investment(conn, project_id: int) -> None:
+    """Persist the total the breakdown computes, inside the caller's transaction.
+
+    While a breakdown exists it owns the total and _parse_project displays the
+    computed one, so the stored column has to follow or it silently goes stale —
+    and that column is what resurfaces, as the total and as the cap rate
+    denominator, the day the breakdown is cleared and the project goes back to a
+    manual total. A project without a breakdown keeps whatever was written to it.
+    """
+    row = conn.execute("SELECT * FROM projects WHERE id = %s", (project_id,)).fetchone()
+    if row is not None and row["land_price"] is not None:
+        conn.execute(
+            "UPDATE projects SET total_investment = %s WHERE id = %s",
+            (underwriting.metrics(dict(row))["total_investment"], project_id))
+
+
 def update_project(project_id: int, data: dict) -> dict | None:
     """Update a project record with the provided data.
 
@@ -499,15 +515,7 @@ def update_project(project_id: int, data: dict) -> dict | None:
 
     with get_db() as conn:
         conn.execute(query, values)
-        # While a breakdown exists it owns the total, and _parse_project displays the
-        # computed one. Persist it in the same transaction so the stored column never
-        # drifts: it is what resurfaces — as the total and as the cap rate denominator —
-        # the day the breakdown is cleared and the project returns to a manual total.
-        row = conn.execute("SELECT * FROM projects WHERE id = %s", (project_id,)).fetchone()
-        if row is not None and row["land_price"] is not None:
-            conn.execute(
-                "UPDATE projects SET total_investment = %s WHERE id = %s",
-                (underwriting.metrics(dict(row))["total_investment"], project_id))
+        _sync_stored_total_investment(conn, project_id)
 
     return get_project(project_id)
 
@@ -538,6 +546,7 @@ def create_project(data: dict) -> dict:
     with get_db() as conn:
         cur = conn.execute(query, values)
         project_id = cur.fetchone()["id"]
+        _sync_stored_total_investment(conn, project_id)
 
     return get_project(project_id)
 
