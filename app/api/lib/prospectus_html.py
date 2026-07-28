@@ -236,34 +236,6 @@ def _pretty_type(raw) -> str:
     return str(raw or "").replace("_", " ").strip().capitalize()
 
 
-# Real operating cap rate = NOI anual / valuación actual, for projects already
-# operating & renting. Development (pre-obra) projects have no cap rate → "—";
-# it is never fabricated. Interim source: net monthly rent per operating project
-# lives here until Refigan's finance tab captures rent_monthly on the project
-# ficha (then p["rentMonthly"] is used and these fall away). Casa Modesto has no
-# operating expenses, so NOI = gross rent. Edificio Uno keeps its established
-# dashboard cap rate (~8%) since its net rent is not captured here.
-_OPERATING_RENT_MONTHLY = {
-    "Casa Modesto 415": 31000,
-    "Casa Centro": 31000,
-}
-_OPERATING_CAP_RATE = {
-    "Edificio Uno": 0.08,
-}
-
-
-def _operating_cap_rate(p: dict):
-    """Fraction (0.06) for a renting project, or None → shown as '—'."""
-    if str(p.get("status")) != "operating":
-        return None
-    name = p.get("name", "")
-    val = _num(p.get("currentValuation"))
-    rent = _num(p.get("rentMonthly")) or _OPERATING_RENT_MONTHLY.get(name, 0)
-    if rent and val:
-        return (rent * 12) / val
-    return _OPERATING_CAP_RATE.get(name)
-
-
 def _chunk(seq, n):
     return [seq[i:i + n] for i in range(0, len(seq), n)]
 
@@ -353,7 +325,9 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     val_label = "Valuación proyectada" if projected else "Valuación actual"
     roi_label = "ROI proyectado" if projected else "ROI"
     roi_value = f"{gain_pct * 100:.1f}".rstrip("0").rstrip(".") + "%"
-    cap = _operating_cap_rate(p)
+    # Only a renting project has a realized cap rate; pre-obra shows "—" rather
+    # than a projected yield dressed up as one.
+    cap = p.get("capRate") if str(p.get("status")) == "operating" else None
     cap_value = _fmt_pct(cap, 1) if cap is not None else "—"
 
     metrics = "".join([
