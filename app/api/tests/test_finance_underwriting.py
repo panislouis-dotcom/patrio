@@ -48,6 +48,9 @@ def test_investment_raw_unrounded_single_expression():
 # (locked here before the view was dropped in migration 020). A future change that
 # breaks the round-of-sum discipline — summing pre-rounded sub-totals instead of the
 # single unrounded investment_raw — would drift these by ~1 peso and fail.
+# cap_rate is the one figure that no longer matches the old view: the 2026-07 formula
+# change made it yield on cost (216,000 / 3,480,000 = 0.0621) instead of the view's
+# rent*12*0.70 / projected_sale (0.0605).
 _EXPECTED = {
     "total_investment": Decimal("3480000"),
     "acquisition_costs": Decimal("65000"),
@@ -55,7 +58,7 @@ _EXPECTED = {
     "construction_base": Decimal("1800000"),
     "construction_total": Decimal("2340000"),
     "profit": Decimal("-980000"),
-    "cap_rate": Decimal("0.0605"),
+    "cap_rate": Decimal("0.0621"),
     "land_price_per_sqm": Decimal("3333.33"),
     "sale_per_sqm": Decimal("8333.33"),
     "investment_per_sqm": Decimal("11600.00"),
@@ -96,3 +99,25 @@ def test_metrics_zero_guards_return_none():
     assert m["roi_total"] is None
     assert m["cap_rate"] is None
     assert m["land_price_per_sqm"] is None
+
+
+def test_cap_rate_is_yield_on_cost():
+    # 18,000*12 = 216,000 over 3,480,000 invested
+    assert uw.cap_rate(18_000, 3_480_000) == Decimal("0.0621")
+
+
+def test_cap_rate_none_without_investment():
+    assert uw.cap_rate(18_000, 0) is None
+    assert uw.cap_rate(18_000, None) is None
+
+
+def test_cap_rate_none_without_rent():
+    assert uw.cap_rate(0, 3_480_000) is None
+    assert uw.cap_rate(None, 3_480_000) is None
+
+
+def test_metrics_cap_rate_ignores_projected_sale():
+    """The denominator is the cost stack, so changing the exit cannot move cap rate."""
+    m = uw.metrics(dict(INPUTS))
+    cheaper_exit = uw.metrics(dict(INPUTS, projected_sale=1_000_000))
+    assert cheaper_exit["cap_rate"] == m["cap_rate"] == Decimal("0.0621")

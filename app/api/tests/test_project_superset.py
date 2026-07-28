@@ -9,6 +9,24 @@ def test_project_without_breakdown_falls_back_to_stored(test_project):
     assert p["projectedRoi"] is None
 
 
+def test_project_without_breakdown_derives_cap_rate_from_stored_total(test_project):
+    """No cost breakdown → cap rate still lands, off the stored total_investment."""
+    with get_db() as conn:
+        conn.execute("UPDATE projects SET rent_monthly=30000 WHERE id=%s", (test_project["id"],))
+    p = get_project(test_project["id"])
+    assert p["landPrice"] is None
+    # 30,000*12 = 360,000 over the fixture's stored 5,000,000
+    assert Decimal(str(p["capRate"])) == Decimal("0.0720")
+    assert Decimal(str(p["rentAnnual"])) == Decimal("360000")
+
+
+def test_project_without_breakdown_or_rent_has_no_cap_rate(test_project):
+    p = get_project(test_project["id"])
+    assert p["rentMonthly"] is None
+    assert p["capRate"] is None
+    assert p["rentAnnual"] is None
+
+
 def test_project_with_breakdown_computes_total(test_project):
     from api.finance import underwriting
     with get_db() as conn:
@@ -28,6 +46,8 @@ def test_project_with_breakdown_computes_total(test_project):
     assert Decimal(str(p["investmentPerSqm"])) == expected["investment_per_sqm"]
     assert Decimal(str(p["projectedProfit"])) == expected["profit"]
     assert Decimal(str(p["projectedRoi"])) == expected["roi"]
+    assert Decimal(str(p["capRate"])) == expected["cap_rate"]
+    assert Decimal(str(p["rentAnnual"])) == expected["rent_annual"]
 
 
 def test_convert_is_atomic_and_lossless(client, test_prospect):

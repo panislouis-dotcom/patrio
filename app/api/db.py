@@ -10,7 +10,7 @@ from psycopg2.pool import ThreadedConnectionPool
 
 from api.config import DATABASE_URL, DB_POOL_MIN, DB_POOL_MAX
 from api.finance import underwriting
-from api.finance.quantize import to_decimal, frac4
+from api.finance.quantize import to_decimal, frac4, money0
 from api.finance.analysis import roi_cagr
 
 _pool: ThreadedConnectionPool | None = None
@@ -335,9 +335,10 @@ def _parse_project(row, images: list | None = None) -> dict:
     # Underwriting superset (Project ⊇ Prospect). A project carrying the full
     # breakdown derives its *projected* metrics identically to a prospect, and its
     # computed total_investment overrides the stored fallback. Breakdown-less
-    # projects (land_price NULL) keep the stored total and expose NULL derived fields.
+    # projects (land_price NULL) keep the stored total and expose NULL derived fields —
+    # except the two that only need rent and the total: cap rate and annual rent.
     _UW_NULL = ("acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
-                "landPricePerSqm", "salePerSqm", "investmentPerSqm", "capRate", "rentAnnual",
+                "landPricePerSqm", "salePerSqm", "investmentPerSqm",
                 "projectedProfit", "projectedRoi", "projectedRoiTotal")
     if d.get("landPrice") is not None:
         m = underwriting.metrics(dict(row))
@@ -357,6 +358,9 @@ def _parse_project(row, images: list | None = None) -> dict:
     else:
         for k in _UW_NULL:
             d[k] = None
+        rent = d.get("rentMonthly")
+        d["capRate"] = underwriting.cap_rate(rent, d.get("totalInvestment"))
+        d["rentAnnual"] = money0(to_decimal(rent) * 12) if rent else None
 
     # Computed fields — money as Decimal, CAGR via shared float primitive
     total_investment = to_decimal(d.get("totalInvestment"))
