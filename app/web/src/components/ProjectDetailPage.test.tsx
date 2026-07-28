@@ -24,6 +24,28 @@ vi.mock('../lib/api', async importOriginal => {
     fetchInvestors: vi.fn(async () => []),
     fetchProjectProfit: vi.fn(async () => ({ waterfall: null })),
     fetchProjectGeometry: vi.fn(async () => ({})),
+    saveProjectGeometry: vi.fn(async () => ({})),
+  }
+})
+
+// The FINANZAS panel loads its own data and is tested on its own.
+vi.mock('./ProjectProfitSection', () => ({ ProjectProfitSection: () => <div data-testid="profit" /> }))
+
+/** Stands in for the canvas editor so a test can hand the page a dirty floor plan. */
+const planStub = vi.hoisted(() => ({ dirty: false }))
+vi.mock('./FloorPlanEditor', async () => {
+  const { useEffect } = await import('react')
+  return {
+    default: ({ onReady, onDirtyChange }: {
+      onReady: (api: { isDirty: () => boolean; getModel: () => object; markSaved: () => void }) => void
+      onDirtyChange: (dirty: boolean) => void
+    }) => {
+      useEffect(() => {
+        onReady({ isDirty: () => planStub.dirty, getModel: () => ({}), markSaved: () => { planStub.dirty = false } })
+        onDirtyChange(planStub.dirty)
+      }, [onReady, onDirtyChange])
+      return <div data-testid="plan" />
+    },
   }
 })
 
@@ -65,7 +87,21 @@ async function renderPage(project: Project) {
 }
 
 describe('ProjectDetailPage', () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    planStub.dirty = false
+  })
+
+  it('reports a failed load instead of spinning on Cargando…', async () => {
+    vi.mocked(api.fetchProject).mockRejectedValue(new Error('proyecto no encontrado'))
+    render(
+      <MemoryRouter initialEntries={['/proyectos/1']}>
+        <Routes><Route path="/proyectos/:id" element={<ProjectDetailPage />} /></Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('proyecto no encontrado')).not.toBeNull()
+    expect(screen.queryByText('Cargando…')).toBeNull()
+  })
 
   it('shows the cap rate of a project without a breakdown', async () => {
     await renderPage(BASE_PROJECT)
@@ -125,5 +161,47 @@ describe('ProjectDetailPage', () => {
     fireEvent.click(screen.getByText('GUARDAR ▸'))
     await waitFor(() => expect(api.updateProject).toHaveBeenCalledWith(1, { totalUnits: 5 }))
     await waitFor(() => expect(screen.queryByLabelText('UNIDADES')).toBeNull())
+  })
+
+  it('keeps the edits, the edit mode and the visible error when a save fails', async () => {
+    await renderPage(BASE_PROJECT)
+    vi.mocked(api.updateProject).mockRejectedValue(new Error('la valuación es inválida'))
+    fireEvent.click(screen.getByText('EDITAR'))
+    fireEvent.change(screen.getByLabelText('UNIDADES'), { target: { value: '5' } })
+    fireEvent.click(screen.getByText('GUARDAR ▸'))
+
+    expect(await screen.findByText('la valuación es inválida')).not.toBeNull()
+    expect((screen.getByLabelText('UNIDADES') as HTMLInputElement).value).toBe('5')
+    expect(screen.getByText('GUARDAR ▸')).not.toBeNull()
+    // The banner lives above the tab bar, so the error survives leaving GENERAL
+    fireEvent.click(screen.getByText('FINANZAS'))
+    expect(screen.getByText('la valuación es inválida')).not.toBeNull()
+  })
+
+  it('previews pending edits in view mode and hands them back on re-entry', async () => {
+    await renderPage(BASE_PROJECT)
+    fireEvent.click(screen.getByText('EDITAR'))
+    fireEvent.change(screen.getByLabelText('UNIDADES'), { target: { value: '5' } })
+
+    fireEvent.click(screen.getByText('VER'))
+    expect(screen.queryByLabelText('UNIDADES')).toBeNull()
+    expect(screen.getByText('5')).not.toBeNull()
+    expect(screen.getByText('GUARDAR ▸')).not.toBeNull()
+    expect(screen.getByText('CANCELAR')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('EDITAR'))
+    expect((screen.getByLabelText('UNIDADES') as HTMLInputElement).value).toBe('5')
+  })
+
+  it('does not PATCH the project when only the floor plan is dirty', async () => {
+    planStub.dirty = true
+    await renderPage(BASE_PROJECT)
+    fireEvent.click(screen.getByText('PLANO'))
+    await screen.findByTestId('plan')
+
+    fireEvent.click(screen.getByText('GUARDAR ▸'))
+    await waitFor(() => expect(api.saveProjectGeometry).toHaveBeenCalledWith(1, {}))
+    expect(api.updateProject).not.toHaveBeenCalled()
+    expect(api.fetchProjectInvestors).toHaveBeenCalledTimes(1)  // the initial load only
   })
 })

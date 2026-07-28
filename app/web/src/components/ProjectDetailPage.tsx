@@ -22,6 +22,7 @@ import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
 import { SectionDivider } from './detail/SectionDivider'
+import { ErrorBanner } from './detail/ErrorBanner'
 
 /**
  * The editable columns, split by what the database accepts, so every row below
@@ -107,16 +108,18 @@ export function ProjectDetailPage() {
     setSaving(true)
     setError(null)
     try {
-      const updated = await updateProject(projectId, edits)
-      setProject(updated)
-      clear()
-      // Dates affect hold_months in the view — refresh dependent data
-      const [pis, { waterfall: wf }] = await Promise.all([
-        fetchProjectInvestors(projectId),
-        fetchProjectProfit(projectId),
-      ])
-      setProjectInvestors(pis)
-      setWaterfall(wf)
+      if (hasEdits) {
+        const updated = await updateProject(projectId, edits)
+        setProject(updated)
+        clear()
+        // Dates affect hold_months in the view — refresh dependent data
+        const [pis, { waterfall: wf }] = await Promise.all([
+          fetchProjectInvestors(projectId),
+          fetchProjectProfit(projectId),
+        ])
+        setProjectInvestors(pis)
+        setWaterfall(wf)
+      }
       if (planApiRef.current?.isDirty()) {
         const saved = await saveProjectGeometry(projectId, planApiRef.current.getModel())
         setGeometry(saved)
@@ -261,6 +264,13 @@ export function ProjectDetailPage() {
     transition: `opacity 0.5s ease ${delay}ms, transform 0.5s ease ${delay}ms`,
   })
 
+  if (error && !project) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: '#E62300', fontFamily: fonts.sans, fontSize: '13px' }}>
+        {error}
+      </div>
+    )
+  }
   if (!project) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>
@@ -284,7 +294,6 @@ export function ProjectDetailPage() {
   // clearing PRECIO TERRENO hands the field back to manual capture, live.
   const hasBreakdown = field('landPrice') != null
   const acquisitionCostPct = field('acquisitionCostPct')
-  const conclusionLabel = ['flip', 'land'].includes(field('type') ?? '') ? 'FECHA DE VENTA' : 'PRIMERA RENTA'
 
   /** NOT NULL text column: an emptied box stays an empty string. */
   const textRow = (label: string, key: TextKey, placeholder?: string) => (
@@ -377,6 +386,8 @@ export function ProjectDetailPage() {
         onDelete={handleDelete}
       />
 
+      <ErrorBanner message={error} />
+
       {/* ── MAIN 2-COLUMN GRID ── */}
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '360px 1fr', overflow: 'hidden' }}>
 
@@ -407,10 +418,6 @@ export function ProjectDetailPage() {
           {/* ── GENERAL tab ── */}
           {leftTab === 'general' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
-
-              {error && (
-                <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginBottom: '12px' }}>{error}</div>
-              )}
 
               {/* Hero ROI */}
               <MetricHero
@@ -468,7 +475,7 @@ export function ProjectDetailPage() {
 
               <SectionDivider label="FECHAS" />
               {textRow('ADQUISICIÓN', 'acquisitionDate', 'YYYY-MM')}
-              {textRow(conclusionLabel, 'conclusionDate', 'YYYY-MM')}
+              {textRow('PRIMERA RENTA', 'conclusionDate', 'YYYY-MM')}
               {textRow('VALUACIÓN', 'valuationDate', 'YYYY-MM')}
 
               <SectionDivider label="UBICACIÓN" />

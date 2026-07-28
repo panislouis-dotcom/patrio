@@ -33,4 +33,16 @@ describe('EditableRow', () => {
     expect(screen.getByText('CALCULADA DEL DESGLOSE')).not.toBeNull()
     expect(screen.getByText('6.2%')).not.toBeNull()
   })
+
+  it('gives the input the same share of the row with and without a hint', () => {
+    const plain = render(<EditableRow label="INVERSIÓN" editing value="—" input={<input aria-label="plain" />} />).container
+    const hinted = render(<EditableRow label="INVERSIÓN" editing value="—" input={<input aria-label="hinted" />} hint="CAPTURA MANUAL" />).container
+    const box = (c: HTMLElement) => c.querySelector('input')!.parentElement!
+
+    expect(box(plain).style.width).toBe('55%')
+    expect(box(hinted).style.width).toBe('55%')
+    // Both resolve that 55% against the row itself, so the two inputs line up
+    expect(box(plain).parentElement).toBe(plain.firstChild)
+    expect(box(hinted).parentElement).toBe(hinted.firstChild)
+  })
 })

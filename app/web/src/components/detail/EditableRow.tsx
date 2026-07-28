@@ -20,12 +20,15 @@ export function EditableRow({ label, editing, value, input, hint }: Props) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
       <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>{label}</span>
-      {hint ? (
-        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', flex: 1, minWidth: 0 }}>
-          <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary }}>{hint}</span>
-          {right}
+      {/* The hint is a sibling, not a wrapper: nesting it would make the 55% above
+          resolve against the leftover space instead of the row, shrinking hinted
+          inputs below the width of every other row. */}
+      {hint && (
+        <span style={{ flex: 1, minWidth: 0, paddingLeft: '6px', paddingRight: '6px', textAlign: 'right', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary }}>
+          {hint}
         </span>
-      ) : right}
+      )}
+      {right}
     </div>
   )
 }

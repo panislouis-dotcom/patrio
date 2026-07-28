@@ -22,6 +22,7 @@ import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
 import { SectionDivider } from './detail/SectionDivider'
+import { ErrorBanner } from './detail/ErrorBanner'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
   city: 'Monterrey',
@@ -312,6 +313,8 @@ export function ProspectDetailPage() {
         }
       />
 
+      <ErrorBanner message={saveError} />
+
       {/* ── MAIN 2-COLUMN GRID ── */}
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '360px 1fr', overflow: 'hidden' }}>
 
@@ -341,10 +344,6 @@ export function ProspectDetailPage() {
           {/* GENERAL tab */}
           {leftTab === 'general' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
-
-              {saveError && (
-                <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginBottom: '12px' }}>{saveError}</div>
-              )}
 
               {/* Hero ROI */}
               <MetricHero
