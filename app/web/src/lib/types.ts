@@ -53,7 +53,7 @@ export interface Prospect {
   salePerSqm: number
   investmentPerSqm: number
   rentMonthly: number
-  rentAnnual: number
+  rentAnnual: number | null
   holdMonths: number
   notes: string
   isFavorite: boolean
