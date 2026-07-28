@@ -236,32 +236,22 @@ def _pretty_type(raw) -> str:
     return str(raw or "").replace("_", " ").strip().capitalize()
 
 
-# Real operating cap rate = NOI anual / valuación actual, for projects already
-# operating & renting. Development (pre-obra) projects have no cap rate → "—";
-# it is never fabricated. Interim source: net monthly rent per operating project
-# lives here until Refigan's finance tab captures rent_monthly on the project
-# ficha (then p["rentMonthly"] is used and these fall away). Casa Modesto has no
-# operating expenses, so NOI = gross rent. Edificio Uno keeps its established
-# dashboard cap rate (~8%) since its net rent is not captured here.
-_OPERATING_RENT_MONTHLY = {
+# Cap rate = NOI anual / valuación. Se calcula desde la renta mensual neta de la
+# ficha (rentMonthly): real en proyectos operando, proyectado en los que están en
+# desarrollo. Sin renta → "—", nunca inventado. El override sólo cubre proyectos
+# cuya renta aún no está capturada en la plataforma (Casa Modesto no tiene gastos
+# operativos, así que NOI = renta bruta).
+_RENT_MONTHLY = {
     "Casa Modesto 415": 31000,
     "Casa Centro": 31000,
 }
-_OPERATING_CAP_RATE = {
-    "Edificio Uno": 0.08,
-}
 
 
-def _operating_cap_rate(p: dict):
-    """Fraction (0.06) for a renting project, or None → shown as '—'."""
-    if str(p.get("status")) != "operating":
-        return None
-    name = p.get("name", "")
+def _cap_rate(p: dict):
+    """Cap rate fraction (0.06) from net monthly rent, or None → shown as '—'."""
     val = _num(p.get("currentValuation"))
-    rent = _num(p.get("rentMonthly")) or _OPERATING_RENT_MONTHLY.get(name, 0)
-    if rent and val:
-        return (rent * 12) / val
-    return _OPERATING_CAP_RATE.get(name)
+    rent = _num(p.get("rentMonthly")) or _RENT_MONTHLY.get(p.get("name", ""), 0)
+    return (rent * 12) / val if rent and val else None
 
 
 def _chunk(seq, n):
@@ -305,7 +295,10 @@ def _kv_rows(pairs) -> str:
 # Section builders
 # ---------------------------------------------------------------------------
 
-def _cover(month_year: str) -> str:
+def _cover(month_year: str, operating: list[dict] | None = None) -> str:
+    # ROI promedio real = media del ROI (plusvalía/inversión) de los proyectos operando.
+    rois = [_num(p.get("unrealizedGainPct")) for p in (operating or []) if _num(p.get("totalInvestment"))]
+    roi_avg = f"{(sum(rois) / len(rois)) * 100:.0f}%" if rois else "—"
     return f"""<div class="page-block cover">
   <div class="cover-top">
     <div>
@@ -321,7 +314,7 @@ def _cover(month_year: str) -> str:
       Tú pones el capital y eres dueño de todo — nosotros lo hacemos realidad, de principio a fin.</p>
     <div class="vp">
       <div class="vp-item"><div class="vp-v">23</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
-      <div class="vp-item"><!-- Valor creado — en blanco por ahora --></div>
+      <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">sobre inversión</div></div>
       <div class="vp-item"><div class="vp-v">8%</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">real, no proyectado</div></div>
     </div>
   </div>
@@ -353,14 +346,15 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     val_label = "Valuación proyectada" if projected else "Valuación actual"
     roi_label = "ROI proyectado" if projected else "ROI"
     roi_value = f"{gain_pct * 100:.1f}".rstrip("0").rstrip(".") + "%"
-    cap = _operating_cap_rate(p)
+    cap = _cap_rate(p)
     cap_value = _fmt_pct(cap, 1) if cap is not None else "—"
+    cap_label = "Cap rate proy." if projected else "Cap rate"
 
     metrics = "".join([
         _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
         _metric(_fmt_mxn_compact(current_val), val_label),
         _metric(roi_value, roi_label),
-        _metric(cap_value, "Cap rate"),
+        _metric(cap_value, cap_label),
     ])
 
     images = p.get("images", [])
@@ -514,12 +508,13 @@ def build_prospectus_html(projects: list[dict], prospects: list[dict]) -> str:
     today = date.today()
     month_year = f"{_MESES[today.month].capitalize()} {today.year}"
 
-    parts = [_cover(month_year)]
-
     # Track record = projects already operating (realized results).
     # En desarrollo = projects still pre-obra (projected figures, not achieved).
     operating = [p for p in projects if str(p.get("status")) == "operating"]
     development = [p for p in projects if str(p.get("status")) != "operating"]
+
+    parts = [_cover(month_year, operating)]
+
     # Strongest → weakest by value multiplier (valuación / inversión).
     operating.sort(
         key=lambda p: (_num(p.get("currentValuation")) / _num(p.get("totalInvestment")))
