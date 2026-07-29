@@ -54,7 +54,7 @@ const BASE_PROJECT: Project = {
   status: 'operating', totalUnits: 2, acquisitionDate: '2024-01', conclusionDate: '2024-10',
   totalInvestment: 4_000_000, currentValuation: 5_000_000, valuationDate: '2025-01',
   url: 'https://example.com', latitude: 25.68, longitude: -100.31,
-  milestones: {}, budget: {}, notes: 'sin novedades', isFavorite: false, images: [],
+  milestones: {}, notes: 'sin novedades', isFavorite: false, images: [],
   unrealizedGain: 1_000_000, unrealizedGainPct: 0.25, holdMonthsActual: 9, roi: 0.33,
   prospectId: null,
   sqmLand: null, sqmConstruction: null, landPrice: null, acquisitionCostPct: null,

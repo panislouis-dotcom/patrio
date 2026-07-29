@@ -279,8 +279,6 @@ export function ProjectDetailPage() {
     )
   }
 
-  const budget = (project.budget ?? {}) as Record<string, number>
-  const budgetTotal = Object.values(budget).reduce((a, b) => a + b, 0)
   const milestones = (project.milestones ?? {}) as Record<string, string>
   const milestoneEntries = Object.entries(milestones).sort(([a], [b]) => a.localeCompare(b))
   const gain = project.unrealizedGain ?? 0
@@ -569,17 +567,9 @@ export function ProjectDetailPage() {
                 </>
               )}
 
-              {/* Presupuesto */}
-              <InvestmentBreakdown
-                label="PRESUPUESTO"
-                total={budgetTotal}
-                barsReady={barsReady}
-                items={Object.entries(budget).sort(([, a], [, b]) => b - a).map(([cat, amount]) => ({ label: cat, amount }))}
-              />
-
               {/* Hitos */}
               {milestoneEntries.length > 0 && (
-                <div style={{ marginTop: Object.keys(budget).length > 0 ? '28px' : '0', paddingTop: Object.keys(budget).length > 0 ? '20px' : '0', borderTop: Object.keys(budget).length > 0 ? `1px solid ${colors.border}` : 'none' }}>
+                <div style={{ marginTop: '20px' }}>
                   <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '16px' }}>HITOS</div>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {milestoneEntries.map(([date, label], i) => (
