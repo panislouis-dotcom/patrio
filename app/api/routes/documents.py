@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import logging
@@ -37,7 +38,9 @@ def _resize_for_pdf(content: bytes, content_type: str) -> tuple[bytes, str]:
 
 
 def _embed_images(items: list[dict]) -> None:
-    """Enrich each image dict with a base64 data URI for PDF embedding."""
+    """Enrich each image dict with a base64 data URI for PDF embedding.
+
+    Blocking (network fetch + Pillow resize): call it off the event loop."""
     for item in items:
         for img in item.get("images", []):
             try:
@@ -45,6 +48,7 @@ def _embed_images(items: list[dict]) -> None:
                 content, content_type = _resize_for_pdf(content, content_type)
                 img["dataUri"] = f"data:{content_type};base64,{base64.b64encode(content).decode()}"
             except Exception:
+                logger.warning("image embed failed: %s", img.get("filePath"), exc_info=True)
                 img["dataUri"] = None
 
 
@@ -57,8 +61,8 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
             status_code=400,
             detail="No favorites set. Mark at least one project or prospect as favorite.",
         )
-    _embed_images(projects)
-    _embed_images(prospects)
+    await asyncio.to_thread(_embed_images, projects)
+    await asyncio.to_thread(_embed_images, prospects)
     html = build_prospectus_html(projects, prospects, get_team_members())
     try:
         pdf = await render_to_pdf(html)

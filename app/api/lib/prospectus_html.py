@@ -609,6 +609,9 @@ def build_prospectus_html(projects: list[dict], prospects: list[dict],
 </html>"""
 
 
+_RENDER_TIMEOUT_MS = 60_000
+
+
 async def render_to_pdf(html: str) -> bytes:
     from playwright.async_api import async_playwright
 
@@ -618,14 +621,22 @@ async def render_to_pdf(html: str) -> bytes:
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(args=["--hide-scrollbars"])
-            page = await browser.new_page()
-            await page.goto(f"file://{tmp_path}", wait_until="networkidle")
-            pdf = await page.pdf(
-                format="A4",
-                print_background=True,
-                margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
-            )
-            await browser.close()
+            try:
+                page = await browser.new_page()
+                # Sin timeout explícito una carga colgada bloquea el worker: los
+                # PDFs traen imágenes embebidas y networkidle puede no llegar.
+                # page.pdf() no acepta timeout en esta versión de Playwright, así
+                # que el default de la página acota el resto de las esperas.
+                page.set_default_timeout(_RENDER_TIMEOUT_MS)
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle",
+                                timeout=_RENDER_TIMEOUT_MS)
+                pdf = await page.pdf(
+                    format="A4",
+                    print_background=True,
+                    margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
+                )
+            finally:
+                await browser.close()
         return pdf
     finally:
         os.unlink(tmp_path)

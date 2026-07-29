@@ -147,7 +147,7 @@ def _parse_prospect(row, images: list | None = None) -> dict:
 
 def get_prospects() -> list[dict]:
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM prospects").fetchall()
+        rows = conn.execute("SELECT * FROM prospects ORDER BY id").fetchall()
         if not rows:
             return []
         ids = [r["id"] for r in rows]
