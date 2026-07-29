@@ -292,7 +292,7 @@ PROJECTS_RAW_FIELDS = {
     "latitude", "longitude", "totalUnits",
     "acquisitionDate", "conclusionDate",
     "totalInvestment", "currentValuation", "valuationDate",
-    "milestones", "budget", "notes", "prospectId", "isFavorite",
+    "milestones", "notes", "prospectId", "isFavorite",
     # Underwriting superset (Project ⊇ Prospect) — the 11 prospect inputs
     "sqmLand", "sqmConstruction", "landPrice", "acquisitionCostPct",
     "permitsCost", "subdivisionCost", "constructionCostPerSqm",
@@ -306,9 +306,8 @@ def _normalize_project_data(data: dict) -> dict:
     project write-column prep shared by create/update/convert."""
     filtered = {k: v for k, v in data.items() if k in PROJECTS_RAW_FIELDS}
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
-    for f in ("milestones", "budget"):
-        if f in snake and not isinstance(snake[f], str):
-            snake[f] = json.dumps(snake[f])
+    if "milestones" in snake and not isinstance(snake["milestones"], str):
+        snake["milestones"] = json.dumps(snake["milestones"])
     # Frontend sends YYYY-MM; the conclusion_date DATE column needs YYYY-MM-01
     if "conclusion_date" in snake and isinstance(snake["conclusion_date"], str) and len(snake["conclusion_date"]) == 7:
         snake["conclusion_date"] += "-01"
@@ -326,18 +325,13 @@ def _parse_project(row, images: list | None = None) -> dict:
     except json.JSONDecodeError:
         d["milestones"] = {}
 
-    raw_budget = d.get("budget")
-    try:
-        d["budget"] = json.loads(raw_budget) if isinstance(raw_budget, str) and raw_budget else {}
-    except json.JSONDecodeError:
-        d["budget"] = {}
-
     # Underwriting superset (Project ⊇ Prospect). A project carrying the full
     # breakdown derives its *projected* metrics identically to a prospect, and its
     # computed total_investment overrides the stored fallback. Breakdown-less
-    # projects (land_price NULL) keep the stored total and expose NULL derived fields.
+    # projects (land_price NULL) keep the stored total and expose NULL derived fields —
+    # except the two that only need rent and the total: cap rate and annual rent.
     _UW_NULL = ("acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
-                "landPricePerSqm", "salePerSqm", "investmentPerSqm", "capRate", "rentAnnual",
+                "landPricePerSqm", "salePerSqm", "investmentPerSqm",
                 "projectedProfit", "projectedRoi", "projectedRoiTotal")
     if d.get("landPrice") is not None:
         m = underwriting.metrics(dict(row))
@@ -357,6 +351,9 @@ def _parse_project(row, images: list | None = None) -> dict:
     else:
         for k in _UW_NULL:
             d[k] = None
+        rent = d.get("rentMonthly")
+        d["capRate"] = underwriting.cap_rate(rent, d.get("totalInvestment"))
+        d["rentAnnual"] = underwriting.rent_annual(rent)
 
     # Computed fields — money as Decimal, CAGR via shared float primitive
     total_investment = to_decimal(d.get("totalInvestment"))
@@ -457,12 +454,28 @@ def set_prospect_geometry(prospect_id: int, geometry: dict) -> dict | None:
     return None if row is None else (row["geometry"] or {})
 
 
+def _sync_stored_total_investment(conn, project_id: int) -> None:
+    """Persist the total the breakdown computes, inside the caller's transaction.
+
+    While a breakdown exists it owns the total and _parse_project displays the
+    computed one, so the stored column has to follow or it silently goes stale —
+    and that column is what resurfaces, as the total and as the cap rate
+    denominator, the day the breakdown is cleared and the project goes back to a
+    manual total. A project without a breakdown keeps whatever was written to it.
+    """
+    row = conn.execute("SELECT * FROM projects WHERE id = %s", (project_id,)).fetchone()
+    if row is not None and row["land_price"] is not None:
+        conn.execute(
+            "UPDATE projects SET total_investment = %s WHERE id = %s",
+            (underwriting.metrics(dict(row))["total_investment"], project_id))
+
+
 def update_project(project_id: int, data: dict) -> dict | None:
     """Update a project record with the provided data.
 
     Only fields in PROJECTS_RAW_FIELDS are updated. All other keys are ignored.
     Field names are converted from camelCase to snake_case before updating.
-    JSON fields (milestones, budget) are serialized if passed as dicts.
+    The milestones JSON field is serialized if passed as a dict.
 
     Args:
         project_id: The ID of the project to update
@@ -479,9 +492,8 @@ def update_project(project_id: int, data: dict) -> dict | None:
     snake_case_data = {_camel_to_snake(k): v for k, v in filtered_data.items()}
 
     # Serialize JSON fields
-    for snake_field in ("milestones", "budget"):
-        if snake_field in snake_case_data and not isinstance(snake_case_data[snake_field], str):
-            snake_case_data[snake_field] = json.dumps(snake_case_data[snake_field])
+    if "milestones" in snake_case_data and not isinstance(snake_case_data["milestones"], str):
+        snake_case_data["milestones"] = json.dumps(snake_case_data["milestones"])
 
     # Frontend sends YYYY-MM; DATE column needs YYYY-MM-01
     if "conclusion_date" in snake_case_data and isinstance(snake_case_data["conclusion_date"], str):
@@ -495,6 +507,7 @@ def update_project(project_id: int, data: dict) -> dict | None:
 
     with get_db() as conn:
         conn.execute(query, values)
+        _sync_stored_total_investment(conn, project_id)
 
     return get_project(project_id)
 
@@ -504,7 +517,7 @@ def create_project(data: dict) -> dict:
 
     Only fields in PROJECTS_RAW_FIELDS are inserted. All other keys are ignored.
     Field names are converted from camelCase to snake_case before inserting.
-    JSON fields (milestones, budget) are serialized if passed as dicts.
+    The milestones JSON field is serialized if passed as a dict.
 
     Args:
         data: Dictionary of fields for the new project (camelCase keys)
@@ -525,6 +538,7 @@ def create_project(data: dict) -> dict:
     with get_db() as conn:
         cur = conn.execute(query, values)
         project_id = cur.fetchone()["id"]
+        _sync_stored_total_investment(conn, project_id)
 
     return get_project(project_id)
 

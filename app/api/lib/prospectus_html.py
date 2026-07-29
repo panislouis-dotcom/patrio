@@ -226,6 +226,11 @@ def _fmt_pct(frac, decimals: int = 1) -> str:
     return f"{_num(frac) * 100:.{decimals}f}%"
 
 
+def _fmt_pct_or_dash(frac, decimals: int = 1) -> str:
+    """No value means no metric — '—', never a fabricated 0.0%."""
+    return _fmt_pct(frac, decimals) if frac is not None else "—"
+
+
 def _fmt_mult(a, b) -> str:
     a, b = _num(a), _num(b)
     return f"{a / b:.2f}×" if b else "—"
@@ -234,24 +239,6 @@ def _fmt_mult(a, b) -> str:
 def _pretty_type(raw) -> str:
     """Human label from a raw DB enum: 'adaptive_reuse' → 'Adaptive reuse'."""
     return str(raw or "").replace("_", " ").strip().capitalize()
-
-
-# Cap rate = NOI anual / valuación. Se calcula desde la renta mensual neta de la
-# ficha (rentMonthly): real en proyectos operando, proyectado en los que están en
-# desarrollo. Sin renta → "—", nunca inventado. El override sólo cubre proyectos
-# cuya renta aún no está capturada en la plataforma (Casa Modesto no tiene gastos
-# operativos, así que NOI = renta bruta).
-_RENT_MONTHLY = {
-    "Casa Modesto 415": 31000,
-    "Casa Centro": 31000,
-}
-
-
-def _cap_rate(p: dict):
-    """Cap rate fraction (0.06) from net monthly rent, or None → shown as '—'."""
-    val = _num(p.get("currentValuation"))
-    rent = _num(p.get("rentMonthly")) or _RENT_MONTHLY.get(p.get("name", ""), 0)
-    return (rent * 12) / val if rent and val else None
 
 
 def _chunk(seq, n):
@@ -346,15 +333,17 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     val_label = "Valuación proyectada" if projected else "Valuación actual"
     roi_label = "ROI proyectado" if projected else "ROI"
     roi_value = f"{gain_pct * 100:.1f}".rstrip("0").rstrip(".") + "%"
-    cap = _cap_rate(p)
-    cap_value = _fmt_pct(cap, 1) if cap is not None else "—"
+    # Cap rate viene del API (renta anual / inversión — una sola fórmula en todo
+    # el sistema): real en operando, proyectado y etiquetado como tal en
+    # desarrollo. Sin renta → "—", nunca inventado.
+    cap = p.get("capRate")
     cap_label = "Cap rate proy." if projected else "Cap rate"
 
     metrics = "".join([
         _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
         _metric(_fmt_mxn_compact(current_val), val_label),
         _metric(roi_value, roi_label),
-        _metric(cap_value, cap_label),
+        _metric(_fmt_pct_or_dash(cap), cap_label),
     ])
 
     images = p.get("images", [])
@@ -422,7 +411,7 @@ def _opportunity(p: dict) -> str:
     profit = p.get("profit")
     profit_pct = (_num(profit) / _num(total_inv)) if _num(total_inv) else 0
     roi_total = _num(p.get("roiTotal"))
-    cap_rate = _num(p.get("capRate"))
+    cap_rate = p.get("capRate")
     rent_m = p.get("rentMonthly")
     rent_a = p.get("rentAnnual")
     sqm_land = _num(p.get("sqmLand"))
@@ -436,7 +425,7 @@ def _opportunity(p: dict) -> str:
         _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
         _metric(_fmt_mxn_compact(projected_sale), "Venta proyectada"),
         _metric(f'{_fmt_mxn_compact(profit)} <small>{_fmt_pct(profit_pct, 0)}</small>', "Ganancia est."),
-        _metric(_fmt_pct(cap_rate, 1), "Cap rate"),
+        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate"),
     ])
 
     financieros = _kv_rows([

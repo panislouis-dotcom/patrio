@@ -107,7 +107,7 @@ Prospects carry an `isFavorite` flag. The prospectus document is built from **fa
 
 ### 2. Projects — committed deals (full lifecycle)
 
-A project is a prospect that has been committed to. Core fields: `name`, `type`, `address`, `city`, `status`, `totalUnits`, `acquisitionDate`, `conclusionDate`, `totalInvestment`, `currentValuation`, `valuationDate`, `milestones` (JSON), `budget` (JSON).
+A project is a prospect that has been committed to. Core fields: `name`, `type`, `address`, `city`, `status`, `totalUnits`, `acquisitionDate`, `conclusionDate`, `totalInvestment`, `currentValuation`, `valuationDate`, `milestones` (JSON).
 
 Key `operation_id`s:
 - `projects_list`, `projects_get`, `projects_create`, `projects_update`, `projects_delete`

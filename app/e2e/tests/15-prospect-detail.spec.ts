@@ -1,320 +1,297 @@
 import { test, expect } from '../fixtures/auth'
-import { getToken, deleteProspectByName } from '../helpers/api'
+import { getToken, createProspect, deleteProspect, deleteProspectByName } from '../helpers/api'
+import { detailRow, fieldInput, enterEditMode, saveEdits, setNumericField } from '../helpers/detail'
 
-const TEST_NOTES_PREFIX = '[TEST] notas e2e'
+/**
+ * A dedicated prospect keeps every derived figure below deterministic — the
+ * seeded one carries no rent, so it could never cover the CAP RATE row. Values
+ * were confirmed against the API for exactly these inputs.
+ */
+const FIXTURE = {
+  name: '[TEST] Prospecto Detalle',
+  address: 'Av. Prospecto 300',
+  city: 'Monterrey',
+  status: 'evaluating',
+  type: 'Casa',
+  holdMonths: 12,
+  url: 'https://refigan.mx',
+  latitude: 25.6866,
+  longitude: -100.3161,
+  sqmLand: 400,
+  sqmConstruction: 0,
+  landPrice: 2_000_000,
+  acquisitionCostPct: 0.065,
+  permitsCost: 0,
+  subdivisionCost: 0,
+  constructionCostPerSqm: 0,
+  constructionOverhead: 1.3,
+  projectedSale: 3_000_000,
+  rentMonthly: 20_000,
+  notes: 'Nota inicial de la ficha',
+}
 
-test.describe('Prospect Detail', () => {
+// land 2,000,000 + adq 6.5% 130,000
+const INVESTMENT = '$2,130,000'
+// 20,000 × 12 / 2,130,000
+const CAP_RATE = '11.3%'
+// 3,000,000 − 2,130,000
+const PROFIT = '$870,000'
+
+test.describe('ProspectDetailPage', () => {
   let token: string
+  let prospectId: number
 
   test.beforeAll(async ({ request }) => {
     token = await getToken(request)
+    // Clear leftovers first: a worker that died mid-run leaves its fixture behind.
+    await deleteProspectByName(request, FIXTURE.name, token)
+    prospectId = (await createProspect(request, FIXTURE, token)).id
   })
 
-  test.afterEach(async ({ request }) => {
-    // Clean up any test notes prospects we may have created
-    await deleteProspectByName(request, TEST_NOTES_PREFIX, token)
+  test.afterAll(async ({ request }) => {
+    await deleteProspect(request, prospectId, token)
   })
 
-  // ── Helper: navigate to the first prospect detail page ──────────────────
-  async function goToFirstDetail(page: Parameters<Parameters<typeof test>[1]>[0]) {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    await firstRow.waitFor({ state: 'visible' })
-    await firstRow.click()
-    await expect(page).toHaveURL(/\/prospectos\/tabla\/\d+/)
-  }
+  // ── Header ──────────────────────────────────────────────────────────────────
 
-  // ── 1. Navigation ────────────────────────────────────────────────────────
+  test('header shows back link, title, status chip, CONVERTIR and the edit actions', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
 
-  test('clicking first table row navigates to detail URL', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
-    await firstRow.click()
-    await expect(page).toHaveURL(/\/prospectos\/tabla\/\d+/)
+    await expect(page.getByText('← PROSPECTOS')).toBeVisible()
+    await expect(page.getByText(FIXTURE.name)).toBeVisible()
+    // The chip and the ESTADO row both print the label
+    await expect(page.getByText('EVALUANDO').first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'CONVERTIR ▸ PROYECTO' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'EDITAR', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'ELIMINAR', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /GUARDAR/ })).toHaveCount(0)
   })
 
-  // ── 2. Header ────────────────────────────────────────────────────────────
+  // ── GENERAL tab (default) ───────────────────────────────────────────────────
 
-  test('header shows back button and action buttons', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
+  test('GENERAL renders by default with the ROI heroes and the derived rows', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
 
-    await goToFirstDetail(page)
+    await expect(detailRow(page, 'ROI ANUAL')).toContainText('+40.8%')
+    await expect(detailRow(page, 'ROI TOTAL')).toContainText('+40.8%')
 
-    await expect(page.getByText('← PROSPECTOS').first()).toBeVisible()
-    await expect(page.getByText('CONVERTIR ▸ PROYECTO').first()).toBeVisible()
-    await expect(page.getByText('ELIMINAR').first()).toBeVisible()
+    await expect(detailRow(page, 'PROFIT')).toContainText(PROFIT)
+    await expect(detailRow(page, 'CAP RATE')).toContainText(CAP_RATE)
+    await expect(detailRow(page, 'INVERSIÓN')).toContainText(INVESTMENT)
+    await expect(detailRow(page, 'VENTA')).toContainText('$3,000,000')
+    await expect(detailRow(page, 'PLAZO')).toContainText('12 meses')
+    await expect(detailRow(page, 'RENTA/MES')).toContainText('$20,000')
+    await expect(detailRow(page, 'TERRENO')).toContainText('400 m²')
+    await expect(detailRow(page, 'TIPO')).toContainText('Casa')
+    await expect(detailRow(page, 'ESTADO')).toContainText('EVALUANDO')
   })
 
-  // ── 3. Left panel — all three tab buttons ────────────────────────────────
+  test('GENERAL shows the UBICACIÓN rows and the investment breakdown', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
 
-  test('left panel shows INFO, EDITAR, and ANÁLISIS tab buttons', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
+    await expect(detailRow(page, 'DIRECCIÓN')).toContainText(FIXTURE.address)
+    await expect(detailRow(page, 'CIUDAD')).toContainText('Monterrey')
+    await expect(page.getByRole('link', { name: 'VER FUENTE ↗' })).toBeVisible()
 
-    await goToFirstDetail(page)
-
-    await expect(page.getByRole('button', { name: 'INFO' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'EDITAR' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'ANÁLISIS' })).toBeVisible()
+    await expect(page.getByText('INVERSIÓN TOTAL')).toBeVisible()
+    await expect(page.getByText('PRECIO TERRENO')).toBeVisible()
   })
 
-  // ── 4. INFO tab — key metric labels ─────────────────────────────────────
+  // ── View ⇄ edit ─────────────────────────────────────────────────────────────
 
-  test('INFO tab (default) shows ROI ANUAL, PROFIT, CAP RATE, INVERSIÓN labels', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
+  test('EDITAR swaps the row values for inputs in place', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
 
-    await goToFirstDetail(page)
+    await expect(detailRow(page, 'DIRECCIÓN')).toContainText(FIXTURE.address)
+    await expect(fieldInput(page, 'DIRECCIÓN')).toHaveCount(0)
 
-    // INFO is the default tab — no click needed
-    await expect(page.getByText('ROI ANUAL').first()).toBeVisible()
-    await expect(page.getByText('PROFIT').first()).toBeVisible()
-    await expect(page.getByText('CAP RATE').first()).toBeVisible()
-    await expect(page.getByText('INVERSIÓN').first()).toBeVisible()
+    await enterEditMode(page)
+
+    await expect(fieldInput(page, 'DIRECCIÓN')).toHaveValue(FIXTURE.address)
+    await expect(fieldInput(page, 'Nombre')).toHaveValue(FIXTURE.name)
+    await expect(fieldInput(page, 'VENTA')).toHaveValue('3,000,000')
+    await expect(fieldInput(page, 'RENTA/MES')).toHaveValue('20,000')
+    await expect(fieldInput(page, 'NOTAS')).toHaveValue(FIXTURE.notes)
   })
 
-  test('INFO tab shows TERRENO and CONSTRUCCIÓN stat labels', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
+  test('PROFIT, CAP RATE and INVERSIÓN stay read-only while editing', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+    await enterEditMode(page)
 
-    await goToFirstDetail(page)
-
-    await expect(page.getByText('TERRENO').first()).toBeVisible()
-    await expect(page.getByText('CONSTRUCCIÓN').first()).toBeVisible()
+    for (const label of ['PROFIT', 'CAP RATE', 'INVERSIÓN']) {
+      await expect(fieldInput(page, label)).toHaveCount(0)
+    }
+    await expect(detailRow(page, 'CAP RATE')).toContainText(CAP_RATE)
   })
 
-  // ── 5. EDITAR tab ────────────────────────────────────────────────────────
+  test('DESGLOSE shows the underwriting inputs in edit mode instead of the bars', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+    await enterEditMode(page)
 
-  test('EDITAR tab shows form fields when clicked', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
-
-    await goToFirstDetail(page)
-
-    await page.getByRole('button', { name: 'EDITAR' }).click()
-
-    // The form renders labeled inputs — check for key section labels
-    await expect(page.getByText('NOMBRE').first()).toBeVisible()
-    await expect(page.getByText('DIRECCIÓN').first()).toBeVisible()
-    await expect(page.getByText('NOTAS').first()).toBeVisible()
+    await expect(fieldInput(page, 'PRECIO TERRENO')).toHaveValue('2,000,000')
+    await expect(fieldInput(page, 'PERMISOS')).toBeVisible()
+    await expect(fieldInput(page, 'SUBDIVISIÓN')).toBeVisible()
+    await expect(fieldInput(page, 'COSTOS ADQ. (%)')).toHaveValue('6.5')
+    await expect(fieldInput(page, 'OVERHEAD CONSTRUCCIÓN')).toHaveValue('1.3')
+    await expect(page.getByText('INVERSIÓN TOTAL')).toHaveCount(0)
   })
 
-  test('EDITAR tab — editing Notas and saving persists value', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
+  // ── Saving and discarding ───────────────────────────────────────────────────
 
-    await goToFirstDetail(page)
+  test('CANCELAR discards the pending edits and leaves edit mode', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
 
-    await page.getByRole('button', { name: 'EDITAR' }).click()
+    const venta = detailRow(page, 'VENTA')
+    await expect(venta).toContainText('$')
+    const original = (await venta.innerText()).match(/\$[\d,]+/)![0]
 
-    const uniqueNotes = `${TEST_NOTES_PREFIX} ${Date.now()}`
+    await enterEditMode(page)
+    await setNumericField(page, 'VENTA', '9999999')
 
-    // Find the NOTAS textarea and fill it
-    const notasTextarea = page.locator('textarea').first()
-    await notasTextarea.waitFor({ state: 'visible' })
-    await notasTextarea.fill(uniqueNotes)
+    await expect(page.getByRole('button', { name: /GUARDAR/ })).toBeVisible()
+    await page.getByRole('button', { name: 'CANCELAR', exact: true }).click()
 
-    // GUARDAR ▸ button appears in header only when there are unsaved edits
-    await expect(page.getByText('GUARDAR ▸')).toBeVisible()
-    await page.getByText('GUARDAR ▸').click()
-
-    // Wait for save to complete — button disappears
-    await expect(page.getByText('GUARDAR ▸')).not.toBeVisible({ timeout: 8000 })
-
-    // Switch to INFO tab and back to confirm it was saved (notes appear in INFO)
-    await page.getByRole('button', { name: 'INFO' }).click()
-    await page.getByRole('button', { name: 'EDITAR' }).click()
-
-    // The textarea should now contain our saved text
-    await expect(page.locator('textarea').first()).toHaveValue(uniqueNotes)
+    await expect(page.getByRole('button', { name: 'EDITAR', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /GUARDAR/ })).toHaveCount(0)
+    await expect(venta).toContainText(original)
+    await expect(venta).not.toContainText('9,999,999')
   })
 
-  // ── 6. ANÁLISIS tab ──────────────────────────────────────────────────────
+  test('GUARDAR persists the edited NOTAS across a reload', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+    await enterEditMode(page)
 
-  test('ANÁLISIS tab shows analysis section with CORRER ANÁLISIS button', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
+    const notes = `Nota e2e ${Date.now()}`
+    await fieldInput(page, 'NOTAS').fill(notes)
+    await saveEdits(page)
 
-    await goToFirstDetail(page)
+    await expect(page.getByText(notes)).toBeVisible()
 
-    await page.getByRole('button', { name: 'ANÁLISIS' }).click()
-
-    // The ProspectAnalysisSection always renders the ANÁLISIS heading and the button
-    await expect(page.getByText('ANÁLISIS').first()).toBeVisible()
-    await expect(page.getByText('CORRER ANÁLISIS')).toBeVisible()
+    await page.reload()
+    await expect(page.getByText(notes)).toBeVisible()
   })
 
-  test('ANÁLISIS tab — CORRER ANÁLISIS toggle shows form fields', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
+  test('saving a new RENTA/MES recomputes the CAP RATE', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+    await enterEditMode(page)
 
-    await goToFirstDetail(page)
+    // 30,000 × 12 / 2,130,000 — the investment is pinned by the breakdown
+    await setNumericField(page, 'RENTA/MES', '30000')
+    await saveEdits(page)
 
-    await page.getByRole('button', { name: 'ANÁLISIS' }).click()
-    await page.getByText('CORRER ANÁLISIS').click()
+    await expect(detailRow(page, 'RENTA/MES')).toContainText('$30,000')
+    await expect(detailRow(page, 'CAP RATE')).toContainText('16.9%')
 
-    // The analysis form shows INTERVENCIÓN and PLAZO labels
-    await expect(page.getByText('INTERVENCIÓN').first()).toBeVisible()
-    await expect(page.getByText('PLAZO (MESES)').first()).toBeVisible()
-    await expect(page.getByText('EJECUTAR')).toBeVisible()
-    await expect(page.getByText('CANCELAR').first()).toBeVisible()
+    await page.reload()
+    await expect(detailRow(page, 'CAP RATE')).toContainText('16.9%')
   })
 
-  // ── 7. Center panel — MAPA tab ───────────────────────────────────────────
+  // ── ANÁLISIS tab ────────────────────────────────────────────────────────────
 
-  test('center panel shows MAPA and FOTOS tab buttons', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
+  test('ANÁLISIS tab shows the analysis section and its form', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+    await page.getByRole('button', { name: 'ANÁLISIS', exact: true }).click()
 
-    await goToFirstDetail(page)
+    await expect(page.getByRole('button', { name: 'CORRER ANÁLISIS' })).toBeVisible()
+    await page.getByRole('button', { name: 'CORRER ANÁLISIS' }).click()
+
+    await expect(page.getByText('INTERVENCIÓN')).toBeVisible()
+    await expect(page.getByText('PLAZO (MESES)')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'EJECUTAR' })).toBeVisible()
+  })
+
+  test('switching back to GENERAL restores the derived rows', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+    const url = page.url()
+
+    await page.getByRole('button', { name: 'ANÁLISIS', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'CORRER ANÁLISIS' })).toBeVisible()
+    await page.getByRole('button', { name: 'GENERAL', exact: true }).click()
+
+    await expect(detailRow(page, 'ROI ANUAL')).toBeVisible()
+    expect(page.url()).toBe(url)
+  })
+
+  // ── CONVERTIR ───────────────────────────────────────────────────────────────
+
+  test('CONVERTIR ▸ PROYECTO opens the conversion modal prefilled from the prospect', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+    await page.getByRole('button', { name: 'CONVERTIR ▸ PROYECTO' }).click()
+
+    await expect(page.getByText(`CONVERTIR A PROYECTO — ${FIXTURE.name}`)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'CREAR PROYECTO ▸' })).toBeVisible()
+    // The projected sale seeds the valuation the new project starts with
+    const valuacion = page.getByText('VALUACIÓN ACTUAL ($)').locator('..').locator('input')
+    await expect(valuacion).toHaveValue('3000000')
+
+    await page.getByRole('button', { name: 'CANCELAR', exact: true }).click()
+
+    await expect(page.getByText(`CONVERTIR A PROYECTO — ${FIXTURE.name}`)).toHaveCount(0)
+    await expect(page).toHaveURL(new RegExp(`/prospectos/tabla/${prospectId}$`))
+  })
+
+  // ── Center column ───────────────────────────────────────────────────────────
+
+  test('center column offers the MAPA / FOTOS / PLANO tabs', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
 
     await expect(page.getByRole('button', { name: 'MAPA' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'FOTOS' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'PLANO' })).toBeVisible()
+
+    await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 10_000 })
   })
 
-  test('MAPA tab — renders map or "SIN COORDENADAS" message', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
-
-    await goToFirstDetail(page)
-
-    // MAPA is active by default — wait for either leaflet map or the no-coords message.
-    // .isVisible() returns immediately (no waiting), so we must poll until content renders.
-    await expect(async () => {
-      const hasMap = await page.locator('.leaflet-container').isVisible()
-      const hasNoCoords = await page.getByText('SIN COORDENADAS').isVisible()
-      expect(hasMap || hasNoCoords).toBe(true)
-    }).toPass({ timeout: 10000 })
-  })
-
-  // ── 8. Center panel — FOTOS tab ──────────────────────────────────────────
-
-  test('FOTOS tab — clicking FOTOS shows photo upload area', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
-
-    await goToFirstDetail(page)
-
+  test('FOTOS tab renders the upload input', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
     await page.getByRole('button', { name: 'FOTOS' }).click()
 
-    // PhotoGallery renders a hidden file input (type=file, accept=image/*)
-    await expect(page.locator('input[type="file"][accept="image/*"]')).toBeAttached()
+    await expect(page.locator('input[type="file"][accept="image/*"]')).toHaveCount(1)
   })
 
-  // ── 9. Back navigation ───────────────────────────────────────────────────
+  test('PLANO tab lands on the empty state and mounts the editor from it', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+    await page.getByRole('button', { name: 'PLANO' }).click()
 
-  test('back button returns to /prospectos/tabla', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
+    // A prospect with no geometry starts on the trace-or-blank landing state
+    await expect(page.getByText('Trace over a reference image or start from a blank footprint.')).toBeVisible()
+    await page.getByRole('button', { name: /start blank/i }).click()
 
-    await goToFirstDetail(page)
+    await expect(page.getByRole('button', { name: 'Fit to screen' })).toBeVisible()
+  })
 
-    await page.getByText('← PROSPECTOS').first().click()
+  // ── Delete confirmation ─────────────────────────────────────────────────────
+
+  test('ELIMINAR asks for confirmation and CANCELAR aborts it', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+
+    await page.getByRole('button', { name: 'ELIMINAR', exact: true }).click()
+    await expect(page.getByRole('button', { name: '¿CONFIRMAR BORRADO?' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'CANCELAR', exact: true }).click()
+
+    await expect(page.getByRole('button', { name: 'ELIMINAR', exact: true })).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`/prospectos/tabla/${prospectId}$`))
+  })
+
+  // ── The `nuevo` route keeps its own form ────────────────────────────────────
+
+  test('/prospectos/tabla/nuevo renders the creation form, not the detail shell', async ({ page }) => {
+    await page.goto('/prospectos/tabla/nuevo')
+
+    await expect(page.getByText('Nombre', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'GUARDAR', exact: true })).toBeVisible()
+    // The `nuevo` route never enters the in-place edit shell
+    await expect(page.getByRole('button', { name: 'EDITAR', exact: true })).toHaveCount(0)
+  })
+
+  // ── Back navigation ─────────────────────────────────────────────────────────
+
+  test('← PROSPECTOS returns to the prospect table', async ({ page }) => {
+    await page.goto(`/prospectos/tabla/${prospectId}`)
+
+    await page.getByText('← PROSPECTOS').click()
+
     await expect(page).toHaveURL(/\/prospectos\/tabla$/)
-  })
-
-  // ── 10. Tab switching preserves page integrity ────────────────────────────
-
-  test('switching through all left tabs and back to INFO stays on same detail URL', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
-
-    await goToFirstDetail(page)
-    const url = page.url()
-
-    await page.getByRole('button', { name: 'EDITAR' }).click()
-    await page.getByRole('button', { name: 'ANÁLISIS' }).click()
-    await page.getByRole('button', { name: 'INFO' }).click()
-
-    // URL must not have changed — we're still on the same detail page
-    expect(page.url()).toBe(url)
-    // And INFO content is back
-    await expect(page.getByText('ROI ANUAL').first()).toBeVisible()
-  })
-
-  // ── 11. EDITAR — ESTADO select ───────────────────────────────────────────
-
-  test('EDITAR tab — ESTADO select is visible with prospect status options', async ({ page }) => {
-    // Use goToFirstDetail directly — it waits for the first row to be visible, avoiding
-    // the count=0 race where React hasn't finished its fetch before count() runs.
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
-
-    await goToFirstDetail(page)
-    await page.getByRole('button', { name: 'EDITAR' }).click()
-
-    await expect(page.getByText('ESTADO').first()).toBeVisible()
-
-    const statusSelect = page.locator('select').filter({ has: page.locator('option[value="evaluating"]') }).first()
-    await expect(statusSelect).toBeVisible()
-    await expect(statusSelect.locator('option[value="evaluating"]')).toHaveText('EVALUANDO')
-    await expect(statusSelect.locator('option[value="passed"]')).toHaveText('APROBADO')
-    await expect(statusSelect.locator('option[value="converted"]')).toHaveText('CONVERTIDO')
-  })
-
-  test('EDITAR tab — changing ESTADO and clicking GUARDAR ▸ persists the new status', async ({ page }) => {
-    await page.goto('/prospectos/tabla')
-    const firstRow = page.locator('table tbody tr').first()
-    const appeared = await firstRow.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
-    if (!appeared) { test.skip(); return }
-
-    await goToFirstDetail(page)
-    await page.getByRole('button', { name: 'EDITAR' }).click()
-
-    const statusSelect = page.locator('select').filter({ has: page.locator('option[value="evaluating"]') }).first()
-    await expect(statusSelect).toBeVisible({ timeout: 8_000 })
-
-    const originalStatus = await statusSelect.inputValue()
-    const validStatuses = ['evaluating', 'passed', 'converted']
-    const newStatus = validStatuses.find(s => s !== originalStatus) ?? 'passed'
-
-    await statusSelect.selectOption(newStatus)
-
-    await expect(page.getByText('GUARDAR ▸')).toBeVisible()
-    await page.getByText('GUARDAR ▸').click()
-    await expect(page.getByText('GUARDAR ▸')).not.toBeVisible({ timeout: 8_000 })
-
-    // Switch to INFO and back to EDITAR to confirm the value was persisted
-    await page.getByRole('button', { name: 'INFO' }).click()
-    await page.getByRole('button', { name: 'EDITAR' }).click()
-
-    const persistedSelect = page.locator('select').filter({ has: page.locator('option[value="evaluating"]') }).first()
-    await expect(persistedSelect).toHaveValue(newStatus, { timeout: 8_000 })
-
-    // Restore original status
-    await persistedSelect.selectOption(originalStatus)
-    await page.getByText('GUARDAR ▸').click()
-    await expect(page.getByText('GUARDAR ▸')).not.toBeVisible({ timeout: 8_000 })
   })
 })

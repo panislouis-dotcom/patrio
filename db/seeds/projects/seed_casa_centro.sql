@@ -8,7 +8,7 @@ INSERT INTO projects (
   acquisition_date, conclusion_date,
   total_investment, current_valuation, valuation_date,
   url, latitude, longitude,
-  milestones, budget, notes
+  milestones, notes
 ) VALUES (
   'Casa Centro',
   'adaptive_reuse',
@@ -31,17 +31,6 @@ INSERT INTO projects (
     "2023-09": "Primera renta — 12 meses desde adquisición",
     "2024-06": "Operación plena — 3 unidades activas",
     "2026-04": "Valuación actualizada — $6.2M, 1.7x sobre inversión de $3.7M"
-  }',
-
-  '{
-    "Adquisición casa": 2400000,
-    "Mano de obra": 580000,
-    "Materiales": 380000,
-    "Notariales, ISAI, avalúo": 90000,
-    "Mobiliario y equipamiento": 95000,
-    "Instalaciones (eléctrica, hidráulica)": 80000,
-    "Diseño y arquitectura": 75000,
-    "Otros gastos varios": 30000
   }',
 
   '3 unidades de renta larga. Datos placeholder — actualizar con cifras reales.'

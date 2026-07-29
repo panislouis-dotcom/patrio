@@ -1,23 +1,28 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet'
 import { BASE, fetchProspect, updateProspect, createProspect, deleteProspect, convertProspect, uploadProspectImage, deleteProspectImage, fetchProspectGeometry, saveProspectGeometry, uploadProspectFloorplanImage } from '../lib/api'
 import type { Prospect, RawFields } from '../lib/types'
 import { PROPERTY_TYPES } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
-import { fmtMXN } from '../lib/fmt'
+import { fmtMXN, fmtPct } from '../lib/fmt'
 import { MetricHero } from './finance/MetricHero'
 import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { LatLonPicker } from './LatLonPicker'
 import { NumericInput } from './NumericInput'
 import { ProspectForm } from './ProspectForm'
 import { ProspectAnalysisSection } from './ProspectAnalysisSection'
-import { StatRow } from './StatRow'
 import { PhotoGallery } from './PhotoGallery'
 import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
 import type { FloorPlanModel } from '../lib/floorplan/types'
 import { PROSPECT_STATUS_COLOR, PROSPECT_STATUS_LABEL, PROJECT_STATUS_LABEL } from '../lib/status'
+import { useEdits } from '../lib/useEdits'
+import { DetailHeader } from './detail/DetailHeader'
+import { EditableRow } from './detail/EditableRow'
+import { MapPanel } from './detail/MapPanel'
+import { MediaTabs } from './detail/MediaTabs'
+import { SectionDivider } from './detail/SectionDivider'
+import { ErrorBanner } from './detail/ErrorBanner'
 
 export const DEFAULT_PROSPECT: Partial<RawFields> = {
   city: 'Monterrey',
@@ -38,6 +43,13 @@ export const DEFAULT_PROSPECT: Partial<RawFields> = {
   notes: '',
 }
 
+/**
+ * Every prospect column is NOT NULL and the PATCH drops nulls (`exclude_none`),
+ * so no row below may ever write `null`: emptying a box reverts the field to the
+ * stored value (`setField(key, undefined)`), which is what NumericInput yields.
+ */
+type TextKey = { [K in keyof RawFields]-?: RawFields[K] extends string ? K : never }[keyof RawFields]
+type NumKey = { [K in keyof RawFields]-?: RawFields[K] extends number ? K : never }[keyof RawFields]
 
 export function ProspectDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -45,13 +57,12 @@ export function ProspectDetailPage() {
   const isNew = id === 'nuevo'
 
   const [prospect, setProspect] = useState<Prospect | null>(null)
+  const { edits, field, setField, hasEdits, clear } = useEdits<RawFields>(prospect)
   const [loading, setLoading] = useState(!isNew)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving]               = useState(false)
   const [saveError, setSaveError]         = useState<string | null>(null)
-  const [edits, setEdits]                 = useState<Partial<RawFields>>({})
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting]           = useState(false)
+  const [editing, setEditing]             = useState(false)
   const [convertModal, setConvertModal]   = useState(false)
   const [converting, setConverting]       = useState(false)
   const [convertError, setConvertError]   = useState<string | null>(null)
@@ -64,8 +75,7 @@ export function ProspectDetailPage() {
   })
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
-  const [centerTab, setCenterTab] = useState<'mapa' | 'fotos' | 'plano'>('mapa')
-  const [leftTab, setLeftTab] = useState<'info' | 'editar' | 'analisis'>('info')
+  const [leftTab, setLeftTab] = useState<'general' | 'analisis'>('general')
   const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
   const planApiRef = useRef<PlanApi | null>(null)
   const [planDirty, setPlanDirty] = useState(false)
@@ -98,15 +108,15 @@ export function ProspectDetailPage() {
     }
   }
 
-  async function handleInlineSave() {
-    if ((Object.keys(edits).length === 0 && !planApiRef.current?.isDirty()) || !prospect) return
+  async function save() {
+    if ((!hasEdits && !planApiRef.current?.isDirty()) || !prospect) return
     setSaving(true)
     setSaveError(null)
     try {
-      if (Object.keys(edits).length > 0) {
+      if (hasEdits) {
         const updated = await updateProspect(Number(id), edits)
         setProspect(updated)
-        setEdits({})
+        clear()
       }
       if (planApiRef.current?.isDirty()) {
         const saved = await saveProspectGeometry(Number(id), planApiRef.current.getModel())
@@ -114,6 +124,7 @@ export function ProspectDetailPage() {
         planApiRef.current.markSaved()
         setPlanDirty(false)
       }
+      setEditing(false)
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
@@ -121,29 +132,9 @@ export function ProspectDetailPage() {
     }
   }
 
-  function handleEdit(key: keyof RawFields, raw: string, inputType: 'number' | 'text', isAcqPct = false) {
-    let value: string | number | undefined
-    if (inputType === 'number') {
-      if (raw === '') { value = undefined }
-      else { const parsed = parseFloat(raw); value = isAcqPct ? parsed / 100 : parsed }
-    } else { value = raw }
-    setEdits(prev => {
-      const next = { ...prev }
-      if (value === undefined) { delete (next as Record<string, unknown>)[key as string] }
-      else { (next as Record<string, unknown>)[key as string] = value }
-      return next
-    })
-  }
-
   async function handleDelete() {
-    setDeleting(true)
-    try {
-      await deleteProspect(Number(id))
-      navigate('/prospectos/tabla')
-    } catch {
-      setDeleting(false)
-      setConfirmDelete(false)
-    }
+    await deleteProspect(Number(id))
+    navigate('/prospectos/tabla')
   }
 
   function openConvertModal(p: Prospect) {
@@ -188,17 +179,6 @@ export function ProspectDetailPage() {
     }
   }
 
-  function cv(key: keyof RawFields, isAcqPct = false): string {
-    if (edits[key] !== undefined) {
-      const v = edits[key] as number | string
-      if (isAcqPct && typeof v === 'number') return (v * 100).toFixed(1)
-      return String(v)
-    }
-    const raw = prospect![key]
-    if (isAcqPct && typeof raw === 'number') return (raw * 100).toFixed(1)
-    return raw != null ? String(raw) : ''
-  }
-
   const fade = (delay = 0): React.CSSProperties => ({
     opacity: mounted ? 1 : 0,
     transform: mounted ? 'translateY(0)' : 'translateY(12px)',
@@ -237,20 +217,14 @@ export function ProspectDetailPage() {
   }
 
   const p = prospect!
-  const hasCoords = p.latitude !== 0 && p.longitude !== 0
   const roi = p.roi ?? null
   const roiColor = roi != null && roi > 0.5 ? colors.primary : roi != null && roi > 0.25 ? colors.tertiary : '#c0392b'
   const roiTotal = p.roiTotal ?? null
   const roiTotalColor = roiTotal != null && roiTotal > 0.5 ? colors.primary : roiTotal != null && roiTotal > 0.25 ? colors.tertiary : '#c0392b'
-  const hasEdits = Object.keys(edits).length > 0
   const errors = p.issues.filter(i => i.severity === 'error')
   const warnings = p.issues.filter(i => i.severity === 'warning')
-
-  const divider = (label: string) => (
-    <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, padding: '12px 0 6px', borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '4px' }}>
-      {label}
-    </div>
-  )
+  const url = field('url') ?? ''
+  const acquisitionCostPct = field('acquisitionCostPct')
 
   const investmentItems = [
     { label: 'Precio terreno', amount: p.landPrice },
@@ -260,90 +234,91 @@ export function ProspectDetailPage() {
     { label: 'Construcción', amount: p.constructionTotal },
   ].filter(item => item.amount > 0)
 
+  const textRow = (label: string, key: TextKey) => (
+    <EditableRow
+      label={label}
+      editing={editing}
+      value={field(key) || '—'}
+      input={
+        <input
+          value={field(key) ?? ''}
+          onChange={e => setField(key, e.target.value)}
+          aria-label={label}
+          style={fieldInput}
+        />
+      }
+    />
+  )
+
+  const numRow = (label: string, key: NumKey, format: (n: number | undefined) => string, step?: number) => (
+    <EditableRow
+      label={label}
+      editing={editing}
+      value={format(field(key))}
+      input={
+        <NumericInput
+          value={field(key)}
+          onChange={n => setField(key, n)}
+          step={step}
+          ariaLabel={label}
+          style={fieldInput}
+        />
+      }
+    />
+  )
+
+  const selectRow = (label: string, key: 'type' | 'status', value: string, options: React.ReactNode) => (
+    <EditableRow
+      label={label}
+      editing={editing}
+      value={value}
+      input={
+        <select
+          value={field(key) ?? ''}
+          onChange={e => setField(key, e.target.value)}
+          aria-label={label}
+          style={{ ...fieldInput, cursor: 'pointer' }}
+        >
+          {options}
+        </select>
+      }
+    />
+  )
+
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
 
-      {/* ── HEADER ── */}
-      <div style={{
-        ...fade(0),
-        flexShrink: 0,
-        height: '52px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
-        padding: '0 24px',
-        borderBottom: `1px solid ${colors.border}`,
-        background: colors.dark,
-      }}>
-        <button
-          onClick={() => navigate('/prospectos/tabla')}
-          style={{ background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: 0, flexShrink: 0 }}
-        >
-          ← PROSPECTOS
-        </button>
-        <span style={{ color: colors.border }}>·</span>
-        <span style={{ fontFamily: fonts.serif, fontSize: '20px', color: colors.neutral, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {p.name}
-        </span>
-        <span style={{
-          fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.12em',
-          padding: '3px 10px', flexShrink: 0,
-          background: PROSPECT_STATUS_COLOR[p.status] ?? colors.border,
-          color: colors.neutral,
-        }}>
-          {PROSPECT_STATUS_LABEL[p.status] ?? p.status.toUpperCase()}
-        </span>
-        <button
-          onClick={() => openConvertModal(p)}
-          style={{ background: 'none', border: `1px solid ${colors.primary}`, color: colors.primary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
-        >
-          CONVERTIR ▸ PROYECTO
-        </button>
-        {confirmDelete ? (
-          <>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
-            >
-              CANCELAR
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              style={{ background: '#c0392b', border: 'none', color: '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '6px 16px', opacity: deleting ? 0.7 : 1, flexShrink: 0 }}
-            >
-              {deleting ? 'BORRANDO…' : '¿CONFIRMAR BORRADO?'}
-            </button>
-          </>
-        ) : (
+      <DetailHeader
+        style={fade(0)}
+        backLabel="PROSPECTOS"
+        onBack={() => navigate('/prospectos/tabla')}
+        title={field('name') ?? ''}
+        editingTitle={{ value: field('name') ?? '', onChange: v => setField('name', v) }}
+        statusLabel={PROSPECT_STATUS_LABEL[field('status') ?? ''] ?? (field('status') ?? '').toUpperCase()}
+        statusColor={PROSPECT_STATUS_COLOR[field('status') ?? ''] ?? colors.border}
+        editing={editing}
+        onToggleEdit={() => setEditing(v => !v)}
+        hasChanges={hasEdits || planDirty}
+        saving={saving}
+        onSave={save}
+        onCancel={() => { clear(); setEditing(false) }}
+        onDelete={handleDelete}
+        actions={
           <button
-            onClick={() => setConfirmDelete(true)}
-            style={{ background: 'none', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
+            onClick={() => openConvertModal(p)}
+            style={{ background: 'none', border: `1px solid ${colors.primary}`, color: colors.primary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', padding: '5px 12px', flexShrink: 0 }}
           >
-            ELIMINAR
+            CONVERTIR ▸ PROYECTO
           </button>
-        )}
-        {(hasEdits || planDirty) && (
-          <button
-            onClick={handleInlineSave}
-            disabled={saving}
-            style={{
-              background: colors.primary, border: 'none', color: colors.neutral,
-              cursor: saving ? 'not-allowed' : 'pointer',
-              fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em',
-              padding: '6px 16px', opacity: saving ? 0.7 : 1,
-              transition: 'opacity 0.2s', flexShrink: 0,
-            }}
-          >
-            {saving ? 'GUARDANDO…' : 'GUARDAR ▸'}
-          </button>
-        )}
-      </div>
+        }
+      />
+
+      <ErrorBanner message={saveError} />
 
       {/* ── MAIN 2-COLUMN GRID ── */}
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '360px 1fr', overflow: 'hidden' }}>
 
-        {/* ── LEFT: Tabbed panel ── */}
+        {/* ── LEFT: Tabbed (GENERAL / ANÁLISIS) ── */}
         <div style={{
           ...fade(80),
           borderRight: `1px solid ${colors.border}`,
@@ -353,7 +328,7 @@ export function ProspectDetailPage() {
         }}>
           {/* Left tab bar */}
           <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
-            {(['info', 'editar', 'analisis'] as const).map(tab => (
+            {(['general', 'analisis'] as const).map(tab => (
               <button key={tab} onClick={() => setLeftTab(tab)} style={{
                 background: 'transparent', border: 'none',
                 borderBottom: leftTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
@@ -361,14 +336,15 @@ export function ProspectDetailPage() {
                 cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
                 letterSpacing: '0.12em', padding: '10px 16px 8px', textTransform: 'uppercase' as const,
               }}>
-                {tab === 'info' ? 'INFO' : tab === 'editar' ? 'EDITAR' : 'ANÁLISIS'}
+                {tab === 'general' ? 'GENERAL' : 'ANÁLISIS'}
               </button>
             ))}
           </div>
 
-          {/* INFO tab */}
-          {leftTab === 'info' && (
+          {/* GENERAL tab */}
+          {leftTab === 'general' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
+
               {/* Hero ROI */}
               <MetricHero
                 label="ROI ANUAL"
@@ -386,21 +362,83 @@ export function ProspectDetailPage() {
                 size={24}
               />
 
-              <StatRow label="PROFIT" value={fmtMXN(p.profit)} />
-              <StatRow label="CAP RATE" value={(p.capRate ?? 0) > 0 ? `${((p.capRate ?? 0) * 100).toFixed(1)}%` : '—'} />
-              <StatRow label="INVERSIÓN" value={fmtMXN(p.totalInvestment)} />
-              <StatRow label="VENTA" value={fmtMXN(p.projectedSale)} />
-              {p.holdMonths > 0 && <StatRow label="PLAZO" value={`${p.holdMonths} meses`} />}
-              {p.rentMonthly > 0 && <StatRow label="RENTA/MES" value={fmtMXN(p.rentMonthly)} />}
-              <StatRow label="TERRENO" value={`${p.sqmLand} m²`} />
-              <StatRow label="CONSTRUCCIÓN" value={`${p.sqmConstruction} m²`} />
+              {/* PROFIT, CAP RATE and INVERSIÓN are always derived from the breakdown */}
+              <EditableRow label="PROFIT" editing={editing} value={fmtMXN(p.profit)} />
+              <EditableRow label="CAP RATE" editing={editing} value={fmtPct(p.capRate)} />
+              <EditableRow label="INVERSIÓN" editing={editing} value={fmtMXN(p.totalInvestment)} />
+              {numRow('VENTA', 'projectedSale', fmtMXN)}
+              {numRow('PLAZO', 'holdMonths', n => (n ? `${n} meses` : '—'))}
+              {numRow('RENTA/MES', 'rentMonthly', fmtMXN)}
+              {numRow('TERRENO', 'sqmLand', n => `${n ?? 0} m²`)}
+              {numRow('CONSTRUCCIÓN', 'sqmConstruction', n => `${n ?? 0} m²`)}
+              {selectRow('TIPO', 'type', field('type') || '—', (
+                <>
+                  <option value="">— sin tipo —</option>
+                  {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </>
+              ))}
+              {selectRow('ESTADO', 'status', PROSPECT_STATUS_LABEL[field('status') ?? ''] ?? (field('status') || '—'), (
+                Object.entries(PROSPECT_STATUS_LABEL).map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)
+              ))}
 
-              {divider('UBICACIÓN')}
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginBottom: '2px' }}>{p.address || '—'}</div>
-              <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>{p.city}</div>
+              <SectionDivider label="UBICACIÓN" />
+              {textRow('DIRECCIÓN', 'address')}
+              {textRow('CIUDAD', 'city')}
+              <EditableRow
+                label="URL"
+                editing={editing}
+                value={url ? (
+                  <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: colors.secondary, textDecoration: 'none' }}>VER FUENTE ↗</a>
+                ) : '—'}
+                input={
+                  <input
+                    value={url}
+                    onChange={e => setField('url', e.target.value)}
+                    aria-label="URL"
+                    style={fieldInput}
+                  />
+                }
+              />
+              {editing && (
+                <div style={{ marginTop: '12px' }}>
+                  <LatLonPicker
+                    lat={field('latitude') ?? 0}
+                    lon={field('longitude') ?? 0}
+                    onChange={(newLat, newLon) => {
+                      setField('latitude', newLat)
+                      setField('longitude', newLon)
+                    }}
+                  />
+                </div>
+              )}
 
-              {/* Investment breakdown bars */}
-              <InvestmentBreakdown label="INVERSIÓN TOTAL" total={p.totalInvestment} items={investmentItems} barsReady={barsReady} />
+              {/* Underwriting — raw inputs while editing, the derived bars while viewing */}
+              {editing ? (
+                <>
+                  <SectionDivider label="DESGLOSE DE INVERSIÓN" />
+                  {numRow('PRECIO TERRENO', 'landPrice', fmtMXN)}
+                  {numRow('COSTO CONSTR./m²', 'constructionCostPerSqm', fmtMXN)}
+                  {numRow('PERMISOS', 'permitsCost', fmtMXN)}
+                  {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN)}
+                  <EditableRow
+                    label="COSTOS ADQ. (%)"
+                    editing={editing}
+                    value={fmtPct(acquisitionCostPct)}
+                    input={
+                      <NumericInput
+                        value={acquisitionCostPct != null ? acquisitionCostPct * 100 : undefined}
+                        onChange={n => setField('acquisitionCostPct', n != null ? n / 100 : undefined)}
+                        step={0.1}
+                        ariaLabel="COSTOS ADQ. (%)"
+                        style={fieldInput}
+                      />
+                    }
+                  />
+                  {numRow('OVERHEAD CONSTRUCCIÓN', 'constructionOverhead', n => (n != null ? String(n) : '—'), 0.01)}
+                </>
+              ) : (
+                <InvestmentBreakdown label="INVERSIÓN TOTAL" total={p.totalInvestment} items={investmentItems} barsReady={barsReady} />
+              )}
 
               {/* Venta + Profit summary */}
               <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
@@ -438,150 +476,20 @@ export function ProspectDetailPage() {
                 </div>
               )}
 
-              {/* Notes */}
-              {p.notes && p.notes !== '-' && (
-                <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>NOTAS</div>
-                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>{p.notes}</div>
-                </div>
-              )}
-
-              {/* URL */}
-              {p.url && (
-                <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
-                  <a
-                    href={p.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary, textDecoration: 'none' }}
-                  >
-                    VER FUENTE ↗
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* EDITAR tab */}
-          {leftTab === 'editar' && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
-              {([
-                { key: 'name', label: 'Nombre', type: 'text' },
-                { key: 'address', label: 'Dirección', type: 'text' },
-                { key: 'city', label: 'Ciudad', type: 'text' },
-                { key: 'url', label: 'URL', type: 'text' },
-              ] as const).map(({ key, label, type }) => (
-                <div key={key} style={{ marginBottom: '8px' }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-                  <input value={cv(key)} onChange={e => handleEdit(key, e.target.value, 'text')} type={type} style={fieldInput} />
-                </div>
-              ))}
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>TIPO</div>
-                <select
-                  value={(edits.type as string) ?? p.type ?? ''}
-                  onChange={e => setEdits(prev => ({ ...prev, type: e.target.value }))}
-                  style={{ ...fieldInput, cursor: 'pointer' }}
-                >
-                  <option value="">— sin tipo —</option>
-                  {PROPERTY_TYPES.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>ESTADO</div>
-                <select
-                  value={(edits.status as string) ?? p.status}
-                  onChange={e => setEdits(prev => ({ ...prev, status: e.target.value }))}
-                  style={{ ...fieldInput, cursor: 'pointer' }}
-                >
-                  {Object.entries(PROSPECT_STATUS_LABEL).map(([val, lbl]) => (
-                    <option key={val} value={val}>{lbl}</option>
-                  ))}
-                </select>
-              </div>
-
-              {([
-                { key: 'landPrice', label: 'Precio terreno ($)' },
-                { key: 'permitsCost', label: 'Permisos ($)' },
-                { key: 'subdivisionCost', label: 'Subdivisión ($)' },
-                { key: 'sqmLand', label: 'm² Terreno' },
-                { key: 'sqmConstruction', label: 'm² Construcción' },
-                { key: 'constructionCostPerSqm', label: 'Costo/m² ($)' },
-                { key: 'projectedSale', label: 'Venta proyectada ($)' },
-                { key: 'rentMonthly', label: 'Renta mensual ($)' },
-                { key: 'holdMonths', label: 'Plazo (meses)' },
-              ] as const).map(({ key, label }) => (
-                <div key={key} style={{ marginBottom: '8px' }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>{label.toUpperCase()}</div>
-                  <NumericInput
-                    value={(edits[key] !== undefined ? edits[key] : prospect![key]) as number | undefined}
-                    onChange={n => {
-                      setEdits(prev => {
-                        const next = { ...prev }
-                        if (n === undefined) delete (next as Record<string, unknown>)[key as string]
-                        else (next as Record<string, unknown>)[key as string] = n
-                        return next
-                      })
-                    }}
-                    style={fieldInput}
-                  />
-                </div>
-              ))}
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>COSTOS ADQ. (%)</div>
-                <NumericInput
-                  value={edits.acquisitionCostPct !== undefined
-                    ? (edits.acquisitionCostPct as number) * 100
-                    : (prospect?.acquisitionCostPct ?? 0) * 100}
-                  onChange={n => setEdits(prev => {
-                    const next = { ...prev }
-                    if (n === undefined) delete (next as Record<string, unknown>).acquisitionCostPct
-                    else next.acquisitionCostPct = n / 100
-                    return next
-                  })}
-                  step={0.1}
-                  style={fieldInput}
+              {/* Notas */}
+              <SectionDivider label="NOTAS" />
+              {editing ? (
+                <textarea
+                  value={field('notes') ?? ''}
+                  onChange={e => setField('notes', e.target.value)}
+                  rows={3}
+                  aria-label="NOTAS"
+                  style={{ ...fieldInput, resize: 'vertical' }}
                 />
-              </div>
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>OVERHEAD CONSTRUCCIÓN</div>
-                <NumericInput
-                  value={(edits.constructionOverhead !== undefined ? edits.constructionOverhead : prospect?.constructionOverhead) as number | undefined}
-                  onChange={n => setEdits(prev => {
-                    const next = { ...prev }
-                    if (n === undefined) delete (next as Record<string, unknown>).constructionOverhead
-                    else next.constructionOverhead = n
-                    return next
-                  })}
-                  step={0.01}
-                  style={fieldInput}
-                />
-              </div>
-
-              <div style={{ marginBottom: '8px' }}>
-                <LatLonPicker
-                  lat={(edits.latitude !== undefined ? edits.latitude : prospect?.latitude) ?? 0}
-                  lon={(edits.longitude !== undefined ? edits.longitude : prospect?.longitude) ?? 0}
-                  onChange={(newLat, newLon) => {
-                    handleEdit('latitude', String(newLat), 'number')
-                    handleEdit('longitude', String(newLon), 'number')
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em', marginBottom: '2px' }}>NOTAS</div>
-                <textarea value={cv('notes')} onChange={e => handleEdit('notes', e.target.value, 'text')} rows={3} style={{ ...fieldInput, resize: 'vertical' }} />
-              </div>
-
-              {saveError && (
-                <div style={{ color: colors.tertiary, fontFamily: fonts.sans, fontSize: '11px', marginTop: '8px' }}>{saveError}</div>
+              ) : (
+                <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>
+                  {field('notes') && field('notes') !== '-' ? field('notes') : '—'}
+                </div>
               )}
             </div>
           )}
@@ -594,54 +502,11 @@ export function ProspectDetailPage() {
           )}
         </div>
 
-        {/* ── CENTER: Mapa / Fotos ── */}
-        <div style={{ ...fade(160), display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Tab bar */}
-          <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
-            {(['mapa', 'fotos', 'plano'] as const).map(tab => (
-              <button key={tab} onClick={() => setCenterTab(tab)} style={{
-                background: 'transparent', border: 'none',
-                borderBottom: centerTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
-                color: centerTab === tab ? colors.neutral : colors.secondary,
-                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
-                letterSpacing: '0.12em', padding: '10px 16px 8px', marginBottom: '-1px',
-              }}>
-                {tab.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          {/* MAPA tab */}
-          {centerTab === 'mapa' && (
-            <div style={{ flex: 1, position: 'relative' }}>
-              {hasCoords ? (
-                <MapContainer
-                  center={[p.latitude, p.longitude]}
-                  zoom={15}
-                  style={{ height: '100%', width: '100%' }}
-                  scrollWheelZoom={false}
-                >
-                  <TileLayer
-                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                  />
-                  <CircleMarker
-                    center={[p.latitude, p.longitude]}
-                    radius={12}
-                    pathOptions={{ color: roiColor, fillColor: roiColor, fillOpacity: 0.7, weight: 2 }}
-                  />
-                </MapContainer>
-              ) : (
-                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.border }}>SIN COORDENADAS</div>
-                  <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Agrega lat/lng en el panel izquierdo</div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* FOTOS tab */}
-          {centerTab === 'fotos' && (
+        {/* ── CENTER: Mapa / Fotos / Plano ── */}
+        <MediaTabs
+          style={fade(160)}
+          mapa={<MapPanel lat={p.latitude} lon={p.longitude} markerColor={roiColor} />}
+          fotos={
             <PhotoGallery
               images={p.images}
               base={BASE}
@@ -654,10 +519,8 @@ export function ProspectDetailPage() {
                 setProspect(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
               }}
             />
-          )}
-
-          {/* PLANO tab */}
-          {centerTab === 'plano' && geometry !== null && (
+          }
+          plano={geometry !== null && (
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               <FloorPlanEditor
                 initial={geometry}
@@ -668,7 +531,7 @@ export function ProspectDetailPage() {
               />
             </div>
           )}
-        </div>
+        />
 
       </div>
 

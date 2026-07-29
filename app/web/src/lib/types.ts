@@ -53,7 +53,7 @@ export interface Prospect {
   salePerSqm: number
   investmentPerSqm: number
   rentMonthly: number
-  rentAnnual: number
+  rentAnnual: number | null
   holdMonths: number
   notes: string
   isFavorite: boolean
@@ -99,7 +99,6 @@ export interface Project {
   latitude: number
   longitude: number
   milestones: Record<string, string>   // {"YYYY-MM": "label"}
-  budget: Record<string, number>       // {"category": amount}
   notes: string
   isFavorite: boolean
   images: ProjectImage[]

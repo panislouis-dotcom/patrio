@@ -48,6 +48,9 @@ def test_investment_raw_unrounded_single_expression():
 # (locked here before the view was dropped in migration 020). A future change that
 # breaks the round-of-sum discipline — summing pre-rounded sub-totals instead of the
 # single unrounded investment_raw — would drift these by ~1 peso and fail.
+# cap_rate is the one figure that no longer matches the old view: the 2026-07 formula
+# change made it yield on cost (216,000 / 3,480,000 = 0.0621) instead of the view's
+# rent*12*0.70 / projected_sale (0.0605).
 _EXPECTED = {
     "total_investment": Decimal("3480000"),
     "acquisition_costs": Decimal("65000"),
@@ -55,7 +58,7 @@ _EXPECTED = {
     "construction_base": Decimal("1800000"),
     "construction_total": Decimal("2340000"),
     "profit": Decimal("-980000"),
-    "cap_rate": Decimal("0.0605"),
+    "cap_rate": Decimal("0.0621"),
     "land_price_per_sqm": Decimal("3333.33"),
     "sale_per_sqm": Decimal("8333.33"),
     "investment_per_sqm": Decimal("11600.00"),
@@ -95,4 +98,67 @@ def test_metrics_zero_guards_return_none():
     assert m["roi"] is None
     assert m["roi_total"] is None
     assert m["cap_rate"] is None
+    assert m["rent_annual"] is None
     assert m["land_price_per_sqm"] is None
+
+
+def test_cap_rate_is_yield_on_cost():
+    # 18,000*12 = 216,000 over 3,480,000 invested
+    assert uw.cap_rate(18_000, 3_480_000) == Decimal("0.0621")
+
+
+def test_cap_rate_none_without_positive_investment():
+    assert uw.cap_rate(18_000, 0) is None
+    assert uw.cap_rate(18_000, None) is None
+    assert uw.cap_rate(18_000, -3_480_000) is None
+
+
+def test_cap_rate_none_without_positive_rent():
+    assert uw.cap_rate(0, 3_480_000) is None
+    assert uw.cap_rate(None, 3_480_000) is None
+    assert uw.cap_rate(-18_000, 3_480_000) is None
+
+
+def test_rent_annual_is_twelve_months_or_nothing():
+    assert uw.rent_annual(18_000) == Decimal("216000")
+    assert uw.rent_annual(0) is None
+    assert uw.rent_annual(None) is None
+    assert uw.rent_annual(-18_000) is None
+
+
+_NO_OVERHEAD = dict(
+    land_price=2_000_000, acquisition_cost_pct=None, permits_cost=None, subdivision_cost=None,
+    sqm_construction=120, construction_cost_per_sqm=1_000, construction_overhead=None,
+    projected_sale=None, hold_months=None, rent_monthly=None, sqm_land=None,
+)
+
+
+def test_absent_overhead_is_no_surcharge_not_no_construction():
+    """Overhead multiplies construction, so its absence must read as ×1. Treating
+    it as ×0 erased the 120,000 of construction the user explicitly captured."""
+    assert uw.investment_raw(**{k: _NO_OVERHEAD[k] for k in (
+        "land_price", "acquisition_cost_pct", "permits_cost", "subdivision_cost",
+        "sqm_construction", "construction_cost_per_sqm", "construction_overhead")}
+    ) == Decimal("2120000")
+
+
+def test_zero_overhead_reads_like_an_absent_one():
+    """0 is not a meaningful multiplier — the UI writes it for an empty field just
+    as often as NULL, and both mean the same thing: no indirect-cost surcharge."""
+    m = uw.metrics(dict(_NO_OVERHEAD, construction_overhead=0))
+    assert m["total_investment"] == Decimal("2120000")
+    assert m["construction_base"] == m["construction_total"] == Decimal("120000")
+
+
+def test_overhead_still_multiplies_when_given():
+    """The surcharge itself is untouched: 1.3 keeps costing +30%."""
+    m = uw.metrics(dict(_NO_OVERHEAD, construction_overhead=1.3))
+    assert m["construction_total"] == Decimal("156000")
+    assert m["total_investment"] == Decimal("2156000")
+
+
+def test_metrics_cap_rate_ignores_projected_sale():
+    """The denominator is the cost stack, so changing the exit cannot move cap rate."""
+    m = uw.metrics(dict(INPUTS))
+    cheaper_exit = uw.metrics(dict(INPUTS, projected_sale=1_000_000))
+    assert cheaper_exit["cap_rate"] == m["cap_rate"] == Decimal("0.0621")

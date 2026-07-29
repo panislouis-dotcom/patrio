@@ -1,7 +1,7 @@
 \restrict dbmate
 
--- Dumped from database version 16.13
--- Dumped by pg_dump version 18.3
+-- Dumped from database version 16.14
+-- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -27,43 +27,43 @@ CREATE TABLE public.analysis_snapshots (
     id bigint NOT NULL,
     prospect_id bigint NOT NULL,
     generated_at timestamp with time zone DEFAULT now() NOT NULL,
-    purchase_price real NOT NULL,
-    remodel_cost_estimate real NOT NULL,
-    remodel_cost_per_m2 real NOT NULL,
+    purchase_price numeric(14,2) NOT NULL,
+    remodel_cost_estimate numeric(14,2) NOT NULL,
+    remodel_cost_per_m2 numeric(14,2) NOT NULL,
     intervention_level text NOT NULL,
-    transaction_costs real NOT NULL,
-    financing_costs real NOT NULL,
-    total_cost real NOT NULL,
+    transaction_costs numeric(14,2) NOT NULL,
+    financing_costs numeric(14,2) NOT NULL,
+    total_cost numeric(14,2) NOT NULL,
     holding_period_months integer NOT NULL,
-    exit_price_manual real,
-    exit_price_calculated_low real,
-    exit_price_calculated_mid real,
-    exit_price_calculated_high real,
+    exit_price_manual numeric(14,2),
+    exit_price_calculated_low numeric(14,2),
+    exit_price_calculated_mid numeric(14,2),
+    exit_price_calculated_high numeric(14,2),
     exit_price_source text DEFAULT 'manual'::text NOT NULL,
-    exit_price_used real NOT NULL,
+    exit_price_used numeric(14,2) NOT NULL,
     manual_vs_market_delta_pct real,
     comparable_count integer DEFAULT 0 NOT NULL,
     comparable_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
     avg_comp_distance_km real,
-    gross_margin real,
+    gross_margin numeric(14,2),
     roi_pct real,
     irr_pct real,
     cap_rate_pct real,
     confidence_score integer DEFAULT 0 NOT NULL,
     confidence_notes text DEFAULT ''::text NOT NULL,
     data_quality_warnings jsonb DEFAULT '[]'::jsonb NOT NULL,
-    arv_manual_override real,
-    renta_mensual_estimada real,
+    arv_manual_override numeric(14,2),
+    renta_mensual_estimada numeric(14,2),
     tasa_interes_credito real,
     plazo_credito_meses integer,
     financiamiento_pct real,
     gastos_operativos_pct real,
-    noi_anual real,
-    debt_service_anual real,
-    cash_flow_anual real,
+    noi_anual numeric(14,2),
+    debt_service_anual numeric(14,2),
+    cash_flow_anual numeric(14,2),
     cash_on_cash_yr1_pct real,
     break_even_months integer,
-    npv_10yr real,
+    npv_10yr numeric(14,2),
     irr_10yr_pct real,
     CONSTRAINT analysis_snapshots_confidence_score_check CHECK (((confidence_score >= 0) AND (confidence_score <= 100))),
     CONSTRAINT analysis_snapshots_exit_price_source_check CHECK ((exit_price_source = ANY (ARRAY['manual'::text, 'calculated'::text, 'blended'::text])))
@@ -167,12 +167,11 @@ CREATE TABLE public.comparables (
     address text NOT NULL,
     zone_id bigint,
     m2 real NOT NULL,
-    price bigint NOT NULL,
+    price numeric(14,2) NOT NULL,
     listing_url text NOT NULL,
     source_portal text NOT NULL,
     listed_at timestamp with time zone NOT NULL,
     captured_at timestamp with time zone DEFAULT now() NOT NULL,
-    price_per_m2 real GENERATED ALWAYS AS (((price)::real / NULLIF(m2, (0)::double precision))) STORED,
     neighborhood text DEFAULT ''::text NOT NULL,
     city text DEFAULT 'Monterrey'::text NOT NULL,
     lat double precision,
@@ -190,11 +189,12 @@ CREATE TABLE public.comparables (
     check_failure_count integer DEFAULT 0 NOT NULL,
     notes text DEFAULT ''::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    price_per_m2 numeric(14,2) GENERATED ALWAYS AS (((price)::double precision / NULLIF(m2, (0)::double precision))) STORED,
     CONSTRAINT comparables_address_check CHECK ((address <> ''::text)),
     CONSTRAINT comparables_condition_check CHECK ((condition = ANY (ARRAY['remodelada'::text, 'nueva'::text, 'semi_nueva'::text, 'por_remodelar'::text]))),
     CONSTRAINT comparables_listing_url_check CHECK ((listing_url <> ''::text)),
     CONSTRAINT comparables_m2_check CHECK ((m2 > (0)::double precision)),
-    CONSTRAINT comparables_price_check CHECK ((price > 0)),
+    CONSTRAINT comparables_price_check CHECK ((price > (0)::numeric)),
     CONSTRAINT comparables_property_type_check CHECK ((property_type = ANY (ARRAY['casa'::text, 'depto'::text, 'duplex'::text, 'lote'::text, 'local'::text]))),
     CONSTRAINT comparables_source_portal_check CHECK ((source_portal = ANY (ARRAY['inmuebles24'::text, 'vivanuncios'::text, 'lamudi'::text, 'propiedades_com'::text, 'mercadolibre'::text, 'doorvel'::text, 'off_market'::text, 'other'::text]))),
     CONSTRAINT comparables_status_check CHECK ((status = ANY (ARRAY['active'::text, 'sold'::text, 'withdrawn'::text, 'expired'::text])))
@@ -529,8 +529,8 @@ ALTER SEQUENCE public.process_templates_id_seq OWNED BY public.process_templates
 CREATE TABLE public.profit_split_config (
     id bigint NOT NULL,
     project_id bigint,
-    exit_price real,
-    investor_capital real,
+    exit_price numeric(14,2),
+    investor_capital numeric(14,2),
     investor_rate_annual real DEFAULT 0.12 NOT NULL,
     investor_months real,
     isr_rate real DEFAULT 0.30 NOT NULL,
@@ -619,97 +619,17 @@ CREATE TABLE public.project_investors (
     project_id bigint NOT NULL,
     investor_id bigint NOT NULL,
     status text DEFAULT 'interesado'::text NOT NULL,
-    interested_amount real DEFAULT 0 NOT NULL,
-    committed_amount real DEFAULT 0 NOT NULL,
-    funded_amount real DEFAULT 0 NOT NULL,
+    interested_amount numeric(14,2) DEFAULT 0 NOT NULL,
+    committed_amount numeric(14,2) DEFAULT 0 NOT NULL,
+    funded_amount numeric(14,2) DEFAULT 0 NOT NULL,
     interest_rate_annual real DEFAULT 0.12 NOT NULL,
     investment_date date,
-    return_amount real,
+    return_amount numeric(14,2),
     return_date date,
     notes text DEFAULT ''::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT project_investors_status_check CHECK ((status = ANY (ARRAY['interesado'::text, 'comprometido'::text, 'fondeado'::text])))
 );
-
-
---
--- Name: projects; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.projects (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    type text NOT NULL,
-    address text NOT NULL,
-    city text NOT NULL,
-    status text NOT NULL,
-    total_units integer NOT NULL,
-    acquisition_date text NOT NULL,
-    total_investment real NOT NULL,
-    current_valuation real NOT NULL,
-    valuation_date text NOT NULL,
-    url text NOT NULL,
-    latitude real NOT NULL,
-    longitude real NOT NULL,
-    prospect_id bigint,
-    milestones text DEFAULT '{}'::text NOT NULL,
-    budget text DEFAULT '{}'::text NOT NULL,
-    notes text DEFAULT ''::text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    conclusion_date date NOT NULL,
-    is_favorite boolean DEFAULT false NOT NULL,
-    CONSTRAINT projects_acquisition_date_check CHECK ((acquisition_date <> ''::text)),
-    CONSTRAINT projects_address_check CHECK ((address <> ''::text)),
-    CONSTRAINT projects_city_check CHECK ((city <> ''::text)),
-    CONSTRAINT projects_name_check CHECK ((name <> ''::text)),
-    CONSTRAINT projects_status_check CHECK ((status <> ''::text)),
-    CONSTRAINT projects_type_check CHECK ((type <> ''::text)),
-    CONSTRAINT projects_url_check CHECK ((url <> ''::text)),
-    CONSTRAINT projects_valuation_date_check CHECK ((valuation_date <> ''::text))
-);
-
-
---
--- Name: project_investor_metrics; Type: VIEW; Schema: public; Owner: -
---
-
-CREATE VIEW public.project_investor_metrics AS
- WITH hold AS (
-         SELECT pi_1.id AS pi_id,
-                CASE
-                    WHEN (p_1.conclusion_date IS NOT NULL) THEN ((((EXTRACT(year FROM p_1.conclusion_date))::integer - (EXTRACT(year FROM to_date((p_1.acquisition_date || '-01'::text), 'YYYY-MM-DD'::text)))::integer) * 12) + ((EXTRACT(month FROM p_1.conclusion_date))::integer - (EXTRACT(month FROM to_date((p_1.acquisition_date || '-01'::text), 'YYYY-MM-DD'::text)))::integer))
-                    ELSE ((((EXTRACT(year FROM CURRENT_DATE))::integer - (EXTRACT(year FROM to_date((p_1.acquisition_date || '-01'::text), 'YYYY-MM-DD'::text)))::integer) * 12) + ((EXTRACT(month FROM CURRENT_DATE))::integer - (EXTRACT(month FROM to_date((p_1.acquisition_date || '-01'::text), 'YYYY-MM-DD'::text)))::integer))
-                END AS hold_months
-           FROM (public.project_investors pi_1
-             JOIN public.projects p_1 ON ((p_1.id = pi_1.project_id)))
-        )
- SELECT pi.id,
-    pi.project_id,
-    pi.investor_id,
-    pi.status,
-    pi.interested_amount,
-    pi.committed_amount,
-    pi.funded_amount,
-    pi.interest_rate_annual,
-    pi.investment_date,
-    pi.return_amount,
-    pi.return_date,
-    pi.notes,
-    pi.created_at,
-    (i.name ||
-        CASE
-            WHEN (COALESCE(i.apellidos, ''::text) <> ''::text) THEN (' '::text || i.apellidos)
-            ELSE ''::text
-        END) AS investor_name,
-    p.name AS project_name,
-    h.hold_months,
-    round(((((pi.funded_amount * pi.interest_rate_annual) * (h.hold_months)::double precision) / (12.0)::double precision))::numeric, 2) AS interest_amount,
-    round(((pi.funded_amount * ((1)::double precision + ((pi.interest_rate_annual * (h.hold_months)::double precision) / (12.0)::double precision))))::numeric, 2) AS expected_return,
-    round(((((pi.interest_rate_annual * (h.hold_months)::double precision) / (12.0)::double precision) * (100)::double precision))::numeric, 2) AS return_pct
-   FROM (((public.project_investors pi
-     JOIN public.projects p ON ((p.id = pi.project_id)))
-     JOIN public.investors i ON ((i.id = pi.investor_id)))
-     JOIN hold h ON ((h.pi_id = pi.id)));
 
 
 --
@@ -729,6 +649,54 @@ CREATE SEQUENCE public.project_investors_id_seq
 --
 
 ALTER SEQUENCE public.project_investors_id_seq OWNED BY public.project_investors.id;
+
+
+--
+-- Name: projects; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.projects (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    type text NOT NULL,
+    address text NOT NULL,
+    city text NOT NULL,
+    status text NOT NULL,
+    total_units integer NOT NULL,
+    acquisition_date text NOT NULL,
+    conclusion_date date NOT NULL,
+    total_investment numeric(14,2) NOT NULL,
+    current_valuation numeric(14,2) NOT NULL,
+    valuation_date text NOT NULL,
+    url text NOT NULL,
+    latitude real NOT NULL,
+    longitude real NOT NULL,
+    prospect_id bigint,
+    milestones text DEFAULT '{}'::text NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    is_favorite boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    sqm_land real,
+    sqm_construction real,
+    land_price numeric(14,2),
+    acquisition_cost_pct real,
+    permits_cost numeric(14,2),
+    subdivision_cost numeric(14,2),
+    construction_cost_per_sqm numeric(14,2),
+    construction_overhead real,
+    projected_sale numeric(14,2),
+    hold_months integer,
+    rent_monthly numeric(14,2),
+    geometry jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT projects_acquisition_date_check CHECK ((acquisition_date <> ''::text)),
+    CONSTRAINT projects_address_check CHECK ((address <> ''::text)),
+    CONSTRAINT projects_city_check CHECK ((city <> ''::text)),
+    CONSTRAINT projects_name_check CHECK ((name <> ''::text)),
+    CONSTRAINT projects_status_check CHECK ((status <> ''::text)),
+    CONSTRAINT projects_type_check CHECK ((type <> ''::text)),
+    CONSTRAINT projects_url_check CHECK ((url <> ''::text)),
+    CONSTRAINT projects_valuation_date_check CHECK ((valuation_date <> ''::text))
+);
 
 
 --
@@ -794,71 +762,32 @@ CREATE TABLE public.prospects (
     address text NOT NULL,
     city text NOT NULL,
     status text NOT NULL,
+    type text DEFAULT ''::text NOT NULL,
     url text NOT NULL,
     latitude real NOT NULL,
     longitude real NOT NULL,
     sqm_land real NOT NULL,
     sqm_construction real NOT NULL,
-    land_price real NOT NULL,
+    land_price numeric(14,2) NOT NULL,
     acquisition_cost_pct real NOT NULL,
-    permits_cost real NOT NULL,
-    subdivision_cost real NOT NULL,
-    construction_cost_per_sqm real NOT NULL,
+    permits_cost numeric(14,2) NOT NULL,
+    subdivision_cost numeric(14,2) NOT NULL,
+    construction_cost_per_sqm numeric(14,2) NOT NULL,
     construction_overhead real NOT NULL,
-    projected_sale real NOT NULL,
+    projected_sale numeric(14,2) NOT NULL,
     hold_months integer DEFAULT 12 NOT NULL,
-    rent_monthly real NOT NULL,
+    rent_monthly numeric(14,2) NOT NULL,
     notes text DEFAULT ''::text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    type text DEFAULT ''::text NOT NULL,
     is_favorite boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    geometry jsonb DEFAULT '{}'::jsonb NOT NULL,
     CONSTRAINT prospects_address_check CHECK ((address <> ''::text)),
     CONSTRAINT prospects_city_check CHECK ((city <> ''::text)),
     CONSTRAINT prospects_name_check CHECK ((name <> ''::text)),
-    CONSTRAINT prospects_rent_monthly_check CHECK ((rent_monthly >= (0)::double precision)),
+    CONSTRAINT prospects_rent_monthly_check CHECK (((rent_monthly)::double precision >= (0)::double precision)),
     CONSTRAINT prospects_status_check CHECK ((status <> ''::text)),
     CONSTRAINT prospects_url_check CHECK ((url <> ''::text))
 );
-
-
---
--- Name: prospect_metrics; Type: VIEW; Schema: public; Owner: -
---
-
-CREATE VIEW public.prospect_metrics AS
- SELECT id,
-    name,
-    address,
-    city,
-    status,
-    url,
-    sqm_land,
-    sqm_construction,
-    land_price,
-    acquisition_cost_pct,
-    round(((land_price * acquisition_cost_pct))::numeric, 0) AS acquisition_costs,
-    round(((land_price * ((1)::double precision + acquisition_cost_pct)))::numeric, 0) AS acquisition_total,
-    permits_cost,
-    subdivision_cost,
-    round(((sqm_construction * construction_cost_per_sqm))::numeric, 0) AS construction_base,
-    round((((sqm_construction * construction_cost_per_sqm) * construction_overhead))::numeric, 0) AS construction_total,
-    round((((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead)))::numeric, 0) AS total_investment,
-    projected_sale,
-    round(((projected_sale - ((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead))))::numeric, 0) AS profit,
-        CASE
-            WHEN ((hold_months > 0) AND (((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead)) > (0)::double precision) AND (projected_sale > (0)::double precision)) THEN round(((power((projected_sale / ((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead))), ((12.0 / (hold_months)::numeric))::double precision) - (1)::double precision))::numeric, 4)
-            ELSE NULL::numeric
-        END AS roi,
-    round(((((rent_monthly * (12)::double precision) * (0.70)::double precision) / NULLIF(projected_sale, (0)::double precision)))::numeric, 4) AS cap_rate,
-    round(((land_price / NULLIF(sqm_land, (0)::double precision)))::numeric, 2) AS land_price_per_sqm,
-    round(((projected_sale / NULLIF(sqm_land, (0)::double precision)))::numeric, 2) AS sale_per_sqm,
-    round(((((((land_price * ((1)::double precision + acquisition_cost_pct)) + permits_cost) + subdivision_cost) + ((sqm_construction * construction_cost_per_sqm) * construction_overhead)) / NULLIF(sqm_land, (0)::double precision)))::numeric, 2) AS investment_per_sqm,
-    rent_monthly,
-    round(((rent_monthly * (12)::double precision))::numeric, 0) AS rent_annual,
-    hold_months,
-    notes,
-    type
-   FROM public.prospects;
 
 
 --
@@ -1010,7 +939,7 @@ CREATE TABLE public.remodel_costs (
     id bigint NOT NULL,
     zone_id bigint NOT NULL,
     intervention_level text NOT NULL,
-    cost_per_m2_mxn integer NOT NULL,
+    cost_per_m2_mxn numeric(14,2) NOT NULL,
     includes jsonb DEFAULT '[]'::jsonb NOT NULL,
     valid_from date DEFAULT CURRENT_DATE NOT NULL,
     valid_until date,
@@ -1046,8 +975,7 @@ ALTER SEQUENCE public.remodel_costs_id_seq OWNED BY public.remodel_costs.id;
 --
 
 CREATE TABLE public.schema_migrations (
-    version text NOT NULL,
-    applied_at timestamp with time zone DEFAULT now() NOT NULL
+    version character varying NOT NULL
 );
 
 
@@ -1062,7 +990,7 @@ CREATE TABLE public.signals (
     title text NOT NULL,
     address text DEFAULT ''::text NOT NULL,
     city text DEFAULT 'Monterrey'::text NOT NULL,
-    price real DEFAULT 0 NOT NULL,
+    price numeric(14,2) DEFAULT 0 NOT NULL,
     sqm_land real DEFAULT 0 NOT NULL,
     raw_data text DEFAULT ''::text NOT NULL,
     status text DEFAULT 'new'::text NOT NULL,
@@ -1097,7 +1025,7 @@ ALTER SEQUENCE public.signals_id_seq OWNED BY public.signals.id;
 CREATE TABLE public.sonar_scan_signals (
     scan_id bigint NOT NULL,
     signal_id bigint NOT NULL,
-    price_at_scan double precision
+    price_at_scan numeric(14,2)
 );
 
 
@@ -1148,14 +1076,14 @@ CREATE TABLE public.sonar_signals (
     municipio_cve text DEFAULT ''::text NOT NULL,
     municipio_name text DEFAULT ''::text NOT NULL,
     colonia text DEFAULT ''::text NOT NULL,
+    state_name text DEFAULT ''::text NOT NULL,
     lat double precision,
     lon double precision,
-    price double precision DEFAULT 0 NOT NULL,
+    price numeric(14,2) DEFAULT 0 NOT NULL,
     sqm_land double precision DEFAULT 0 NOT NULL,
     first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
     last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_price double precision,
-    state_name text DEFAULT ''::text NOT NULL
+    last_price numeric(14,2)
 );
 
 
@@ -2471,4 +2399,9 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('015'),
     ('016'),
     ('017'),
-    ('018');
+    ('018'),
+    ('019'),
+    ('020'),
+    ('021'),
+    ('022'),
+    ('023');

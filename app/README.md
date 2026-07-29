@@ -22,7 +22,7 @@ Track opportunities before commitment: location, size, projected financials, dea
 
 ### 2. Project Tracking
 
-Full lifecycle records for committed deals: budget breakdown, milestones, valuations, operational performance.
+Full lifecycle records for committed deals: investment breakdown, milestones, valuations, operational performance.
 
 ### 3. Investor Prospectus — build first
 
