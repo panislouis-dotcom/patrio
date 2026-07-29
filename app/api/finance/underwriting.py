@@ -23,6 +23,14 @@ _INPUT_KEYS = (
 )
 
 
+def overhead_factor(construction_overhead) -> Decimal:
+    """Construction overhead is a *multiplier* (1.3 = +30% indirect costs), so an
+    absent or zero value means no surcharge — identity 1, never ×0, which would
+    erase the construction the user explicitly captured. Contrast
+    acquisition_cost_pct, an additive share whose identity is correctly 0."""
+    return to_decimal(construction_overhead) or Decimal(1)
+
+
 def investment_raw(land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
                    sqm_construction, construction_cost_per_sqm, construction_overhead) -> Decimal:
     """Unrounded COST expression — the single source every metric derives from."""
@@ -33,7 +41,7 @@ def investment_raw(land_price, acquisition_cost_pct, permits_cost, subdivision_c
         + to_decimal(permits_cost)
         + to_decimal(subdivision_cost)
         + to_decimal(sqm_construction) * to_decimal(construction_cost_per_sqm)
-        * to_decimal(construction_overhead)
+        * overhead_factor(construction_overhead)
     )
 
 
@@ -66,7 +74,7 @@ def metrics(inputs: dict) -> dict:
     acq = to_decimal(g["acquisition_cost_pct"])
     sqm_c = to_decimal(g["sqm_construction"])
     cps = to_decimal(g["construction_cost_per_sqm"])
-    ovh = to_decimal(g["construction_overhead"])
+    ovh = overhead_factor(g["construction_overhead"])
     ps = to_decimal(g["projected_sale"])
     sqm_land = to_decimal(g["sqm_land"])
     hold = g["hold_months"]

@@ -91,6 +91,18 @@ def test_create_persists_the_computed_total_investment(client):
             conn.execute("DELETE FROM projects WHERE id=%s", (project_id,))
 
 
+def test_breakdown_without_overhead_still_counts_the_construction(client, test_project):
+    """User repro: capturing land + construction and leaving overhead empty must not
+    make the construction disappear from the total."""
+    r = client.patch(f"/api/projects/{test_project['id']}", json=dict(
+        landPrice=2000000, sqmConstruction=120, constructionCostPerSqm=1000))
+    assert r.status_code == 200
+    p = r.json()
+    assert p["constructionOverhead"] is None
+    assert Decimal(str(p["totalInvestment"])) == Decimal("2120000")  # 2,000,000 + 120×1,000
+    assert Decimal(str(p["constructionTotal"])) == Decimal("120000")
+
+
 def test_clearing_the_breakdown_keeps_the_total_it_computed(client, test_project):
     """Back to manual mode: the fallback total is the last one the breakdown produced,
     not the manual figure from before it — and cap rate follows that total."""

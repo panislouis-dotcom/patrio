@@ -126,6 +126,37 @@ def test_rent_annual_is_twelve_months_or_nothing():
     assert uw.rent_annual(-18_000) is None
 
 
+_NO_OVERHEAD = dict(
+    land_price=2_000_000, acquisition_cost_pct=None, permits_cost=None, subdivision_cost=None,
+    sqm_construction=120, construction_cost_per_sqm=1_000, construction_overhead=None,
+    projected_sale=None, hold_months=None, rent_monthly=None, sqm_land=None,
+)
+
+
+def test_absent_overhead_is_no_surcharge_not_no_construction():
+    """Overhead multiplies construction, so its absence must read as ×1. Treating
+    it as ×0 erased the 120,000 of construction the user explicitly captured."""
+    assert uw.investment_raw(**{k: _NO_OVERHEAD[k] for k in (
+        "land_price", "acquisition_cost_pct", "permits_cost", "subdivision_cost",
+        "sqm_construction", "construction_cost_per_sqm", "construction_overhead")}
+    ) == Decimal("2120000")
+
+
+def test_zero_overhead_reads_like_an_absent_one():
+    """0 is not a meaningful multiplier — the UI writes it for an empty field just
+    as often as NULL, and both mean the same thing: no indirect-cost surcharge."""
+    m = uw.metrics(dict(_NO_OVERHEAD, construction_overhead=0))
+    assert m["total_investment"] == Decimal("2120000")
+    assert m["construction_base"] == m["construction_total"] == Decimal("120000")
+
+
+def test_overhead_still_multiplies_when_given():
+    """The surcharge itself is untouched: 1.3 keeps costing +30%."""
+    m = uw.metrics(dict(_NO_OVERHEAD, construction_overhead=1.3))
+    assert m["construction_total"] == Decimal("156000")
+    assert m["total_investment"] == Decimal("2156000")
+
+
 def test_metrics_cap_rate_ignores_projected_sale():
     """The denominator is the cost stack, so changing the exit cannot move cap rate."""
     m = uw.metrics(dict(INPUTS))
