@@ -26,6 +26,10 @@ def _cover_item(value: str, label: str) -> str:
     return f'<div class="vp-v">{value}</div><div class="vp-l">{label}</div>'
 
 
+def _kv_row(label: str, value: str) -> str:
+    return f'<td>{label}</td><td class="n">{value}</td>'
+
+
 def _cap_rate_metric(value: str, label: str = "Cap rate") -> str:
     return _metric(value, label)
 
@@ -299,7 +303,31 @@ def test_opportunity_gain_comes_from_the_api_roi_total(test_prospect):
     assert float(prospect["roiTotal"]) == 0.7241
     html = build_prospectus_html([], [prospect])
     assert _metric('$2.5M <small>72.4%</small>', "Ganancia est.") in html
-    assert '<td>ROI proyectado</td><td class="n">72.4%</td>' in html
+    assert _kv_row("ROI proyectado", "72.4%") in html
+
+
+def test_opportunity_lists_the_property_price_and_development_spend(test_prospect):
+    """Los financieros abren con lo que cuesta la propiedad y lo que se invierte
+    encima: 3,480,000 de inversión − 1,065,000 de adquisición = 2,415,000, que es
+    obra (2,340,000) + permisos (50,000) + subdivisión (25,000)."""
+    prospect = _underwrite(test_prospect["id"], 6000000)
+    assert float(prospect["landPrice"]) == 1000000
+    assert float(prospect["totalInvestment"] - prospect["acquisitionTotal"]) == 2415000
+    assert float(prospect["constructionTotal"]) + 50000 + 25000 == 2415000
+
+    html = build_prospectus_html([], [prospect])
+    assert _kv_row("Precio propiedad", "$1,000,000") in html
+    assert _kv_row("Inversión desarrollo", "$2,415,000") in html
+    assert "Precio terreno / m²" not in html
+    assert "Venta / m²" not in html
+
+
+def test_opportunity_hides_the_new_rows_when_there_is_nothing_to_show(test_prospect):
+    """Sin precio de propiedad ni obra capturados los renglones desaparecen, no
+    se imprimen en cero."""
+    html = build_prospectus_html([], [get_prospect(test_prospect["id"])])
+    assert "Precio propiedad" not in html
+    assert "Inversión desarrollo" not in html
 
 
 def test_opportunity_without_a_modeled_sale_has_no_estimated_gain(test_prospect):

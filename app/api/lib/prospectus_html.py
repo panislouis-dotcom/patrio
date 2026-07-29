@@ -490,9 +490,12 @@ def _opportunity(p: dict) -> str:
     rent_a = p.get("rentAnnual")
     sqm_land = _num(p.get("sqmLand"))
     sqm_con = _num(p.get("sqmConstruction"))
-    land_ppsqm = p.get("landPricePerSqm")
-    sale_ppsqm = p.get("salePerSqm")
     inv_ppsqm = p.get("investmentPerSqm")
+    land_price = p.get("landPrice")
+    # Todo lo que se invierte encima de comprar la propiedad: obra + permisos +
+    # subdivisión. Se resta de los dos totales del API en vez de volver a sumar
+    # aquí una fórmula que ya vive en el underwriting.
+    dev_investment = _num(total_inv) - _num(p.get("acquisitionTotal"))
 
     metrics = "".join([
         _metric(f"{hold}m" if hold else "—", "Plazo"),
@@ -503,11 +506,11 @@ def _opportunity(p: dict) -> str:
     ])
 
     financieros = _kv_rows([
+        ("Precio propiedad", _fmt_mxn(land_price) if _num(land_price) else None),
+        ("Inversión desarrollo", _fmt_mxn(dev_investment) if dev_investment > 0 else None),
         ("ROI proyectado", _fmt_pct(roi_total, 1) if roi_total is not None else None),
         ("Renta mensual est.", _fmt_mxn(rent_m) if _num(rent_m) else None),
         ("Renta anual est.", _fmt_mxn(rent_a) if _num(rent_a) else None),
-        ("Precio terreno / m²", _fmt_mxn(land_ppsqm) if _num(land_ppsqm) else None),
-        ("Venta / m²", _fmt_mxn(sale_ppsqm) if _num(sale_ppsqm) else None),
         ("Inversión / m²", _fmt_mxn(inv_ppsqm) if _num(inv_ppsqm) else None),
     ])
     ubicacion = _kv_rows([
