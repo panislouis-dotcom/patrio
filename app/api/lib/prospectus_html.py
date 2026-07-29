@@ -282,7 +282,10 @@ def _kv_rows(pairs) -> str:
 # Section builders
 # ---------------------------------------------------------------------------
 
-def _cover(month_year: str) -> str:
+def _cover(month_year: str, operating: list[dict] | None = None) -> str:
+    # ROI promedio real = media del ROI (plusvalía/inversión) de los proyectos operando.
+    rois = [_num(p.get("unrealizedGainPct")) for p in (operating or []) if _num(p.get("totalInvestment"))]
+    roi_avg = f"{(sum(rois) / len(rois)) * 100:.0f}%" if rois else "—"
     return f"""<div class="page-block cover">
   <div class="cover-top">
     <div>
@@ -298,7 +301,7 @@ def _cover(month_year: str) -> str:
       Tú pones el capital y eres dueño de todo — nosotros lo hacemos realidad, de principio a fin.</p>
     <div class="vp">
       <div class="vp-item"><div class="vp-v">23</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
-      <div class="vp-item"><!-- Valor creado — en blanco por ahora --></div>
+      <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">sobre inversión</div></div>
       <div class="vp-item"><div class="vp-v">8%</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">real, no proyectado</div></div>
     </div>
   </div>
@@ -330,15 +333,17 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     val_label = "Valuación proyectada" if projected else "Valuación actual"
     roi_label = "ROI proyectado" if projected else "ROI"
     roi_value = f"{gain_pct * 100:.1f}".rstrip("0").rstrip(".") + "%"
-    # Only a renting project has a realized cap rate; pre-obra shows "—" rather
-    # than a projected yield dressed up as one.
-    cap = p.get("capRate") if str(p.get("status")) == "operating" else None
+    # Cap rate viene del API (renta anual / inversión — una sola fórmula en todo
+    # el sistema): real en operando, proyectado y etiquetado como tal en
+    # desarrollo. Sin renta → "—", nunca inventado.
+    cap = p.get("capRate")
+    cap_label = "Cap rate proy." if projected else "Cap rate"
 
     metrics = "".join([
         _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
         _metric(_fmt_mxn_compact(current_val), val_label),
         _metric(roi_value, roi_label),
-        _metric(_fmt_pct_or_dash(cap), "Cap rate"),
+        _metric(_fmt_pct_or_dash(cap), cap_label),
     ])
 
     images = p.get("images", [])
@@ -492,12 +497,13 @@ def build_prospectus_html(projects: list[dict], prospects: list[dict]) -> str:
     today = date.today()
     month_year = f"{_MESES[today.month].capitalize()} {today.year}"
 
-    parts = [_cover(month_year)]
-
     # Track record = projects already operating (realized results).
     # En desarrollo = projects still pre-obra (projected figures, not achieved).
     operating = [p for p in projects if str(p.get("status")) == "operating"]
     development = [p for p in projects if str(p.get("status")) != "operating"]
+
+    parts = [_cover(month_year, operating)]
+
     # Strongest → weakest by value multiplier (valuación / inversión).
     operating.sort(
         key=lambda p: (_num(p.get("currentValuation")) / _num(p.get("totalInvestment")))

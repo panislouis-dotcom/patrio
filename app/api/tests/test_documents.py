@@ -16,8 +16,8 @@ def _operating(project_id: int, rent_monthly) -> dict:
     return get_project(project_id)
 
 
-def _cap_rate_metric(value: str) -> str:
-    return f'<div class="v">{value}</div><div class="l">Cap rate</div>'
+def _cap_rate_metric(value: str, label: str = "Cap rate") -> str:
+    return f'<div class="v">{value}</div><div class="l">{label}</div>'
 
 
 def test_prospectus_no_favorites_400(client):
@@ -94,6 +94,18 @@ def test_prospectus_cap_rate_is_a_dash_without_rent(test_project):
     project = _operating(test_project["id"], None)
     assert project["capRate"] is None
     assert _cap_rate_metric("—") in build_prospectus_html([project], [])
+
+
+def test_development_project_prints_projected_cap_rate(test_project):
+    """A pre-obra project with rent shows its yield labeled as projected —
+    same API formula, honest label (behavior merged from main's ece7a73)."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE projects SET status='en_proceso', rent_monthly=30000 WHERE id=%s",
+            (test_project["id"],))
+    project = get_project(test_project["id"])
+    html = build_prospectus_html([project], [])
+    assert _cap_rate_metric("7.2%", "Cap rate proy.") in html
 
 
 def test_opportunity_prints_the_prospect_cap_rate(test_prospect):
