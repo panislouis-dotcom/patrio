@@ -1,9 +1,12 @@
 from pathlib import Path
 import base64
 import json
+import logging
 import os
 import tempfile
 from markupsafe import escape as _esc
+
+logger = logging.getLogger(__name__)
 
 _FONTS_DIR = Path(__file__).resolve().parent.parent / "fonts"
 
@@ -22,7 +25,9 @@ _ROLE_LABEL = {
     "ayudante": "Ayudante",
     "finder": "Finder",
 }
-_ROLE_ORDER = list(_ROLE_LABEL)
+# Roles que aparecen en el prospecto, en orden de jerarquía: solo liderazgo en
+# el documento de inversionistas — ajustar aquí si cambia el criterio.
+_DOC_ROLES = ("director", "responsable_proyecto", "lider_proyecto")
 
 
 def _font_b64(name: str) -> str:
@@ -250,6 +255,13 @@ def _fmt_mxn_compact_or_dash(val) -> str:
     return _fmt_mxn_compact(val) if val is not None else "—"
 
 
+def _sale_or_none(val):
+    """0 significa "sin venta modelada" en todo el sistema — es el guard ps > 0
+    del underwriting, no un precio de cero. La columna es NOT NULL, así que sin
+    esta traducción un prospecto de pura renta imprimiría "$0"."""
+    return val if _num(val) > 0 else None
+
+
 def _fmt_month(raw) -> str:
     """A stored 'YYYY-MM' → 'abr 2026'. Unparseable or empty → ''."""
     try:
@@ -374,7 +386,7 @@ def _project_card(p: dict, kicker: str, projected: bool = False) -> str:
         # avalúo real que nadie hizo.
         metrics = "".join([
             _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
-            _metric(_fmt_mxn_compact_or_dash(p.get("projectedSale")), "Venta proyectada"),
+            _metric(_fmt_mxn_compact_or_dash(_sale_or_none(p.get("projectedSale"))), "Venta proyectada"),
             _metric(_fmt_pct_or_dash(p.get("projectedRoi")), "ROI anual proy."),
             _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Plusvalía proy."),
             _metric(_fmt_pct_or_dash(cap), "Cap rate proy."),
@@ -385,7 +397,7 @@ def _project_card(p: dict, kicker: str, projected: bool = False) -> str:
         metrics = "".join([
             _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
             _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
-                    f"Valuación actual · {val_month}" if val_month else "Valuación actual"),
+                    f"Valuación · {val_month}" if val_month else "Valuación actual"),
             _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
             _metric(_fmt_pct_or_dash(p.get("unrealizedGainPct")), "Plusvalía"),
             _metric(_fmt_pct_or_dash(cap), "Cap rate"),
@@ -419,16 +431,14 @@ def _team_block(team: list[dict] | None) -> str:
     """Equipo tal como está en la base — nombre completo, rol y su nota/bio.
     Sin equipo capturado no se inventa ninguno: la sección desaparece."""
     members = sorted(
-        team or [],
-        key=lambda m: (_ROLE_ORDER.index(str(m.get("role")))
-                       if str(m.get("role")) in _ROLE_ORDER else len(_ROLE_ORDER),
-                       _num(m.get("id"))),
+        (m for m in (team or []) if str(m.get("role")) in _DOC_ROLES),
+        key=lambda m: (_DOC_ROLES.index(str(m.get("role"))), _num(m.get("id"))),
     )
     if not members:
         return ""
     blocks = []
     for m in members:
-        role = _ROLE_LABEL.get(str(m.get("role")), _pretty_type(m.get("role")))
+        role = _ROLE_LABEL[str(m.get("role"))]
         bio = str(m.get("notes") or "").strip()
         blocks.append(
             f'<div><div class="partner-name">{_esc(m.get("name", ""))}</div>'
@@ -487,7 +497,7 @@ def _opportunity(p: dict) -> str:
     metrics = "".join([
         _metric(f"{hold}m" if hold else "—", "Plazo"),
         _metric(_fmt_mxn_compact_or_dash(total_inv), "Inversión total"),
-        _metric(_fmt_mxn_compact_or_dash(projected_sale), "Venta proyectada"),
+        _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia est."),
         _metric(_fmt_pct_or_dash(cap_rate), "Cap rate"),
     ])
@@ -572,6 +582,13 @@ def build_prospectus_html(projects: list[dict], prospects: list[dict],
     # En desarrollo = projects still pre-obra (projected figures, not achieved).
     operating = [p for p in projects if str(p.get("status")) == "operating"]
     development = [p for p in projects if str(p.get("status")) in _DEVELOPMENT_STATUSES]
+    # Un proyecto que no cae en ningún cubo se queda fuera del PDF; que no sea en
+    # silencio — normalmente es un 'exited' marcado como favorito o un estado nuevo.
+    for p in projects:
+        status = str(p.get("status"))
+        if status != "operating" and status not in _DEVELOPMENT_STATUSES:
+            logger.warning("project %r left out of the prospectus: status %r is "
+                           "neither operating nor in development", p.get("name"), p.get("status"))
 
     parts = [_cover(month_year, operating)]
 
@@ -623,10 +640,10 @@ async def render_to_pdf(html: str) -> bytes:
             browser = await p.chromium.launch(args=["--hide-scrollbars"])
             try:
                 page = await browser.new_page()
-                # Sin timeout explícito una carga colgada bloquea el worker: los
-                # PDFs traen imágenes embebidas y networkidle puede no llegar.
-                # page.pdf() no acepta timeout en esta versión de Playwright, así
-                # que el default de la página acota el resto de las esperas.
+                # networkidle puede no llegar nunca con imágenes embebidas: sin
+                # timeout la carga cuelga el worker. page.pdf() no acepta timeout
+                # en Playwright 1.61 — no queda acotado por esto, sino por el
+                # asyncio.wait_for de la ruta que llama.
                 page.set_default_timeout(_RENDER_TIMEOUT_MS)
                 await page.goto(f"file://{tmp_path}", wait_until="networkidle",
                                 timeout=_RENDER_TIMEOUT_MS)

@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from api.db import get_db, get_project, get_prospect
+from api.db import get_db, get_project, get_prospect, get_team_members
 from api.lib.prospectus_html import build_prospectus_html
 
 
@@ -55,15 +55,21 @@ def other_project(client):
 
 
 @pytest.fixture
-def test_team_member():
+def test_team():
+    """Dos roles de liderazgo — insertados fuera de jerarquía, para que el orden
+    del documento no pueda salir del id — más un ayudante que no debe aparecer."""
+    members = [
+        ("[TEST] Yierba Cantú", "lider_proyecto", "Coordina la cuadrilla en obra."),
+        ("[TEST] Eduardo de la Garza", "director", "Cierra la obra a tiempo y en presupuesto."),
+        ("[TEST] Juan Ayudante", "ayudante", "Apoyo en campo."),
+    ]
     with get_db() as conn:
-        row = conn.execute(
+        ids = [conn.execute(
             "INSERT INTO team_members (name, role, notes) VALUES (%s, %s, %s) RETURNING id",
-            ("[TEST] Eduardo de la Garza", "director", "Cierra la obra a tiempo y en presupuesto."),
-        ).fetchone()
-    yield row["id"]
+            m).fetchone()["id"] for m in members]
+    yield ids
     with get_db() as conn:
-        conn.execute("DELETE FROM team_members WHERE id = %s", (row["id"],))
+        conn.execute("DELETE FROM team_members WHERE id = ANY(%s)", (ids,))
 
 
 def test_prospectus_no_favorites_400(client):
@@ -215,7 +221,19 @@ def test_operating_card_prints_the_api_roi_and_plusvalia(test_project):
     html = build_prospectus_html([project], [])
     assert _metric("13.7%", "ROI anual") in html
     assert _metric("20.0%", "Plusvalía") in html
-    assert _metric("$6.0M", "Valuación actual · ene 2026") in html
+    assert _metric("$6.0M", "Valuación · ene 2026") in html
+
+
+def test_valuation_label_drops_the_date_when_it_is_unusable(test_project):
+    """valuation_date es texto libre: si no se puede leer como YYYY-MM la ficha
+    se queda con la etiqueta simple, sin un '·' colgando ni una fecha inventada."""
+    _operating(test_project["id"], 30000)
+    with get_db() as conn:
+        conn.execute("UPDATE projects SET valuation_date='sin fecha' WHERE id=%s",
+                     (test_project["id"],))
+    html = build_prospectus_html([get_project(test_project["id"])], [])
+    assert _metric("$6.0M", "Valuación actual") in html
+    assert "Valuación ·" not in html
 
 
 def test_development_card_never_reads_the_stored_valuation(test_project):
@@ -228,7 +246,7 @@ def test_development_card_never_reads_the_stored_valuation(test_project):
     assert _metric("—", "ROI anual proy.") in html
     assert _metric("—", "Plusvalía proy.") in html
     assert _metric("—", "Venta proyectada") in html  # projected_sale NULL, no "$0"
-    assert "Valuación actual" not in html
+    assert "Valuación" not in html
     assert "0.0%" not in html
 
 
@@ -289,15 +307,18 @@ def test_opportunity_without_a_modeled_sale_has_no_estimated_gain(test_prospect)
     ganancia estimada — antes se imprimía un -100% inventado."""
     prospect = _underwrite(test_prospect["id"], 0)
     assert prospect["roiTotal"] is None
+    assert float(prospect["projectedSale"]) == 0  # la columna es NOT NULL
     html = build_prospectus_html([], [prospect])
     assert _metric("—", "Ganancia est.") in html
+    assert _metric("—", "Venta proyectada") in html  # 0 = sin venta, no un precio
+    assert "$0" not in html
     assert "-100" not in html
     assert "ROI proyectado" not in html
 
 
 # ── Equipo ───────────────────────────────────────────────────────────────────
 
-def test_team_is_rendered_from_the_database(client, test_project, test_team_member):
+def test_team_is_rendered_from_the_database(client, test_project, test_team):
     """El bloque de socios sale de team_members — nombre completo, rol y nota."""
     _operating(test_project["id"], 30000)
     client.patch(f"/api/projects/{test_project['id']}", json={"isFavorite": True})
@@ -314,6 +335,26 @@ def test_team_is_rendered_from_the_database(client, test_project, test_team_memb
     assert "[TEST] Eduardo de la Garza" in captured["html"]
     assert "Cierra la obra a tiempo y en presupuesto." in captured["html"]
     assert '<div class="partner-role">Director</div>' in captured["html"]
+
+
+def test_team_shows_only_leadership(test_project, test_team):
+    """El prospecto es un documento de inversionistas: van los responsables del
+    proyecto, no la cuadrilla."""
+    project = _operating(test_project["id"], 30000)
+    html = build_prospectus_html([project], [], team=get_team_members())
+    assert "[TEST] Juan Ayudante" not in html
+    assert "Ayudante" not in html
+    assert "[TEST] Eduardo de la Garza" in html
+    assert "[TEST] Yierba Cantú" in html
+
+
+def test_team_is_ordered_by_hierarchy_not_by_id(test_project, test_team):
+    """El líder se insertó primero; el director va antes en el documento."""
+    project = _operating(test_project["id"], 30000)
+    html = build_prospectus_html([project], [], team=get_team_members())
+    assert html.index("[TEST] Eduardo de la Garza") < html.index("[TEST] Yierba Cantú")
+    assert html.index('<div class="partner-role">Director</div>') < html.index(
+        '<div class="partner-role">Líder de Proyecto</div>')
 
 
 def test_team_block_is_omitted_without_members(test_project):

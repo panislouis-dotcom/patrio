@@ -20,6 +20,9 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 _MAX_IMG_DIM = 1200
 _JPEG_QUALITY = 78
+# Cota real del render: page.pdf() no acepta timeout en Playwright 1.61, así que
+# sin esto un Chromium colgado deja la petición abierta indefinidamente.
+_RENDER_TIMEOUT_S = 90
 
 
 def _resize_for_pdf(content: bytes, content_type: str) -> tuple[bytes, str]:
@@ -65,7 +68,7 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
     await asyncio.to_thread(_embed_images, prospects)
     html = build_prospectus_html(projects, prospects, get_team_members())
     try:
-        pdf = await render_to_pdf(html)
+        pdf = await asyncio.wait_for(render_to_pdf(html), timeout=_RENDER_TIMEOUT_S)
     except Exception:
         logger.exception("PDF generation failed")
         raise HTTPException(status_code=500, detail="PDF generation failed")
@@ -102,7 +105,7 @@ async def generate_term_sheet(body: TermSheetRequest, _: dict = Depends(get_curr
 
     html = build_term_sheet_html(prospect, body.investor_name, body.investment_amount, body.rate)
     try:
-        pdf = await render_to_pdf(html)
+        pdf = await asyncio.wait_for(render_to_pdf(html), timeout=_RENDER_TIMEOUT_S)
     except Exception:
         logger.exception("Term sheet PDF generation failed")
         raise HTTPException(status_code=500, detail="PDF generation failed")
