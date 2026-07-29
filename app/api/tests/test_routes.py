@@ -145,7 +145,7 @@ def test_project_has_required_fields(client, test_project):
     for field in [
         "id", "name", "type", "totalInvestment", "currentValuation",
         "unrealizedGain", "unrealizedGainPct", "holdMonthsActual",
-        "milestones", "budget",
+        "milestones",
     ]:
         assert field in p, f"Missing field: {field}"
 
@@ -154,12 +154,6 @@ def test_project_milestones_parsed_as_dict(client, test_project):
     r = client.get(f"/api/projects/{test_project['id']}")
     p = r.json()
     assert isinstance(p["milestones"], dict), "milestones should be a dict, not a string"
-
-
-def test_project_budget_parsed_as_dict(client, test_project):
-    r = client.get(f"/api/projects/{test_project['id']}")
-    p = r.json()
-    assert isinstance(p["budget"], dict), "budget should be a dict, not a string"
 
 
 def test_get_single_project(client, test_project):

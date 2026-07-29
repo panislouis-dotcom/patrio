@@ -7,7 +7,7 @@ INSERT INTO projects (
   acquisition_date, conclusion_date,
   total_investment, current_valuation, valuation_date,
   url, latitude, longitude,
-  milestones, budget, notes
+  milestones, notes
 ) VALUES (
   'Edificio Uno',
   'adaptive_reuse',
@@ -32,23 +32,6 @@ INSERT INTO projects (
     "2024-01": "Estabilización — ocupación creciente durante 2024–2025",
     "2026-01": "Operación plena — 11 de 13 unidades activas",
     "2026-04": "Valuación actualizada — $19M, 2x sobre inversión de $9.5M"
-  }',
-
-  -- budget (category → amount)
-  '{
-    "Adquisición edificio (proporcional)": 3225000,
-    "Notariales, ISAI, avalúo": 202500,
-    "Mano de obra": 1729740,
-    "Materiales": 1125912,
-    "Ingeniería civil y supervisión": 138200,
-    "Herramienta": 195410,
-    "Acarreo de escombro": 123600,
-    "Servicios públicos durante obra": 183099,
-    "Predial durante obra": 42000,
-    "Impuestos durante obra": 20683,
-    "Combustibles y logística": 54900,
-    "Otros gastos varios": 14868,
-    "Mobiliario y equipamiento": 172716
   }',
 
   -- notes

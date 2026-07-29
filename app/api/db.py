@@ -292,7 +292,7 @@ PROJECTS_RAW_FIELDS = {
     "latitude", "longitude", "totalUnits",
     "acquisitionDate", "conclusionDate",
     "totalInvestment", "currentValuation", "valuationDate",
-    "milestones", "budget", "notes", "prospectId", "isFavorite",
+    "milestones", "notes", "prospectId", "isFavorite",
     # Underwriting superset (Project ⊇ Prospect) — the 11 prospect inputs
     "sqmLand", "sqmConstruction", "landPrice", "acquisitionCostPct",
     "permitsCost", "subdivisionCost", "constructionCostPerSqm",
@@ -306,9 +306,8 @@ def _normalize_project_data(data: dict) -> dict:
     project write-column prep shared by create/update/convert."""
     filtered = {k: v for k, v in data.items() if k in PROJECTS_RAW_FIELDS}
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
-    for f in ("milestones", "budget"):
-        if f in snake and not isinstance(snake[f], str):
-            snake[f] = json.dumps(snake[f])
+    if "milestones" in snake and not isinstance(snake["milestones"], str):
+        snake["milestones"] = json.dumps(snake["milestones"])
     # Frontend sends YYYY-MM; the conclusion_date DATE column needs YYYY-MM-01
     if "conclusion_date" in snake and isinstance(snake["conclusion_date"], str) and len(snake["conclusion_date"]) == 7:
         snake["conclusion_date"] += "-01"
@@ -325,12 +324,6 @@ def _parse_project(row, images: list | None = None) -> dict:
         d["milestones"] = json.loads(raw_milestones) if isinstance(raw_milestones, str) and raw_milestones else {}
     except json.JSONDecodeError:
         d["milestones"] = {}
-
-    raw_budget = d.get("budget")
-    try:
-        d["budget"] = json.loads(raw_budget) if isinstance(raw_budget, str) and raw_budget else {}
-    except json.JSONDecodeError:
-        d["budget"] = {}
 
     # Underwriting superset (Project ⊇ Prospect). A project carrying the full
     # breakdown derives its *projected* metrics identically to a prospect, and its
@@ -482,7 +475,7 @@ def update_project(project_id: int, data: dict) -> dict | None:
 
     Only fields in PROJECTS_RAW_FIELDS are updated. All other keys are ignored.
     Field names are converted from camelCase to snake_case before updating.
-    JSON fields (milestones, budget) are serialized if passed as dicts.
+    The milestones JSON field is serialized if passed as a dict.
 
     Args:
         project_id: The ID of the project to update
@@ -499,9 +492,8 @@ def update_project(project_id: int, data: dict) -> dict | None:
     snake_case_data = {_camel_to_snake(k): v for k, v in filtered_data.items()}
 
     # Serialize JSON fields
-    for snake_field in ("milestones", "budget"):
-        if snake_field in snake_case_data and not isinstance(snake_case_data[snake_field], str):
-            snake_case_data[snake_field] = json.dumps(snake_case_data[snake_field])
+    if "milestones" in snake_case_data and not isinstance(snake_case_data["milestones"], str):
+        snake_case_data["milestones"] = json.dumps(snake_case_data["milestones"])
 
     # Frontend sends YYYY-MM; DATE column needs YYYY-MM-01
     if "conclusion_date" in snake_case_data and isinstance(snake_case_data["conclusion_date"], str):
@@ -525,7 +517,7 @@ def create_project(data: dict) -> dict:
 
     Only fields in PROJECTS_RAW_FIELDS are inserted. All other keys are ignored.
     Field names are converted from camelCase to snake_case before inserting.
-    JSON fields (milestones, budget) are serialized if passed as dicts.
+    The milestones JSON field is serialized if passed as a dict.
 
     Args:
         data: Dictionary of fields for the new project (camelCase keys)

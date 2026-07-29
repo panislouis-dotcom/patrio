@@ -673,7 +673,6 @@ CREATE TABLE public.projects (
     longitude real NOT NULL,
     prospect_id bigint,
     milestones text DEFAULT '{}'::text NOT NULL,
-    budget text DEFAULT '{}'::text NOT NULL,
     notes text DEFAULT ''::text NOT NULL,
     is_favorite boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -2404,4 +2403,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('019'),
     ('020'),
     ('021'),
-    ('022');
+    ('022'),
+    ('023');

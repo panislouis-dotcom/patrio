@@ -46,7 +46,6 @@ class ProjectUpdate(_UnderwritingInputs):
     currentValuation: Optional[float] = None
     valuationDate: Optional[str] = None
     milestones: Optional[dict] = None
-    budget: Optional[dict] = None
     notes: Optional[str] = None
     prospectId: Optional[int] = None
     isFavorite: Optional[bool] = None
@@ -68,7 +67,6 @@ class ProjectCreate(_UnderwritingInputs):
     latitude: float = 0.0
     longitude: float = 0.0
     milestones: dict = Field(default_factory=dict)
-    budget: dict = Field(default_factory=dict)
     notes: str = "-"
     prospectId: Optional[int] = None
 

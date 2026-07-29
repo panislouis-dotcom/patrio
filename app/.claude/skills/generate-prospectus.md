@@ -21,7 +21,7 @@ Read these two files before touching anything else:
 ```bash
 source .env && docker exec patrio-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
 SELECT name, address, total_investment, current_valuation,
-       total_units, acquisition_date, milestones, budget
+       total_units, acquisition_date, milestones
 FROM projects WHERE is_favorite = true
 ORDER BY acquisition_date;"
 
@@ -52,7 +52,7 @@ Cover page       → dark near-black background, wordmark, headline, date
 Visión section   → problem → emotion → solution (see copywriting rules below)
 Track Record     → ONE page-section per project, each with its own band showing project name
                    Band label: "TRACK RECORD · 01", title: project name
-                   Content: narrative h2 + paragraph + 3-col KPI grid + two-col (timeline | budget)
+                   Content: narrative h2 + paragraph + 3-col KPI grid + timeline
 Oportunidad      → section band + 4-col KPI grid (Plazo, Cap Rate, Inversión Total, Valuación Proyectada) + two-col (financials | characteristics)
                    Do NOT show ROI — reveals internal margin. Use Plazo (investment_date → sale_date, in months) instead.
 CTA              → dark near-black background, contact
@@ -84,7 +84,7 @@ body { font-family: Inter; background: neutral; color: dark; font-size: 12pt; li
 
 ### Section header colors (one per section — vary using DESIGN.md tokens)
 
-Each section uses a `--section-color` CSS custom property that controls both the band background AND the accent color within the section (strong text, metric values, budget numbers). Set it on the `.page-section` container:
+Each section uses a `--section-color` CSS custom property that controls both the band background AND the accent color within the section (strong text, metric values, figures). Set it on the `.page-section` container:
 
 ```css
 .section-vision      { --section-color: #A16A3C; }  /* tertiary */
@@ -178,7 +178,7 @@ Timeline date     7pt   Inter    color: secondary  letter-spacing: 0.12em  upper
 
 **4-col metric grid** (prospect highlights): `grid-template-columns: repeat(4, 1fr)` — use `metric-value compact` (20pt) so "$10,095,000" doesn't overflow
 
-**2-col content**: `grid-template-columns: 1fr 1fr; gap: 56px` — left col gets timeline, right col gets budget + characteristics
+**2-col content**: `grid-template-columns: 1fr 1fr; gap: 56px` — left col gets financials, right col gets characteristics
 
 ### Component: metric card
 
@@ -293,7 +293,6 @@ Use this verbatim copy every time. Do not paraphrase.
 ### Data rendering rules
 
 - **Milestones JSON:** parse `{"YYYY-MM": "description"}`, render as `<table class="timeline">` sorted by key
-- **Budget JSON:** parse `{"category": amount}`, render top 5 by value as table
 - **Numbers:** always formatted as `$X,XXX,XXX` — never raw floats
 - **Headings:** always single line — no `<br>` tags inside `<h2>` or `<h1>`
 
