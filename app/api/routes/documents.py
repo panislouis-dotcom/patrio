@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
-from api.db import get_projects, get_prospects, get_prospect
+from api.db import get_projects, get_prospects, get_prospect, get_team_members
 from api.lib.prospectus_html import build_prospectus_html, render_to_pdf
 from api.lib.term_sheet_html import build_term_sheet_html
 from api.auth import get_current_user
@@ -59,7 +59,7 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
         )
     _embed_images(projects)
     _embed_images(prospects)
-    html = build_prospectus_html(projects, prospects)
+    html = build_prospectus_html(projects, prospects, get_team_members())
     try:
         pdf = await render_to_pdf(html)
     except Exception:
