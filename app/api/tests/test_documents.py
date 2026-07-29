@@ -306,18 +306,23 @@ def test_opportunity_gain_comes_from_the_api_roi_total(test_prospect):
     assert _kv_row("ROI proyectado", "72.4%") in html
 
 
-def test_opportunity_lists_the_property_price_and_development_spend(test_prospect):
-    """Los financieros abren con lo que cuesta la propiedad y lo que se invierte
-    encima: 3,480,000 de inversión − 1,065,000 de adquisición = 2,415,000, que es
-    obra (2,340,000) + permisos (50,000) + subdivisión (25,000)."""
+def test_opportunity_financials_reconcile_with_the_total_investment(test_prospect):
+    """Los tres renglones de costo suman exactamente la Inversión total de la
+    tarjeta: propiedad 1,000,000 + adquisición 65,000 (1,000,000 × 6.5%) +
+    desarrollo 2,415,000 = 3,480,000. El desarrollo es obra (2,340,000) +
+    permisos (50,000) + subdivisión (25,000)."""
     prospect = _underwrite(test_prospect["id"], 6000000)
-    assert float(prospect["landPrice"]) == 1000000
-    assert float(prospect["totalInvestment"] - prospect["acquisitionTotal"]) == 2415000
+    components = (prospect["landPrice"], prospect["acquisitionCosts"],
+                  prospect["totalInvestment"] - prospect["acquisitionTotal"])
+    assert [float(c) for c in components] == [1000000, 65000, 2415000]
+    assert sum(components) == prospect["totalInvestment"] == 3480000
     assert float(prospect["constructionTotal"]) + 50000 + 25000 == 2415000
 
     html = build_prospectus_html([], [prospect])
     assert _kv_row("Precio propiedad", "$1,000,000") in html
+    assert _kv_row("Costos de adquisición", "$65,000") in html
     assert _kv_row("Inversión desarrollo", "$2,415,000") in html
+    assert _metric("$3.5M", "Inversión total") in html  # el total que deben cuadrar
     assert "Precio terreno / m²" not in html
     assert "Venta / m²" not in html
 
@@ -327,6 +332,7 @@ def test_opportunity_hides_the_new_rows_when_there_is_nothing_to_show(test_prosp
     se imprimen en cero."""
     html = build_prospectus_html([], [get_prospect(test_prospect["id"])])
     assert "Precio propiedad" not in html
+    assert "Costos de adquisición" not in html
     assert "Inversión desarrollo" not in html
 
 

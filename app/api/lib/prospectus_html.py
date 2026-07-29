@@ -492,9 +492,12 @@ def _opportunity(p: dict) -> str:
     sqm_con = _num(p.get("sqmConstruction"))
     inv_ppsqm = p.get("investmentPerSqm")
     land_price = p.get("landPrice")
+    acq_costs = p.get("acquisitionCosts")
     # Todo lo que se invierte encima de comprar la propiedad: obra + permisos +
     # subdivisión. Se resta de los dos totales del API en vez de volver a sumar
-    # aquí una fórmula que ya vive en el underwriting.
+    # aquí una fórmula que ya vive en el underwriting. Como acquisitionTotal es
+    # precio + costos de adquisición, los tres renglones cuadran exactamente con
+    # la Inversión total de la tarjeta.
     dev_investment = _num(total_inv) - _num(p.get("acquisitionTotal"))
 
     metrics = "".join([
@@ -507,6 +510,7 @@ def _opportunity(p: dict) -> str:
 
     financieros = _kv_rows([
         ("Precio propiedad", _fmt_mxn(land_price) if _num(land_price) else None),
+        ("Costos de adquisición", _fmt_mxn(acq_costs) if _num(acq_costs) else None),
         ("Inversión desarrollo", _fmt_mxn(dev_investment) if dev_investment > 0 else None),
         ("ROI proyectado", _fmt_pct(roi_total, 1) if roi_total is not None else None),
         ("Renta mensual est.", _fmt_mxn(rent_m) if _num(rent_m) else None),
