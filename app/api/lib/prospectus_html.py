@@ -1,9 +1,12 @@
 from pathlib import Path
 import base64
 import json
+import logging
 import os
 import tempfile
 from markupsafe import escape as _esc
+
+logger = logging.getLogger(__name__)
 
 _FONTS_DIR = Path(__file__).resolve().parent.parent / "fonts"
 
@@ -11,6 +14,20 @@ _MESES = [
     "", "enero", "febrero", "marzo", "abril", "mayo", "junio",
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ]
+
+# Vocabulario de roles de team_members (espejo de ROLE_LABEL en
+# app/web/src/components/OrgTab.tsx); el orden es el de la jerarquía.
+_ROLE_LABEL = {
+    "director": "Director",
+    "responsable_proyecto": "Responsable de Proyecto",
+    "lider_proyecto": "Líder de Proyecto",
+    "maestro": "Maestro",
+    "ayudante": "Ayudante",
+    "finder": "Finder",
+}
+# Roles que aparecen en el prospecto, en orden de jerarquía: solo liderazgo en
+# el documento de inversionistas — ajustar aquí si cambia el criterio.
+_DOC_ROLES = ("director", "responsable_proyecto", "lider_proyecto")
 
 
 def _font_b64(name: str) -> str:
@@ -142,6 +159,7 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .proj-body { flex: 1; min-height: 0; padding: 6mm var(--pad) 6mm; display: flex; flex-direction: column; }
 .proj .metrics { margin-bottom: 5mm; }
 .proj .metric { padding: 3.6mm 5mm; }
+.proj .metrics-5 .metric { padding: 3.6mm 3mm; }
 .proj .metric .v { font-size: 16pt; }
 .proj-imgs { flex: 1; min-height: 0; display: flex; gap: 7mm; }
 .proj-imgs > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -186,10 +204,11 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
                   color: var(--sec); line-height: 1.45; margin-top: 7mm; }
 .partners { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-top: 8mm;
             padding-top: 7mm; border-top: 1px solid rgba(90,122,78,0.25); }
-.partner-name  { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 13pt; color: var(--ink); }
-.partner-quote { font-family: 'Playfair Display', serif; font-style: italic; font-size: 10pt;
-                 color: var(--green-dark); margin: 3px 0 5px; }
-.partner-bio   { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec); line-height: 1.5; }
+.partners-3 { grid-template-columns: repeat(3, 1fr); gap: 7mm; }
+.partner-name { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 13pt; color: var(--ink); }
+.partner-role { font-family: 'Inter', sans-serif; font-size: 6.5pt; font-weight: 600;
+                letter-spacing: 0.14em; text-transform: uppercase; color: var(--green-dark); margin: 4px 0 5px; }
+.partner-bio  { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec); line-height: 1.5; }
 """
 
 
@@ -231,9 +250,32 @@ def _fmt_pct_or_dash(frac, decimals: int = 1) -> str:
     return _fmt_pct(frac, decimals) if frac is not None else "—"
 
 
-def _fmt_mult(a, b) -> str:
-    a, b = _num(a), _num(b)
-    return f"{a / b:.2f}×" if b else "—"
+def _fmt_mxn_compact_or_dash(val) -> str:
+    """No value means no metric — '—', never a fabricated $0."""
+    return _fmt_mxn_compact(val) if val is not None else "—"
+
+
+def _sale_or_none(val):
+    """0 significa "sin venta modelada" en todo el sistema — es el guard ps > 0
+    del underwriting, no un precio de cero. La columna es NOT NULL, así que sin
+    esta traducción un prospecto de pura renta imprimiría "$0"."""
+    return val if _num(val) > 0 else None
+
+
+def _fmt_month(raw) -> str:
+    """A stored 'YYYY-MM' → 'abr 2026'. Unparseable or empty → ''."""
+    try:
+        year, month = str(raw or "").split("-")[:2]
+        month, year = int(month), int(year)
+    except ValueError:
+        return ""
+    return f"{_MESES[month][:3]} {year}" if 1 <= month <= 12 else ""
+
+
+def _mean(values: list) -> float | None:
+    """Simple (unweighted) average of the values that exist. None → no metric."""
+    present = [_num(v) for v in values if v is not None]
+    return sum(present) / len(present) if present else None
 
 
 def _pretty_type(raw) -> str:
@@ -270,6 +312,8 @@ def _strip(images, label: str, limit: int) -> str:
 
 
 def _kv_rows(pairs) -> str:
+    """(label, value) rows; a None value drops the row. Labels are escaped here —
+    values are emitted as HTML, so the caller must escape anything user-supplied."""
     rows = ""
     for label, value in pairs:
         if value is None:
@@ -283,9 +327,14 @@ def _kv_rows(pairs) -> str:
 # ---------------------------------------------------------------------------
 
 def _cover(month_year: str, operating: list[dict] | None = None) -> str:
-    # ROI promedio real = media del ROI (plusvalía/inversión) de los proyectos operando.
-    rois = [_num(p.get("unrealizedGainPct")) for p in (operating or []) if _num(p.get("totalInvestment"))]
-    roi_avg = f"{(sum(rois) / len(rois)) * 100:.0f}%" if rois else "—"
+    # Las tres cifras de portada salen de los proyectos operando — nada inventado:
+    # unidades sumadas, y promedio simple (no ponderado) del ROI anualizado y del
+    # cap rate que ya calculó el API. Sin datos → "—".
+    ops = operating or []
+    units = sum(int(_num(p.get("totalUnits"))) for p in ops)
+    units_v = f"{units:,}" if units else "—"
+    roi_avg = _fmt_pct_or_dash(_mean([p.get("roi") for p in ops]))
+    cap_avg = _fmt_pct_or_dash(_mean([p.get("capRate") for p in ops]))
     return f"""<div class="page-block cover">
   <div class="cover-top">
     <div>
@@ -300,9 +349,9 @@ def _cover(month_year: str, operating: list[dict] | None = None) -> str:
     <p class="cover-lede">Compramos, transformamos y operamos bienes raíces que valen más de lo que cuestan.
       Tú pones el capital y eres dueño de todo — nosotros lo hacemos realidad, de principio a fin.</p>
     <div class="vp">
-      <div class="vp-item"><div class="vp-v">23</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
-      <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">sobre inversión</div></div>
-      <div class="vp-item"><div class="vp-v">8%</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">real, no proyectado</div></div>
+      <div class="vp-item"><div class="vp-v">{units_v}</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
+      <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">anualizado, sobre inversión</div></div>
+      <div class="vp-item"><div class="vp-v">{cap_avg}</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">real, no proyectado</div></div>
     </div>
   </div>
   <div class="cover-foot">
@@ -312,15 +361,12 @@ def _cover(month_year: str, operating: list[dict] | None = None) -> str:
 </div>"""
 
 
-def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
+def _project_card(p: dict, kicker: str, projected: bool = False) -> str:
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
     ptype = _esc(_pretty_type(p.get("type")))
     units = int(_num(p.get("totalUnits")))
-    total_inv = p.get("totalInvestment")
-    current_val = p.get("currentValuation")
-    gain_pct = _num(p.get("unrealizedGainPct"))
     hold = int(_num(p.get("holdMonthsActual")))
 
     sub_bits = [b for b in [address, city] if b]
@@ -329,22 +375,33 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     if meta_bits:
         sub += "  —  " + " · ".join(meta_bits)
 
-    # Development projects (pre-obra) read as PROJECTED, not realized.
-    val_label = "Valuación proyectada" if projected else "Valuación actual"
-    roi_label = "ROI proyectado" if projected else "ROI"
-    roi_value = f"{gain_pct * 100:.1f}".rstrip("0").rstrip(".") + "%"
     # Cap rate viene del API (renta anual / inversión — una sola fórmula en todo
     # el sistema): real en operando, proyectado y etiquetado como tal en
     # desarrollo. Sin renta → "—", nunca inventado.
     cap = p.get("capRate")
-    cap_label = "Cap rate proy." if projected else "Cap rate"
 
-    metrics = "".join([
-        _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
-        _metric(_fmt_mxn_compact(current_val), val_label),
-        _metric(roi_value, roi_label),
-        _metric(_fmt_pct_or_dash(cap), cap_label),
-    ])
+    if projected:
+        # Pre-obra: SOLO cifras del underwriting. currentValuation/unrealizedGainPct
+        # nacen igualadas al costo (0%) al crear el proyecto y leerían como un
+        # avalúo real que nadie hizo.
+        metrics = "".join([
+            _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
+            _metric(_fmt_mxn_compact_or_dash(_sale_or_none(p.get("projectedSale"))), "Venta proyectada"),
+            _metric(_fmt_pct_or_dash(p.get("projectedRoi")), "ROI anual proy."),
+            _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Plusvalía proy."),
+            _metric(_fmt_pct_or_dash(cap), "Cap rate proy."),
+        ])
+    else:
+        # Operando: resultados realizados. La valuación lleva su fecha de corte.
+        val_month = _fmt_month(p.get("valuationDate"))
+        metrics = "".join([
+            _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
+            _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
+                    f"Valuación · {val_month}" if val_month else "Valuación actual"),
+            _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
+            _metric(_fmt_pct_or_dash(p.get("unrealizedGainPct")), "Plusvalía"),
+            _metric(_fmt_pct_or_dash(cap), "Cap rate"),
+        ])
 
     images = p.get("images", [])
     antes = _imgs_by_type(images, "antes")
@@ -364,38 +421,51 @@ def _project_card(i: int, p: dict, kicker: str, projected: bool = False) -> str:
     <div class="sub">{sub}</div>
   </div>
   <div class="proj-body">
-    <div class="metrics metrics-4">{metrics}</div>
+    <div class="metrics metrics-5">{metrics}</div>
     {imgs_block}
   </div>
 </div>"""
 
 
-def _summary_card(projects: list[dict]) -> str:
+def _team_block(team: list[dict] | None) -> str:
+    """Equipo tal como está en la base — nombre completo, rol y su nota/bio.
+    Sin equipo capturado no se inventa ninguno: la sección desaparece."""
+    members = sorted(
+        (m for m in (team or []) if str(m.get("role")) in _DOC_ROLES),
+        key=lambda m: (_DOC_ROLES.index(str(m.get("role"))), _num(m.get("id"))),
+    )
+    if not members:
+        return ""
+    blocks = []
+    for m in members:
+        role = _ROLE_LABEL[str(m.get("role"))]
+        bio = str(m.get("notes") or "").strip()
+        blocks.append(
+            f'<div><div class="partner-name">{_esc(m.get("name", ""))}</div>'
+            f'<div class="partner-role">{_esc(role)}</div>'
+            + (f'<div class="partner-bio">{_esc(bio)}</div>' if bio else "")
+            + "</div>"
+        )
+    cols = " partners-3" if len(blocks) > 2 else ""
+    return f'<div class="partners{cols}">{"".join(blocks)}</div>'
+
+
+def _summary_card(projects: list[dict], team: list[dict] | None = None) -> str:
     inv = sum(_num(p.get("totalInvestment")) for p in projects)
     val = sum(_num(p.get("currentValuation")) for p in projects)
     gain = val - inv
-    pct = (gain / inv) if inv else 0
     metrics = "".join([
         _metric(str(len(projects)), "Proyectos"),
         _metric(_fmt_mxn_compact(inv), "Capital invertido"),
         _metric(_fmt_mxn_compact(val), "Valuación actual"),
-        _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct(pct, 0)}</small>', "Plusvalía total"),
+        _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct_or_dash(gain / inv if inv else None, 0)}</small>',
+                "Plusvalía total"),
     ])
     return f"""<div class="summary">
   <div class="kicker">Portafolio</div>
   <h3>Proyectos reales. Resultados reales.</h3>
   <div class="metrics metrics-4">{metrics}</div>
-  <div class="partners">
-    <div>
-      <div class="partner-name">Louis Panis</div>
-      <div class="partner-quote">“Hacer que las cosas sucedan.”</div>
-      <div class="partner-bio">Ha adquirido, remodelado y operado inmuebles de principio a fin, y dirigido proyectos de gran escala bajo régimen de condominio.</div>
-    </div>
-    <div>
-      <div class="partner-name">Garza</div>
-      <div class="partner-quote">“Hacer que sucedan bien — a tiempo y en presupuesto.”</div>
-    </div>
-  </div>
+  {_team_block(team)}
   <div class="valuation-note">Valuaciones estimadas con base en comparables de mercado, no avalúo formal. Plusvalía no realizada.</div>
 </div>"""
 
@@ -409,31 +479,42 @@ def _opportunity(p: dict) -> str:
     total_inv = p.get("totalInvestment")
     projected_sale = p.get("projectedSale")
     profit = p.get("profit")
-    profit_pct = (_num(profit) / _num(total_inv)) if _num(total_inv) else 0
-    roi_total = _num(p.get("roiTotal"))
+    # Una sola fuente para la ganancia: el ROI total del API. Es None cuando no hay
+    # venta modelada (prospecto sólo de renta) — entonces no hay ganancia estimada
+    # que mostrar, en vez del -100% que salía de recalcularla aquí.
+    roi_total = p.get("roiTotal")
+    gain_value = (f'{_fmt_mxn_compact_or_dash(profit)} <small>{_fmt_pct(roi_total, 1)}</small>'
+                  if roi_total is not None else "—")
     cap_rate = p.get("capRate")
     rent_m = p.get("rentMonthly")
     rent_a = p.get("rentAnnual")
     sqm_land = _num(p.get("sqmLand"))
     sqm_con = _num(p.get("sqmConstruction"))
-    land_ppsqm = p.get("landPricePerSqm")
-    sale_ppsqm = p.get("salePerSqm")
     inv_ppsqm = p.get("investmentPerSqm")
+    land_price = p.get("landPrice")
+    acq_costs = p.get("acquisitionCosts")
+    # Todo lo que se invierte encima de comprar la propiedad: obra + permisos +
+    # subdivisión. Se resta de los dos totales del API en vez de volver a sumar
+    # aquí una fórmula que ya vive en el underwriting. Como acquisitionTotal es
+    # precio + costos de adquisición, los tres renglones cuadran exactamente con
+    # la Inversión total de la tarjeta.
+    dev_investment = _num(total_inv) - _num(p.get("acquisitionTotal"))
 
     metrics = "".join([
         _metric(f"{hold}m" if hold else "—", "Plazo"),
-        _metric(_fmt_mxn_compact(total_inv), "Inversión total"),
-        _metric(_fmt_mxn_compact(projected_sale), "Venta proyectada"),
-        _metric(f'{_fmt_mxn_compact(profit)} <small>{_fmt_pct(profit_pct, 0)}</small>', "Ganancia est."),
+        _metric(_fmt_mxn_compact_or_dash(total_inv), "Inversión total"),
+        _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
+        _metric(gain_value, "Ganancia est."),
         _metric(_fmt_pct_or_dash(cap_rate), "Cap rate"),
     ])
 
     financieros = _kv_rows([
-        ("ROI proyectado", _fmt_pct(roi_total, 1) if roi_total else None),
+        ("Precio propiedad", _fmt_mxn(land_price) if _num(land_price) else None),
+        ("Costos de adquisición", _fmt_mxn(acq_costs) if _num(acq_costs) else None),
+        ("Inversión desarrollo", _fmt_mxn(dev_investment) if dev_investment > 0 else None),
+        ("ROI proyectado", _fmt_pct(roi_total, 1) if roi_total is not None else None),
         ("Renta mensual est.", _fmt_mxn(rent_m) if _num(rent_m) else None),
         ("Renta anual est.", _fmt_mxn(rent_a) if _num(rent_a) else None),
-        ("Precio terreno / m²", _fmt_mxn(land_ppsqm) if _num(land_ppsqm) else None),
-        ("Venta / m²", _fmt_mxn(sale_ppsqm) if _num(sale_ppsqm) else None),
         ("Inversión / m²", _fmt_mxn(inv_ppsqm) if _num(inv_ppsqm) else None),
     ])
     ubicacion = _kv_rows([
@@ -492,7 +573,14 @@ def _closing(month_year: str) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-def build_prospectus_html(projects: list[dict], prospects: list[dict]) -> str:
+# Estados en obra/ramp-up (vocabulario de app/web/src/lib/status.ts, más el
+# 'en_proceso' heredado que sigue en datos). 'exited' es un negocio cerrado y
+# 'operating' es track record: ninguno de los dos puede leerse "En Desarrollo".
+_DEVELOPMENT_STATUSES = {"construction", "stabilizing", "en_proceso"}
+
+
+def build_prospectus_html(projects: list[dict], prospects: list[dict],
+                          team: list[dict] | None = None) -> str:
     from datetime import date
     today = date.today()
     month_year = f"{_MESES[today.month].capitalize()} {today.year}"
@@ -500,26 +588,29 @@ def build_prospectus_html(projects: list[dict], prospects: list[dict]) -> str:
     # Track record = projects already operating (realized results).
     # En desarrollo = projects still pre-obra (projected figures, not achieved).
     operating = [p for p in projects if str(p.get("status")) == "operating"]
-    development = [p for p in projects if str(p.get("status")) != "operating"]
+    development = [p for p in projects if str(p.get("status")) in _DEVELOPMENT_STATUSES]
+    # Un proyecto que no cae en ningún cubo se queda fuera del PDF; que no sea en
+    # silencio — normalmente es un 'exited' marcado como favorito o un estado nuevo.
+    for p in projects:
+        status = str(p.get("status"))
+        if status != "operating" and status not in _DEVELOPMENT_STATUSES:
+            logger.warning("project %r left out of the prospectus: status %r is "
+                           "neither operating nor in development", p.get("name"), p.get("status"))
 
     parts = [_cover(month_year, operating)]
 
-    # Strongest → weakest by value multiplier (valuación / inversión).
-    operating.sort(
-        key=lambda p: (_num(p.get("currentValuation")) / _num(p.get("totalInvestment")))
-        if _num(p.get("totalInvestment")) else 0,
-        reverse=True,
-    )
+    # Strongest → weakest by realized plusvalía (la que ya calculó el API).
+    operating.sort(key=lambda p: _num(p.get("unrealizedGainPct")), reverse=True)
 
-    if projects:
-        cards = [_project_card(i, p, f"Track Record · {i:02d}", projected=False)
+    if operating or development:
+        cards = [_project_card(p, f"Track Record · {i:02d}", projected=False)
                  for i, p in enumerate(operating, 1)]
-        cards += [_project_card(j, p, f"En Desarrollo · {j:02d}", projected=True)
+        cards += [_project_card(p, f"En Desarrollo · {j:02d}", projected=True)
                   for j, p in enumerate(development, 1)]
         # Portfolio summary (realized track record) carries the valuation footnote
-        # and the partner bios, and fills the trailing half-sheet.
+        # and the team block, and fills the trailing half-sheet.
         if operating:
-            cards.append(_summary_card(operating))
+            cards.append(_summary_card(operating, team))
         for pair in _chunk(cards, 2):
             parts.append(f'<div class="page-block sheet">{"".join(pair)}</div>')
 
@@ -542,6 +633,9 @@ def build_prospectus_html(projects: list[dict], prospects: list[dict]) -> str:
 </html>"""
 
 
+_RENDER_TIMEOUT_MS = 60_000
+
+
 async def render_to_pdf(html: str) -> bytes:
     from playwright.async_api import async_playwright
 
@@ -551,14 +645,22 @@ async def render_to_pdf(html: str) -> bytes:
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(args=["--hide-scrollbars"])
-            page = await browser.new_page()
-            await page.goto(f"file://{tmp_path}", wait_until="networkidle")
-            pdf = await page.pdf(
-                format="A4",
-                print_background=True,
-                margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
-            )
-            await browser.close()
+            try:
+                page = await browser.new_page()
+                # networkidle puede no llegar nunca con imágenes embebidas: sin
+                # timeout la carga cuelga el worker. page.pdf() no acepta timeout
+                # en Playwright 1.61 — no queda acotado por esto, sino por el
+                # asyncio.wait_for de la ruta que llama.
+                page.set_default_timeout(_RENDER_TIMEOUT_MS)
+                await page.goto(f"file://{tmp_path}", wait_until="networkidle",
+                                timeout=_RENDER_TIMEOUT_MS)
+                pdf = await page.pdf(
+                    format="A4",
+                    print_background=True,
+                    margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
+                )
+            finally:
+                await browser.close()
         return pdf
     finally:
         os.unlink(tmp_path)
