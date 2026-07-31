@@ -2372,6 +2372,18 @@ button {
   margin-bottom: var(--space-sm);
 }
 
+/* Título/rol ejecutivo — bajo el nombre, sobre la credencial. Discreto, tracking amplio. */
+.equipo-card__titulo {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  margin-bottom: 10px;
+}
+
 .equipo-card__desc {
   font-family: var(--font-body);
   font-weight: 300;
@@ -3063,12 +3075,12 @@ details[open] .admin-faq__pregunta::after { content: '−'; }
 .btn-white:hover { transform: translateY(-2px); }
 
 /* ---- Bloque A v2: tarjetas con flip 3D ---- */
-.flip-card { perspective: 1200px; min-height: 250px; }
-.flip-card__inner { position: relative; width: 100%; height: 100%; min-height: 250px; transition: transform .6s cubic-bezier(.4,.2,.2,1); transform-style: preserve-3d; }
+.flip-card { perspective: 1200px; display: grid; min-height: 250px; }
+.flip-card__inner { display: grid; transition: transform .6s cubic-bezier(.4,.2,.2,1); transform-style: preserve-3d; }
 .flip-card:hover .flip-card__inner,
 .flip-card--flipped .flip-card__inner { transform: rotateY(180deg); }
 .flip-card__front, .flip-card__back {
-  position: absolute; inset: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden;
+  grid-area: 1 / 1; -webkit-backface-visibility: hidden; backface-visibility: hidden;
   border: 1px solid var(--color-border); border-radius: var(--radius-lg);
   padding: 26px 24px; display: flex; flex-direction: column;
 }
