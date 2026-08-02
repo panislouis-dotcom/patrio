@@ -470,12 +470,12 @@ def _team_block(team: list[dict] | None) -> str:
     return f'<div class="partners{cols}">{"".join(blocks)}</div>'
 
 
-def _summary_card(projects: list[dict], team: list[dict] | None = None) -> str:
-    inv = sum(_num(p.get("totalInvestment")) for p in projects)
-    val = sum(_num(p.get("salePrice") or p.get("currentValuation")) for p in projects)
+def _summary_card(track_record: list[dict], team: list[dict] | None = None) -> str:
+    inv = sum(_num(p.get("totalInvestment")) for p in track_record)
+    val = sum(_num(p.get("salePrice") or p.get("currentValuation")) for p in track_record)
     gain = val - inv
     metrics = "".join([
-        _metric(str(len(projects)), "Proyectos"),
+        _metric(str(len(track_record)), "Proyectos"),
         _metric(_fmt_mxn_compact(inv), "Capital invertido"),
         _metric(_fmt_mxn_compact(val), "Valuación actual"),
         _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct_or_dash(gain / inv if inv else None, 0)}</small>',
