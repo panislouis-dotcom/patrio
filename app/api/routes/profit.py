@@ -4,11 +4,12 @@ from pydantic import BaseModel
 from api.auth import get_current_user
 from api.profit_db import (
     get_profit_template, upsert_profit_template,
-    get_project_profit, upsert_project_profit,
+    get_property_profit, upsert_property_profit,
     compute_waterfall,
 )
-from api.db import get_project, get_team_members
-from api.investor_db import get_project_investors
+from api.db import get_team_members
+from api.investor_db import get_property_investors
+from api.properties_db import PROFIT_STATUSES, get_property
 
 router = APIRouter()
 
@@ -38,6 +39,19 @@ class ProfitConfigUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+def _splittable(property_id: int) -> dict:
+    """There is nothing to split before the money is committed: the waterfall
+    opens with `desarrollo`."""
+    prop = get_property(property_id)
+    if prop is None:
+        raise HTTPException(status_code=404, detail="Propiedad no encontrada")
+    if prop["status"] not in PROFIT_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail="El reparto de utilidades aplica desde que la propiedad está en desarrollo.")
+    return prop
+
+
 @router.get("/api/profit/template", operation_id="profit_template_get")
 def get_template_route(_: dict = Depends(get_current_user)):
     return get_profit_template()
@@ -48,25 +62,20 @@ def update_template_route(body: ProfitConfigUpdate, _: dict = Depends(get_curren
     return upsert_profit_template(body.model_dump(exclude_unset=True))
 
 
-@router.get("/api/projects/{project_id}/profit", operation_id="project_profit_get")
-def get_project_profit_route(project_id: int, _: dict = Depends(get_current_user)):
-    project = get_project(project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-    team = get_team_members()
-    config = get_project_profit(project_id)
-    project_investors_data = get_project_investors(project_id)
-    waterfall = compute_waterfall(project, config, team, project_investors_data)
+@router.get("/api/properties/{property_id}/profit", operation_id="property_profit_get")
+def get_property_profit_route(property_id: int, _: dict = Depends(get_current_user)):
+    prop = _splittable(property_id)
+    config = get_property_profit(property_id)
+    waterfall = compute_waterfall(prop, config, get_team_members(),
+                                  get_property_investors(property_id))
     return {"config": config, "waterfall": waterfall}
 
 
-@router.put("/api/projects/{project_id}/profit", operation_id="project_profit_update")
-def update_project_profit_route(project_id: int, body: ProfitConfigUpdate, _: dict = Depends(get_current_user)):
-    project = get_project(project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-    config = upsert_project_profit(project_id, body.model_dump(exclude_unset=True))
-    team = get_team_members()
-    project_investors_data = get_project_investors(project_id)
-    waterfall = compute_waterfall(project, config, team, project_investors_data)
+@router.put("/api/properties/{property_id}/profit", operation_id="property_profit_update")
+def update_property_profit_route(property_id: int, body: ProfitConfigUpdate,
+                                 _: dict = Depends(get_current_user)):
+    prop = _splittable(property_id)
+    config = upsert_property_profit(property_id, body.model_dump(exclude_unset=True))
+    waterfall = compute_waterfall(prop, config, get_team_members(),
+                                  get_property_investors(property_id))
     return {"config": config, "waterfall": waterfall}

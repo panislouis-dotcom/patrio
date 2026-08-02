@@ -13,8 +13,22 @@ from api.process_db import (
     _template_references,
 )
 from api.gantt import compute_gantt
+from api.properties_db import PROCESS_STATUSES, get_property
 
 router = APIRouter()
+
+
+def _under_construction(property_id: int) -> dict:
+    """Obra work is tracked from `desarrollo` on: before the purchase there is
+    no site to run a process on."""
+    prop = get_property(property_id)
+    if prop is None:
+        raise HTTPException(status_code=404, detail="Propiedad no encontrada")
+    if prop["status"] not in PROCESS_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail="Los procesos de obra se abren desde que la propiedad está en desarrollo.")
+    return prop
 
 
 class TemplateCreate(BaseModel):
@@ -48,7 +62,7 @@ class InstanceCreate(BaseModel):
     name: str
     startDate: str
     templateId: Optional[int] = None
-    projectId: Optional[int] = None
+    propertyId: Optional[int] = None
     ownerId: Optional[int] = None
     frequencyDays: Optional[int] = None
     dueDate: Optional[str] = None
@@ -61,7 +75,7 @@ class InstanceUpdate(BaseModel):
     startDate: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
-    projectId: Optional[int] = None
+    propertyId: Optional[int] = None
     ownerId: Optional[int] = None
     dueDate: Optional[str] = None
     frequencyDays: Optional[int] = None
@@ -149,12 +163,15 @@ def get_template_preview(tid: int, _: dict = Depends(get_current_user)):
 # ─── Instances ────────────────────────────────────
 
 @router.get("/api/process/instances", operation_id="process_instances_list")
-def list_instances(project_id: Optional[int] = None, _: dict = Depends(get_current_user)):
-    return get_instances(project_id=project_id)
+def list_instances(property_id: Optional[int] = None, _: dict = Depends(get_current_user)):
+    return get_instances(property_id=property_id)
 
 @router.post("/api/process/instances", status_code=201, operation_id="process_instances_create")
 def post_instance(body: InstanceCreate, _: dict = Depends(get_current_user)):
-    return create_instance(body.model_dump())
+    data = body.model_dump()
+    if data.get("propertyId") is not None:
+        _under_construction(data["propertyId"])
+    return create_instance(data)
 
 @router.patch("/api/process/instances/{iid}", operation_id="process_instances_update")
 def patch_instance(iid: int, body: InstanceUpdate, _: dict = Depends(get_current_user)):

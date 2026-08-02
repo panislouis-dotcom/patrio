@@ -16,7 +16,7 @@ PROFIT_RAW_FIELDS = {
 
 def _template_defaults() -> dict:
     return {
-        "id": None, "projectId": None,
+        "id": None, "propertyId": None,
         "exitPrice": None, "investorCapital": None,
         "investorRateAnnual": 0.12, "investorMonths": None, "isrRate": 0.30,
         "finderFeePct": 0.0, "directorPct": 0.0, "responsablePct": 0.0,
@@ -48,23 +48,23 @@ def _profit_row_to_dict(row) -> dict | None:
 def get_profit_template() -> dict:
     with get_db() as conn:
         row = conn.execute(
-            "SELECT * FROM profit_split_config WHERE project_id IS NULL LIMIT 1"
+            "SELECT * FROM profit_split_config WHERE property_id IS NULL LIMIT 1"
         ).fetchone()
     if row:
         return _profit_row_to_dict(row)
     return _template_defaults()
 
 
-def get_project_profit(project_id: int) -> dict:
+def get_property_profit(property_id: int) -> dict:
     with get_db() as conn:
         row = conn.execute(
-            "SELECT * FROM profit_split_config WHERE project_id = %s", (project_id,)
+            "SELECT * FROM profit_split_config WHERE property_id = %s", (property_id,)
         ).fetchone()
 
     if row:
         config = _profit_row_to_dict(row)
     else:
-        config = {"projectId": project_id}
+        config = {"propertyId": property_id}
 
     template = get_profit_template()
 
@@ -74,8 +74,8 @@ def get_project_profit(project_id: int) -> dict:
         if v is not None:
             merged[k] = v
 
-    merged["projectId"] = project_id
-    merged["id"] = config.get("id")  # None when project row not yet inserted
+    merged["propertyId"] = property_id
+    merged["id"] = config.get("id")  # None when the property row is not yet inserted
     return merged
 
 
@@ -83,11 +83,11 @@ def upsert_profit_template(data: dict) -> dict:
     return _upsert(None, data)
 
 
-def upsert_project_profit(project_id: int, data: dict) -> dict:
-    return _upsert(project_id, data)
+def upsert_property_profit(property_id: int, data: dict) -> dict:
+    return _upsert(property_id, data)
 
 
-def _upsert(project_id, data: dict) -> dict:
+def _upsert(property_id, data: dict) -> dict:
     # 1. Filter to only allowed raw fields
     filtered = {k: v for k, v in data.items() if k in PROFIT_RAW_FIELDS}
 
@@ -102,21 +102,22 @@ def _upsert(project_id, data: dict) -> dict:
     with get_db() as conn:
         # 4. Check if row exists
         existing = conn.execute(
-            "SELECT id FROM profit_split_config WHERE project_id IS NOT DISTINCT FROM %s", (project_id,)
+            "SELECT id FROM profit_split_config WHERE property_id IS NOT DISTINCT FROM %s",
+            (property_id,)
         ).fetchone()
 
         if existing:
             # 5. UPDATE
             if snake_data:
                 columns = ", ".join(f"{col} = %s" for col in snake_data.keys())
-                values = list(snake_data.values()) + [project_id]
+                values = list(snake_data.values()) + [property_id]
                 conn.execute(
-                    f"UPDATE profit_split_config SET {columns} WHERE project_id IS NOT DISTINCT FROM %s",
+                    f"UPDATE profit_split_config SET {columns} WHERE property_id IS NOT DISTINCT FROM %s",
                     values,
                 )
         else:
             # 6. INSERT
-            insert_data = {"project_id": project_id, **snake_data}
+            insert_data = {"property_id": property_id, **snake_data}
             columns = ", ".join(insert_data.keys())
             placeholders = ", ".join(["%s"] * len(insert_data))
             values = list(insert_data.values())
@@ -126,6 +127,6 @@ def _upsert(project_id, data: dict) -> dict:
             )
 
     # 7. Return the saved record
-    if project_id is None:
+    if property_id is None:
         return get_profit_template()
-    return get_project_profit(project_id)
+    return get_property_profit(property_id)

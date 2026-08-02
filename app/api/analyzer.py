@@ -1,7 +1,7 @@
 """
 Investment analyzer engine.
 
-Given a prospect, calculates:
+Given a property, calculates:
 1. Market-estimated exit price from active comparables
 2. Remodel cost from zone + intervention level
 3. ARV (After Repair Value)
@@ -27,7 +27,7 @@ from api.finance.analysis import (
 
 # ─── Exceptions ──────────────────────────────────────
 
-class ProspectNotFound(Exception):
+class PropertyNotFound(Exception):
     pass
 
 
@@ -40,7 +40,7 @@ class InsufficientData(Exception):
 @dataclass
 class AnalysisResult:
     snapshot_id: int
-    prospect_id: int
+    property_id: int
     generated_at: str
 
     # Inputs
@@ -113,9 +113,9 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 def find_comparables(
     zone_id: int,
     property_type: str = "casa",
-    prospect_lat: float | None = None,
-    prospect_lng: float | None = None,
-    prospect_sqm: float | None = None,
+    subject_lat: float | None = None,
+    subject_lng: float | None = None,
+    subject_sqm: float | None = None,
     max_km: float = 5.0,
     listing_haircut: float = 0.06,
 ) -> tuple[list[dict], float | None]:
@@ -143,21 +143,21 @@ def find_comparables(
     comps = [c for c in comps if (c.get("property_type") or "casa").lower() == property_type.lower()]
 
     # Filter by size ±25%
-    if prospect_sqm and prospect_sqm > 0:
+    if subject_sqm and subject_sqm > 0:
         comps = [
             c for c in comps
-            if c.get("m2") and 0.75 * prospect_sqm <= c["m2"] <= 1.25 * prospect_sqm
+            if c.get("m2") and 0.75 * subject_sqm <= c["m2"] <= 1.25 * subject_sqm
         ]
 
     # Filter by distance, attach _dist_km for sorting.
     # Comps without coordinates are kept as valid data (we can't measure distance, not exclude them).
     avg_dist_km: float | None = None
-    if prospect_lat is not None and prospect_lng is not None:
+    if subject_lat is not None and subject_lng is not None:
         with_dist = []
         no_coords = []
         for c in comps:
             if c.get("lat") is not None and c.get("lng") is not None:
-                d = _haversine_km(prospect_lat, prospect_lng, c["lat"], c["lng"])
+                d = _haversine_km(subject_lat, subject_lng, c["lat"], c["lng"])
                 if d <= max_km:
                     c["_dist_km"] = round(d, 3)
                     with_dist.append(c)
@@ -286,8 +286,8 @@ def compute_confidence(
     return score, notes, warnings
 
 
-def analyze_prospect(
-    prospect_id: int,
+def analyze_property(
+    property_id: int,
     *,
     intervention_level: str = "media",
     holding_period_months: int = 12,
@@ -303,33 +303,34 @@ def analyze_prospect(
     discount_rate: float = 0.10,
 ) -> AnalysisResult:
     """
-    Run full investment analysis on a prospect.
+    Run full investment analysis on a property.
 
     Returns an AnalysisResult and saves an immutable snapshot.
     """
     now = datetime.now(timezone.utc)
     warnings: list[str] = []
 
-    # ── 1. Load prospect ─────────────────────────────
+    # ── 1. Load property ─────────────────────────────
     with get_db() as conn:
-        prospect = conn.execute(
-            """SELECT id, name, city, type, sqm_land, sqm_construction, land_price,
+        row = conn.execute(
+            """SELECT id, name, city, asset_type, sqm_land, sqm_construction, land_price,
                       acquisition_cost_pct, projected_sale, rent_monthly,
                       latitude, longitude
-               FROM prospects WHERE id = %s""",
-            (prospect_id,),
+               FROM properties WHERE id = %s""",
+            (property_id,),
         ).fetchone()
 
-    if prospect is None:
-        raise ProspectNotFound(f"Prospect {prospect_id} not found")
+    if row is None:
+        raise PropertyNotFound(f"Propiedad {property_id} no encontrada")
 
-    p = dict(prospect)
+    p = dict(row)
     # Coerce money to float at the single load boundary: rows from NUMERIC
-    # columns arrive as Decimal, and the analyzer's iterative float models
-    # (IRR/NPV/amortization) can't mix Decimal with float literals.
-    purchase_price = float(p["land_price"])
-    sqm_construction = float(p["sqm_construction"])
-    projected_sale = float(p["projected_sale"])
+    # columns arrive as Decimal (and the underwriting inputs are nullable), and
+    # the analyzer's iterative float models (IRR/NPV/amortization) can't mix
+    # Decimal with float literals.
+    purchase_price = float(p["land_price"] or 0)
+    sqm_construction = float(p["sqm_construction"] or 0)
+    projected_sale = float(p["projected_sale"] or 0)
     rent_monthly = float(p["rent_monthly"] or 0)
 
     # Data quality check: projected_sale placeholder
@@ -404,13 +405,13 @@ def analyze_prospect(
 
     # ── 5. Find comparables & calculate exit price ───
     sale_sqm = sqm_construction if sqm_construction > 0 else p["sqm_land"]
-    prop_type = (p.get("type") or "casa").lower()
+    prop_type = (p.get("asset_type") or "casa").lower()
     comps, avg_comp_distance_km = find_comparables(
         zone_id,
         property_type=prop_type,
-        prospect_lat=p["latitude"],
-        prospect_lng=p["longitude"],
-        prospect_sqm=sale_sqm,
+        subject_lat=p["latitude"],
+        subject_lng=p["longitude"],
+        subject_sqm=sale_sqm,
     )
     comp_ids = [c["id"] for c in comps]
     comp_ppm2 = [c["price_per_m2"] for c in comps if c.get("price_per_m2")]
@@ -524,7 +525,7 @@ def analyze_prospect(
     with get_db() as conn:
         cur = conn.execute(
             """INSERT INTO analysis_snapshots (
-                prospect_id, generated_at,
+                property_id, generated_at,
                 purchase_price, remodel_cost_estimate, remodel_cost_per_m2,
                 intervention_level, transaction_costs, financing_costs,
                 total_cost, holding_period_months,
@@ -557,7 +558,7 @@ def analyze_prospect(
                 %s, %s, %s, %s
             ) RETURNING id""",
             (
-                prospect_id, now,
+                property_id, now,
                 purchase_price, remodel_cost, cost_per_m2,
                 actual_intervention, transaction_costs, financing_costs,
                 total_cost, holding_period_months,
@@ -581,7 +582,7 @@ def analyze_prospect(
         snapshot_id = cur.fetchone()["id"]
 
     # ── 10. Build human summary ──────────────────────
-    summary_parts = [f"Análisis #{snapshot_id} para prospect #{prospect_id}"]
+    summary_parts = [f"Análisis #{snapshot_id} para propiedad #{property_id}"]
     if roi_pct is not None:
         summary_parts.append(f"ROI flip: {roi_pct:.1f}%")
     if exit_mid:
@@ -596,7 +597,7 @@ def analyze_prospect(
 
     return AnalysisResult(
         snapshot_id=snapshot_id,
-        prospect_id=prospect_id,
+        property_id=property_id,
         generated_at=now.isoformat(),
         purchase_price=purchase_price,
         remodel_cost_estimate=remodel_cost,
