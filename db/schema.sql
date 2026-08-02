@@ -30,8 +30,9 @@ BEGIN
         WHEN 'oferta'     THEN NEW.status IN ('desarrollo', 'archivada')
         WHEN 'desarrollo' THEN NEW.status IN ('en_renta', 'vendida', 'archivada')
         WHEN 'en_renta'   THEN NEW.status IN ('vendida', 'archivada')
-        -- vendida es hecho terminal: solo se puede ocultar del listado
-        WHEN 'vendida'    THEN NEW.status = 'archivada'
+        -- vendida es terminal: una propiedad vendida ES el track record de la
+        -- firma y no puede desaparecer de él archivándola
+        WHEN 'vendida'    THEN FALSE
         WHEN 'archivada'  THEN FALSE
         ELSE FALSE
     END;
@@ -62,8 +63,19 @@ BEGIN
             RAISE EXCEPTION 'desarrollo exige valuación inicial (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
-        IF NEW.total_investment IS NULL AND NEW.land_price IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment o el desglose (propiedad %)',
+        -- La base de inversión se resuelve de dos formas y solo de dos: el total
+        -- capturado a mano, o el desglose COMPLETO de siete campos (con uno
+        -- faltante el sistema no puede recomputar nada).
+        IF NEW.total_investment IS NULL AND NOT (
+               NEW.land_price                IS NOT NULL
+           AND NEW.acquisition_cost_pct      IS NOT NULL
+           AND NEW.permits_cost              IS NOT NULL
+           AND NEW.subdivision_cost          IS NOT NULL
+           AND NEW.sqm_construction          IS NOT NULL
+           AND NEW.construction_cost_per_sqm IS NOT NULL
+           AND NEW.construction_overhead     IS NOT NULL
+        ) THEN
+            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment manual o el desglose completo de los siete costos (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
@@ -811,6 +823,7 @@ CREATE TABLE public.properties (
     CONSTRAINT properties_first_rent_after_acquisition CHECK (((first_rent_date IS NULL) OR (acquisition_date IS NULL) OR (first_rent_date >= acquisition_date))),
     CONSTRAINT properties_hold_months_check CHECK ((hold_months > 0)),
     CONSTRAINT properties_land_price_check CHECK ((land_price >= (0)::numeric)),
+    CONSTRAINT properties_milestones_check CHECK ((jsonb_typeof(milestones) = 'object'::text)),
     CONSTRAINT properties_name_check CHECK ((name <> ''::text)),
     CONSTRAINT properties_permits_cost_check CHECK ((permits_cost >= (0)::numeric)),
     CONSTRAINT properties_projected_sale_check CHECK ((projected_sale >= (0)::numeric)),

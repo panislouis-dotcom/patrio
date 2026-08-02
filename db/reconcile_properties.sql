@@ -99,6 +99,15 @@ ORDER BY tabla;
 -- ── SECCIÓN C · REAL + VEREDICTO (solo después de aplicar 024) ──────────────
 \if :migrated
 
+-- Una BD creada desde cero también tiene `properties` y tablas `*_legacy`,
+-- pero vacías: ahí no hubo migración que reconciliar y comparar contra las
+-- legacy solo produciría DIFIERE falsos (las semillas entran DESPUÉS de 024).
+-- El mapa de ids vacío es la señal de que esta BD nació migrada.
+SELECT CASE WHEN EXISTS (SELECT 1 FROM property_id_map) THEN 'yes' ELSE 'no' END AS reconcilable
+\gset
+
+\if :reconcilable
+
 \echo ''
 \echo '── C1. Veredicto por invariante ─────────────────────────────────────'
 
@@ -237,15 +246,24 @@ HAVING count(*) > 1
 \echo '── C5. Datos que la migración tuvo que aproximar (revisar a mano) ───'
 
 SELECT id, name, status,
-       'sale_date/sale_price vienen de conclusion_date/current_valuation' AS nota
+       'sale_date/sale_price salen de conclusion_date/current_valuation; first_rent_date queda NULL (el esquema viejo no decía si rentó)' AS nota
   FROM properties WHERE status = 'vendida'
 UNION ALL
 SELECT id, name, status, 'sin asset_type: el `type` legacy venía vacío o no mapeaba'
   FROM properties WHERE asset_type IS NULL
 UNION ALL
-SELECT id, name, status, 'first_rent_date es la fecha planeada (sigue en desarrollo)'
-  FROM properties WHERE status = 'desarrollo' AND first_rent_date IS NOT NULL
+SELECT id, name, status, 'la primera renta planeada bajó a milestones (first_rent_date solo guarda renta real)'
+  FROM properties p
+ WHERE EXISTS (SELECT 1 FROM jsonb_each_text(p.milestones) kv
+                WHERE kv.value = 'Primera renta planeada (dato migrado)')
  ORDER BY 1;
+
+\else
+\echo ''
+\echo '(Secciones C1-C5 omitidas: property_id_map está vacío — esta BD se creó'
+\echo ' desde cero con 024 ya aplicada, no migró filas. Lo que haya en'
+\echo ' `properties` viene de las semillas, no de las tablas legacy.)'
+\endif
 
 \else
 \echo ''

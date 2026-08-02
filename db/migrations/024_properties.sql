@@ -55,10 +55,28 @@ BEGIN
     IF t IS NULL OR btrim(t) = '' THEN
         RETURN '{}'::jsonb;
     END IF;
+    IF jsonb_typeof(t::jsonb) <> 'object' THEN
+        RETURN '{}'::jsonb;
+    END IF;
     RETURN t::jsonb;
 EXCEPTION WHEN others THEN
     RETURN '{}'::jsonb;
 END;
+$$;
+
+-- Un proyecto que sigue en obra tiene fecha de primera renta PLANEADA, no real.
+-- Esa fecha no puede vivir en first_rent_date (que significa renta ocurrida y
+-- de la que depende el gate →en_renta), pero tampoco se tira: se guarda como
+-- hito, sin pisar un hito que ya exista en ese mes.
+CREATE OR REPLACE FUNCTION pg_temp.with_planned_rent(ms TEXT, planned DATE) RETURNS JSONB
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE
+        WHEN planned IS NULL
+          OR jsonb_exists(pg_temp.text_to_jsonb(ms), to_char(planned, 'YYYY-MM'))
+        THEN pg_temp.text_to_jsonb(ms)
+        ELSE pg_temp.text_to_jsonb(ms)
+             || jsonb_build_object(to_char(planned, 'YYYY-MM'), 'Primera renta planeada (dato migrado)')
+    END;
 $$;
 
 -- `type` mezclaba dos vocabularios: el de prospectos era el inmueble
@@ -132,10 +150,14 @@ BEGIN
         RAISE EXCEPTION '024: proyectos con acquisition_date no parseable (se espera YYYY-MM o YYYY-MM-DD): %', bad;
     END IF;
 
-    -- 2f. conclusion_date (= PRIMERA RENTA) anterior a la adquisición rompería
-    -- el CHECK de orden de fechas a media migración.
+    -- 2f. En operating y exited la conclusion_date se vuelve fecha real (primera
+    -- renta y venta): si es anterior a la adquisición rompe el orden de fechas a
+    -- media migración. En los que siguen en obra la fecha es planeada y solo baja
+    -- a milestones, así que no se les exige orden.
     SELECT string_agg(id::text, ', ' ORDER BY id) INTO bad
-    FROM projects WHERE conclusion_date < pg_temp.text_to_date(acquisition_date);
+    FROM projects
+    WHERE status IN ('operating', 'exited')
+      AND conclusion_date < pg_temp.text_to_date(acquisition_date);
     IF bad IS NOT NULL THEN
         RAISE EXCEPTION '024: proyectos con conclusion_date anterior a acquisition_date: %', bad;
     END IF;
@@ -212,7 +234,8 @@ CREATE TABLE IF NOT EXISTS properties (
   total_investment          NUMERIC(14,2) CHECK (total_investment >= 0),
   current_valuation         NUMERIC(14,2) CHECK (current_valuation >= 0),
   valuation_date            DATE,
-  milestones                JSONB   NOT NULL DEFAULT '{}'::jsonb,
+  milestones                JSONB   NOT NULL DEFAULT '{}'::jsonb
+                              CHECK (jsonb_typeof(milestones) = 'object'),
 
   -- Transversales
   geometry                  JSONB   NOT NULL DEFAULT '{}'::jsonb,
@@ -303,8 +326,9 @@ BEGIN
         WHEN 'oferta'     THEN NEW.status IN ('desarrollo', 'archivada')
         WHEN 'desarrollo' THEN NEW.status IN ('en_renta', 'vendida', 'archivada')
         WHEN 'en_renta'   THEN NEW.status IN ('vendida', 'archivada')
-        -- vendida es hecho terminal: solo se puede ocultar del listado
-        WHEN 'vendida'    THEN NEW.status = 'archivada'
+        -- vendida es terminal: una propiedad vendida ES el track record de la
+        -- firma y no puede desaparecer de él archivándola
+        WHEN 'vendida'    THEN FALSE
         WHEN 'archivada'  THEN FALSE
         ELSE FALSE
     END;
@@ -335,8 +359,19 @@ BEGIN
             RAISE EXCEPTION 'desarrollo exige valuación inicial (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
-        IF NEW.total_investment IS NULL AND NEW.land_price IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment o el desglose (propiedad %)',
+        -- La base de inversión se resuelve de dos formas y solo de dos: el total
+        -- capturado a mano, o el desglose COMPLETO de siete campos (con uno
+        -- faltante el sistema no puede recomputar nada).
+        IF NEW.total_investment IS NULL AND NOT (
+               NEW.land_price                IS NOT NULL
+           AND NEW.acquisition_cost_pct      IS NOT NULL
+           AND NEW.permits_cost              IS NOT NULL
+           AND NEW.subdivision_cost          IS NOT NULL
+           AND NEW.sqm_construction          IS NOT NULL
+           AND NEW.construction_cost_per_sqm IS NOT NULL
+           AND NEW.construction_overhead     IS NOT NULL
+        ) THEN
+            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment manual o el desglose completo de los siete costos (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
@@ -429,10 +464,11 @@ SELECT
     nullif(coalesce(j.rent_monthly, s.rent_monthly), 0),  -- 0 = no renta → NULL
     nullif(j.total_units, 0),
     pg_temp.text_to_date(j.acquisition_date),
-    -- conclusion_date es «PRIMERA RENTA» en la ficha de proyecto. Se conserva
-    -- para todos: en los que siguen en desarrollo es la fecha planeada (el
-    -- esquema viejo la exigía NOT NULL) y perderla sería perder dato capturado.
-    j.conclusion_date,
+    -- conclusion_date es «PRIMERA RENTA» en la ficha de proyecto, pero solo en
+    -- los 'operating' es renta ocurrida. En los demás la fecha no se pierde:
+    -- en desarrollo baja a milestones como planeada, y en 'exited' es la fecha
+    -- de salida (abajo). first_rent_date solo significa renta real.
+    CASE WHEN j.status = 'operating' THEN j.conclusion_date END,
     -- El esquema viejo no tenía salida: para los 'exited' la fecha de venta se
     -- aproxima con conclusion_date y el precio con current_valuation (la marca
     -- congelada). Ambos deben corregirse a mano si hay cifras reales.
@@ -441,7 +477,10 @@ SELECT
     j.total_investment,
     j.current_valuation,
     pg_temp.text_to_date(j.valuation_date),
-    pg_temp.text_to_jsonb(j.milestones),
+    CASE WHEN j.status IN ('construction', 'en_proceso', 'stabilizing')
+         THEN pg_temp.with_planned_rent(j.milestones, j.conclusion_date)
+         ELSE pg_temp.text_to_jsonb(j.milestones)
+    END,
     CASE WHEN j.geometry <> '{}'::jsonb THEN j.geometry ELSE coalesce(s.geometry, '{}'::jsonb) END,
     -- notas: se concatenan en vez de perder las del prospecto
     CASE
