@@ -2,7 +2,28 @@
 IRR/NPV/amortization/CAGR are iterative/fractional-power models where float
 is the correct tool. Callers coerce money to float at the boundary."""
 import math
+from datetime import date
 from typing import Optional
+
+
+def parse_date(value) -> Optional[date]:
+    """Coerce a date input to a date. Month granularity is a first-class input
+    here (the UI has always sent YYYY-MM for facts nobody knows to the day), so
+    a month means its first day. None/empty gives None; anything unreadable
+    raises ValueError — an unparseable date is a mistake, not an absence."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    return date.fromisoformat(text + "-01" if len(text) == 7 else text)
+
+
+def months_between(start: date, end: date) -> int:
+    """Whole calendar months from start to end (negative when end precedes start).
+    Month granularity on purpose: every hold in this domain is quoted in months
+    and the source dates are often only accurate to the month."""
+    return (end.year - start.year) * 12 + (end.month - start.month)
 
 
 def percentile(values: list[float], p: float) -> float:

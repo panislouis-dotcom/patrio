@@ -1,27 +1,25 @@
 """Profit-split waterfall — Decimal port of the former profit_db logic.
 Money exact; ratios (tier, isr, split pcts) coerced to Decimal."""
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
+from .analysis import parse_date
 from .quantize import to_decimal
 from .investor import cuota
 
 _D0 = Decimal(0)
 
 
-def compute_bonus_tier(config: dict, conclusion_date: str | None = None) -> Decimal | None:
+def compute_bonus_tier(config: dict, conclusion_date=None) -> Decimal | None:
     """0.50 / 0.25 / 0.0 / None (None = cannot determine)."""
     planned = config.get("plannedEndDate")
     buffer = config.get("bufferDays") or 0
     if not planned or buffer <= 0:
         return None
-    actual_raw = config.get("actualEndDate") or conclusion_date
-    if not actual_raw:
+    p = parse_date(planned)
+    a = parse_date(config.get("actualEndDate") or conclusion_date)
+    if a is None:
         return None
-    actual_str = actual_raw + "-01" if len(actual_raw) == 7 else actual_raw
-    planned_str = planned + "-01" if len(planned) == 7 else planned
-    p = date.fromisoformat(planned_str)
-    a = date.fromisoformat(actual_str)
     early_threshold = p - timedelta(days=buffer)
     half_threshold = p - timedelta(days=buffer // 2)
     if a <= early_threshold:
@@ -90,11 +88,15 @@ def _compute_splits_for_tier(tier, finder_amount, director_amount, responsable_a
     return {"splits": splits, "companyResidual": company_residual}
 
 
-def compute_waterfall(project: dict, config: dict, team: list[dict],
-                      project_investors: list[dict] = None) -> dict:
-    investment = to_decimal(project.get("totalInvestment") or 0)
-    exit_price = to_decimal(config.get("exitPrice") or project.get("currentValuation") or 0)
-    months = config.get("investorMonths") or project.get("holdMonthsActual") or 12
+def compute_waterfall(prop: dict, config: dict, team: list[dict],
+                      property_investors: list[dict] = None) -> dict:
+    investment = to_decimal(prop.get("totalInvestment") or 0)
+    # The exit the split is computed on, best evidence first: what the operator
+    # typed into this config, else the price the property actually sold for,
+    # else the latest mark.
+    exit_price = to_decimal(
+        config.get("exitPrice") or prop.get("salePrice") or prop.get("currentValuation") or 0)
+    months = config.get("investorMonths") or prop.get("holdMonthsActual") or 12
     isr_rate = to_decimal(config.get("isrRate") or 0.30)
 
     if config.get("investorCapital"):
@@ -105,7 +107,7 @@ def compute_waterfall(project: dict, config: dict, team: list[dict],
                                "fundedAmount": investor_capital, "interestRateAnnual": rate,
                                "cuota": investor_cuota, "totalReturn": investor_capital + investor_cuota}]
     else:
-        fondeados = [pi for pi in (project_investors or []) if pi.get("status") == "fondeado"]
+        fondeados = [pi for pi in (property_investors or []) if pi.get("status") == "fondeado"]
         if fondeados:
             investor_capital = sum((to_decimal(pi.get("fundedAmount")) for pi in fondeados), _D0)
             investor_cuota = sum(
@@ -165,7 +167,10 @@ def compute_waterfall(project: dict, config: dict, team: list[dict],
         "bono_25": _compute_splits_for_tier(tier=Decimal("0.25"), **shared),
         "bono_50": _compute_splits_for_tier(tier=Decimal("0.50"), **shared),
     }
-    active_tier = compute_bonus_tier(config, project.get("conclusionDate"))
+    # When the work actually concluded: the sale for a flip, the first rent for
+    # a hold. Neither exists while the property is still in desarrollo, and then
+    # only an explicit actualEndDate can settle the on-time bonus.
+    active_tier = compute_bonus_tier(config, prop.get("saleDate") or prop.get("firstRentDate"))
     return {"exitPrice": exit_price, "investment": investment, "grossProfit": gross_profit,
             "investorCuota": investor_cuota, "operatorGross": operator_gross, "isr": isr,
             "netProfit": net_profit, "distributable": distributable, "activeTier": active_tier,

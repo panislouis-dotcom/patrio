@@ -3,6 +3,7 @@ matching the project_investor_metrics view (migration 000)."""
 from datetime import date
 from decimal import Decimal
 
+from .analysis import months_between
 from .quantize import money, pct2, to_decimal
 
 
@@ -27,11 +28,12 @@ def return_pct(interest_rate_annual, months) -> Decimal:
     return pct2(to_decimal(interest_rate_annual) * to_decimal(months) / Decimal(12) * Decimal(100))
 
 
-def hold_months(acquisition_ym: str, conclusion: date | None, today: date | None = None) -> int:
-    """Whole months between acquisition (YYYY-MM) and conclusion (date) or today."""
-    acq_year, acq_month = map(int, acquisition_ym.split("-"))
-    end = conclusion or today or date.today()
-    return (end.year - acq_year) * 12 + (end.month - acq_month)
+def hold_months(acquisition: date | None, conclusion: date | None, today: date | None = None) -> int:
+    """Months the money has been in: acquisition → conclusion, or → today while the
+    position is open. 0 without an acquisition date — nothing has been held yet."""
+    if acquisition is None:
+        return 0
+    return months_between(acquisition, conclusion or today or date.today())
 
 
 def totals(positions: list[dict]) -> dict:

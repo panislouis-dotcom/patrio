@@ -1,5 +1,5 @@
-"""Prospect/project underwriting model — the single home for the cost stack
-and its derived metrics. Exact-money in Decimal. Annualized ROI delegates to
+"""Property underwriting model — the single home for the cost stack and its
+derived metrics. Exact-money in Decimal. Annualized ROI delegates to
 finance.analysis.roi_cagr (float, correct tool for fractional powers).
 
 Descends from the prospect_metrics view (migration 019) and still matches it
@@ -20,6 +20,13 @@ _INPUT_KEYS = (
     "land_price", "acquisition_cost_pct", "permits_cost", "subdivision_cost",
     "sqm_construction", "construction_cost_per_sqm", "construction_overhead",
     "projected_sale", "hold_months", "rent_monthly", "sqm_land",
+)
+
+# The seven costs that make up the investment. Order matches investment_raw's
+# signature so `investment()` can splat them.
+BREAKDOWN_KEYS = (
+    "land_price", "acquisition_cost_pct", "permits_cost", "subdivision_cost",
+    "sqm_construction", "construction_cost_per_sqm", "construction_overhead",
 )
 
 
@@ -43,6 +50,65 @@ def investment_raw(land_price, acquisition_cost_pct, permits_cost, subdivision_c
         + to_decimal(sqm_construction) * to_decimal(construction_cost_per_sqm)
         * overhead_factor(construction_overhead)
     )
+
+
+def has_breakdown(inputs: dict) -> bool:
+    """True when all seven costs are captured — the only condition under which the
+    system can recompute the investment itself instead of trusting a typed-in
+    total. Mirrors the `desarrollo` branch of the 024 transition trigger; the
+    domain layer turns it into `investmentBasis`."""
+    return all(inputs.get(k) is not None for k in BREAKDOWN_KEYS)
+
+
+def investment(inputs: dict) -> Decimal:
+    """Unrounded cost total from a raw-inputs dict — investment_raw, keyed."""
+    return investment_raw(*(inputs.get(k) for k in BREAKDOWN_KEYS))
+
+
+def basis(inputs: dict) -> Decimal | None:
+    """The capital base: the money in, unrounded so everything derived from it
+    rounds exactly once.
+
+    Two resolutions and only two — the pair migration 024's trigger accepts: the
+    complete breakdown (the system recomputes and owns the total) or the
+    manually captured `total_investment`. None means neither exists, which is
+    precisely what the `desarrollo` stage refuses to accept."""
+    if has_breakdown(inputs):
+        return investment(inputs)
+    total = inputs.get("total_investment")
+    return to_decimal(total) if total is not None else None
+
+
+def basis_kind(inputs: dict) -> str:
+    """Where basis() came from — the one thing a reader needs in order to know
+    how much to trust the total."""
+    return "underwriting" if has_breakdown(inputs) else "manual"
+
+
+def gain(basis, exit_value) -> Decimal | None:
+    """Money made over an investment basis, in whole pesos. None unless both sides
+    are positive: an exit value of 0 means "not captured" everywhere in this
+    domain (a modeled sale that does not exist, a valuation nobody made), and
+    subtracting from it would report the entire investment as a loss.
+
+    One expression for all three exits — projected sale, current valuation,
+    sale price — so projectedProfit, unrealizedGain and realizedGain can never
+    drift apart."""
+    b = to_decimal(basis)
+    e = to_decimal(exit_value)
+    if b <= 0 or e <= 0:
+        return None
+    return money0(e - b)
+
+
+def gain_pct(basis, exit_value) -> Decimal | None:
+    """gain() as a fraction of the basis — the simple (non-annualized) return.
+    None, never 0, when it cannot be computed: 0 would read as "broke even"."""
+    b = to_decimal(basis)
+    e = to_decimal(exit_value)
+    if b <= 0 or e <= 0:
+        return None
+    return frac4((e - b) / b)
 
 
 def rent_annual(rent_monthly) -> Decimal | None:
@@ -80,7 +146,6 @@ def metrics(inputs: dict) -> dict:
     hold = g["hold_months"]
 
     roi = roi_cagr(inv_raw, ps, hold)
-    simple = ((ps - inv_raw) / inv_raw) if (inv_raw > 0 and ps > 0) else None
 
     return {
         "acquisition_costs": money0(lp * acq),
@@ -88,9 +153,9 @@ def metrics(inputs: dict) -> dict:
         "construction_base": money0(sqm_c * cps),
         "construction_total": money0(sqm_c * cps * ovh),
         "total_investment": money0(inv_raw),
-        "profit": money0(ps - inv_raw),
+        "profit": gain(inv_raw, ps),
         "roi": frac4(roi) if roi is not None else None,
-        "roi_total": frac4(simple) if simple is not None else None,
+        "roi_total": gain_pct(inv_raw, ps),
         "cap_rate": cap_rate(g["rent_monthly"], inv_raw),
         "land_price_per_sqm": money(lp / sqm_land) if sqm_land > 0 else None,
         "sale_per_sqm": money(ps / sqm_land) if sqm_land > 0 else None,
