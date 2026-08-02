@@ -15,6 +15,89 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+--
+-- Name: properties_guard_transition(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.properties_guard_transition() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    allowed BOOLEAN;
+BEGIN
+    allowed := CASE OLD.status
+        WHEN 'prospecto'  THEN NEW.status IN ('oferta', 'archivada')
+        WHEN 'oferta'     THEN NEW.status IN ('desarrollo', 'archivada')
+        WHEN 'desarrollo' THEN NEW.status IN ('en_renta', 'vendida', 'archivada')
+        WHEN 'en_renta'   THEN NEW.status IN ('vendida', 'archivada')
+        -- vendida es hecho terminal: solo se puede ocultar del listado
+        WHEN 'vendida'    THEN NEW.status = 'archivada'
+        WHEN 'archivada'  THEN FALSE
+        ELSE FALSE
+    END;
+
+    IF NOT allowed THEN
+        RAISE EXCEPTION 'transición de status no permitida: % → % (propiedad %)',
+            OLD.status, NEW.status, OLD.id USING ERRCODE = 'check_violation';
+    END IF;
+
+    -- Insumos mínimos por etapa destino. Los CHECKs de tabla ya cubren
+    -- en_renta ⇒ first_rent_date y vendida ⇒ sale_date + sale_price; aquí van
+    -- los que dependen del destino y no del estado de la fila.
+    IF NEW.status = 'oferta' AND coalesce(NEW.projected_sale, 0) <= 0 THEN
+        RAISE EXCEPTION 'oferta exige modelo completo: projected_sale > 0 (propiedad %)',
+            OLD.id USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF NEW.status = 'desarrollo' THEN
+        IF NEW.acquisition_date IS NULL THEN
+            RAISE EXCEPTION 'desarrollo exige acquisition_date (propiedad %)',
+                OLD.id USING ERRCODE = 'check_violation';
+        END IF;
+        IF NEW.total_units IS NULL THEN
+            RAISE EXCEPTION 'desarrollo exige total_units (propiedad %)',
+                OLD.id USING ERRCODE = 'check_violation';
+        END IF;
+        IF NEW.current_valuation IS NULL THEN
+            RAISE EXCEPTION 'desarrollo exige valuación inicial (propiedad %)',
+                OLD.id USING ERRCODE = 'check_violation';
+        END IF;
+        IF NEW.total_investment IS NULL AND NEW.land_price IS NULL THEN
+            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment o el desglose (propiedad %)',
+                OLD.id USING ERRCODE = 'check_violation';
+        END IF;
+    END IF;
+
+    IF NEW.status = 'en_renta' THEN
+        IF NEW.rent_monthly IS NULL THEN
+            RAISE EXCEPTION 'en_renta exige rent_monthly (propiedad %)',
+                OLD.id USING ERRCODE = 'check_violation';
+        END IF;
+        IF NEW.current_valuation IS NULL THEN
+            RAISE EXCEPTION 'en_renta exige valuación (propiedad %)',
+                OLD.id USING ERRCODE = 'check_violation';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: properties_touch_updated_at(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.properties_touch_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -25,7 +108,6 @@ SET default_table_access_method = heap;
 
 CREATE TABLE public.analysis_snapshots (
     id bigint NOT NULL,
-    prospect_id bigint NOT NULL,
     generated_at timestamp with time zone DEFAULT now() NOT NULL,
     purchase_price numeric(14,2) NOT NULL,
     remodel_cost_estimate numeric(14,2) NOT NULL,
@@ -65,6 +147,7 @@ CREATE TABLE public.analysis_snapshots (
     break_even_months integer,
     npv_10yr numeric(14,2),
     irr_10yr_pct real,
+    property_id bigint NOT NULL,
     CONSTRAINT analysis_snapshots_confidence_score_check CHECK (((confidence_score >= 0) AND (confidence_score <= 100))),
     CONSTRAINT analysis_snapshots_exit_price_source_check CHECK ((exit_price_source = ANY (ARRAY['manual'::text, 'calculated'::text, 'blended'::text])))
 );
@@ -454,7 +537,6 @@ ALTER SEQUENCE public.node_files_id_seq OWNED BY public.node_files.id;
 CREATE TABLE public.process_instances (
     id bigint NOT NULL,
     template_id bigint,
-    project_id bigint,
     owner_id bigint,
     task_type text DEFAULT 'proyecto'::text NOT NULL,
     name text NOT NULL,
@@ -467,6 +549,7 @@ CREATE TABLE public.process_instances (
     status text DEFAULT 'active'::text NOT NULL,
     notes text DEFAULT ''::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    property_id bigint,
     CONSTRAINT process_instances_name_check CHECK ((name <> ''::text))
 );
 
@@ -528,7 +611,6 @@ ALTER SEQUENCE public.process_templates_id_seq OWNED BY public.process_templates
 
 CREATE TABLE public.profit_split_config (
     id bigint NOT NULL,
-    project_id bigint,
     exit_price numeric(14,2),
     investor_capital numeric(14,2),
     investor_rate_annual real DEFAULT 0.12 NOT NULL,
@@ -551,7 +633,8 @@ CREATE TABLE public.profit_split_config (
     actual_end_date text,
     buffer_days integer DEFAULT 0 NOT NULL,
     notes text DEFAULT ''::text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    property_id bigint
 );
 
 
@@ -575,10 +658,10 @@ ALTER SEQUENCE public.profit_split_config_id_seq OWNED BY public.profit_split_co
 
 
 --
--- Name: project_images; Type: TABLE; Schema: public; Owner: -
+-- Name: project_images_legacy; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.project_images (
+CREATE TABLE public.project_images_legacy (
     id bigint NOT NULL,
     project_id bigint NOT NULL,
     file_path text NOT NULL,
@@ -607,55 +690,14 @@ CREATE SEQUENCE public.project_images_id_seq
 -- Name: project_images_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.project_images_id_seq OWNED BY public.project_images.id;
+ALTER SEQUENCE public.project_images_id_seq OWNED BY public.project_images_legacy.id;
 
 
 --
--- Name: project_investors; Type: TABLE; Schema: public; Owner: -
+-- Name: projects_legacy; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.project_investors (
-    id bigint NOT NULL,
-    project_id bigint NOT NULL,
-    investor_id bigint NOT NULL,
-    status text DEFAULT 'interesado'::text NOT NULL,
-    interested_amount numeric(14,2) DEFAULT 0 NOT NULL,
-    committed_amount numeric(14,2) DEFAULT 0 NOT NULL,
-    funded_amount numeric(14,2) DEFAULT 0 NOT NULL,
-    interest_rate_annual real DEFAULT 0.12 NOT NULL,
-    investment_date date,
-    return_amount numeric(14,2),
-    return_date date,
-    notes text DEFAULT ''::text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT project_investors_status_check CHECK ((status = ANY (ARRAY['interesado'::text, 'comprometido'::text, 'fondeado'::text])))
-);
-
-
---
--- Name: project_investors_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.project_investors_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: project_investors_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.project_investors_id_seq OWNED BY public.project_investors.id;
-
-
---
--- Name: projects; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.projects (
+CREATE TABLE public.projects_legacy (
     id bigint NOT NULL,
     name text NOT NULL,
     type text NOT NULL,
@@ -715,14 +757,233 @@ CREATE SEQUENCE public.projects_id_seq
 -- Name: projects_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.projects_id_seq OWNED BY public.projects.id;
+ALTER SEQUENCE public.projects_id_seq OWNED BY public.projects_legacy.id;
 
 
 --
--- Name: prospect_images; Type: TABLE; Schema: public; Owner: -
+-- Name: properties; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.prospect_images (
+CREATE TABLE public.properties (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    address text NOT NULL,
+    city text NOT NULL,
+    url text DEFAULT ''::text NOT NULL,
+    latitude real NOT NULL,
+    longitude real NOT NULL,
+    status text NOT NULL,
+    asset_type text,
+    strategy_type text,
+    sqm_land real,
+    sqm_construction real,
+    land_price numeric(14,2),
+    acquisition_cost_pct real,
+    permits_cost numeric(14,2),
+    subdivision_cost numeric(14,2),
+    construction_cost_per_sqm numeric(14,2),
+    construction_overhead real,
+    projected_sale numeric(14,2),
+    hold_months integer,
+    rent_monthly numeric(14,2),
+    total_units integer,
+    acquisition_date date,
+    first_rent_date date,
+    sale_date date,
+    sale_price numeric(14,2),
+    total_investment numeric(14,2),
+    current_valuation numeric(14,2),
+    valuation_date date,
+    milestones jsonb DEFAULT '{}'::jsonb NOT NULL,
+    geometry jsonb DEFAULT '{}'::jsonb NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    is_favorite boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT properties_acquisition_cost_pct_check CHECK ((acquisition_cost_pct >= (0)::double precision)),
+    CONSTRAINT properties_address_check CHECK ((address <> ''::text)),
+    CONSTRAINT properties_asset_type_check CHECK ((asset_type = ANY (ARRAY['casa'::text, 'departamento'::text, 'local'::text, 'edificio'::text, 'lote'::text, 'bodega'::text]))),
+    CONSTRAINT properties_city_check CHECK ((city <> ''::text)),
+    CONSTRAINT properties_construction_cost_per_sqm_check CHECK ((construction_cost_per_sqm >= (0)::numeric)),
+    CONSTRAINT properties_construction_overhead_check CHECK ((construction_overhead >= (0)::double precision)),
+    CONSTRAINT properties_current_valuation_check CHECK ((current_valuation >= (0)::numeric)),
+    CONSTRAINT properties_en_renta_needs_first_rent CHECK (((status <> 'en_renta'::text) OR (first_rent_date IS NOT NULL))),
+    CONSTRAINT properties_first_rent_after_acquisition CHECK (((first_rent_date IS NULL) OR (acquisition_date IS NULL) OR (first_rent_date >= acquisition_date))),
+    CONSTRAINT properties_hold_months_check CHECK ((hold_months > 0)),
+    CONSTRAINT properties_land_price_check CHECK ((land_price >= (0)::numeric)),
+    CONSTRAINT properties_name_check CHECK ((name <> ''::text)),
+    CONSTRAINT properties_permits_cost_check CHECK ((permits_cost >= (0)::numeric)),
+    CONSTRAINT properties_projected_sale_check CHECK ((projected_sale >= (0)::numeric)),
+    CONSTRAINT properties_rent_monthly_check CHECK ((rent_monthly > (0)::numeric)),
+    CONSTRAINT properties_sale_after_acquisition CHECK (((sale_date IS NULL) OR (acquisition_date IS NULL) OR (sale_date >= acquisition_date))),
+    CONSTRAINT properties_sale_after_first_rent CHECK (((sale_date IS NULL) OR (first_rent_date IS NULL) OR (sale_date >= first_rent_date))),
+    CONSTRAINT properties_sale_price_check CHECK ((sale_price >= (0)::numeric)),
+    CONSTRAINT properties_sqm_construction_check CHECK ((sqm_construction >= (0)::double precision)),
+    CONSTRAINT properties_sqm_land_check CHECK ((sqm_land >= (0)::double precision)),
+    CONSTRAINT properties_status_check CHECK ((status = ANY (ARRAY['prospecto'::text, 'oferta'::text, 'desarrollo'::text, 'en_renta'::text, 'vendida'::text, 'archivada'::text]))),
+    CONSTRAINT properties_strategy_type_check CHECK ((strategy_type = ANY (ARRAY['adaptive_reuse'::text, 'ground_up'::text, 'flip'::text, 'hold'::text]))),
+    CONSTRAINT properties_subdivision_cost_check CHECK ((subdivision_cost >= (0)::numeric)),
+    CONSTRAINT properties_total_investment_check CHECK ((total_investment >= (0)::numeric)),
+    CONSTRAINT properties_total_units_check CHECK ((total_units > 0)),
+    CONSTRAINT properties_vendida_needs_sale CHECK (((status <> 'vendida'::text) OR ((sale_date IS NOT NULL) AND (sale_price IS NOT NULL))))
+);
+
+
+--
+-- Name: properties_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.properties_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: properties_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.properties_id_seq OWNED BY public.properties.id;
+
+
+--
+-- Name: property_id_map; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.property_id_map (
+    source text NOT NULL,
+    old_id bigint NOT NULL,
+    new_id bigint NOT NULL,
+    CONSTRAINT property_id_map_source_check CHECK ((source = ANY (ARRAY['prospect'::text, 'project'::text])))
+);
+
+
+--
+-- Name: property_images; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.property_images (
+    id bigint NOT NULL,
+    property_id bigint NOT NULL,
+    file_path text NOT NULL,
+    file_name text NOT NULL,
+    content_type text NOT NULL,
+    sort_order integer DEFAULT 0 NOT NULL,
+    image_type text DEFAULT 'general'::text NOT NULL,
+    legacy_source text,
+    legacy_image_id bigint,
+    uploaded_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT property_images_file_path_check CHECK ((file_path <> ''::text)),
+    CONSTRAINT property_images_image_type_check CHECK ((image_type = ANY (ARRAY['general'::text, 'antes'::text, 'despues'::text]))),
+    CONSTRAINT property_images_legacy_source_check CHECK ((legacy_source = ANY (ARRAY['prospect_images'::text, 'project_images'::text])))
+);
+
+
+--
+-- Name: property_images_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.property_images_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: property_images_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.property_images_id_seq OWNED BY public.property_images.id;
+
+
+--
+-- Name: property_investors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.property_investors (
+    id bigint NOT NULL,
+    property_id bigint NOT NULL,
+    investor_id bigint NOT NULL,
+    status text DEFAULT 'interesado'::text NOT NULL,
+    interested_amount numeric(14,2) DEFAULT 0 NOT NULL,
+    committed_amount numeric(14,2) DEFAULT 0 NOT NULL,
+    funded_amount numeric(14,2) DEFAULT 0 NOT NULL,
+    interest_rate_annual real DEFAULT 0.12 NOT NULL,
+    investment_date date,
+    return_amount numeric(14,2),
+    return_date date,
+    notes text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT property_investors_status_check CHECK ((status = ANY (ARRAY['interesado'::text, 'comprometido'::text, 'fondeado'::text])))
+);
+
+
+--
+-- Name: property_investors_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.property_investors_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: property_investors_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.property_investors_id_seq OWNED BY public.property_investors.id;
+
+
+--
+-- Name: property_status_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.property_status_events (
+    id bigint NOT NULL,
+    property_id bigint NOT NULL,
+    from_status text,
+    to_status text NOT NULL,
+    effective_on date DEFAULT CURRENT_DATE NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    created_by bigint,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT property_status_events_from_status_check CHECK ((from_status = ANY (ARRAY['prospecto'::text, 'oferta'::text, 'desarrollo'::text, 'en_renta'::text, 'vendida'::text, 'archivada'::text]))),
+    CONSTRAINT property_status_events_moves CHECK ((from_status IS DISTINCT FROM to_status)),
+    CONSTRAINT property_status_events_to_status_check CHECK ((to_status = ANY (ARRAY['prospecto'::text, 'oferta'::text, 'desarrollo'::text, 'en_renta'::text, 'vendida'::text, 'archivada'::text])))
+);
+
+
+--
+-- Name: property_status_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.property_status_events_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: property_status_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.property_status_events_id_seq OWNED BY public.property_status_events.id;
+
+
+--
+-- Name: prospect_images_legacy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prospect_images_legacy (
     id bigint NOT NULL,
     prospect_id bigint NOT NULL,
     file_path text NOT NULL,
@@ -749,14 +1010,14 @@ CREATE SEQUENCE public.prospect_images_id_seq
 -- Name: prospect_images_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.prospect_images_id_seq OWNED BY public.prospect_images.id;
+ALTER SEQUENCE public.prospect_images_id_seq OWNED BY public.prospect_images_legacy.id;
 
 
 --
--- Name: prospects; Type: TABLE; Schema: public; Owner: -
+-- Name: prospects_legacy; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.prospects (
+CREATE TABLE public.prospects_legacy (
     id bigint NOT NULL,
     name text NOT NULL,
     address text NOT NULL,
@@ -806,7 +1067,7 @@ CREATE SEQUENCE public.prospects_id_seq
 -- Name: prospects_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.prospects_id_seq OWNED BY public.prospects.id;
+ALTER SEQUENCE public.prospects_id_seq OWNED BY public.prospects_legacy.id;
 
 
 --
@@ -994,8 +1255,8 @@ CREATE TABLE public.signals (
     sqm_land real DEFAULT 0 NOT NULL,
     raw_data text DEFAULT ''::text NOT NULL,
     status text DEFAULT 'new'::text NOT NULL,
-    prospect_id bigint,
-    scraped_at timestamp with time zone DEFAULT now() NOT NULL
+    scraped_at timestamp with time zone DEFAULT now() NOT NULL,
+    property_id bigint
 );
 
 
@@ -1338,38 +1599,59 @@ ALTER TABLE ONLY public.profit_split_config ALTER COLUMN id SET DEFAULT nextval(
 
 
 --
--- Name: project_images id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: project_images_legacy id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.project_images ALTER COLUMN id SET DEFAULT nextval('public.project_images_id_seq'::regclass);
-
-
---
--- Name: project_investors id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.project_investors ALTER COLUMN id SET DEFAULT nextval('public.project_investors_id_seq'::regclass);
+ALTER TABLE ONLY public.project_images_legacy ALTER COLUMN id SET DEFAULT nextval('public.project_images_id_seq'::regclass);
 
 
 --
--- Name: projects id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: projects_legacy id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.projects ALTER COLUMN id SET DEFAULT nextval('public.projects_id_seq'::regclass);
-
-
---
--- Name: prospect_images id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prospect_images ALTER COLUMN id SET DEFAULT nextval('public.prospect_images_id_seq'::regclass);
+ALTER TABLE ONLY public.projects_legacy ALTER COLUMN id SET DEFAULT nextval('public.projects_id_seq'::regclass);
 
 
 --
--- Name: prospects id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: properties id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.prospects ALTER COLUMN id SET DEFAULT nextval('public.prospects_id_seq'::regclass);
+ALTER TABLE ONLY public.properties ALTER COLUMN id SET DEFAULT nextval('public.properties_id_seq'::regclass);
+
+
+--
+-- Name: property_images id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_images ALTER COLUMN id SET DEFAULT nextval('public.property_images_id_seq'::regclass);
+
+
+--
+-- Name: property_investors id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_investors ALTER COLUMN id SET DEFAULT nextval('public.property_investors_id_seq'::regclass);
+
+
+--
+-- Name: property_status_events id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_status_events ALTER COLUMN id SET DEFAULT nextval('public.property_status_events_id_seq'::regclass);
+
+
+--
+-- Name: prospect_images_legacy id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospect_images_legacy ALTER COLUMN id SET DEFAULT nextval('public.prospect_images_id_seq'::regclass);
+
+
+--
+-- Name: prospects_legacy id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospects_legacy ALTER COLUMN id SET DEFAULT nextval('public.prospects_id_seq'::regclass);
 
 
 --
@@ -1458,11 +1740,11 @@ ALTER TABLE ONLY public.analysis_snapshots
 
 
 --
--- Name: analysis_snapshots analysis_snapshots_prospect_id_generated_at_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: analysis_snapshots analysis_snapshots_property_id_generated_at_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.analysis_snapshots
-    ADD CONSTRAINT analysis_snapshots_prospect_id_generated_at_key UNIQUE (prospect_id, generated_at);
+    ADD CONSTRAINT analysis_snapshots_property_id_generated_at_key UNIQUE (property_id, generated_at);
 
 
 --
@@ -1578,42 +1860,82 @@ ALTER TABLE ONLY public.profit_split_config
 
 
 --
--- Name: project_images project_images_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: project_images_legacy project_images_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.project_images
+ALTER TABLE ONLY public.project_images_legacy
     ADD CONSTRAINT project_images_pkey PRIMARY KEY (id);
 
 
 --
--- Name: project_investors project_investors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: projects_legacy projects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.project_investors
-    ADD CONSTRAINT project_investors_pkey PRIMARY KEY (id);
-
-
---
--- Name: projects projects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.projects
+ALTER TABLE ONLY public.projects_legacy
     ADD CONSTRAINT projects_pkey PRIMARY KEY (id);
 
 
 --
--- Name: prospect_images prospect_images_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: properties properties_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.prospect_images
+ALTER TABLE ONLY public.properties
+    ADD CONSTRAINT properties_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: property_id_map property_id_map_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_id_map
+    ADD CONSTRAINT property_id_map_pkey PRIMARY KEY (source, old_id);
+
+
+--
+-- Name: property_images property_images_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_images
+    ADD CONSTRAINT property_images_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: property_images property_images_unique_path; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_images
+    ADD CONSTRAINT property_images_unique_path UNIQUE (property_id, file_path);
+
+
+--
+-- Name: property_investors property_investors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_investors
+    ADD CONSTRAINT property_investors_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: property_status_events property_status_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_status_events
+    ADD CONSTRAINT property_status_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: prospect_images_legacy prospect_images_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospect_images_legacy
     ADD CONSTRAINT prospect_images_pkey PRIMARY KEY (id);
 
 
 --
--- Name: prospects prospects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: prospects_legacy prospects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.prospects
+ALTER TABLE ONLY public.prospects_legacy
     ADD CONSTRAINT prospects_pkey PRIMARY KEY (id);
 
 
@@ -1861,10 +2183,10 @@ CREATE INDEX idx_instance_owner ON public.process_instances USING btree (owner_i
 
 
 --
--- Name: idx_instance_project; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_instance_property; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_instance_project ON public.process_instances USING btree (project_id);
+CREATE INDEX idx_instance_property ON public.process_instances USING btree (property_id);
 
 
 --
@@ -1934,28 +2256,84 @@ CREATE INDEX idx_node_template ON public.template_nodes USING btree (template_id
 -- Name: idx_pi_investor; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_pi_investor ON public.project_investors USING btree (investor_id);
+CREATE INDEX idx_pi_investor ON public.property_investors USING btree (investor_id);
 
 
 --
--- Name: idx_pi_project; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_pi_property; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_pi_project ON public.project_investors USING btree (project_id);
+CREATE INDEX idx_pi_property ON public.property_investors USING btree (property_id);
 
 
 --
 -- Name: idx_projects_acq_date; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_projects_acq_date ON public.projects USING btree (acquisition_date DESC);
+CREATE INDEX idx_projects_acq_date ON public.projects_legacy USING btree (acquisition_date DESC);
 
 
 --
 -- Name: idx_projects_status; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_projects_status ON public.projects USING btree (status);
+CREATE INDEX idx_projects_status ON public.projects_legacy USING btree (status);
+
+
+--
+-- Name: idx_properties_acquisition_date; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_properties_acquisition_date ON public.properties USING btree (acquisition_date DESC NULLS LAST);
+
+
+--
+-- Name: idx_properties_city_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_properties_city_status ON public.properties USING btree (city, status);
+
+
+--
+-- Name: idx_properties_favorite; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_properties_favorite ON public.properties USING btree (id) WHERE is_favorite;
+
+
+--
+-- Name: idx_properties_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_properties_status ON public.properties USING btree (status);
+
+
+--
+-- Name: idx_property_events_property; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_property_events_property ON public.property_status_events USING btree (property_id, effective_on DESC);
+
+
+--
+-- Name: idx_property_events_to_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_property_events_to_status ON public.property_status_events USING btree (to_status, effective_on DESC);
+
+
+--
+-- Name: idx_property_id_map_new; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_property_id_map_new ON public.property_id_map USING btree (new_id);
+
+
+--
+-- Name: idx_property_images_property; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_property_images_property ON public.property_images USING btree (property_id, sort_order);
 
 
 --
@@ -1973,10 +2351,10 @@ CREATE INDEX idx_proveedor_photos_prov ON public.proveedor_photos USING btree (p
 
 
 --
--- Name: idx_signals_prospect; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_signals_property; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_signals_prospect ON public.signals USING btree (prospect_id);
+CREATE INDEX idx_signals_property ON public.signals USING btree (property_id);
 
 
 --
@@ -1987,10 +2365,10 @@ CREATE INDEX idx_signals_status ON public.signals USING btree (status);
 
 
 --
--- Name: idx_snapshots_prospect_date; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_snapshots_property_date; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_snapshots_prospect_date ON public.analysis_snapshots USING btree (prospect_id, generated_at DESC);
+CREATE INDEX idx_snapshots_property_date ON public.analysis_snapshots USING btree (property_id, generated_at DESC);
 
 
 --
@@ -2043,18 +2421,32 @@ CREATE UNIQUE INDEX uq_comparables_listing_url ON public.comparables USING btree
 
 
 --
--- Name: uq_profit_split_project; Type: INDEX; Schema: public; Owner: -
+-- Name: uq_profit_split_property; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_profit_split_project ON public.profit_split_config USING btree (project_id) WHERE (project_id IS NOT NULL);
+CREATE UNIQUE INDEX uq_profit_split_property ON public.profit_split_config USING btree (property_id) WHERE (property_id IS NOT NULL);
 
 
 --
--- Name: analysis_snapshots analysis_snapshots_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: properties trg_properties_touch; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_properties_touch BEFORE UPDATE ON public.properties FOR EACH ROW EXECUTE FUNCTION public.properties_touch_updated_at();
+
+
+--
+-- Name: properties trg_properties_transition; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_properties_transition BEFORE UPDATE OF status ON public.properties FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION public.properties_guard_transition();
+
+
+--
+-- Name: analysis_snapshots analysis_snapshots_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.analysis_snapshots
-    ADD CONSTRAINT analysis_snapshots_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects(id);
+    ADD CONSTRAINT analysis_snapshots_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id);
 
 
 --
@@ -2178,11 +2570,11 @@ ALTER TABLE ONLY public.process_instances
 
 
 --
--- Name: process_instances process_instances_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: process_instances process_instances_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.process_instances
-    ADD CONSTRAINT process_instances_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id);
+    ADD CONSTRAINT process_instances_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id);
 
 
 --
@@ -2210,11 +2602,11 @@ ALTER TABLE ONLY public.profit_split_config
 
 
 --
--- Name: profit_split_config profit_split_config_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: profit_split_config profit_split_config_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.profit_split_config
-    ADD CONSTRAINT profit_split_config_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id);
+    ADD CONSTRAINT profit_split_config_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id);
 
 
 --
@@ -2226,43 +2618,75 @@ ALTER TABLE ONLY public.profit_split_config
 
 
 --
--- Name: project_images project_images_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: project_images_legacy project_images_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.project_images
-    ADD CONSTRAINT project_images_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
-
-
---
--- Name: project_investors project_investors_investor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.project_investors
-    ADD CONSTRAINT project_investors_investor_id_fkey FOREIGN KEY (investor_id) REFERENCES public.investors(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.project_images_legacy
+    ADD CONSTRAINT project_images_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects_legacy(id) ON DELETE CASCADE;
 
 
 --
--- Name: project_investors project_investors_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: projects_legacy projects_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.project_investors
-    ADD CONSTRAINT project_investors_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
-
-
---
--- Name: projects projects_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.projects
-    ADD CONSTRAINT projects_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.projects_legacy
+    ADD CONSTRAINT projects_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects_legacy(id) ON DELETE SET NULL;
 
 
 --
--- Name: prospect_images prospect_images_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: property_id_map property_id_map_new_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.prospect_images
-    ADD CONSTRAINT prospect_images_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.property_id_map
+    ADD CONSTRAINT property_id_map_new_id_fkey FOREIGN KEY (new_id) REFERENCES public.properties(id) ON DELETE CASCADE;
+
+
+--
+-- Name: property_images property_images_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_images
+    ADD CONSTRAINT property_images_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id) ON DELETE CASCADE;
+
+
+--
+-- Name: property_investors property_investors_investor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_investors
+    ADD CONSTRAINT property_investors_investor_id_fkey FOREIGN KEY (investor_id) REFERENCES public.investors(id) ON DELETE CASCADE;
+
+
+--
+-- Name: property_investors property_investors_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_investors
+    ADD CONSTRAINT property_investors_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id) ON DELETE CASCADE;
+
+
+--
+-- Name: property_status_events property_status_events_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_status_events
+    ADD CONSTRAINT property_status_events_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: property_status_events property_status_events_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_status_events
+    ADD CONSTRAINT property_status_events_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id) ON DELETE CASCADE;
+
+
+--
+-- Name: prospect_images_legacy prospect_images_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prospect_images_legacy
+    ADD CONSTRAINT prospect_images_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects_legacy(id) ON DELETE CASCADE;
 
 
 --
@@ -2298,11 +2722,11 @@ ALTER TABLE ONLY public.remodel_costs
 
 
 --
--- Name: signals signals_prospect_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: signals signals_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.signals
-    ADD CONSTRAINT signals_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects(id);
+    ADD CONSTRAINT signals_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id);
 
 
 --
@@ -2404,4 +2828,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('020'),
     ('021'),
     ('022'),
-    ('023');
+    ('023'),
+    ('024');
