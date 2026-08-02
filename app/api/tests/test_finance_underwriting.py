@@ -68,21 +68,22 @@ _EXPECTED = {
 }
 
 
-def test_metrics_matches_locked_oracle(client, test_prospect):
-    """finance.underwriting reproduces the figures the prospect_metrics view produced,
-    reading the base prospects row (the view itself is gone after migration 020)."""
+def test_metrics_matches_locked_oracle(client, test_property):
+    """finance.underwriting reproduces the figures the prospect_metrics view
+    produced, reading a real properties row (the view itself is long gone)."""
     from api.db import get_db
     with get_db() as conn:
         conn.execute(
-            """UPDATE prospects SET land_price=%s, acquisition_cost_pct=%s, permits_cost=%s,
+            """UPDATE properties SET land_price=%s, acquisition_cost_pct=%s, permits_cost=%s,
                    subdivision_cost=%s, sqm_construction=%s, construction_cost_per_sqm=%s,
                    construction_overhead=%s, projected_sale=%s, hold_months=%s,
                    rent_monthly=%s, sqm_land=%s WHERE id=%s""",
             (INPUTS["land_price"], INPUTS["acquisition_cost_pct"], INPUTS["permits_cost"],
              INPUTS["subdivision_cost"], INPUTS["sqm_construction"], INPUTS["construction_cost_per_sqm"],
              INPUTS["construction_overhead"], INPUTS["projected_sale"], INPUTS["hold_months"],
-             INPUTS["rent_monthly"], INPUTS["sqm_land"], test_prospect["id"]))
-        base = conn.execute("SELECT * FROM prospects WHERE id=%s", (test_prospect["id"],)).fetchone()
+             INPUTS["rent_monthly"], INPUTS["sqm_land"], test_property["id"]))
+        base = conn.execute("SELECT * FROM properties WHERE id=%s",
+                            (test_property["id"],)).fetchone()
 
     m = uw.metrics(dict(base))
     for key, expected in _EXPECTED.items():
@@ -97,9 +98,59 @@ def test_metrics_zero_guards_return_none():
     ))
     assert m["roi"] is None
     assert m["roi_total"] is None
+    assert m["profit"] is None
     assert m["cap_rate"] is None
     assert m["rent_annual"] is None
     assert m["land_price_per_sqm"] is None
+
+
+# ── The one gain, applied to three different exits ───────────────────────────
+
+def test_gain_is_the_exit_minus_the_basis():
+    assert uw.gain(3_480_000, 5_000_000) == Decimal("1520000")
+    assert uw.gain_pct(3_480_000, 5_000_000) == Decimal("0.4368")
+
+
+def test_a_loss_is_reported_as_a_loss():
+    assert uw.gain(3_480_000, 2_500_000) == Decimal("-980000")
+    assert uw.gain_pct(3_480_000, 2_500_000) == Decimal("-0.2816")
+
+
+def test_no_exit_value_means_no_gain_never_zero():
+    """0 means "not captured" for every exit in this domain — a modeled sale
+    that does not exist, a valuation nobody made. Reporting 0 would claim the
+    property broke even; reporting the negative would claim it lost everything."""
+    for absent in (0, None):
+        assert uw.gain(3_480_000, absent) is None
+        assert uw.gain_pct(3_480_000, absent) is None
+
+
+def test_no_basis_means_no_gain():
+    for absent in (0, None):
+        assert uw.gain(absent, 5_000_000) is None
+        assert uw.gain_pct(absent, 5_000_000) is None
+
+
+def test_the_breakdown_is_complete_only_with_all_seven():
+    assert uw.has_breakdown(INPUTS)
+    assert not uw.has_breakdown(dict(INPUTS, permits_cost=None))
+
+
+def test_the_basis_prefers_the_breakdown_over_the_typed_total():
+    """While the breakdown is complete the system owns the total; a stale manual
+    figure must never win over it."""
+    assert uw.basis(dict(INPUTS, total_investment=9_000_000)) == Decimal("3480000.000")
+    assert uw.basis_kind(dict(INPUTS)) == "underwriting"
+
+
+def test_without_a_breakdown_the_basis_is_the_typed_total():
+    partial = dict(INPUTS, permits_cost=None, total_investment=9_000_000)
+    assert uw.basis(partial) == Decimal("9000000")
+    assert uw.basis_kind(partial) == "manual"
+
+
+def test_with_neither_there_is_no_basis():
+    assert uw.basis(dict(INPUTS, permits_cost=None)) is None
 
 
 def test_cap_rate_is_yield_on_cost():

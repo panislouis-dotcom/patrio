@@ -269,9 +269,9 @@ def test_geocode_one_keeps_correct_state_signal():
 
 # ── /api/sonar/import ─────────────────────────────────────────────────────────
 
-def test_sonar_import_creates_prospect():
-    mock_prospect = {"id": 42, "name": "Terreno Test", "status": "evaluating"}
-    with patch("api.routes.sonar.create_prospect", return_value=mock_prospect):
+def test_sonar_import_captures_a_property_in_prospecto():
+    captured = {"id": 42, "name": "Terreno Test", "status": "prospecto"}
+    with patch("api.routes.sonar.create_property", return_value=captured) as create:
         r = _make_client().post("/api/sonar/import", json={
             "url":      "https://lamudi.com.mx/test-1",
             "title":    "Terreno Test",
@@ -282,6 +282,11 @@ def test_sonar_import_creates_prospect():
             "portal":   "lamudi",
         })
     assert r.status_code == 201
-    data = r.json()
-    assert data["prospect"]["id"] == 42
-    assert data["prospect"]["status"] == "evaluating"
+    assert r.json()["property"] == captured
+    # Only what the portal gave us: the rest comes from the capture defaults, so
+    # the importer cannot drift from the form.
+    assert create.call_args.args[0] == {
+        "name": "Terreno Test", "address": "Col. San Pedro", "city": "Monterrey",
+        "url": "https://lamudi.com.mx/test-1", "latitude": 0.0, "longitude": 0.0,
+        "sqmLand": 300.0, "landPrice": 1_500_000,
+    }
