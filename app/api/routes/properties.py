@@ -225,7 +225,7 @@ def transition_property(property_id: int, body: TransitionRequest,
     notes = payload.pop("notes", "")
     return properties.transition(property_id, to_status, payload,
                                  effective_on=effective_on, notes=notes,
-                                 created_by=user.get("id"))
+                                 actor_email=user.get("email"))
 
 
 @router.post("/api/properties/{property_id}/clear-fields", operation_id="properties_clear_fields")

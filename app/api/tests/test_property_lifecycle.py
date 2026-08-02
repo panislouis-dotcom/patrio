@@ -66,6 +66,19 @@ def test_the_event_carries_its_date_and_note(client, test_property):
     assert event["notes"] == "Oferta presentada."
 
 
+def test_the_event_records_who_moved_it(client, test_property):
+    """created_by resolves from the authenticated email — the only identity both
+    auth paths carry (an API key's own id is not a user id)."""
+    from api.db import get_db
+    _transition(client, test_property["id"], to="oferta")
+    with get_db() as conn:
+        actor = conn.execute(
+            "SELECT u.email FROM property_status_events e JOIN users u ON u.id = e.created_by"
+            " WHERE e.property_id = %s AND e.to_status = 'oferta'",
+            (test_property["id"],)).fetchone()
+    assert actor is not None and actor["email"] == "test@test.com"
+
+
 def test_desarrollo_can_flip_straight_to_vendida(client, desarrollo_property):
     """A flip never rents; the lifecycle must not force it through en_renta."""
     r = _transition(client, desarrollo_property["id"], to="vendida",

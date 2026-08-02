@@ -448,7 +448,7 @@ def clear_fields(property_id: int, fields: list[str]) -> dict:
 
 
 def transition(property_id: int, to_status: str, data: dict,
-               effective_on=None, notes: str = "", created_by: int | None = None) -> dict:
+               effective_on=None, notes: str = "", actor_email: str | None = None) -> dict:
     """Move a property to the next stage, carrying the inputs that stage requires.
 
     The gate is checked before the UPDATE, so the user gets a sentence instead of
@@ -475,11 +475,16 @@ def transition(property_id: int, to_status: str, data: dict,
             f"UPDATE properties SET {assignments} WHERE id = %s",
             list(columns.values()) + [to_status, property_id],
         )
+        # The actor is identified by email: it is the only thing both auth paths
+        # carry, and an API key's own id is not a user id. Resolving it in the
+        # statement keeps the write to a single round trip, and an unknown email
+        # leaves created_by NULL rather than failing the transition.
         conn.execute(
             "INSERT INTO property_status_events"
             " (property_id, from_status, to_status, effective_on, notes, created_by)"
-            " VALUES (%s, %s, %s, COALESCE(%s, CURRENT_DATE), %s, %s)",
-            (property_id, from_status, to_status, to_date(effective_on), notes, created_by),
+            " VALUES (%s, %s, %s, COALESCE(%s, CURRENT_DATE), %s,"
+            "         (SELECT id FROM users WHERE email = %s))",
+            (property_id, from_status, to_status, to_date(effective_on), notes, actor_email),
         )
     return get_property(property_id)
 
