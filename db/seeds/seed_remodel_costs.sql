@@ -21,7 +21,7 @@ FROM zones z,
   ('total',     16000, '["demolición_interior","estructura","instalaciones","acabados","fachada"]',
    'Rango mercado: $13,000-$20,000/m². Incluye todo menos cimentación.'),
   ('obra_nueva', 6000, '["cimentación","estructura","instalaciones","acabados","fachada"]',
-   'Costo actual usado en prospects: $6,000/m². Construcción completa.')
+   'Costo actual usado en propiedades: $6,000/m². Construcción completa.')
 ) AS v(level, cost, includes, notes)
 WHERE z.name = 'centro_monterrey'
 ON CONFLICT (zone_id, intervention_level, valid_from) DO NOTHING;

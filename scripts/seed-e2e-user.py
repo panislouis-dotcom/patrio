@@ -46,46 +46,59 @@ def main() -> int:
                 (email, password_hash),
             )
 
-            # Seed a prospect so row-click/detail-page E2E tests have data
-            cur.execute("DELETE FROM prospects WHERE name = '[SEED] Terreno E2E'")
+            # Seed a pre-purchase property so row-click/detail-page E2E tests have data.
+            # rent_monthly stays NULL: the column only stores positive rents.
+            cur.execute("DELETE FROM properties WHERE name = '[SEED] Terreno E2E'")
             cur.execute(
                 """
-                INSERT INTO prospects (
-                    name, address, city, status, url,
+                INSERT INTO properties (
+                    name, address, city, status, asset_type, url,
                     latitude, longitude,
                     sqm_land, sqm_construction,
                     land_price, acquisition_cost_pct,
                     permits_cost, subdivision_cost,
                     construction_cost_per_sqm, construction_overhead,
-                    projected_sale, hold_months, rent_monthly
+                    projected_sale, hold_months
                 ) VALUES (
-                    '[SEED] Terreno E2E', 'Calle E2E 1, Col. Centro', 'Monterrey', 'evaluating',
+                    '[SEED] Terreno E2E', 'Calle E2E 1, Col. Centro', 'Monterrey', 'prospecto', 'lote',
                     'https://refigan.mx',
                     25.6866, -100.3161,
                     500, 0,
                     2000000, 0.065,
                     0, 0,
                     0, 1.3,
-                    3000000, 18, 0
+                    3000000, 18
                 )
                 """,
             )
 
-            # Seed a project so proyecto row-click/detail-page E2E tests have data
-            cur.execute("DELETE FROM projects WHERE name = '[SEED] Proyecto E2E'")
+            # Seed a property under development so the post-purchase E2E tests have data
+            cur.execute("DELETE FROM properties WHERE name = '[SEED] Propiedad E2E'")
             cur.execute(
                 """
-                INSERT INTO projects (
-                    name, type, address, city, status,
-                    total_units, acquisition_date, conclusion_date,
+                INSERT INTO properties (
+                    name, asset_type, strategy_type, address, city, status,
+                    total_units, acquisition_date,
                     total_investment, current_valuation, valuation_date,
                     url, latitude, longitude
                 ) VALUES (
-                    '[SEED] Proyecto E2E', 'residencial', 'Av. E2E 100, Monterrey', 'Monterrey', 'en_proceso',
-                    10, '2024-01-01', '2025-12-31',
+                    '[SEED] Propiedad E2E', 'edificio', 'ground_up',
+                    'Av. E2E 100, Monterrey', 'Monterrey', 'desarrollo',
+                    10, '2024-01-01',
                     5000000, 6000000, '2024-06-01',
                     'https://refigan.mx', 25.6866, -100.3161
                 )
+                """,
+            )
+
+            # Both properties need their opening status event: the API writes one on
+            # create, and the lifecycle E2E specs read the history.
+            cur.execute(
+                """
+                INSERT INTO property_status_events (property_id, from_status, to_status, effective_on, notes)
+                SELECT id, NULL, status, created_at::date, 'Alta de semilla E2E'
+                  FROM properties
+                 WHERE name IN ('[SEED] Terreno E2E', '[SEED] Propiedad E2E')
                 """,
             )
 
@@ -103,7 +116,7 @@ def main() -> int:
     finally:
         conn.close()
 
-    print("✓ E2E user, prospect, project, investor, and proveedor seeded")
+    print("✓ E2E user, properties, investor, and proveedor seeded")
     return 0
 
 
