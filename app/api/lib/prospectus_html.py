@@ -326,6 +326,12 @@ def _kv_rows(pairs) -> str:
 # Section builders
 # ---------------------------------------------------------------------------
 
+def _track_roi(p: dict):
+    """El ROI que presume el track record: realizado si ya se vendió, la marca
+    contra costo si sigue en renta."""
+    return p.get("realizedRoi") if p.get("realizedRoi") is not None else p.get("roi")
+
+
 def _cover(month_year: str, operating: list[dict] | None = None) -> str:
     # Las tres cifras de portada salen de los proyectos operando — nada inventado:
     # unidades sumadas, y promedio simple (no ponderado) del ROI anualizado y del
@@ -333,7 +339,7 @@ def _cover(month_year: str, operating: list[dict] | None = None) -> str:
     ops = operating or []
     units = sum(int(_num(p.get("totalUnits"))) for p in ops)
     units_v = f"{units:,}" if units else "—"
-    roi_avg = _fmt_pct_or_dash(_mean([p.get("roi") for p in ops]))
+    roi_avg = _fmt_pct_or_dash(_mean([_track_roi(p) for p in ops]))
     cap_avg = _fmt_pct_or_dash(_mean([p.get("capRate") for p in ops]))
     return f"""<div class="page-block cover">
   <div class="cover-top">
@@ -361,11 +367,18 @@ def _cover(month_year: str, operating: list[dict] | None = None) -> str:
 </div>"""
 
 
+def _realized_gain_pct(p: dict) -> float:
+    """La plusvalía que el track record presume: realizada si ya se vendió, la
+    marca contra costo si sigue en renta."""
+    return _num(p.get("realizedGainPct") if p.get("realizedGainPct") is not None
+                else p.get("unrealizedGainPct"))
+
+
 def _project_card(p: dict, kicker: str, projected: bool = False) -> str:
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
-    ptype = _esc(_pretty_type(p.get("type")))
+    ptype = _esc(_pretty_type(p.get("strategyType") or p.get("assetType")))
     units = int(_num(p.get("totalUnits")))
     hold = int(_num(p.get("holdMonthsActual")))
 
@@ -393,13 +406,20 @@ def _project_card(p: dict, kicker: str, projected: bool = False) -> str:
         ])
     else:
         # Operando: resultados realizados. La valuación lleva su fecha de corte.
-        val_month = _fmt_month(p.get("valuationDate"))
+        sold = p.get("realizedRoi") is not None or p.get("realizedGainPct") is not None
+        if sold:
+            exit_value, exit_label = p.get("salePrice"), f"Venta · {_fmt_month(p.get('saleDate'))}"
+            roi, gain = p.get("realizedRoi"), p.get("realizedGainPct")
+        else:
+            val_month = _fmt_month(p.get("valuationDate"))
+            exit_value = p.get("currentValuation")
+            exit_label = f"Valuación · {val_month}" if val_month else "Valuación actual"
+            roi, gain = p.get("roi"), p.get("unrealizedGainPct")
         metrics = "".join([
             _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
-            _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
-                    f"Valuación · {val_month}" if val_month else "Valuación actual"),
-            _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
-            _metric(_fmt_pct_or_dash(p.get("unrealizedGainPct")), "Plusvalía"),
+            _metric(_fmt_mxn_compact_or_dash(exit_value), exit_label),
+            _metric(_fmt_pct_or_dash(roi), "ROI anual"),
+            _metric(_fmt_pct_or_dash(gain), "Plusvalía"),
             _metric(_fmt_pct_or_dash(cap), "Cap rate"),
         ])
 
@@ -452,7 +472,7 @@ def _team_block(team: list[dict] | None) -> str:
 
 def _summary_card(projects: list[dict], team: list[dict] | None = None) -> str:
     inv = sum(_num(p.get("totalInvestment")) for p in projects)
-    val = sum(_num(p.get("currentValuation")) for p in projects)
+    val = sum(_num(p.get("salePrice") or p.get("currentValuation")) for p in projects)
     gain = val - inv
     metrics = "".join([
         _metric(str(len(projects)), "Proyectos"),
@@ -474,15 +494,15 @@ def _opportunity(p: dict) -> str:
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
-    ptype = _esc(_pretty_type(p.get("type")))
+    ptype = _esc(_pretty_type(p.get("assetType") or p.get("strategyType")))
     hold = int(_num(p.get("holdMonths")))
     total_inv = p.get("totalInvestment")
     projected_sale = p.get("projectedSale")
-    profit = p.get("profit")
+    profit = p.get("projectedProfit")
     # Una sola fuente para la ganancia: el ROI total del API. Es None cuando no hay
     # venta modelada (prospecto sólo de renta) — entonces no hay ganancia estimada
     # que mostrar, en vez del -100% que salía de recalcularla aquí.
-    roi_total = p.get("roiTotal")
+    roi_total = p.get("projectedRoiTotal")
     gain_value = (f'{_fmt_mxn_compact_or_dash(profit)} <small>{_fmt_pct(roi_total, 1)}</small>'
                   if roi_total is not None else "—")
     cap_rate = p.get("capRate")
@@ -573,48 +593,31 @@ def _closing(month_year: str) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-# Estados en obra/ramp-up (vocabulario de app/web/src/lib/status.ts, más el
-# 'en_proceso' heredado que sigue en datos). 'exited' es un negocio cerrado y
-# 'operating' es track record: ninguno de los dos puede leerse "En Desarrollo".
-_DEVELOPMENT_STATUSES = {"construction", "stabilizing", "en_proceso"}
-
-
-def build_prospectus_html(projects: list[dict], prospects: list[dict],
-                          team: list[dict] | None = None) -> str:
+def build_prospectus_html(track_record: list[dict], development: list[dict],
+                          opportunity: list[dict], team: list[dict] | None = None) -> str:
+    """The three buckets arrive already partitioned — the caller owns the status
+    vocabulary, this file owns the presentation."""
     from datetime import date
     today = date.today()
     month_year = f"{_MESES[today.month].capitalize()} {today.year}"
 
-    # Track record = projects already operating (realized results).
-    # En desarrollo = projects still pre-obra (projected figures, not achieved).
-    operating = [p for p in projects if str(p.get("status")) == "operating"]
-    development = [p for p in projects if str(p.get("status")) in _DEVELOPMENT_STATUSES]
-    # Un proyecto que no cae en ningún cubo se queda fuera del PDF; que no sea en
-    # silencio — normalmente es un 'exited' marcado como favorito o un estado nuevo.
-    for p in projects:
-        status = str(p.get("status"))
-        if status != "operating" and status not in _DEVELOPMENT_STATUSES:
-            logger.warning("project %r left out of the prospectus: status %r is "
-                           "neither operating nor in development", p.get("name"), p.get("status"))
+    track_record = sorted(track_record, key=_realized_gain_pct, reverse=True)
 
-    parts = [_cover(month_year, operating)]
+    parts = [_cover(month_year, track_record)]
 
-    # Strongest → weakest by realized plusvalía (la que ya calculó el API).
-    operating.sort(key=lambda p: _num(p.get("unrealizedGainPct")), reverse=True)
-
-    if operating or development:
+    if track_record or development:
         cards = [_project_card(p, f"Track Record · {i:02d}", projected=False)
-                 for i, p in enumerate(operating, 1)]
+                 for i, p in enumerate(track_record, 1)]
         cards += [_project_card(p, f"En Desarrollo · {j:02d}", projected=True)
                   for j, p in enumerate(development, 1)]
         # Portfolio summary (realized track record) carries the valuation footnote
         # and the team block, and fills the trailing half-sheet.
-        if operating:
-            cards.append(_summary_card(operating, team))
+        if track_record:
+            cards.append(_summary_card(track_record, team))
         for pair in _chunk(cards, 2):
             parts.append(f'<div class="page-block sheet">{"".join(pair)}</div>')
 
-    for p in prospects:
+    for p in opportunity:
         parts.append(_opportunity(p))
 
     parts.append(_closing(month_year))
