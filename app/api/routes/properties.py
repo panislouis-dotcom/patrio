@@ -99,7 +99,10 @@ class ToDesarrollo(_TransitionBase):
     to: Literal["desarrollo"]
     acquisitionDate: str
     totalUnits: int
-    currentValuation: float
+    # La valuación NO se pide al comprar: nadie avalúa el día de la compra, y
+    # exigirla solo lograba que se inventara. Se captura cuando exista un avalúo
+    # de verdad; hasta entonces la plusvalía es None, que es la respuesta honesta.
+    currentValuation: Optional[float] = None
     valuationDate: Optional[str] = None
     totalInvestment: Optional[float] = None  # only needed without a full breakdown
 

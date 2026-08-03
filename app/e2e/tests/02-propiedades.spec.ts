@@ -208,10 +208,21 @@ test.describe('Propiedades — la tabla', () => {
   test('📄 PROSPECTO downloads the investor deck', async ({ page }) => {
     await page.goto('/propiedades')
 
+    // El documento se arma con lo marcado como favorito, así que la prueba marca
+    // el suyo —el de este archivo, por nombre—: depender de lo que alguien más
+    // hubiera dejado marcado la volvía verde o roja según el estado de la base.
+    const star = row(page, TEST_NAME).locator('td').first()
+    if ((await star.textContent())?.trim() === '☆') await star.click()
+    await expect(star).toHaveText('★')
+
     const download = page.waitForEvent('download', { timeout: 20_000 })
     await page.getByRole('button', { name: '📄 PROSPECTO' }).click()
 
     expect((await download).suggestedFilename()).toBe('prospecto.pdf')
+
+    // Se deja como se encontró: el favorito es de quien lo marque, no del PDF.
+    await star.click()
+    await expect(star).toHaveText('☆')
   })
 
   // ── Navegación ──────────────────────────────────────────────────────────────

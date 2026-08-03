@@ -87,7 +87,17 @@ def test_the_pre_purchase_warnings_stop_once_it_is_bought():
 def test_desarrollo_demands_its_capital_and_dates():
     assert "acquisitionDate" in _fields(_bought(acquisition_date=None), "error")
     assert "totalUnits" in _fields(_bought(total_units=None), "error")
-    assert "currentValuation" in _fields(_bought(current_valuation=None), "error")
+
+
+def test_buying_does_not_demand_an_appraisal():
+    """Comprar no produce un avalúo. Exigir una valuación el día de la compra
+    solo lograba que se inventara —el modal la rellenaba con la venta
+    proyectada—, y una plusvalía que nace igualada al plan no es una plusvalía.
+    Sin valuación la métrica es None, que es la respuesta honesta."""
+    for status in ("desarrollo", "en_renta"):
+        row = _bought(status=status, current_valuation=None,
+                      first_rent_date=date(2025, 6, 1), rent_monthly=10_000)
+        assert "currentValuation" not in _fields(row, "error")
 
 
 def test_desarrollo_warns_when_the_investment_was_typed_in():

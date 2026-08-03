@@ -110,18 +110,24 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await page.goto(`/propiedades/${id}`)
     await advanceTo(page, 'DESARROLLO')
 
-    // Prefilled from what the property already knows — but still required
+    // El portón pide lo que solo sabe quien compró, y nada más.
     await expect(gateField(page, 'FECHA DE ADQUISICIÓN')).not.toHaveValue('')
-    await expect(gateField(page, 'VALUACIÓN INICIAL')).toHaveValue('7000000')
+    await expect(gateField(page, 'UNIDADES')).not.toHaveValue('')
 
-    await gateField(page, 'VALUACIÓN INICIAL').fill('')
-    await expect(confirmTransition(page, 'DESARROLLO')).toBeDisabled()
+    // Comprar no produce un avalúo: no se pide ninguna valuación. Antes se
+    // ofrecía prellenada con la venta proyectada, que es otro dato con otro
+    // nombre — y una plusvalía que nace igualada al plan no es una plusvalía.
+    await expect(page.getByLabel(/VALUACI[ÓO]N/)).toHaveCount(0)
 
-    await gateField(page, 'VALUACIÓN INICIAL').fill('5000000')
-    await expect(confirmTransition(page, 'DESARROLLO')).toBeEnabled()
+    // Y con el desglose completo la inversión ya está sumada: preguntarla sería
+    // pedir un dato que el sistema tiene mejor que quien lo teclea.
+    await expect(page.getByLabel('INVERSIÓN TOTAL')).toHaveCount(0)
 
     await gateField(page, 'FECHA DE ADQUISICIÓN').fill('')
     await expect(confirmTransition(page, 'DESARROLLO')).toBeDisabled()
+
+    await gateField(page, 'FECHA DE ADQUISICIÓN').fill('2026-01-15')
+    await expect(confirmTransition(page, 'DESARROLLO')).toBeEnabled()
 
     await page.getByRole('button', { name: 'CANCELAR', exact: true }).click()
     // A refused move leaves the property exactly where it was
@@ -144,14 +150,12 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 
   // ── Desarrollo ──────────────────────────────────────────────────────────────
 
-  test('en desarrollo muere el score y nace la realidad', async ({ page }) => {
+  test('en desarrollo muere el score y nace la realidad', async ({ page, request }) => {
     await page.goto(`/propiedades/${id}`)
     await advanceTo(page, 'DESARROLLO')
 
     await gateField(page, 'FECHA DE ADQUISICIÓN').fill(ACQUIRED_ON)
     await gateField(page, 'UNIDADES').fill('2')
-    await gateField(page, 'VALUACIÓN INICIAL').fill('5000000')
-    await gateField(page, 'FECHA DE VALUACIÓN').fill(ACQUIRED_ON)
     await confirmTransition(page, 'DESARROLLO').click()
 
     await expect(detailRow(page, 'ETAPA')).toContainText('DESARROLLO')
@@ -160,7 +164,20 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 
     // A bought property competes with nobody: the score is over
     await expect(page.getByText(/^Score/)).toHaveCount(0)
-    // What replaces it is the mark against the capital: 5,000,000 over 4,000,000
+
+    // Y como nadie ha avaluado nada todavía, la plusvalía no existe: comprar no
+    // produce un avalúo, y la ausencia se dice con un guion, no con un número.
+    await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('—')
+
+    // El día que aparece un avalúo de verdad, aparece la plusvalía con él:
+    // 5,000,000 contra 4,000,000 de capital.
+    const valued = await request.patch(`${API_BASE}/api/properties/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { currentValuation: 5_000_000, valuationDate: ACQUIRED_ON },
+    })
+    expect(valued.ok()).toBeTruthy()
+    await page.reload()
+
     await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('+25.0%')
     await expect(detailRow(page, 'ROI ANUAL')).toContainText('$1,000,000')
     // The projection it was bought on stays readable — it is what reality is

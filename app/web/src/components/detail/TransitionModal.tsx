@@ -10,6 +10,8 @@ interface Field {
   kind: 'date' | 'money' | 'int'
   /** Obligatorio salvo que la propiedad ya lo traiga capturado. */
   required: (p: Property) => boolean
+  /** Un campo que la propiedad ya resolvió no se pregunta. Por omisión, todos. */
+  show?: (p: Property) => boolean
   prefill: (p: Property) => string
   hint?: string
 }
@@ -34,14 +36,15 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
       required: () => true, prefill: p => p.acquisitionDate ?? today() },
     { key: 'totalUnits', label: 'UNIDADES', kind: 'int',
       required: () => true, prefill: p => str(p.totalUnits) || '1' },
-    { key: 'currentValuation', label: 'VALUACIÓN INICIAL', kind: 'money',
-      required: () => true, prefill: p => str(p.currentValuation ?? p.projectedSale) },
-    { key: 'valuationDate', label: 'FECHA DE VALUACIÓN', kind: 'date',
-      required: () => false, prefill: p => p.valuationDate ?? today() },
+    // No se pide valuación: comprar no produce un avalúo. Se captura en la
+    // ficha el día que exista uno de verdad.
     { key: 'totalInvestment', label: 'INVERSIÓN TOTAL', kind: 'money',
       required: p => p.investmentBasis !== 'underwriting',
-      prefill: p => (p.investmentBasis === 'underwriting' ? '' : str(p.totalInvestment)),
-      hint: 'Solo hace falta cuando el desglose de costos no está completo.' },
+      // Con el desglose completo la inversión ya está sumada; preguntarla sería
+      // pedir un dato que el sistema tiene mejor que quien lo teclea.
+      show: p => p.investmentBasis !== 'underwriting',
+      prefill: p => str(p.totalInvestment),
+      hint: 'El desglose de costos está incompleto, así que hace falta el total.' },
   ],
   en_renta: [
     { key: 'firstRentDate', label: 'FECHA DE LA PRIMERA RENTA', kind: 'date',
@@ -49,15 +52,18 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
     { key: 'rentMonthly', label: 'RENTA MENSUAL REAL', kind: 'money',
       required: () => true, prefill: p => str(p.rentMonthly) },
     { key: 'currentValuation', label: 'VALUACIÓN', kind: 'money',
-      required: p => p.currentValuation == null, prefill: p => str(p.currentValuation) },
+      required: () => false, prefill: p => str(p.currentValuation),
+      hint: 'Opcional: solo si ya existe un avalúo.' },
     { key: 'valuationDate', label: 'FECHA DE VALUACIÓN', kind: 'date',
       required: () => false, prefill: p => p.valuationDate ?? '' },
   ],
   vendida: [
     { key: 'saleDate', label: 'FECHA DE VENTA', kind: 'date',
       required: () => true, prefill: () => today() },
+    // Sin prefill: el precio de venta es un hecho que se conoce, y arrastrarle
+    // la última valuación solo lograría que se confirmara sin leerlo.
     { key: 'salePrice', label: 'PRECIO DE VENTA', kind: 'money',
-      required: () => true, prefill: p => str(p.currentValuation) },
+      required: () => true, prefill: () => '' },
   ],
   archivada: [],
 }
@@ -70,7 +76,7 @@ interface Props {
 }
 
 export function TransitionModal({ property, to, onCancel, onConfirm }: Props) {
-  const fields = FIELDS[to]
+  const fields = FIELDS[to].filter(f => f.show?.(property) ?? true)
   const [values, setValues] = useState<Record<string, string>>(
     () => Object.fromEntries(fields.map(f => [f.key, f.prefill(property)])),
   )

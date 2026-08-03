@@ -390,10 +390,9 @@ BEGIN
             RAISE EXCEPTION 'desarrollo exige total_units (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
-        IF NEW.current_valuation IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige valuación inicial (propiedad %)',
-                OLD.id USING ERRCODE = 'check_violation';
-        END IF;
+        -- Comprar no produce un avalúo: la valuación NO se exige aquí. Se
+        -- captura el día que alguien de verdad valúa, y hasta entonces la
+        -- plusvalía es NULL, que es la respuesta honesta.
         -- La base de inversión se resuelve de dos formas y solo de dos: el total
         -- capturado a mano, o el desglose COMPLETO de siete campos (con uno
         -- faltante el sistema no puede recomputar nada).
@@ -414,10 +413,6 @@ BEGIN
     IF NEW.status = 'en_renta' THEN
         IF NEW.rent_monthly IS NULL THEN
             RAISE EXCEPTION 'en_renta exige rent_monthly (propiedad %)',
-                OLD.id USING ERRCODE = 'check_violation';
-        END IF;
-        IF NEW.current_valuation IS NULL THEN
-            RAISE EXCEPTION 'en_renta exige valuación (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;

@@ -50,8 +50,9 @@ def stage_requirements(status: str, row: dict) -> dict[str, str]:
                 "Una propiedad en desarrollo ya se compró: falta la fecha de adquisición.")
         if row.get("total_units") is None:
             missing["totalUnits"] = "Falta el número de unidades."
-        if row.get("current_valuation") is None:
-            missing["currentValuation"] = "Falta la valuación inicial."
+        # Comprar no produce un avalúo. La valuación se captura cuando alguien
+        # de verdad valúa; hasta entonces la plusvalía es None, que es la
+        # respuesta honesta. Exigirla aquí solo lograba que se inventara.
         if underwriting.basis(row) is None:
             missing["totalInvestment"] = (
                 "Falta la base de inversión: captura el total a mano o los siete "
@@ -62,8 +63,6 @@ def stage_requirements(status: str, row: dict) -> dict[str, str]:
             missing["firstRentDate"] = "Falta la fecha de la primera renta."
         if row.get("rent_monthly") is None:
             missing["rentMonthly"] = "Falta la renta mensual real."
-        if row.get("current_valuation") is None:
-            missing["currentValuation"] = "Falta la valuación."
 
     if status == "vendida":
         if row.get("sale_date") is None:
