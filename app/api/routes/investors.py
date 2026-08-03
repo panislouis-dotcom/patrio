@@ -36,9 +36,10 @@ class InvestorUpdate(BaseModel):
     confianza: Optional[str] = None
 
 
+# `status` no se recibe: el embudo (interesado → comprometido → fondeado) es una
+# lectura de los montos, y se deriva en el servidor en cada escritura.
 class PropertyInvestorCreate(BaseModel):
     investorId: int
-    status: str = 'interesado'
     interestedAmount: float = 0
     committedAmount: float = 0
     fundedAmount: float = 0
@@ -48,7 +49,6 @@ class PropertyInvestorCreate(BaseModel):
 
 
 class PropertyInvestorUpdate(BaseModel):
-    status: Optional[str] = None
     interestedAmount: Optional[float] = None
     committedAmount: Optional[float] = None
     fundedAmount: Optional[float] = None

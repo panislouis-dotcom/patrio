@@ -3,9 +3,28 @@ import { fetchPropertyProfit, updatePropertyProfit } from '../lib/api'
 import type { ProfitSplitConfig, ProfitWaterfall, TeamMember } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtMXN } from '../lib/fmt'
+import { WaterfallTable } from './finance/WaterfallTable'
 
 function toggleId(ids: number[], id: number): number[] {
   return ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]
+}
+
+/** Cómo se llama, en español, cada insumo que el bono puede estar esperando. */
+const BONUS_INPUT_LABEL: Record<string, string> = {
+  plannedEndDate: 'la fecha planeada de entrega',
+  bufferDays: 'la holgura en días',
+  actualEndDate: 'la fecha real de entrega',
+}
+
+const MONTHS_ORIGIN: Record<string, string> = {
+  real: 'plazo real transcurrido',
+  proyectado: 'plazo proyectado de la propiedad',
+  supuesto: 'supuesto por omisión',
+}
+
+const EXIT_ORIGIN: Record<string, string> = {
+  venta: 'precio al que se vendió',
+  valuacion: 'última valuación',
 }
 
 const sectionDivider = (label: string) => (
@@ -59,7 +78,15 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // draft fields — split percentages and assignments only
+  // draft fields — supuestos del reparto, entrega, porcentajes y asignaciones
+  const [exitPrice, setExitPrice] = useState<string>('')
+  const [investorCapital, setInvestorCapital] = useState<string>('')
+  const [investorRateAnnual, setInvestorRateAnnual] = useState<string>('12')
+  const [investorMonths, setInvestorMonths] = useState<string>('')
+  const [isrRate, setIsrRate] = useState<string>('30')
+  const [plannedEndDate, setPlannedEndDate] = useState<string>('')
+  const [actualEndDate, setActualEndDate] = useState<string>('')
+  const [bufferDays, setBufferDays] = useState<string>('0')
   const [finderFeePct, setFinderFeePct] = useState<string>('0')
   const [directorPct, setDirectorPct] = useState<string>('0')
   const [responsablePct, setResponsablePct] = useState<string>('0')
@@ -81,6 +108,14 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
       setConfig(config)
       setWaterfall(waterfall)
       onWaterfallChange?.(waterfall)
+      setExitPrice(config.exitPrice != null ? String(config.exitPrice) : '')
+      setInvestorCapital(config.investorCapital != null ? String(config.investorCapital) : '')
+      setInvestorRateAnnual(String(Math.round(config.investorRateAnnual * 100)))
+      setInvestorMonths(config.investorMonths != null ? String(config.investorMonths) : '')
+      setIsrRate(String(Math.round(config.isrRate * 100)))
+      setPlannedEndDate(config.plannedEndDate ?? '')
+      setActualEndDate(config.actualEndDate ?? '')
+      setBufferDays(String(config.bufferDays ?? 0))
       setFinderFeePct(String(Math.round(config.finderFeePct * 100)))
       setDirectorPct(String(Math.round(config.directorPct * 100)))
       setResponsablePct(String(Math.round(config.responsablePct * 100)))
@@ -105,6 +140,17 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
     setSaving(true)
     try {
       const draft: Partial<ProfitSplitConfig> = {
+        // Vacío = no capturado: se manda null para que el servidor resuelva el
+        // insumo por su cuenta y diga de dónde lo sacó, en vez de guardar un 0
+        // que después se lee como un precio de salida de cero.
+        exitPrice: exitPrice ? Number(exitPrice) : null,
+        investorCapital: investorCapital ? Number(investorCapital) : null,
+        investorRateAnnual: Number(investorRateAnnual) / 100,
+        investorMonths: investorMonths ? Number(investorMonths) : null,
+        isrRate: Number(isrRate) / 100,
+        plannedEndDate: plannedEndDate || null,
+        actualEndDate: actualEndDate || null,
+        bufferDays: Number(bufferDays) || 0,
         finderFeePct: Number(finderFeePct) / 100,
         directorPct: Number(directorPct) / 100,
         responsablePct: Number(responsablePct) / 100,
@@ -164,35 +210,87 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
     />
   )
 
+  /**
+   * Un supuesto capturable. Cuando el campo está vacío, `fallback` dice qué se
+   * está usando en su lugar y de dónde salió — un supuesto que no se puede leer
+   * es indistinguible de un hecho.
+   */
+  const assumption = (
+    label: string, value: string, onChange: (v: string) => void,
+    opts: { type?: string; suffix?: string; fallback?: string } = {},
+  ) => (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <span style={{ ...labelStyle, minWidth: '120px' }}>{label}</span>
+        <input
+          type={opts.type ?? 'number'}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          aria-label={label}
+          placeholder={opts.type === 'date' ? '' : '—'}
+          style={{ ...inputStyle, width: opts.type === 'date' ? '140px' : '110px', textAlign: opts.type === 'date' ? 'left' : 'right' }}
+        />
+        {opts.suffix && <span style={labelStyle}>{opts.suffix}</span>}
+      </div>
+      {!value && opts.fallback && (
+        <div style={{ fontFamily: fonts.sans, fontSize: '9px', color: colors.secondary, marginTop: '2px', marginLeft: '126px' }}>
+          {opts.fallback}
+        </div>
+      )}
+    </div>
+  )
+
+  const exitFallback = waterfall.exitPriceSource && waterfall.exitPriceSource !== 'capturado'
+    ? `usando ${fmtMXN(waterfall.exitPrice)} — ${EXIT_ORIGIN[waterfall.exitPriceSource]}`
+    : 'sin capturar y sin venta ni valuación: el reparto no se puede calcular'
+  const capitalFallback = waterfall.investorCapitalSource === 'fondeado'
+    ? `usando ${fmtMXN(waterfall.investorCapital)} — suma de lo fondeado por los inversionistas`
+    : 'sin inversionistas fondeados: no se cobra costo de capital de terceros'
+  const monthsFallback = waterfall.monthsSource !== 'capturado'
+    ? `usando ${waterfall.months} meses — ${MONTHS_ORIGIN[waterfall.monthsSource]}`
+    : undefined
+
   return (
     <div style={{ padding: '0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
       {/* ── FLUJO FINANCIERO ─────────────────────────────────────────────────── */}
-      {showWaterfall && <div>
-        {sectionDivider('FLUJO FINANCIERO')}
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <tbody>
-            {([
-              { label: 'PRECIO DE SALIDA',    value: waterfall.exitPrice,      dividerBefore: false, indent: false, highlight: false },
-              { label: '− INVERSIÓN TOTAL',   value: waterfall.investment,     dividerBefore: false, indent: false, highlight: false },
-              { label: 'GANANCIA BRUTA',      value: waterfall.grossProfit,    dividerBefore: true,  indent: true,  highlight: false },
-              { label: '− CUOTA INVERSORES',  value: waterfall.investorCuota,  dividerBefore: false, indent: false, highlight: false },
-              { label: 'GANANCIA OPERADOR',   value: waterfall.operatorGross,  dividerBefore: true,  indent: true,  highlight: false },
-              { label: `− ISR (${Math.round((config.isrRate || 0.30) * 100)}%)`, value: waterfall.isr, dividerBefore: false, indent: false, highlight: false },
-              { label: 'DISTRIBUIBLE',        value: waterfall.distributable,  dividerBefore: true,  indent: true,  highlight: true  },
-            ] as { label: string; value: number; dividerBefore: boolean; indent: boolean; highlight: boolean }[]).map(row => (
-              <tr key={row.label} style={{ borderTop: row.dividerBefore ? `1px solid ${colors.border}` : undefined }}>
-                <td style={{ padding: '4px 0', paddingLeft: row.indent ? '10px' : '0', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.08em' }}>
-                  {row.label}
-                </td>
-                <td style={{ padding: '4px 0', textAlign: 'right', fontFamily: fonts.sans, fontSize: '11px', color: row.highlight ? colors.primary : colors.neutral }}>
-                  {fmtMXN(row.value)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>}
+      {showWaterfall && <WaterfallTable waterfall={waterfall} />}
+
+      {/* ── SUPUESTOS DEL REPARTO ────────────────────────────────────────────── */}
+      {/* Los cinco números que mueven cada renglón del flujo. Vivían solo en la
+          base de datos: la interfaz los usaba para calcular y los imprimía como
+          resultado, pero no había forma de verlos ni de cambiarlos. */}
+      <div>
+        {sectionDivider('SUPUESTOS DEL REPARTO')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {assumption('PRECIO DE SALIDA', exitPrice, setExitPrice, { fallback: exitFallback })}
+          {assumption('CAPITAL INVERSOR', investorCapital, setInvestorCapital, { fallback: capitalFallback })}
+          {assumption('TASA INVERSOR', investorRateAnnual, setInvestorRateAnnual, { suffix: '% anual' })}
+          {assumption('PLAZO', investorMonths, setInvestorMonths, { suffix: 'meses', fallback: monthsFallback })}
+          {assumption('ISR', isrRate, setIsrRate, { suffix: '%' })}
+        </div>
+      </div>
+
+      {/* ── ENTREGA Y BONO ───────────────────────────────────────────────────── */}
+      {/* El bono por entregar a tiempo se calcula con estos tres campos. Sin
+          ellos capturados nunca podía encenderse — y aun así la tabla de abajo
+          pintaba tres columnas de dinero. */}
+      <div>
+        {sectionDivider('ENTREGA (BONO DEL EQUIPO)')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {assumption('FECHA PLANEADA', plannedEndDate, setPlannedEndDate, { type: 'date' })}
+          {assumption('FECHA REAL', actualEndDate, setActualEndDate, {
+            type: 'date',
+            fallback: 'sin capturar: se usa la venta o la primera renta, si ya ocurrieron',
+          })}
+          {assumption('HOLGURA', bufferDays, setBufferDays, { suffix: 'días' })}
+        </div>
+        <div style={{ fontFamily: fonts.sans, fontSize: '10px', color: colors.secondary, marginTop: '8px', lineHeight: 1.5 }}>
+          {waterfall.activeTier != null
+            ? `Bono activo: ${Math.round(waterfall.activeTier * 100)}%. Se entregó ${waterfall.activeTier > 0 ? 'dentro de la holgura' : 'después de la fecha planeada'}.`
+            : `El bono no se puede determinar: falta ${waterfall.bonusInputsMissing.map(k => BONUS_INPUT_LABEL[k] ?? k).join(', ')}.`}
+        </div>
+      </div>
 
       {/* ── PAGOS A INVERSORES ───────────────────────────────────────────────── */}
       {showInvestorBreakdown && waterfall.investorBreakdown.length > 0 && (
@@ -349,7 +447,8 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
             <span style={{ ...labelStyle, minWidth: '80px' }}>EMPRESA</span>
             <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.06em' }}>(residual)</span>
             <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, marginLeft: 'auto' }}>
-              {fmtMXN(waterfall.scenarios.sin_bono.companyResidual)}
+              {waterfall.scenarios.sin_bono.companyResidual == null
+                ? '—' : fmtMXN(waterfall.scenarios.sin_bono.companyResidual)}
             </span>
           </div>
         </div>
@@ -359,6 +458,11 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
       {waterfall.scenarios.sin_bono.splits.length > 0 && (
         <div>
           {sectionDivider('POR PERSONA')}
+          <div style={{ fontFamily: fonts.sans, fontSize: '10px', color: colors.secondary, marginBottom: '8px', marginTop: '-4px' }}>
+            {waterfall.activeTier != null
+              ? `Escenario vigente: ${waterfall.activeTier === 0 ? 'sin bono' : `bono ${Math.round(waterfall.activeTier * 100)}%`}.`
+              : 'Tres escenarios; ninguno vigente todavía — captura la entrega arriba para saber cuál aplica.'}
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -395,7 +499,7 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
                     {(['sin_bono', 'bono_25', 'bono_50'] as const).map(key => {
                       const tierValue = key === 'sin_bono' ? 0 : key === 'bono_25' ? 0.25 : 0.50
                       const isActive = waterfall.activeTier === tierValue
-                      const amount = waterfall.scenarios[key].splits[idx]?.total ?? 0
+                      const amount = waterfall.scenarios[key].splits[idx]?.total
                       return (
                         <td key={key} style={{
                           padding: '5px 4px',
@@ -405,7 +509,7 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
                           color: colors.neutral,
                           fontWeight: isActive ? 600 : undefined,
                         }}>
-                          {fmtMXN(amount)}
+                          {amount == null ? '—' : fmtMXN(amount)}
                         </td>
                       )
                     })}
@@ -419,6 +523,7 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
                   {(['sin_bono', 'bono_25', 'bono_50'] as const).map(key => {
                     const tierValue = key === 'sin_bono' ? 0 : key === 'bono_25' ? 0.25 : 0.50
                     const isActive = waterfall.activeTier === tierValue
+                    const residual = waterfall.scenarios[key].companyResidual
                     return (
                       <td key={key} style={{
                         padding: '5px 4px',
@@ -428,7 +533,7 @@ export function PropertyProfitSection({ propertyId, team, showWaterfall = true, 
                         color: colors.secondary,
                         fontWeight: isActive ? 600 : undefined,
                       }}>
-                        {fmtMXN(waterfall.scenarios[key].companyResidual)}
+                        {residual == null ? '—' : fmtMXN(residual)}
                       </td>
                     )
                   })}

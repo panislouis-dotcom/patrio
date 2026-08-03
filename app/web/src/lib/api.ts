@@ -602,7 +602,8 @@ export async function fetchPropertyInvestors(propertyId: number): Promise<Proper
 
 export async function addPropertyInvestor(
   propertyId: number,
-  data: { investorId: number; status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; notes: string }
+  // Sin `status`: el embudo lo deriva el servidor de los montos en cada escritura.
+  data: { investorId: number; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; notes: string }
 ): Promise<PropertyInvestor> {
   const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors`, {
     method: 'POST',
@@ -616,7 +617,7 @@ export async function addPropertyInvestor(
 export async function updatePropertyInvestment(
   propertyId: number,
   investmentId: number,
-  data: Partial<{ status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; returnAmount: number | null; returnDate: string | null; notes: string }>
+  data: Partial<{ interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; returnAmount: number | null; returnDate: string | null; notes: string }>
 ): Promise<PropertyInvestor> {
   const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors/${investmentId}`, {
     method: 'PUT',

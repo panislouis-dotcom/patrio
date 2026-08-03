@@ -28,6 +28,19 @@ def return_pct(interest_rate_annual, months) -> Decimal:
     return pct2(to_decimal(interest_rate_annual) * to_decimal(months) / Decimal(12) * Decimal(100))
 
 
+def funnel_status(interested_amount, committed_amount, funded_amount) -> str:
+    """El estado de una posición es una lectura de su dinero, no un campo aparte.
+
+    Vivía copiado en tres formularios del front, y uno de ellos mandaba
+    `committedAmount: 0` siempre — así que "comprometido" era inalcanzable desde
+    la ficha de la propiedad. Una sola definición, del lado que escribe."""
+    if to_decimal(funded_amount) > 0:
+        return "fondeado"
+    if to_decimal(committed_amount) > 0:
+        return "comprometido"
+    return "interesado"
+
+
 def hold_months(acquisition: date | None, conclusion: date | None, today: date | None = None) -> int:
     """Months the money has been in: acquisition → conclusion, or → today while the
     position is open. 0 without an acquisition date — nothing has been held yet."""

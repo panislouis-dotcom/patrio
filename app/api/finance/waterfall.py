@@ -1,5 +1,11 @@
 """Profit-split waterfall — Decimal port of the former profit_db logic.
-Money exact; ratios (tier, isr, split pcts) coerced to Decimal."""
+Money exact; ratios (tier, isr, split pcts) coerced to Decimal.
+
+Regla de la casa: ningún renglón de este estado se calcula sobre un número
+inventado. Cada insumo llega acompañado de su procedencia (`*Source`) y, cuando
+no existe, el renglón vale `None` y el insumo se nombra en `missingInputs` —
+en lugar de un cero que se lee como un hecho.
+"""
 from datetime import timedelta
 from decimal import Decimal
 
@@ -8,6 +14,14 @@ from .quantize import to_decimal
 from .investor import cuota
 
 _D0 = Decimal(0)
+
+# Los supuestos por omisión viven aquí, con nombre y en un solo lugar, para que
+# la propiedad pueda sobreescribirlos y la interfaz pueda decir "esto es un
+# supuesto". Una constante escondida en medio de una fórmula no puede hacer ni
+# lo uno ni lo otro.
+DEFAULT_MONTHS = 12
+DEFAULT_ISR_RATE = Decimal("0.30")
+DEFAULT_INVESTOR_RATE = 0.12
 
 
 def compute_bonus_tier(config: dict, conclusion_date=None) -> Decimal | None:
@@ -18,7 +32,7 @@ def compute_bonus_tier(config: dict, conclusion_date=None) -> Decimal | None:
         return None
     p = parse_date(planned)
     a = parse_date(config.get("actualEndDate") or conclusion_date)
-    if a is None:
+    if p is None or a is None:
         return None
     early_threshold = p - timedelta(days=buffer)
     half_threshold = p - timedelta(days=buffer // 2)
@@ -29,8 +43,33 @@ def compute_bonus_tier(config: dict, conclusion_date=None) -> Decimal | None:
     return _D0
 
 
+def missing_bonus_inputs(config: dict, conclusion_date=None) -> list[str]:
+    """Qué le falta al bono por entregar a tiempo para poder encenderse.
+
+    Se pintan tres escalones de dinero; si ninguno puede activarse nunca, la
+    tabla miente. Nombrar el faltante es lo que convierte tres columnas muertas
+    en tres columnas que esperan un dato."""
+    missing = []
+    if not config.get("plannedEndDate"):
+        missing.append("plannedEndDate")
+    if not (config.get("bufferDays") or 0) > 0:
+        missing.append("bufferDays")
+    if not (config.get("actualEndDate") or conclusion_date):
+        missing.append("actualEndDate")
+    return missing
+
+
 def _pct(config: dict, key: str) -> Decimal:
     return to_decimal(config.get(key) or 0)
+
+
+def _share(amount: Decimal | None, factor: Decimal) -> Decimal | None:
+    """Una parte de un monto que puede no existir: sin monto, no hay parte."""
+    return None if amount is None else amount * factor
+
+
+def _split(amount: Decimal | None, n: Decimal) -> Decimal | None:
+    return None if amount is None else amount / n
 
 
 def _compute_splits_for_tier(tier, finder_amount, director_amount, responsable_amount,
@@ -40,111 +79,160 @@ def _compute_splits_for_tier(tier, finder_amount, director_amount, responsable_a
         member = team_by_id.get(member_id) or {}
         return {"label": label, "id": member_id, "name": member.get("name"),
                 "role": member.get("role"), "pct": pct, "base": base, "bonus": bonus,
-                "total": base + bonus}
+                "total": None if base is None else base + bonus}
 
     splits = []
     finder_id = config.get("finderMemberId")
     if finder_id is not None:
         splits.append(_entry("Finder", finder_id, _pct(config, "finderFeePct"),
-                             finder_amount, finder_amount * tier))
+                             finder_amount, _share(finder_amount, tier)))
     if directors:
         n = Decimal(len(directors))
-        per_base = director_amount / n
-        per_bonus = (director_amount * tier) / n
+        per_base = _split(director_amount, n)
+        per_bonus = _split(_share(director_amount, tier), n)
         for d in directors:
             splits.append(_entry("Director", d["id"], _pct(config, "directorPct") / n, per_base, per_bonus))
     responsable_id = config.get("responsableMemberId")
     if responsable_id is not None:
         splits.append(_entry("Responsable", responsable_id, _pct(config, "responsablePct"),
-                             responsable_amount, responsable_amount * tier))
+                             responsable_amount, _share(responsable_amount, tier)))
     lider_id = config.get("liderMemberId")
     if lider_id is not None:
         splits.append(_entry("Líder", lider_id, _pct(config, "liderPct"),
-                             lider_amount, lider_amount * tier))
+                             lider_amount, _share(lider_amount, tier)))
     mc_val = config.get("maestroCount")
     if maestro_ids or (mc_val is not None and mc_val > 0):
         mc = Decimal(m_count)
-        per_base = maestro_pool / mc
-        per_bonus = (maestro_pool * tier) / mc
+        per_base = _split(maestro_pool, mc)
+        per_bonus = _split(_share(maestro_pool, tier), mc)
         for mid in maestro_ids:
             splits.append(_entry("Maestro", mid, _pct(config, "maestroPct") / mc, per_base, per_bonus))
         for _ in range(m_count - len(maestro_ids)):
             splits.append({"label": "Maestro", "pct": _pct(config, "maestroPct") / mc, "id": None,
                            "name": "—", "role": "maestro", "base": per_base, "bonus": per_bonus,
-                           "total": per_base + per_bonus})
+                           "total": None if per_base is None else per_base + per_bonus})
     ac_val = config.get("ayudanteCount")
     if ayudante_ids or (ac_val is not None and ac_val > 0):
         ac = Decimal(a_count)
-        per_base = ayudante_pool / ac
-        per_bonus = (ayudante_pool * tier) / ac
+        per_base = _split(ayudante_pool, ac)
+        per_bonus = _split(_share(ayudante_pool, tier), ac)
         for aid in ayudante_ids:
             splits.append(_entry("Ayudante", aid, _pct(config, "ayudantePct") / ac, per_base, per_bonus))
         for _ in range(a_count - len(ayudante_ids)):
             splits.append({"label": "Ayudante", "pct": _pct(config, "ayudantePct") / ac, "id": None,
                            "name": "—", "role": "ayudante", "base": per_base, "bonus": per_bonus,
-                           "total": per_base + per_bonus})
-    total_bonuses = sum((s["bonus"] for s in splits), _D0)
-    company_residual = max(_D0, residual - total_bonuses)
+                           "total": None if per_base is None else per_base + per_bonus})
+    if residual is None:
+        company_residual = None
+    else:
+        total_bonuses = sum((s["bonus"] for s in splits), _D0)
+        company_residual = max(_D0, residual - total_bonuses)
     return {"splits": splits, "companyResidual": company_residual}
+
+
+def _resolve_exit_price(prop: dict, config: dict) -> tuple[Decimal | None, str | None]:
+    """De dónde sale el precio de salida, mejor evidencia primero: lo que el
+    operador capturó en esta configuración, luego el precio al que la propiedad
+    de verdad se vendió, luego la última valuación.
+
+    Sin ninguno de los tres no hay salida. Antes se caía a 0 y el reparto
+    publicaba "GANANCIA BRUTA = −inversión" como si fuera un renglón de estado
+    financiero; ahora no hay renglón que publicar."""
+    if config.get("exitPrice"):
+        return to_decimal(config["exitPrice"]), "capturado"
+    if prop.get("salePrice"):
+        return to_decimal(prop["salePrice"]), "venta"
+    if prop.get("currentValuation"):
+        return to_decimal(prop["currentValuation"]), "valuacion"
+    return None, None
+
+
+def _resolve_months(prop: dict, config: dict) -> tuple[int, str]:
+    """El plazo sobre el que corre la cuota del inversionista: el capturado, el
+    real si la propiedad ya lo tiene, el proyectado si no, y solo entonces el
+    supuesto de la casa."""
+    if config.get("investorMonths"):
+        return int(config["investorMonths"]), "capturado"
+    if prop.get("holdMonthsActual"):
+        return int(prop["holdMonthsActual"]), "real"
+    if prop.get("holdMonths"):
+        return int(prop["holdMonths"]), "proyectado"
+    return DEFAULT_MONTHS, "supuesto"
+
+
+def _resolve_investors(config: dict, property_investors, months) -> tuple:
+    """El costo del capital de terceros sale de lo que está registrado.
+
+    Sin capital registrado el costo es cero, y lo que falta es capturar a los
+    inversionistas — que es una cosa muy distinta de suponer que toda la
+    inversión es de ellos al 12% anual y cobrarle esa cuota a la ganancia."""
+    if config.get("investorCapital"):
+        capital = to_decimal(config["investorCapital"])
+        rate = config.get("investorRateAnnual") or DEFAULT_INVESTOR_RATE
+        fee = cuota(capital, rate, months)
+        return capital, fee, [{"investorId": None, "name": "Capital (capturado)",
+                               "fundedAmount": capital, "interestRateAnnual": rate,
+                               "cuota": fee, "totalReturn": capital + fee}], "capturado"
+
+    fondeados = [pi for pi in (property_investors or []) if pi.get("status") == "fondeado"]
+    if fondeados:
+        breakdown = []
+        for pi in fondeados:
+            funded = to_decimal(pi.get("fundedAmount"))
+            rate = pi.get("interestRateAnnual") or DEFAULT_INVESTOR_RATE
+            fee = cuota(funded, rate, months)
+            breakdown.append({
+                "investorId": pi.get("investorId"), "name": pi.get("investorName", "—"),
+                "fundedAmount": funded, "interestRateAnnual": rate,
+                "cuota": fee, "totalReturn": funded + fee,
+            })
+        capital = sum((e["fundedAmount"] for e in breakdown), _D0)
+        return capital, sum((e["cuota"] for e in breakdown), _D0), breakdown, "fondeado"
+
+    return _D0, _D0, [], None
 
 
 def compute_waterfall(prop: dict, config: dict, team: list[dict],
                       property_investors: list[dict] = None) -> dict:
-    investment = to_decimal(prop.get("totalInvestment") or 0)
-    # The exit the split is computed on, best evidence first: what the operator
-    # typed into this config, else the price the property actually sold for,
-    # else the latest mark.
-    exit_price = to_decimal(
-        config.get("exitPrice") or prop.get("salePrice") or prop.get("currentValuation") or 0)
-    months = config.get("investorMonths") or prop.get("holdMonthsActual") or 12
-    isr_rate = to_decimal(config.get("isrRate") or 0.30)
+    missing: list[str] = []
 
-    if config.get("investorCapital"):
-        investor_capital = to_decimal(config["investorCapital"])
-        rate = config.get("investorRateAnnual") or 0.12
-        investor_cuota = cuota(investor_capital, rate, months)
-        investor_breakdown = [{"investorId": None, "name": "Capital (manual)",
-                               "fundedAmount": investor_capital, "interestRateAnnual": rate,
-                               "cuota": investor_cuota, "totalReturn": investor_capital + investor_cuota}]
+    investment = prop.get("totalInvestment")
+    investment = to_decimal(investment) if investment else None
+    if investment is None:
+        missing.append("investment")
+
+    exit_price, exit_price_source = _resolve_exit_price(prop, config)
+    if exit_price is None:
+        missing.append("exitPrice")
+
+    months, months_source = _resolve_months(prop, config)
+    isr_rate = to_decimal(config["isrRate"]) if config.get("isrRate") is not None else DEFAULT_ISR_RATE
+
+    investor_capital, investor_cuota, investor_breakdown, investor_capital_source = \
+        _resolve_investors(config, property_investors, months)
+    if investor_capital_source is None:
+        missing.append("investorCapital")
+
+    computable = exit_price is not None and investment is not None
+    gross_profit = exit_price - investment if computable else None
+    operator_gross = gross_profit - investor_cuota if computable else None
+    isr = max(_D0, operator_gross * isr_rate) if computable else None
+    net_profit = operator_gross - isr if computable else None
+    distributable = max(_D0, net_profit) if computable else None
+
+    finder_amount = _share(distributable, _pct(config, "finderFeePct"))
+    remaining = None if distributable is None else distributable - finder_amount
+    director_amount = _share(remaining, _pct(config, "directorPct"))
+    responsable_amount = _share(remaining, _pct(config, "responsablePct"))
+    lider_amount = _share(remaining, _pct(config, "liderPct"))
+    maestro_pool = _share(remaining, _pct(config, "maestroPct"))
+    ayudante_pool = _share(remaining, _pct(config, "ayudantePct"))
+    if distributable is None:
+        residual = None
     else:
-        fondeados = [pi for pi in (property_investors or []) if pi.get("status") == "fondeado"]
-        if fondeados:
-            investor_capital = sum((to_decimal(pi.get("fundedAmount")) for pi in fondeados), _D0)
-            investor_cuota = sum(
-                (cuota(pi.get("fundedAmount") or 0, pi.get("interestRateAnnual") or 0.12, months)
-                 for pi in fondeados), _D0)
-            investor_breakdown = [{
-                "investorId": pi.get("investorId"), "name": pi.get("investorName", "—"),
-                "fundedAmount": to_decimal(pi.get("fundedAmount")),
-                "interestRateAnnual": pi.get("interestRateAnnual") or 0.12,
-                "cuota": cuota(pi.get("fundedAmount") or 0, pi.get("interestRateAnnual") or 0.12, months),
-                "totalReturn": to_decimal(pi.get("fundedAmount"))
-                + cuota(pi.get("fundedAmount") or 0, pi.get("interestRateAnnual") or 0.12, months),
-            } for pi in fondeados]
-        else:
-            investor_capital = investment
-            rate = config.get("investorRateAnnual") or 0.12
-            investor_cuota = cuota(investor_capital, rate, months)
-            investor_breakdown = [{"investorId": None, "name": "Inversión total (est.)",
-                                   "fundedAmount": investment, "interestRateAnnual": rate,
-                                   "cuota": investor_cuota, "totalReturn": investment + investor_cuota}]
-
-    gross_profit = exit_price - investment
-    operator_gross = gross_profit - investor_cuota
-    isr = max(_D0, operator_gross * isr_rate)
-    net_profit = operator_gross - isr
-    distributable = max(_D0, net_profit)
-
-    finder_amount = distributable * _pct(config, "finderFeePct")
-    remaining = distributable - finder_amount
-    director_amount = remaining * _pct(config, "directorPct")
-    responsable_amount = remaining * _pct(config, "responsablePct")
-    lider_amount = remaining * _pct(config, "liderPct")
-    maestro_pool = remaining * _pct(config, "maestroPct")
-    ayudante_pool = remaining * _pct(config, "ayudantePct")
-    allocated = (finder_amount + director_amount + responsable_amount
-                 + lider_amount + maestro_pool + ayudante_pool)
-    residual = max(_D0, distributable - allocated)
+        allocated = (finder_amount + director_amount + responsable_amount
+                     + lider_amount + maestro_pool + ayudante_pool)
+        residual = max(_D0, distributable - allocated)
 
     team_by_id = {m["id"]: m for m in team}
     directors = [m for m in team if m.get("role") == "director"]
@@ -170,8 +258,15 @@ def compute_waterfall(prop: dict, config: dict, team: list[dict],
     # When the work actually concluded: the sale for a flip, the first rent for
     # a hold. Neither exists while the property is still in desarrollo, and then
     # only an explicit actualEndDate can settle the on-time bonus.
-    active_tier = compute_bonus_tier(config, prop.get("saleDate") or prop.get("firstRentDate"))
-    return {"exitPrice": exit_price, "investment": investment, "grossProfit": gross_profit,
-            "investorCuota": investor_cuota, "operatorGross": operator_gross, "isr": isr,
-            "netProfit": net_profit, "distributable": distributable, "activeTier": active_tier,
-            "months": months, "investorBreakdown": investor_breakdown, "scenarios": scenarios}
+    conclusion = prop.get("saleDate") or prop.get("firstRentDate")
+    return {"exitPrice": exit_price, "exitPriceSource": exit_price_source,
+            "investment": investment, "grossProfit": gross_profit,
+            "investorCapital": investor_capital, "investorCapitalSource": investor_capital_source,
+            "investorCuota": investor_cuota, "operatorGross": operator_gross,
+            "isrRate": isr_rate, "isr": isr,
+            "netProfit": net_profit, "distributable": distributable,
+            "activeTier": compute_bonus_tier(config, conclusion),
+            "bonusInputsMissing": missing_bonus_inputs(config, conclusion),
+            "months": months, "monthsSource": months_source,
+            "missingInputs": missing,
+            "investorBreakdown": investor_breakdown, "scenarios": scenarios}

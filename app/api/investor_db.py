@@ -2,8 +2,9 @@ from .db import get_db, _snake_to_camel, _camel_to_snake
 from api.finance import investor as fin_investor
 
 INVESTOR_RAW_FIELDS = {"name", "apellidos", "email", "phone", "notes", "temperatura", "capacidad", "fuente", "confianza"}
+# `status` no está: se deriva de los montos en cada escritura (fin_investor.funnel_status).
 PROPERTY_INVESTOR_RAW_FIELDS = {
-    "status", "interestedAmount", "committedAmount", "fundedAmount",
+    "interestedAmount", "committedAmount", "fundedAmount",
     "interestRateAnnual", "investmentDate", "returnAmount", "returnDate", "notes"
 }
 
@@ -165,10 +166,10 @@ def add_property_investor(property_id: int, investor_id: int, data: dict) -> dic
     filtered = {k: v for k, v in data.items() if k in PROPERTY_INVESTOR_RAW_FIELDS}
     snake = {_camel_to_snake(k): v for k, v in filtered.items()}
 
-    status = snake.get("status", "interesado")
-    interested_amount = snake.get("interested_amount", 0)
-    committed_amount = snake.get("committed_amount", 0)
-    funded_amount = snake.get("funded_amount", 0)
+    interested_amount = snake.get("interested_amount") or 0
+    committed_amount = snake.get("committed_amount") or 0
+    funded_amount = snake.get("funded_amount") or 0
+    status = fin_investor.funnel_status(interested_amount, committed_amount, funded_amount)
     interest_rate_annual = snake.get("interest_rate_annual", 0.12)
     investment_date = snake.get("investment_date")
     notes = snake.get("notes", "")
@@ -190,15 +191,30 @@ def add_property_investor(property_id: int, investor_id: int, data: dict) -> dic
     return _get_position(row_id)
 
 
+_AMOUNT_COLUMNS = ("interested_amount", "committed_amount", "funded_amount")
+
+
 def update_property_investment(investment_id: int, data: dict) -> dict:
-    """Update a single investment row by its id."""
+    """Update a single investment row by its id.
+
+    El estado se recalcula sobre los montos ya mezclados con los que la fila
+    traía: subir el comprometido de una posición interesada la mueve de etapa
+    sola, sin que el formulario tenga que acordarse de mandar el estado."""
     filtered = {k: v for k, v in data.items() if k in PROPERTY_INVESTOR_RAW_FIELDS}
     if filtered:
         snake = {_camel_to_snake(k): v for k, v in filtered.items()}
-        columns = ", ".join(f"{col} = %s" for col in snake.keys())
-        values = list(snake.values()) + [investment_id]
         with get_db() as conn:
-            conn.execute(f"UPDATE property_investors SET {columns} WHERE id = %s", values)
+            current = conn.execute(
+                f"SELECT {', '.join(_AMOUNT_COLUMNS)} FROM property_investors WHERE id = %s",
+                (investment_id,),
+            ).fetchone()
+            if current is None:
+                raise ValueError(f"Investment {investment_id} not found")
+            amounts = {col: snake.get(col, dict(current)[col]) for col in _AMOUNT_COLUMNS}
+            snake["status"] = fin_investor.funnel_status(**amounts)
+            columns = ", ".join(f"{col} = %s" for col in snake.keys())
+            conn.execute(f"UPDATE property_investors SET {columns} WHERE id = %s",
+                         list(snake.values()) + [investment_id])
 
     row = _get_position(investment_id)
     if row is None:

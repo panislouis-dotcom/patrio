@@ -105,12 +105,9 @@ export function useInversorDetail(investorId: number) {
     const committed = parseFloat(addCommitted) || 0
     const funded = parseFloat(addFunded) || 0
     const rate = parseFloat(addRate) / 100 || 0.12
-    const status: PropertyInvestor['status'] =
-      funded > 0 ? 'fondeado' : committed > 0 ? 'comprometido' : 'interesado'
     try {
       const pos = await addPropertyInvestor(propertyId, {
         investorId,
-        status,
         interestedAmount: interested,
         committedAmount: committed,
         fundedAmount: funded,
@@ -150,11 +147,8 @@ export function useInversorDetail(investorId: number) {
     const committed = parseFloat(editCommitted) || 0
     const funded = parseFloat(editFunded) || 0
     const rate = parseFloat(editRate) / 100 || 0.12
-    const status: PropertyInvestor['status'] =
-      funded > 0 ? 'fondeado' : committed > 0 ? 'comprometido' : 'interesado'
     try {
       const updated = await updatePropertyInvestment(pos.propertyId, pos.id, {
-        status,
         interestedAmount: interested,
         committedAmount: committed,
         fundedAmount: funded,

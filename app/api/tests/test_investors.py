@@ -63,7 +63,6 @@ def test_list_property_investors_empty(client, desarrollo_property):
 def test_add_investor_to_property(client, desarrollo_property, test_investor):
     r = client.post(f"/api/properties/{desarrollo_property['id']}/investors", json={
         "investorId": test_investor["id"],
-        "status": "interesado",
         "fundedAmount": 500_000,
     })
     assert r.status_code == 201, r.text
@@ -72,7 +71,7 @@ def test_add_investor_to_property(client, desarrollo_property, test_investor):
 
 def test_delete_property_investment(client, desarrollo_property, test_investor):
     add = client.post(f"/api/properties/{desarrollo_property['id']}/investors", json={
-        "investorId": test_investor["id"], "status": "interesado"})
+        "investorId": test_investor["id"]})
     assert add.status_code == 201
     r = client.delete(
         f"/api/properties/{desarrollo_property['id']}/investors/{add.json()['id']}")
@@ -82,13 +81,69 @@ def test_delete_property_investment(client, desarrollo_property, test_investor):
 def test_the_funnel_opens_at_oferta(client, test_property, test_investor):
     """You raise money for a deal you are bidding on, not for one you are still
     evaluating."""
-    body = {"investorId": test_investor["id"], "status": "interesado"}
+    body = {"investorId": test_investor["id"]}
     r = client.post(f"/api/properties/{test_property['id']}/investors", json=body)
     assert r.status_code == 422
 
     client.post(f"/api/properties/{test_property['id']}/transition", json={"to": "oferta"})
     r = client.post(f"/api/properties/{test_property['id']}/investors", json=body)
     assert r.status_code == 201, r.text
+
+
+# ── El embudo se lee del dinero ──────────────────────────────────────────────
+
+def test_the_funnel_stage_is_derived_from_the_money(client, desarrollo_property, test_investor):
+    """Interesado → comprometido → fondeado no es un campo aparte que el
+    formulario pueda contradecir: es una lectura de los tres montos."""
+    def add(**amounts):
+        r = client.post(f"/api/properties/{desarrollo_property['id']}/investors",
+                        json={"investorId": test_investor["id"], **amounts})
+        assert r.status_code == 201, r.text
+        return r.json()["status"]
+
+    assert add(interestedAmount=800_000) == "interesado"
+    assert add(interestedAmount=800_000, committedAmount=500_000) == "comprometido"
+    assert add(committedAmount=500_000, fundedAmount=500_000) == "fondeado"
+
+
+def test_a_client_cannot_declare_a_stage_its_money_contradicts(client, desarrollo_property,
+                                                               test_investor):
+    """Mandar 500k fondeados y llamarle "interesado" guardaba esa mentira."""
+    r = client.post(f"/api/properties/{desarrollo_property['id']}/investors", json={
+        "investorId": test_investor["id"], "status": "interesado", "fundedAmount": 500_000})
+    assert r.status_code == 201, r.text
+    assert r.json()["status"] == "fondeado"
+
+
+def test_raising_the_committed_amount_moves_the_position_forward(client, desarrollo_property,
+                                                                 test_investor):
+    """"Comprometido" era inalcanzable: el formulario mandaba 0 siempre. Ahora
+    subir el monto mueve la etapa sola, sin que nadie tenga que declararla."""
+    pid = desarrollo_property["id"]
+    add = client.post(f"/api/properties/{pid}/investors",
+                      json={"investorId": test_investor["id"], "interestedAmount": 800_000})
+    assert add.json()["status"] == "interesado"
+    investment_id = add.json()["id"]
+
+    up = client.put(f"/api/properties/{pid}/investors/{investment_id}",
+                    json={"committedAmount": 500_000})
+    assert up.status_code == 200, up.text
+    assert up.json()["status"] == "comprometido"
+    assert float(up.json()["interestedAmount"]) == 800_000  # el monto anterior sobrevive
+
+    funded = client.put(f"/api/properties/{pid}/investors/{investment_id}",
+                        json={"fundedAmount": 500_000})
+    assert funded.json()["status"] == "fondeado"
+
+
+def test_a_position_that_loses_its_money_walks_back_down_the_funnel(client, desarrollo_property,
+                                                                    test_investor):
+    pid = desarrollo_property["id"]
+    add = client.post(f"/api/properties/{pid}/investors",
+                      json={"investorId": test_investor["id"], "fundedAmount": 500_000})
+    up = client.put(f"/api/properties/{pid}/investors/{add.json()['id']}",
+                    json={"fundedAmount": 0, "committedAmount": 500_000})
+    assert up.json()["status"] == "comprometido"
 
 
 def test_investors_on_a_missing_property_is_404(client, test_investor):

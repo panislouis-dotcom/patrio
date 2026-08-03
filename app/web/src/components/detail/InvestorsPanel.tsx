@@ -3,6 +3,7 @@ import { addPropertyInvestor, updatePropertyInvestment, deletePropertyInvestment
 import type { Investor, PropertyInvestor, ProfitWaterfall } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
 import { fmtMXN } from '../../lib/fmt'
+import { WaterfallTable } from '../finance/WaterfallTable'
 
 interface Props {
   propertyId: number
@@ -13,23 +14,43 @@ interface Props {
   onChange: (next: PropertyInvestor[]) => void
 }
 
-const statusFor = (funded: number, committed: number): PropertyInvestor['status'] =>
-  funded > 0 ? 'fondeado' : committed > 0 ? 'comprometido' : 'interesado'
+/** El embudo, en palabras. El servidor lo deriva de los montos en cada guardado. */
+const ETAPA_LABEL: Record<PropertyInvestor['status'], string> = {
+  interesado: 'INTERESADO',
+  comprometido: 'COMPROMETIDO',
+  fondeado: 'FONDEADO',
+}
+
+const ETAPA_COLOR: Record<PropertyInvestor['status'], string> = {
+  interesado: colors.secondary,
+  comprometido: colors.tertiary,
+  fondeado: colors.primary,
+}
+
+const COLUMNS = ['NOMBRE', 'FECHA', 'ETAPA', 'INTERESADO', 'COMPROMETIDO', 'FONDEADO',
+  'TASA', 'CUOTA', 'TOTAL', 'RET %', 'PAGADO', 'LIQUIDACIÓN', ''] as const
 
 /**
  * El embudo de capital de una propiedad: quién puso cuánto, cuánto se le debe y
  * qué queda por liquidar. Abre en oferta — se levanta dinero para un trato que
  * ya se está peleando, no para uno que apenas se mira.
+ *
+ * Los tres montos del embudo son tres columnas capturables. Cuando el
+ * comprometido no se podía teclear, "comprometido" era un estado al que ninguna
+ * posición podía llegar.
  */
 export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall, onChange }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [addInvestorId, setAddInvestorId] = useState('')
   const [addInterested, setAddInterested] = useState('')
+  const [addCommitted, setAddCommitted] = useState('')
   const [addFunded, setAddFunded] = useState('')
   const [addRate, setAddRate] = useState('12')
   const [addDate, setAddDate] = useState('')
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [editInterested, setEditInterested] = useState('')
+  const [editCommitted, setEditCommitted] = useState('')
   const [editFunded, setEditFunded] = useState('')
   const [editRate, setEditRate] = useState('12')
   const [editDate, setEditDate] = useState('')
@@ -43,20 +64,19 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
     setAdding(true)
     setError(null)
     try {
-      const funded = Number(addFunded) || 0
       const pi = await addPropertyInvestor(propertyId, {
         investorId: Number(addInvestorId),
-        status: statusFor(funded, 0),
         interestedAmount: Number(addInterested) || 0,
-        committedAmount: 0,
-        fundedAmount: funded,
+        committedAmount: Number(addCommitted) || 0,
+        fundedAmount: Number(addFunded) || 0,
         interestRateAnnual: Number(addRate) / 100,
         investmentDate: addDate || null,
         notes: '',
       })
       onChange([...investors, pi])
       setShowAdd(false)
-      setAddInvestorId(''); setAddInterested(''); setAddFunded(''); setAddRate('12'); setAddDate('')
+      setAddInvestorId(''); setAddInterested(''); setAddCommitted(''); setAddFunded('')
+      setAddRate('12'); setAddDate('')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al agregar')
     } finally {
@@ -66,6 +86,8 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
 
   function startEdit(pi: PropertyInvestor) {
     setEditingId(pi.id)
+    setEditInterested(pi.interestedAmount ? String(pi.interestedAmount) : '')
+    setEditCommitted(pi.committedAmount ? String(pi.committedAmount) : '')
     setEditFunded(pi.fundedAmount ? String(pi.fundedAmount) : '')
     setEditRate(String(Math.round(pi.interestRateAnnual * 100)))
     setEditDate(pi.investmentDate ?? '')
@@ -77,10 +99,10 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
     setSavingId(investmentId)
     setError(null)
     try {
-      const funded = Number(editFunded) || 0
       const pi = await updatePropertyInvestment(propertyId, investmentId, {
-        status: statusFor(funded, 0),
-        fundedAmount: funded,
+        interestedAmount: Number(editInterested) || 0,
+        committedAmount: Number(editCommitted) || 0,
+        fundedAmount: Number(editFunded) || 0,
         interestRateAnnual: Number(editRate) / 100,
         investmentDate: editDate || null,
         returnAmount: editReturnAmount ? Number(editReturnAmount) : null,
@@ -116,38 +138,35 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
   }
 
   const iStyle: React.CSSProperties = { background: colors.surface, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', padding: '4px 6px', outline: 'none' }
-  const eStyle: React.CSSProperties = { ...iStyle, padding: '3px 5px', width: '60px', textAlign: 'right' }
+  const eStyle: React.CSSProperties = { ...iStyle, padding: '3px 5px', width: '70px', textAlign: 'right' }
+  const cellS: React.CSSProperties = { padding: '5px', fontFamily: fonts.sans, fontSize: '11px', textAlign: 'right', whiteSpace: 'nowrap' }
+  const microS: React.CSSProperties = { padding: '5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }
 
   const totals = investors.reduce(
     (acc, pi) => ({
+      interested: acc.interested + pi.interestedAmount,
+      committed: acc.committed + pi.committedAmount,
       funded: acc.funded + pi.fundedAmount,
       cuota: acc.cuota + pi.interestAmount,
       total: acc.total + pi.expectedReturn,
     }),
-    { funded: 0, cuota: 0, total: 0 },
+    { interested: 0, committed: 0, funded: 0, cuota: 0, total: 0 },
+  )
+
+  const amountField = (label: string, value: string, setter: (v: string) => void) => (
+    <div key={label}>
+      <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>{label}</div>
+      <input type="number" value={value} onChange={e => setter(e.target.value)} aria-label={label} placeholder="0" style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
+    </div>
   )
 
   return (
     <div>
-      {waterfall && (() => {
-        const isrPct = waterfall.operatorGross > 0 ? Math.round(waterfall.isr / waterfall.operatorGross * 100) : 0
-        const rowS: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${colors.border}` }
-        const lblS: React.CSSProperties = { fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }
-        const valS: React.CSSProperties = { fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }
-        const totLblS: React.CSSProperties = { ...lblS, color: colors.neutral }
-        return (
-          <div style={{ marginBottom: '20px' }}>
-            <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, marginBottom: '8px' }}>FLUJO FINANCIERO</div>
-            <div style={rowS}><span style={lblS}>PRECIO DE SALIDA</span><span style={valS}>{fmtMXN(waterfall.exitPrice)}</span></div>
-            <div style={rowS}><span style={lblS}>− INVERSIÓN TOTAL</span><span style={valS}>{fmtMXN(waterfall.investment)}</span></div>
-            <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA BRUTA</span><span style={valS}>{fmtMXN(waterfall.grossProfit)}</span></div>
-            <div style={rowS}><span style={lblS}>− CUOTA INVERSORES</span><span style={valS}>{fmtMXN(waterfall.investorCuota)}</span></div>
-            <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px' }}><span style={totLblS}>GANANCIA OPERADOR</span><span style={valS}>{fmtMXN(waterfall.operatorGross)}</span></div>
-            <div style={rowS}><span style={lblS}>− ISR ({isrPct}%)</span><span style={valS}>{fmtMXN(waterfall.isr)}</span></div>
-            <div style={{ ...rowS, borderTop: `1px solid ${colors.border}`, marginTop: '2px', paddingTop: '7px', borderBottom: 'none' }}><span style={totLblS}>DISTRIBUIBLE</span><span style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.primary, fontWeight: 700 }}>{fmtMXN(waterfall.distributable)}</span></div>
-          </div>
-        )
-      })()}
+      {waterfall && (
+        <div style={{ marginBottom: '20px' }}>
+          <WaterfallTable waterfall={waterfall} />
+        </div>
+      )}
 
       <div style={{ borderTop: waterfall ? `1px solid ${colors.border}` : 'none', paddingTop: waterfall ? '20px' : 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -170,13 +189,10 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
               <option value="">— seleccionar inversionista —</option>
               {allInvestors.map(inv => <option key={inv.id} value={inv.id}>{[inv.name, inv.apellidos].filter(Boolean).join(' ')}</option>)}
             </select>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 60px 120px', gap: '6px' }}>
-              {([['FONDEADO', addFunded, setAddFunded], ['INTERESADO', addInterested, setAddInterested]] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
-                <div key={label}>
-                  <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>{label}</div>
-                  <input type="number" value={val} onChange={e => setter(e.target.value)} aria-label={label} placeholder="0" style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
-                </div>
-              ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 60px 120px', gap: '6px' }}>
+              {amountField('INTERESADO', addInterested, setAddInterested)}
+              {amountField('COMPROMETIDO', addCommitted, setAddCommitted)}
+              {amountField('FONDEADO', addFunded, setAddFunded)}
               <div>
                 <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>TASA %</div>
                 <input type="number" value={addRate} onChange={e => setAddRate(e.target.value)} aria-label="TASA %" style={{ ...iStyle, width: '100%', textAlign: 'right', boxSizing: 'border-box' }} />
@@ -185,6 +201,9 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
                 <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '2px' }}>FECHA INVERSIÓN</div>
                 <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)} aria-label="FECHA INVERSIÓN" style={{ ...iStyle, width: '100%', boxSizing: 'border-box' }} />
               </div>
+            </div>
+            <div style={{ fontFamily: fonts.sans, fontSize: '9px', color: colors.secondary }}>
+              La etapa se deduce del monto: comprometido mueve a COMPROMETIDO, fondeado a FONDEADO.
             </div>
             <button
               onClick={handleAdd}
@@ -199,11 +218,12 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
         {investors.length === 0 && !showAdd ? (
           <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>Sin inversionistas registrados.</div>
         ) : (
+          <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                {['NOMBRE', 'FECHA', 'FONDEADO', 'TASA', 'CUOTA', 'TOTAL', 'RET %', 'PAGADO', 'ESTADO', ''].map(h => (
-                  <th key={h} style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, textAlign: h === 'NOMBRE' || h === 'FECHA' ? 'left' : 'right', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
+                {COLUMNS.map(h => (
+                  <th key={h} style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, textAlign: h === 'NOMBRE' || h === 'FECHA' || h === 'ETAPA' ? 'left' : 'right', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -219,17 +239,20 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
                     <td style={{ padding: '5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, whiteSpace: 'nowrap' }}>{pi.investorName}</td>
                     {isEditing ? (
                       <>
-                        <td style={{ padding: '4px 5px' }}><input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} style={{ ...eStyle, width: '110px', textAlign: 'left' }} /></td>
-                        <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editFunded} onChange={e => setEditFunded(e.target.value)} style={eStyle} /></td>
-                        <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editRate} onChange={e => setEditRate(e.target.value)} style={{ ...eStyle, width: '44px' }} /></td>
-                        <td colSpan={3} style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
+                        <td style={{ padding: '4px 5px' }}><input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} aria-label="FECHA" style={{ ...eStyle, width: '110px', textAlign: 'left' }} /></td>
+                        <td style={microS}>—</td>
+                        <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editInterested} onChange={e => setEditInterested(e.target.value)} aria-label="INTERESADO" style={eStyle} /></td>
+                        <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editCommitted} onChange={e => setEditCommitted(e.target.value)} aria-label="COMPROMETIDO" style={eStyle} /></td>
+                        <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editFunded} onChange={e => setEditFunded(e.target.value)} aria-label="FONDEADO" style={eStyle} /></td>
+                        <td style={{ padding: '4px 5px', textAlign: 'right' }}><input type="number" value={editRate} onChange={e => setEditRate(e.target.value)} aria-label="TASA" style={{ ...eStyle, width: '44px' }} /></td>
+                        <td colSpan={3} style={microS}>—</td>
                         <td style={{ padding: '4px 5px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <input type="number" value={editReturnAmount} onChange={e => setEditReturnAmount(e.target.value)} placeholder="Monto" style={{ ...eStyle, width: '70px' }} />
-                            <input type="date" value={editReturnDate} onChange={e => setEditReturnDate(e.target.value)} style={{ ...eStyle, width: '110px', textAlign: 'left' }} />
+                            <input type="number" value={editReturnAmount} onChange={e => setEditReturnAmount(e.target.value)} aria-label="PAGADO" placeholder="Monto" style={{ ...eStyle, width: '70px' }} />
+                            <input type="date" value={editReturnDate} onChange={e => setEditReturnDate(e.target.value)} aria-label="FECHA PAGO" style={{ ...eStyle, width: '110px', textAlign: 'left' }} />
                           </div>
                         </td>
-                        <td style={{ padding: '4px 5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>—</td>
+                        <td style={microS}>—</td>
                         <td style={{ padding: '4px 5px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <button onClick={() => saveEdit(pi.id)} disabled={isSaving} style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '8px', padding: '2px 7px', marginRight: '3px', opacity: isSaving ? 0.6 : 1 }}>{isSaving ? '…' : 'OK'}</button>
                           <button onClick={() => setEditingId(null)} style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', padding: '2px 5px' }}>✕</button>
@@ -238,12 +261,15 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
                     ) : (
                       <>
                         <td style={{ padding: '5px', fontFamily: fonts.sans, fontSize: '10px', color: colors.secondary }}>{pi.investmentDate ?? '—'}</td>
-                        <td style={{ padding: '5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.fundedAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.fundedAmount) : '—'}</td>
-                        <td style={{ padding: '5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{Math.round(pi.interestRateAnnual * 100)}%</td>
-                        <td style={{ padding: '5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.interestAmount) : '—'}</td>
-                        <td style={{ padding: '5px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, textAlign: 'right' }}>{pi.fundedAmount ? fmtMXN(pi.expectedReturn) : '—'}</td>
-                        <td style={{ padding: '5px', fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, textAlign: 'right' }}>{pi.fundedAmount ? `${pi.returnPct.toFixed(1)}%` : '—'}</td>
-                        <td style={{ padding: '5px', fontFamily: fonts.sans, fontSize: '11px', color: pi.returnAmount ? colors.primary : colors.secondary, textAlign: 'right' }}>
+                        <td style={{ padding: '5px', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.08em', color: ETAPA_COLOR[pi.status], whiteSpace: 'nowrap' }}>{ETAPA_LABEL[pi.status]}</td>
+                        <td style={{ ...cellS, color: pi.interestedAmount ? colors.neutral : colors.secondary }}>{pi.interestedAmount ? fmtMXN(pi.interestedAmount) : '—'}</td>
+                        <td style={{ ...cellS, color: pi.committedAmount ? colors.tertiary : colors.secondary }}>{pi.committedAmount ? fmtMXN(pi.committedAmount) : '—'}</td>
+                        <td style={{ ...cellS, color: pi.fundedAmount ? colors.primary : colors.secondary }}>{pi.fundedAmount ? fmtMXN(pi.fundedAmount) : '—'}</td>
+                        <td style={microS}>{Math.round(pi.interestRateAnnual * 100)}%</td>
+                        <td style={{ ...cellS, color: colors.neutral }}>{pi.fundedAmount ? fmtMXN(pi.interestAmount) : '—'}</td>
+                        <td style={{ ...cellS, color: colors.neutral }}>{pi.fundedAmount ? fmtMXN(pi.expectedReturn) : '—'}</td>
+                        <td style={microS}>{pi.fundedAmount ? `${pi.returnPct.toFixed(1)}%` : '—'}</td>
+                        <td style={{ ...cellS, color: pi.returnAmount ? colors.primary : colors.secondary }}>
                           {pi.returnAmount ? fmtMXN(pi.returnAmount) : '—'}
                           {pi.returnDate && <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary }}>{pi.returnDate}</div>}
                         </td>
@@ -264,16 +290,19 @@ export function InvestorsPanel({ propertyId, investors, allInvestors, waterfall,
               })}
               {investors.length > 1 && (
                 <tr style={{ borderTop: `1px solid ${colors.border}`, background: colors.surface }}>
-                  <td colSpan={2} style={{ padding: '5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>TOTAL ACUMULADO</td>
-                  <td style={{ padding: '5px', fontFamily: fonts.label, fontSize: '10px', color: colors.primary, textAlign: 'right' }}>{fmtMXN(totals.funded)}</td>
+                  <td colSpan={3} style={{ padding: '5px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>TOTAL ACUMULADO</td>
+                  <td style={{ ...cellS, fontFamily: fonts.label, fontSize: '10px', color: colors.neutral }}>{fmtMXN(totals.interested)}</td>
+                  <td style={{ ...cellS, fontFamily: fonts.label, fontSize: '10px', color: colors.tertiary }}>{fmtMXN(totals.committed)}</td>
+                  <td style={{ ...cellS, fontFamily: fonts.label, fontSize: '10px', color: colors.primary }}>{fmtMXN(totals.funded)}</td>
                   <td />
-                  <td style={{ padding: '5px', fontFamily: fonts.label, fontSize: '10px', color: colors.neutral, textAlign: 'right' }}>{fmtMXN(totals.cuota)}</td>
-                  <td style={{ padding: '5px', fontFamily: fonts.label, fontSize: '10px', color: colors.neutral, textAlign: 'right' }}>{fmtMXN(totals.total)}</td>
+                  <td style={{ ...cellS, fontFamily: fonts.label, fontSize: '10px', color: colors.neutral }}>{fmtMXN(totals.cuota)}</td>
+                  <td style={{ ...cellS, fontFamily: fonts.label, fontSize: '10px', color: colors.neutral }}>{fmtMXN(totals.total)}</td>
                   <td /><td /><td /><td />
                 </tr>
               )}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
