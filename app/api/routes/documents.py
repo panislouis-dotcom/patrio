@@ -125,9 +125,11 @@ async def generate_term_sheet(body: TermSheetRequest, _: dict = Depends(get_curr
         subject = max(candidates, key=lambda p: p.get("projectedRoi") or 0)
 
     # El plazo es la columna vertebral del documento: el resumen lo declara y los
-    # tres escenarios de rendimiento se calculan sobre él. Sin plazo capturado no
-    # hay carta que emitir — antes se imprimían 12 meses inventados.
-    if subject.get("holdMonths") is None:
+    # tres escenarios de rendimiento se calculan sobre él. Tiene que estar
+    # CAPTURADO: el modelo siempre puede suponer 12 meses, y suponerlos sirve
+    # para rankear un prospecto, pero no para comprometerle un plazo por escrito
+    # a un inversionista con nombre y apellido.
+    if subject.get("assumptions", {}).get("holdMonths", {}).get("source") != "captured":
         raise HTTPException(
             status_code=400,
             detail="La propiedad no tiene plazo modelado: captúralo antes de emitir la carta.",

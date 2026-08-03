@@ -42,9 +42,6 @@ BEGIN
             OLD.status, NEW.status, OLD.id USING ERRCODE = 'check_violation';
     END IF;
 
-    -- Insumos mínimos por etapa destino. Los CHECKs de tabla ya cubren
-    -- en_renta ⇒ first_rent_date y vendida ⇒ sale_date + sale_price; aquí van
-    -- los que dependen del destino y no del estado de la fila.
     IF NEW.status = 'oferta' AND coalesce(NEW.projected_sale, 0) <= 0 THEN
         RAISE EXCEPTION 'oferta exige modelo completo: projected_sale > 0 (propiedad %)',
             OLD.id USING ERRCODE = 'check_violation';
@@ -59,34 +56,26 @@ BEGIN
             RAISE EXCEPTION 'desarrollo exige total_units (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
-        IF NEW.current_valuation IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige valuación inicial (propiedad %)',
-                OLD.id USING ERRCODE = 'check_violation';
-        END IF;
+        -- Comprar no produce un avalúo: la valuación NO se exige aquí.
         -- La base de inversión se resuelve de dos formas y solo de dos: el total
-        -- capturado a mano, o el desglose COMPLETO de siete campos (con uno
-        -- faltante el sistema no puede recomputar nada).
-        IF NEW.total_investment IS NULL AND NOT (
-               NEW.land_price                IS NOT NULL
-           AND NEW.acquisition_cost_pct      IS NOT NULL
+        -- capturado a mano, o el desglose COMPLETO de los cinco costos (con uno
+        -- faltante el sistema no puede recomputar nada). Los supuestos no
+        -- cuentan: tienen default y nunca faltan de verdad.
+        IF NEW.total_investment_captured IS NULL AND NOT (
+               NEW.purchase_price            IS NOT NULL
            AND NEW.permits_cost              IS NOT NULL
            AND NEW.subdivision_cost          IS NOT NULL
            AND NEW.sqm_construction          IS NOT NULL
            AND NEW.construction_cost_per_sqm IS NOT NULL
-           AND NEW.construction_overhead     IS NOT NULL
         ) THEN
-            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment manual o el desglose completo de los siete costos (propiedad %)',
+            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment_captured manual o el desglose completo de los cinco costos (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
 
     IF NEW.status = 'en_renta' THEN
-        IF NEW.rent_monthly IS NULL THEN
-            RAISE EXCEPTION 'en_renta exige rent_monthly (propiedad %)',
-                OLD.id USING ERRCODE = 'check_violation';
-        END IF;
-        IF NEW.current_valuation IS NULL THEN
-            RAISE EXCEPTION 'en_renta exige valuación (propiedad %)',
+        IF NEW.rent_monthly_actual IS NULL THEN
+            RAISE EXCEPTION 'en_renta exige rent_monthly_actual: la renta cobrada, no la estimada (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
@@ -160,9 +149,33 @@ CREATE TABLE public.analysis_snapshots (
     npv_10yr numeric(14,2),
     irr_10yr_pct real,
     property_id bigint NOT NULL,
+    transaction_cost_pct real,
+    listing_haircut real,
+    discount_rate real,
     CONSTRAINT analysis_snapshots_confidence_score_check CHECK (((confidence_score >= 0) AND (confidence_score <= 100))),
     CONSTRAINT analysis_snapshots_exit_price_source_check CHECK ((exit_price_source = ANY (ARRAY['manual'::text, 'calculated'::text, 'blended'::text])))
 );
+
+
+--
+-- Name: COLUMN analysis_snapshots.transaction_cost_pct; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.analysis_snapshots.transaction_cost_pct IS 'Supuesto: costos de transacción como fracción del precio de compra.';
+
+
+--
+-- Name: COLUMN analysis_snapshots.listing_haircut; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.analysis_snapshots.listing_haircut IS 'Supuesto: castigo anuncio→venta aplicado al precio de cada comparable antes de estimar el precio de mercado.';
+
+
+--
+-- Name: COLUMN analysis_snapshots.discount_rate; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.analysis_snapshots.discount_rate IS 'Supuesto: tasa anual con la que se descuenta el NPV a 10 años.';
 
 
 --
@@ -789,7 +802,7 @@ CREATE TABLE public.properties (
     strategy_type text,
     sqm_land real,
     sqm_construction real,
-    land_price numeric(14,2),
+    purchase_price numeric(14,2),
     acquisition_cost_pct real,
     permits_cost numeric(14,2),
     subdivision_cost numeric(14,2),
@@ -797,13 +810,13 @@ CREATE TABLE public.properties (
     construction_overhead real,
     projected_sale numeric(14,2),
     hold_months integer,
-    rent_monthly numeric(14,2),
+    rent_monthly_projected numeric(14,2),
     total_units integer,
     acquisition_date date,
     first_rent_date date,
     sale_date date,
     sale_price numeric(14,2),
-    total_investment numeric(14,2),
+    total_investment_captured numeric(14,2),
     current_valuation numeric(14,2),
     valuation_date date,
     milestones jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -812,6 +825,7 @@ CREATE TABLE public.properties (
     is_favorite boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    rent_monthly_actual numeric(14,2),
     CONSTRAINT properties_acquisition_cost_pct_check CHECK ((acquisition_cost_pct >= (0)::double precision)),
     CONSTRAINT properties_address_check CHECK ((address <> ''::text)),
     CONSTRAINT properties_asset_type_check CHECK ((asset_type = ANY (ARRAY['casa'::text, 'departamento'::text, 'local'::text, 'edificio'::text, 'lote'::text, 'bodega'::text]))),
@@ -822,12 +836,13 @@ CREATE TABLE public.properties (
     CONSTRAINT properties_en_renta_needs_first_rent CHECK (((status <> 'en_renta'::text) OR (first_rent_date IS NOT NULL))),
     CONSTRAINT properties_first_rent_after_acquisition CHECK (((first_rent_date IS NULL) OR (acquisition_date IS NULL) OR (first_rent_date >= acquisition_date))),
     CONSTRAINT properties_hold_months_check CHECK ((hold_months > 0)),
-    CONSTRAINT properties_land_price_check CHECK ((land_price >= (0)::numeric)),
     CONSTRAINT properties_milestones_check CHECK ((jsonb_typeof(milestones) = 'object'::text)),
     CONSTRAINT properties_name_check CHECK ((name <> ''::text)),
     CONSTRAINT properties_permits_cost_check CHECK ((permits_cost >= (0)::numeric)),
     CONSTRAINT properties_projected_sale_check CHECK ((projected_sale >= (0)::numeric)),
-    CONSTRAINT properties_rent_monthly_check CHECK ((rent_monthly > (0)::numeric)),
+    CONSTRAINT properties_purchase_price_check CHECK ((purchase_price >= (0)::numeric)),
+    CONSTRAINT properties_rent_monthly_actual_check CHECK ((rent_monthly_actual > (0)::numeric)),
+    CONSTRAINT properties_rent_monthly_projected_check CHECK ((rent_monthly_projected > (0)::numeric)),
     CONSTRAINT properties_sale_after_acquisition CHECK (((sale_date IS NULL) OR (acquisition_date IS NULL) OR (sale_date >= acquisition_date))),
     CONSTRAINT properties_sale_after_first_rent CHECK (((sale_date IS NULL) OR (first_rent_date IS NULL) OR (sale_date >= first_rent_date))),
     CONSTRAINT properties_sale_price_check CHECK ((sale_price >= (0)::numeric)),
@@ -836,10 +851,73 @@ CREATE TABLE public.properties (
     CONSTRAINT properties_status_check CHECK ((status = ANY (ARRAY['prospecto'::text, 'oferta'::text, 'desarrollo'::text, 'en_renta'::text, 'vendida'::text, 'archivada'::text]))),
     CONSTRAINT properties_strategy_type_check CHECK ((strategy_type = ANY (ARRAY['adaptive_reuse'::text, 'ground_up'::text, 'flip'::text, 'hold'::text]))),
     CONSTRAINT properties_subdivision_cost_check CHECK ((subdivision_cost >= (0)::numeric)),
-    CONSTRAINT properties_total_investment_check CHECK ((total_investment >= (0)::numeric)),
+    CONSTRAINT properties_total_investment_captured_check CHECK ((total_investment_captured >= (0)::numeric)),
     CONSTRAINT properties_total_units_check CHECK ((total_units > 0)),
     CONSTRAINT properties_vendida_needs_sale CHECK (((status <> 'vendida'::text) OR ((sale_date IS NOT NULL) AND (sale_price IS NOT NULL))))
 );
+
+
+--
+-- Name: COLUMN properties.sqm_construction; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.properties.sqm_construction IS 'Metros cuadrados de obra A EJECUTAR — la que se va a construir o remodelar, no la que el inmueble ya tiene.';
+
+
+--
+-- Name: COLUMN properties.purchase_price; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.properties.purchase_price IS 'Lo que se paga por adquirir el inmueble como está (lote o construido). La obra a ejecutar se suma aparte.';
+
+
+--
+-- Name: COLUMN properties.acquisition_cost_pct; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.properties.acquisition_cost_pct IS 'Supuesto: costos de adquisición como fracción del precio de compra. NULL = se aplica el default del sistema (0.065).';
+
+
+--
+-- Name: COLUMN properties.construction_cost_per_sqm; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.properties.construction_cost_per_sqm IS 'Costo por m² de la obra a ejecutar.';
+
+
+--
+-- Name: COLUMN properties.construction_overhead; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.properties.construction_overhead IS 'Supuesto: multiplicador de costos indirectos de obra. NULL = se aplica el default del sistema (1.3).';
+
+
+--
+-- Name: COLUMN properties.hold_months; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.properties.hold_months IS 'Supuesto: plazo proyectado en meses. NULL = se aplica el default del sistema (12).';
+
+
+--
+-- Name: COLUMN properties.rent_monthly_projected; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.properties.rent_monthly_projected IS 'Renta mensual del underwriting: lo que se estima cobrar. Sobrevive a la renta real para poder compararlas.';
+
+
+--
+-- Name: COLUMN properties.total_investment_captured; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.properties.total_investment_captured IS 'Inversión total tecleada a mano. Es la base de capital solo cuando el desglose de costos está incompleto.';
+
+
+--
+-- Name: COLUMN properties.rent_monthly_actual; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.properties.rent_monthly_actual IS 'Renta mensual efectivamente cobrada. Se captura al entrar a en_renta y nunca se prellena con la estimada.';
 
 
 --
@@ -2842,4 +2920,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('021'),
     ('022'),
     ('023'),
-    ('024');
+    ('024'),
+    ('025'),
+    ('026');

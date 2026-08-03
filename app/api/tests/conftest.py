@@ -145,11 +145,11 @@ def _delete_property(property_id: int) -> None:
         conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
 
 
-# The complete seven-cost breakdown, so a fixture that wants one can pass it
-# straight into a create or a transition. 1,000,000×1.065 + 50,000 + 25,000 +
-# 200×9,000×1.3 = 3,480,000.
+# The complete five-cost breakdown plus the two assumptions it prices with, so
+# a fixture that wants one can pass it straight into a create or a transition.
+# 1,000,000×1.065 + 50,000 + 25,000 + 200×9,000×1.3 = 3,480,000.
 UNDERWRITING = dict(
-    landPrice=1_000_000, acquisitionCostPct=0.065, permitsCost=50_000,
+    purchasePrice=1_000_000, acquisitionCostPct=0.065, permitsCost=50_000,
     subdivisionCost=25_000, sqmConstruction=200, constructionCostPerSqm=9_000,
     constructionOverhead=1.3, sqmLand=300,
 )
@@ -163,7 +163,7 @@ def test_property(client):
         "address": "Calle Test 123, Monterrey",
         "city": "Monterrey",
         "holdMonths": 18,
-        "rentMonthly": 18000,
+        "rentMonthlyProjected": 18000,
         "projectedSale": 2_500_000,
         **UNDERWRITING,
     })

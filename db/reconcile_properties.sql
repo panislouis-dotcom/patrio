@@ -125,7 +125,7 @@ obtenido AS (
         (SELECT count(*) FROM properties)                              AS propiedades,
         (SELECT count(*) FROM property_id_map)                         AS entradas_mapa,
         (SELECT count(*) FROM property_images)                         AS imagenes,
-        (SELECT coalesce(sum(total_investment),  0) FROM properties)   AS inversion,
+        (SELECT coalesce(sum(total_investment_captured), 0) FROM properties) AS inversion,
         (SELECT coalesce(sum(current_valuation), 0) FROM properties)   AS valuacion,
         (SELECT count(*) FROM property_status_events)                  AS eventos
 ),

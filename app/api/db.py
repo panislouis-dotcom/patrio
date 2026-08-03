@@ -176,7 +176,7 @@ def import_signal(signal_id: int) -> tuple[dict | None, dict | None]:
         "city": signal["city"],
         "url": signal["url"],
         "sqmLand": signal.get("sqmLand") or 0.0,
-        "landPrice": signal.get("price") or 0.0,
+        "purchasePrice": signal.get("price") or 0.0,
     })
     with get_db() as conn:
         conn.execute(

@@ -288,5 +288,5 @@ def test_sonar_import_captures_a_property_in_prospecto():
     assert create.call_args.args[0] == {
         "name": "Terreno Test", "address": "Col. San Pedro", "city": "Monterrey",
         "url": "https://lamudi.com.mx/test-1", "latitude": 0.0, "longitude": 0.0,
-        "sqmLand": 300.0, "landPrice": 1_500_000,
+        "sqmLand": 300.0, "purchasePrice": 1_500_000,
     }

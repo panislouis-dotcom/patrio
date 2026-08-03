@@ -108,9 +108,13 @@ prospecto → oferta → desarrollo → en_renta → vendida
 
 A property is **born `prospecto`** — `POST /api/properties` cannot set a status, and neither can `PATCH`. Reaching any other stage means living through the one before it.
 
-**Key raw inputs (the underwriting model):** `landPrice`, `sqmLand`, `sqmConstruction`, `constructionCostPerSqm`, `constructionOverhead`, `acquisitionCostPct`, `permitsCost`, `subdivisionCost`, `projectedSale`, `rentMonthly`, `holdMonths`.
+**Key raw inputs (the underwriting model):** `purchasePrice`, `sqmLand`, `sqmConstruction`, `constructionCostPerSqm`, `permitsCost`, `subdivisionCost`, `projectedSale`, `rentMonthlyProjected`.
 
-**Key recorded facts (post-purchase):** `totalUnits`, `acquisitionDate`, `firstRentDate`, `saleDate`, `salePrice`, `totalInvestment`, `currentValuation`, `valuationDate`, `milestones` (JSON).
+`purchasePrice` is what it costs to **acquire the building as it stands** — a bare lot or a finished house, no special case per asset type. `sqmConstruction` × `constructionCostPerSqm` is the work *you will execute* on top: a remodel, an extension, a ground-up build. Nothing already paid for inside the purchase price appears in them, which is what stops a built house being counted twice.
+
+**Assumptions** — `acquisitionCostPct`, `constructionOverhead`, `holdMonths` — are not inputs like the rest. They always have a value in force, and the payload publishes it under its own key *plus* its provenance in `assumptions`: `{"holdMonths": {"value": 12, "source": "default" | "captured"}}`. `default` means nobody chose and the model applied its own (6.5%, ×1.3, 12 months); `captured` means a person decided. Writing one captures it; clearing it hands it back to the model.
+
+**Key recorded facts (post-purchase):** `totalUnits`, `acquisitionDate`, `firstRentDate`, `rentMonthlyActual`, `saleDate`, `salePrice`, `totalInvestmentCaptured`, `currentValuation`, `valuationDate`, `milestones` (JSON).
 
 **Classification:** `assetType` (`casa`/`departamento`/`local`/`edificio`/`lote`/`bodega`) and `strategyType` (`adaptive_reuse`/`ground_up`/`flip`/`hold`). These are two different questions — what the building is, and what the firm intends to do with it — and they are two different columns.
 
@@ -124,7 +128,7 @@ This is the part that matters most, because each door means exactly one thing:
 | `POST /api/properties/{id}/clear-fields` | Empty an allowlisted nullable column | Touch anything outside the allowlist |
 | `POST /api/properties/{id}/transition` | Move to the next stage, carrying that stage's inputs | Skip a stage, or move without the evidence |
 
-Emptying is its own operation precisely so that "cleared" never has to be guessed from a `0`. `rentMonthly` is the clearest case: `null` means *not captured*, `0` means nothing (it is rejected — a property that earns no rent has an empty rent).
+Emptying is its own operation precisely so that "cleared" never has to be guessed from a `0`. The two rent columns are the clearest case: `null` means *not captured*, `0` means nothing (it is rejected — a property that earns no rent has an empty rent).
 
 #### Transition gates
 
@@ -133,8 +137,8 @@ Emptying is its own operation precisely so that "cleared" never has to be guesse
 | `to` | Required in the body | Why |
 |---|---|---|
 | `oferta` | `projectedSale` (unless already captured) | Every offer models its exit, even when the plan is to rent |
-| `desarrollo` | `acquisitionDate`, `totalUnits`, `currentValuation`; `totalInvestment` only when the cost breakdown is incomplete | A property in development has been bought |
-| `en_renta` | `firstRentDate`, `rentMonthly`; `currentValuation` if none is on file | The rent is real, not projected |
+| `desarrollo` | `acquisitionDate`, `totalUnits`, `currentValuation`; `totalInvestmentCaptured` only when the cost breakdown is incomplete | A property in development has been bought |
+| `en_renta` | `firstRentDate`, `rentMonthlyActual`; `currentValuation` if none is on file | The rent asked for is the one being collected, and it never overwrites the projected one |
 | `vendida` | `saleDate`, `salePrice` | The exit is frozen at its actual figures |
 | `archivada` | — | Terminal drawer; available from any non-terminal stage |
 
@@ -148,10 +152,10 @@ Legal moves — anything else is `422 Transición no permitida`:
 Financial metrics are **auto-computed from raw inputs** — never write a computed field. Which ones exist depends on the stage, and the names say which kind they are:
 
 - **Projection** (`projectedProfit`, `projectedRoi`, `projectedRoiTotal`, `capRate`, `rentAnnual`, per-m² figures) — computed `prospecto` through `en_renta`, `null` once `vendida`. It survives the purchase on purpose: it is what reality gets measured against.
-- **Realised-so-far** (`unrealizedGain`, `unrealizedGainPct`, `roi`) — from `desarrollo` on. A mark against the capital base, so it moves with the valuation and the calendar.
+- **Realised-so-far** (`unrealizedGain`, `unrealizedGainPct`, `roi`, `capRateActual`, `rentAnnualActual`) — from `desarrollo` on. A mark against the capital base, so it moves with the valuation and the calendar. `capRate`/`rentAnnual` answer for the **projected** rent and `capRateActual`/`rentAnnualActual` for the **collected** one: same formula, two facts, never one standing in for the other.
 - **Exit, frozen** (`realizedGain`, `realizedGainPct`, `realizedRoi`) — only `vendida`.
 
-`totalInvestment` is a hybrid, and `investmentBasis` tells you which half you are looking at: `underwriting` when all seven cost inputs are present (the system computes the total and it is read-only), `manual` when they are not (a hand-typed figure is the base). `holdMonthsActual` runs from `acquisitionDate` to today while the property is held, and freezes at the sale.
+`totalInvestment` is the **resolved** capital base and is never written directly; `totalInvestmentCaptured` is the figure somebody typed, and it survives even when the breakdown wins. `investmentBasis` says which one the base came from: `underwriting` when all five cost inputs are present (the system adds them up and owns the total), `manual` when they are not. When both exist and disagree, the property carries a warning rather than the system picking in silence. `holdMonthsActual` runs from `acquisitionDate` to today while the property is held, and freezes at the sale.
 
 **Score:** 0–100 composite (50% projected ROI, 30% cap rate, 20% projected profit) as a **percentile rank against the other pre-purchase properties**. It exists only in `prospecto` and `oferta` and is `null` afterwards — a score ranks candidates competing for capital, and a bought property competes with nobody. It is **server-authoritative**: read it, never recompute it.
 
@@ -164,7 +168,7 @@ Key `operation_id`s:
 - `properties_update` — `PATCH /api/properties/{id}`
 - `properties_delete` — `DELETE /api/properties/{id}`
 - `properties_transition` — `POST /api/properties/{id}/transition`
-- `properties_clear_fields` — `POST /api/properties/{id}/clear-fields` — body `{"fields": ["rentMonthly", ...]}`
+- `properties_clear_fields` — `POST /api/properties/{id}/clear-fields` — body `{"fields": ["rentMonthlyProjected", ...]}`
 - `properties_parse` — `POST /api/properties/parse` — AI capture from a URL, pasted text or a screenshot (multipart)
 - `properties_quality` — `GET /api/quality` — every property with what is wrong with it *at its own stage*
 - `property_images_upload` — `POST /api/properties/{id}/images` (form field `image_type`: `general`/`antes`/`despues`)

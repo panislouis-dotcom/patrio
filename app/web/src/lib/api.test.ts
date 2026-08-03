@@ -17,16 +17,16 @@ const bodyOf = (fn: ReturnType<typeof stubFetch>, call = 0) =>
 describe('updateProperty', () => {
   it('deja fuera los nulls: un PATCH sube valores, nunca los quita', async () => {
     const fetchMock = stubFetch()
-    // rentMonthly viene en null porque el lector lo leyó vacío de la propiedad;
+    // rentMonthlyProjected viene en null porque el lector lo leyó vacío de la propiedad;
     // eso no es una orden de borrarlo.
-    await updateProperty(1, { city: 'Saltillo', rentMonthly: null, totalUnits: undefined })
+    await updateProperty(1, { city: 'Saltillo', rentMonthlyProjected: null, totalUnits: undefined })
 
     expect(bodyOf(fetchMock)).toEqual({ city: 'Saltillo' })
   })
 
   it('manda un cuerpo vacío antes que inventar una escritura', async () => {
     const fetchMock = stubFetch()
-    await updateProperty(1, { landPrice: null })
+    await updateProperty(1, { purchasePrice: null })
 
     expect(bodyOf(fetchMock)).toEqual({})
   })
@@ -42,9 +42,9 @@ describe('updateProperty', () => {
 describe('clearPropertyFields', () => {
   it('es la única puerta para vaciar, y lo dice por su nombre', async () => {
     const fetchMock = stubFetch()
-    await clearPropertyFields(1, ['rentMonthly', 'currentValuation'])
+    await clearPropertyFields(1, ['rentMonthlyProjected', 'currentValuation'])
 
     expect(fetchMock.mock.calls[0][0]).toContain('/api/properties/1/clear-fields')
-    expect(bodyOf(fetchMock)).toEqual({ fields: ['rentMonthly', 'currentValuation'] })
+    expect(bodyOf(fetchMock)).toEqual({ fields: ['rentMonthlyProjected', 'currentValuation'] })
   })
 })

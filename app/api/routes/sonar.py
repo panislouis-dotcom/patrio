@@ -284,7 +284,7 @@ def sonar_import(req: _ImportRequest, _: dict = Depends(get_current_user)):
         "latitude":  req.lat or 0.0,
         "longitude": req.lon or 0.0,
         "sqmLand":   req.sqmLand,
-        "landPrice": req.price,
+        "purchasePrice": req.price,
     })
     return {"property": captured}
 

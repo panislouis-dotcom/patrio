@@ -3,10 +3,10 @@ INSERT INTO properties (
   name, address, city, status, asset_type, url,
   latitude, longitude,
   sqm_land, sqm_construction,
-  land_price, acquisition_cost_pct, permits_cost, subdivision_cost,
+  purchase_price, acquisition_cost_pct, permits_cost, subdivision_cost,
   construction_cost_per_sqm, construction_overhead,
   projected_sale, hold_months,
-  rent_monthly, notes
+  rent_monthly_projected, notes
 ) VALUES (
   'Casa Centro Emilio Carranza',
   'Emilio Carranza, Centro, Monterrey NL',

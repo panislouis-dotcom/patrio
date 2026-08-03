@@ -14,6 +14,7 @@ Two layers over the same raw row (snake_case, straight from `properties`):
 """
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Literal
 
 from api.finance import underwriting
@@ -54,15 +55,15 @@ def stage_requirements(status: str, row: dict) -> dict[str, str]:
         # de verdad valúa; hasta entonces la plusvalía es None, que es la
         # respuesta honesta. Exigirla aquí solo lograba que se inventara.
         if underwriting.basis(row) is None:
-            missing["totalInvestment"] = (
-                "Falta la base de inversión: captura el total a mano o los siete "
+            missing["totalInvestmentCaptured"] = (
+                "Falta la base de inversión: captura el total a mano o los cinco "
                 "costos completos del desglose.")
 
     if status == "en_renta":
         if row.get("first_rent_date") is None:
             missing["firstRentDate"] = "Falta la fecha de la primera renta."
-        if row.get("rent_monthly") is None:
-            missing["rentMonthly"] = "Falta la renta mensual real."
+        if row.get("rent_monthly_actual") is None:
+            missing["rentMonthlyActual"] = "Falta la renta mensual cobrada."
 
     if status == "vendida":
         if row.get("sale_date") is None:
@@ -81,8 +82,10 @@ def stage_requirements(status: str, row: dict) -> dict[str, str]:
         missing["saleDate"] = "La venta no puede ser anterior a la adquisición."
     if sale and first_rent and sale < first_rent:
         missing["saleDate"] = "La venta no puede ser anterior a la primera renta."
-    if row.get("rent_monthly") is not None and to_decimal(row["rent_monthly"]) <= 0:
-        missing["rentMonthly"] = "La renta se captura positiva; «no renta» se expresa dejándola vacía."
+    for column, field in (("rent_monthly_projected", "rentMonthlyProjected"),
+                          ("rent_monthly_actual", "rentMonthlyActual")):
+        if row.get(column) is not None and to_decimal(row[column]) <= 0:
+            missing[field] = "La renta se captura positiva; «no renta» se expresa dejándola vacía."
 
     return missing
 
@@ -96,8 +99,8 @@ def _pre_purchase_warnings(row: dict, computed: dict) -> list[Issue]:
         issues.append(Issue("latitude", "Coordenada latitud es 0 o faltante", "error"))
     if not row.get("longitude"):
         issues.append(Issue("longitude", "Coordenada longitud es 0 o faltante", "error"))
-    if not _positive(row.get("land_price")):
-        issues.append(Issue("landPrice", "Precio de terreno es 0", "error"))
+    if not _positive(row.get("purchase_price")):
+        issues.append(Issue("purchasePrice", "Precio de compra es 0", "error"))
     if not _positive(row.get("sqm_land")):
         issues.append(Issue("sqmLand", "Superficie de terreno (m²) es 0", "error"))
     roi = computed.get("projectedRoi")
@@ -108,9 +111,9 @@ def _pre_purchase_warnings(row: dict, computed: dict) -> list[Issue]:
         issues.append(Issue("constructionOverhead", f"Overhead {overhead} < 1.0", "error"))
 
     if not _positive(row.get("construction_cost_per_sqm")):
-        issues.append(Issue("constructionCostPerSqm", "Costo construcción/m² es 0", "warning"))
-    if row.get("rent_monthly") is None:
-        issues.append(Issue("rentMonthly", "Renta mensual proyectada sin capturar", "warning"))
+        issues.append(Issue("constructionCostPerSqm", "Costo de la obra a ejecutar por m² es 0", "warning"))
+    if row.get("rent_monthly_projected") is None:
+        issues.append(Issue("rentMonthlyProjected", "Renta mensual estimada sin capturar", "warning"))
     acq_pct = row.get("acquisition_cost_pct")
     if acq_pct is not None and acq_pct > 0.10:
         issues.append(Issue("acquisitionCostPct", f"Costos adquisición altos ({acq_pct:.1%})", "warning"))
@@ -118,6 +121,31 @@ def _pre_purchase_warnings(row: dict, computed: dict) -> list[Issue]:
     if profit is not None and profit < 500_000:
         issues.append(Issue("projectedProfit", f"Ganancia proyectada < $500k ({profit:,.0f} MXN)", "warning"))
     return issues
+
+
+# Por debajo de esto, la diferencia entre el total tecleado y el desglose es
+# redondeo de captura, no un desacuerdo sobre cuánto se invirtió.
+_RECONCILIATION_TOLERANCE = Decimal("0.01")
+
+
+def _reconciliation_warnings(row: dict) -> list[Issue]:
+    """Cuando existen las dos versiones de la inversión, tienen que contar la
+    misma historia. El desglose gana (el sistema sabe sumar mejor que quien
+    teclea), pero el total capturado no se borra ni se esconde: si no cuadran,
+    uno de los dos está mal y hay que decirlo en vez de elegir en silencio."""
+    captured = row.get("total_investment_captured")
+    if captured is None or not underwriting.has_breakdown(row):
+        return []
+    typed = to_decimal(captured)
+    summed = underwriting.investment(row)
+    gap = abs(typed - summed)
+    tolerated = summed * _RECONCILIATION_TOLERANCE if summed > 0 else Decimal(0)
+    if gap <= tolerated:
+        return []
+    return [Issue("totalInvestmentCaptured",
+                  f"La inversión capturada ({typed:,.0f}) no cuadra con el desglose "
+                  f"({summed:,.0f}); manda el desglose",
+                  "warning")]
 
 
 def _valuation_warnings(row: dict, today: date) -> list[Issue]:
@@ -145,20 +173,24 @@ def run_checks(row: dict, computed: dict, today: date | None = None) -> list[Iss
         issues += _pre_purchase_warnings(row, computed)
     elif status == "desarrollo":
         if underwriting.basis_kind(row) == "manual":
-            issues.append(Issue("totalInvestment",
+            issues.append(Issue("totalInvestmentCaptured",
                                 "Inversión capturada a mano: el desglose de costos está incompleto",
                                 "warning"))
+        issues += _reconciliation_warnings(row)
         issues += _valuation_warnings(row, today)
     elif status == "en_renta":
+        issues += _reconciliation_warnings(row)
         issues += _valuation_warnings(row, today)
-        if computed.get("capRate") is None:
-            issues.append(Issue("capRate", "Sin cap rate: falta renta o base de inversión", "warning"))
+        if computed.get("capRateActual") is None:
+            issues.append(Issue("capRateActual",
+                                "Sin cap rate real: falta la renta cobrada o la base de inversión",
+                                "warning"))
     elif status == "vendida":
         if row.get("acquisition_date") is None:
             issues.append(Issue("acquisitionDate",
                                 "Sin fecha de adquisición no hay plazo ni ROI realizado", "warning"))
         if underwriting.basis(row) is None:
-            issues.append(Issue("totalInvestment",
+            issues.append(Issue("totalInvestmentCaptured",
                                 "Sin base de inversión no hay ganancia realizada", "warning"))
 
     return issues

@@ -1,13 +1,13 @@
 -- ─────────────────────────────────────────────────
 -- Propiedad · en renta: Edificio Uno · Adaptive Reuse · Monterrey
--- rent_monthly queda NULL a propósito: nunca se capturó la renta real y
+-- rent_monthly_projected queda NULL a propósito: nunca se capturó la renta real y
 -- inventarla la metería al PDF como si fuera un hecho.
 -- ─────────────────────────────────────────────────
 
 INSERT INTO properties (
   name, asset_type, strategy_type, address, city, status, total_units,
   acquisition_date, first_rent_date,
-  total_investment, current_valuation, valuation_date,
+  total_investment_captured, current_valuation, valuation_date,
   url, latitude, longitude,
   milestones, notes
 ) VALUES (

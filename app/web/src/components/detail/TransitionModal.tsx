@@ -3,6 +3,7 @@ import type { Property, Transition } from '../../lib/types'
 import { PROPERTY_STATUS_LABEL } from '../../lib/status'
 import type { PropertyStatus } from '../../lib/status'
 import { colors, fonts } from '../../lib/theme'
+import { fmtMXN } from '../../lib/fmt'
 
 interface Field {
   key: string
@@ -13,7 +14,9 @@ interface Field {
   /** Un campo que la propiedad ya resolvió no se pregunta. Por omisión, todos. */
   show?: (p: Property) => boolean
   prefill: (p: Property) => string
-  hint?: string
+  /** Se resuelve contra la propiedad: algunos avisos solo tienen sentido con
+      lo que ya trae capturado (la renta estimada, el desglose incompleto). */
+  hint?: (p: Property) => string | undefined
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -29,7 +32,7 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
     { key: 'projectedSale', label: 'VENTA PROYECTADA', kind: 'money',
       required: p => !(p.projectedSale && p.projectedSale > 0),
       prefill: p => str(p.projectedSale),
-      hint: 'Toda oferta modela su salida, aunque el plan sea rentar.' },
+      hint: () => 'Toda oferta modela su salida, aunque el plan sea rentar.' },
   ],
   desarrollo: [
     { key: 'acquisitionDate', label: 'FECHA DE ADQUISICIÓN', kind: 'date',
@@ -38,22 +41,29 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
       required: () => true, prefill: p => str(p.totalUnits) || '1' },
     // No se pide valuación: comprar no produce un avalúo. Se captura en la
     // ficha el día que exista uno de verdad.
-    { key: 'totalInvestment', label: 'INVERSIÓN TOTAL', kind: 'money',
+    { key: 'totalInvestmentCaptured', label: 'INVERSIÓN TOTAL', kind: 'money',
       required: p => p.investmentBasis !== 'underwriting',
       // Con el desglose completo la inversión ya está sumada; preguntarla sería
       // pedir un dato que el sistema tiene mejor que quien lo teclea.
       show: p => p.investmentBasis !== 'underwriting',
-      prefill: p => str(p.totalInvestment),
-      hint: 'El desglose de costos está incompleto, así que hace falta el total.' },
+      prefill: p => str(p.totalInvestmentCaptured),
+      hint: () => 'El desglose de costos está incompleto, así que hace falta el total.' },
   ],
   en_renta: [
     { key: 'firstRentDate', label: 'FECHA DE LA PRIMERA RENTA', kind: 'date',
       required: () => true, prefill: p => p.firstRentDate ?? today() },
-    { key: 'rentMonthly', label: 'RENTA MENSUAL REAL', kind: 'money',
-      required: () => true, prefill: p => str(p.rentMonthly) },
+    // Sin prefill, y por la misma razón que el precio de venta: la renta que se
+    // cobra es un hecho que se conoce. Arrastrarle la estimada lograba que se
+    // confirmara sin leer, y esa confirmación borraba la proyección — el par
+    // «modelamos X, cobramos Y» moría en el momento de empezar a valer algo.
+    { key: 'rentMonthlyActual', label: 'RENTA MENSUAL COBRADA', kind: 'money',
+      required: () => true, prefill: () => '',
+      hint: p => p.rentMonthlyProjected
+        ? `Se estimó ${fmtMXN(p.rentMonthlyProjected)} al mes. La estimación se conserva aparte.`
+        : undefined },
     { key: 'currentValuation', label: 'VALUACIÓN', kind: 'money',
       required: () => false, prefill: p => str(p.currentValuation),
-      hint: 'Opcional: solo si ya existe un avalúo.' },
+      hint: () => 'Opcional: solo si ya existe un avalúo.' },
     { key: 'valuationDate', label: 'FECHA DE VALUACIÓN', kind: 'date',
       required: () => false, prefill: p => p.valuationDate ?? '' },
   ],
@@ -148,9 +158,9 @@ export function TransitionModal({ property, to, onCancel, onConfirm }: Props) {
               onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
               style={inputStyle}
             />
-            {f.hint && (
+            {f.hint?.(property) && (
               <div style={{ fontFamily: fonts.label, fontSize: '7px', color: colors.secondary, letterSpacing: '0.06em', marginTop: '3px', lineHeight: 1.5 }}>
-                {f.hint}
+                {f.hint(property)}
               </div>
             )}
           </div>

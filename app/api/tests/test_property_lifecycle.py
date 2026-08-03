@@ -115,7 +115,7 @@ def test_archivada_is_terminal(client, test_property):
 def test_desarrollo_refuses_a_property_with_no_investment_base(client, test_property):
     _transition(client, test_property["id"], to="oferta")
     client.post(f"/api/properties/{test_property['id']}/clear-fields",
-                json={"fields": ["landPrice"]})
+                json={"fields": ["purchasePrice"]})
     r = _transition(client, test_property["id"], to="desarrollo",
                     acquisitionDate="2025-01", totalUnits=4, currentValuation=4_000_000)
     assert r.status_code == 422
@@ -127,7 +127,7 @@ def test_en_renta_refuses_a_rent_of_zero(client, desarrollo_property):
     """NULL means "not captured" and a stored rent is always positive — 0 is
     neither, so it is rejected rather than silently stored."""
     r = _transition(client, desarrollo_property["id"], to="en_renta",
-                    firstRentDate="2026-03", rentMonthly=0, currentValuation=4_000_000)
+                    firstRentDate="2026-03", rentMonthlyActual=0, currentValuation=4_000_000)
     assert r.status_code == 422
     assert _status(desarrollo_property["id"]) == "desarrollo"
 
@@ -174,9 +174,9 @@ def test_patch_cannot_change_status(client, test_property):
 
 
 def test_patch_cannot_clear_a_field(client, test_property):
-    r = client.patch(f"/api/properties/{test_property['id']}", json={"rentMonthly": None})
+    r = client.patch(f"/api/properties/{test_property['id']}", json={"rentMonthlyProjected": None})
     assert r.status_code == 200
-    assert float(r.json()["rentMonthly"]) == 18000
+    assert float(r.json()["rentMonthlyProjected"]) == 18000
 
 
 def test_patch_updates_what_it_is_given(client, test_property):
@@ -195,10 +195,13 @@ def test_patch_cannot_break_the_stage_it_is_in(client, desarrollo_property):
 
 def test_clear_fields_empties_an_allowlisted_column(client, test_property):
     r = client.post(f"/api/properties/{test_property['id']}/clear-fields",
-                    json={"fields": ["rentMonthly", "holdMonths"]})
+                    json={"fields": ["rentMonthlyProjected", "holdMonths"]})
     assert r.status_code == 200, r.text
-    assert r.json()["rentMonthly"] is None
-    assert r.json()["holdMonths"] is None
+    assert r.json()["rentMonthlyProjected"] is None
+    # El plazo es un SUPUESTO: vaciarlo no lo deja en blanco, lo devuelve al
+    # default del modelo — y la ficha ahora dice de dónde salió el número.
+    assert r.json()["holdMonths"] == 12
+    assert r.json()["assumptions"]["holdMonths"]["source"] == "default"
 
 
 def test_clear_fields_refuses_anything_off_the_allowlist(client, test_property):

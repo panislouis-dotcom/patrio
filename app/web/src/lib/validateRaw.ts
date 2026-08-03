@@ -19,8 +19,8 @@ export function validateRaw(fields: Partial<PropertyCreate>): Issue[] {
   if (!fields.longitude) {
     issues.push({ field: 'longitude', message: 'Longitud requerida', severity: 'error' })
   }
-  if (!fields.landPrice) {
-    issues.push({ field: 'landPrice', message: 'Precio de terreno requerido', severity: 'error' })
+  if (!fields.purchasePrice) {
+    issues.push({ field: 'purchasePrice', message: 'Precio de compra requerido', severity: 'error' })
   }
   if (!fields.sqmLand) {
     issues.push({ field: 'sqmLand', message: 'Superficie de terreno (m²) requerida', severity: 'error' })
@@ -30,13 +30,13 @@ export function validateRaw(fields: Partial<PropertyCreate>): Issue[] {
   }
 
   if (!fields.constructionCostPerSqm) {
-    issues.push({ field: 'constructionCostPerSqm', message: 'Costo de construcción/m² sin capturar', severity: 'warning' })
+    issues.push({ field: 'constructionCostPerSqm', message: 'Costo de la obra a ejecutar por m² sin capturar', severity: 'warning' })
   }
   if (!fields.projectedSale) {
     issues.push({ field: 'projectedSale', message: 'Venta proyectada sin capturar: sin ella no hay ROI ni ganancia', severity: 'warning' })
   }
-  if (!fields.rentMonthly) {
-    issues.push({ field: 'rentMonthly', message: 'Renta mensual sin capturar: sin ella no hay cap rate', severity: 'warning' })
+  if (!fields.rentMonthlyProjected) {
+    issues.push({ field: 'rentMonthlyProjected', message: 'Renta mensual estimada sin capturar: sin ella no hay cap rate', severity: 'warning' })
   }
   return issues
 }

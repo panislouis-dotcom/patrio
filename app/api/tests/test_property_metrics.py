@@ -12,9 +12,12 @@ from api.finance import underwriting
 
 # Groups as the client sees them. A status either has the whole group or none of it.
 PROJECTION = ("acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
-              "landPricePerSqm", "investmentPerSqm", "salePerSqm",
+              "purchasePricePerSqm", "investmentPerSqm", "salePerSqm",
               "projectedProfit", "projectedRoi", "projectedRoiTotal", "capRate", "rentAnnual")
 REALIZED = ("unrealizedGain", "unrealizedGainPct", "roi")
+# La renta real solo existe una vez que se cobra, así que sus dos métricas se
+# comprueban aparte: una propiedad en desarrollo tiene REALIZED y no las tiene.
+REALIZED_RENT = ("capRateActual", "rentAnnualActual")
 EXIT = ("realizedGain", "realizedGainPct", "realizedRoi")
 
 
@@ -52,10 +55,10 @@ def test_projection_matches_the_underwriting_engine(client, test_property):
     parity oracle that keeps the two from drifting."""
     p = _get(client, test_property["id"])
     inputs = {
-        "land_price": 1_000_000, "acquisition_cost_pct": 0.065, "permits_cost": 50_000,
+        "purchase_price": 1_000_000, "acquisition_cost_pct": 0.065, "permits_cost": 50_000,
         "subdivision_cost": 25_000, "sqm_construction": 200,
         "construction_cost_per_sqm": 9_000, "construction_overhead": 1.3,
-        "projected_sale": 2_500_000, "hold_months": 18, "rent_monthly": 18_000,
+        "projected_sale": 2_500_000, "hold_months": 18, "rent_monthly_projected": 18_000,
         "sqm_land": 300,
     }
     expected = underwriting.metrics(inputs)
@@ -64,7 +67,7 @@ def test_projection_matches_the_underwriting_engine(client, test_property):
         ("acquisitionTotal", "acquisition_total"), ("constructionBase", "construction_base"),
         ("constructionTotal", "construction_total"), ("projectedProfit", "profit"),
         ("projectedRoi", "roi"), ("projectedRoiTotal", "roi_total"), ("capRate", "cap_rate"),
-        ("landPricePerSqm", "land_price_per_sqm"), ("salePerSqm", "sale_per_sqm"),
+        ("purchasePricePerSqm", "purchase_price_per_sqm"), ("salePerSqm", "sale_per_sqm"),
         ("investmentPerSqm", "investment_per_sqm"), ("rentAnnual", "rent_annual"),
     ]:
         assert Decimal(str(p[camel])) == expected[snake], camel
@@ -84,9 +87,9 @@ def test_no_modeled_sale_means_no_projected_gain(client, test_property):
 
 def test_rent_absent_means_no_yield_never_zero(client, test_property):
     client.post(f"/api/properties/{test_property['id']}/clear-fields",
-                json={"fields": ["rentMonthly"]})
+                json={"fields": ["rentMonthlyProjected"]})
     p = _get(client, test_property["id"])
-    assert p["rentMonthly"] is None
+    assert p["rentMonthlyProjected"] is None
     assert p["capRate"] is None
     assert p["rentAnnual"] is None
 
@@ -100,10 +103,10 @@ def test_complete_breakdown_is_an_underwriting_basis(client, test_property):
 
 
 def test_an_incomplete_breakdown_falls_back_to_the_manual_total(client, test_property):
-    """Clear one of the seven and the system can no longer recompute anything:
+    """Clear one of the five costs and the system can no longer recompute anything:
     the basis becomes whatever was typed in, and says so."""
     with get_db() as conn:
-        conn.execute("UPDATE properties SET total_investment = 9000000 WHERE id = %s",
+        conn.execute("UPDATE properties SET total_investment_captured = 9000000 WHERE id = %s",
                      (test_property["id"],))
     client.post(f"/api/properties/{test_property['id']}/clear-fields",
                 json={"fields": ["permitsCost"]})
@@ -117,7 +120,7 @@ def test_an_incomplete_breakdown_falls_back_to_the_manual_total(client, test_pro
 
 def test_without_breakdown_or_total_there_is_no_basis(client, test_property):
     client.post(f"/api/properties/{test_property['id']}/clear-fields",
-                json={"fields": ["landPrice"]})
+                json={"fields": ["purchasePrice"]})
     p = _get(client, test_property["id"])
     assert p["totalInvestment"] is None
     assert p["investmentBasis"] == "manual"
@@ -142,7 +145,7 @@ def test_unrealized_gain_pct_is_none_not_zero_when_uncomputable(client, desarrol
     is a claim. Absence has to look like absence."""
     with get_db() as conn:
         conn.execute(
-            "UPDATE properties SET total_investment = NULL, land_price = NULL WHERE id = %s",
+            "UPDATE properties SET total_investment_captured = NULL, purchase_price = NULL WHERE id = %s",
             (desarrollo_property["id"],))
     p = _get(client, desarrollo_property["id"])
     assert p["totalInvestment"] is None
@@ -152,11 +155,15 @@ def test_unrealized_gain_pct_is_none_not_zero_when_uncomputable(client, desarrol
 
 def test_en_renta_keeps_projecting_and_marking(client, desarrollo_property):
     p = _advance(client, desarrollo_property["id"], to="en_renta",
-                 firstRentDate="2026-03", rentMonthly=18000, currentValuation=4_200_000)
+                 firstRentDate="2026-03", rentMonthlyActual=20000, currentValuation=4_200_000)
     assert _all_present(p, PROJECTION)
-    assert _all_present(p, REALIZED)
+    assert _all_present(p, REALIZED + REALIZED_RENT)
     assert _all_none(p, EXIT)
+    # La proyección sigue contestando por la renta estimada (18,000/mes)…
     assert Decimal(str(p["capRate"])) == Decimal("0.0621")   # 216,000 / 3,480,000
+    # …y el realizado por la cobrada (20,000/mes), sin que una pise a la otra.
+    assert Decimal(str(p["rentMonthlyProjected"])) == Decimal("18000")
+    assert Decimal(str(p["capRateActual"])) == Decimal("0.069")  # 240,000 / 3,480,000
 
 
 # ── Exit ─────────────────────────────────────────────────────────────────────
@@ -167,7 +174,7 @@ def test_vendida_freezes_everything_into_the_exit_group(client, desarrollo_prope
     p = _advance(client, desarrollo_property["id"], to="vendida",
                  saleDate="2026-07", salePrice=5_000_000)
     assert _all_none(p, PROJECTION)
-    assert _all_none(p, REALIZED)
+    assert _all_none(p, REALIZED + REALIZED_RENT)
     assert _all_present(p, EXIT)
     # 5,000,000 out over 3,480,000 in
     assert Decimal(str(p["realizedGain"])) == Decimal("1520000")
@@ -195,7 +202,7 @@ def test_the_capital_base_survives_the_sale(client, desarrollo_property):
 
 def test_archivada_reports_no_metrics_at_all(client, test_property):
     p = _advance(client, test_property["id"], to="archivada")
-    assert _all_none(p, PROJECTION + REALIZED + EXIT)
+    assert _all_none(p, PROJECTION + REALIZED + REALIZED_RENT + EXIT)
     assert p["score"] is None
 
 
@@ -226,3 +233,71 @@ def test_the_listing_and_the_detail_agree_on_the_score(client, test_property):
     listed = next(p for p in client.get("/api/properties").json()
                   if p["id"] == test_property["id"])
     assert listed["score"] == _get(client, test_property["id"])["score"]
+
+
+# ── Lo que la Fase A vino a arreglar ─────────────────────────────────────────
+
+def test_a_captured_purchase_price_is_not_inflated(client):
+    """El precio de un anuncio es el precio de COMPRA del inmueble completo. Una
+    propiedad dada de alta con ese precio y sin obra a ejecutar vale ese precio
+    más sus costos de adquisición, y nada más: lo ya construido no se vuelve a
+    cobrar. Antes el modelo le sumaba los m² construidos del anuncio."""
+    r = client.post("/api/properties", json={
+        "name": "[TEST] Casa Construida", "address": "Calle Cuatro 4", "city": "Monterrey",
+        "purchasePrice": 4_000_000, "sqmLand": 200,
+    })
+    assert r.status_code == 201, r.text
+    p = r.json()
+    try:
+        assert Decimal(str(p["totalInvestment"])) == Decimal("4260000")   # 4,000,000 × 1.065
+        assert Decimal(str(p["constructionTotal"])) == Decimal("0")
+        assert Decimal(str(p["acquisitionCosts"])) == Decimal("260000")
+    finally:
+        client.delete(f"/api/properties/{p['id']}")
+
+
+def test_the_real_rent_does_not_overwrite_the_estimated_one(client, desarrollo_property):
+    """El par que el modelo promete: se proyectaron 18,000 y se cobran 25,000.
+    Antes la transición pisaba la estimación con lo cobrado y la comparación
+    dejaba de existir en el momento exacto en que empezaba a valer algo."""
+    p = _advance(client, desarrollo_property["id"], to="en_renta",
+                 firstRentDate="2026-03", rentMonthlyActual=25_000)
+    assert Decimal(str(p["rentMonthlyProjected"])) == Decimal("18000")
+    assert Decimal(str(p["rentMonthlyActual"])) == Decimal("25000")
+    assert Decimal(str(p["rentAnnual"])) == Decimal("216000")        # lo proyectado
+    assert Decimal(str(p["rentAnnualActual"])) == Decimal("300000")  # lo cobrado
+
+
+def test_an_assumption_says_whether_anybody_chose_it(client, test_property):
+    """El plazo del fixture está capturado; el overhead y los costos de
+    adquisición también. Vaciar uno lo devuelve al supuesto del modelo — mismo
+    número que antes tenía escondido, ahora con su origen a la vista."""
+    p = _get(client, test_property["id"])
+    assert p["assumptions"]["acquisitionCostPct"] == {"value": 0.065, "source": "captured"}
+
+    client.post(f"/api/properties/{test_property['id']}/clear-fields",
+                json={"fields": ["acquisitionCostPct"]})
+    p = _get(client, test_property["id"])
+    assert p["assumptions"]["acquisitionCostPct"] == {"value": 0.065, "source": "default"}
+    # El supuesto sigue moviendo dinero, que es justamente por lo que hay que verlo.
+    assert Decimal(str(p["totalInvestment"])) == Decimal("3480000")
+
+
+def test_a_new_property_assumes_nothing_it_can_be_asked_about(client):
+    """Recién capturada, una propiedad no ha elegido supuestos: los tres salen
+    como del modelo, y su inversión se puede teclear a mano porque el desglose
+    todavía no está completo de verdad."""
+    r = client.post("/api/properties", json={
+        "name": "[TEST] Recién Capturada", "address": "Calle Cinco 5", "city": "Monterrey",
+        "purchasePrice": 2_000_000,
+    })
+    p = r.json()
+    try:
+        assert {k: v["source"] for k, v in p["assumptions"].items()} == {
+            "acquisitionCostPct": "default",
+            "constructionOverhead": "default",
+            "holdMonths": "default",
+        }
+        assert p["totalInvestmentCaptured"] is None
+    finally:
+        client.delete(f"/api/properties/{p['id']}")

@@ -32,7 +32,7 @@ The document does not have one "track record". It has two, because a closed deal
 | Bucket | `status` | Presented with |
 |---|---|---|
 | Track Record · closed | `vendida` | `salePrice`, `realizedGain`, `realizedGainPct`, `realizedRoi`, `holdMonthsActual` |
-| Track Record · held | `en_renta` | `currentValuation`, `unrealizedGain`, `unrealizedGainPct`, `rentMonthly`, `capRate` |
+| Track Record · held | `en_renta` | `currentValuation`, `unrealizedGain`, `unrealizedGainPct`, `rentMonthlyActual`, `capRateActual` |
 | En Desarrollo | `desarrollo` | `totalInvestment`, `currentValuation`, `acquisitionDate`, `milestones`, `totalUnits` |
 | Oportunidad Activa | `oferta`, then `prospecto` | `projectedSale`, `holdMonths`, `capRate`, `totalInvestment` |
 

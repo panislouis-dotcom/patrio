@@ -31,12 +31,12 @@ def _kv_row(label: str, value: str) -> str:
     return f'<td>{label}</td><td class="n">{value}</td>'
 
 
-def _rented(client, property_id: int, rent_monthly, valuation) -> dict:
+def _rented(client, property_id: int, rent_monthly_actual, valuation) -> dict:
     """Take a property all the way to en_renta — half of what the track record
     is made of."""
     r = client.post(f"/api/properties/{property_id}/transition", json={
         "to": "en_renta", "firstRentDate": "2026-03",
-        "rentMonthly": rent_monthly, "currentValuation": valuation})
+        "rentMonthlyActual": rent_monthly_actual, "currentValuation": valuation})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -83,7 +83,7 @@ def make_property(client):
     def _make(**fields) -> dict:
         r = client.post("/api/properties", json={
             "name": "[TEST] Otra Propiedad", "address": "Calle Dos 2", "city": "Monterrey",
-            "landPrice": 1_000_000, "acquisitionCostPct": 0.0, "permitsCost": 0,
+            "purchasePrice": 1_000_000, "acquisitionCostPct": 0.0, "permitsCost": 0,
             "subdivisionCost": 0, "sqmLand": 300, "sqmConstruction": 0,
             "constructionCostPerSqm": 0, "constructionOverhead": 1.0,
             "holdMonths": 12, "projectedSale": 2_000_000, **fields})
@@ -294,7 +294,7 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     propiedad 1,000,000 + adquisición 65,000 + desarrollo 2,415,000 = 3,480,000."""
     p = get_property(test_property["id"])
     html = build_prospectus_html([], [], [], [p])
-    assert _kv_row("Precio propiedad", "$1,000,000") in html
+    assert _kv_row("Precio de compra", "$1,000,000") in html
     assert _kv_row("Costos de adquisición", "$65,000") in html
     assert _kv_row("Inversión desarrollo", "$2,415,000") in html
     assert _metric("$3.5M", "Inversión total") in html
@@ -321,7 +321,7 @@ def test_the_opportunity_cap_rate_comes_from_the_api(client, test_property):
 
 def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
     client.post(f"/api/properties/{test_property['id']}/clear-fields",
-                json={"fields": ["rentMonthly"]})
+                json={"fields": ["rentMonthlyProjected"]})
     p = get_property(test_property["id"])
     assert p["capRate"] is None
     assert _metric("—", "Cap rate") in build_prospectus_html([], [], [], [p])

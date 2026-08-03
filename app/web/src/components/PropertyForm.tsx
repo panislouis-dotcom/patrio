@@ -181,7 +181,7 @@ export function PropertyForm({ initial, onSave, onCancel, saving, saveError }: P
             />
           </div>
           <div>
-            <FieldLabel>m² Construcción</FieldLabel>
+            <FieldLabel>m² de obra a ejecutar</FieldLabel>
             <input
               style={inputStyle}
               type="number"
@@ -196,12 +196,12 @@ export function PropertyForm({ initial, onSave, onCancel, saving, saveError }: P
       <Section title="Costos de adquisición">
         <div style={{ ...gridTwo, marginBottom: '16px' }}>
           <div>
-            <FieldLabel>Precio terreno (MXN)</FieldLabel>
+            <FieldLabel>Precio de compra (MXN)</FieldLabel>
             <input
               style={inputStyle}
               type="number"
-              value={form.landPrice ?? ''}
-              onChange={e => set('landPrice', parseFloat(e.target.value) || 0)}
+              value={form.purchasePrice ?? ''}
+              onChange={e => set('purchasePrice', parseFloat(e.target.value) || 0)}
             />
           </div>
           <div>
@@ -237,11 +237,11 @@ export function PropertyForm({ initial, onSave, onCancel, saving, saveError }: P
         </div>
       </Section>
 
-      {/* ── Construcción ────────────────────────────────────────────── */}
-      <Section title="Construcción">
+      {/* ── Obra a ejecutar ─────────────────────────────────────────── */}
+      <Section title="Obra a ejecutar">
         <div style={gridTwo}>
           <div>
-            <FieldLabel>Costo/m² construcción (MXN)</FieldLabel>
+            <FieldLabel>Costo/m² de obra a ejecutar (MXN)</FieldLabel>
             <input
               style={inputStyle}
               type="number"
@@ -275,12 +275,12 @@ export function PropertyForm({ initial, onSave, onCancel, saving, saveError }: P
             />
           </div>
           <div>
-            <FieldLabel>Renta mensual (MXN)</FieldLabel>
+            <FieldLabel>Renta mensual estimada (MXN)</FieldLabel>
             <input
               style={inputStyle}
               type="number"
-              value={form.rentMonthly ?? ''}
-              onChange={e => set('rentMonthly', parseFloat(e.target.value) || 0)}
+              value={form.rentMonthlyProjected ?? ''}
+              onChange={e => set('rentMonthlyProjected', parseFloat(e.target.value) || 0)}
             />
           </div>
         </div>

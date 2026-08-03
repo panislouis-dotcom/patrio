@@ -67,13 +67,18 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
   const [name, setName]           = useState('')
   const [address, setAddress]     = useState('')
   const [city, setCity]           = useState('Monterrey')
-  const [landPrice, setLandPrice] = useState(0)
+  const [purchasePrice, setPurchasePrice] = useState(0)
   const [sqmLand, setSqmLand]     = useState(0)
+  // Obra A EJECUTAR — la que se va a construir o remodelar. Empieza en cero
+  // aunque el anuncio traiga metros construidos: esos ya están pagados dentro
+  // del precio de compra.
   const [sqmConstruction, setSqmConstruction]               = useState(0)
   const [projectedSale, setProjectedSale]                   = useState(0)
-  const [holdMonths, setHoldMonths]                         = useState(12)
+  // Vacío = el plazo lo supone el modelo (12 meses) y la ficha lo dirá. Poner
+  // 12 aquí lo guardaba como si alguien lo hubiera elegido.
+  const [holdMonths, setHoldMonths]                         = useState(0)
   const [constructionCostPerSqm, setConstructionCostPerSqm] = useState(0)
-  const [rentMonthly, setRentMonthly] = useState(0)
+  const [rentMonthlyProjected, setRentMonthlyProjected] = useState(0)
 
   const [image, setImage]               = useState<Blob | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -122,9 +127,12 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
       setAddress(result.address || '')
       setCity(result.city || 'Monterrey')
       setTipo(result.type || '')
-      setLandPrice(result.price || 0)
+      setPurchasePrice(result.price || 0)
       setSqmLand(result.sqmLand || 0)
-      setSqmConstruction(result.sqmConstruction || 0)
+      // result.sqmConstruction NO se copia a propósito: son los metros que el
+      // inmueble YA tiene, y multiplicarlos por un costo de obra sumaba una
+      // segunda vez lo que el precio del anuncio ya cobraba. Se conservan como
+      // nota al guardar.
       setLat(result.latitude ?? 0)
       setLon(result.longitude ?? 0)
       setStep('review')
@@ -139,23 +147,30 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
     if (!canSave) return
     setSaving(true)
     setSaveError(null)
+    // Lo construido según el anuncio es un hecho del inmueble que vale la pena
+    // conservar; lo que no puede es entrar al modelo como obra por ejecutar.
+    const built = parsed?.sqmConstruction
+      ? `Construido según el anuncio: ${parsed.sqmConstruction} m².`
+      : ''
+    const notes = [text.trim() || parsed?.notes || '', built].filter(Boolean).join('\n\n')
     try {
       const created = await createProperty({
         name:                 name.trim(),
         address:              address.trim() || name.trim(),
         city:                 city.trim() || 'Monterrey',
         assetType:            tipo || undefined,
-        landPrice,
+        purchasePrice,
         sqmLand,
         sqmConstruction,
         projectedSale,
-        holdMonths,
+        // Sin plazo capturado el modelo aplica el suyo y lo declara.
+        holdMonths:           holdMonths || undefined,
         constructionCostPerSqm,
         // Una renta de 0 no es una renta: la ausencia se expresa dejándola
-        // vacía. Mandar el cero lo rechaza la base (rent_monthly > 0).
-        rentMonthly:          rentMonthly || undefined,
+        // vacía. Mandar el cero lo rechaza la base (rent_monthly_* > 0).
+        rentMonthlyProjected: rentMonthlyProjected || undefined,
         url:                  url.trim() || undefined,
-        notes:                text.trim() || parsed?.notes || undefined,
+        notes:                notes || undefined,
         latitude:             lat,
         longitude:            lon,
       })
@@ -172,7 +187,7 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
 
   // Count how many key fields were filled by the parser
   const filledCount = parsed
-    ? [parsed.name, parsed.address, parsed.price, parsed.sqmLand, parsed.sqmConstruction, parsed.latitude]
+    ? [parsed.name, parsed.address, parsed.price, parsed.sqmLand, parsed.latitude]
         .filter(v => v !== '' && v !== 0 && v != null).length
     : 0
 
@@ -182,8 +197,8 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
   // modelo lo dirá su propia lista de issues en cuanto exista la fila: capturar
   // rápido y completar después es como se trabaja un prospecto.
   const saveBlockers: string[] = []
-  if (!name.trim())  saveBlockers.push('Nombre')
-  if (!landPrice)    saveBlockers.push('Precio de terreno')
+  if (!name.trim())    saveBlockers.push('Nombre')
+  if (!purchasePrice)  saveBlockers.push('Precio de compra')
   const canSave = !saving && saveBlockers.length === 0
 
   const overlay: React.CSSProperties = {
@@ -391,15 +406,15 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Field
-                label="M² Construcción"
+                label="Obra a ejecutar (m²)"
                 value={sqmConstruction || ''}
                 onChange={v => setSqmConstruction(parseFloat(v) || 0)}
                 type="number"
-                filled={(parsed?.sqmConstruction ?? 0) > 0}
-                placeholder="0"
+                filled={false}
+                placeholder={parsed?.sqmConstruction ? `0 · ya construidos: ${parsed.sqmConstruction}` : '0'}
               />
               <Field
-                label="Costo constr./m² (MXN)"
+                label="Costo obra/m² (MXN)"
                 value={constructionCostPerSqm || ''}
                 onChange={v => setConstructionCostPerSqm(parseFloat(v) || 0)}
                 type="number"
@@ -410,9 +425,9 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Field
-                label="Precio terreno (MXN)"
-                value={landPrice || ''}
-                onChange={v => setLandPrice(parseFloat(v) || 0)}
+                label="Precio de compra (MXN)"
+                value={purchasePrice || ''}
+                onChange={v => setPurchasePrice(parseFloat(v) || 0)}
                 type="number"
                 filled={(parsed?.price ?? 0) > 0}
                 placeholder="0"
@@ -429,9 +444,9 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Field
-                label="Renta mensual (MXN)"
-                value={rentMonthly || ''}
-                onChange={v => setRentMonthly(parseFloat(v) || 0)}
+                label="Renta mensual estimada (MXN)"
+                value={rentMonthlyProjected || ''}
+                onChange={v => setRentMonthlyProjected(parseFloat(v) || 0)}
                 type="number"
                 filled={false}
                 placeholder="0"
@@ -439,10 +454,10 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
               <Field
                 label="Plazo (meses)"
                 value={holdMonths || ''}
-                onChange={v => setHoldMonths(parseInt(v) || 12)}
+                onChange={v => setHoldMonths(parseInt(v) || 0)}
                 type="number"
                 filled={false}
-                placeholder="12"
+                placeholder="12 · supuesto"
               />
             </div>
 

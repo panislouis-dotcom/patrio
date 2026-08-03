@@ -37,7 +37,7 @@ class PropertyCreate(BaseModel):
     strategyType: Optional[str] = None
     sqmLand: Optional[float] = None
     sqmConstruction: Optional[float] = None
-    landPrice: Optional[float] = None
+    purchasePrice: Optional[float] = None
     acquisitionCostPct: Optional[float] = None
     permitsCost: Optional[float] = None
     subdivisionCost: Optional[float] = None
@@ -45,7 +45,7 @@ class PropertyCreate(BaseModel):
     constructionOverhead: Optional[float] = None
     projectedSale: Optional[float] = None
     holdMonths: Optional[int] = None
-    rentMonthly: Optional[float] = None
+    rentMonthlyProjected: Optional[float] = None
     notes: str = ""
     isFavorite: bool = False
 
@@ -63,7 +63,7 @@ class PropertyUpdate(BaseModel):
     strategyType: Optional[str] = None
     sqmLand: Optional[float] = None
     sqmConstruction: Optional[float] = None
-    landPrice: Optional[float] = None
+    purchasePrice: Optional[float] = None
     acquisitionCostPct: Optional[float] = None
     permitsCost: Optional[float] = None
     subdivisionCost: Optional[float] = None
@@ -71,13 +71,14 @@ class PropertyUpdate(BaseModel):
     constructionOverhead: Optional[float] = None
     projectedSale: Optional[float] = None
     holdMonths: Optional[int] = None
-    rentMonthly: Optional[float] = None
+    rentMonthlyProjected: Optional[float] = None
+    rentMonthlyActual: Optional[float] = None
     totalUnits: Optional[int] = None
     acquisitionDate: Optional[str] = None
     firstRentDate: Optional[str] = None
     saleDate: Optional[str] = None
     salePrice: Optional[float] = None
-    totalInvestment: Optional[float] = None
+    totalInvestmentCaptured: Optional[float] = None
     currentValuation: Optional[float] = None
     valuationDate: Optional[str] = None
     milestones: Optional[dict] = None
@@ -104,13 +105,13 @@ class ToDesarrollo(_TransitionBase):
     # de verdad; hasta entonces la plusvalía es None, que es la respuesta honesta.
     currentValuation: Optional[float] = None
     valuationDate: Optional[str] = None
-    totalInvestment: Optional[float] = None  # only needed without a full breakdown
+    totalInvestmentCaptured: Optional[float] = None  # only needed without a full breakdown
 
 
 class ToEnRenta(_TransitionBase):
     to: Literal["en_renta"]
     firstRentDate: str
-    rentMonthly: float
+    rentMonthlyActual: float
     currentValuation: Optional[float] = None
     valuationDate: Optional[str] = None
 

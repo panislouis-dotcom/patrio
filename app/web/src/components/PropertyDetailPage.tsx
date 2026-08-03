@@ -7,6 +7,7 @@ import {
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
 } from '../lib/api'
 import type {
+  AssumptionField,
   Property, RawPropertyFields, ClearableField, Transition, ImageType,
   PropertyInvestor, Investor, ProfitWaterfall, ProcessInstance, TeamMember,
 } from '../lib/types'
@@ -205,6 +206,13 @@ export function PropertyDetailPage() {
   const url = field('url') ?? ''
   const acquisitionCostPct = field('acquisitionCostPct')
   const derivedInvestment = p.investmentBasis === 'underwriting'
+
+  // Un supuesto siempre tiene un valor en uso; lo que cambia es quién lo puso.
+  // Vaciarlo solo es una operación cuando hay una captura que quitar — de otro
+  // modo el botón ✕ ofrecería borrar algo que nunca se guardó.
+  const isCaptured = (key: AssumptionField) => p.assumptions[key].source === 'captured'
+  const assumptionHint = (key: AssumptionField) =>
+    isCaptured(key) ? 'CAPTURADO' : 'SUPUESTO POR OMISIÓN'
   // Los destinos reales de esta etapa. Archivar se ofrece aparte: no es avanzar.
   const forward = ALLOWED_TRANSITIONS[stage].filter(s => s !== 'archivada')
   const canArchive = ALLOWED_TRANSITIONS[stage].includes('archivada')
@@ -305,12 +313,15 @@ export function PropertyDetailPage() {
       ? { label: 'ROI PROY. ANUAL', value: p.projectedRoi, second: 'ROI PROY. TOTAL', secondValue: p.projectedRoiTotal, caption: hasScore(stage) ? `Score ${p.score ?? '—'}` : undefined }
       : { label: 'ROI ANUAL', value: p.roi, second: 'GANANCIA NO REALIZADA', secondValue: p.unrealizedGainPct, caption: fmtMXN(p.unrealizedGain) }
 
+  // El precio de compra es lo que cuesta adquirir el inmueble como está; la
+  // obra es lo que se va a ejecutar encima. Nada de lo que ya está construido
+  // y ya está dentro del precio aparece dos veces.
   const investmentItems = [
-    { label: 'Precio terreno', amount: p.landPrice ?? 0 },
+    { label: 'Precio de compra', amount: p.purchasePrice ?? 0 },
     { label: 'Costos adq.', amount: p.acquisitionCosts ?? 0 },
     { label: 'Permisos', amount: p.permitsCost ?? 0 },
     { label: 'Subdivisión', amount: p.subdivisionCost ?? 0 },
-    { label: 'Construcción', amount: p.constructionTotal ?? 0 },
+    { label: 'Obra a ejecutar', amount: p.constructionTotal ?? 0 },
   ]
 
   const tabs: Array<['general' | 'finanzas' | 'analisis', string]> = [
@@ -419,14 +430,31 @@ export function PropertyDetailPage() {
               />
 
               <SectionDivider label="DATOS" />
-              {numRow('INVERSIÓN', 'totalInvestment', fmtMXN, {
-                clearable: derivedInvestment ? undefined : 'totalInvestment',
-                readOnly: derivedInvestment,
-                hint: editing ? (derivedInvestment ? 'CALCULADA DEL DESGLOSE' : 'CAPTURA MANUAL') : undefined,
-              })}
+              {/* La inversión son dos hechos, no uno: la base con la que se
+                  divide todo, y el número que alguien tecleó. Antes el segundo
+                  desaparecía de la ficha en cuanto el desglose se completaba —
+                  quedaba guardado, invisible e inborrable. */}
+              <EditableRow
+                label="INVERSIÓN"
+                editing={editing}
+                value={fmtMXN(p.totalInvestment)}
+                hint={derivedInvestment ? 'SUMA DEL DESGLOSE' : 'CAPTURA MANUAL'}
+              />
+              {(editing || p.totalInvestmentCaptured != null) &&
+                numRow('INVERSIÓN CAPTURADA', 'totalInvestmentCaptured', fmtMXN, {
+                  clearable: 'totalInvestmentCaptured',
+                  hint: derivedInvestment ? 'NO SE USA: MANDA EL DESGLOSE' : undefined,
+                })}
               {numRow('VALUACIÓN', 'currentValuation', fmtMXN, { clearable: 'currentValuation' })}
-              {numRow('RENTA/MES', 'rentMonthly', fmtMXN, { clearable: 'rentMonthly' })}
-              <EditableRow label="CAP RATE" editing={editing} value={fmtPct(p.capRate)} />
+              {/* Lo que se proyectó cobrar y lo que se cobra son dos columnas y
+                  dos filas: confirmar una nunca vuelve a borrar la otra. */}
+              {numRow('RENTA/MES ESTIMADA', 'rentMonthlyProjected', fmtMXN, { clearable: 'rentMonthlyProjected' })}
+              {(editing || p.rentMonthlyActual != null) &&
+                numRow('RENTA/MES COBRADA', 'rentMonthlyActual', fmtMXN, { clearable: 'rentMonthlyActual' })}
+              <EditableRow label="CAP RATE PROY." editing={editing} value={fmtPct(p.capRate)} />
+              {(p.capRateActual != null || p.rentMonthlyActual != null) && (
+                <EditableRow label="CAP RATE REAL" editing={editing} value={fmtPct(p.capRateActual)} />
+              )}
               <EditableRow
                 label="PLAZO REAL"
                 editing={editing}
@@ -488,30 +516,13 @@ export function PropertyDetailPage() {
               {editing ? (
                 <>
                   <SectionDivider label="DESGLOSE DE INVERSIÓN" />
-                  {numRow('PRECIO TERRENO', 'landPrice', fmtMXN, { clearable: 'landPrice' })}
+                  {numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
                   {numRow('TERRENO (m²)', 'sqmLand', fmtNum, { clearable: 'sqmLand' })}
-                  {numRow('CONSTRUCCIÓN (m²)', 'sqmConstruction', fmtNum, { clearable: 'sqmConstruction' })}
-                  {numRow('COSTO CONSTR./m²', 'constructionCostPerSqm', fmtMXN, { clearable: 'constructionCostPerSqm' })}
+                  {numRow('OBRA A EJECUTAR (m²)', 'sqmConstruction', fmtNum, { clearable: 'sqmConstruction' })}
+                  {numRow('COSTO OBRA/m²', 'constructionCostPerSqm', fmtMXN, { clearable: 'constructionCostPerSqm' })}
                   {numRow('PERMISOS', 'permitsCost', fmtMXN, { clearable: 'permitsCost' })}
                   {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN, { clearable: 'subdivisionCost' })}
                   {numRow('VENTA PROYECTADA', 'projectedSale', fmtMXN, { clearable: 'projectedSale' })}
-                  <EditableRow
-                    label="COSTOS ADQ. (%)"
-                    editing={editing}
-                    value={fmtPct(acquisitionCostPct)}
-                    onClear={p.acquisitionCostPct != null ? () => clearField('acquisitionCostPct') : undefined}
-                    input={
-                      <NumericInput
-                        value={acquisitionCostPct != null ? acquisitionCostPct * 100 : undefined}
-                        onChange={n => setField('acquisitionCostPct', n != null ? n / 100 : undefined)}
-                        step={0.1}
-                        ariaLabel="COSTOS ADQ. (%)"
-                        style={fieldInput}
-                      />
-                    }
-                  />
-                  {numRow('OVERHEAD CONSTRUCCIÓN', 'constructionOverhead', fmtNum, { step: 0.01, clearable: 'constructionOverhead' })}
-                  {numRow('PLAZO PROYECTADO (MESES)', 'holdMonths', fmtNum, { clearable: 'holdMonths' })}
                 </>
               ) : (
                 <>
@@ -524,9 +535,41 @@ export function PropertyDetailPage() {
                   <SectionDivider label="MÉTRICAS" />
                   <StatRow label="INVERSIÓN/m²" value={fmtMXN(p.investmentPerSqm)} />
                   <StatRow label="VENTA/m²" value={fmtMXN(p.salePerSqm)} />
-                  <StatRow label="TERRENO/m²" value={fmtMXN(p.landPricePerSqm)} />
+                  <StatRow label="COMPRA/m² TERRENO" value={fmtMXN(p.purchasePricePerSqm)} />
                 </>
               )}
+
+              {/* Los supuestos se ven SIEMPRE, no solo en edición: cada uno de
+                  los tres mueve dinero o mueve el reloj, y esconderlos era como
+                  el 6.5% y el 1.3 llegaron a costar sin que nadie los eligiera.
+                  Cada fila dice además si alguien los eligió o los puso el
+                  modelo — que es la diferencia entre una decisión y un supuesto. */}
+              <SectionDivider label="SUPUESTOS" />
+              <EditableRow
+                label="COSTOS ADQ. (%)"
+                editing={editing}
+                value={fmtPct(acquisitionCostPct)}
+                hint={assumptionHint('acquisitionCostPct')}
+                onClear={isCaptured('acquisitionCostPct') ? () => clearField('acquisitionCostPct') : undefined}
+                input={
+                  <NumericInput
+                    value={acquisitionCostPct != null ? acquisitionCostPct * 100 : undefined}
+                    onChange={n => setField('acquisitionCostPct', n != null ? n / 100 : undefined)}
+                    step={0.1}
+                    ariaLabel="COSTOS ADQ. (%)"
+                    style={fieldInput}
+                  />
+                }
+              />
+              {numRow('OVERHEAD DE OBRA', 'constructionOverhead', fmtNum, {
+                step: 0.01,
+                clearable: isCaptured('constructionOverhead') ? 'constructionOverhead' : undefined,
+                hint: assumptionHint('constructionOverhead'),
+              })}
+              {numRow('PLAZO PROYECTADO (MESES)', 'holdMonths', fmtNum, {
+                clearable: isCaptured('holdMonths') ? 'holdMonths' : undefined,
+                hint: assumptionHint('holdMonths'),
+              })}
 
               {/* La proyección sobrevive a la compra: es contra ella que se mide
                   la realidad. Solo al vender el servidor la apaga. */}
@@ -535,7 +578,7 @@ export function PropertyDetailPage() {
               <StatRow label="GANANCIA PROYECTADA" value={fmtMXN(p.projectedProfit)} />
               <StatRow label="ROI PROY. ANUAL" value={fmtPct(p.projectedRoi)} />
               <StatRow label="ROI PROY. TOTAL" value={fmtPct(p.projectedRoiTotal)} />
-              <StatRow label="RENTA ANUAL" value={fmtMXN(p.rentAnnual)} />
+              <StatRow label="RENTA ANUAL EST." value={fmtMXN(p.rentAnnual)} />
               <StatRow label="PLAZO PROYECTADO" value={fmtMonths(p.holdMonths)} />
 
               {sold && (
@@ -616,7 +659,7 @@ export function PropertyDetailPage() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
               {/* El historial se consulta siempre; correr uno nuevo solo mientras
                   el analizador tenga sentido (hasta desarrollo). */}
-              <PropertyAnalysisSection propertyId={propertyId} canRun={runsAnalysis(stage)} />
+              <PropertyAnalysisSection propertyId={propertyId} canRun={runsAnalysis(stage)} holdMonths={p.assumptions?.holdMonths} />
             </div>
           )}
         </div>

@@ -47,7 +47,7 @@ def main() -> int:
             )
 
             # Seed a pre-purchase property so row-click/detail-page E2E tests have data.
-            # rent_monthly stays NULL: the column only stores positive rents.
+            # Both rent columns stay NULL: they only store positive rents.
             cur.execute("DELETE FROM properties WHERE name = '[SEED] Terreno E2E'")
             cur.execute(
                 """
@@ -55,7 +55,7 @@ def main() -> int:
                     name, address, city, status, asset_type, url,
                     latitude, longitude,
                     sqm_land, sqm_construction,
-                    land_price, acquisition_cost_pct,
+                    purchase_price, acquisition_cost_pct,
                     permits_cost, subdivision_cost,
                     construction_cost_per_sqm, construction_overhead,
                     projected_sale, hold_months
@@ -79,7 +79,7 @@ def main() -> int:
                 INSERT INTO properties (
                     name, asset_type, strategy_type, address, city, status,
                     total_units, acquisition_date,
-                    total_investment, current_valuation, valuation_date,
+                    total_investment_captured, current_valuation, valuation_date,
                     url, latitude, longitude
                 ) VALUES (
                     '[SEED] Propiedad E2E', 'edificio', 'ground_up',

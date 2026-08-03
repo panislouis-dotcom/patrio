@@ -336,8 +336,10 @@ def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
     # el API, nunca una fórmula reinventada aquí:
     #   · Unidades en renta — solo las que siguen en renta. La leyenda dice
     #     "operando hoy" y lo vendido dejó de operar para nosotros.
-    #   · Cap rate promedio — solo en renta: es renta cobrada sobre capital. Una
-    #     vendida ni siquiera trae capRate (la proyección se congela en la venta).
+    #   · Cap rate promedio — solo en renta, y de `capRateActual`: renta COBRADA
+    #     sobre capital. El `capRate` a secas sale del underwriting, así que
+    #     promediarlo aquí publicaría lo que se estimó como si fuera lo que se
+    #     cobra. Una vendida no trae ninguno de los dos: ambos se congelan.
     #   · ROI promedio — en renta y vendidas: el rendimiento que la firma ya
     #     entregó o lleva marcado. Ninguna proyección entra aquí; por eso
     #     desarrollo y las oportunidades no cuentan.
@@ -346,7 +348,7 @@ def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
     units_v = f"{units:,}" if units else "—"
     roi_avg = _fmt_pct_or_dash(_mean([p.get("realizedRoi") for p in sold]
                                      + [p.get("roi") for p in rented]))
-    cap_avg = _fmt_pct_or_dash(_mean([p.get("capRate") for p in rented]))
+    cap_avg = _fmt_pct_or_dash(_mean([p.get("capRateActual") for p in rented]))
     return f"""<div class="page-block cover">
   <div class="cover-top">
     <div>
@@ -443,8 +445,9 @@ def _sold_card(p: dict, kicker: str) -> str:
 
 def _rented_card(p: dict, kicker: str) -> str:
     """En renta: la marca viva. La valuación lleva su fecha de corte encima
-    porque es una estimación con fecha, no un hecho; el cap rate ya es renta
-    cobrada sobre capital."""
+    porque es una estimación con fecha, no un hecho; el cap rate es `capRateActual`,
+    la renta efectivamente cobrada sobre el capital — el track record no publica
+    lo que se estimó cobrar."""
     val_month = _fmt_month(p.get("valuationDate"))
     metrics = "".join([
         _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
@@ -452,7 +455,7 @@ def _rented_card(p: dict, kicker: str) -> str:
                 f"Valuación · {val_month}" if val_month else "Valuación actual"),
         _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
         _metric(_fmt_pct_or_dash(p.get("unrealizedGainPct")), "Plusvalía"),
-        _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate"),
+        _metric(_fmt_pct_or_dash(p.get("capRateActual")), "Cap rate"),
     ])
     return _card(p, f"{kicker} · En renta", _hold_tail(p), metrics)
 
@@ -551,12 +554,12 @@ def _opportunity(p: dict) -> str:
     gain_value = (f'{_fmt_mxn_compact_or_dash(profit)} <small>{_fmt_pct(roi_total, 1)}</small>'
                   if roi_total is not None else "—")
     cap_rate = p.get("capRate")
-    rent_m = p.get("rentMonthly")
+    rent_m = p.get("rentMonthlyProjected")
     rent_a = p.get("rentAnnual")
     sqm_land = _num(p.get("sqmLand"))
     sqm_con = _num(p.get("sqmConstruction"))
     inv_ppsqm = p.get("investmentPerSqm")
-    land_price = p.get("landPrice")
+    purchase_price = p.get("purchasePrice")
     acq_costs = p.get("acquisitionCosts")
     # Todo lo que se invierte encima de comprar la propiedad: obra + permisos +
     # subdivisión. Se resta de los dos totales del API en vez de volver a sumar
@@ -574,7 +577,7 @@ def _opportunity(p: dict) -> str:
     ])
 
     financieros = _kv_rows([
-        ("Precio propiedad", _fmt_mxn(land_price) if _num(land_price) else None),
+        ("Precio de compra", _fmt_mxn(purchase_price) if _num(purchase_price) else None),
         ("Costos de adquisición", _fmt_mxn(acq_costs) if _num(acq_costs) else None),
         ("Inversión desarrollo", _fmt_mxn(dev_investment) if dev_investment > 0 else None),
         ("ROI proyectado", _fmt_pct(roi_total, 1) if roi_total is not None else None),

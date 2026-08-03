@@ -35,6 +35,20 @@ export interface Issue {
   severity: 'error' | 'warning'
 }
 
+// De dónde salió un supuesto: 'captured' lo eligió una persona, 'default' lo
+// puso el modelo. Nada se calcula con un número que no se pueda ver ni cambiar,
+// y nada se presenta como decisión si fue una suposición.
+export type AssumptionSource = 'captured' | 'default'
+
+export interface Assumption {
+  value: number
+  source: AssumptionSource
+}
+
+export type AssumptionField = 'acquisitionCostPct' | 'constructionOverhead' | 'holdMonths'
+
+export type Assumptions = Record<AssumptionField, Assumption>
+
 // Una propiedad recorre un ciclo de vida (ver lib/status.ts). Los campos
 // existen según la etapa: los CRUDOS siempre se devuelven tal como están en la
 // base — nunca se blanquean, porque en pasos posteriores quieres ver todo lo de
@@ -60,19 +74,37 @@ export interface Property {
   milestones: Record<string, string>   // {"YYYY-MM": "label"}
 
   // --- Insumos de underwriting (capturables desde prospecto) ---
+  // purchasePrice es lo que cuesta ADQUIRIR el inmueble como está —lote o casa
+  // terminada, sin casos especiales—; sqmConstruction y constructionCostPerSqm
+  // son la obra que TÚ vas a ejecutar encima. Lo que ya está construido y ya
+  // está pagado dentro del precio no vuelve a aparecer.
   sqmLand: number | null
   sqmConstruction: number | null
-  landPrice: number | null
-  acquisitionCostPct: number | null
+  purchasePrice: number | null
+  constructionCostPerSqm: number | null
   permitsCost: number | null
   subdivisionCost: number | null
-  constructionCostPerSqm: number | null
-  constructionOverhead: number | null
   projectedSale: number | null
-  holdMonths: number | null
-  rentMonthly: number | null
+  // Renta estimada por el underwriting frente a renta efectivamente cobrada.
+  // Son dos columnas para que se puedan comparar: la segunda no pisa a la
+  // primera al entrar en renta.
+  rentMonthlyProjected: number | null
+  rentMonthlyActual: number | null
+
+  // --- Supuestos: el valor VIGENTE, venga de captura o del modelo ---
+  // Nunca son null: si nadie eligió, vale el default del modelo. `assumptions`
+  // dice cuál de los dos casos es, que es lo único que la ficha necesita para
+  // no volver a computar dinero con un número invisible.
+  acquisitionCostPct: number
+  constructionOverhead: number
+  holdMonths: number
+  assumptions: Assumptions
 
   // --- Base de capital (viva en toda etapa: es historia, no proyección) ---
+  // La capturada a mano y la que el modelo resolvió son dos hechos distintos:
+  // totalInvestmentCaptured es lo tecleado tal cual y sobrevive aunque el
+  // desglose esté completo; totalInvestment es la base con la que se divide.
+  totalInvestmentCaptured: number | null
   totalInvestment: number | null
   investmentBasis: 'underwriting' | 'manual' | null
 
@@ -90,20 +122,22 @@ export interface Property {
   acquisitionTotal: number | null
   constructionBase: number | null
   constructionTotal: number | null
-  landPricePerSqm: number | null
+  purchasePricePerSqm: number | null
   salePerSqm: number | null
   investmentPerSqm: number | null
   projectedProfit: number | null
   projectedRoi: number | null
   projectedRoiTotal: number | null
-  capRate: number | null      // yield on cost — vive desde prospecto
-  rentAnnual: number | null
+  capRate: number | null      // yield on cost de la renta ESTIMADA
+  rentAnnual: number | null   // 12 × renta estimada
 
   // --- Métricas realizadas (desde desarrollo; null al vender) ---
   unrealizedGain: number | null
   unrealizedGainPct: number | null
   roi: number | null                // CAGR contra la valuación actual
   holdMonthsActual: number | null   // congelado al vender
+  capRateActual: number | null      // las mismas dos fórmulas, con la renta
+  rentAnnualActual: number | null   // que de verdad se cobra
 
   // --- Resultado final (solo vendida) ---
   realizedGain: number | null
@@ -127,11 +161,12 @@ export interface QualityEntry {
 export type RawPropertyFields = Pick<Property,
   | 'name' | 'assetType' | 'strategyType' | 'address' | 'city' | 'url'
   | 'latitude' | 'longitude' | 'notes'
-  | 'sqmLand' | 'sqmConstruction' | 'landPrice' | 'acquisitionCostPct'
+  | 'sqmLand' | 'sqmConstruction' | 'purchasePrice' | 'acquisitionCostPct'
   | 'permitsCost' | 'subdivisionCost' | 'constructionCostPerSqm'
-  | 'constructionOverhead' | 'projectedSale' | 'holdMonths' | 'rentMonthly'
+  | 'constructionOverhead' | 'projectedSale' | 'holdMonths'
+  | 'rentMonthlyProjected' | 'rentMonthlyActual'
   | 'totalUnits' | 'acquisitionDate' | 'firstRentDate' | 'valuationDate'
-  | 'totalInvestment' | 'currentValuation' | 'saleDate' | 'salePrice'
+  | 'totalInvestmentCaptured' | 'currentValuation' | 'saleDate' | 'salePrice'
 >
 
 // Lo que se le puede entregar a un PATCH. Los nulls que traiga se filtran en
@@ -156,7 +191,7 @@ export interface PropertyCreate {
   strategyType?: string
   sqmLand?: number
   sqmConstruction?: number
-  landPrice?: number
+  purchasePrice?: number
   acquisitionCostPct?: number
   permitsCost?: number
   subdivisionCost?: number
@@ -164,7 +199,7 @@ export interface PropertyCreate {
   constructionOverhead?: number
   projectedSale?: number
   holdMonths?: number
-  rentMonthly?: number
+  rentMonthlyProjected?: number
   notes?: string
   isFavorite?: boolean
 }
@@ -174,11 +209,12 @@ export interface PropertyCreate {
 // servidor según su etapa — esta lista solo dice qué es vaciable en principio.
 export const CLEARABLE_FIELDS = [
   'assetType', 'strategyType',
-  'sqmLand', 'sqmConstruction', 'landPrice', 'acquisitionCostPct',
+  'sqmLand', 'sqmConstruction', 'purchasePrice', 'acquisitionCostPct',
   'permitsCost', 'subdivisionCost', 'constructionCostPerSqm',
-  'constructionOverhead', 'projectedSale', 'holdMonths', 'rentMonthly',
+  'constructionOverhead', 'projectedSale', 'holdMonths',
+  'rentMonthlyProjected', 'rentMonthlyActual',
   'totalUnits', 'acquisitionDate', 'firstRentDate', 'saleDate', 'salePrice',
-  'totalInvestment', 'currentValuation', 'valuationDate',
+  'totalInvestmentCaptured', 'currentValuation', 'valuationDate',
 ] as const
 export type ClearableField = typeof CLEARABLE_FIELDS[number]
 
@@ -197,12 +233,12 @@ export type Transition =
       totalUnits: number
       currentValuation: number
       valuationDate?: string
-      totalInvestment?: number   // solo hace falta sin desglose completo
+      totalInvestmentCaptured?: number   // solo hace falta sin desglose completo
     })
   | (TransitionCommon & {
       to: 'en_renta'
       firstRentDate: string
-      rentMonthly: number
+      rentMonthlyActual: number   // la cobrada; la estimada no se toca
       currentValuation?: number
       valuationDate?: string
     })
@@ -226,8 +262,11 @@ export interface ParsedProperty {
   address:          string
   city:             string
   type:             string
-  price:            number   // total asking price → maps to landPrice on save
+  price:            number   // precio total del anuncio → purchasePrice al guardar
   sqmLand:          number
+  // Metros YA construidos según el anuncio: un hecho del inmueble, no la obra a
+  // ejecutar. No entra a sqmConstruction (ahí vive lo que se va a construir);
+  // se conserva como contexto para que nadie lo confunda con presupuesto.
   sqmConstruction:  number
   notes:            string
   url:              string
@@ -401,14 +440,16 @@ export interface ProfitSplit {
   name: string
   role: string | null
   pct: number
-  base: number
-  bonus: number
-  total: number
+  // null cuando el reparto no se puede calcular: sin distribuible no hay parte,
+  // y un 0 se leería como "a esta persona no le toca nada".
+  base: number | null
+  bonus: number | null
+  total: number | null
 }
 
 export interface ProfitScenario {
   splits: ProfitSplit[]
-  companyResidual: number
+  companyResidual: number | null
 }
 
 export interface InvestorBreakdownEntry {
@@ -420,17 +461,38 @@ export interface InvestorBreakdownEntry {
   totalReturn: number
 }
 
+/** De dónde salió el precio de salida. null = no hay ninguno de los tres. */
+export type ExitPriceSource = 'capturado' | 'venta' | 'valuacion'
+/** De dónde salió el plazo sobre el que corre la cuota del inversionista. */
+export type MonthsSource = 'capturado' | 'real' | 'proyectado' | 'supuesto'
+/** De dónde salió el capital de terceros. null = no hay ninguno registrado. */
+export type InvestorCapitalSource = 'capturado' | 'fondeado'
+/** Insumos del reparto que pueden faltar; sin ellos no se calcula ningún renglón. */
+export type WaterfallInput = 'investment' | 'exitPrice' | 'investorCapital'
+
+/**
+ * El reparto, con la procedencia de cada insumo. Los renglones derivados valen
+ * null cuando falta un insumo — antes se caía a 0 y el estado publicaba
+ * "GANANCIA BRUTA = −inversión" como si fuera un hecho.
+ */
 export interface ProfitWaterfall {
-  exitPrice: number
-  investment: number
-  grossProfit: number
+  exitPrice: number | null
+  exitPriceSource: ExitPriceSource | null
+  investment: number | null
+  grossProfit: number | null
+  investorCapital: number
+  investorCapitalSource: InvestorCapitalSource | null
   investorCuota: number
-  operatorGross: number
-  isr: number
-  netProfit: number
-  distributable: number
+  operatorGross: number | null
+  isrRate: number
+  isr: number | null
+  netProfit: number | null
+  distributable: number | null
   activeTier: number | null    // null = not concluded yet; 0 | 0.25 | 0.50 when concluded
+  bonusInputsMissing: string[]  // qué le falta al bono para poder encenderse
   months: number
+  monthsSource: MonthsSource
+  missingInputs: WaterfallInput[]
   investorBreakdown: InvestorBreakdownEntry[]
   scenarios: {
     sin_bono: ProfitScenario
@@ -535,8 +597,11 @@ export interface AnalysisSnapshot {
   remodelCostEstimate: number
   remodelCostPerM2: number
   interventionLevel: string
+  transactionCostPct: number | null
   transactionCosts: number
   financingCosts: number
+  listingHaircut: number | null
+  discountRate: number | null
   totalCost: number
   holdingPeriodMonths: number
   exitPriceManual: number | null
@@ -578,12 +643,29 @@ export interface AnalysisRequest {
   transactionCostPct?: number
   exitPriceSource?: 'manual' | 'calculated' | 'blended'
   arvManualOverride?: number | null
+  listingHaircut?: number
+  discountRate?: number
   rentaMensualEstimada?: number | null
   financiamientoPct?: number
   tasaInteresCredito?: number
   plazoCreditoMeses?: number
   gastosOperativosPct?: number
 }
+
+/**
+ * Los supuestos con los que corre el analizador, en un solo lugar: el
+ * formulario los prellena con esto y el snapshot guarda lo que se usó. Deben
+ * coincidir con los DEFAULT_* de api/analyzer.py.
+ */
+export const ANALYSIS_DEFAULTS = {
+  transactionCostPct: 0.08,
+  listingHaircut: 0.06,
+  discountRate: 0.10,
+  financiamientoPct: 0.60,
+  tasaInteresCredito: 0.13,
+  plazoCreditoMeses: 240,
+  gastosOperativosPct: 0.30,
+} as const
 
 // ── Proveedores ───────────────────────────────────────────────────────────────
 

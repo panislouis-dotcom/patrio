@@ -37,7 +37,7 @@ from psycopg2 import IntegrityError
 from psycopg2.extras import Json
 
 from api.checks import run_checks, stage_requirements
-from api.db import get_db, _camel_to_snake, _row_to_dict
+from api.db import get_db, _camel_to_snake, _row_to_dict, _snake_to_camel
 from api.finance import underwriting
 from api.finance.analysis import months_between, parse_date, roi_cagr
 from api.finance.quantize import frac4, money, money0, to_decimal
@@ -87,11 +87,12 @@ PROCESS_STATUSES = frozenset({"desarrollo", "en_renta", "vendida"})
 WRITABLE_FIELDS = frozenset({
     "name", "address", "city", "url", "latitude", "longitude",
     "assetType", "strategyType",
-    "sqmLand", "sqmConstruction", "landPrice", "acquisitionCostPct",
+    "sqmLand", "sqmConstruction", "purchasePrice", "acquisitionCostPct",
     "permitsCost", "subdivisionCost", "constructionCostPerSqm",
-    "constructionOverhead", "projectedSale", "holdMonths", "rentMonthly",
+    "constructionOverhead", "projectedSale", "holdMonths",
+    "rentMonthlyProjected", "rentMonthlyActual",
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
-    "totalInvestment", "currentValuation", "valuationDate", "milestones",
+    "totalInvestmentCaptured", "currentValuation", "valuationDate", "milestones",
     "notes", "isFavorite",
 })
 
@@ -99,17 +100,23 @@ WRITABLE_FIELDS = frozenset({
 # exclude_none, so a null never reaches SQL and the null → NOT NULL 500 has no
 # way to happen. Everything nullable is listed; whether a *particular* row may
 # lose a *particular* field is decided by stage_requirements, not by this set.
+#
+# The three assumptions are clearable like anything else, and clearing one is a
+# real operation with a visible meaning: it hands the field back to the model's
+# default and the ficha starts labelling it «supuesto por omisión».
 CLEARABLE_FIELDS = frozenset({
     "assetType", "strategyType",
-    "sqmLand", "sqmConstruction", "landPrice", "acquisitionCostPct",
+    "sqmLand", "sqmConstruction", "purchasePrice", "acquisitionCostPct",
     "permitsCost", "subdivisionCost", "constructionCostPerSqm",
-    "constructionOverhead", "projectedSale", "holdMonths", "rentMonthly",
+    "constructionOverhead", "projectedSale", "holdMonths",
+    "rentMonthlyProjected", "rentMonthlyActual",
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
-    "totalInvestment", "currentValuation", "valuationDate",
+    "totalInvestmentCaptured", "currentValuation", "valuationDate",
 })
 
 _DATE_FIELDS = frozenset({"acquisitionDate", "firstRentDate", "saleDate", "valuationDate"})
 _JSON_FIELDS = frozenset({"milestones"})
+_RENT_FIELDS = frozenset({"rentMonthlyProjected", "rentMonthlyActual"})
 
 IMAGE_TYPES = ("general", "antes", "despues")
 
@@ -167,11 +174,11 @@ def to_columns(data: dict) -> dict:
             value = to_date(value)
         elif key in _JSON_FIELDS:
             value = Json(value if value is not None else {})
-        elif key == "rentMonthly" and value == 0:
-            # Una renta de cero no existe: la columna solo acepta positivos y la
-            # ausencia se guarda como NULL. Un cliente que manda 0 está diciendo
-            # "no hay renta capturada", igual que la migración 024 lo interpretó
-            # al normalizar los ceros heredados.
+        elif key in _RENT_FIELDS and value == 0:
+            # Una renta de cero no existe: las columnas solo aceptan positivos y
+            # la ausencia se guarda como NULL. Un cliente que manda 0 está
+            # diciendo "no hay renta capturada", igual que la migración 024 lo
+            # interpretó al normalizar los ceros heredados.
             value = None
         out[_camel_to_snake(key)] = value
     return out
@@ -196,14 +203,25 @@ def _reject_new_violations(status: str, before: dict, after: dict) -> None:
 
 _PROJECTION_KEYS = (
     "acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
-    "landPricePerSqm", "investmentPerSqm", "salePerSqm",
+    "purchasePricePerSqm", "investmentPerSqm", "salePerSqm",
     "projectedProfit", "projectedRoi", "projectedRoiTotal",
     "capRate", "rentAnnual",
 )
-_REALIZED_KEYS = ("unrealizedGain", "unrealizedGainPct", "roi")
+# capRateActual / rentAnnualActual are the same two formulas fed the COLLECTED
+# rent instead of the modeled one — the yield you are actually getting. They sit
+# in the realized window so that the pair (capRate ↔ capRateActual) reads the way
+# every other pair in this file does: what we said, next to what happened.
+_REALIZED_KEYS = ("unrealizedGain", "unrealizedGainPct", "roi",
+                  "capRateActual", "rentAnnualActual")
 _EXIT_KEYS = ("realizedGain", "realizedGainPct", "realizedRoi")
 
-METRIC_KEYS = _PROJECTION_KEYS + _REALIZED_KEYS + _EXIT_KEYS + (
+# Los supuestos vigentes también son cómputo: la fila puede traerlos vacíos y
+# aun así hay un valor en uso. Por eso viajan aquí y no entre las columnas crudas.
+_ASSUMPTION_KEYS = tuple(
+    _snake_to_camel(k) for k in underwriting.ASSUMPTION_KEYS
+) + ("assumptions",)
+
+METRIC_KEYS = _PROJECTION_KEYS + _REALIZED_KEYS + _EXIT_KEYS + _ASSUMPTION_KEYS + (
     "totalInvestment", "investmentBasis", "holdMonthsActual",
 )
 
@@ -249,6 +267,19 @@ def metrics(row: dict) -> dict:
         "holdMonthsActual": held,
     }
 
+    # Not gated by status: an assumption is in force in every stage, and the
+    # ficha shows it always. Hiding them was how 6.5%, a 1.3 multiplier and a
+    # 12-month clock came to move money nobody had agreed to.
+    #
+    # Each one is published twice on purpose, and they are not the same fact:
+    # the plain key (`holdMonths`) is the value IN FORCE — what every formula,
+    # document and table actually used — while `assumptions` records where that
+    # value came from. Readers that only need the number keep working; readers
+    # that need to say "assumed" ask for the provenance.
+    stated = underwriting.assumptions(row)
+    out["assumptions"] = {_snake_to_camel(k): v for k, v in stated.items()}
+    out.update({_snake_to_camel(k): v["value"] for k, v in stated.items()})
+
     out.update(dict.fromkeys(_PROJECTION_KEYS + _REALIZED_KEYS + _EXIT_KEYS))
 
     if status in _PROJECTION_STATUSES:
@@ -258,25 +289,29 @@ def metrics(row: dict) -> dict:
             "acquisitionTotal": stack["acquisition_total"],
             "constructionBase": stack["construction_base"],
             "constructionTotal": stack["construction_total"],
-            "landPricePerSqm": stack["land_price_per_sqm"],
+            "purchasePricePerSqm": stack["purchase_price_per_sqm"],
             "investmentPerSqm": _per_sqm(basis, row.get("sqm_land")),
             "salePerSqm": stack["sale_per_sqm"],
             "projectedProfit": underwriting.gain(basis, sale),
             "projectedRoiTotal": underwriting.gain_pct(basis, sale),
-            "projectedRoi": _cagr(basis, sale, row.get("hold_months")),
-            # Yield on cost: the same formula whether the rent is still modeled
-            # or already collected, so it belongs to the projection window and
-            # freezes with it at the sale.
-            "capRate": underwriting.cap_rate(row.get("rent_monthly"), basis),
-            "rentAnnual": underwriting.rent_annual(row.get("rent_monthly")),
+            "projectedRoi": _cagr(basis, sale, underwriting.assumption(row, "hold_months")[0]),
+            # Yield on cost off the MODELED rent: this is the projection window,
+            # so it answers "what did the underwriting promise?" and freezes at
+            # the sale together with the rest of the model.
+            "capRate": underwriting.cap_rate(row.get("rent_monthly_projected"), basis),
+            "rentAnnual": underwriting.rent_annual(row.get("rent_monthly_projected")),
         })
 
     if status in _REALIZED_STATUSES:
         valuation = row.get("current_valuation")
+        rent_actual = row.get("rent_monthly_actual")
         out.update({
             "unrealizedGain": underwriting.gain(basis, valuation),
             "unrealizedGainPct": underwriting.gain_pct(basis, valuation),
             "roi": _cagr(basis, valuation, held),
+            # Same two formulas, fed the rent actually collected.
+            "capRateActual": underwriting.cap_rate(rent_actual, basis),
+            "rentAnnualActual": underwriting.rent_annual(rent_actual),
         })
 
     if status in _EXIT_STATUSES:
@@ -314,7 +349,13 @@ def parse_property(row, images: list | None = None) -> dict:
     """Raw row → the unified camelCase contract: stored columns as they are, plus
     the stage-appropriate metrics, the stage's issues and its images. Issues are
     computed here rather than in a router so every read of a property carries the
-    same verdict."""
+    same verdict.
+
+    No computed key shadows a stored one any more. `totalInvestmentCaptured` is
+    the column exactly as typed and `totalInvestment` is the base the model
+    resolved — two names because they are two facts, and because a hand-typed
+    total used to vanish from the payload the moment the breakdown was complete,
+    which left it unreadable and uneditable in the very row that had it."""
     raw = dict(row)
     computed = metrics(raw)
     parsed = _row_to_dict(row)
@@ -404,19 +445,23 @@ def _require_row(conn, property_id: int) -> dict:
 # ─── Write path ───────────────────────────────────────────────────────────────
 
 # What a freshly captured property starts with, whoever captured it — the form,
-# the sonar importer, a future feed. The seven cost inputs get concrete values
-# instead of NULL so the investment base resolves from birth, which leaves NULL
-# meaning one unambiguous thing: somebody emptied the field on purpose.
+# the sonar importer, a future feed. The five cost inputs get a concrete 0
+# instead of NULL so the investment base resolves from birth; a zero cost is a
+# real claim ("no permits until you say otherwise") and it fabricates no money.
+#
+# The three ASSUMPTIONS are deliberately not here. Writing 6.5%, 1.3 and 12
+# months into the row at birth made the model's guesses indistinguishable from
+# somebody's decision, and they are the three inputs that do move money and set
+# a deadline. Absent, they resolve to underwriting.ASSUMPTION_DEFAULTS at read
+# time and the ficha shows them labelled as assumptions — which is the whole
+# point: nothing is computed with a number that cannot be seen and changed.
 CAPTURE_DEFAULTS = {
     "sqm_land": 0.0,
     "sqm_construction": 0.0,
-    "land_price": 0.0,
-    "acquisition_cost_pct": 0.065,
+    "purchase_price": 0.0,
     "permits_cost": 0.0,
     "subdivision_cost": 0.0,
     "construction_cost_per_sqm": 0.0,
-    "construction_overhead": 1.3,
-    "hold_months": 12,
 }
 
 

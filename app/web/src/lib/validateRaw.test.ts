@@ -4,13 +4,13 @@ import { validateRaw } from './validateRaw'
 const VALID: Parameters<typeof validateRaw>[0] = {
   latitude: 25.6866,
   longitude: -100.3161,
-  landPrice: 5_000_000,
+  purchasePrice: 5_000_000,
   sqmLand: 200,
   sqmConstruction: 180,
   constructionCostPerSqm: 15_000,
   constructionOverhead: 1.3,
   projectedSale: 9_000_000,
-  rentMonthly: 25_000,
+  rentMonthlyProjected: 25_000,
   holdMonths: 18,
 }
 
@@ -29,9 +29,9 @@ describe('validateRaw', () => {
     expect(issues.some(i => i.field === 'longitude' && i.severity === 'error')).toBe(true)
   })
 
-  it('errors on zero landPrice', () => {
-    const issues = validateRaw({ ...VALID, landPrice: 0 })
-    expect(issues.some(i => i.field === 'landPrice' && i.severity === 'error')).toBe(true)
+  it('errors on zero purchasePrice', () => {
+    const issues = validateRaw({ ...VALID, purchasePrice: 0 })
+    expect(issues.some(i => i.field === 'purchasePrice' && i.severity === 'error')).toBe(true)
   })
 
   it('errors on zero sqmLand', () => {
