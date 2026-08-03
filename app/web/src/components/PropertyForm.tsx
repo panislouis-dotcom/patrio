@@ -4,6 +4,7 @@ import { LatLonPicker } from './LatLonPicker'
 import type { PropertyCreate } from '../lib/types'
 import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
 import { validateRaw } from '../lib/validateRaw'
+import { fieldLabel } from '../lib/fields'
 import { colors, fonts } from '../lib/theme'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -326,7 +327,7 @@ export function PropertyForm({ initial, onSave, onCancel, saving, saveError }: P
                 padding: '4px 0',
               }}
             >
-              {issue.severity === 'error' ? '✕' : '△'} <strong>{issue.field}</strong>: {issue.message}
+              {issue.severity === 'error' ? '✕' : '△'} <strong>{fieldLabel(issue.field)}</strong>: {issue.message}
             </div>
           ))}
         </div>
