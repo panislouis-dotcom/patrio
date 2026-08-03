@@ -250,6 +250,10 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('RENTA/MES COBRADA')).not.toBeNull()
     expect(screen.getByText('CAP RATE PROY.')).not.toBeNull()
     expect(screen.getByText('CAP RATE REAL')).not.toBeNull()
+    // La anual cobrada se quedó sin fila al partir la renta en dos: antes salía
+    // de `rentAnnual`, que en una rentada era lo que de verdad se cobraba.
+    expect(screen.getByText('RENTA ANUAL COBRADA')).not.toBeNull()
+    expect(screen.getByText('$408,000')).not.toBeNull()
   })
 
   it('vaciar un campo pasa por clear-fields, con su propio botón', async () => {

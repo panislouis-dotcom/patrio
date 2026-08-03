@@ -458,8 +458,16 @@ export function PropertyDetailPage() {
               {(editing || p.rentMonthlyActual != null) &&
                 numRow('RENTA/MES COBRADA', 'rentMonthlyActual', fmtMXN, { clearable: 'rentMonthlyActual' })}
               <EditableRow label="CAP RATE PROY." editing={editing} value={fmtPct(p.capRate)} />
+              {/* La renta anual cobrada vive aquí y no en PROYECCIÓN, que
+                  contesta por lo estimado. Antes de partir la renta en dos, la
+                  anual de una rentada salía —correctamente— de lo que cobraba;
+                  al separarlas, esa cifra se quedó sin fila y desapareció de la
+                  ficha. Esto la devuelve, del lado que le toca. */}
               {(p.capRateActual != null || p.rentMonthlyActual != null) && (
-                <EditableRow label="CAP RATE REAL" editing={editing} value={fmtPct(p.capRateActual)} />
+                <>
+                  <EditableRow label="CAP RATE REAL" editing={editing} value={fmtPct(p.capRateActual)} />
+                  <EditableRow label="RENTA ANUAL COBRADA" editing={editing} value={fmtMXN(p.rentAnnualActual)} />
+                </>
               )}
               <EditableRow
                 label="PLAZO REAL"
