@@ -124,6 +124,15 @@ async def generate_term_sheet(body: TermSheetRequest, _: dict = Depends(get_curr
             raise HTTPException(status_code=400, detail="No hay propiedades en oferta")
         subject = max(candidates, key=lambda p: p.get("projectedRoi") or 0)
 
+    # El plazo es la columna vertebral del documento: el resumen lo declara y los
+    # tres escenarios de rendimiento se calculan sobre él. Sin plazo capturado no
+    # hay carta que emitir — antes se imprimían 12 meses inventados.
+    if subject.get("holdMonths") is None:
+        raise HTTPException(
+            status_code=400,
+            detail="La propiedad no tiene plazo modelado: captúralo antes de emitir la carta.",
+        )
+
     html = build_term_sheet_html(subject, body.investor_name, body.investment_amount, body.rate)
     try:
         pdf = await asyncio.wait_for(render_to_pdf(html), timeout=_RENDER_TIMEOUT_S)

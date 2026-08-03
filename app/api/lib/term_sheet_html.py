@@ -19,11 +19,15 @@ def _calc_return(amount: float, rate: float, months: int) -> float:
 
 
 def build_term_sheet_html(
-    prospect: dict,
+    prop: dict,
     investor_name: str,
     investment_amount: float,
     rate: float,
 ) -> str:
+    """La carta se levanta contra una propiedad concreta — en la práctica una en
+    oferta, el trato al que la firma ya se comprometió. `holdMonths` es
+    obligatorio: la ruta lo verifica antes de llamar aquí, porque un plazo
+    inventado se propagaría a los tres escenarios de rendimiento."""
     # Coerce money at the boundary: callers may pass Decimal (NUMERIC columns),
     # and downstream '+'/'*' below mixes these with float literals.
     investment_amount = float(investment_amount)
@@ -33,7 +37,7 @@ def build_term_sheet_html(
     month_label = f"{_MONTHS_ES[now.month]} {now.year}"
     year_label = str(now.year)
 
-    hold_months: int = prospect.get("holdMonths") or 12
+    hold_months: int = prop["holdMonths"]
     scenarios = [
         ("En tiempo", hold_months),
         ("+6 meses", hold_months + 6),
@@ -45,8 +49,8 @@ def build_term_sheet_html(
         total = investment_amount + ret
         scenario_rows.append((label, months, ret, total))
 
-    project_name = _esc(prospect.get("name") or "")
-    project_address = _esc(prospect.get("address") or "")
+    property_name = _esc(prop.get("name") or "")
+    property_address = _esc(prop.get("address") or "")
     investor_escaped = _esc(investor_name)
     rate_pct = f"{rate * 100:.1f}%"
 
@@ -119,7 +123,7 @@ body {{
   line-height: 1.1;
   margin: 0 0 16px 0;
 }}
-.cover-project {{
+.cover-property {{
   font-family: 'Inter', sans-serif;
   font-size: 9pt;
   font-weight: 400;
@@ -368,7 +372,7 @@ strong {{
   <div class="cover-main">
     <div class="cover-prelabel">Carta de Términos de Inversión · {month_label}</div>
     <h1 class="cover-investor">{investor_escaped}</h1>
-    <div class="cover-project">{project_name}</div>
+    <div class="cover-property">{property_name}</div>
     <div class="cover-meta">Documento Confidencial · Solo para uso del destinatario</div>
   </div>
 
@@ -381,7 +385,7 @@ strong {{
   <h2 class="section-h2">Resumen de la Inversión</h2>
   <table class="summary-table">
     <tr><td class="summary-key">Inversionista</td><td class="summary-val">{investor_escaped}</td></tr>
-    <tr><td class="summary-key">Proyecto</td><td class="summary-val">{project_name} · {project_address}</td></tr>
+    <tr><td class="summary-key">Propiedad</td><td class="summary-val">{property_name} · {property_address}</td></tr>
     <tr><td class="summary-key">Capital</td><td class="summary-val">{_fmt_mxn(investment_amount)}</td></tr>
     <tr><td class="summary-key">Rendimiento</td><td class="summary-val">{rate_pct} anual acumulado</td></tr>
     <tr><td class="summary-key">Pago</td><td class="summary-val">Al cierre de venta de la propiedad</td></tr>
