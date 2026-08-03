@@ -2,8 +2,8 @@
 
 Two layers over the same raw row (snake_case, straight from `properties`):
 
-  · stage_requirements() — the hard rules: exactly what migration 024's
-    transition trigger and table CHECKs enforce, restated here so the user gets
+  · stage_requirements() — the hard rules: exactly what the transition trigger
+    (migration 027) and the table CHECKs enforce, restated here so the user gets
     a sentence and a 422 instead of a constraint name and a 500. One definition,
     three callers: the gate of POST /transition, the guard of PATCH and
     clear-fields, and the `error` issues below.
@@ -14,7 +14,6 @@ Two layers over the same raw row (snake_case, straight from `properties`):
 """
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
 from typing import Literal
 
 from api.finance import underwriting
@@ -54,10 +53,13 @@ def stage_requirements(status: str, row: dict) -> dict[str, str]:
         # Comprar no produce un avalúo. La valuación se captura cuando alguien
         # de verdad valúa; hasta entonces la ganancia no realizada es None, que
         # es la respuesta honesta. Exigirla aquí solo lograba que se inventara.
-        if underwriting.basis(row) is None:
-            missing["totalInvestmentCaptured"] = (
-                "Falta la inversión total: captúrala a mano, o completa los cinco "
-                "costos del desglose para que el sistema la sume.")
+        #
+        # El precio de compra sí: a Desarrollo se entra habiendo comprado, y no
+        # se compra sin saber cuánto se pagó. Es la única parte del desglose que
+        # no puede ser cero de verdad, y con ella la inversión siempre resuelve.
+        if not _positive(row.get("purchase_price")):
+            missing["purchasePrice"] = (
+                "No se entra a Desarrollo sin saber qué se pagó: falta el precio de compra.")
 
     if status == "en_renta":
         if row.get("first_rent_date") is None:
@@ -131,46 +133,6 @@ def _pre_purchase_warnings(row: dict, computed: dict) -> list[Issue]:
     return issues
 
 
-# Por debajo de esto, la diferencia entre el total tecleado y el desglose es
-# redondeo de captura, no un desacuerdo sobre cuánto se invirtió.
-_RECONCILIATION_TOLERANCE = Decimal("0.01")
-
-
-def _reconciliation_warnings(row: dict) -> list[Issue]:
-    """Cuando existen las dos versiones de la inversión, tienen que contar la
-    misma historia. El desglose gana (el sistema sabe sumar mejor que quien
-    teclea), pero el total capturado no se borra ni se esconde: si no cuadran,
-    uno de los dos está mal y hay que decirlo en vez de elegir en silencio.
-
-    Con el desglose incompleto no hay dos versiones que confrontar: manda el
-    total tecleado y los costos que sí se capturaron son una parte de él. Una
-    parte, sin embargo, no puede ser mayor que el todo — y cuando lo es, la
-    ficha no tiene forma de pintar un desglose que sume su propio total. Ese es
-    el único caso en que las barras no pueden cuadrar, así que se avisa."""
-    captured = row.get("total_investment_captured")
-    if captured is None:
-        return []
-    typed = to_decimal(captured)
-    summed = underwriting.investment(row)
-
-    if not underwriting.has_breakdown(row):
-        if summed > typed:
-            return [Issue("totalInvestmentCaptured",
-                          f"Los costos capturados ({summed:,.0f}) ya suman más que la "
-                          f"inversión capturada ({typed:,.0f}); el desglose no cuadra",
-                          "warning")]
-        return []
-
-    gap = abs(typed - summed)
-    tolerated = summed * _RECONCILIATION_TOLERANCE if summed > 0 else Decimal(0)
-    if gap <= tolerated:
-        return []
-    return [Issue("totalInvestmentCaptured",
-                  f"La inversión capturada ({typed:,.0f}) no cuadra con el desglose "
-                  f"({summed:,.0f}); manda el desglose",
-                  "warning")]
-
-
 def _valuation_warnings(row: dict, today: date) -> list[Issue]:
     """A mark is only as good as its date — and the date now does work: the ROI
     anual de la marca se anualiza de la compra a ella. Sin fecha el reloj corre
@@ -202,14 +164,8 @@ def run_checks(row: dict, computed: dict, today: date | None = None) -> list[Iss
     if status in ("prospecto", "oferta"):
         issues += _pre_purchase_warnings(row, computed)
     elif status == "desarrollo":
-        if underwriting.basis_kind(row) == "manual":
-            issues.append(Issue("totalInvestmentCaptured",
-                                "Inversión capturada a mano: el desglose de costos está incompleto",
-                                "warning"))
-        issues += _reconciliation_warnings(row)
         issues += _valuation_warnings(row, today)
     elif status == "en_renta":
-        issues += _reconciliation_warnings(row)
         issues += _valuation_warnings(row, today)
         if computed.get("capRateActual") is None:
             issues.append(Issue("capRateActual",
@@ -221,7 +177,8 @@ def run_checks(row: dict, computed: dict, today: date | None = None) -> list[Iss
                                 "Sin fecha de adquisición no hay plazo real ni ROI real anual",
                                 "warning"))
         if underwriting.basis(row) is None:
-            issues.append(Issue("totalInvestmentCaptured",
-                                "Sin inversión total no hay ganancia realizada", "warning"))
+            issues.append(Issue("purchasePrice",
+                                "Sin inversión total no hay ganancia realizada: el desglose "
+                                "de costos está vacío", "warning"))
 
     return issues

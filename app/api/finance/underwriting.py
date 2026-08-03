@@ -7,6 +7,13 @@ The cost stack answers one question and answers it once:
     precio de COMPRA  +  costos de adquisición  +  permisos  +  subdivisión
                       +  obra A EJECUTAR
 
+That expression is the *only* way this system knows what a property cost. There
+used to be a second one — a total typed in by hand — and two ways to answer one
+question is one way too many: every reader had to be told which of the two it
+was looking at, and when they disagreed somebody had to pick a winner. A missing
+component is worth 0, so the sum is always defined, and a sum of 0 means nobody
+has captured anything yet (see `basis`).
+
 `purchase_price` is what you pay to take the building as it stands — a bare lot
 or a finished house, no special case per asset type. The construction terms are
 the work *you* will do afterwards (`sqm_construction` × `construction_cost_per_sqm`
@@ -36,16 +43,14 @@ from decimal import Decimal
 from .quantize import money, money0, frac4, to_decimal
 from .analysis import roi_cagr
 
-# The five COSTS. Together they are the whole investment: capture all five and
-# the system can add them up itself instead of trusting a typed-in total.
+# The five COSTS. Together they ARE the investment — there is no other way to
+# state it, and no total that can disagree with them. A missing one is worth 0,
+# so the sum is always defined and the stack is never "incomplete".
 # Order matches investment_raw's cost parameters so `investment()` can splat them.
 COST_KEYS = (
     "purchase_price", "permits_cost", "subdivision_cost",
     "sqm_construction", "construction_cost_per_sqm",
 )
-
-# Historical alias: what has to be captured for the breakdown to be complete.
-BREAKDOWN_KEYS = COST_KEYS
 
 # The three ASSUMPTIONS and what the model applies when nobody chose. They are
 # deliberately absent from the capture defaults: writing 0.065 into the column
@@ -106,19 +111,6 @@ def investment_raw(purchase_price, acquisition_cost_pct, permits_cost, subdivisi
     )
 
 
-def has_breakdown(inputs: dict) -> bool:
-    """True when all five costs are captured — the only condition under which the
-    system can recompute the investment itself instead of trusting a typed-in
-    total. Mirrors the `desarrollo` branch of the 025 transition trigger; the
-    domain layer turns it into `investmentBasis`.
-
-    The assumptions are not in the test on purpose: they always resolve, so
-    requiring them only meant that every freshly captured property was born
-    claiming a complete underwriting and the real investment could never be
-    typed in."""
-    return all(inputs.get(k) is not None for k in COST_KEYS)
-
-
 def investment(inputs: dict) -> Decimal:
     """Unrounded cost total from a raw-inputs dict, with the assumptions in
     force resolved — investment_raw, keyed."""
@@ -137,20 +129,22 @@ def basis(inputs: dict) -> Decimal | None:
     """The capital base: the money in, unrounded so everything derived from it
     rounds exactly once.
 
-    Two resolutions and only two — the pair migration 025's trigger accepts: the
-    complete breakdown (the system recomputes and owns the total) or the
-    manually captured `total_investment_captured`. None means neither exists,
-    which is precisely what the `desarrollo` stage refuses to accept."""
-    if has_breakdown(inputs):
-        return investment(inputs)
-    total = inputs.get("total_investment_captured")
-    return to_decimal(total) if total is not None else None
+    One resolution and only one — the cost stack. A capital base is never typed
+    in and never disagrees with its own parts, so nothing downstream has to ask
+    which of two numbers it is reading.
 
+    Nothing is lost by dropping the hand-typed total. An all-in figure somebody
+    would rather not break down is captured as `purchase_price` with
+    `acquisition_cost_pct = 0`: same money, said in the one grammar left. What
+    the explicit 0 buys is that an absent pct still means "apply the 6.5%
+    default", and a total that already includes acquisition costs must not be
+    surcharged again.
 
-def basis_kind(inputs: dict) -> str:
-    """Where basis() came from — the one thing a reader needs in order to know
-    how much to trust the total."""
-    return "underwriting" if has_breakdown(inputs) else "manual"
+    None when the stack sums to zero — nobody captured anything. Zero is not a
+    capital base: reporting it would let «—» turn into a $0 that reads as a
+    measurement, and every ratio below already refuses to divide by it."""
+    total = investment(inputs)
+    return total if total > 0 else None
 
 
 def gain(basis, exit_value) -> Decimal | None:

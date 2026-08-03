@@ -78,7 +78,6 @@ class PropertyUpdate(BaseModel):
     firstRentDate: Optional[str] = None
     saleDate: Optional[str] = None
     salePrice: Optional[float] = None
-    totalInvestmentCaptured: Optional[float] = None
     currentValuation: Optional[float] = None
     valuationDate: Optional[str] = None
     milestones: Optional[dict] = None
@@ -106,7 +105,10 @@ class ToDesarrollo(_TransitionBase):
     # respuesta honesta.
     currentValuation: Optional[float] = None
     valuationDate: Optional[str] = None
-    totalInvestmentCaptured: Optional[float] = None  # only needed without a full breakdown
+    # La inversión no se teclea: sale del desglose. Lo que esta etapa sí exige es
+    # el precio de compra — se acepta aquí, como `projectedSale` en ToOferta,
+    # para que la transición pueda traerlo si la propiedad no lo trae ya.
+    purchasePrice: Optional[float] = None
 
 
 class ToEnRenta(_TransitionBase):

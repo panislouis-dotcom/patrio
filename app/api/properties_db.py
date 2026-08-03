@@ -27,9 +27,10 @@ Two rules keep the contract honest:
     by status — blanking a stored value would lie about the database and would
     break the product rule that later stages can still read everything from the
     earlier ones.
-  · The capital base (totalInvestment / investmentBasis) is a fact, not a
-    projection. It survives into vendida because it is the denominator every
-    realized figure divides by.
+  · The capital base (totalInvestment) is a fact, not a projection. It survives
+    into vendida because it is the denominator every realized figure divides by.
+    It is always the cost stack — never a hand-typed total, because there is no
+    longer one to disagree with it.
 
 Every gain in here is the same pair of finance functions applied to a different
 exit value — projected sale, current valuation, sale price — so the learning
@@ -148,7 +149,7 @@ WRITABLE_FIELDS = frozenset({
     "constructionOverhead", "projectedSale", "holdMonths",
     "rentMonthlyProjected", "rentMonthlyActual",
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
-    "totalInvestmentCaptured", "currentValuation", "valuationDate", "milestones",
+    "currentValuation", "valuationDate", "milestones",
     "notes", "isFavorite",
 })
 
@@ -167,7 +168,7 @@ CLEARABLE_FIELDS = frozenset({
     "constructionOverhead", "projectedSale", "holdMonths",
     "rentMonthlyProjected", "rentMonthlyActual",
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
-    "totalInvestmentCaptured", "currentValuation", "valuationDate",
+    "currentValuation", "valuationDate",
 })
 
 _DATE_FIELDS = frozenset({"acquisitionDate", "firstRentDate", "saleDate", "valuationDate"})
@@ -220,8 +221,6 @@ _CONSTRAINT_MESSAGES = {
     # Realidad post-compra
     "properties_total_units_check": "El número de unidades debe ser mayor que cero.",
     "properties_sale_price_check": "El precio de venta no puede ser negativo.",
-    "properties_total_investment_captured_check":
-        "La inversión capturada no puede ser negativa.",
     "properties_current_valuation_check": "La valuación no puede ser negativa.",
     "properties_milestones_check": "Los hitos se guardan como un objeto de fecha a descripción.",
     # Coherencia entre etapa y datos
@@ -360,7 +359,7 @@ _ASSUMPTION_KEYS = tuple(
 ) + ("assumptions",)
 
 METRIC_KEYS = _RECORD_KEYS + _MARK_KEYS + _EXIT_KEYS + _ASSUMPTION_KEYS + (
-    "totalInvestment", "investmentBasis", "holdMonthsActual",
+    "totalInvestment", "holdMonthsActual",
 )
 
 
@@ -370,9 +369,10 @@ def _cagr(basis, exit_value, months) -> Decimal | None:
 
 
 def _per_sqm(amount, sqm_land) -> Decimal | None:
-    """Basis-aware unit price. underwriting.metrics() divides its own cost stack;
-    this one divides whatever the capital base resolved to, so a manually
-    totalled property still reports a per-m² figure that matches its total."""
+    """Unit price over the capital base, None when there is no base to divide.
+    underwriting.metrics() divides its own raw cost stack, which is a Decimal 0
+    where nothing was captured; this one divides the resolved base, so a
+    property with nothing captured reports «—» here instead of $0/m²."""
     sqm = to_decimal(sqm_land)
     return money(to_decimal(amount) / sqm) if (amount is not None and sqm > 0) else None
 
@@ -421,7 +421,6 @@ def metrics(row: dict) -> dict:
 
     out: dict = {
         "totalInvestment": money0(basis) if basis is not None else None,
-        "investmentBasis": underwriting.basis_kind(row),
         "holdMonthsActual": held,
     }
 
@@ -512,11 +511,10 @@ def parse_property(row, images: list | None = None) -> dict:
     computed here rather than in a router so every read of a property carries the
     same verdict.
 
-    No computed key shadows a stored one any more. `totalInvestmentCaptured` is
-    the column exactly as typed and `totalInvestment` is the base the model
-    resolved — two names because they are two facts, and because a hand-typed
-    total used to vanish from the payload the moment the breakdown was complete,
-    which left it unreadable and uneditable in the very row that had it."""
+    `totalInvestment` is derived, always, from the five stored costs — so it
+    shadows no column and contradicts none. There is exactly one investment
+    figure in the payload, which is why nothing here has to say where it came
+    from."""
     raw = dict(row)
     computed = metrics(raw)
     parsed = _row_to_dict(row)
@@ -607,8 +605,10 @@ def _require_row(conn, property_id: int) -> dict:
 
 # What a freshly captured property starts with, whoever captured it — the form,
 # the sonar importer, a future feed. The five cost inputs get a concrete 0
-# instead of NULL so the investment base resolves from birth; a zero cost is a
-# real claim ("no permits until you say otherwise") and it fabricates no money.
+# instead of NULL because a zero cost is a real claim ("no permits until you say
+# otherwise") and it fabricates no money. The base still comes back «—» until
+# something is actually captured: a stack that sums to zero is not a $0
+# investment, it is an empty one.
 #
 # The three ASSUMPTIONS are deliberately not here. Writing 6.5%, 1.3 and 12
 # months into the row at birth made the model's guesses indistinguishable from
