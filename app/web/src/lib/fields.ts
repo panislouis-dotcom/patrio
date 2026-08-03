@@ -29,9 +29,6 @@ export const FIELD_LABEL: Record<string, string> = {
   constructionOverhead: 'Overhead de obra',
   holdMonths: 'Plazo proyectado',
 
-  // Inversión
-  totalInvestmentCaptured: 'Inversión capturada',
-
   // Hechos posteriores a la compra
   totalUnits: 'Unidades',
   acquisitionDate: 'Fecha de adquisición',

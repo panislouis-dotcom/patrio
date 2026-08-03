@@ -104,12 +104,12 @@ export interface Property {
   assumptions: Assumptions
 
   // --- Base de capital (viva en toda etapa: es historia, no proyección) ---
-  // La capturada a mano y la que el modelo resolvió son dos hechos distintos:
-  // totalInvestmentCaptured es lo tecleado tal cual y sobrevive aunque el
-  // desglose esté completo; totalInvestment es la base con la que se divide.
-  totalInvestmentCaptured: number | null
+  // SIEMPRE la suma del desglose —un componente ausente vale 0—, y null cuando
+  // no hay nada capturado. No se teclea: un total all-in se dice como
+  // `purchasePrice` con `acquisitionCostPct` en 0, que es la misma cifra dicha
+  // por su nombre. Había una segunda columna con el total a mano y con ella la
+  // pregunta de cuál de los dos números creer.
   totalInvestment: number | null
-  investmentBasis: 'underwriting' | 'manual' | null
 
   // --- Datos que solo existen tras comprar ---
   totalUnits: number | null
@@ -177,7 +177,7 @@ export type RawPropertyFields = Pick<Property,
   | 'constructionOverhead' | 'projectedSale' | 'holdMonths'
   | 'rentMonthlyProjected' | 'rentMonthlyActual'
   | 'totalUnits' | 'acquisitionDate' | 'firstRentDate' | 'valuationDate'
-  | 'totalInvestmentCaptured' | 'currentValuation' | 'saleDate' | 'salePrice'
+  | 'currentValuation' | 'saleDate' | 'salePrice'
 >
 
 // Lo que se le puede entregar a un PATCH. Los nulls que traiga se filtran en
@@ -225,7 +225,7 @@ export const CLEARABLE_FIELDS = [
   'constructionOverhead', 'projectedSale', 'holdMonths',
   'rentMonthlyProjected', 'rentMonthlyActual',
   'totalUnits', 'acquisitionDate', 'firstRentDate', 'saleDate', 'salePrice',
-  'totalInvestmentCaptured', 'currentValuation', 'valuationDate',
+  'currentValuation', 'valuationDate',
 ] as const
 export type ClearableField = typeof CLEARABLE_FIELDS[number]
 
@@ -238,13 +238,14 @@ interface TransitionCommon {
 
 export type Transition =
   | (TransitionCommon & { to: 'oferta'; projectedSale?: number })
+  // Comprar no produce un avalúo ni una inversión tecleada: la valuación se
+  // captura el día que exista una de verdad, y la inversión sale del desglose.
   | (TransitionCommon & {
       to: 'desarrollo'
       acquisitionDate: string
       totalUnits: number
-      currentValuation: number
+      currentValuation?: number
       valuationDate?: string
-      totalInvestmentCaptured?: number   // solo hace falta sin desglose completo
     })
   | (TransitionCommon & {
       to: 'en_renta'
