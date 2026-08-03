@@ -37,45 +37,39 @@ BEGIN
         ELSE FALSE
     END;
 
+    -- Los mensajes hablan el vocabulario de docs/glosario.md, no el del esquema:
+    -- son lo último que ve alguien que empujó un UPDATE a mano, y «en_renta» o
+    -- «projected_sale > 0» no le dicen qué capturar.
     IF NOT allowed THEN
-        RAISE EXCEPTION 'transición de status no permitida: % → % (propiedad %)',
-            OLD.status, NEW.status, OLD.id USING ERRCODE = 'check_violation';
+        RAISE EXCEPTION 'No se puede pasar de % a % (propiedad %)',
+            property_status_label(OLD.status), property_status_label(NEW.status), OLD.id
+            USING ERRCODE = 'check_violation';
     END IF;
 
     IF NEW.status = 'oferta' AND coalesce(NEW.projected_sale, 0) <= 0 THEN
-        RAISE EXCEPTION 'oferta exige modelo completo: projected_sale > 0 (propiedad %)',
+        RAISE EXCEPTION 'Toda Oferta modela su salida: falta la venta proyectada (propiedad %)',
             OLD.id USING ERRCODE = 'check_violation';
     END IF;
 
     IF NEW.status = 'desarrollo' THEN
         IF NEW.acquisition_date IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige acquisition_date (propiedad %)',
+            RAISE EXCEPTION 'Una propiedad en Desarrollo ya se compró: falta la fecha de adquisición (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
         IF NEW.total_units IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige total_units (propiedad %)',
+            RAISE EXCEPTION 'Falta el número de unidades para pasar a Desarrollo (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
         -- Comprar no produce un avalúo: la valuación NO se exige aquí.
-        -- La base de inversión se resuelve de dos formas y solo de dos: el total
-        -- capturado a mano, o el desglose COMPLETO de los cinco costos (con uno
-        -- faltante el sistema no puede recomputar nada). Los supuestos no
-        -- cuentan: tienen default y nunca faltan de verdad.
-        IF NEW.total_investment_captured IS NULL AND NOT (
-               NEW.purchase_price            IS NOT NULL
-           AND NEW.permits_cost              IS NOT NULL
-           AND NEW.subdivision_cost          IS NOT NULL
-           AND NEW.sqm_construction          IS NOT NULL
-           AND NEW.construction_cost_per_sqm IS NOT NULL
-        ) THEN
-            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment_captured manual o el desglose completo de los cinco costos (propiedad %)',
+        IF coalesce(NEW.purchase_price, 0) <= 0 THEN
+            RAISE EXCEPTION 'No se entra a Desarrollo sin saber qué se pagó: falta el precio de compra (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
 
     IF NEW.status = 'en_renta' THEN
         IF NEW.rent_monthly_actual IS NULL THEN
-            RAISE EXCEPTION 'en_renta exige rent_monthly_actual: la renta cobrada, no la estimada (propiedad %)',
+            RAISE EXCEPTION 'Falta la renta mensual cobrada para pasar a En renta: la que se cobra, no la estimada (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
@@ -816,7 +810,6 @@ CREATE TABLE public.properties (
     first_rent_date date,
     sale_date date,
     sale_price numeric(14,2),
-    total_investment_captured numeric(14,2),
     current_valuation numeric(14,2),
     valuation_date date,
     milestones jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -851,7 +844,6 @@ CREATE TABLE public.properties (
     CONSTRAINT properties_status_check CHECK ((status = ANY (ARRAY['prospecto'::text, 'oferta'::text, 'desarrollo'::text, 'en_renta'::text, 'vendida'::text, 'archivada'::text]))),
     CONSTRAINT properties_strategy_type_check CHECK ((strategy_type = ANY (ARRAY['adaptive_reuse'::text, 'ground_up'::text, 'flip'::text, 'hold'::text]))),
     CONSTRAINT properties_subdivision_cost_check CHECK ((subdivision_cost >= (0)::numeric)),
-    CONSTRAINT properties_total_investment_captured_check CHECK ((total_investment_captured >= (0)::numeric)),
     CONSTRAINT properties_total_units_check CHECK ((total_units > 0)),
     CONSTRAINT properties_vendida_needs_sale CHECK (((status <> 'vendida'::text) OR ((sale_date IS NOT NULL) AND (sale_price IS NOT NULL))))
 );
@@ -875,7 +867,7 @@ COMMENT ON COLUMN public.properties.purchase_price IS 'Lo que se paga por adquir
 -- Name: COLUMN properties.acquisition_cost_pct; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.properties.acquisition_cost_pct IS 'Supuesto: costos de adquisición como fracción del precio de compra. NULL = se aplica el default del sistema (0.065).';
+COMMENT ON COLUMN public.properties.acquisition_cost_pct IS 'Supuesto: costos de adquisición como fracción del precio de compra. NULL = se aplica el default del sistema (0.065). Un 0 capturado dice que el precio de compra ya viene con todo adentro.';
 
 
 --
@@ -904,13 +896,6 @@ COMMENT ON COLUMN public.properties.hold_months IS 'Supuesto: plazo proyectado e
 --
 
 COMMENT ON COLUMN public.properties.rent_monthly_projected IS 'Renta mensual del underwriting: lo que se estima cobrar. Sobrevive a la renta real para poder compararlas.';
-
-
---
--- Name: COLUMN properties.total_investment_captured; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN public.properties.total_investment_captured IS 'Inversión total tecleada a mano. Es la base de capital solo cuando el desglose de costos está incompleto.';
 
 
 --
@@ -2922,4 +2907,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('023'),
     ('024'),
     ('025'),
-    ('026');
+    ('026'),
+    ('027');
