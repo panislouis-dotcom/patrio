@@ -48,8 +48,7 @@ const BASE_PROPERTY: Property = {
     constructionOverhead: { value: 1.3, source: 'captured' },
     holdMonths: { value: 12, source: 'captured' },
   },
-  totalInvestmentCaptured: null,
-  totalInvestment: 7_295_000, investmentBasis: 'underwriting',
+  totalInvestment: 7_295_000,
   totalUnits: null, acquisitionDate: null, firstRentDate: null,
   valuationDate: null, currentValuation: null, saleDate: null, salePrice: null,
   acquisitionCosts: 195_000, acquisitionTotal: 3_195_000,
@@ -63,11 +62,29 @@ const BASE_PROPERTY: Property = {
   score: 78, issues: [],
 }
 
+/**
+ * Comprada all-in: los 3,730,000 son el precio de compra con 0% de costos de
+ * adquisición y nada de obra. Es la forma que toma una propiedad cuyo total se
+ * tecleaba a mano — la misma cifra, dicha por su nombre — y por eso su desglose
+ * suma exactamente la inversión con la que se dividen todas sus métricas.
+ */
 const RENTED: Property = {
   ...BASE_PROPERTY, status: 'en_renta', name: 'Casa Centro',
   totalUnits: 3, acquisitionDate: '2022-09-01', firstRentDate: '2023-09-01',
   valuationDate: '2026-04-01', currentValuation: 6_200_000,
-  investmentBasis: 'manual', totalInvestment: 3_730_000, totalInvestmentCaptured: 3_730_000,
+  purchasePrice: 3_730_000, acquisitionCostPct: 0,
+  permitsCost: 0, subdivisionCost: 0,
+  sqmConstruction: 0, constructionCostPerSqm: 0,
+  assumptions: {
+    ...BASE_PROPERTY.assumptions,
+    acquisitionCostPct: { value: 0, source: 'captured' },
+  },
+  acquisitionCosts: 0, acquisitionTotal: 3_730_000,
+  constructionBase: 0, constructionTotal: 0,
+  totalInvestment: 3_730_000,
+  purchasePricePerSqm: 9_325, salePerSqm: null, investmentPerSqm: null,
+  projectedProfit: 5_270_000, projectedRoi: 1.4129, projectedRoiTotal: 1.4129,
+  capRate: 0.0965,
   rentMonthlyActual: 34_000, capRateActual: 0.1094, rentAnnualActual: 408_000,
   unrealizedGain: 2_470_000, unrealizedGainPct: 0.6622, roi: 0.1385, holdMonthsActual: 47,
   score: null,
@@ -83,13 +100,24 @@ const SOLD: Property = {
   realizedGain: 4_270_000, realizedGainPct: 1.1448, realizedRoi: 0.2251,
 }
 
-/** Comprada con la inversión tecleada a mano: el desglose no la explica entera. */
-const MANUAL: Property = {
+/**
+ * Comprada de un tirón y sin modelar: lo único capturado es lo que costó
+ * adquirirla. Todo lo derivado sale null, que es la respuesta honesta cuando
+ * nadie proyectó nada.
+ */
+const ALL_IN: Property = {
   ...BASE_PROPERTY, status: 'desarrollo', name: 'Bodega Sur', score: null,
   totalUnits: 1, acquisitionDate: '2025-01-01',
-  investmentBasis: 'manual', totalInvestment: 10_000_000, totalInvestmentCaptured: 10_000_000,
-  purchasePrice: 7_000_000, acquisitionCosts: 0, permitsCost: 0, subdivisionCost: 0,
-  constructionCostPerSqm: 0, constructionBase: 0, constructionTotal: 0,
+  purchasePrice: 10_000_000, acquisitionCostPct: 0,
+  permitsCost: 0, subdivisionCost: 0,
+  sqmLand: null, sqmConstruction: 0, constructionCostPerSqm: 0,
+  assumptions: {
+    ...BASE_PROPERTY.assumptions,
+    acquisitionCostPct: { value: 0, source: 'captured' },
+  },
+  totalInvestment: 10_000_000,
+  acquisitionCosts: 0, acquisitionTotal: 10_000_000,
+  constructionBase: 0, constructionTotal: 0,
   projectedSale: null, projectedProfit: null, projectedRoi: null, projectedRoiTotal: null,
   salePerSqm: null, investmentPerSqm: null, purchasePricePerSqm: null,
   rentMonthlyProjected: null, capRate: null, rentAnnual: null,
@@ -242,11 +270,22 @@ describe('PropertyDetailPage', () => {
     expect(screen.getAllByText('CAPTURADO')).toHaveLength(1)
   })
 
-  it('la inversión capturada a mano sigue viéndose aunque mande el desglose', async () => {
-    await renderPage({ ...BASE_PROPERTY, totalInvestmentCaptured: 7_000_000 })
+  it('la ficha nunca ofrece capturar un total: la inversión es el desglose', async () => {
+    // Había una fila para teclearla que, con el desglose completo, se anunciaba
+    // a sí misma como «NO SE USA: MANDA EL DESGLOSE» — un campo cuya razón de
+    // existir era avisar que no servía. Con un solo origen la pregunta muere.
+    await renderPage(BASE_PROPERTY)
 
-    expect(screen.getByText('INVERSIÓN CAPTURADA')).not.toBeNull()
-    expect(screen.getByText('NO SE USA: MANDA EL DESGLOSE')).not.toBeNull()
+    expect(screen.getByText('SUMA DEL DESGLOSE')).not.toBeNull()
+    // La fila INVERSIÓN y el total del DESGLOSE son la misma cifra por
+    // construcción: 3,000,000 + 195,000 + 150,000 + 50,000 + 3,900,000.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
+
+    fireEvent.click(screen.getByText('EDITAR'))
+    expect(screen.queryByText('INVERSIÓN CAPTURADA')).toBeNull()
+    // Ni siquiera en edición hay caja: la fila sigue siendo la suma, en lectura.
+    expect(screen.queryByLabelText('INVERSIÓN')).toBeNull()
+    expect(screen.getByText('$7,295,000')).not.toBeNull()
     expect(screen.getByText('SUMA DEL DESGLOSE')).not.toBeNull()
   })
 
@@ -265,6 +304,40 @@ describe('PropertyDetailPage', () => {
     expect(rent.value).toBe('')
     // La estimación se dice, para poder compararla — no para arrastrarla.
     expect(within(modal).getByText(/Se estimó \$30,000 al mes/)).not.toBeNull()
+  })
+
+  it('avanzar a desarrollo ya no pide la inversión: la enseña sumada', async () => {
+    // Pedía el total a mano cuando el desglose estaba incompleto. Ahora no hay
+    // desglose incompleto —lo que falta vale 0— así que la cifra se muestra ya
+    // computada: avanzar sigue siendo una afirmación sobre números concretos,
+    // pero ninguno de ellos se teclea dos veces.
+    await renderPage({ ...BASE_PROPERTY, status: 'oferta' })
+
+    fireEvent.click(screen.getByText('AVANZAR A ▸'))
+    fireEvent.click(screen.getByText('DESARROLLO'))
+    const modal = screen.getByText('OFERTA ▸ DESARROLLO').parentElement!
+
+    expect(within(modal).queryByLabelText('INVERSIÓN TOTAL')).toBeNull()
+    expect(within(modal).getByText('$7,295,000')).not.toBeNull()
+    expect(within(modal).getByText(/suma del desglose/)).not.toBeNull()
+    expect((within(modal).getByText('DESARROLLO ▸') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('sin precio de compra, avanzar a desarrollo dice qué falta y dónde', async () => {
+    // El gate de la etapa exige el precio de compra: sin él no hay inversión
+    // que sumar. Decirlo aquí evita que el servidor rebote la transición con un
+    // error que no señala ningún campo.
+    await renderPage({
+      ...BASE_PROPERTY, status: 'oferta', purchasePrice: null,
+      acquisitionCosts: null, acquisitionTotal: null, totalInvestment: 3_900_000,
+    })
+
+    fireEvent.click(screen.getByText('AVANZAR A ▸'))
+    fireEvent.click(screen.getByText('DESARROLLO'))
+    const modal = screen.getByText('OFERTA ▸ DESARROLLO').parentElement!
+
+    expect(within(modal).getByText(/Falta el precio de compra/)).not.toBeNull()
+    expect((within(modal).getByText('DESARROLLO ▸') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('una propiedad rentada enseña las dos rentas y los dos cap rates', async () => {
@@ -300,10 +373,10 @@ describe('PropertyDetailPage', () => {
   it('una vendida sigue enseñando el plan contra el que se mide', async () => {
     await renderPage(SOLD)
 
-    // 1,705,000 proyectados contra 4,270,000 realizados: el par que el modelo
+    // 5,270,000 proyectados contra 4,270,000 realizados: el par que el modelo
     // promete, legible completo y en la misma pantalla.
     expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
-    expect(screen.getByText('$1,705,000 +23.0%')).not.toBeNull()
+    expect(screen.getByText('$5,270,000 +141.3%')).not.toBeNull()
     expect(screen.getByText('$4,270,000 +114.5%')).not.toBeNull()
     // Aquí sí los ROI proyectados vuelven a ser filas: el héroe lo ocupa el
     // resultado, que es la respuesta con más realidad detrás.
@@ -351,23 +424,37 @@ describe('PropertyDetailPage', () => {
   it('una sección derivada sin nada que decir no se dibuja', async () => {
     // La política de vacío de InvestmentBreakdown, aplicada a las demás: tres
     // guiones seguidos bajo un título no informan de nada.
-    await renderPage(MANUAL)
+    await renderPage(ALL_IN)
 
     expect(screen.queryByText('MÉTRICAS')).toBeNull()
     expect(screen.queryByText('PROYECCIÓN')).toBeNull()
   })
 
-  it('el desglose nombra el capital que nadie clasificó en vez de esconderlo', async () => {
-    // 7,000,000 de precio de compra dentro de una inversión de 10,000,000
-    // tecleada a mano: las barras sumaban 70% del total que ellas mismas
-    // anunciaban. El resto tiene nombre y es capital del que no se sabe en qué
-    // se fue, así que se dice.
-    await renderPage(MANUAL)
+  it('un total all-in se dice como precio de compra, y explica el capital entero', async () => {
+    // La propiedad cuya inversión se tecleaba a mano ahora la dice donde
+    // siempre estuvo su lugar. El desglose la explica al 100%: no hay resto sin
+    // clasificar porque ya no hay dos totales entre los que pueda haber hueco.
+    await renderPage(ALL_IN)
 
-    expect(screen.getByText('SIN DESGLOSAR')).not.toBeNull()
-    expect(screen.getByText('$3,000,000')).not.toBeNull()
+    expect(screen.queryByText('SIN DESGLOSAR')).toBeNull()
+    expect(screen.getByText('PRECIO DE COMPRA')).not.toBeNull()
     const pcts = screen.getAllByText(/^\d+%$/).map(n => Number(n.textContent!.replace('%', '')))
-    expect(pcts.reduce((a, b) => a + b, 0)).toBe(100)
+    expect(pcts).toEqual([100])
+  })
+
+  it('un 0% capturado se lee como cero, no como dato faltante', async () => {
+    // La migración deja `acquisitionCostPct = 0` EXPLÍCITO en las propiedades
+    // que traían el total a mano: null significaría «supón 6.5%» y le sumaría
+    // costos que nadie pidió. En pantalla esa distinción se sostiene o se
+    // pierde — un «—» diría que falta capturarlo, y ya se capturó.
+    await renderPage(ALL_IN)
+
+    expect(screen.getByText('COSTOS ADQ. (%)')).not.toBeNull()
+    expect(screen.getByText('0.0%')).not.toBeNull()
+    expect(screen.getAllByText('CAPTURADO')).toHaveLength(3)
+    expect(screen.queryByText('SUPUESTO POR OMISIÓN')).toBeNull()
+    // Y el 0 tampoco se cuela como barra de $0 en el desglose.
+    expect(screen.queryByText('COSTOS ADQ.')).toBeNull()
   })
 
   it('vaciar un campo pasa por clear-fields, con su propio botón', async () => {

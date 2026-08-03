@@ -31,7 +31,7 @@ const base = (over: Partial<Property>): Property => ({
     constructionOverhead: { value: 1.3, source: 'default' },
     holdMonths: { value: 12, source: 'default' },
   },
-  totalInvestmentCaptured: null, totalInvestment: null, investmentBasis: 'manual',
+  totalInvestment: null,
   totalUnits: null, acquisitionDate: null, firstRentDate: null,
   valuationDate: null, currentValuation: null, saleDate: null, salePrice: null,
   acquisitionCosts: null, acquisitionTotal: null, constructionBase: null,

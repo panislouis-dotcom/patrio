@@ -23,7 +23,7 @@ describe('InvestmentBreakdown', () => {
     // de 70% y 30% de… $7M. Ahora la cifra grande ES lo que las barras explican.
     render(<InvestmentBreakdown label="DESGLOSE" barsReady items={[
       { label: 'Precio de compra', amount: 7_000_000 },
-      { label: 'Sin desglosar', amount: 3_000_000 },
+      { label: 'Obra a ejecutar', amount: 3_000_000 },
     ]} />)
 
     expect(screen.getByText('$10,000,000')).not.toBeNull()
