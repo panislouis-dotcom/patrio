@@ -1,6 +1,8 @@
 import { test, expect } from '../fixtures/auth'
 import type { Page } from '@playwright/test'
-import { getToken, createProperty, deleteProperty, deletePropertyByName, API_BASE } from '../helpers/api'
+import {
+  getToken, createProperty, deleteProperty, deletePropertyByName, transitionProperty, API_BASE,
+} from '../helpers/api'
 import {
   gotoProperty, detailRow, advanceTo, confirmTransition, enterEditMode, saveEdits, setNumericField,
 } from '../helpers/detail'
@@ -309,6 +311,59 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(sold).toContainText('$3.0M')
     await expect(sold).toContainText('32.3%')
     await expect(sold).toContainText('24m')
+  })
+})
+
+/**
+ * El portón de desarrollo, cerrado desde el navegador.
+ *
+ * Comprar es afirmar que se pagó algo, y de ese algo sale toda la inversión: sin
+ * precio de compra no hay base de capital, y sin base no hay ROI, ni ganancia,
+ * ni cap rate. El trigger de la base de datos lo rechaza por su cuenta, pero un
+ * 422 que llega después de confirmar es un viaje en balde. El modal contesta
+ * antes y dice además dónde se arregla — que es más de lo que el 422 puede
+ * decir, porque el modal sabe en qué pantalla está quien lo lee.
+ */
+test.describe('El portón de desarrollo sin precio de compra', () => {
+  const SIN_PRECIO = {
+    name: '[TEST] Propiedad Sin Precio',
+    address: 'Av. Sin Precio 1',
+    city: 'Monterrey',
+    // Ni un peso capturado: el precio de compra se queda en el 0 con el que
+    // nace toda propiedad, así que el desglose suma cero y no hay inversión.
+    projectedSale: 2_000_000,
+    latitude: 25.6866,
+    longitude: -100.3161,
+  }
+
+  let token: string
+  let id: number
+
+  test.beforeAll(async ({ request }) => {
+    token = await getToken(request)
+    await deletePropertyByName(request, SIN_PRECIO.name, token)
+    id = (await createProperty(request, SIN_PRECIO, token)).id
+    await transitionProperty(request, id, { to: 'oferta' }, token)
+  })
+
+  test.afterAll(async ({ request }) => {
+    await deleteProperty(request, id, token)
+  })
+
+  test('el modal dice qué falta y dónde se captura, en vez de dejar confirmar', async ({ page }) => {
+    await gotoProperty(page, id)
+
+    // Suma cero es vacío, no cero: nadie capturó nada, y «$0» afirmaría que la
+    // propiedad no costó nada. Se ancla por el hint porque es de la fila, no del
+    // héroe, que sin proyección resoluble se llama igual.
+    await expect(page.getByText('SUMA DEL DESGLOSE').locator('..')).toContainText('—')
+
+    await advanceTo(page, 'DESARROLLO')
+
+    await expect(page.getByText(
+      'Falta el precio de compra: la inversión es la suma del desglose y sin él no hay ninguna. '
+      + 'Se captura en la ficha.')).toBeVisible()
+    await expect(confirmTransition(page, 'DESARROLLO')).toBeDisabled()
   })
 })
 

@@ -479,7 +479,9 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await expect(detailRow(page, 'UNIDADES')).toContainText('4')
     await expect(detailRow(page, 'ETAPA')).toContainText('EN RENTA')
     // El 0% está capturado, no supuesto: es la mitad del idioma, y sin ella el
-    // modelo supondría 6.5% y el total dejaría de ser el que se pagó.
+    // modelo supondría 6.5% y el total dejaría de ser el que se pagó. Se imprime
+    // como el cero que es, no como el «—» de lo que nadie tecleó.
+    await expect(detailRow(page, 'COSTOS ADQ. (%)')).toContainText('0.0%')
     await expect(detailRow(page, 'COSTOS ADQ. (%)')).toContainText('CAPTURADO')
 
     await enterEditMode(page)
