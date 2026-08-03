@@ -151,7 +151,9 @@ export function SmartPropertyModal({ onClose, onCreated }: Props) {
         projectedSale,
         holdMonths,
         constructionCostPerSqm,
-        rentMonthly,
+        // Una renta de 0 no es una renta: la ausencia se expresa dejándola
+        // vacía. Mandar el cero lo rechaza la base (rent_monthly > 0).
+        rentMonthly:          rentMonthly || undefined,
         url:                  url.trim() || undefined,
         notes:                text.trim() || parsed?.notes || undefined,
         latitude:             lat,

@@ -32,6 +32,7 @@ from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
 
+from psycopg2 import IntegrityError
 from psycopg2.extras import Json
 
 from api.checks import run_checks, stage_requirements
@@ -116,6 +117,13 @@ class PropertyError(Exception):
     """Domain rejection carrying a message written for the user (Spanish)."""
 
 
+def _db_reason(exc: Exception) -> str:
+    """El nombre de la restricción que Postgres rechazó, que dice más que el
+    volcado entero del error."""
+    constraint = getattr(getattr(exc, "diag", None), "constraint_name", None)
+    return constraint or str(exc).strip().splitlines()[0]
+
+
 class PropertyNotFound(PropertyError):
     """No such property — the routers turn this into a 404."""
 
@@ -147,6 +155,12 @@ def to_columns(data: dict) -> dict:
             value = to_date(value)
         elif key in _JSON_FIELDS:
             value = Json(value if value is not None else {})
+        elif key == "rentMonthly" and value == 0:
+            # Una renta de cero no existe: la columna solo acepta positivos y la
+            # ausencia se guarda como NULL. Un cliente que manda 0 está diciendo
+            # "no hay renta capturada", igual que la migración 024 lo interpretó
+            # al normalizar los ceros heredados.
+            value = None
         out[_camel_to_snake(key)] = value
     return out
 
@@ -402,10 +416,16 @@ def create_property(data: dict) -> dict:
     names = ", ".join(columns)
     placeholders = ", ".join(["%s"] * len(columns))
     with get_db() as conn:
-        new_id = conn.execute(
-            f"INSERT INTO properties ({names}) VALUES ({placeholders}) RETURNING id",
-            list(columns.values()),
-        ).fetchone()["id"]
+        try:
+            new_id = conn.execute(
+                f"INSERT INTO properties ({names}) VALUES ({placeholders}) RETURNING id",
+                list(columns.values()),
+            ).fetchone()["id"]
+        except IntegrityError as exc:
+            # La base es la última defensa, no la primera: si un alta la rompe,
+            # el cliente merece leer qué regla violó y no un 500 mudo (que
+            # además llega al navegador disfrazado de error de CORS).
+            raise PropertyError(f"La propiedad no cumple una regla de captura: {_db_reason(exc)}")
         conn.execute(
             "INSERT INTO property_status_events (property_id, from_status, to_status, notes)"
             " VALUES (%s, NULL, %s, %s)",

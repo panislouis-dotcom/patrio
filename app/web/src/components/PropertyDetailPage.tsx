@@ -320,8 +320,12 @@ export function PropertyDetailPage() {
   return (
     <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
 
+      {/* El menú de AVANZAR A vive dentro del encabezado, y `fade` le crea un
+          contexto de apilamiento propio con su transform: sin un z-index aquí,
+          el desplegable no puede subir por encima de la columna de medios por
+          más z-index que tenga adentro. */}
       <DetailHeader
-        style={fade(0)}
+        style={{ ...fade(0), position: 'relative', zIndex: 60 }}
         backLabel="PROPIEDADES"
         onBack={() => navigate('/propiedades')}
         title={field('name') ?? ''}
