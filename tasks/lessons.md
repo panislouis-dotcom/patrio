@@ -50,6 +50,46 @@ comparten una propiedad sospechosa (aquí, ser los dos que llevan `[SEED]`).
 
 ---
 
+## Verde en local puede significar «contaminado», no «correcto»
+
+**2026-08-03 · el Chromium que le faltaba al API en CI**
+
+El e2e del prospecto en PDF llevaba 14 horas rojo en CI y verde en local. En este
+repo viven DOS Playwright: el de Node maneja el navegador de las pruebas, y el de
+Python —dentro del API— imprime el PDF. Cada versión fija su propio build de
+Chromium (Node 1.59 pide `chromium-1217`; Python pide `chromium-1228`), y CI solo
+instalaba el de Node.
+
+**Por qué pasaba en local**: mi máquina tenía TRES builds acumulados de versiones
+distintas, y alguno servía. Local no era un entorno más permisivo — era uno
+**contaminado por su propia historia**. CI acierta al empezar limpio.
+
+**Cómo aplicarlo**: cuando algo pase en local y falle en CI, la hipótesis por
+defecto no es «CI está mal configurado» sino **«local tiene algo que nadie
+instaló a propósito»**. Y antes de arreglar, reproduce la condición limpia
+—aquí, una carpeta de navegadores con solo el build de Node— para no empujar una
+corazonada. El `Dockerfile` ya hacía lo correcto: cuando un entorno funciona y
+otro no, compara sus recetas antes de teorizar.
+
+---
+
+## Un fallo que no nombra su causa cuesta más que el fallo
+
+**2026-08-03 · «Timeout esperando el evento download»**
+
+El único síntoma del problema anterior era *«Timeout 20000ms exceeded while
+waiting for event "download"»*. Esa frase nombra **lo que no pasó**, no por qué:
+la descarga nunca ocurrió porque el endpoint devolvió un error que la prueba
+nunca miró. Horas de diagnóstico escondidas tras un mensaje genérico.
+
+**Cómo aplicarlo**: cuando una prueba espera un EFECTO (una descarga, un
+elemento, un archivo), que vigile también la CAUSA (la respuesta HTTP, el código
+de salida). Si el efecto no llega, el reporte debe decir el 500 y su cuerpo, no
+un timeout. Vale para cualquier espera: **afirmar sobre el efecto es suficiente
+cuando pasa, y es inútil cuando falla.**
+
+---
+
 ## Los defectos más caros no fallan: devuelven un cero
 
 **2026-08-03 · fixture con `landPrice`**
