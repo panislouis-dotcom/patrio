@@ -9,6 +9,22 @@ description: Use when asked to do a quick evaluation or screening of a real esta
 
 Generates a single-page mobile-first HTML screening card for a real estate flip. Inputs: purchase price, renovation budget, expected sale price, and timeline in months. Output: investment breakdown, operator net profit, annualized ROI, and a traffic-light signal.
 
+## Vocabulary — this skill does not speak the platform's
+
+**Read `docs/glosario.md` before you reuse a word from here.** This card is a
+back-of-envelope screen with its own ratio model, and three of its labels name
+formulas that the platform names differently:
+
+| Here | Formula here | The platform's word for it |
+|---|---|---|
+| Inversión total | adquisición ×1.065 + obra ×1.10 + comercialización | **not** `totalInvestment` — the platform has no comercialización term and prices obra with an overhead multiplier (×1.3 by default), so the two numbers will not match |
+| ROI anual | operator's net profit, after the investor cuota and ISR, annualized | **not** `projectedRoi`, which annualizes the gain over the whole investment before any split |
+| Margen bruto | (venta − inversión) / **venta** | **not** Ganancia proy. total, which divides by the **inversión** |
+
+So: do not paste a figure from this card into a property, a prospectus or a term
+sheet, and do not call a figure from those "ROI anual" because this card does.
+When the answer has to agree with the app, read it from the API.
+
 ## Step 0 — Ask for inputs
 
 Before generating anything, ask:
@@ -264,7 +280,7 @@ body {
   </div>
   <div class="metric-card">
     <div class="value">[ROI]%</div>
-    <div class="label">ROI ANUALIZADO</div>
+    <div class="label">ROI ANUAL OPERADOR</div>
   </div>
   <div class="metric-card">
     <div class="value">$[CUOTA_INVERSIONISTA]</div>
@@ -336,7 +352,8 @@ body {
 
 - Replace ALL bracketed placeholders with computed values
 - Format numbers with commas: `$1,234,567`
-- ROI as percentage with 1 decimal: `9.9%`
+- ROI as percentage with 1 decimal: `9.9%` — and label it *ROI anual operador*:
+  it is the operator's net return, not the property's `projectedRoi`
 - Property name comes from user input or defaults to "Oportunidad"
 - Never use Google Fonts CDN — local `@font-face` only
 

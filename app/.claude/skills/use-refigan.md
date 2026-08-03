@@ -9,6 +9,13 @@ Refigan is an internal real-estate operations platform for a Monterrey-based inv
 
 There is no separate "prospect" and "project". There used to be, and they turned out to be the same building described twice; they were merged into a single `properties` table whose `status` is the stage of its life. Everything below follows from that: what a property *is* does not change as it advances, only what is known about it and what may be done to it.
 
+> **Read `docs/glosario.md` before you name a number.** Every concept in this
+> platform has exactly one name, and this file uses those names. The API field
+> is the identifier; the glossary entry is what you call it in front of a person.
+> Two rules do most of the work: **«ROI» always means annualized**, and a figure
+> and its percentage share one name. If you are about to write a label that is
+> not in the glossary, you are about to invent a concept.
+
 ## Architecture in One Line
 
 ```
@@ -43,7 +50,7 @@ The key never expires until you revoke it from the same panel.
 
 | Type | Format | Lifetime | How to get |
 |------|--------|----------|-----------|
-| JWT | `eyJ...` (standard JWT) | 8 hours | `POST /api/auth/login` with `{username, password}` (form body) |
+| JWT | `eyJ...` (standard JWT) | 8 hours | `POST /api/auth/login` with a JSON body `{"email", "password"}` — the field is `email`, not `username`, and it is not a form |
 | API key | `rfg_live_<64 hex chars>` | Until revoked | ⚙ gear icon → API KEYS panel in the UI (or `POST /api/auth/api-keys`) |
 
 The server detects the token type by prefix: anything starting with `rfg_live_` triggers the API-key path; everything else is decoded as JWT.
@@ -68,7 +75,17 @@ All errors follow a single envelope. Read the message from `error.message` — t
 
 Standard codes: `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `BAD_REQUEST`, `CONFLICT`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
 
-The property domain writes its rejections in Spanish and for a human ("Falta la fecha de la primera renta.", "Transición no permitida: prospecto → desarrollo."). They arrive as `422 VALIDATION_ERROR`. Surface the sentence; do not replace it with the status code.
+The property domain writes its rejections in Spanish and for a human: *"Falta la
+fecha de la primera renta."*, *"No se puede pasar de Prospecto a Desarrollo.
+Desde Prospecto solo se puede pasar a Oferta o Archivada."*, *"El precio de
+compra no puede ser negativo."* They arrive as `422 VALIDATION_ERROR`. Surface
+the sentence; do not replace it with the status code.
+
+A rejection never contains a constraint name, a snake_case column or a raw status
+value — `properties_en_renta_needs_first_rent` and `en_renta` are identifiers, not
+language. If you ever see one reach a client, a `CHECK` was added to a migration
+without its sentence in `_CONSTRAINT_MESSAGES` (`app/api/properties_db.py`); a
+test pins that the two lists match.
 
 ---
 
@@ -104,11 +121,11 @@ prospecto → oferta → desarrollo → en_renta → vendida
 | `desarrollo` | Bought. Works in progress (this absorbs stabilisation — there is no separate state for it). |
 | `en_renta` | Producing real, stable rent. |
 | `vendida` | Sold. **Terminal**, and frozen: a closed deal is a fact, not a live mark. |
-| `archivada` | Dropped. **Terminal**, hidden from the default listing (`?include_archived=true` to see it). |
+| `archivada` | Dropped. **Terminal**, hidden from the default listing (`?include_archived=true` to see it). Archiving sells nothing, so it keeps the mark it had the minute before. |
 
 A property is **born `prospecto`** — `POST /api/properties` cannot set a status, and neither can `PATCH`. Reaching any other stage means living through the one before it.
 
-**Key raw inputs (the underwriting model):** `purchasePrice`, `sqmLand`, `sqmConstruction`, `constructionCostPerSqm`, `permitsCost`, `subdivisionCost`, `projectedSale`, `rentMonthlyProjected`.
+**Key raw inputs (the underwriting model):** `purchasePrice` (Precio de compra), `sqmLand`, `sqmConstruction` + `constructionCostPerSqm` (Obra a ejecutar), `permitsCost` (Permisos), `subdivisionCost` (Subdivisión), `projectedSale` (Venta proyectada — *not* a valuation), `rentMonthlyProjected` (Renta mensual estimada).
 
 `purchasePrice` is what it costs to **acquire the building as it stands** — a bare lot or a finished house, no special case per asset type. `sqmConstruction` × `constructionCostPerSqm` is the work *you will execute* on top: a remodel, an extension, a ground-up build. Nothing already paid for inside the purchase price appears in them, which is what stops a built house being counted twice.
 
@@ -116,7 +133,7 @@ A property is **born `prospecto`** — `POST /api/properties` cannot set a statu
 
 **Key recorded facts (post-purchase):** `totalUnits`, `acquisitionDate`, `firstRentDate`, `rentMonthlyActual`, `saleDate`, `salePrice`, `totalInvestmentCaptured`, `currentValuation`, `valuationDate`, `milestones` (JSON).
 
-**Classification:** `assetType` (`casa`/`departamento`/`local`/`edificio`/`lote`/`bodega`) and `strategyType` (`adaptive_reuse`/`ground_up`/`flip`/`hold`). These are two different questions — what the building is, and what the firm intends to do with it — and they are two different columns.
+**Classification:** `assetType` — Casa · Departamento · Local · Edificio · Lote · Bodega — and `strategyType` — `adaptive_reuse` Reconversión · `ground_up` Obra nueva · `flip` Flip · `hold` Renta. These are two different questions — what the building **is**, and what the firm intends to **do** with it — and they are two different columns, so neither ever stands in for the other. Never show a user the raw value, and never de-underscore it into fake Spanish: «Adaptive reuse» is not a word here.
 
 #### The three ways to write
 
@@ -134,32 +151,113 @@ Emptying is its own operation precisely so that "cleared" never has to be guesse
 
 `POST /api/properties/{id}/transition` takes a body **discriminated on `to`**. Each destination demands the evidence that the property genuinely lives there. The API checks the gate before the UPDATE, so a refusal is a `422` with a sentence; a DB trigger enforces the same rules underneath as a net.
 
-| `to` | Required in the body | Why |
-|---|---|---|
-| `oferta` | `projectedSale` (unless already captured) | Every offer models its exit, even when the plan is to rent |
-| `desarrollo` | `acquisitionDate`, `totalUnits`; `totalInvestmentCaptured` only when the cost breakdown is incomplete | A property in development has been bought |
-| `en_renta` | `firstRentDate`, `rentMonthlyActual` | The rent asked for is the one being collected, and it never overwrites the projected one |
-| `vendida` | `saleDate`, `salePrice` | The exit is frozen at its actual figures |
-| `archivada` | — | Terminal drawer; available from any non-terminal stage |
+> **This table is a copy, and a copy can go stale.** The authority is
+> `stage_requirements()` in `app/api/checks.py` (mirrored by the transition
+> trigger in migration 025 and by the request models in
+> `app/api/routes/properties.py`). Before you satisfy a gate, read that function.
+> This has bitten before: the table once claimed `desarrollo` required
+> `currentValuation` after the code had stopped requiring it, and an agent
+> following the table would have **invented an appraisal** to get past a gate
+> that no longer existed. **A missing input is never a reason to fabricate one.**
+> If a gate seems to demand a number nobody measured, the gate is wrong — go
+> read it.
 
-`currentValuation` and `valuationDate` are *accepted* by the `desarrollo` and `en_renta` bodies but required by neither: buying a building does not produce an appraisal, and demanding one only ever got one invented. Capture the valuation when a real one exists — until then `unrealizedGain` is `null`, which is the honest answer.
+<!-- BEGIN GENERATED: transition-gates · scripts/gen_transition_gates.py -->
+
+| `to` | Required in the body | Accepted, not required |
+|---|---|---|
+| `oferta` | `projectedSale`† | — |
+| `desarrollo` | `acquisitionDate`, `totalUnits`, `totalInvestmentCaptured`† | `currentValuation`, `valuationDate` |
+| `en_renta` | `firstRentDate`, `rentMonthlyActual` | `currentValuation`, `valuationDate` |
+| `vendida` | `saleDate`, `salePrice` | — |
+| `archivada` | — | — |
+
+† Demanded by the stage, optional in the body: the property may already carry it, and the gate reads the row *after* the body is merged in.
+
+<!-- END GENERATED: transition-gates -->
+
+**Why each one.** `oferta`: every offer models its exit, even when the plan is to
+rent. `desarrollo`: a property in development has been bought, and its capital
+base has to resolve — from the five captured costs, or from a typed total.
+`en_renta`: the rent asked for is the one being **collected**, and it never
+overwrites the estimated one. `vendida`: the exit is frozen at its actual
+figures. `archivada`: a terminal drawer, reachable from any non-terminal stage.
+
+`currentValuation` and `valuationDate` sit in the *accepted* column and in no
+other. Buying a building does not produce an appraisal, and demanding one only
+ever got one invented. Capture the valuation when a real one exists; until then
+`unrealizedGain` is `null`, which is the honest answer.
+
+Nothing else is a gate. `desarrollo` does **not** require the three assumptions
+(`acquisitionCostPct`, `constructionOverhead`, `holdMonths`): they always resolve,
+so requiring them meant every freshly captured property was born claiming a
+complete underwriting and the real investment could never be typed in.
 
 All bodies also accept `effectiveOn` (defaults to today) and `notes`. Every move is recorded in `property_status_events` with its author, so the pipeline has a history: days-in-offer, conversion rate, time-to-first-rent.
 
-Legal moves — anything else is `422 Transición no permitida`:
+Legal moves — anything else is a `422` naming both stages in words and listing the
+ones that *are* reachable:
 `prospecto→oferta` · `oferta→desarrollo` · `desarrollo→{en_renta,vendida}` · `en_renta→vendida` · any non-terminal `→archivada`.
 
-#### Metrics: three groups, chosen by stage
+#### Metrics: the record, and the two groups that assert ownership
 
-Financial metrics are **auto-computed from raw inputs** — never write a computed field. Which ones exist depends on the stage, and the names say which kind they are:
+Financial metrics are **auto-computed from raw inputs** — never write a computed
+field. Only **one kind** of figure is gated by status, and it is not the model:
+a figure that *asserts you own the thing*. Everything else is computed wherever
+its inputs exist and comes back `null` when they do not — the same answer,
+reached from the data instead of from a table of statuses.
 
-- **Projection** (`projectedProfit`, `projectedRoi`, `projectedRoiTotal`, `capRate`, `rentAnnual`, per-m² figures) — computed `prospecto` through `en_renta`, `null` once `vendida`. It survives the purchase on purpose: it is what reality gets measured against.
-- **Realised-so-far** (`unrealizedGain`, `unrealizedGainPct`, `roi`, `capRateActual`, `rentAnnualActual`) — from `desarrollo` on. A mark against the capital base, so it moves with the valuation and the calendar. `capRate`/`rentAnnual` answer for the **projected** rent and `capRateActual`/`rentAnnualActual` for the **collected** one: same formula, two facts, never one standing in for the other.
-- **Exit, frozen** (`realizedGain`, `realizedGainPct`, `realizedRoi`) — only `vendida`.
+**The record — never gated.** The cost stack, what the underwriting promised on
+it, and the yield of each of the two rents.
 
-`totalInvestment` is the **resolved** capital base and is never written directly; `totalInvestmentCaptured` is the figure somebody typed, and it survives even when the breakdown wins. `investmentBasis` says which one the base came from: `underwriting` when all five cost inputs are present (the system adds them up and owns the total), `manual` when they are not. When both exist and disagree, the property carries a warning rather than the system picking in silence. `holdMonthsActual` runs from `acquisitionDate` to today while the property is held, and freezes at the sale.
+| Field | Name it by |
+|---|---|
+| `acquisitionCosts` · `acquisitionTotal` | Costos de adquisición · Total de adquisición |
+| `constructionBase` · `constructionTotal` | Obra a ejecutar (base / total) |
+| `purchasePricePerSqm` · `investmentPerSqm` · `salePerSqm` | per-m² figures |
+| `projectedProfit` · `projectedRoiTotal` | **Ganancia proyectada** · **Ganancia proyectada %** |
+| `projectedRoi` | **ROI proy. anual** — annualized over `holdMonths` |
+| `capRate` · `rentAnnual` | Cap rate proy. sobre inversión · Renta anual estimada |
+| `capRateActual` · `rentAnnualActual` | Cap rate real sobre inversión · Renta anual cobrada |
 
-**Score:** 0–100 composite (50% projected ROI, 30% cap rate, 20% projected profit) as a **percentile rank against the other pre-purchase properties**. It exists only in `prospecto` and `oferta` and is `null` afterwards — a score ranks candidates competing for capital, and a bought property competes with nobody. It is **server-authoritative**: read it, never recompute it.
+A plan does not expire when the deal closes; it becomes the thing the result is
+graded against. Switching it off at the sale broke the plan-vs-result pair at the
+exact moment it became checkable, so it is no longer switched off.
+
+**The mark — `desarrollo`, `en_renta`, `archivada`.** `unrealizedGain` /
+`unrealizedGainPct` (**Ganancia no realizada** / **Ganancia no realizada %**) and `roi` (**ROI anual**): the
+valuation against the money in. Gated because marking capital you have not put in
+is a wish, not a measurement. `archivada` keeps it: archiving sells nothing, so
+an archived property is still owned and its last mark is still its last mark.
+
+**The exit — `vendida` only.** `realizedGain` / `realizedGainPct` (**Ganancia
+realizada** / **Ganancia realizada %**) and `realizedRoi` (**ROI real anual**), off `salePrice` with the
+hold stopped at `saleDate`. A sale price on a property that has not sold is not a
+realized anything.
+
+Two clocks, and they are different on purpose: `holdMonthsActual` (**Plazo real**)
+runs `acquisitionDate` → today and freezes at the sale, while the mark annualizes
+over `acquisitionDate` → `valuationDate`. An annualized figure whose numerator is
+months older than its denominator falls every month without a single input
+changing — it reports the calendar, not the asset.
+
+`capRate`/`rentAnnual` answer for the **estimated** rent and
+`capRateActual`/`rentAnnualActual` for the **collected** one: same formula, two
+facts, never one standing in for the other. Both cap rates are **yield on cost** —
+gross annual rent over total investment — so their label always carries its
+denominator ("sobre inversión", abbreviated "s/ inversión" only where space
+forces it); «cap rate» unqualified means NOI over market value and would be a
+different, larger number. Qualify the word, never replace it.
+
+`totalInvestment` is the **resolved** capital base (**Inversión total**) and is
+never written directly; `totalInvestmentCaptured` (**Inversión capturada**) is the
+figure somebody typed, and it survives even when the breakdown wins.
+`investmentBasis` is **not a monto** — it says where the base came from:
+`underwriting` when all five cost inputs are present (the system adds them up and
+owns the total), `manual` when they are not. When both exist and disagree, the
+property carries a warning rather than the system picking in silence.
+
+**Score:** 0–100 composite (50% `projectedRoi`, 30% `capRate`, 20% `projectedProfit`) as a **percentile rank against the other pre-purchase properties**. It exists only in `prospecto` and `oferta` and is `null` afterwards — a score ranks candidates competing for capital, and a bought property competes with nobody. It is **server-authoritative**: read it, never recompute it.
 
 **Issues:** every property carries an `issues` list — the stage's hard requirements it fails (`severity: "error"`) plus that stage's soft warnings. A prospect is judged on how complete its underwriting is, a building in development on its capital and dates, a rented one on how stale its valuation is.
 
@@ -292,7 +390,7 @@ Investor fields: `name`, `apellidos`, `email`, `phone`, `temperatura` (warm/cold
 
 Per-property investment: `status` (`interesado`/`comprometido`/`fondeado`/`retornado`), `interestedAmount`, `committedAmount`, `fundedAmount`, `interestRateAnnual`, `investmentDate`, `returnAmount`, `returnDate`.
 
-**Window: `oferta` onwards.** Capital is raised against a deal the firm is actually bidding on, never against something still being evaluated. Adding an investor to a `prospecto` is a `422`.
+**Window: `oferta`, `desarrollo`, `en_renta`, `vendida`** (`INVESTOR_STATUSES`). Capital is raised against a deal the firm is actually bidding on, never against something still being evaluated. Adding an investor to a `prospecto` — or to an `archivada` — is a `422`.
 
 Key `operation_id`s:
 - `investors_list`, `investors_create`, `investors_get`, `investors_update`, `investors_delete`
@@ -307,7 +405,7 @@ Computes exit profit distribution for a property across: investor return, finder
 
 Two layers: a **template** with firm-wide defaults, and a per-property **config** that overrides them.
 
-**Window: `desarrollo` onwards.** There is nothing to split until the money is committed.
+**Window: `desarrollo`, `en_renta`, `vendida`** (`PROFIT_STATUSES`). There is nothing to split until the money is committed.
 
 Key `operation_id`s:
 - `profit_template_get`, `profit_template_update` — `GET/PUT /api/profit/template`
@@ -348,7 +446,7 @@ Key `operation_id`s:
 
 ### 12. Auth
 
-- `auth_login` — `POST /api/auth/login` (form body)
+- `auth_login` — `POST /api/auth/login` — JSON body `{"email", "password"}`
 - `auth_me` — `GET /api/auth/me` (returns `{"email": "..."}` for current token)
 
 ---

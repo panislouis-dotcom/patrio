@@ -102,7 +102,8 @@ class ToDesarrollo(_TransitionBase):
     totalUnits: int
     # La valuación NO se pide al comprar: nadie avalúa el día de la compra, y
     # exigirla solo lograba que se inventara. Se captura cuando exista un avalúo
-    # de verdad; hasta entonces la plusvalía es None, que es la respuesta honesta.
+    # de verdad; hasta entonces la ganancia no realizada es None, que es la
+    # respuesta honesta.
     currentValuation: Optional[float] = None
     valuationDate: Optional[str] = None
     totalInvestmentCaptured: Optional[float] = None  # only needed without a full breakdown

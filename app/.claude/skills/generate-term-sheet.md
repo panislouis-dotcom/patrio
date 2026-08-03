@@ -24,6 +24,8 @@ If the user provides both in the same message that invokes the skill, proceed di
 
 Read these before touching the DB or writing HTML:
 
+- `docs/glosario.md` — the name of every number. The letter names a property's
+  term, and it must call it what the app calls it.
 - `docs/DESIGN.md` — color tokens, typography
 - `db/schema.sql` — field names before querying
 
@@ -41,7 +43,14 @@ curl -s "$REFIGAN_API/api/properties?status=oferta" -H "Authorization: Bearer $R
 
 If the user names a property, use that one instead — but check its status and say so out loud if it is not in `oferta`.
 
-**`holdMonths` is mandatory.** It is the spine of the document: the summary declares it and all three return scenarios are computed on it. If it is `null`, stop and ask for the term. Never substitute a default — an invented term propagates into every number on page 2.
+**`holdMonths` is mandatory.** It is the **Plazo proyectado** — the spine of the
+document: the summary declares it and all three return scenarios are computed on
+it. If it is `null`, stop and ask for the term. Never substitute a default — an
+invented term propagates into every number on page 2.
+
+Call it *Plazo proyectado*, not *Plazo estimado*: `holdMonthsActual` is the
+**Plazo real**, a different field measuring a different thing, and one letter
+should not make the reader guess which of the two they are being quoted.
 
 > **Shortcut:** `POST /api/documents/term-sheet` (operation_id `documents_term_sheet`) with `{"investor_name", "investment_amount", "property_id": null, "rate"}` applies exactly this selection rule and renders the PDF. Use this skill when the letter's content or layout needs to change.
 
@@ -318,7 +327,7 @@ p {
     <tr><td class="summary-key">Capital</td><td class="summary-val">$[Monto] MXN</td></tr>
     <tr><td class="summary-key">Rendimiento</td><td class="summary-val">12.0% anual acumulado</td></tr>
     <tr><td class="summary-key">Pago</td><td class="summary-val">Al cierre de venta de la propiedad</td></tr>
-    <tr><td class="summary-key">Plazo estimado</td><td class="summary-val">[N] meses (sujeto a venta de la propiedad)</td></tr>
+    <tr><td class="summary-key">Plazo proyectado</td><td class="summary-val">[N] meses (sujeto a venta de la propiedad)</td></tr>
   </table>
 </div>
 ```
@@ -645,9 +654,12 @@ Confirm `files/term-sheet-[slug].pdf` exists and is non-zero before reporting do
 - Does not generate without investor name and amount — ask first
 - Does not raise a letter against a `prospecto` — the pool is `oferta`
 - Does not invent a term when `holdMonths` is null — ask for it
-- Does not show ROI (reveals internal margin — same rule as prospectus)
+- Does not show ROI (reveals internal margin — same rule as prospectus; see the
+  open question flagged in `generate-prospectus.md`, which the shipped prospectus
+  endpoint contradicts)
 - Does not use Google Fonts CDN — always @font-face with local files
 - Does not hardcode colors — derive from DESIGN.md tokens
+- Does not invent a label — every name comes from `docs/glosario.md`
 - Does not generate a formal pagaré or legal instrument
 - Does not eyeball or estimate numbers — Python does all calculations
 - Does not use uppercase on cover-property or cover-footer — mixed case, modest tracking
