@@ -26,10 +26,16 @@ const labelStyle: React.CSSProperties = {
 }
 
 interface Props {
-  prospectId: number
+  propertyId: number
+  /**
+   * El analizador valora una compra, así que deja de aplicar cuando la
+   * propiedad ya renta o ya se vendió. El historial, en cambio, se consulta
+   * siempre: es la hipótesis contra la que se mide lo que pasó.
+   */
+  canRun: boolean
 }
 
-export function ProspectAnalysisSection({ prospectId }: Props) {
+export function PropertyAnalysisSection({ propertyId, canRun }: Props) {
   const navigate = useNavigate()
   const [snapshots, setSnapshots] = useState<AnalysisSnapshot[]>([])
   const [loading, setLoading] = useState(true)
@@ -44,17 +50,17 @@ export function ProspectAnalysisSection({ prospectId }: Props) {
   })
 
   useEffect(() => {
-    fetchAnalyses(prospectId)
+    fetchAnalyses(propertyId)
       .then(setSnapshots)
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [prospectId])
+  }, [propertyId])
 
   async function handleRun() {
     setRunning(true)
     setError(null)
     try {
-      const snap = await runAnalysis({ prospectId, ...params } as AnalysisRequest)
+      const snap = await runAnalysis({ propertyId, ...params } as AnalysisRequest)
       setSnapshots(prev => [snap, ...prev])
       setShowForm(false)
       navigate(`/analyses/${snap.id}`)
@@ -74,7 +80,7 @@ export function ProspectAnalysisSection({ prospectId }: Props) {
         <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>
           ANÁLISIS
         </div>
-        <button
+        {canRun && <button
           onClick={() => setShowForm(s => !s)}
           style={{
             background: showForm ? 'transparent' : colors.primary,
@@ -85,10 +91,10 @@ export function ProspectAnalysisSection({ prospectId }: Props) {
           }}
         >
           {showForm ? 'CANCELAR' : 'CORRER ANÁLISIS'}
-        </button>
+        </button>}
       </div>
 
-      {showForm && (
+      {showForm && canRun && (
         <div style={{ border: `1px solid ${colors.border}`, padding: '16px', marginBottom: '16px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
             <div>

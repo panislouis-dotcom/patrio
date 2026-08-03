@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchProjectProfit, updateProjectProfit } from '../lib/api'
+import { fetchPropertyProfit, updatePropertyProfit } from '../lib/api'
 import type { ProfitSplitConfig, ProfitWaterfall, TeamMember } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtMXN } from '../lib/fmt'
@@ -42,7 +42,7 @@ const selectStyle: React.CSSProperties = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  projectId: number
+  propertyId: number
   team: TeamMember[]
   showWaterfall?: boolean
   showInvestorBreakdown?: boolean
@@ -51,7 +51,7 @@ interface Props {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ProjectProfitSection({ projectId, team, showWaterfall = true, showInvestorBreakdown = true, onWaterfallChange }: Props) {
+export function PropertyProfitSection({ propertyId, team, showWaterfall = true, showInvestorBreakdown = true, onWaterfallChange }: Props) {
   const [config, setConfig] = useState<ProfitSplitConfig | null>(null)
   const [waterfall, setWaterfall] = useState<ProfitWaterfall | null>(null)
   const [loading, setLoading] = useState(true)
@@ -77,7 +77,7 @@ export function ProjectProfitSection({ projectId, team, showWaterfall = true, sh
   useEffect(() => {
     setLoading(true)
     setFetchError(null)
-    fetchProjectProfit(projectId).then(({ config, waterfall }) => {
+    fetchPropertyProfit(propertyId).then(({ config, waterfall }) => {
       setConfig(config)
       setWaterfall(waterfall)
       onWaterfallChange?.(waterfall)
@@ -99,7 +99,7 @@ export function ProjectProfitSection({ projectId, team, showWaterfall = true, sh
       setFetchError(err instanceof Error ? err.message : 'Error al cargar datos')
       setLoading(false)
     })
-  }, [projectId])
+  }, [propertyId])
 
   async function handleSave() {
     setSaving(true)
@@ -119,7 +119,7 @@ export function ProjectProfitSection({ projectId, team, showWaterfall = true, sh
         maestroCount: maestroCount ? Number(maestroCount) : null,
         ayudanteCount: ayudanteCount ? Number(ayudanteCount) : null,
       }
-      const result = await updateProjectProfit(projectId, draft)
+      const result = await updatePropertyProfit(propertyId, draft)
       setConfig(result.config)
       setWaterfall(result.waterfall)
       onWaterfallChange?.(result.waterfall)
