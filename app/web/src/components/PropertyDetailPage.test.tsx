@@ -174,7 +174,7 @@ describe('PropertyDetailPage', () => {
     // lo que sirve un caption.
     await renderPage(SOLD)
 
-    expect(screen.getByText('AL 2026-06-01')).not.toBeNull()
+    expect(screen.getByText('AL JUN 2026')).not.toBeNull()
     expect(screen.queryByText('$4,270,000')).toBeNull()
   })
 
@@ -272,8 +272,10 @@ describe('PropertyDetailPage', () => {
 
     expect(screen.getByText('RENTA/MES ESTIMADA')).not.toBeNull()
     expect(screen.getByText('RENTA/MES COBRADA')).not.toBeNull()
-    expect(screen.getByText('CAP RATE PROY.')).not.toBeNull()
-    expect(screen.getByText('CAP RATE REAL')).not.toBeNull()
+    // La etiqueta lleva su denominador: la fórmula es yield-on-cost y «cap rate»
+    // a secas, en el mercado, significa NOI sobre valor (docs/glosario.md §8).
+    expect(screen.getByText('CAP RATE PROY. S/ INVERSIÓN')).not.toBeNull()
+    expect(screen.getByText('CAP RATE REAL S/ INVERSIÓN')).not.toBeNull()
     // La anual cobrada se quedó sin fila al partir la renta en dos: antes salía
     // de `rentAnnual`, que en una rentada era lo que de verdad se cobraba.
     expect(screen.getByText('RENTA ANUAL COBRADA')).not.toBeNull()
@@ -292,7 +294,7 @@ describe('PropertyDetailPage', () => {
     expect(screen.getAllByText('GANANCIA PROYECTADA')).toHaveLength(1)
     // Lo que la sección sí conserva es todo lo que el héroe no subió
     expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
-    expect(screen.getByText('RENTA ANUAL EST.')).not.toBeNull()
+    expect(screen.getByText('RENTA ANUAL ESTIMADA')).not.toBeNull()
   })
 
   it('una vendida sigue enseñando el plan contra el que se mide', async () => {
@@ -331,7 +333,7 @@ describe('PropertyDetailPage', () => {
     // de cualquier día. Sin fecha de corte el reloj sí corre a hoy, y entonces lo
     // dice con esas palabras.
     await renderPage(RENTED)
-    expect(screen.getByText('AL 2026-04-01')).not.toBeNull()
+    expect(screen.getByText('AL ABR 2026')).not.toBeNull()
 
     await renderPage({ ...RENTED, valuationDate: null })
     expect(screen.getByText('AL DÍA DE HOY')).not.toBeNull()

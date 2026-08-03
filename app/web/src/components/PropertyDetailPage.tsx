@@ -19,7 +19,8 @@ import {
 import type { PropertyStatus } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
-import { fmtMXN, fmtPct } from '../lib/fmt'
+import { fmtMXN, fmtPct, fmtPctSigned, fmtOverhead, fmtMonth } from '../lib/fmt'
+import { fieldLabel } from '../lib/fields'
 import { useEdits } from '../lib/useEdits'
 import { MetricHero } from './finance/MetricHero'
 import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
@@ -61,9 +62,6 @@ const fmtNum = (n: number | null | undefined) => (n != null ? String(n) : '—')
 const fmtMonths = (n: number | null | undefined) => (n != null ? `${n} meses` : '—')
 const roiColorOf = (roi: number | null | undefined) =>
   roi == null ? colors.secondary : roi > 0.5 ? colors.primary : roi > 0.25 ? colors.tertiary : '#c0392b'
-/** El porcentaje de un héroe: con signo y un decimal, no el fmtPct de las filas. */
-const fmtSigned = (n: number | null | undefined) =>
-  n != null ? `${n > 0 ? '+' : ''}${(n * 100).toFixed(1)}%` : '—'
 /**
  * Una ganancia, entera. Monto y porcentaje son la misma cifra en dos unidades y
  * viajan juntas: separarlas dejaba media pareja arriba y media abajo, las dos
@@ -72,7 +70,7 @@ const fmtSigned = (n: number | null | undefined) =>
  * a sí mismo, y así impreso nunca va solo.
  */
 const fmtGain = (amount: number | null | undefined, pct: number | null | undefined) =>
-  `${fmtMXN(amount)} ${fmtSigned(pct)}`
+  `${fmtMXN(amount)} ${fmtPctSigned(pct)}`
 
 /** Las dos cifras grandes de la ficha, ya formateadas. */
 interface Heroes {
@@ -107,33 +105,33 @@ interface Heroes {
 function heroesFor(p: Property): Heroes {
   if (p.realizedGainPct != null) {
     return {
-      label: 'ROI REAL ANUAL', value: fmtSigned(p.realizedRoi), color: roiColorOf(p.realizedRoi),
+      label: 'ROI REAL ANUAL', value: fmtPctSigned(p.realizedRoi), color: roiColorOf(p.realizedRoi),
       barPct: (p.realizedRoi ?? 0) * 100,
       // Cada ROI cierra su reloj el día de su propio numerador, y el caption dice
       // cuál es ese día. Antes cargaba la ganancia en pesos, que ya la dice el
       // segundo héroe con su etiqueta — un número sin etiqueta se escapaba de la
       // regla de «cada cifra una vez» justamente por no tener etiqueta.
-      caption: p.saleDate ? `AL ${p.saleDate}` : undefined,
+      caption: p.saleDate ? `AL ${fmtMonth(p.saleDate).toUpperCase()}` : undefined,
       second: 'GANANCIA REALIZADA', secondValue: fmtGain(p.realizedGain, p.realizedGainPct),
       secondColor: roiColorOf(p.realizedGainPct),
     }
   }
   if (p.unrealizedGainPct != null) {
     return {
-      label: 'ROI ANUAL', value: fmtSigned(p.roi), color: roiColorOf(p.roi),
+      label: 'ROI ANUAL', value: fmtPctSigned(p.roi), color: roiColorOf(p.roi),
       barPct: (p.roi ?? 0) * 100,
       // El ROI de la marca se anualiza de la compra a la fecha de la valuación,
       // así que el héroe dice hasta cuándo cuenta. Sin fecha de corte el reloj sí
       // corre a hoy, y entonces lo dice con esas palabras en vez de dejar que la
       // cifra se lea como si fuera de cualquier día.
-      caption: `AL ${p.valuationDate ?? 'DÍA DE HOY'}`,
+      caption: `AL ${p.valuationDate ? fmtMonth(p.valuationDate).toUpperCase() : 'DÍA DE HOY'}`,
       second: 'GANANCIA NO REALIZADA', secondValue: fmtGain(p.unrealizedGain, p.unrealizedGainPct),
       secondColor: roiColorOf(p.unrealizedGainPct),
     }
   }
   if (p.projectedRoiTotal != null) {
     return {
-      label: 'ROI PROY. ANUAL', value: fmtSigned(p.projectedRoi), color: roiColorOf(p.projectedRoi),
+      label: 'ROI PROY. ANUAL', value: fmtPctSigned(p.projectedRoi), color: roiColorOf(p.projectedRoi),
       barPct: (p.projectedRoi ?? 0) * 100,
       // El reloj de este ROI no es una fecha sino el plazo que supone el modelo,
       // y SUPUESTOS lo publica con su origen. Aquí el caption lleva el score,
@@ -350,16 +348,22 @@ export function PropertyDetailPage() {
     />
   )
 
+  /**
+   * Las fechas del ciclo de vida se capturan y se leen POR MES. Ninguna mueve un
+   * cálculo al día —todas pasan por `months_between`— y ninguna se capturó nunca
+   * al día, así que un `type="date"` solo podía producir precisión que el dominio
+   * no tiene. El input manda `YYYY-MM`, que el API ya aceptaba de siempre.
+   */
   const dateRow = (label: string, key: TextKey, clearable?: ClearableField) => (
     <EditableRow
       label={label}
       editing={editing}
-      value={field(key) || '—'}
+      value={fmtMonth(field(key))}
       onClear={clearable && p[clearable] != null ? () => clearField(clearable) : undefined}
       input={
         <input
-          type="date"
-          value={field(key) ?? ''}
+          type="month"
+          value={(field(key) ?? '').slice(0, 7)}
           onChange={e => setField(key, e.target.value)}
           aria-label={label}
           style={fieldInput}
@@ -578,7 +582,7 @@ export function PropertyDetailPage() {
               {numRow('RENTA/MES ESTIMADA', 'rentMonthlyProjected', fmtMXN, { clearable: 'rentMonthlyProjected' })}
               {(editing || p.rentMonthlyActual != null) &&
                 numRow('RENTA/MES COBRADA', 'rentMonthlyActual', fmtMXN, { clearable: 'rentMonthlyActual' })}
-              <EditableRow label="CAP RATE PROY." editing={editing} value={fmtPct(p.capRate)} />
+              <EditableRow label="CAP RATE PROY. S/ INVERSIÓN" editing={editing} value={fmtPct(p.capRate)} />
               {/* La renta anual cobrada vive aquí y no en PROYECCIÓN, que
                   contesta por lo estimado. Antes de partir la renta en dos, la
                   anual de una rentada salía —correctamente— de lo que cobraba;
@@ -586,7 +590,7 @@ export function PropertyDetailPage() {
                   ficha. Esto la devuelve, del lado que le toca. */}
               {(p.capRateActual != null || p.rentMonthlyActual != null) && (
                 <>
-                  <EditableRow label="CAP RATE REAL" editing={editing} value={fmtPct(p.capRateActual)} />
+                  <EditableRow label="CAP RATE REAL S/ INVERSIÓN" editing={editing} value={fmtPct(p.capRateActual)} />
                   <EditableRow label="RENTA ANUAL COBRADA" editing={editing} value={fmtMXN(p.rentAnnualActual)} />
                 </>
               )}
@@ -696,7 +700,7 @@ export function PropertyDetailPage() {
                   />
                 }
               />
-              {numRow('OVERHEAD DE OBRA', 'constructionOverhead', fmtNum, {
+              {numRow('OVERHEAD DE OBRA', 'constructionOverhead', fmtOverhead, {
                 step: 0.01,
                 clearable: isCaptured('constructionOverhead') ? 'constructionOverhead' : undefined,
                 hint: assumptionHint('constructionOverhead'),
@@ -719,8 +723,8 @@ export function PropertyDetailPage() {
               {statSection('PROYECCIÓN', [
                 ['VENTA PROYECTADA', p.projectedSale, fmtMXN],
                 ['GANANCIA PROYECTADA', p.projectedProfit, v => fmtGain(v, p.projectedRoiTotal)],
-                ['ROI PROY. ANUAL', p.projectedRoi, fmtPct],
-                ['RENTA ANUAL EST.', p.rentAnnual, fmtMXN],
+                ['ROI PROY. ANUAL', p.projectedRoi, fmtPctSigned],
+                ['RENTA ANUAL ESTIMADA', p.rentAnnual, fmtMXN],
               ])}
 
               {/* La marca y el resultado NO tienen sección propia, y es la misma
@@ -740,7 +744,7 @@ export function PropertyDetailPage() {
                       <div key={i} style={{ display: 'flex', gap: '8px', padding: '8px', background: colors.surfaceAlt, border: `1px solid ${issue.severity === 'error' ? '#c0392b44' : colors.border}` }}>
                         <span style={{ fontSize: '11px', flexShrink: 0 }}>{issue.severity === 'error' ? '🔴' : '⚠️'}</span>
                         <div>
-                          <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>{issue.field.toUpperCase()}</div>
+                          <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.08em' }}>{fieldLabel(issue.field).toUpperCase()}</div>
                           <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: issue.severity === 'error' ? colors.neutral : colors.secondary, marginTop: '2px' }}>{issue.message}</div>
                         </div>
                       </div>

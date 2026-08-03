@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { fetchProperties, updateProperty, generateProspectus } from '../lib/api'
 import type { Property } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
-import { fmtPct, fmtM } from '../lib/fmt'
+import { fmtPct, fmtPctSigned, fmtM } from '../lib/fmt'
 import { SmartPropertyModal } from './SmartPropertyModal'
 import { LIFECYCLE, PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL, isPrePurchase } from '../lib/status'
 import type { PropertyStatus } from '../lib/status'
@@ -64,7 +64,7 @@ const EARLY_COLUMNS: Column[] = [
   SCORE,
   { key: 'projectedRoi', label: 'ROI PROY.', align: 'right',
     sort: p => p.projectedRoi,
-    render: p => num(fmtPct(p.projectedRoi), (p.projectedRoi ?? 0) < 0 ? '#E62300' : (p.projectedRoi ?? 0) > 0.15 ? colors.tertiary : colors.neutral) },
+    render: p => num(fmtPctSigned(p.projectedRoi), (p.projectedRoi ?? 0) < 0 ? '#E62300' : (p.projectedRoi ?? 0) > 0.15 ? colors.tertiary : colors.neutral) },
   { key: 'capRate', label: 'CAP RATE', align: 'right',
     sort: p => p.capRate, render: p => num(fmtPct(p.capRate), colors.primary) },
   INVERSION,
@@ -72,6 +72,29 @@ const EARLY_COLUMNS: Column[] = [
     sort: p => p.projectedSale, render: p => num(fmtM(p.projectedSale), colors.secondary) },
   { key: 'holdMonths', label: 'PLAZO', align: 'right',
     sort: p => p.holdMonths, render: p => num(months(p.holdMonths), colors.secondary) },
+]
+
+/**
+ * Una propiedad en obra tiene plan y tiene avance, pero todavía no tiene marca:
+ * la valuación llega el día que alguien valúa, no el día que se compra. Heredaba
+ * las columnas de EN RENTA y por eso enseñaba tres de cinco celdas vacías —
+ * VALUACIÓN, GANANCIA y ROI ANUAL, las tres colgadas del mismo avalúo que no
+ * existe — mientras sus cifras vivas (la venta proyectada, su ROI, el cap rate)
+ * no eran columna en ningún chip donde esa propiedad apareciera.
+ *
+ * Aquí la única que puede faltar es la valuación, y cuando falta lo que dice es
+ * exactamente lo que pasa: nadie ha valuado todavía.
+ */
+const DEVELOPMENT_COLUMNS: Column[] = [
+  INVERSION,
+  { key: 'projectedSale', label: 'VENTA PROY.', align: 'right',
+    sort: p => p.projectedSale, render: p => num(fmtM(p.projectedSale), colors.secondary) },
+  { key: 'projectedRoi', label: 'ROI PROY.', align: 'right',
+    sort: p => p.projectedRoi, render: p => num(fmtPctSigned(p.projectedRoi), gainColor(p.projectedRoi)) },
+  { key: 'currentValuation', label: 'VALUACIÓN', align: 'right',
+    sort: p => p.currentValuation, render: p => num(fmtM(p.currentValuation), colors.neutral) },
+  { key: 'holdMonthsActual', label: 'PLAZO REAL', align: 'right',
+    sort: p => p.holdMonthsActual, render: p => num(months(p.holdMonthsActual), colors.secondary) },
 ]
 
 /** Lo que se mira después de comprar: el resultado, todavía en curso. */
@@ -82,7 +105,7 @@ const HELD_COLUMNS: Column[] = [
   { key: 'unrealizedGain', label: 'GANANCIA', align: 'right',
     sort: p => p.unrealizedGain, render: p => num(fmtM(p.unrealizedGain), gainColor(p.unrealizedGain)) },
   { key: 'roi', label: 'ROI ANUAL', align: 'right',
-    sort: p => p.roi, render: p => num(fmtPct(p.roi), gainColor(p.roi)) },
+    sort: p => p.roi, render: p => num(fmtPctSigned(p.roi), gainColor(p.roi)) },
   { key: 'holdMonthsActual', label: 'PLAZO REAL', align: 'right',
     sort: p => p.holdMonthsActual, render: p => num(months(p.holdMonthsActual), colors.secondary) },
 ]
@@ -95,7 +118,7 @@ const SOLD_COLUMNS: Column[] = [
   { key: 'realizedGain', label: 'GANANCIA', align: 'right',
     sort: p => p.realizedGain, render: p => num(fmtM(p.realizedGain), gainColor(p.realizedGain)) },
   { key: 'realizedRoi', label: 'ROI REAL', align: 'right',
-    sort: p => p.realizedRoi, render: p => num(fmtPct(p.realizedRoi), gainColor(p.realizedRoi)) },
+    sort: p => p.realizedRoi, render: p => num(fmtPctSigned(p.realizedRoi), gainColor(p.realizedRoi)) },
   { key: 'holdMonthsActual', label: 'PLAZO REAL', align: 'right',
     sort: p => p.holdMonthsActual, render: p => num(months(p.holdMonthsActual), colors.secondary) },
 ]
@@ -107,7 +130,7 @@ const ALL_COLUMNS: Column[] = [
   INVERSION,
   { key: 'headline', label: 'ROI', align: 'right',
     sort: p => headlineRoi(p),
-    render: p => num(fmtPct(headlineRoi(p)), gainColor(headlineRoi(p))) },
+    render: p => num(fmtPctSigned(headlineRoi(p)), gainColor(headlineRoi(p))) },
   { key: 'plazo', label: 'PLAZO', align: 'right',
     sort: p => p.holdMonthsActual ?? p.holdMonths,
     render: p => num(months(p.holdMonthsActual ?? p.holdMonths), colors.secondary) },
@@ -143,6 +166,7 @@ function columnsFor(filter: Filter): Column[] {
   if (filter === 'vendida') return SOLD_COLUMNS
   if (isPrePurchase(filter)) return EARLY_COLUMNS
   if (filter === 'archivada') return ALL_COLUMNS
+  if (filter === 'desarrollo') return DEVELOPMENT_COLUMNS
   return HELD_COLUMNS
 }
 
@@ -325,7 +349,7 @@ export function PropiedadesTable() {
           {appraised.length > 0 && summaryGroup(`AVALUADAS ${appraised.length}`, [
             ['Valuación', fmtM(sum(appraised, p => p.currentValuation))],
             ['Ganancia no realizada',
-              `${fmtM(unrealized)} ${fmtPct(appraisedCapital > 0 ? unrealized / appraisedCapital : null)}`],
+              `${fmtM(unrealized)} ${fmtPctSigned(appraisedCapital > 0 ? unrealized / appraisedCapital : null)}`],
           ])}
           {closed.length > 0 && summaryGroup(`VENDIDAS ${closed.length}`, [
             ['Ventas', fmtM(sum(closed, p => p.salePrice))],

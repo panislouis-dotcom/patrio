@@ -82,7 +82,9 @@ describe('PropiedadesTable · resumen del portafolio', () => {
     const appraised = group('AVALUADAS 1')
     expect(appraised.getByText('$6.0M')).not.toBeNull()
     // Y la ganancia se lee contra el capital de esas mismas: 2M sobre 4M.
-    expect(appraised.getByText('$2.0M 50.0%')).not.toBeNull()
+    // El porcentaje va firmado, igual que en el héroe de la ficha: un mismo dato
+    // no puede salir «+50.0%» arriba y «50.0%» abajo.
+    expect(appraised.getByText('$2.0M +50.0%')).not.toBeNull()
   })
 
   it('cada ganancia se llama por su nombre: son tres y una ya se cobró', async () => {
