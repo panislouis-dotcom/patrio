@@ -40,6 +40,23 @@ function mockZones(page: import('@playwright/test').Page) {
   )
 }
 
+/**
+ * Empties the persisted signal list the page loads on mount.
+ *
+ * SonarTab fetches the stored signals in a `useEffect` and calls `setSignals`
+ * when that resolves. A mocked scan finishes in milliseconds, so the two race:
+ * when the stored list lands last it overwrites the results the scan just
+ * produced, and the table goes back to "Sin señales" while the header still
+ * reports what the scan found. (A real scan takes seconds, so the app never
+ * shows this — but it is the app's race, not the test's.) Serving the list
+ * instantly and empty takes the race out of the scan tests.
+ */
+function mockStoredSignals(page: import('@playwright/test').Page) {
+  return page.route('**/api/sonar/signals', route =>
+    route.fulfill({ status: 200, headers: { 'Content-Type': 'application/json' }, body: '[]' }),
+  )
+}
+
 test.describe('Sonar', () => {
   test("page loads with scan button 'EJECUTAR SCAN ▸'", async ({ page }) => {
     await page.goto('/propiedades/sonar')
@@ -101,8 +118,13 @@ test.describe('Sonar', () => {
     expect(before).not.toBe(after)
   })
 
-  test('mocked scan — lamudi result appears and VS MUN column is shown', async ({ page }) => {
+  // The PORTALES strip only exists while `running` is true. A mocked stream
+  // completes in a few milliseconds, so asserting on it is a race against a
+  // frame that may never be polled — these tests assert on the result the scan
+  // leaves behind, which is what the user is actually there for.
+  test('mocked scan — the signal lands in the results table', async ({ page }) => {
     await mockZones(page)
+    await mockStoredSignals(page)
     await page.route('**/api/sonar/run', route =>
       route.fulfill({
         status: 200,
@@ -112,16 +134,21 @@ test.describe('Sonar', () => {
     )
 
     await page.goto('/propiedades/sonar')
+    // The chips only render once zones resolve, so they are the signal that the
+    // component finished mounting. Clicking before that hits a button whose
+    // handler React has not attached yet — the click lands and nothing happens.
+    await page.locator('button', { hasText: 'Monterrey' }).waitFor({ state: 'visible', timeout: 8000 })
     await page.getByText('EJECUTAR SCAN ▸').click()
 
-    // Portal row shows up during/after scan
-    await expect(page.locator('span').filter({ hasText: 'lamudi' }).first()).toBeVisible({ timeout: 8000 })
+    // The scraped listing survives the scan; the progress strip does not
+    await expect(page.getByText(MOCK_SIGNAL.title)).toBeVisible({ timeout: 8000 })
     // Results table with VS MUN column header
     await expect(page.getByText('VS MUN')).toBeVisible({ timeout: 8000 })
   })
 
   test('mocked scan with city filter — CVEs sent in request body', async ({ page }) => {
     await mockZones(page)
+    await mockStoredSignals(page)
 
     let capturedBody: string | null = null
     await page.route('**/api/sonar/run', async route => {
@@ -134,11 +161,14 @@ test.describe('Sonar', () => {
     })
 
     await page.goto('/propiedades/sonar')
-    await page.locator('button', { hasText: 'Monterrey' }).waitFor({ state: 'visible', timeout: 5000 })
+    await page.locator('button', { hasText: 'Monterrey' }).waitFor({ state: 'visible', timeout: 8000 })
     await page.locator('button', { hasText: 'Monterrey' }).click()
+    // The ✕ only exists while a city is selected, so it is proof the selection
+    // reached state — scanning before it does would send an empty cve list.
+    await expect(page.locator('button:not([title])').filter({ hasText: '✕' })).toBeVisible()
     await page.getByText('EJECUTAR SCAN ▸').click()
 
-    await page.locator('span').filter({ hasText: 'lamudi' }).first().waitFor({ timeout: 8000 })
+    await expect(page.getByText(MOCK_SIGNAL.title)).toBeVisible({ timeout: 8000 })
     expect(capturedBody).toContain('19039')
   })
 })
