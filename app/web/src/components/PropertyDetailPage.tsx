@@ -677,7 +677,16 @@ export function PropertyDetailPage() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
               {/* El historial se consulta siempre; correr uno nuevo solo mientras
                   el analizador tenga sentido (hasta desarrollo). */}
-              <PropertyAnalysisSection propertyId={propertyId} canRun={runsAnalysis(stage)} holdMonths={p.assumptions?.holdMonths} />
+              {/* assetType y sqmConstruction dejan que el formulario PROPONGA obra
+                  nueva en un lote sin obra capturada — visible y cambiable, en vez
+                  de que el análisis lo infiera en silencio y cobre por ello. */}
+              <PropertyAnalysisSection
+                propertyId={propertyId}
+                canRun={runsAnalysis(stage)}
+                holdMonths={p.assumptions?.holdMonths}
+                assetType={p.assetType}
+                sqmConstruction={p.sqmConstruction}
+              />
             </div>
           )}
         </div>
