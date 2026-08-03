@@ -126,9 +126,14 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // nombre — y una plusvalía que nace igualada al plan no es una plusvalía.
     await expect(page.getByLabel(/VALUACI[ÓO]N/)).toHaveCount(0)
 
-    // Y con el desglose completo la inversión ya está sumada: preguntarla sería
-    // pedir un dato que el sistema tiene mejor que quien lo teclea.
+    // Y la inversión no se pregunta nunca: sale del desglose, siempre. Hubo un
+    // campo aquí para teclear el total cuando el desglose estaba incompleto, y
+    // con él dos maneras de llegar a la misma cifra. El modal la enseña ya
+    // sumada en vez de pedirla: avanzar sigue siendo una afirmación sobre
+    // números concretos, y esconderlos la haría a ciegas.
     await expect(page.getByLabel('INVERSIÓN TOTAL')).toHaveCount(0)
+    const inversion = page.getByText('Es la suma del desglose: no se teclea.').locator('..')
+    await expect(inversion).toContainText('$4,000,000')
 
     await gateField(page, 'FECHA DE ADQUISICIÓN').fill('')
     await expect(confirmTransition(page, 'DESARROLLO')).toBeDisabled()

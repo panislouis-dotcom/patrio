@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/auth'
 import {
   getToken, createProperty, deleteProperty, deletePropertyByName,
-  clearPropertyFields, transitionProperty, attachInstanceToProperty, detachInstance,
+  transitionProperty, attachInstanceToProperty, detachInstance,
 } from '../helpers/api'
 import {
   gotoProperty, detailRow, fieldInput, enterEditMode, saveEdits, setNumericField, clearField,
@@ -9,10 +9,10 @@ import {
 
 /**
  * One page for the whole lifecycle. Two fixtures pin the two halves of it,
- * because no single property can show both: a `prospecto` with a complete
- * underwriting breakdown (so the investment is derived and the score exists),
- * and an `en_renta` whose breakdown is deliberately incomplete (so the
- * investment is captured by hand and the tools of a bought property are open).
+ * because no single property can show both: a `prospecto`, still competing for
+ * capital and therefore scored, and an `en_renta` with the tools of a bought
+ * property open. La inversión de las dos se suma igual — del desglose, siempre,
+ * porque ya no hay otra manera de llegar a ella.
  *
  * Every derived figure asserted below was confirmed against the API for exactly
  * these inputs. PLAZO REAL sí se mueve con el calendario mientras la propiedad
@@ -192,8 +192,10 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await gotoProperty(page, id)
     await enterEditMode(page)
 
-    // A complete breakdown owns the total: the system computes it, nobody types it
+    // El desglose es el único origen del total: el sistema lo suma, nadie lo teclea
     await expect(detailRow(page, 'INVERSIÓN')).toContainText('SUMA DEL DESGLOSE')
+    // Y la fila donde antes se tecleaba tampoco aparece al editar
+    await expect(fieldInput(page, 'INVERSIÓN CAPTURADA')).toHaveCount(0)
     await expect(detailRow(page, 'PLAZO REAL')).toContainText('DERIVADO DE FECHAS')
     // The stage has its own door, and the row says which one
     await expect(detailRow(page, 'ETAPA')).toContainText('SE MUEVE CON AVANZAR A')
@@ -398,9 +400,9 @@ test.describe('Ficha de propiedad — un prospecto', () => {
 
 /**
  * The other half of the page: a property already bought and rented. Its capital
- * base is a hand-typed number (the breakdown is incomplete on purpose), the
- * money tools are open, and the projection it was bought on is still on screen
- * — in later steps you see everything from before.
+ * base is a lump sum from before the firm kept a breakdown, the money tools are
+ * open, and the projection it was bought on is still on screen — in later steps
+ * you see everything from before.
  */
 test.describe('Ficha de propiedad — una en renta', () => {
   const RENTADA = {
@@ -408,7 +410,12 @@ test.describe('Ficha de propiedad — una en renta', () => {
     address: 'Av. Rentada 200',
     city: 'Monterrey',
     assetType: 'departamento',
-    purchasePrice: 3_000_000,
+    // De esta compra solo se conoce el total: «costó $5M todo incluido». Así se
+    // captura un all-in ahora que no hay casilla de total — como precio de
+    // compra con los costos de adquisición en 0 EXPLÍCITO. Dejarlos sin capturar
+    // significa «supón 6.5%» y le sumaría $325,000 que nadie pagó.
+    purchasePrice: 5_000_000,
+    acquisitionCostPct: 0,
     sqmLand: 300,
     projectedSale: 9_000_000,
     holdMonths: 24,
@@ -423,15 +430,12 @@ test.describe('Ficha de propiedad — una en renta', () => {
     token = await getToken(request)
     await deletePropertyByName(request, RENTADA.name, token)
     id = (await createProperty(request, RENTADA, token)).id
-    // Emptying one of the five costs is what makes the breakdown incomplete,
-    // which is what makes the capital base a manual figure — the other half of
-    // the hybrid.
-    await clearPropertyFields(request, id, ['constructionCostPerSqm'], token)
     await transitionProperty(request, id, { to: 'oferta' }, token)
+    // El portón de desarrollo no pide ninguna inversión: el precio de compra ya
+    // está capturado desde el alta, y de ahí sale el total.
     await transitionProperty(request, id, {
       to: 'desarrollo', acquisitionDate: '2024-01-01', totalUnits: 4,
       currentValuation: 8_000_000, valuationDate: '2025-06-01',
-      totalInvestmentCaptured: 5_000_000,
     }, token)
     await transitionProperty(request, id, {
       to: 'en_renta', firstRentDate: '2025-01-01', rentMonthlyActual: 50_000,
@@ -465,20 +469,38 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await expect(page.getByText(/^Score/)).toHaveCount(0)
   })
 
-  test('INVERSIÓN is a hand-typed figure and says so', async ({ page }) => {
+  test('INVERSIÓN sale del desglose también cuando el desglose es un solo número', async ({ page }) => {
     await gotoProperty(page, id)
 
+    // 5,000,000 × (1 + 0) — un total all-in vive en el desglose como cualquier
+    // otro, y llega a la ficha por el mismo camino que una compra desglosada.
     await expect(detailRow(page, 'INVERSIÓN')).toContainText('$5,000,000')
-    await expect(detailRow(page, 'INVERSIÓN')).toContainText('CAPTURA MANUAL')
+    await expect(detailRow(page, 'INVERSIÓN')).toContainText('SUMA DEL DESGLOSE')
     await expect(detailRow(page, 'UNIDADES')).toContainText('4')
     await expect(detailRow(page, 'ETAPA')).toContainText('EN RENTA')
+    // El 0% está capturado, no supuesto: es la mitad del idioma, y sin ella el
+    // modelo supondría 6.5% y el total dejaría de ser el que se pagó.
+    await expect(detailRow(page, 'COSTOS ADQ. (%)')).toContainText('CAPTURADO')
 
     await enterEditMode(page)
-    // The total is read-only wherever it came from; what is editable is the
-    // number a person typed, and it keeps its own row so completing the
-    // breakdown later cannot silently erase it.
+    // El total nunca es editable. Lo que se corrige es el componente: aquí el
+    // precio de compra, que es donde se tecleó el all-in.
     await expect(fieldInput(page, 'INVERSIÓN')).toHaveCount(0)
-    await expect(fieldInput(page, 'INVERSIÓN CAPTURADA')).toHaveValue('5,000,000')
+    await expect(fieldInput(page, 'PRECIO DE COMPRA')).toHaveValue('5,000,000')
+  })
+
+  test('la ficha no ofrece capturar un total de inversión', async ({ page }) => {
+    await gotoProperty(page, id)
+
+    // Hubo una segunda fila para teclear el total, y con ella la pregunta «¿cuál
+    // de los dos números creo?». Una propiedad como esta —cuyo total se tecleó a
+    // mano— es exactamente la que la enseñaba. Ya no existe: ni al ver, ni al
+    // editar, ni como caja vacía esperando un número.
+    await expect(page.getByText('INVERSIÓN CAPTURADA', { exact: true })).toHaveCount(0)
+
+    await enterEditMode(page)
+    await expect(page.getByText('INVERSIÓN CAPTURADA', { exact: true })).toHaveCount(0)
+    await expect(fieldInput(page, 'INVERSIÓN CAPTURADA')).toHaveCount(0)
   })
 
   test('the rent collected is its own figure, and so is the yield on it', async ({ page }) => {
@@ -556,7 +578,11 @@ test.describe('Un borrado que no puede ocurrir', () => {
     name: '[TEST] Propiedad Con Tarea',
     address: 'Av. Bloqueada 50',
     city: 'Monterrey',
-    landPrice: 1_000_000,
+    // Comprar exige un precio de compra: sin él la propiedad no llega a
+    // desarrollo, y sin desarrollo no se le puede ligar la tarea que la retiene.
+    // Esto decía `landPrice`, un nombre que el API ya no conoce — el campo se
+    // caía sin ruido y la propiedad viajaba sin costo alguno.
+    purchasePrice: 1_000_000,
     projectedSale: 2_000_000,
     latitude: 25.6866,
     longitude: -100.3161,
