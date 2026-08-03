@@ -11,11 +11,9 @@ interface Field {
   kind: 'date' | 'money' | 'int'
   /** Obligatorio salvo que la propiedad ya lo traiga capturado. */
   required: (p: Property) => boolean
-  /** Un campo que la propiedad ya resolvió no se pregunta. Por omisión, todos. */
-  show?: (p: Property) => boolean
   prefill: (p: Property) => string
   /** Se resuelve contra la propiedad: algunos avisos solo tienen sentido con
-      lo que ya trae capturado (la renta estimada, el desglose incompleto). */
+      lo que ya trae capturado, como la renta que se estimó. */
   hint?: (p: Property) => string | undefined
 }
 
@@ -37,20 +35,13 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
       prefill: p => str(p.projectedSale),
       hint: () => 'Toda oferta modela su salida, aunque el plan sea rentar.' },
   ],
+  // No se pide valuación: comprar no produce un avalúo. Se captura en la ficha
+  // el día que exista uno de verdad. Tampoco la inversión: la suma el desglose.
   desarrollo: [
     { key: 'acquisitionDate', label: 'FECHA DE ADQUISICIÓN', kind: 'date',
       required: () => true, prefill: p => (p.acquisitionDate ?? thisMonth()).slice(0, 7) },
     { key: 'totalUnits', label: 'UNIDADES', kind: 'int',
       required: () => true, prefill: p => str(p.totalUnits) || '1' },
-    // No se pide valuación: comprar no produce un avalúo. Se captura en la
-    // ficha el día que exista uno de verdad.
-    { key: 'totalInvestmentCaptured', label: 'INVERSIÓN TOTAL', kind: 'money',
-      required: p => p.investmentBasis !== 'underwriting',
-      // Con el desglose completo la inversión ya está sumada; preguntarla sería
-      // pedir un dato que el sistema tiene mejor que quien lo teclea.
-      show: p => p.investmentBasis !== 'underwriting',
-      prefill: p => str(p.totalInvestmentCaptured),
-      hint: () => 'El desglose de costos está incompleto, así que hace falta el total.' },
   ],
   en_renta: [
     { key: 'firstRentDate', label: 'FECHA DE LA PRIMERA RENTA', kind: 'date',
@@ -81,6 +72,33 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
   archivada: [],
 }
 
+/**
+ * Un dato que la etapa destino EXIGE y que el modal ya no pregunta porque el
+ * sistema lo tiene mejor que quien lo teclearía. Se enseña ya computado —
+ * avanzar sigue siendo una afirmación sobre cifras concretas, y esconderlas
+ * haría la afirmación a ciegas— y, cuando no se puede computar, `missing` dice
+ * qué falta y dónde se captura, en vez de dejar que el gate del servidor
+ * rebote la transición con un error que no explica nada.
+ */
+interface Readout {
+  label: string
+  value: string
+  missing?: string
+}
+
+const READOUTS: Partial<Record<Exclude<PropertyStatus, 'prospecto'>, (p: Property) => Readout>> = {
+  // Entrar a desarrollo es afirmar que la propiedad se compró, y una compra
+  // tiene precio. Es además de dónde sale toda la inversión: sin él no hay
+  // capital que repartir ni contra qué medir ninguna ganancia.
+  desarrollo: p => ({
+    label: 'INVERSIÓN',
+    value: fmtMXN(p.totalInvestment),
+    missing: p.purchasePrice && p.purchasePrice > 0
+      ? undefined
+      : 'Falta el precio de compra: la inversión es la suma del desglose y sin él no hay ninguna. Se captura en la ficha.',
+  }),
+}
+
 interface Props {
   property: Property
   to: Exclude<PropertyStatus, 'prospecto'>
@@ -89,7 +107,8 @@ interface Props {
 }
 
 export function TransitionModal({ property, to, onCancel, onConfirm }: Props) {
-  const fields = FIELDS[to].filter(f => f.show?.(property) ?? true)
+  const fields = FIELDS[to]
+  const readout = READOUTS[to]?.(property)
   const [values, setValues] = useState<Record<string, string>>(
     () => Object.fromEntries(fields.map(f => [f.key, f.prefill(property)])),
   )
@@ -99,7 +118,7 @@ export function TransitionModal({ property, to, onCancel, onConfirm }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const missing = fields.filter(f => f.required(property) && !values[f.key]?.trim())
-  const canConfirm = !saving && missing.length === 0
+  const canConfirm = !saving && missing.length === 0 && !readout?.missing
 
   async function confirm() {
     setSaving(true)
@@ -168,6 +187,18 @@ export function TransitionModal({ property, to, onCancel, onConfirm }: Props) {
             )}
           </div>
         ))}
+
+        {readout && (
+          <div>
+            <div style={labelStyle}>{readout.label}</div>
+            <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral, padding: '6px 0 2px' }}>
+              {readout.value}
+            </div>
+            <div style={{ fontFamily: fonts.label, fontSize: '7px', color: readout.missing ? '#c0392b' : colors.secondary, letterSpacing: '0.06em', lineHeight: 1.5 }}>
+              {readout.missing ?? 'Es la suma del desglose: no se teclea.'}
+            </div>
+          </div>
+        )}
 
         {/* Esta sí va al día, y no es incoherencia: las fechas de arriba son
             HECHOS DE LA PROPIEDAD que solo se conocen al mes y solo se usan para
