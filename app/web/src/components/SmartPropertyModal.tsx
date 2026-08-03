@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { parseProspect, createProspect, uploadProspectImage } from '../lib/api'
-import type { ParsedProspect } from '../lib/types'
-import { PROPERTY_TYPES } from '../lib/types'
+import { parseProperty, createProperty, uploadPropertyImage } from '../lib/api'
+import type { ParsedProperty } from '../lib/types'
+import { ASSET_TYPES, ASSET_TYPE_LABEL } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { LatLonPicker } from './LatLonPicker'
 
@@ -10,24 +10,9 @@ interface Props {
   onCreated: () => void
 }
 
-const _DEFAULTS = {
-  status:               'evaluating',
-  type:                 '',
-  acquisitionCostPct:   0.065,
-  constructionOverhead: 1.3,
-  latitude:             0,
-  longitude:            0,
-  sqmLand:              0,
-  sqmConstruction:      0,
-  landPrice:            0,
-  permitsCost:          0,
-  subdivisionCost:      0,
-  constructionCostPerSqm: 0,
-  projectedSale:        0,
-  rentMonthly:          0,
-  holdMonths:           12,
-  notes:                '-',
-}
+// Lo que no se captura aquí lo pone CAPTURE_DEFAULTS en el servidor: una sola
+// definición de con qué nace una propiedad, valga la que valga la puerta de
+// entrada (este modal, el sonar, un feed futuro).
 
 const inp: React.CSSProperties = {
   background:   'transparent',
@@ -71,14 +56,14 @@ function Field({
   )
 }
 
-export function SmartProspectModal({ onClose, onCreated }: Props) {
+export function SmartPropertyModal({ onClose, onCreated }: Props) {
   const [step, setStep]           = useState<'capture' | 'review'>('capture')
   const [url, setUrl]             = useState('')
   const [text, setText]           = useState('')
   const [parsing, setParsing]     = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
 
-  const [parsed, setParsed]       = useState<ParsedProspect | null>(null)
+  const [parsed, setParsed]       = useState<ParsedProperty | null>(null)
   const [name, setName]           = useState('')
   const [address, setAddress]     = useState('')
   const [city, setCity]           = useState('Monterrey')
@@ -131,7 +116,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
     setParsing(true)
     setParseError(null)
     try {
-      const result = await parseProspect(url.trim(), text.trim(), image ?? undefined)
+      const result = await parseProperty(url.trim(), text.trim(), image ?? undefined)
       setParsed(result)
       setName(result.name || '')
       setAddress(result.address || '')
@@ -155,12 +140,11 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
     setSaving(true)
     setSaveError(null)
     try {
-      const created = await createProspect({
-        ..._DEFAULTS,
+      const created = await createProperty({
         name:                 name.trim(),
         address:              address.trim() || name.trim(),
         city:                 city.trim() || 'Monterrey',
-        type:                 tipo,
+        assetType:            tipo || undefined,
         landPrice,
         sqmLand,
         sqmConstruction,
@@ -174,7 +158,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
         longitude:            lon,
       })
       if (image && created?.id) {
-        try { await uploadProspectImage(created.id, image instanceof File ? image : new File([image], 'screenshot.png', { type: image.type })) } catch { /* non-fatal */ }
+        try { await uploadPropertyImage(created.id, image instanceof File ? image : new File([image], 'screenshot.png', { type: image.type })) } catch { /* non-fatal */ }
       }
       onCreated()
     } catch (e) {
@@ -192,12 +176,12 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
 
   const canAnalyze = (url.trim() || text.trim() || image) && !parsing
 
+  // Solo se bloquea lo que impide reconocer el inmueble. Lo que le falte al
+  // modelo lo dirá su propia lista de issues en cuanto exista la fila: capturar
+  // rápido y completar después es como se trabaja un prospecto.
   const saveBlockers: string[] = []
-  if (!name.trim())                                    saveBlockers.push('Nombre')
-  if (!landPrice)                                      saveBlockers.push('Precio de terreno')
-  if (!projectedSale)                                  saveBlockers.push('Venta proyectada (para ROI y profit)')
-  if (!rentMonthly)                                    saveBlockers.push('Renta mensual (para cap rate)')
-  if (sqmConstruction > 0 && !constructionCostPerSqm) saveBlockers.push('Costo/m² de construcción')
+  if (!name.trim())  saveBlockers.push('Nombre')
+  if (!landPrice)    saveBlockers.push('Precio de terreno')
   const canSave = !saving && saveBlockers.length === 0
 
   const overlay: React.CSSProperties = {
@@ -235,7 +219,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
         {/* Header */}
         <div style={{ marginBottom: '20px' }}>
           <div style={{ fontFamily: fonts.label, fontSize: '11px', color: colors.neutral, letterSpacing: '0.12em' }}>
-            NUEVO PROSPECTO
+            NUEVA PROPIEDAD
           </div>
           {step === 'review' && (
             <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.08em', marginTop: '4px' }}>
@@ -356,7 +340,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
               value={name}
               onChange={setName}
               filled={!!parsed?.name}
-              placeholder="Nombre del prospecto"
+              placeholder="Nombre de la propiedad"
             />
             <Field
               label="Dirección"
@@ -380,7 +364,7 @@ export function SmartProspectModal({ onClose, onCreated }: Props) {
                   style={{ ...inp, color: tipo ? colors.neutral : colors.secondary, cursor: 'pointer' }}
                 >
                   <option value="">— seleccionar —</option>
-                  {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {ASSET_TYPES.map(t => <option key={t} value={t}>{ASSET_TYPE_LABEL[t]}</option>)}
                 </select>
               </div>
             </div>

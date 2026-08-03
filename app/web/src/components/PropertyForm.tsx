@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode, CSSProperties } from 'react'
 import { LatLonPicker } from './LatLonPicker'
-import type { RawFields } from '../lib/types'
-import { PROPERTY_TYPES } from '../lib/types'
+import type { PropertyCreate } from '../lib/types'
+import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
 import { validateRaw } from '../lib/validateRaw'
 import { colors, fonts } from '../lib/theme'
 
@@ -66,8 +66,8 @@ const gridTwo: CSSProperties = {
 // ── props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
-  initial: Partial<RawFields>
-  onSave: (data: RawFields) => Promise<void>
+  initial: Partial<PropertyCreate>
+  onSave: (data: PropertyCreate) => Promise<void>
   onCancel?: () => void
   saving: boolean
   saveError: string | null
@@ -75,13 +75,13 @@ interface Props {
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: Props) {
-  const [form, setForm] = useState<Partial<RawFields>>(initial)
+export function PropertyForm({ initial, onSave, onCancel, saving, saveError }: Props) {
+  const [form, setForm] = useState<Partial<PropertyCreate>>(initial)
 
   const issues = validateRaw(form)
   const hasErrors = issues.some(i => i.severity === 'error')
 
-  function set<K extends keyof RawFields>(key: K, value: RawFields[K]) {
+  function set<K extends keyof PropertyCreate>(key: K, value: PropertyCreate[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
   }
 
@@ -119,31 +119,6 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
             />
           </div>
           <div>
-            <FieldLabel>Estado</FieldLabel>
-            <select
-              style={{ ...inputStyle, cursor: 'pointer' }}
-              value={form.status ?? 'evaluating'}
-              onChange={e => set('status', e.target.value as RawFields['status'])}
-            >
-              <option value="evaluating">Evaluating</option>
-              <option value="passed">Passed</option>
-              <option value="converted">Converted</option>
-            </select>
-          </div>
-        </div>
-        <div style={{ ...gridTwo, marginBottom: '16px' }}>
-          <div>
-            <FieldLabel>Tipo</FieldLabel>
-            <select
-              style={{ ...inputStyle, cursor: 'pointer' }}
-              value={form.type ?? ''}
-              onChange={e => set('type', e.target.value)}
-            >
-              <option value="">— seleccionar —</option>
-              {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
             <FieldLabel>URL</FieldLabel>
             <input
               style={inputStyle}
@@ -151,6 +126,32 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
               value={form.url ?? ''}
               onChange={e => set('url', e.target.value)}
             />
+          </div>
+        </div>
+        {/* Qué es y cómo se gana: dos preguntas distintas, dos campos distintos.
+            No hay campo de estado — toda propiedad nace prospecto. */}
+        <div style={{ ...gridTwo, marginBottom: '16px' }}>
+          <div>
+            <FieldLabel>Tipo de activo</FieldLabel>
+            <select
+              style={{ ...inputStyle, cursor: 'pointer' }}
+              value={form.assetType ?? ''}
+              onChange={e => set('assetType', e.target.value)}
+            >
+              <option value="">— seleccionar —</option>
+              {ASSET_TYPES.map(t => <option key={t} value={t}>{ASSET_TYPE_LABEL[t]}</option>)}
+            </select>
+          </div>
+          <div>
+            <FieldLabel>Estrategia</FieldLabel>
+            <select
+              style={{ ...inputStyle, cursor: 'pointer' }}
+              value={form.strategyType ?? ''}
+              onChange={e => set('strategyType', e.target.value)}
+            >
+              <option value="">— seleccionar —</option>
+              {STRATEGY_TYPES.map(t => <option key={t} value={t}>{STRATEGY_TYPE_LABEL[t]}</option>)}
+            </select>
           </div>
         </div>
       </Section>
@@ -341,7 +342,7 @@ export function ProspectForm({ initial, onSave, onCancel, saving, saveError }: P
       {/* ── Actions ──────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: '12px' }}>
         <button
-          onClick={() => onSave(form as RawFields)}
+          onClick={() => onSave(form as PropertyCreate)}
           disabled={hasErrors || saving}
           style={{
             background: hasErrors || saving ? colors.border : colors.primary,

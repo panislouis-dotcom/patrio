@@ -1,33 +1,30 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
-import { fetchProspects } from '../lib/api'
-import { computeScores, DEFAULT_WEIGHTS } from '../lib/scoring'
-import type { Prospect } from '../lib/types'
+import { fetchProperties } from '../lib/api'
+import type { Property } from '../lib/types'
+import { PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL, hasScore } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
+import { fmtPct } from '../lib/fmt'
 
-function pinColor(score: number): string {
-  if (score >= 75) return colors.tertiary   // top quartile — terracotta
-  if (score >= 50) return '#D4891A'          // second quartile — amber
-  if (score >= 25) return colors.accent2    // third quartile — slate
-  return colors.secondary                   // bottom quartile — stone
-}
-
-export function ProspectMap() {
-  const [prospects, setProspects] = useState<Prospect[]>([])
+/**
+ * El mapa pinta el ciclo de vida, no el score: dónde está el capital y dónde
+ * están las apuestas se lee de un vistazo por color. El score, que solo existe
+ * antes de comprar, se queda en el popup.
+ */
+export function PropiedadesMap() {
+  const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
-    fetchProspects()
-      .then(data => setProspects(computeScores(data, DEFAULT_WEIGHTS)))
+    fetchProperties()
+      .then(setProperties)
       .finally(() => setLoading(false))
   }, [])
 
-  // Archived (converted) prospects belong to a project now — drop them from the map.
-  const active = prospects.filter(p => p.status !== 'converted')
-  const withCoords = active.filter(p => p.latitude !== 0 && p.longitude !== 0)
-  const noCoords = active.filter(p => p.latitude === 0 || p.longitude === 0)
+  const withCoords = properties.filter(p => p.latitude !== 0 && p.longitude !== 0)
+  const noCoords = properties.filter(p => p.latitude === 0 || p.longitude === 0)
 
   if (loading) return <div style={{ padding: '32px', color: colors.secondary }}>Cargando…</div>
 
@@ -48,14 +45,15 @@ export function ProspectMap() {
               pathOptions={{
                 color: colors.dark,
                 weight: 2,
-                fillColor: pinColor(p.score),
+                fillColor: PROPERTY_STATUS_COLOR[p.status],
                 fillOpacity: 0.9,
               }}
-              eventHandlers={{ click: () => navigate(`/prospectos/tabla/${p.id}`) }}
+              eventHandlers={{ click: () => navigate(`/propiedades/${p.id}`) }}
             >
               <Popup>
                 <strong>{p.name}</strong><br />
-                ROI {p.roi ? `${(p.roi * 100).toFixed(1)}%` : '—'} · Score {p.score}
+                {PROPERTY_STATUS_LABEL[p.status]} · ROI {fmtPct(p.realizedRoi ?? p.roi ?? p.projectedRoi)}
+                {hasScore(p.status) && p.score != null ? ` · Score ${p.score}` : ''}
               </Popup>
             </CircleMarker>
           ))}
@@ -63,7 +61,7 @@ export function ProspectMap() {
       </div>
       {noCoords.length > 0 && (
         <div style={{ padding: '10px 16px', background: colors.surfaceAlt, borderTop: `1px solid ${colors.border}`, fontFamily: fonts.sans, fontSize: '12px', color: colors.secondary }}>
-          ⚠️ {noCoords.length} prospecto{noCoords.length > 1 ? 's' : ''} sin coordenadas: {noCoords.map(p => p.name).join(', ')}
+          ⚠️ {noCoords.length} propiedad{noCoords.length > 1 ? 'es' : ''} sin coordenadas: {noCoords.map(p => p.name).join(', ')}
         </div>
       )}
     </div>
