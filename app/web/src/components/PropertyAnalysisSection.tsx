@@ -36,12 +36,36 @@ interface Props {
   canRun: boolean
   /** El plazo proyectado de la propiedad, con su procedencia. */
   holdMonths?: Assumption | null
+  /** Qué es el inmueble y cuántos metros de obra a ejecutar tiene capturados.
+   *  Son hechos de la propiedad; con ellos el formulario PROPONE un escenario
+   *  inicial, sin decidir nada. */
+  assetType?: string | null
+  sqmConstruction?: number | null
 }
 
 /** Un supuesto que se teclea en porcentaje y viaja como fracción. */
 const asPct = (fraction: number) => String(Math.round(fraction * 1000) / 10)
 
-export function PropertyAnalysisSection({ propertyId, canRun, holdMonths }: Props) {
+/**
+ * El escenario con el que ABRE el formulario. Es un default de interfaz, no una
+ * regla del dominio: se ve en el selector antes de correr nada, se cambia con un
+ * clic, y el servidor no lo infiere — el analizador corre exactamente el nivel
+ * de intervención que el formulario le mande.
+ *
+ * La distinción importa porque esta misma comodidad vivía antes en el servidor
+ * como inferencia silenciosa (`sqm_construction == 0` → obra nueva sobre todo el
+ * terreno) y convertía un trato de 20% de ROI en uno de 7% sin que nadie
+ * eligiera. Un lote sin obra capturada casi siempre se valora construyendo, así
+ * que proponerlo ahorra un paso; proponerlo en silencio era el problema.
+ */
+export function initialIntervention(assetType?: string | null,
+                                    sqmConstruction?: number | null): string {
+  const sinObraCapturada = !sqmConstruction || sqmConstruction <= 0
+  return assetType === 'lote' && sinObraCapturada ? 'obra_nueva' : 'media'
+}
+
+export function PropertyAnalysisSection({ propertyId, canRun, holdMonths,
+                                          assetType, sqmConstruction }: Props) {
   const navigate = useNavigate()
   const [snapshots, setSnapshots] = useState<AnalysisSnapshot[]>([])
   const [loading, setLoading] = useState(true)
@@ -53,12 +77,19 @@ export function PropertyAnalysisSection({ propertyId, canRun, holdMonths }: Prop
   // El plazo arranca en el que la propiedad ya tiene proyectado. Arrancar
   // siempre en 12 obligaba a recapturar un dato que el sistema ya conocía, y
   // corría el modelo sobre un horizonte que nadie eligió.
+  // `interventionLevel` empieza ausente a propósito: ausente = el usuario no ha
+  // elegido, y entonces manda la propuesta. Derivarlo en vez de sincronizarlo
+  // con un efecto evita que un prop que llegue tarde pise una elección ya hecha.
   const [params, setParams] = useState<Partial<AnalysisRequest>>({
-    interventionLevel: 'media',
     holdingPeriodMonths: holdMonths?.value ?? 12,
     exitPriceSource: 'calculated',
     ...ANALYSIS_DEFAULTS,
   })
+
+  const proposedIntervention = initialIntervention(assetType, sqmConstruction)
+  const interventionLevel = params.interventionLevel ?? proposedIntervention
+  const interventionIsProposed = params.interventionLevel == null
+    && proposedIntervention === 'obra_nueva'
 
   const holdMonthsValue = holdMonths?.value
   useEffect(() => {
@@ -78,7 +109,8 @@ export function PropertyAnalysisSection({ propertyId, canRun, holdMonths }: Prop
     setRunning(true)
     setError(null)
     try {
-      const snap = await runAnalysis({ propertyId, ...params } as AnalysisRequest)
+      const snap = await runAnalysis(
+        { propertyId, ...params, interventionLevel } as AnalysisRequest)
       setSnapshots(prev => [snap, ...prev])
       setShowForm(false)
       navigate(`/analyses/${snap.id}`)
@@ -119,7 +151,8 @@ export function PropertyAnalysisSection({ propertyId, canRun, holdMonths }: Prop
               <label style={labelStyle}>INTERVENCIÓN</label>
               <select
                 style={inputStyle}
-                value={params.interventionLevel ?? 'media'}
+                aria-label="INTERVENCIÓN"
+                value={interventionLevel}
                 onChange={e => setParams(p => ({ ...p, interventionLevel: e.target.value }))}
               >
                 <option value="cosmetica">Cosmética</option>
@@ -127,6 +160,11 @@ export function PropertyAnalysisSection({ propertyId, canRun, holdMonths }: Prop
                 <option value="total">Total</option>
                 <option value="obra_nueva">Obra nueva</option>
               </select>
+              {interventionIsProposed && (
+                <div style={{ fontFamily: fonts.sans, fontSize: '9px', color: colors.secondary, marginTop: '2px' }}>
+                  propuesto: es un lote sin obra capturada
+                </div>
+              )}
             </div>
             <div>
               <label style={labelStyle}>PLAZO (MESES)</label>

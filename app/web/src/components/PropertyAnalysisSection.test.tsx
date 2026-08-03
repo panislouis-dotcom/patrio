@@ -16,10 +16,13 @@ beforeEach(() => {
   vi.mocked(api.runAnalysis).mockResolvedValue({ id: 42 } as never)
 })
 
-async function openForm(holdMonths?: Assumption) {
+async function openForm(holdMonths?: Assumption,
+                        property: { assetType?: string; sqmConstruction?: number } = {}) {
   render(
     <MemoryRouter>
-      <PropertyAnalysisSection propertyId={7} canRun holdMonths={holdMonths ?? null} />
+      <PropertyAnalysisSection propertyId={7} canRun holdMonths={holdMonths ?? null}
+        assetType={property.assetType ?? 'casa'}
+        sqmConstruction={property.sqmConstruction ?? 200} />
     </MemoryRouter>,
   )
   await waitFor(() => expect(screen.getByText('CORRER ANÁLISIS')).not.toBeNull())
@@ -47,6 +50,41 @@ describe('PropertyAnalysisSection', () => {
       expect(screen.getByLabelText(label)).not.toBeNull()
     }
     expect((screen.getByLabelText('CASTIGO ANUNCIO→VENTA %') as HTMLInputElement).value).toBe('6')
+  })
+
+  // ── El escenario se propone a la vista, no se decide en silencio ──────────
+
+  it('un lote sin obra capturada abre con obra nueva propuesta, y se ve', async () => {
+    await openForm(undefined, { assetType: 'lote', sqmConstruction: 0 })
+    expect((screen.getByLabelText('INTERVENCIÓN') as HTMLSelectElement).value).toBe('obra_nueva')
+    expect(screen.getByText('propuesto: es un lote sin obra capturada')).not.toBeNull()
+  })
+
+  it('la propuesta se puede cambiar y es lo cambiado lo que corre', async () => {
+    await openForm(undefined, { assetType: 'lote', sqmConstruction: 0 })
+    fireEvent.change(screen.getByLabelText('INTERVENCIÓN'), { target: { value: 'cosmetica' } })
+    expect(screen.queryByText('propuesto: es un lote sin obra capturada')).toBeNull()
+    fireEvent.click(screen.getByText('EJECUTAR'))
+    await waitFor(() => expect(api.runAnalysis).toHaveBeenCalled())
+    expect(vi.mocked(api.runAnalysis).mock.calls[0][0].interventionLevel).toBe('cosmetica')
+  })
+
+  it('una casa sin obra capturada NO se propone construir de cero', async () => {
+    await openForm(undefined, { assetType: 'casa', sqmConstruction: 0 })
+    expect((screen.getByLabelText('INTERVENCIÓN') as HTMLSelectElement).value).toBe('media')
+    expect(screen.queryByText(/propuesto/)).toBeNull()
+  })
+
+  it('un lote con obra ya capturada tampoco: hay metros que respetar', async () => {
+    await openForm(undefined, { assetType: 'lote', sqmConstruction: 150 })
+    expect((screen.getByLabelText('INTERVENCIÓN') as HTMLSelectElement).value).toBe('media')
+  })
+
+  it('el nivel propuesto viaja al servidor tal como se ve', async () => {
+    await openForm(undefined, { assetType: 'lote', sqmConstruction: 0 })
+    fireEvent.click(screen.getByText('EJECUTAR'))
+    await waitFor(() => expect(api.runAnalysis).toHaveBeenCalled())
+    expect(vi.mocked(api.runAnalysis).mock.calls[0][0].interventionLevel).toBe('obra_nueva')
   })
 
   it('los supuestos viajan al servidor con la corrida', async () => {
