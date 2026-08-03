@@ -279,9 +279,12 @@ export function AnalysisView() {
         )}
         {showMarketRange && (
           <>
-            <Row label="PRECIO MERCADO BAJO" value={fmtMXN(snap.exitPriceCalculatedLow ?? 0)} />
-            <Row label="PRECIO MERCADO MEDIO" value={fmtMXN(snap.exitPriceCalculatedMid ?? 0)} />
-            <Row label="PRECIO MERCADO ALTO" value={fmtMXN(snap.exitPriceCalculatedHigh ?? 0)} />
+            {/* Sin `?? 0`: un precio de mercado que no se pudo calcular es una
+                ausencia, y con la regla «cero es cero» ese cero fabricado se
+                imprimiría como un precio de mercado de cero pesos. */}
+            <Row label="PRECIO MERCADO BAJO" value={fmtMXN(snap.exitPriceCalculatedLow)} />
+            <Row label="PRECIO MERCADO MEDIO" value={fmtMXN(snap.exitPriceCalculatedMid)} />
+            <Row label="PRECIO MERCADO ALTO" value={fmtMXN(snap.exitPriceCalculatedHigh)} />
           </>
         )}
         <Row label="PRECIO SALIDA USADO" value={fmtMXN(snap.exitPriceUsed)} highlight />
