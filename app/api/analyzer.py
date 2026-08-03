@@ -24,6 +24,20 @@ from api.finance.analysis import (
     npv as _npv, monthly_payment as _monthly_payment,
 )
 
+# ─── Supuestos por omisión ───────────────────────────────
+# Los siete supuestos del modelo viven aquí, con nombre, en un solo lugar: son
+# lo que el formulario prellena y lo que cada snapshot guarda. Un número
+# escondido en medio de una fórmula no se puede ni mostrar ni discutir, y estas
+# corridas publican COSTOS FINANCIAMIENTO, CASH ON CASH, NPV e IRR como
+# resultados.
+DEFAULT_TRANSACTION_COST_PCT = 0.08
+DEFAULT_FINANCIAMIENTO_PCT = 0.60
+DEFAULT_TASA_INTERES_CREDITO = 0.13
+DEFAULT_PLAZO_CREDITO_MESES = 240
+DEFAULT_GASTOS_OPERATIVOS_PCT = 0.30
+DEFAULT_LISTING_HAIRCUT = 0.06
+DEFAULT_DISCOUNT_RATE = 0.10
+
 
 # ─── Exceptions ──────────────────────────────────────
 
@@ -48,10 +62,13 @@ class AnalysisResult:
     remodel_cost_estimate: float
     remodel_cost_per_m2: float
     intervention_level: str
+    transaction_cost_pct: float
     transaction_costs: float
     financing_costs: float
     total_cost: float
     holding_period_months: int
+    listing_haircut: float
+    discount_rate: float
 
     # Exit prices
     exit_price_manual: Optional[float]
@@ -117,13 +134,14 @@ def find_comparables(
     subject_lng: float | None = None,
     subject_sqm: float | None = None,
     max_km: float = 5.0,
-    listing_haircut: float = 0.06,
+    listing_haircut: float = DEFAULT_LISTING_HAIRCUT,
 ) -> tuple[list[dict], float | None]:
     """
     Find active comparables for a zone with distance/size/type filtering.
 
     Returns (comps, avg_comp_distance_km).
-    Applies a 6% listing-to-sale haircut on prices.
+    Applies the listing-to-sale haircut on prices — an asking price is not a
+    sale price, and how much to knock off is a judgement call the caller owns.
     """
     with get_db() as conn:
         rows = conn.execute(
@@ -291,16 +309,17 @@ def analyze_property(
     *,
     intervention_level: str = "media",
     holding_period_months: int = 12,
-    transaction_cost_pct: float = 0.08,
+    transaction_cost_pct: float = DEFAULT_TRANSACTION_COST_PCT,
     exit_price_source: str = "calculated",
     arv_manual_override: float | None = None,
+    listing_haircut: float = DEFAULT_LISTING_HAIRCUT,
+    discount_rate: float = DEFAULT_DISCOUNT_RATE,
     # Build & Hold params
     renta_mensual_estimada: float | None = None,
-    financiamiento_pct: float = 0.60,
-    tasa_interes_credito: float = 0.13,
-    plazo_credito_meses: int = 240,
-    gastos_operativos_pct: float = 0.30,
-    discount_rate: float = 0.10,
+    financiamiento_pct: float = DEFAULT_FINANCIAMIENTO_PCT,
+    tasa_interes_credito: float = DEFAULT_TASA_INTERES_CREDITO,
+    plazo_credito_meses: int = DEFAULT_PLAZO_CREDITO_MESES,
+    gastos_operativos_pct: float = DEFAULT_GASTOS_OPERATIVOS_PCT,
 ) -> AnalysisResult:
     """
     Run full investment analysis on a property.
@@ -313,8 +332,8 @@ def analyze_property(
     # ── 1. Load property ─────────────────────────────
     with get_db() as conn:
         row = conn.execute(
-            """SELECT id, name, city, asset_type, sqm_land, sqm_construction, land_price,
-                      acquisition_cost_pct, projected_sale, rent_monthly,
+            """SELECT id, name, city, asset_type, sqm_land, sqm_construction, purchase_price,
+                      acquisition_cost_pct, projected_sale, rent_monthly_projected,
                       latitude, longitude
                FROM properties WHERE id = %s""",
             (property_id,),
@@ -328,16 +347,21 @@ def analyze_property(
     # columns arrive as Decimal (and the underwriting inputs are nullable), and
     # the analyzer's iterative float models (IRR/NPV/amortization) can't mix
     # Decimal with float literals.
-    purchase_price = float(p["land_price"] or 0)
+    # El analizador siempre modeló "lo que pagas por el inmueble como está" y
+    # sumó la obra aparte; hasta la 025 esa cifra se llamaba `land_price` y el
+    # nombre decía otra cosa. Ahora la columna se llama como lo que guarda.
+    purchase_price = float(p["purchase_price"] or 0)
     sqm_construction = float(p["sqm_construction"] or 0)
     projected_sale = float(p["projected_sale"] or 0)
-    rent_monthly = float(p["rent_monthly"] or 0)
+    # La renta que este modelo usa es la proyectada: valora una compra que aún
+    # no se hace, así que la renta cobrada no le toca.
+    rent_monthly = float(p["rent_monthly_projected"] or 0)
 
     # Data quality check: projected_sale placeholder
     if projected_sale and projected_sale < purchase_price * 0.10:
         warnings.append(
-            f"projected_sale (${projected_sale:,.0f}) parece placeholder "
-            f"(< 10% de land_price ${purchase_price:,.0f})"
+            f"La venta proyectada (${projected_sale:,.0f}) parece un placeholder: "
+            f"es menos del 10% del precio de compra (${purchase_price:,.0f})"
         )
 
     # ── 2. Determine zone ────────────────────────────
@@ -412,6 +436,7 @@ def analyze_property(
         subject_lat=p["latitude"],
         subject_lng=p["longitude"],
         subject_sqm=sale_sqm,
+        listing_haircut=listing_haircut,
     )
     comp_ids = [c["id"] for c in comps]
     comp_ppm2 = [c["price_per_m2"] for c in comps if c.get("price_per_m2")]
@@ -522,62 +547,48 @@ def analyze_property(
         confidence_level = "low"
 
     # ── 9. Save snapshot ─────────────────────────────
+    # Un dict en vez de dos listas paralelas de cuarenta posiciones: agregar una
+    # columna dejaba de ser seguro en cuanto el valor N tenía que caer justo
+    # sobre el nombre N. Los supuestos se guardan SIEMPRE, aunque no haya renta:
+    # el financiamiento mueve `financing_costs` del flip, así que un snapshot
+    # que no los guarde no puede explicar su propio costo total.
+    snapshot = {
+        "property_id": property_id, "generated_at": now,
+        "purchase_price": purchase_price,
+        "remodel_cost_estimate": remodel_cost, "remodel_cost_per_m2": cost_per_m2,
+        "intervention_level": actual_intervention,
+        "transaction_cost_pct": transaction_cost_pct, "transaction_costs": transaction_costs,
+        "financing_costs": financing_costs,
+        "listing_haircut": listing_haircut, "discount_rate": discount_rate,
+        "total_cost": total_cost, "holding_period_months": holding_period_months,
+        "exit_price_manual": projected_sale,
+        "exit_price_calculated_low": exit_low,
+        "exit_price_calculated_mid": exit_mid,
+        "exit_price_calculated_high": exit_high,
+        "exit_price_source": exit_price_source if exit_mid is not None else "manual",
+        "exit_price_used": exit_used, "manual_vs_market_delta_pct": delta_pct,
+        "arv_manual_override": arv_manual_override,
+        "comparable_count": len(comps), "comparable_ids": json.dumps(comp_ids),
+        "avg_comp_distance_km": avg_comp_distance_km,
+        "gross_margin": gross_margin, "roi_pct": roi_pct, "irr_pct": irr_pct,
+        "cap_rate_pct": cap_rate_pct,
+        "confidence_score": score, "confidence_notes": conf_notes,
+        "data_quality_warnings": json.dumps(warnings),
+        "renta_mensual_estimada": rent_estimate if rent_estimate > 0 else None,
+        "tasa_interes_credito": tasa_interes_credito,
+        "plazo_credito_meses": plazo_credito_meses,
+        "financiamiento_pct": financiamiento_pct,
+        "gastos_operativos_pct": gastos_operativos_pct,
+        "noi_anual": noi_anual, "debt_service_anual": debt_service_anual,
+        "cash_flow_anual": cash_flow_anual, "cash_on_cash_yr1_pct": cash_on_cash_yr1,
+        "break_even_months": break_even, "npv_10yr": npv_10yr, "irr_10yr_pct": irr_10yr,
+    }
+    columns = ", ".join(snapshot)
+    placeholders = ", ".join(["%s"] * len(snapshot))
     with get_db() as conn:
         cur = conn.execute(
-            """INSERT INTO analysis_snapshots (
-                property_id, generated_at,
-                purchase_price, remodel_cost_estimate, remodel_cost_per_m2,
-                intervention_level, transaction_costs, financing_costs,
-                total_cost, holding_period_months,
-                exit_price_manual,
-                exit_price_calculated_low, exit_price_calculated_mid, exit_price_calculated_high,
-                exit_price_source, exit_price_used, manual_vs_market_delta_pct,
-                arv_manual_override,
-                comparable_count, comparable_ids, avg_comp_distance_km,
-                gross_margin, roi_pct, irr_pct, cap_rate_pct,
-                confidence_score, confidence_notes, data_quality_warnings,
-                renta_mensual_estimada, tasa_interes_credito, plazo_credito_meses,
-                financiamiento_pct, gastos_operativos_pct,
-                noi_anual, debt_service_anual, cash_flow_anual,
-                cash_on_cash_yr1_pct, break_even_months, npv_10yr, irr_10yr_pct
-            ) VALUES (
-                %s, %s,
-                %s, %s, %s,
-                %s, %s, %s,
-                %s, %s,
-                %s,
-                %s, %s, %s,
-                %s, %s, %s,
-                %s,
-                %s, %s, %s,
-                %s, %s, %s, %s,
-                %s, %s, %s,
-                %s, %s, %s,
-                %s, %s,
-                %s, %s, %s,
-                %s, %s, %s, %s
-            ) RETURNING id""",
-            (
-                property_id, now,
-                purchase_price, remodel_cost, cost_per_m2,
-                actual_intervention, transaction_costs, financing_costs,
-                total_cost, holding_period_months,
-                projected_sale,
-                exit_low, exit_mid, exit_high,
-                exit_price_source if exit_mid is not None else "manual",
-                exit_used, delta_pct,
-                arv_manual_override,
-                len(comps), json.dumps(comp_ids), avg_comp_distance_km,
-                gross_margin, roi_pct, irr_pct, cap_rate_pct,
-                score, conf_notes, json.dumps(warnings),
-                rent_estimate if rent_estimate > 0 else None,
-                tasa_interes_credito if rent_estimate > 0 else None,
-                plazo_credito_meses if rent_estimate > 0 else None,
-                financiamiento_pct if rent_estimate > 0 else None,
-                gastos_operativos_pct if rent_estimate > 0 else None,
-                noi_anual, debt_service_anual, cash_flow_anual,
-                cash_on_cash_yr1, break_even, npv_10yr, irr_10yr,
-            ),
+            f"INSERT INTO analysis_snapshots ({columns}) VALUES ({placeholders}) RETURNING id",
+            list(snapshot.values()),
         )
         snapshot_id = cur.fetchone()["id"]
 
@@ -603,10 +614,13 @@ def analyze_property(
         remodel_cost_estimate=remodel_cost,
         remodel_cost_per_m2=cost_per_m2,
         intervention_level=actual_intervention,
+        transaction_cost_pct=transaction_cost_pct,
         transaction_costs=transaction_costs,
         financing_costs=financing_costs,
         total_cost=total_cost,
         holding_period_months=holding_period_months,
+        listing_haircut=listing_haircut,
+        discount_rate=discount_rate,
         exit_price_manual=projected_sale,
         exit_price_calculated_low=exit_low,
         exit_price_calculated_mid=exit_mid,

@@ -632,8 +632,11 @@ export interface AnalysisSnapshot {
   cashFlowAnual: number | null
   cashOnCashYr1Pct: number | null
   breakEvenMonths: number | null
-  npv10yr: number | null
-  irr10yrPct: number | null
+  // El serializador del servidor titula cada tramo entre guiones bajos, así que
+  // `npv_10yr` sale como `npv10Yr`. Escritos en minúscula, estos dos campos
+  // llegaban siempre undefined y la vista publicaba "—" pasara lo que pasara.
+  npv10Yr: number | null
+  irr10YrPct: number | null
 }
 
 export interface AnalysisRequest {

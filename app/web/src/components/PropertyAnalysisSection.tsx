@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { colors, fonts } from '../lib/theme'
 import { runAnalysis, fetchAnalyses } from '../lib/api'
-import type { AnalysisSnapshot, AnalysisRequest } from '../lib/types'
+import { ANALYSIS_DEFAULTS } from '../lib/types'
+import type { AnalysisSnapshot, AnalysisRequest, Assumption } from '../lib/types'
 
 const inputStyle: React.CSSProperties = {
   background: colors.surface,
@@ -33,21 +34,38 @@ interface Props {
    * siempre: es la hipótesis contra la que se mide lo que pasó.
    */
   canRun: boolean
+  /** El plazo proyectado de la propiedad, con su procedencia. */
+  holdMonths?: Assumption | null
 }
 
-export function PropertyAnalysisSection({ propertyId, canRun }: Props) {
+/** Un supuesto que se teclea en porcentaje y viaja como fracción. */
+const asPct = (fraction: number) => String(Math.round(fraction * 1000) / 10)
+
+export function PropertyAnalysisSection({ propertyId, canRun, holdMonths }: Props) {
   const navigate = useNavigate()
   const [snapshots, setSnapshots] = useState<AnalysisSnapshot[]>([])
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [showAssumptions, setShowAssumptions] = useState(false)
 
+  // El plazo arranca en el que la propiedad ya tiene proyectado. Arrancar
+  // siempre en 12 obligaba a recapturar un dato que el sistema ya conocía, y
+  // corría el modelo sobre un horizonte que nadie eligió.
   const [params, setParams] = useState<Partial<AnalysisRequest>>({
     interventionLevel: 'media',
-    holdingPeriodMonths: 12,
+    holdingPeriodMonths: holdMonths?.value ?? 12,
     exitPriceSource: 'calculated',
+    ...ANALYSIS_DEFAULTS,
   })
+
+  const holdMonthsValue = holdMonths?.value
+  useEffect(() => {
+    if (holdMonthsValue != null) {
+      setParams(p => ({ ...p, holdingPeriodMonths: holdMonthsValue }))
+    }
+  }, [holdMonthsValue])
 
   useEffect(() => {
     fetchAnalyses(propertyId)
@@ -115,9 +133,15 @@ export function PropertyAnalysisSection({ propertyId, canRun }: Props) {
               <input
                 style={inputStyle}
                 type="number"
+                aria-label="PLAZO (MESES)"
                 value={params.holdingPeriodMonths ?? 12}
                 onChange={e => setParams(p => ({ ...p, holdingPeriodMonths: Number(e.target.value) }))}
               />
+              <div style={{ fontFamily: fonts.sans, fontSize: '9px', color: colors.secondary, marginTop: '2px' }}>
+                {holdMonths?.source === 'captured'
+                  ? 'plazo proyectado de la propiedad'
+                  : 'supuesto por omisión'}
+              </div>
             </div>
             <div>
               <label style={labelStyle}>FUENTE PRECIO</label>
@@ -153,6 +177,65 @@ export function PropertyAnalysisSection({ propertyId, canRun }: Props) {
                 placeholder="Override precio salida"
               />
             </div>
+          </div>
+          {/* ── SUPUESTOS ────────────────────────────────────────────────────
+              Siete números que mueven COSTOS FINANCIAMIENTO, SERVICIO DEUDA,
+              CASH ON CASH, NPV e IRR. Estaban escondidos como defaults del
+              servidor: la corrida publicaba sus resultados sin que se pudiera
+              ver — mucho menos discutir — con qué se calcularon. */}
+          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '10px', marginBottom: '12px' }}>
+            <button
+              onClick={() => setShowAssumptions(s => !s)}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em',
+                color: colors.secondary,
+              }}
+            >
+              {showAssumptions ? '▾' : '▸'} SUPUESTOS DEL MODELO
+            </button>
+            {showAssumptions && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                {([
+                  ['COSTOS TRANSACCIÓN %', 'transactionCostPct', true],
+                  ['CASTIGO ANUNCIO→VENTA %', 'listingHaircut', true],
+                  ['TASA DE DESCUENTO %', 'discountRate', true],
+                  ['FINANCIAMIENTO %', 'financiamientoPct', true],
+                  ['TASA CRÉDITO %', 'tasaInteresCredito', true],
+                  ['GASTOS OPERATIVOS %', 'gastosOperativosPct', true],
+                  ['PLAZO CRÉDITO (MESES)', 'plazoCreditoMeses', false],
+                ] as [string, keyof typeof ANALYSIS_DEFAULTS, boolean][]).map(([label, key, isPct]) => {
+                  const raw = params[key] ?? ANALYSIS_DEFAULTS[key]
+                  return (
+                    <div key={key}>
+                      <label style={labelStyle}>{label}</label>
+                      <input
+                        style={inputStyle}
+                        type="number"
+                        step={isPct ? '0.1' : '1'}
+                        aria-label={label}
+                        value={isPct ? asPct(raw as number) : String(raw)}
+                        onChange={e => {
+                          const n = Number(e.target.value)
+                          setParams(p => ({ ...p, [key]: isPct ? n / 100 : n }))
+                        }}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {!showAssumptions && (
+              <div style={{ fontFamily: fonts.sans, fontSize: '10px', color: colors.secondary, marginTop: '4px' }}>
+                Transacción {asPct(params.transactionCostPct ?? ANALYSIS_DEFAULTS.transactionCostPct)}% ·
+                castigo {asPct(params.listingHaircut ?? ANALYSIS_DEFAULTS.listingHaircut)}% ·
+                descuento {asPct(params.discountRate ?? ANALYSIS_DEFAULTS.discountRate)}% ·
+                financiamiento {asPct(params.financiamientoPct ?? ANALYSIS_DEFAULTS.financiamientoPct)}% a{' '}
+                {asPct(params.tasaInteresCredito ?? ANALYSIS_DEFAULTS.tasaInteresCredito)}% /{' '}
+                {params.plazoCreditoMeses ?? ANALYSIS_DEFAULTS.plazoCreditoMeses}m ·
+                opex {asPct(params.gastosOperativosPct ?? ANALYSIS_DEFAULTS.gastosOperativosPct)}%
+              </div>
+            )}
           </div>
           {error && (
             <div style={{ color: '#E62300', fontFamily: fonts.sans, fontSize: '10px', marginBottom: '8px' }}>{error}</div>

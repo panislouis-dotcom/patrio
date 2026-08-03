@@ -54,6 +54,15 @@ function Row({ label, value, highlight, warn }: {
   )
 }
 
+/**
+ * Una fracción como porcentaje. `fmtPct` traduce 0 a "—", y aquí un supuesto de
+ * 0% es una decisión (sin financiamiento, sin castigo) que hay que poder leer;
+ * lo que de verdad falta es null, y solo eso se muestra en blanco.
+ */
+function fmtRatePct(fraction: number | null | undefined): string {
+  return fraction == null ? '—' : `${(fraction * 100).toFixed(1)}%`
+}
+
 const thStyle: React.CSSProperties = {
   padding: '5px 10px',
   fontFamily: fonts.label,
@@ -246,6 +255,21 @@ export function AnalysisView() {
         <Row label="PLAZO (MESES)" value={snap.holdingPeriodMonths} />
       </div>
 
+      {/* SUPUESTOS — con qué se calculó lo de abajo.
+          Sin ellos, NPV, IRR y CASH ON CASH se publican como resultados de un
+          modelo cuyos parámetros nadie puede auditar. Las corridas anteriores a
+          que se guardaran muestran "—" en vez de inventarles un valor. */}
+      <div style={cardStyle}>
+        <div style={cardTitleStyle}>SUPUESTOS</div>
+        <Row label="COSTOS TRANSACCIÓN" value={fmtRatePct(snap.transactionCostPct)} />
+        <Row label="CASTIGO ANUNCIO→VENTA" value={fmtRatePct(snap.listingHaircut)} />
+        <Row label="TASA DE DESCUENTO (NPV)" value={fmtRatePct(snap.discountRate)} />
+        <Row label="FINANCIAMIENTO" value={fmtRatePct(snap.financiamientoPct)} />
+        <Row label="TASA CRÉDITO" value={fmtRatePct(snap.tasaInteresCredito)} />
+        <Row label="PLAZO CRÉDITO (MESES)" value={snap.plazoCreditoMeses ?? '—'} />
+        <Row label="GASTOS OPERATIVOS" value={fmtRatePct(snap.gastosOperativosPct)} />
+      </div>
+
       {/* FLIP RESULTS */}
       <div style={cardStyle}>
         <div style={cardTitleStyle}>FLIP RESULTS</div>
@@ -287,8 +311,8 @@ export function AnalysisView() {
           <Row label="CASH FLOW ANUAL" value={snap.cashFlowAnual != null ? fmtMXN(snap.cashFlowAnual) : '—'} highlight />
           <Row label="CASH ON CASH YR1" value={snap.cashOnCashYr1Pct != null ? `${snap.cashOnCashYr1Pct.toFixed(1)}%` : '—'} />
           <Row label="BREAK EVEN (MESES)" value={snap.breakEvenMonths ?? '—'} />
-          <Row label="NPV 10 AÑOS" value={snap.npv10yr != null ? fmtMXN(snap.npv10yr) : '—'} />
-          <Row label="IRR 10 AÑOS" value={snap.irr10yrPct != null ? `${snap.irr10yrPct.toFixed(1)}%` : '—'} />
+          <Row label="NPV 10 AÑOS" value={snap.npv10Yr != null ? fmtMXN(snap.npv10Yr) : '—'} />
+          <Row label="IRR 10 AÑOS" value={snap.irr10YrPct != null ? `${snap.irr10YrPct.toFixed(1)}%` : '—'} />
         </div>
       )}
 
