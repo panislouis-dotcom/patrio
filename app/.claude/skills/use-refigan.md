@@ -131,7 +131,7 @@ A property is **born `prospecto`** — `POST /api/properties` cannot set a statu
 
 **Assumptions** — `acquisitionCostPct`, `constructionOverhead`, `holdMonths` — are not inputs like the rest. They always have a value in force, and the payload publishes it under its own key *plus* its provenance in `assumptions`: `{"holdMonths": {"value": 12, "source": "default" | "captured"}}`. `default` means nobody chose and the model applied its own (6.5%, ×1.3, 12 months); `captured` means a person decided. Writing one captures it; clearing it hands it back to the model.
 
-**Key recorded facts (post-purchase):** `totalUnits`, `acquisitionDate`, `firstRentDate`, `rentMonthlyActual`, `saleDate`, `salePrice`, `totalInvestmentCaptured`, `currentValuation`, `valuationDate`, `milestones` (JSON).
+**Key recorded facts (post-purchase):** `totalUnits`, `acquisitionDate`, `firstRentDate`, `rentMonthlyActual`, `saleDate`, `salePrice`, `currentValuation`, `valuationDate`, `milestones` (JSON).
 
 **Classification:** `assetType` — Casa · Departamento · Local · Edificio · Lote · Bodega — and `strategyType` — `adaptive_reuse` Reconversión · `ground_up` Obra nueva · `flip` Flip · `hold` Renta. These are two different questions — what the building **is**, and what the firm intends to **do** with it — and they are two different columns, so neither ever stands in for the other. Never show a user the raw value, and never de-underscore it into fake Spanish: «Adaptive reuse» is not a word here.
 
@@ -167,7 +167,7 @@ Emptying is its own operation precisely so that "cleared" never has to be guesse
 | `to` | Required in the body | Accepted, not required |
 |---|---|---|
 | `oferta` | `projectedSale`† | — |
-| `desarrollo` | `acquisitionDate`, `totalUnits`, `totalInvestmentCaptured`† | `currentValuation`, `valuationDate` |
+| `desarrollo` | `acquisitionDate`, `totalUnits`, `purchasePrice`† | `currentValuation`, `valuationDate` |
 | `en_renta` | `firstRentDate`, `rentMonthlyActual` | `currentValuation`, `valuationDate` |
 | `vendida` | `saleDate`, `salePrice` | — |
 | `archivada` | — | — |
@@ -177,11 +177,13 @@ Emptying is its own operation precisely so that "cleared" never has to be guesse
 <!-- END GENERATED: transition-gates -->
 
 **Why each one.** `oferta`: every offer models its exit, even when the plan is to
-rent. `desarrollo`: a property in development has been bought, and its capital
-base has to resolve — from the five captured costs, or from a typed total.
-`en_renta`: the rent asked for is the one being **collected**, and it never
-overwrites the estimated one. `vendida`: the exit is frozen at its actual
-figures. `archivada`: a terminal drawer, reachable from any non-terminal stage.
+rent. `desarrollo`: a property in development has been bought, and what it cost
+has to be on the record — `purchasePrice` is the one component without which
+there is no capital base, and with no capital base there is no ROI, no gain and
+no cap rate. `en_renta`: the rent asked for is the one being **collected**, and
+it never overwrites the estimated one. `vendida`: the exit is frozen at its
+actual figures. `archivada`: a terminal drawer, reachable from any non-terminal
+stage.
 
 `currentValuation` and `valuationDate` sit in the *accepted* column and in no
 other. Buying a building does not produce an appraisal, and demanding one only
@@ -190,8 +192,8 @@ ever got one invented. Capture the valuation when a real one exists; until then
 
 Nothing else is a gate. `desarrollo` does **not** require the three assumptions
 (`acquisitionCostPct`, `constructionOverhead`, `holdMonths`): they always resolve,
-so requiring them meant every freshly captured property was born claiming a
-complete underwriting and the real investment could never be typed in.
+so a gate on them could never fail — it would only make every freshly captured
+property claim a complete underwriting it never had.
 
 All bodies also accept `effectiveOn` (defaults to today) and `notes`. Every move is recorded in `property_status_events` with its author, so the pipeline has a history: days-in-offer, conversion rate, time-to-first-rent.
 
@@ -249,13 +251,28 @@ denominator ("sobre inversión", abbreviated "s/ inversión" only where space
 forces it); «cap rate» unqualified means NOI over market value and would be a
 different, larger number. Qualify the word, never replace it.
 
-`totalInvestment` is the **resolved** capital base (**Inversión total**) and is
-never written directly; `totalInvestmentCaptured` (**Inversión capturada**) is the
-figure somebody typed, and it survives even when the breakdown wins.
-`investmentBasis` is **not a monto** — it says where the base came from:
-`underwriting` when all five cost inputs are present (the system adds them up and
-owns the total), `manual` when they are not. When both exist and disagree, the
-property carries a warning rather than the system picking in silence.
+`totalInvestment` (**Inversión total**) is the capital base, and it is **never
+written** — no field carries it, in any request body. It is always the same sum,
+with no branches:
+
+```
+totalInvestment = purchasePrice × (1 + acquisitionCostPct)
+                + permitsCost + subdivisionCost
+                + sqmConstruction × constructionCostPerSqm × constructionOverhead
+```
+
+A component nobody captured counts as 0, so there is no "complete" versus
+"incomplete" breakdown. A sum of zero comes back `null` — nothing captured, not a
+capital base of zero. There is no second way to reach the figure and no field
+saying which way was taken: `totalInvestmentCaptured` and `investmentBasis` both
+existed and are gone, because two ways to compute one number is two numbers.
+
+**A lump sum is written as `purchasePrice`.** When all that is known about an
+older property is "it cost $9.5M all in", capture `purchasePrice: 9500000` with
+`acquisitionCostPct: 0` — explicitly zero, because leaving it unset means "assume
+6.5%" and would quietly add $617,500 nobody spent. That is the whole idiom. Do
+not go looking for a total field and never try to PATCH `totalInvestment`; it is
+a computed field like `roi`.
 
 **Score:** 0–100 composite (50% `projectedRoi`, 30% `capRate`, 20% `projectedProfit`) as a **percentile rank against the other pre-purchase properties**. It exists only in `prospecto` and `oferta` and is `null` afterwards — a score ranks candidates competing for capital, and a bought property competes with nobody. It is **server-authoritative**: read it, never recompute it.
 

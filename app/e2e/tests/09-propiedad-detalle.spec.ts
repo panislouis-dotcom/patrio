@@ -493,9 +493,9 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await gotoProperty(page, id)
 
     // Hubo una segunda fila para teclear el total, y con ella la pregunta «¿cuál
-    // de los dos números creo?». Una propiedad como esta —cuyo total se tecleó a
-    // mano— es exactamente la que la enseñaba. Ya no existe: ni al ver, ni al
-    // editar, ni como caja vacía esperando un número.
+    // de los dos números creo?». Una compra vieja de la que solo se sabe el
+    // total, como esta, era justo la que la enseñaba también en modo lectura.
+    // Ya no existe: ni al ver, ni al editar, ni como caja vacía esperando.
     await expect(page.getByText('INVERSIÓN CAPTURADA', { exact: true })).toHaveCount(0)
 
     await enterEditMode(page)
