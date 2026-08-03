@@ -1,34 +1,42 @@
-import type { Issue, RawFields } from './types'
+import type { Issue, PropertyCreate } from './types'
 
-export function validateRaw(fields: Partial<RawFields>): Issue[] {
+/**
+ * Lo que le falta a una captura ANTES de que exista la fila. Espeja las reglas
+ * de pre-compra de checks.py: una propiedad recién dada de alta nace prospecto,
+ * así que el formulario avisa exactamente de lo mismo que el servidor le va a
+ * marcar en cuanto se guarde — nada de dos definiciones de "bien capturado".
+ *
+ * La venta proyectada no es error aquí: se vuelve obligatoria al pasar a oferta,
+ * y ese gate lo cobra la transición. La renta vacía tampoco: vacía significa
+ * "sin capturar", que es una advertencia, no una mentira.
+ */
+export function validateRaw(fields: Partial<PropertyCreate>): Issue[] {
   const issues: Issue[] = []
 
-  if (!fields.latitude || fields.latitude === 0) {
+  if (!fields.latitude) {
     issues.push({ field: 'latitude', message: 'Latitud requerida', severity: 'error' })
   }
-  if (!fields.longitude || fields.longitude === 0) {
+  if (!fields.longitude) {
     issues.push({ field: 'longitude', message: 'Longitud requerida', severity: 'error' })
   }
-  if (!fields.landPrice || fields.landPrice === 0) {
+  if (!fields.landPrice) {
     issues.push({ field: 'landPrice', message: 'Precio de terreno requerido', severity: 'error' })
   }
-  if (!fields.sqmLand || fields.sqmLand === 0) {
-    issues.push({ field: 'sqmLand', message: 'Metros cuadrados de terreno requeridos', severity: 'error' })
-  }
-  if (!fields.sqmConstruction || fields.sqmConstruction === 0) {
-    issues.push({ field: 'sqmConstruction', message: 'Metros cuadrados de construcción requeridos', severity: 'warning' })
-  }
-  if ((fields.sqmConstruction ?? 0) > 0 && (!fields.constructionCostPerSqm || fields.constructionCostPerSqm === 0)) {
-    issues.push({ field: 'constructionCostPerSqm', message: 'Costo/m² de construcción requerido para calcular inversión', severity: 'error' })
-  }
-  if (!fields.projectedSale || fields.projectedSale === 0) {
-    issues.push({ field: 'projectedSale', message: 'Venta proyectada requerida para calcular ROI y profit', severity: 'error' })
-  }
-  if (!fields.rentMonthly || fields.rentMonthly === 0) {
-    issues.push({ field: 'rentMonthly', message: 'Renta mensual requerida para calcular cap rate', severity: 'error' })
+  if (!fields.sqmLand) {
+    issues.push({ field: 'sqmLand', message: 'Superficie de terreno (m²) requerida', severity: 'error' })
   }
   if (fields.constructionOverhead !== undefined && fields.constructionOverhead < 1.0) {
     issues.push({ field: 'constructionOverhead', message: 'Factor de overhead debe ser ≥ 1.0', severity: 'error' })
+  }
+
+  if (!fields.constructionCostPerSqm) {
+    issues.push({ field: 'constructionCostPerSqm', message: 'Costo de construcción/m² sin capturar', severity: 'warning' })
+  }
+  if (!fields.projectedSale) {
+    issues.push({ field: 'projectedSale', message: 'Venta proyectada sin capturar: sin ella no hay ROI ni ganancia', severity: 'warning' })
+  }
+  if (!fields.rentMonthly) {
+    issues.push({ field: 'rentMonthly', message: 'Renta mensual sin capturar: sin ella no hay cap rate', severity: 'warning' })
   }
   return issues
 }

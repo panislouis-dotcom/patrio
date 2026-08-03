@@ -1,4 +1,4 @@
-import type { Prospect, QualityEntry, RawFields, Project, RawProjectFields, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, ProjectInvestor, User, ParsedProspect, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, ProjectImage, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion } from './types'
 import type { FloorPlanModel } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -21,15 +21,95 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
   return res
 }
 
-export async function fetchProspects(): Promise<Prospect[]> {
-  const res = await authFetch(`${BASE}/api/prospects`)
+/** El detalle del servidor, que viene escrito para leerse, gana a `API error: N`. */
+async function detail(res: Response): Promise<string> {
+  const body = await res.json().catch(() => null) as { detail?: string } | null
+  return body?.detail ?? `API error: ${res.status}`
+}
+
+// ─── Propiedades ──────────────────────────────────────────────────────────────
+
+export interface PropertyFilters {
+  status?: PropertyStatus
+  city?: string
+  isFavorite?: boolean
+  minRoi?: number
+  maxRoi?: number
+  /** Las archivadas están fuera del inventario salvo que se pidan a propósito. */
+  includeArchived?: boolean
+}
+
+export async function fetchProperties(filters: PropertyFilters = {}): Promise<Property[]> {
+  const params = new URLSearchParams()
+  if (filters.status) params.set('status', filters.status)
+  if (filters.city) params.set('city', filters.city)
+  if (filters.isFavorite !== undefined) params.set('is_favorite', String(filters.isFavorite))
+  if (filters.minRoi !== undefined) params.set('min_roi', String(filters.minRoi))
+  if (filters.maxRoi !== undefined) params.set('max_roi', String(filters.maxRoi))
+  if (filters.includeArchived) params.set('include_archived', 'true')
+  const res = await authFetch(`${BASE}/api/properties${params.size ? `?${params}` : ''}`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
 
-export async function fetchProspect(id: number): Promise<Prospect> {
-  const res = await authFetch(`${BASE}/api/prospects/${id}`)
+export async function fetchProperty(id: number): Promise<Property> {
+  const res = await authFetch(`${BASE}/api/properties/${id}`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function createProperty(data: PropertyCreate): Promise<Property> {
+  const res = await authFetch(`${BASE}/api/properties`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+/**
+ * Sube o cambia valores. Nunca los quita: las claves nulas se filtran aquí, en
+ * el único lugar por donde pasa todo PATCH, porque vaciar un campo es otra
+ * operación (clearPropertyFields) y mover el status es otra más (transition).
+ */
+export async function updateProperty(id: number, data: PropertyPatch): Promise<Property> {
+  const payload = Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== null && value !== undefined),
+  )
+  const res = await authFetch(`${BASE}/api/properties/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export async function deleteProperty(id: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/properties/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await detail(res))
+}
+
+/** La única forma de mover el status: con los insumos que pide la etapa destino. */
+export async function transitionProperty(id: number, body: Transition): Promise<Property> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/transition`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+/** La única forma de dejar un campo vacío — y solo los que el servidor permite. */
+export async function clearPropertyFields(id: number, fields: ClearableField[]): Promise<Property> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/clear-fields`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  })
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -39,144 +119,46 @@ export async function fetchQuality(): Promise<QualityEntry[]> {
   return res.json()
 }
 
-export async function updateProspect(id: number, data: Partial<RawFields> & { isFavorite?: boolean }): Promise<Prospect> {
-  const res = await authFetch(`${BASE}/api/prospects/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function deleteProspect(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/prospects/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-}
-
-export async function parseProspect(url: string, text: string, image?: Blob): Promise<ParsedProspect> {
-  if (image) {
-    const form = new FormData()
-    form.append('url', url)
-    form.append('text', text)
-    form.append('file', image, 'screenshot.png')
-    const res = await authFetch(`${BASE}/api/prospects/parse`, { method: 'POST', body: form })
-    if (!res.ok) throw new Error(await res.text())
-    return res.json()
-  }
-  const res = await authFetch(`${BASE}/api/prospects/parse`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, text }),
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function uploadProspectImage(prospectId: number, file: File): Promise<PropertyImage> {
+export async function parseProperty(url: string, text: string, image?: Blob): Promise<ParsedProperty> {
   const form = new FormData()
-  form.append('file', file, file.name)
-  const res = await authFetch(`${BASE}/api/prospects/${prospectId}/images`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-
-export async function deleteProspectImage(prospectId: number, imageId: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/prospects/${prospectId}/images/${imageId}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
-}
-
-export async function uploadProjectImage(projectId: number, file: File, imageType: ImageType = 'antes'): Promise<ProjectImage> {
-  const form = new FormData()
-  form.append('file', file, file.name)
-  form.append('image_type', imageType)
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/images`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-
-export async function updateProjectImageType(projectId: number, imageId: number, imageType: ImageType): Promise<ProjectImage> {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/images/${imageId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_type: imageType }),
-  })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-
-export async function deleteProjectImage(projectId: number, imageId: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/images/${imageId}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
-}
-
-export async function createProspect(data: Omit<RawFields, 'url' | 'notes'> & { url?: string; notes?: string }): Promise<Prospect> {
-  const res = await authFetch(`${BASE}/api/prospects`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function fetchProjects(): Promise<Project[]> {
-  const res = await authFetch(`${BASE}/api/projects`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function fetchProject(id: number): Promise<Project> {
-  const res = await authFetch(`${BASE}/api/projects/${id}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function updateProject(id: number, data: Partial<RawProjectFields> & { isFavorite?: boolean }): Promise<Project> {
-  const res = await authFetch(`${BASE}/api/projects/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  form.append('url', url)
+  form.append('text', text)
+  if (image) form.append('file', image, 'screenshot.png')
+  const res = await authFetch(`${BASE}/api/properties/parse`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function generateProspectus(): Promise<Blob> {
   const res = await authFetch(`${BASE}/api/documents/prospectus`, { method: 'POST' })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: `API error: ${res.status}` }))
-    throw new Error(body.detail ?? `API error: ${res.status}`)
-  }
+  if (!res.ok) throw new Error(await detail(res))
   return res.blob()
 }
 
-export async function createProject(data: RawProjectFields & { prospectId?: number }): Promise<Project> {
-  const res = await authFetch(`${BASE}/api/projects`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+// ─── Fotos de la propiedad ────────────────────────────────────────────────────
+
+export async function uploadPropertyImage(id: number, file: File, imageType: ImageType = 'general'): Promise<PropertyImage> {
+  const form = new FormData()
+  form.append('file', file, file.name)
+  form.append('image_type', imageType)
+  const res = await authFetch(`${BASE}/api/properties/${id}/images`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
-export async function convertProspect(id: number, data: {
-  type: string; totalUnits: number; acquisitionDate: string; conclusionDate: string
-  currentValuation?: number; valuationDate?: string; status?: string
-}): Promise<Project> {
-  const res = await authFetch(`${BASE}/api/prospects/${id}/convert`, {
-    method: 'POST',
+export async function updatePropertyImageType(id: number, imageId: number, imageType: ImageType): Promise<PropertyImage> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/images/${imageId}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ image_type: imageType }),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
-export async function deleteProject(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/projects/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+export async function deletePropertyImage(id: number, imageId: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/images/${imageId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 export type SonarRunEvent =
@@ -211,7 +193,7 @@ export async function* streamSonarRun(cves: string[]): AsyncGenerator<SonarRunEv
   }
 }
 
-export async function importSonarSignal(signal: SonarSignal): Promise<{ prospect: Prospect }> {
+export async function importSonarSignal(signal: SonarSignal): Promise<{ property: Property }> {
   const res = await authFetch(`${BASE}/api/sonar/import`, { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(signal),
@@ -376,9 +358,9 @@ export async function deleteNode(nid: number): Promise<void> {
 
 // ─── Process instances ────────────────────────────
 
-export async function fetchInstances(projectId?: number): Promise<ProcessInstance[]> {
+export async function fetchInstances(propertyId?: number): Promise<ProcessInstance[]> {
   const params = new URLSearchParams()
-  if (projectId !== undefined) params.set('project_id', String(projectId))
+  if (propertyId !== undefined) params.set('property_id', String(propertyId))
   const url = `${BASE}/api/process/instances${params.size ? `?${params}` : ''}`
   const res = await authFetch(url)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
@@ -389,7 +371,7 @@ export async function createInstance(data: {
   name: string
   startDate: string
   templateId?: number | null
-  projectId?: number | null
+  propertyId?: number | null
   ownerId?: number | null
   frequencyDays?: number | null
   dueDate?: string | null
@@ -409,7 +391,7 @@ export async function updateInstance(iid: number, data: Partial<{
   startDate: string
   status: string
   notes: string
-  projectId: number | null
+  propertyId: number | null
   ownerId: number | null
   taskType: string
   dueDate: string | null
@@ -551,14 +533,14 @@ export async function updateProfitTemplate(data: Partial<ProfitSplitConfig>): Pr
   return res.json()
 }
 
-export async function fetchProjectProfit(pid: number): Promise<{ config: ProfitSplitConfig; waterfall: ProfitWaterfall }> {
-  const res = await authFetch(`${BASE}/api/projects/${pid}/profit`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+export async function fetchPropertyProfit(id: number): Promise<{ config: ProfitSplitConfig; waterfall: ProfitWaterfall }> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/profit`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
-export async function updateProjectProfit(pid: number, data: Partial<ProfitSplitConfig>): Promise<{ config: ProfitSplitConfig; waterfall: ProfitWaterfall }> {
-  const res = await authFetch(`${BASE}/api/projects/${pid}/profit`, {
+export async function updatePropertyProfit(id: number, data: Partial<ProfitSplitConfig>): Promise<{ config: ProfitSplitConfig; waterfall: ProfitWaterfall }> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/profit`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -575,7 +557,7 @@ export async function fetchInvestors(): Promise<Investor[]> {
   return res.json()
 }
 
-export async function fetchInvestor(id: number): Promise<Investor & { positions: ProjectInvestor[] }> {
+export async function fetchInvestor(id: number): Promise<Investor & { positions: PropertyInvestor[] }> {
   const res = await authFetch(`${BASE}/api/investors/${id}`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
@@ -606,42 +588,42 @@ export async function deleteInvestor(id: number): Promise<void> {
   if (!res.ok) throw new Error(`API error: ${res.status}`)
 }
 
-export async function fetchProjectInvestors(projectId: number): Promise<ProjectInvestor[]> {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/investors`)
+export async function fetchPropertyInvestors(propertyId: number): Promise<PropertyInvestor[]> {
+  const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
 
-export async function addProjectInvestor(
-  projectId: number,
+export async function addPropertyInvestor(
+  propertyId: number,
   data: { investorId: number; status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; notes: string }
-): Promise<ProjectInvestor> {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/investors`, {
+): Promise<PropertyInvestor> {
+  const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
-export async function updateProjectInvestment(
-  projectId: number,
+export async function updatePropertyInvestment(
+  propertyId: number,
   investmentId: number,
   data: Partial<{ status: string; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; returnAmount: number | null; returnDate: string | null; notes: string }>
-): Promise<ProjectInvestor> {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/investors/${investmentId}`, {
+): Promise<PropertyInvestor> {
+  const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors/${investmentId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
-export async function deleteProjectInvestment(projectId: number, investmentId: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/projects/${projectId}/investors/${investmentId}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+export async function deletePropertyInvestment(propertyId: number, investmentId: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors/${investmentId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ─── Zones ───────────────────────────────────────────────────────────────────
@@ -697,7 +679,7 @@ export async function runAnalysis(data: AnalysisRequest): Promise<AnalysisSnapsh
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -707,8 +689,8 @@ export async function fetchAnalysis(id: number): Promise<AnalysisSnapshot> {
   return res.json()
 }
 
-export async function fetchAnalyses(prospectId?: number): Promise<AnalysisSnapshot[]> {
-  const qs = prospectId != null ? `?prospect_id=${prospectId}` : ''
+export async function fetchAnalyses(propertyId?: number): Promise<AnalysisSnapshot[]> {
+  const qs = propertyId != null ? `?property_id=${propertyId}` : ''
   const res = await authFetch(`${BASE}/api/analyses${qs}`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
@@ -925,50 +907,26 @@ export async function deleteCotizacion(id: number): Promise<void> {
 
 // ── Floor-plan geometry ──
 
-export async function fetchProjectGeometry(id: number): Promise<FloorPlanModel | Record<string, never>> {
-  const res = await authFetch(`${BASE}/api/projects/${id}/geometry`)
+export async function fetchPropertyGeometry(id: number): Promise<FloorPlanModel | Record<string, never>> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/geometry`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
 
-export async function saveProjectGeometry(id: number, geometry: FloorPlanModel): Promise<FloorPlanModel> {
-  const res = await authFetch(`${BASE}/api/projects/${id}/geometry`, {
+export async function savePropertyGeometry(id: number, geometry: FloorPlanModel): Promise<FloorPlanModel> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/geometry`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ geometry }),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function uploadFloorplanImage(id: number, file: File): Promise<{ imageKey: string }> {
   const fd = new FormData()
   fd.append('file', file)
-  const res = await authFetch(`${BASE}/api/projects/${id}/floorplan-image`, { method: 'POST', body: fd })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function fetchProspectGeometry(id: number): Promise<FloorPlanModel | Record<string, never>> {
-  const res = await authFetch(`${BASE}/api/prospects/${id}/geometry`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function saveProspectGeometry(id: number, geometry: FloorPlanModel): Promise<FloorPlanModel> {
-  const res = await authFetch(`${BASE}/api/prospects/${id}/geometry`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ geometry }),
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function uploadProspectFloorplanImage(id: number, file: File): Promise<{ imageKey: string }> {
-  const fd = new FormData()
-  fd.append('file', file)
-  const res = await authFetch(`${BASE}/api/prospects/${id}/floorplan-image`, { method: 'POST', body: fd })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  const res = await authFetch(`${BASE}/api/properties/${id}/floorplan-image`, { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }

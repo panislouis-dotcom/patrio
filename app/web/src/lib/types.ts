@@ -115,15 +115,10 @@ export interface Property {
   issues: Issue[]
 }
 
-export interface ScoreWeights {
-  roi: number       // 0-1
-  capRate: number   // 0-1
-  profit: number    // 0-1
-}
-
 export interface QualityEntry {
   id: number
   name: string
+  status: PropertyStatus
   issues: Issue[]
 }
 
@@ -138,6 +133,81 @@ export type RawPropertyFields = Pick<Property,
   | 'totalUnits' | 'acquisitionDate' | 'firstRentDate' | 'valuationDate'
   | 'totalInvestment' | 'currentValuation' | 'saleDate' | 'salePrice'
 >
+
+// Lo que se le puede entregar a un PATCH. Los nulls que traiga se filtran en
+// updateProperty antes de salir: escribir un null nunca es una edición — es un
+// vaciado, y eso tiene su propio endpoint.
+export type PropertyPatch = Partial<RawPropertyFields> & {
+  isFavorite?: boolean
+  milestones?: Record<string, string>
+}
+
+// Alta: la dirección y el nombre son lo mínimo para reconocer un inmueble; el
+// resto lo completa CAPTURE_DEFAULTS del servidor. `status` no se pide porque
+// toda propiedad nace prospecto.
+export interface PropertyCreate {
+  name: string
+  address: string
+  city: string
+  url?: string
+  latitude?: number
+  longitude?: number
+  assetType?: string
+  strategyType?: string
+  sqmLand?: number
+  sqmConstruction?: number
+  landPrice?: number
+  acquisitionCostPct?: number
+  permitsCost?: number
+  subdivisionCost?: number
+  constructionCostPerSqm?: number
+  constructionOverhead?: number
+  projectedSale?: number
+  holdMonths?: number
+  rentMonthly?: number
+  notes?: string
+  isFavorite?: boolean
+}
+
+// Espeja CLEARABLE_FIELDS de properties_db: las columnas que pueden quedar
+// vacías. Que una fila concreta pueda perder un campo concreto lo decide el
+// servidor según su etapa — esta lista solo dice qué es vaciable en principio.
+export const CLEARABLE_FIELDS = [
+  'assetType', 'strategyType',
+  'sqmLand', 'sqmConstruction', 'landPrice', 'acquisitionCostPct',
+  'permitsCost', 'subdivisionCost', 'constructionCostPerSqm',
+  'constructionOverhead', 'projectedSale', 'holdMonths', 'rentMonthly',
+  'totalUnits', 'acquisitionDate', 'firstRentDate', 'saleDate', 'salePrice',
+  'totalInvestment', 'currentValuation', 'valuationDate',
+] as const
+export type ClearableField = typeof CLEARABLE_FIELDS[number]
+
+// Cada transición pide exactamente los insumos que su etapa destino necesita —
+// espejo de los cuerpos tipados de POST /api/properties/{id}/transition.
+interface TransitionCommon {
+  effectiveOn?: string   // YYYY-MM-DD; el servidor usa hoy si falta
+  notes?: string
+}
+
+export type Transition =
+  | (TransitionCommon & { to: 'oferta'; projectedSale?: number })
+  | (TransitionCommon & {
+      to: 'desarrollo'
+      acquisitionDate: string
+      totalUnits: number
+      currentValuation: number
+      valuationDate?: string
+      totalInvestment?: number   // solo hace falta sin desglose completo
+    })
+  | (TransitionCommon & {
+      to: 'en_renta'
+      firstRentDate: string
+      rentMonthly: number
+      currentValuation?: number
+      valuationDate?: string
+    })
+  | (TransitionCommon & { to: 'vendida'; saleDate: string; salePrice: number })
+  | (TransitionCommon & { to: 'archivada' })
 
 export type MemberRole = 'director' | 'responsable_proyecto' | 'lider_proyecto' | 'maestro' | 'ayudante' | 'finder'
 
@@ -227,7 +297,7 @@ export interface ProcessInstance {
   templateId: number | null
   templateName: string | null
   propertyId: number | null
-  projectName: string | null
+  propertyName: string | null
   ownerId: number | null
   ownerName: string | null
   taskType: 'proyecto' | 'periodica' | 'one_time'
@@ -403,7 +473,7 @@ export interface PropertyInvestor {
   propertyId: number
   investorId: number
   investorName: string
-  projectName: string
+  propertyName: string
   status: 'interesado' | 'comprometido' | 'fondeado'
   interestedAmount: number
   committedAmount: number
@@ -414,7 +484,7 @@ export interface PropertyInvestor {
   returnDate: string | null
   notes: string
   createdAt: string
-  // Computed server-side by project_investor_metrics view
+  // Derivadas en el servidor a partir de las fechas de la propiedad
   holdMonths: number
   interestAmount: number
   expectedReturn: number
