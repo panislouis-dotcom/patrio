@@ -164,7 +164,7 @@ test.describe('Propiedades — la tabla', () => {
     await expect(page.getByText(/^AVALUADAS \d+$/)).toBeVisible()
     await expect(page.getByText('Capital:')).toBeVisible()
     await expect(page.getByText('Valuación:')).toBeVisible()
-    await expect(page.getByText('Plusvalía:')).toBeVisible()
+    await expect(page.getByText('Ganancia no realizada:')).toBeVisible()
   })
 
   // ── Favoritos ───────────────────────────────────────────────────────────────

@@ -84,20 +84,23 @@ interface Heroes {
  * Es la misma precedencia que el servidor usa en headline_roi() y la tabla en
  * headlineRoi(): una sola idea de «el ROI que esta propiedad tiene para dar».
  *
- * Cada familia decide con su TOTAL y no con su anualizado, porque el total es el
- * que menos condiciones necesita (no depende de que exista un periodo). Así el
- * anualizado puede faltar sin arrastrarse a la familia entera.
+ * Cada familia decide con su GANANCIA % y no con su ROI, porque la ganancia sobre
+ * el plazo completo es la que menos condiciones necesita (no depende de que
+ * exista un periodo). Así el ROI puede faltar sin arrastrarse a la familia entera.
  *
- * Las tres parejas son ANUALIZADO y TOTAL, nombradas igual y en el mismo orden
- * para que se lean igual: el héroe grande decía +112% donde lo ganado fue +45.6%
- * porque no decía cuál de los dos era.
+ * Las tres parejas son un ROI y una ganancia %, y los nombres son los de
+ * docs/glosario.md: **ROI significa siempre anualizado**, y la cifra sobre el
+ * plazo completo se llama Ganancia. Cuando ambas se llamaban ROI, el héroe grande
+ * decía +112% donde lo ganado fue +45.6%, y el usuario reportó lo contrario desde
+ * el otro lado — «Roi esta mal porque no se mueve cuando muevo el plazo», mirando
+ * la total, que por definición no depende del plazo.
  */
 function heroesFor(p: Property): Heroes {
   if (p.realizedGainPct != null) {
     return {
       label: 'ROI REAL ANUAL', value: fmtSigned(p.realizedRoi), color: roiColorOf(p.realizedRoi),
       barPct: (p.realizedRoi ?? 0) * 100, caption: fmtMXN(p.realizedGain),
-      second: 'ROI REAL TOTAL', secondValue: fmtSigned(p.realizedGainPct),
+      second: 'GANANCIA REALIZADA %', secondValue: fmtSigned(p.realizedGainPct),
       secondColor: roiColorOf(p.realizedGainPct),
     }
   }
@@ -110,7 +113,7 @@ function heroesFor(p: Property): Heroes {
       // corre a hoy, y entonces lo dice con esas palabras en vez de dejar que la
       // cifra se lea como si fuera de cualquier día.
       caption: `${fmtMXN(p.unrealizedGain)} · AL ${p.valuationDate ?? 'DÍA DE HOY'}`,
-      second: 'GANANCIA NO REALIZADA', secondValue: fmtSigned(p.unrealizedGainPct),
+      second: 'GANANCIA NO REALIZADA %', secondValue: fmtSigned(p.unrealizedGainPct),
       secondColor: roiColorOf(p.unrealizedGainPct),
     }
   }
@@ -119,7 +122,7 @@ function heroesFor(p: Property): Heroes {
       label: 'ROI PROY. ANUAL', value: fmtSigned(p.projectedRoi), color: roiColorOf(p.projectedRoi),
       barPct: (p.projectedRoi ?? 0) * 100,
       caption: hasScore(p.status) ? `Score ${p.score ?? '—'}` : undefined,
-      second: 'ROI PROY. TOTAL', secondValue: fmtSigned(p.projectedRoiTotal),
+      second: 'GANANCIA PROYECTADA %', secondValue: fmtSigned(p.projectedRoiTotal),
       secondColor: roiColorOf(p.projectedRoiTotal),
     }
   }
@@ -700,7 +703,7 @@ export function PropertyDetailPage() {
                 ['VENTA PROYECTADA', p.projectedSale, fmtMXN],
                 ['GANANCIA PROYECTADA', p.projectedProfit, fmtMXN],
                 ['ROI PROY. ANUAL', p.projectedRoi, fmtPct],
-                ['ROI PROY. TOTAL', p.projectedRoiTotal, fmtPct],
+                ['GANANCIA PROYECTADA %', p.projectedRoiTotal, fmtPct],
                 ['RENTA ANUAL EST.', p.rentAnnual, fmtMXN],
               ])}
 
@@ -711,7 +714,7 @@ export function PropertyDetailPage() {
                 ['PRECIO DE VENTA', p.salePrice, fmtMXN],
                 ['GANANCIA REALIZADA', p.realizedGain, fmtMXN],
                 ['ROI REAL ANUAL', p.realizedRoi, fmtPct],
-                ['ROI REAL TOTAL', p.realizedGainPct, fmtPct],
+                ['GANANCIA REALIZADA %', p.realizedGainPct, fmtPct],
                 ['PLAZO REAL', p.holdMonthsActual, fmtMonths],
               ])}
 

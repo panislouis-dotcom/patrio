@@ -81,8 +81,18 @@ describe('PropiedadesTable · resumen del portafolio', () => {
     // Una de las dos en operación tiene avalúo: la otra no entra como $0.
     const appraised = group('AVALUADAS 1')
     expect(appraised.getByText('$6.0M')).not.toBeNull()
-    // Y la plusvalía se lee contra el capital de esas mismas: 2M sobre 4M.
+    // Y la ganancia se lee contra el capital de esas mismas: 2M sobre 4M.
     expect(appraised.getByText('$2.0M 50.0%')).not.toBeNull()
+  })
+
+  it('cada ganancia se llama por su nombre: son tres y una ya se cobró', async () => {
+    // «Plusvalía» es palabra prohibida en docs/glosario.md — llegó a nombrar tres
+    // conceptos distintos. Y «Ganancia» a secas no dice cuál de los tres es.
+    await renderTable(PORTFOLIO)
+
+    expect(screen.getByText('Ganancia no realizada:')).not.toBeNull()
+    expect(screen.getByText('Ganancia realizada:')).not.toBeNull()
+    expect(screen.queryByText(/Plusval/)).toBeNull()
   })
 
   it('lo vendido va en su propio grupo, nunca sumado a una valuación', async () => {

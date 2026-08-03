@@ -129,7 +129,7 @@ describe('PropertyDetailPage', () => {
     await renderPage(RENTED)
 
     expect(screen.getByText('ROI ANUAL')).not.toBeNull()
-    expect(screen.getByText('GANANCIA NO REALIZADA')).not.toBeNull()
+    expect(screen.getByText('GANANCIA NO REALIZADA %')).not.toBeNull()
     // "En pasos de después ves todo lo de antes": la proyección sigue ahí
     expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
     expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
@@ -158,7 +158,7 @@ describe('PropertyDetailPage', () => {
     await renderPage(SOLD)
 
     expect(screen.getAllByText('ROI REAL ANUAL').length).toBeGreaterThan(0)
-    expect(screen.getByText('ROI REAL TOTAL')).not.toBeNull()
+    expect(screen.getByText('GANANCIA REALIZADA %')).not.toBeNull()
     expect(screen.getByText('+22.5%')).not.toBeNull()
     expect(screen.getByText('+114.5%')).not.toBeNull()
     // El porcentaje total no se repite bajo un segundo nombre.
@@ -278,7 +278,7 @@ describe('PropertyDetailPage', () => {
     await renderPage(BASE_PROPERTY)
 
     expect(screen.getAllByText('ROI PROY. ANUAL')).toHaveLength(1)
-    expect(screen.getAllByText('ROI PROY. TOTAL')).toHaveLength(1)
+    expect(screen.getAllByText('GANANCIA PROYECTADA %')).toHaveLength(1)
     // Lo que la sección sí conserva es todo lo que el héroe no subió
     expect(screen.getByText('GANANCIA PROYECTADA')).not.toBeNull()
   })
@@ -292,7 +292,7 @@ describe('PropertyDetailPage', () => {
     // resultado, que es la respuesta con más realidad detrás.
     expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
     // Pero la marca viva sí murió: una vendida no tiene plusvalía sin realizar
-    expect(screen.queryByText('GANANCIA NO REALIZADA')).toBeNull()
+    expect(screen.queryByText('GANANCIA NO REALIZADA %')).toBeNull()
   })
 
   it('en desarrollo sin avalúo el héroe es la proyección, no dos guiones', async () => {

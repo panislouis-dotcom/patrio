@@ -204,8 +204,11 @@ export function PropiedadesTable() {
   //   · EN OPERACIÓN — el capital que hoy está adentro. Las vendidas no cuentan:
   //     ese dinero ya regresó.
   //   · AVALUADAS    — solo las que tienen avalúo, y su capital va con ellas, de
-  //     modo que valuación − capital = plusvalía sin que sobre nadie.
+  //     modo que valuación − capital = la ganancia no realizada sin que sobre nadie.
   //   · VENDIDAS     — lo que se cobró y lo que dejó.
+  //
+  // Cada cifra se nombra con su nombre canónico de docs/glosario.md, sin abreviar
+  // a «Ganancia» a secas: son tres ganancias distintas y una de ellas ya se cobró.
   //
   // Las archivadas quedan fuera de los tres: archivar es sacar del inventario.
   const operating = properties.filter(p => p.status === 'desarrollo' || p.status === 'en_renta')
@@ -316,13 +319,17 @@ export function PropiedadesTable() {
           {operating.length > 0 && summaryGroup(`EN OPERACIÓN ${operating.length}`, [
             ['Capital', fmtM(sum(operating, p => p.totalInvestment))],
           ])}
+          {/* El monto y su porcentaje van en la misma cifra, así que la etiqueta
+              es la del monto sin `%`: el sufijo solo aparece cuando el
+              porcentaje va solo y tiene que nombrarse a sí mismo. */}
           {appraised.length > 0 && summaryGroup(`AVALUADAS ${appraised.length}`, [
             ['Valuación', fmtM(sum(appraised, p => p.currentValuation))],
-            ['Plusvalía', `${fmtM(unrealized)} ${fmtPct(appraisedCapital > 0 ? unrealized / appraisedCapital : null)}`],
+            ['Ganancia no realizada',
+              `${fmtM(unrealized)} ${fmtPct(appraisedCapital > 0 ? unrealized / appraisedCapital : null)}`],
           ])}
           {closed.length > 0 && summaryGroup(`VENDIDAS ${closed.length}`, [
             ['Ventas', fmtM(sum(closed, p => p.salePrice))],
-            ['Ganancia', fmtM(sum(closed, p => p.realizedGain))],
+            ['Ganancia realizada', fmtM(sum(closed, p => p.realizedGain))],
           ])}
         </div>
       )}

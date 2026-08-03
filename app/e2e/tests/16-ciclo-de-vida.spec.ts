@@ -79,7 +79,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(detailRow(page, 'ETAPA')).toContainText('PROSPECTO')
     // 7,000,000 out of a 4,000,000 basis over the twenty-four modelled months
     await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+32.3%')
-    await expect(detailRow(page, 'ROI PROY. TOTAL')).toContainText('+75.0%')
+    await expect(detailRow(page, 'GANANCIA PROYECTADA %')).toContainText('+75.0%')
     await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(/Score \d+/)
     // Nothing has been bought, so there is no result to report
     await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
@@ -175,7 +175,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // ocupa la proyección, que es la mejor respuesta que esta propiedad tiene
     // hoy. (Que la marca lo desplace cuando alguien sí valúa es el test que
     // sigue.)
-    await expect(page.getByText('GANANCIA NO REALIZADA')).toHaveCount(0)
+    await expect(page.getByText('GANANCIA NO REALIZADA %')).toHaveCount(0)
     await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+32.3%')
 
     // The projection it was bought on stays readable — it is what reality is
@@ -199,7 +199,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 
     // 5,000,000 marked against the 4,000,000 that went in — y ahora la marca sí
     // desplaza a la proyección en el héroe, porque tiene más realidad detrás.
-    await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('+25.0%')
+    await expect(detailRow(page, 'GANANCIA NO REALIZADA %')).toContainText('+25.0%')
     await expect(detailRow(page, 'ROI ANUAL')).toContainText('$1,000,000')
     // Se capturó el monto y no su fecha de corte, así que el reloj del ROI sí
     // corre a hoy — y la ficha lo dice con esas palabras en vez de dejar leer la
@@ -261,7 +261,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // 7,000,000 out of 4,000,000, held the twenty-four months between the two dates
     await expect(detailRow(page, 'ROI REAL ANUAL')).toContainText('+32.3%')
     await expect(detailRow(page, 'ROI REAL ANUAL')).toContainText('$3,000,000')
-    await expect(detailRow(page, 'ROI REAL TOTAL')).toContainText('+75.0%')
+    await expect(detailRow(page, 'GANANCIA REALIZADA %')).toContainText('+75.0%')
 
     await expect(page.getByText('RESULTADO', { exact: true })).toBeVisible()
     // Los dos porcentajes ya los dicen los héroes, y un héroe es una promoción y
@@ -271,10 +271,10 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(detailRow(page, 'GANANCIA REALIZADA')).toContainText('$3,000,000')
     await expect(detailRow(page, 'PLAZO REAL')).toContainText('24 meses')
     await expect(page.getByText('ROI REAL ANUAL')).toHaveCount(1)
-    await expect(page.getByText('ROI REAL TOTAL')).toHaveCount(1)
+    await expect(page.getByText('GANANCIA REALIZADA %')).toHaveCount(1)
 
     // A sold asset is a closed fact, not a live mark: la marca se apaga…
-    await expect(page.getByText('GANANCIA NO REALIZADA')).toHaveCount(0)
+    await expect(page.getByText('GANANCIA NO REALIZADA %')).toHaveCount(0)
     // …pero el plan NO. Es el par que el modelo promete, y se apagaba justo
     // cuando se volvía comprobable: se proyectaron 3,000,000 de ganancia y se
     // realizaron 3,000,000, y las dos cifras tienen que poder leerse juntas.

@@ -103,7 +103,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await gotoProperty(page, id)
 
     await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(PROJECTED_ROI)
-    await expect(detailRow(page, 'ROI PROY. TOTAL')).toContainText(PROJECTED_ROI)
+    await expect(detailRow(page, 'GANANCIA PROYECTADA %')).toContainText(PROJECTED_ROI)
     // Score is a percentile against the other candidates, so it moves with them:
     // this asserts it is computed and shown, not what it happens to be today.
     await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(/Score \d+/)
@@ -143,7 +143,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     // Los dos ROI proyectados NO están aquí: los subió el héroe, y un héroe es
     // una promoción y no una copia. El plazo tampoco: es un supuesto, y
     // SUPUESTOS lo enseña con su origen.
-    for (const promoted of ['ROI PROY. ANUAL', 'ROI PROY. TOTAL']) {
+    for (const promoted of ['ROI PROY. ANUAL', 'GANANCIA PROYECTADA %']) {
       await expect(page.getByText(promoted, { exact: true })).toHaveCount(1)
     }
     await expect(detailRow(page, 'PLAZO PROYECTADO (MESES)')).toContainText('12')
@@ -441,7 +441,7 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await gotoProperty(page, id)
 
     // 8,000,000 marked against a 5,000,000 base
-    await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('+60.0%')
+    await expect(detailRow(page, 'GANANCIA NO REALIZADA %')).toContainText('+60.0%')
     await expect(detailRow(page, 'ROI ANUAL')).toContainText('$3,000,000')
     // El ROI de la marca se anualiza de la compra (2024-01) a la FECHA DE LA
     // VALUACIÓN (2025-06): diecisiete meses, y ahí se queda. Antes el numerador
