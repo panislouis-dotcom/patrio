@@ -45,7 +45,7 @@ test.describe('Propiedades — la tabla', () => {
       name: TEST_NAME,
       address: 'Av. Tabla 100',
       city: 'Monterrey',
-      landPrice: 2_000_000,
+      purchasePrice: 2_000_000,
       sqmLand: 300,
       projectedSale: 3_000_000,
       holdMonths: 12,
@@ -193,8 +193,8 @@ test.describe('Propiedades — la tabla', () => {
 
     await modalField(page, 'Nombre').fill(CREATED_NAME)
     await modalField(page, 'Dirección').fill('Calle Alta 456')
-    // Only the name and the land price gate the save: capture fast, complete later.
-    await modalField(page, 'Precio terreno (MXN)').fill('1500000')
+    // Only the name and the purchase price gate the save: capture fast, complete later.
+    await modalField(page, 'Precio de compra (MXN)').fill('1500000')
     await page.getByRole('button', { name: 'GUARDAR ▸' }).click()
 
     await expect(page.getByText('NUEVA PROPIEDAD')).toHaveCount(0)
@@ -270,14 +270,15 @@ test.describe('Propiedades — una vendida en la tabla', () => {
       name: SOLD_NAME,
       address: 'Av. Vendida 900',
       city: 'Monterrey',
-      landPrice: 4_000_000,
+      purchasePrice: 4_000_000,
+      // Captured explicitly so the basis is exactly the purchase price: left
+      // alone, the model would apply its 6.5% acquisition assumption.
       acquisitionCostPct: 0,
       permitsCost: 0,
       subdivisionCost: 0,
       sqmLand: 300,
       sqmConstruction: 0,
       constructionCostPerSqm: 0,
-      constructionOverhead: 1,
       projectedSale: 6_000_000,
       holdMonths: 12,
       latitude: 25.6866,

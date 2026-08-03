@@ -13,6 +13,21 @@ import type { Locator, Page } from '@playwright/test'
  */
 
 /**
+ * Opens a property's detail page and waits for it to actually be one.
+ *
+ * The page renders "Cargando…" until the property and its geometry both
+ * resolve, so an assertion fired straight after `goto` is racing that fetch
+ * rather than the thing it means to check. Under load that race is lost often
+ * enough to matter, and it fails as "element not found" — which reads like the
+ * element is wrong rather than absent. Every test here means "given this
+ * property's page is open, …"; this is that precondition, stated once.
+ */
+export async function gotoProperty(page: Page, id: number): Promise<void> {
+  await page.goto(`/propiedades/${id}`)
+  await expect(page.getByRole('button', { name: 'EDITAR', exact: true })).toBeVisible({ timeout: 15_000 })
+}
+
+/**
  * The row a detail page renders for `label`.
  *
  * EditableRow puts the label in its own span, so the span's parent is the row —
@@ -67,8 +82,13 @@ export async function clearField(page: Page, label: string): Promise<void> {
   await page.getByRole('button', { name: `Vaciar ${label}`, exact: true }).click()
 }
 
-/** Opens the AVANZAR A ▸ menu and picks a destination stage, revealing its gate. */
+/** Opens the AVANZAR A ▸ menu and picks a destination stage, revealing its gate.
+ *
+ * Espera a que la ficha haya cargado antes de abrir el menú: los destinos se
+ * calculan del status, así que abrirlo mientras la propiedad todavía viene en
+ * camino ofrece un menú que el re-render posterior descarta. */
 export async function advanceTo(page: Page, stageLabel: string): Promise<void> {
+  await expect(page.getByRole('button', { name: 'EDITAR', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'AVANZAR A ▸' }).click()
   await page.getByRole('button', { name: stageLabel, exact: true }).click()
 }

@@ -1,7 +1,9 @@
 import { test, expect } from '../fixtures/auth'
 import type { Page } from '@playwright/test'
 import { getToken, createProperty, deleteProperty, deletePropertyByName, API_BASE } from '../helpers/api'
-import { detailRow, advanceTo, confirmTransition } from '../helpers/detail'
+import {
+  gotoProperty, detailRow, advanceTo, confirmTransition, enterEditMode, saveEdits, setNumericField,
+} from '../helpers/detail'
 
 /**
  * The journey, walked once end to end through the UI.
@@ -24,7 +26,7 @@ const CICLO = {
   address: 'Av. Ciclo 700',
   city: 'Monterrey',
   assetType: 'edificio',
-  landPrice: 4_000_000,
+  purchasePrice: 4_000_000,
   acquisitionCostPct: 0,
   permitsCost: 0,
   subdivisionCost: 0,
@@ -72,7 +74,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
   // ── Prospecto ───────────────────────────────────────────────────────────────
 
   test('nace prospecto: se juzga por lo que promete y solo puede volverse oferta', async ({ page }) => {
-    await page.goto(`/propiedades/${id}`)
+    await gotoProperty(page, id)
 
     await expect(detailRow(page, 'ETAPA')).toContainText('PROSPECTO')
     // 7,000,000 out of a 4,000,000 basis over the twenty-four modelled months
@@ -88,7 +90,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
   // ── Oferta ──────────────────────────────────────────────────────────────────
 
   test('avanzar a oferta exige el modelo de salida, y abre el dinero', async ({ page }) => {
-    await page.goto(`/propiedades/${id}`)
+    await gotoProperty(page, id)
     await advanceTo(page, 'OFERTA')
 
     // Every offer models its exit, even when the plan is to rent
@@ -107,7 +109,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
   // ── El portón de desarrollo ─────────────────────────────────────────────────
 
   test('el portón de desarrollo no deja pasar sin sus insumos', async ({ page }) => {
-    await page.goto(`/propiedades/${id}`)
+    await gotoProperty(page, id)
     await advanceTo(page, 'DESARROLLO')
 
     // El portón pide lo que solo sabe quien compró, y nada más.
@@ -150,8 +152,8 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 
   // ── Desarrollo ──────────────────────────────────────────────────────────────
 
-  test('en desarrollo muere el score y nace la realidad', async ({ page, request }) => {
-    await page.goto(`/propiedades/${id}`)
+  test('en desarrollo muere el score, y comprar no inventa un avalúo', async ({ page }) => {
+    await gotoProperty(page, id)
     await advanceTo(page, 'DESARROLLO')
 
     await gateField(page, 'FECHA DE ADQUISICIÓN').fill(ACQUIRED_ON)
@@ -167,19 +169,9 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 
     // Y como nadie ha avaluado nada todavía, la plusvalía no existe: comprar no
     // produce un avalúo, y la ausencia se dice con un guion, no con un número.
+    // (Que aparezca cuando alguien sí valúa es el test siguiente.)
     await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('—')
 
-    // El día que aparece un avalúo de verdad, aparece la plusvalía con él:
-    // 5,000,000 contra 4,000,000 de capital.
-    const valued = await request.patch(`${API_BASE}/api/properties/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { currentValuation: 5_000_000, valuationDate: ACQUIRED_ON },
-    })
-    expect(valued.ok()).toBeTruthy()
-    await page.reload()
-
-    await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('+25.0%')
-    await expect(detailRow(page, 'ROI ANUAL')).toContainText('$1,000,000')
     // The projection it was bought on stays readable — it is what reality is
     // measured against, and in later steps you see everything from before
     await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$3,000,000')
@@ -190,15 +182,29 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     expect(await offeredStages(page)).toEqual(['EN RENTA', 'VENDIDA'])
   })
 
+  test('la plusvalía aparece cuando alguien valúa, no cuando alguien compra', async ({ page }) => {
+    await gotoProperty(page, id)
+    await enterEditMode(page)
+
+    // The appraisal is captured on the ficha the day one actually exists — which
+    // is the workflow the gate stopped pretending to cover.
+    await setNumericField(page, 'VALUACIÓN', '5000000')
+    await saveEdits(page)
+
+    // 5,000,000 marked against the 4,000,000 that went in
+    await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('+25.0%')
+    await expect(detailRow(page, 'ROI ANUAL')).toContainText('$1,000,000')
+  })
+
   // ── En renta ────────────────────────────────────────────────────────────────
 
   test('una renta anterior a la compra se rechaza con su motivo, no con un 500', async ({ page }) => {
-    await page.goto(`/propiedades/${id}`)
+    await gotoProperty(page, id)
     await advanceTo(page, 'EN RENTA')
 
     // The modal cannot know this is impossible; the domain can, and says so
     await gateField(page, 'FECHA DE LA PRIMERA RENTA').fill('2024-01-01')
-    await gateField(page, 'RENTA MENSUAL REAL').fill('40000')
+    await gateField(page, 'RENTA MENSUAL COBRADA').fill('40000')
     await confirmTransition(page, 'EN RENTA').click()
 
     await expect(page.getByText('La primera renta no puede ser anterior a la adquisición.')).toBeVisible()
@@ -208,19 +214,22 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
   })
 
   test('con la fecha correcta la propiedad pasa a renta y el cap rate se vuelve real', async ({ page }) => {
-    await page.goto(`/propiedades/${id}`)
+    await gotoProperty(page, id)
     await advanceTo(page, 'EN RENTA')
 
     await gateField(page, 'FECHA DE LA PRIMERA RENTA').fill(FIRST_RENT_ON)
-    await gateField(page, 'RENTA MENSUAL REAL').fill('40000')
+    await gateField(page, 'RENTA MENSUAL COBRADA').fill('40000')
     await confirmTransition(page, 'EN RENTA').click()
 
     await expect(detailRow(page, 'ETAPA')).toContainText('EN RENTA')
     await expect(detailRow(page, 'PRIMERA RENTA')).toContainText(FIRST_RENT_ON)
-    await expect(detailRow(page, 'RENTA/MES')).toContainText('$40,000')
-    // 40,000 × 12 / 4,000,000 — a yield the property is actually producing
-    await expect(detailRow(page, 'CAP RATE')).toContainText('12.0%')
-    await expect(detailRow(page, 'RENTA ANUAL')).toContainText('$480,000')
+    await expect(detailRow(page, 'RENTA/MES COBRADA')).toContainText('$40,000')
+    // 40,000 × 12 / 4,000,000 — the yield the property is actually producing
+    await expect(detailRow(page, 'CAP RATE REAL')).toContainText('12.0%')
+    await expect(detailRow(page, 'RENTA ANUAL COBRADA')).toContainText('$480,000')
+    // Nothing was ever modelled, so the projected pair stays empty rather than
+    // quietly adopting the collected rent
+    await expect(detailRow(page, 'CAP RATE PROY.')).toContainText('—')
 
     // The rent history is kept: a hold still exits through a sale
     expect(await offeredStages(page)).toEqual(['VENDIDA'])
@@ -229,7 +238,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
   // ── Vendida ─────────────────────────────────────────────────────────────────
 
   test('al vender, el resultado sustituye a la proyección y la propiedad se congela', async ({ page }) => {
-    await page.goto(`/propiedades/${id}`)
+    await gotoProperty(page, id)
     await advanceTo(page, 'VENDIDA')
 
     await gateField(page, 'FECHA DE VENTA').fill(SOLD_ON)
@@ -239,12 +248,17 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(detailRow(page, 'ETAPA')).toContainText('VENDIDA')
 
     // 7,000,000 out of 4,000,000, held the twenty-four months between the two dates
-    await expect(detailRow(page, 'ROI REALIZADO')).toContainText('+32.3%')
-    await expect(detailRow(page, 'ROI REALIZADO')).toContainText('$3,000,000')
-    await expect(detailRow(page, 'GANANCIA REALIZADA')).toContainText('+75.0%')
+    await expect(detailRow(page, 'ROI REAL ANUAL')).toContainText('+32.3%')
+    await expect(detailRow(page, 'ROI REAL ANUAL')).toContainText('$3,000,000')
+    await expect(detailRow(page, 'ROI REAL TOTAL')).toContainText('+75.0%')
 
     await expect(page.getByText('RESULTADO', { exact: true })).toBeVisible()
-    await expect(detailRow(page, 'GANANCIA %')).toContainText('75.0%')
+    // El porcentaje total ya lo dice el héroe como ROI REAL TOTAL. Repetirlo
+    // aquí bajo un tercer nombre era parte de lo que hacía leer mal el par
+    // anualizado/total, así que la fila se fue; lo que RESULTADO conserva de la
+    // ganancia son los pesos, que no se confunden con ningún porcentaje.
+    await expect(page.getByText('GANANCIA %', { exact: true })).toHaveCount(0)
+    await expect(detailRow(page, 'GANANCIA REALIZADA')).toContainText('$3,000,000')
     await expect(detailRow(page, 'PLAZO REAL')).toContainText('24 meses')
 
     // A sold asset is a closed fact, not a live mark: the projection goes quiet
@@ -278,7 +292,7 @@ test.describe.serial('Archivar una propiedad', () => {
     name: '[TEST] Propiedad Archivada',
     address: 'Av. Archivo 10',
     city: 'Monterrey',
-    landPrice: 1_000_000,
+    purchasePrice: 1_000_000,
     projectedSale: 1_200_000,
     latitude: 25.6866,
     longitude: -100.3161,
@@ -298,7 +312,7 @@ test.describe.serial('Archivar una propiedad', () => {
   })
 
   test('ARCHIVAR avisa que es terminal y la saca del inventario activo', async ({ page }) => {
-    await page.goto(`/propiedades/${id}`)
+    await gotoProperty(page, id)
     await page.getByRole('button', { name: 'ARCHIVAR' }).click()
 
     await expect(page.getByText(/Archivar la saca del inventario activo sin borrar nada/)).toBeVisible()

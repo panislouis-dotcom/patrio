@@ -137,10 +137,12 @@ Emptying is its own operation precisely so that "cleared" never has to be guesse
 | `to` | Required in the body | Why |
 |---|---|---|
 | `oferta` | `projectedSale` (unless already captured) | Every offer models its exit, even when the plan is to rent |
-| `desarrollo` | `acquisitionDate`, `totalUnits`, `currentValuation`; `totalInvestmentCaptured` only when the cost breakdown is incomplete | A property in development has been bought |
-| `en_renta` | `firstRentDate`, `rentMonthlyActual`; `currentValuation` if none is on file | The rent asked for is the one being collected, and it never overwrites the projected one |
+| `desarrollo` | `acquisitionDate`, `totalUnits`; `totalInvestmentCaptured` only when the cost breakdown is incomplete | A property in development has been bought |
+| `en_renta` | `firstRentDate`, `rentMonthlyActual` | The rent asked for is the one being collected, and it never overwrites the projected one |
 | `vendida` | `saleDate`, `salePrice` | The exit is frozen at its actual figures |
 | `archivada` | — | Terminal drawer; available from any non-terminal stage |
+
+`currentValuation` and `valuationDate` are *accepted* by the `desarrollo` and `en_renta` bodies but required by neither: buying a building does not produce an appraisal, and demanding one only ever got one invented. Capture the valuation when a real one exists — until then `unrealizedGain` is `null`, which is the honest answer.
 
 All bodies also accept `effectiveOn` (defaults to today) and `notes`. Every move is recorded in `property_status_events` with its author, so the pipeline has a history: days-in-offer, conversion rate, time-to-first-rent.
 
