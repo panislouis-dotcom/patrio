@@ -101,35 +101,51 @@ def test_rent_absent_means_no_yield_never_zero(client, test_property):
 
 # ── Investment basis ─────────────────────────────────────────────────────────
 
-def test_complete_breakdown_is_an_underwriting_basis(client, test_property):
+def test_the_investment_is_always_the_breakdown(client, test_property):
+    """Una sola resolución, así que el contrato no publica de dónde salió: no hay
+    otro lugar del que pudiera salir."""
     p = _get(client, test_property["id"])
-    assert p["investmentBasis"] == "underwriting"
     assert Decimal(str(p["totalInvestment"])) == Decimal("3480000")
+    assert "investmentBasis" not in p
 
 
-def test_an_incomplete_breakdown_falls_back_to_the_manual_total(client, test_property):
-    """Clear one of the five costs and the system can no longer recompute anything:
-    the basis becomes whatever was typed in, and says so."""
-    with get_db() as conn:
-        conn.execute("UPDATE properties SET total_investment_captured = 9000000 WHERE id = %s",
-                     (test_property["id"],))
+def test_clearing_one_cost_subtracts_it_instead_of_breaking_the_basis(client, test_property):
+    """Antes, vaciar uno de los cinco costos tumbaba el «desglose completo» y la
+    base se caía al total tecleado (o a None). Ahora el componente ausente vale
+    0 y la inversión es lo que queda: 3,480,000 − 50,000 de permisos."""
     client.post(f"/api/properties/{test_property['id']}/clear-fields",
                 json={"fields": ["permitsCost"]})
     p = _get(client, test_property["id"])
-    assert p["investmentBasis"] == "manual"
-    assert Decimal(str(p["totalInvestment"])) == Decimal("9000000")
-    # …and every figure that divides by the basis follows it, rather than
-    # reporting a total from one source and a per-m² from another.
-    assert Decimal(str(p["investmentPerSqm"])) == Decimal("30000.00")
+    assert Decimal(str(p["totalInvestment"])) == Decimal("3430000")
+    # …y toda cifra que divide entre la base la sigue, en vez de reportar un
+    # total de una fuente y un por-m² de otra. 3,430,000 / 300 m² = 11,433.33.
+    assert Decimal(str(p["investmentPerSqm"])) == Decimal("11433.33")
 
 
-def test_without_breakdown_or_total_there_is_no_basis(client, test_property):
-    client.post(f"/api/properties/{test_property['id']}/clear-fields",
-                json={"fields": ["purchasePrice"]})
+def test_an_all_in_total_is_captured_as_a_purchase_price(client, test_property):
+    """La capacidad que reemplaza a la inversión tecleada: un total all-in se
+    captura como precio de compra con el pct de adquisición en 0, y la base da
+    ese total al peso. El 0 es lo que impide que el 6.5% por omisión le sume
+    $617,500 a un número que ya venía completo."""
+    client.patch(f"/api/properties/{test_property['id']}",
+                 json={"purchasePrice": 9_500_000, "acquisitionCostPct": 0,
+                       "permitsCost": 0, "subdivisionCost": 0,
+                       "sqmConstruction": 0, "constructionCostPerSqm": 0})
+    p = _get(client, test_property["id"])
+    assert Decimal(str(p["totalInvestment"])) == Decimal("9500000")
+    assert p["assumptions"]["acquisitionCostPct"]["source"] == "captured"
+
+
+def test_an_empty_cost_stack_is_no_basis_at_all(client, test_property):
+    """Cero no es una inversión de cero pesos: es que nadie capturó nada, y la
+    ficha lo tiene que seguir pintando como «—»."""
+    client.patch(f"/api/properties/{test_property['id']}",
+                 json={"purchasePrice": 0, "permitsCost": 0, "subdivisionCost": 0,
+                       "sqmConstruction": 0, "constructionCostPerSqm": 0})
     p = _get(client, test_property["id"])
     assert p["totalInvestment"] is None
-    assert p["investmentBasis"] == "manual"
     assert p["projectedProfit"] is None
+    assert p["investmentPerSqm"] is None
 
 
 # ── Realized ─────────────────────────────────────────────────────────────────
@@ -178,7 +194,9 @@ def test_unrealized_gain_pct_is_none_not_zero_when_uncomputable(client, desarrol
     is a claim. Absence has to look like absence."""
     with get_db() as conn:
         conn.execute(
-            "UPDATE properties SET total_investment_captured = NULL, purchase_price = NULL WHERE id = %s",
+            "UPDATE properties SET purchase_price = NULL, permits_cost = NULL,"
+            " subdivision_cost = NULL, sqm_construction = NULL,"
+            " construction_cost_per_sqm = NULL WHERE id = %s",
             (desarrollo_property["id"],))
     p = _get(client, desarrollo_property["id"])
     assert p["totalInvestment"] is None
@@ -262,7 +280,6 @@ def test_the_capital_base_survives_the_sale(client, desarrollo_property):
     p = _advance(client, desarrollo_property["id"], to="vendida",
                  saleDate="2026-07", salePrice=5_000_000)
     assert Decimal(str(p["totalInvestment"])) == Decimal("3480000")
-    assert p["investmentBasis"] == "underwriting"
 
 
 def test_an_archived_prospect_keeps_the_projection_it_was_archived_with(client, test_property):
@@ -372,8 +389,9 @@ def test_an_assumption_says_whether_anybody_chose_it(client, test_property):
 
 def test_a_new_property_assumes_nothing_it_can_be_asked_about(client):
     """Recién capturada, una propiedad no ha elegido supuestos: los tres salen
-    como del modelo, y su inversión se puede teclear a mano porque el desglose
-    todavía no está completo de verdad."""
+    como del modelo. Su inversión ya resuelve del desglose desde el minuto uno —
+    2,000,000 × 1.065 por el 6.5% supuesto — porque los otros cuatro costos
+    nacen en 0 y un componente ausente vale 0."""
     r = client.post("/api/properties", json={
         "name": "[TEST] Recién Capturada", "address": "Calle Cinco 5", "city": "Monterrey",
         "purchasePrice": 2_000_000,
@@ -385,6 +403,6 @@ def test_a_new_property_assumes_nothing_it_can_be_asked_about(client):
             "constructionOverhead": "default",
             "holdMonths": "default",
         }
-        assert p["totalInvestmentCaptured"] is None
+        assert Decimal(str(p["totalInvestment"])) == Decimal("2130000")
     finally:
         client.delete(f"/api/properties/{p['id']}")

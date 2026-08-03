@@ -127,15 +127,30 @@ def test_archivada_is_terminal(client, test_property):
     assert _status(test_property["id"]) == "archivada"
 
 
-def test_desarrollo_refuses_a_property_with_no_investment_base(client, test_property):
+def test_desarrollo_refuses_a_property_that_does_not_know_what_it_paid(client, test_property):
+    """El gate ya no pregunta por «una base de inversión resoluble» — con la regla
+    única siempre resuelve. Pregunta lo que de verdad distingue a una propiedad
+    comprada: cuánto se pagó por ella."""
     _transition(client, test_property["id"], to="oferta")
     client.post(f"/api/properties/{test_property['id']}/clear-fields",
                 json={"fields": ["purchasePrice"]})
     r = _transition(client, test_property["id"], to="desarrollo",
                     acquisitionDate="2025-01", totalUnits=4, currentValuation=4_000_000)
     assert r.status_code == 422
-    assert "inversión" in r.json()["error"]["message"].lower()
+    assert "precio de compra" in r.json()["error"]["message"].lower()
     assert _status(test_property["id"]) == "oferta"
+
+
+def test_desarrollo_accepts_the_purchase_price_in_the_transition(client, test_property):
+    """Como `projectedSale` en →Oferta: la etapa puede traer el dato que exige, en
+    vez de obligar a un PATCH previo para poder avanzar."""
+    _transition(client, test_property["id"], to="oferta")
+    client.post(f"/api/properties/{test_property['id']}/clear-fields",
+                json={"fields": ["purchasePrice"]})
+    r = _transition(client, test_property["id"], to="desarrollo",
+                    acquisitionDate="2025-01", totalUnits=4, purchasePrice=1_000_000)
+    assert r.status_code == 200, r.text
+    assert _status(test_property["id"]) == "desarrollo"
 
 
 def test_en_renta_refuses_a_rent_of_zero(client, desarrollo_property):

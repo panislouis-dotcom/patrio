@@ -18,7 +18,7 @@ def _row(**overrides) -> dict:
         "construction_cost_per_sqm": 6_000, "construction_overhead": 1.3,
         "projected_sale": 8_000_000, "hold_months": 18, "rent_monthly_projected": 20_000,
         "total_units": None, "acquisition_date": None, "first_rent_date": None,
-        "sale_date": None, "sale_price": None, "total_investment_captured": None,
+        "sale_date": None, "sale_price": None,
         "rent_monthly_actual": None,
         "current_valuation": None, "valuation_date": None,
         **overrides,
@@ -90,6 +90,15 @@ def test_desarrollo_demands_its_capital_and_dates():
     assert "totalUnits" in _fields(_bought(total_units=None), "error")
 
 
+def test_desarrollo_demands_knowing_what_was_paid():
+    """A Desarrollo se entra habiendo comprado, y no se compra sin saber cuánto
+    se pagó. Espejo exacto del gate del trigger de la 027: es la única parte del
+    desglose que no puede ser cero de verdad."""
+    assert "purchasePrice" in _fields(_bought(purchase_price=None), "error")
+    assert "purchasePrice" in _fields(_bought(purchase_price=0), "error")
+    assert "purchasePrice" not in _fields(_bought(), "error")
+
+
 def test_buying_does_not_demand_an_appraisal():
     """Comprar no produce un avalúo. Exigir una valuación el día de la compra
     solo lograba que se inventara —el modal la rellenaba con la venta
@@ -99,12 +108,6 @@ def test_buying_does_not_demand_an_appraisal():
         row = _bought(status=status, current_valuation=None,
                       first_rent_date=date(2025, 6, 1), rent_monthly_actual=10_000)
         assert "currentValuation" not in _fields(row, "error")
-
-
-def test_desarrollo_warns_when_the_investment_was_typed_in():
-    manual = _bought(purchase_price=None, total_investment_captured=5_000_000)
-    assert "totalInvestmentCaptured" in _fields(manual, "warning")
-    assert "totalInvestmentCaptured" not in _fields(_bought(), "error")
 
 
 def test_a_stale_valuation_is_a_warning():
@@ -126,11 +129,16 @@ def test_en_renta_without_a_captured_rent_is_an_error():
 
 
 def test_vendida_wants_the_record_closed():
+    """Sin base de capital no hay ganancia realizada, y ahora «sin base» solo
+    puede significar una cosa: el desglose entero está vacío. Basta un costo
+    capturado para que la base exista, así que la advertencia se prueba sobre la
+    pila completa en cero."""
     sold = _row(status="vendida", sale_date=date(2026, 7, 1), sale_price=5_000_000,
-                acquisition_date=None, purchase_price=None)
+                acquisition_date=None, purchase_price=None,
+                sqm_construction=0, construction_cost_per_sqm=0)
     fields = {i.field for i in _issues(sold)}
     assert "acquisitionDate" in fields   # no hold, so no realized ROI
-    assert "totalInvestmentCaptured" in fields   # no basis, so no realized gain
+    assert "purchasePrice" in fields     # empty cost stack, so no realized gain
 
 
 # ── The mirror ───────────────────────────────────────────────────────────────
@@ -153,38 +161,16 @@ def test_archivada_is_asked_for_nothing():
     assert stage_requirements("archivada", _row(purchase_price=None)) == {}
 
 
-def test_a_typed_total_that_disagrees_with_the_breakdown_is_a_warning():
-    """Las dos versiones de la inversión conviven: el desglose manda, pero el
-    total capturado no se borra ni se esconde. Si no cuadran, uno de los dos
-    está mal y hay que decirlo en vez de elegir en silencio."""
-    # El desglose del fixture suma 3,000,000×1.06 + 200×6,000×1.3 = 4,740,000.
-    assert "totalInvestmentCaptured" in _fields(
-        _bought(total_investment_captured=6_000_000), "warning")
-    assert "totalInvestmentCaptured" not in _fields(
-        _bought(total_investment_captured=4_740_000), "warning")
+def test_nothing_is_reconciled_because_there_is_only_one_investment():
+    """Ya no hay dos versiones de la inversión que confrontar. La única viene del
+    desglose, así que no puede desacordar consigo misma y ninguna advertencia
+    puede hablar de que «no cuadran».
 
-
-def test_a_rounded_typed_total_is_not_a_disagreement():
-    """Un peso de diferencia es cómo se teclea un número, no un desacuerdo sobre
-    cuánto se invirtió."""
-    assert "totalInvestmentCaptured" not in _fields(
-        _bought(total_investment_captured=4_740_100), "warning")
-
-
-def test_a_partial_breakdown_larger_than_the_typed_total_cannot_add_up():
-    """Con el desglose incompleto manda el total tecleado y los costos que sí se
-    capturaron son una PARTE de él — que la ficha pinta como barras más un renglón
-    «sin desglosar» por el resto. Una parte mayor que el todo deja al desglose sin
-    forma de sumar su propio total, y es el único caso en que no puede cuadrar.
-
-    Vaciar `permits_cost` rompe el desglose; los costos que quedan siguen sumando
-    4,740,000, así que un total tecleado de 3,000,000 no los cubre."""
-    partial = _bought(permits_cost=None)
-    assert "totalInvestmentCaptured" in _fields(
-        partial | {"total_investment_captured": 3_000_000}, "warning")
-    assert "totalInvestmentCaptured" not in {
-        i.field for i in _issues(partial | {"total_investment_captured": 6_000_000})
-        if "suman más" in i.message}
+    El desglose del fixture suma 3,000,000×1.06 + 200×6,000×1.3 = 4,740,000, y
+    esa es la base sin importar quién más opine."""
+    row = _bought()
+    assert metrics(row)["totalInvestment"] == 4_740_000
+    assert not [i for i in _issues(row) if "cuadra" in i.message or "suman más" in i.message]
 
 
 def test_a_valuation_before_the_purchase_has_no_period_to_annualize():

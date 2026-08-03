@@ -11,12 +11,12 @@ def test_large_money_roundtrips_exactly():
         row = conn.execute(
             """INSERT INTO properties (name, address, city, status, url,
                    latitude, longitude, acquisition_date,
-                   total_investment_captured, current_valuation, valuation_date)
+                   purchase_price, current_valuation, valuation_date)
                VALUES ('[TEST] Big','x','y','desarrollo','http://x',
                    25.6,-100.3,'2025-01-01',
                    22333444.55, 19888777.66, '2026-01-01')
-               RETURNING total_investment_captured, current_valuation""").fetchone()
-        assert row["total_investment_captured"] == Decimal("22333444.55")
+               RETURNING purchase_price, current_valuation""").fetchone()
+        assert row["purchase_price"] == Decimal("22333444.55")
         assert row["current_valuation"] == Decimal("19888777.66")
         conn.execute("DELETE FROM properties WHERE name='[TEST] Big'")
 

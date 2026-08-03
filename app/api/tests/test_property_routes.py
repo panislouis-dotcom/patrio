@@ -14,7 +14,7 @@ def test_list_returns_the_property(client, test_property):
 def test_detail_carries_the_whole_contract(client, test_property):
     p = client.get(f"/api/properties/{test_property['id']}").json()
     for field in ("id", "name", "status", "score", "issues", "images",
-                  "totalInvestment", "investmentBasis", "projectedRoi", "capRate",
+                  "totalInvestment", "projectedRoi", "capRate",
                   "latitude", "longitude", "milestones"):
         assert field in p, f"Missing field: {field}"
     assert isinstance(p["milestones"], dict)
@@ -35,8 +35,10 @@ def test_create_starts_in_prospecto(client):
     created = r.json()
     try:
         assert created["status"] == "prospecto"
-        # The capture defaults leave a resolvable base from the first save.
-        assert created["investmentBasis"] == "underwriting"
+        # Los cinco costos nacen en 0, así que la pila suma 0 y la base es «—»:
+        # una propiedad sin nada capturado no ha invertido cero pesos, no ha
+        # invertido nada, y el contrato tiene que poder decir la diferencia.
+        assert created["totalInvestment"] is None
         assert created["holdMonths"] == 12
     finally:
         _delete_property(created["id"])

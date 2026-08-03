@@ -191,31 +191,39 @@ def test_capturing_the_default_value_changes_only_the_provenance():
     assert uw.assumptions(captured)["hold_months"]["source"] == "captured"
 
 
-def test_the_breakdown_is_complete_with_the_five_costs():
-    """Los supuestos no cuentan: siempre resuelven, así que exigirlos solo
-    lograba que toda propiedad naciera con desglose 'completo' y la inversión
-    real no se pudiera teclear nunca."""
-    assert uw.has_breakdown(INPUTS)
-    assert not uw.has_breakdown(dict(INPUTS, permits_cost=None))
-    assert uw.has_breakdown(dict(INPUTS, acquisition_cost_pct=None,
-                                 construction_overhead=None, hold_months=None))
+def test_the_basis_is_always_the_cost_stack():
+    """Una sola resolución: la base ES el desglose. No hay segundo número que
+    pueda contradecirla ni procedencia que reportar."""
+    assert uw.basis(INPUTS) == uw.investment(INPUTS) == Decimal("3480000.000")
 
 
-def test_the_basis_prefers_the_breakdown_over_the_typed_total():
-    """While the breakdown is complete the system owns the total; a stale manual
-    figure must never win over it."""
-    assert uw.basis(dict(INPUTS, total_investment_captured=9_000_000)) == Decimal("3480000.000")
-    assert uw.basis_kind(dict(INPUTS)) == "underwriting"
+def test_a_missing_component_is_worth_zero_not_a_missing_basis():
+    """Antes, un costo vacío tumbaba el «desglose completo» y la base se caía a
+    None. Ahora vale 0 y la base sigue siendo la suma de lo que sí se capturó."""
+    assert uw.basis(dict(INPUTS, permits_cost=None)) == Decimal("3430000.000")
 
 
-def test_without_a_breakdown_the_basis_is_the_typed_total():
-    partial = dict(INPUTS, permits_cost=None, total_investment_captured=9_000_000)
-    assert uw.basis(partial) == Decimal("9000000")
-    assert uw.basis_kind(partial) == "manual"
+def test_an_all_in_total_captured_as_purchase_price_is_exactly_that_total():
+    """La capacidad que se retiró al borrar la inversión tecleada: un total
+    all-in que nadie quiere desglosar se captura como precio de compra con el
+    pct de adquisición en 0, y la base da ese total al peso.
+
+    El 0 EXPLÍCITO es la mitad del trato: dejarlo vacío significa «aplica el
+    6.5% del sistema» y le sumaría $617,500 a un total que ya venía completo."""
+    all_in = {"purchase_price": 9_500_000, "acquisition_cost_pct": 0}
+    assert uw.basis(all_in) == Decimal("9500000")
+
+    sin_el_cero = {"purchase_price": 9_500_000}
+    assert uw.basis(sin_el_cero) == Decimal("10117500.000")
 
 
-def test_with_neither_there_is_no_basis():
-    assert uw.basis(dict(INPUTS, permits_cost=None)) is None
+def test_a_stack_that_sums_to_zero_is_no_basis_at_all():
+    """Cero no es una base de capital: es que nadie ha capturado nada. Publicar
+    $0 lo convertiría en una medición, y la ficha tiene que seguir diciendo «—».
+    Es exactamente el estado de una propiedad recién dada de alta, cuyos cinco
+    costos nacen en 0 por CAPTURE_DEFAULTS."""
+    assert uw.basis({}) is None
+    assert uw.basis(dict.fromkeys(uw.COST_KEYS, 0)) is None
 
 
 def test_cap_rate_is_yield_on_cost():
