@@ -137,6 +137,64 @@ def test_the_ten_year_metrics_travel_under_the_name_the_view_reads(client, test_
     assert snap["irr10YrPct"] is not None
 
 
+# ── El costo de obra entra una sola vez ──────────────────────────────────────
+
+def test_the_analyzer_does_not_add_the_property_s_own_construction_budget(client, test_property):
+    """Hay dos modelos de obra —el presupuesto de la propiedad y el precio de
+    zona del analizador— y sumarlos contaría dos veces el mismo peso. El
+    analizador corre su escenario propio: su costo total es compra + SU
+    remodelación + transacción + financiamiento, y nada más."""
+    with mock.patch("api.analyzer.find_comparables", return_value=([], None)), \
+            mock.patch("api.analyzer.get_remodel_cost",
+                       return_value={"cost_per_m2_mxn": 10_000, "updated_at": None}):
+        r = client.post("/api/analyses", json={"propertyId": test_property["id"]})
+    assert r.status_code == 201, r.text
+    snap = r.json()
+    # La propiedad presupuesta 200 m² × $9,000 × 1.3 = $2,340,000 de obra. El
+    # analizador cotiza los mismos 200 m² a su propio precio de zona.
+    assert float(snap["remodelCostEstimate"]) == 200 * 10_000
+    assert float(snap["totalCost"]) == pytest.approx(
+        float(snap["purchasePrice"]) + float(snap["remodelCostEstimate"])
+        + float(snap["transactionCosts"]) + float(snap["financingCosts"]))
+
+
+def test_a_property_with_no_planned_works_is_not_charged_a_ground_up_build(client, test_property):
+    """Desde la 025, `sqm_construction` son los metros de obra A EJECUTAR: 0
+    significa comprar y quedarse. Antes se leía como "es un lote pelón" y el
+    analizador cambiaba solo a obra nueva sobre TODO el terreno — el escenario
+    más caro posible, que nadie pidió."""
+    from api.db import get_db
+    with get_db() as conn:
+        conn.execute("UPDATE properties SET sqm_construction = 0 WHERE id = %s",
+                     (test_property["id"],))
+    with mock.patch("api.analyzer.find_comparables", return_value=([], None)), \
+            mock.patch("api.analyzer.get_remodel_cost",
+                       return_value={"cost_per_m2_mxn": 10_000, "updated_at": None}):
+        r = client.post("/api/analyses", json={"propertyId": test_property["id"]})
+    assert r.status_code == 201, r.text
+    snap = r.json()
+    assert float(snap["remodelCostEstimate"]) == 0
+    assert snap["interventionLevel"] == "media"  # la elección del usuario se respeta
+    assert any("Sin metros de obra capturados" in w for w in snap["dataQualityWarnings"])
+
+
+def test_a_ground_up_scenario_is_asked_for_by_name(client, test_property):
+    """Quien quiera valorar construir de cero lo elige en el formulario, y
+    entonces sí se mide sobre el terreno."""
+    from api.db import get_db
+    with get_db() as conn:
+        conn.execute("UPDATE properties SET sqm_construction = 0 WHERE id = %s",
+                     (test_property["id"],))
+    with mock.patch("api.analyzer.find_comparables", return_value=([], None)), \
+            mock.patch("api.analyzer.get_remodel_cost",
+                       return_value={"cost_per_m2_mxn": 10_000, "updated_at": None}):
+        r = client.post("/api/analyses", json={
+            "propertyId": test_property["id"], "interventionLevel": "obra_nueva"})
+    assert r.status_code == 201, r.text
+    # 300 m² de terreno × $10,000
+    assert float(r.json()["remodelCostEstimate"]) == 300 * 10_000
+
+
 def test_post_missing_property_id_422(client):
     r = client.post("/api/analyses", json={})
     assert r.status_code == 422

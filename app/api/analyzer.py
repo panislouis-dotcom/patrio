@@ -37,6 +37,8 @@ DEFAULT_PLAZO_CREDITO_MESES = 240
 DEFAULT_GASTOS_OPERATIVOS_PCT = 0.30
 DEFAULT_LISTING_HAIRCUT = 0.06
 DEFAULT_DISCOUNT_RATE = 0.10
+# Último recurso cuando la zona no tiene tabla de costos de obra.
+DEFAULT_REMODEL_COST_PER_M2 = 9000
 
 
 # ─── Exceptions ──────────────────────────────────────
@@ -386,13 +388,43 @@ def analyze_property(
     zone_id = zone_row["id"]
 
     # ── 3. Remodel cost ──────────────────────────────
-    # Detect obra_nueva: sqm_construction = 0
+    # DE DÓNDE SALE EL COSTO DE OBRA — una sola fuente, a propósito.
+    #
+    # Hay dos modelos de obra en el sistema y sumarlos sería contar dos veces el
+    # mismo peso, que es justo el bug que la 025 mató en la captura:
+    #   · el de la PROPIEDAD (`construction_cost_per_sqm` × overhead), que es lo
+    #     que el operador presupuestó para este trato;
+    #   · el del ANALIZADOR (`remodel_costs` por zona y nivel de intervención),
+    #     que es el precio de mercado de la obra en esa zona.
+    #
+    # El analizador corre su ESCENARIO PROPIO: toma su $/m² de la tabla de zona
+    # y NO suma la obra presupuestada de la propiedad — de ahí que este módulo
+    # jamás lea `construction_cost_per_sqm` ni `construction_overhead`. Esa es
+    # la razón de ser de la herramienta: contrastar el presupuesto propio contra
+    # lo que la zona dice que cuesta. Si sumara ambos, no compararía nada.
+    #
+    # Lo único que toma de la propiedad son los METROS: el área es un hecho
+    # físico del inmueble, no un supuesto de costo, y por eso no duplica nada.
     actual_intervention = intervention_level
-    remodel_area = sqm_construction
-    if sqm_construction == 0:
-        actual_intervention = "obra_nueva"
-        remodel_area = p["sqm_land"]
-        warnings.append("sqm_construction=0 → usando obra_nueva sobre sqm_land")
+    if intervention_level == "obra_nueva":
+        # Construir de cero se mide sobre el terreno, no sobre lo que se va a
+        # remodelar. Es una elección explícita del formulario.
+        remodel_area = float(p["sqm_land"] or 0)
+    else:
+        remodel_area = sqm_construction
+
+    # Desde la 025 `sqm_construction` son los metros de obra A EJECUTAR, así que
+    # 0 significa "no hay obra que hacer" — comprar y quedarse. Antes se
+    # interpretaba como "es un lote pelón" y se cambiaba solo a obra nueva sobre
+    # TODO el terreno: el escenario más caro posible, inventado. En una casa sin
+    # obra capturada eso agregaba millones de costo que nadie presupuestó. Quien
+    # quiera valorar un ground-up lo pide por su nombre en el formulario.
+    if remodel_area <= 0:
+        warnings.append(
+            "Sin metros de obra capturados: esta corrida valora la compra tal cual, "
+            "sin costo de remodelación. Para modelar obra, captura los m² a ejecutar "
+            "o elige intervención 'obra nueva'."
+        )
 
     remodel_data = get_remodel_cost(zone_id, actual_intervention)
     remodel_zone_match = True
@@ -413,8 +445,12 @@ def analyze_property(
         cost_per_m2 = float(remodel_data["cost_per_m2_mxn"])
         remodel_updated_at = remodel_data.get("updated_at")
     else:
-        cost_per_m2 = 9000  # absolute fallback
-        warnings.append("Sin datos de remodel_costs, usando $9,000/m² por defecto")
+        cost_per_m2 = DEFAULT_REMODEL_COST_PER_M2
+        # Solo es un supuesto en uso si hay metros que multiplicar. Anunciar un
+        # $/m² por omisión sobre cero metros describe un cálculo que no ocurrió.
+        if remodel_area > 0:
+            warnings.append(
+                f"Sin datos de remodel_costs, usando ${cost_per_m2:,.0f}/m² por defecto")
 
     remodel_cost = remodel_area * cost_per_m2
 
