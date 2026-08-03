@@ -161,6 +161,30 @@ BEGIN
     IF bad IS NOT NULL THEN
         RAISE EXCEPTION '024: proyectos con conclusion_date anterior a acquisition_date: %', bad;
     END IF;
+
+    -- Séptima compuerta: negativos. El esquema viejo solo prohibía renta
+    -- negativa y los modelos aceptaban cualquier float, pero properties pone
+    -- CHECK (>= 0) en once columnas. Sin este aviso, un solo número negativo
+    -- heredado tumba la migración a media faena con un volcado de tupla y sin
+    -- decir en qué fila — y eso pasa dentro del job de PreSync, contra reloj.
+    SELECT string_agg(fila, '; ' ORDER BY fila) INTO bad FROM (
+        SELECT 'proyecto ' || id::text AS fila FROM projects
+         WHERE least(coalesce(land_price, 0), coalesce(permits_cost, 0),
+                     coalesce(subdivision_cost, 0), coalesce(construction_cost_per_sqm, 0),
+                     coalesce(projected_sale, 0), coalesce(rent_monthly, 0),
+                     coalesce(total_investment, 0), coalesce(current_valuation, 0),
+                     coalesce(sqm_land, 0), coalesce(sqm_construction, 0),
+                     coalesce(acquisition_cost_pct, 0), coalesce(construction_overhead, 0),
+                     coalesce(hold_months, 0), coalesce(total_units, 0)) < 0
+        UNION ALL
+        SELECT 'prospecto ' || id::text FROM prospects
+         WHERE least(land_price, permits_cost, subdivision_cost, construction_cost_per_sqm,
+                     projected_sale, rent_monthly, sqm_land, sqm_construction,
+                     acquisition_cost_pct, construction_overhead, hold_months) < 0
+    ) neg;
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION '024: valores negativos heredados que properties no acepta (corregirlos antes de migrar): %', bad;
+    END IF;
 END;
 $$;
 
@@ -183,6 +207,17 @@ BEGIN
     FROM projects WHERE pg_temp.text_to_date(valuation_date) IS NULL;
     IF txt IS NOT NULL THEN
         RAISE NOTICE '024: proyectos con valuation_date no parseable — queda NULL: %', txt;
+    END IF;
+
+    -- Las vendidas heredan una venta APROXIMADA: no existía precio de venta, así
+    -- que se toma la última valuación y la fecha de conclusión. Esas cifras
+    -- alimentan la ganancia realizada que el prospecto imprime como hecho, así
+    -- que hay que nombrarlas: son las filas a corregir antes del próximo
+    -- documento a inversionistas.
+    SELECT string_agg(format('%s (venta ≈ %s)', name, current_valuation), '; ' ORDER BY name)
+      INTO txt FROM projects WHERE status = 'exited';
+    IF txt IS NOT NULL THEN
+        RAISE NOTICE '024: ventas aproximadas (precio = última valuación, fecha = conclusión) — corregir con cifras reales: %', txt;
     END IF;
 END;
 $$;
@@ -461,7 +496,7 @@ SELECT
     coalesce(j.construction_overhead,     s.construction_overhead),
     coalesce(j.projected_sale,            s.projected_sale),
     nullif(coalesce(j.hold_months,  s.hold_months),  0),
-    nullif(coalesce(j.rent_monthly, s.rent_monthly), 0),  -- 0 = no renta → NULL
+    nullif(coalesce(nullif(j.rent_monthly, 0), s.rent_monthly), 0),  -- 0 = no renta → NULL
     nullif(j.total_units, 0),
     pg_temp.text_to_date(j.acquisition_date),
     -- conclusion_date es «PRIMERA RENTA» en la ficha de proyecto, pero solo en
@@ -537,16 +572,9 @@ SELECT id, NULL, status, created_at::date,
 FROM properties;
 
 -- 4e. Fotos de ambos lados. file_path se conserva tal cual (apunta al storage).
-INSERT INTO property_images (
-    property_id, file_path, file_name, content_type, sort_order,
-    image_type, legacy_source, legacy_image_id, uploaded_at
-)
-SELECT p.id, i.file_path, i.file_name, i.content_type, i.sort_order,
-       'general', 'prospect_images', i.id, i.uploaded_at
-FROM prospect_images i
-JOIN properties p ON p.legacy_prospect_id = i.prospect_id
-ON CONFLICT (property_id, file_path) DO NOTHING;
-
+-- El proyecto entra PRIMERO: cuando el mismo archivo está en ambas tablas gana
+-- su clasificación (antes/después), que dice más que un 'general' — misma
+-- doctrina que el resto de la fusión, donde el proyecto es la verdad reciente.
 INSERT INTO property_images (
     property_id, file_path, file_name, content_type, sort_order,
     image_type, legacy_source, legacy_image_id, uploaded_at
@@ -555,6 +583,16 @@ SELECT p.id, i.file_path, i.file_name, i.content_type, i.sort_order,
        i.image_type, 'project_images', i.id, i.uploaded_at
 FROM project_images i
 JOIN properties p ON p.legacy_project_id = i.project_id
+ON CONFLICT (property_id, file_path) DO NOTHING;
+
+INSERT INTO property_images (
+    property_id, file_path, file_name, content_type, sort_order,
+    image_type, legacy_source, legacy_image_id, uploaded_at
+)
+SELECT p.id, i.file_path, i.file_name, i.content_type, i.sort_order,
+       'general', 'prospect_images', i.id, i.uploaded_at
+FROM prospect_images i
+JOIN properties p ON p.legacy_prospect_id = i.prospect_id
 ON CONFLICT (property_id, file_path) DO NOTHING;
 
 -- ── 5. Recableado de satélites ───────────────────────────────────────────────
