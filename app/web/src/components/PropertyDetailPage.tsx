@@ -14,7 +14,7 @@ import type {
 import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
 import {
   ALLOWED_TRANSITIONS, PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL,
-  hasScore, isPrePurchase, runsAnalysis, takesInvestors, takesTasks, hasProfitSplit,
+  hasScore, runsAnalysis, takesInvestors, takesTasks, hasProfitSplit,
 } from '../lib/status'
 import type { PropertyStatus } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
@@ -59,8 +59,76 @@ type NumKey = { [K in keyof RawPropertyFields]-?: NonNullable<RawPropertyFields[
 
 const fmtNum = (n: number | null | undefined) => (n != null ? String(n) : '—')
 const fmtMonths = (n: number | null | undefined) => (n != null ? `${n} meses` : '—')
-const roiColorOf = (roi: number | null) =>
+const roiColorOf = (roi: number | null | undefined) =>
   roi == null ? colors.secondary : roi > 0.5 ? colors.primary : roi > 0.25 ? colors.tertiary : '#c0392b'
+/** El porcentaje de un héroe: con signo y un decimal, no el fmtPct de las filas. */
+const fmtSigned = (n: number | null | undefined) =>
+  n != null ? `${n > 0 ? '+' : ''}${(n * 100).toFixed(1)}%` : '—'
+
+/** Las dos cifras grandes de la ficha, ya formateadas. */
+interface Heroes {
+  label: string; value: string; color: string; barPct?: number; caption?: string
+  second?: string; secondValue?: string; secondColor?: string
+}
+
+/**
+ * Qué contesta la ficha con su elemento más grande.
+ *
+ * No lo elige la etapa: lo elige QUÉ TANTA REALIDAD respalda cada respuesta. Una
+ * propiedad contesta con lo realizado si vendió, con su marca si es suya y
+ * alguien la valuó, y con su proyección si todavía es un plan. Amarrado a la
+ * etapa, el héroe prometía una cifra que el dato no tenía: una en desarrollo sin
+ * avalúo enseñaba «— / —» arriba mientras su proyección viva estaba treinta
+ * filas más abajo, y una archivada enseñaba dos guiones el 100% de las veces.
+ *
+ * Es la misma precedencia que el servidor usa en headline_roi() y la tabla en
+ * headlineRoi(): una sola idea de «el ROI que esta propiedad tiene para dar».
+ *
+ * Cada familia decide con su TOTAL y no con su anualizado, porque el total es el
+ * que menos condiciones necesita (no depende de que exista un periodo). Así el
+ * anualizado puede faltar sin arrastrarse a la familia entera.
+ *
+ * Las tres parejas son ANUALIZADO y TOTAL, nombradas igual y en el mismo orden
+ * para que se lean igual: el héroe grande decía +112% donde lo ganado fue +45.6%
+ * porque no decía cuál de los dos era.
+ */
+function heroesFor(p: Property): Heroes {
+  if (p.realizedGainPct != null) {
+    return {
+      label: 'ROI REAL ANUAL', value: fmtSigned(p.realizedRoi), color: roiColorOf(p.realizedRoi),
+      barPct: (p.realizedRoi ?? 0) * 100, caption: fmtMXN(p.realizedGain),
+      second: 'ROI REAL TOTAL', secondValue: fmtSigned(p.realizedGainPct),
+      secondColor: roiColorOf(p.realizedGainPct),
+    }
+  }
+  if (p.unrealizedGainPct != null) {
+    return {
+      label: 'ROI ANUAL', value: fmtSigned(p.roi), color: roiColorOf(p.roi),
+      barPct: (p.roi ?? 0) * 100,
+      // El ROI de la marca se anualiza de la compra a la fecha de la valuación,
+      // así que el héroe dice hasta cuándo cuenta. Sin fecha de corte el reloj sí
+      // corre a hoy, y entonces lo dice con esas palabras en vez de dejar que la
+      // cifra se lea como si fuera de cualquier día.
+      caption: `${fmtMXN(p.unrealizedGain)} · AL ${p.valuationDate ?? 'DÍA DE HOY'}`,
+      second: 'GANANCIA NO REALIZADA', secondValue: fmtSigned(p.unrealizedGainPct),
+      secondColor: roiColorOf(p.unrealizedGainPct),
+    }
+  }
+  if (p.projectedRoiTotal != null) {
+    return {
+      label: 'ROI PROY. ANUAL', value: fmtSigned(p.projectedRoi), color: roiColorOf(p.projectedRoi),
+      barPct: (p.projectedRoi ?? 0) * 100,
+      caption: hasScore(p.status) ? `Score ${p.score ?? '—'}` : undefined,
+      second: 'ROI PROY. TOTAL', secondValue: fmtSigned(p.projectedRoiTotal),
+      secondColor: roiColorOf(p.projectedRoiTotal),
+    }
+  }
+  // Sin venta, sin marca y sin proyección no hay ningún rendimiento que anunciar,
+  // y dos guiones enormes no son una respuesta. Lo que sí se sabe de una
+  // propiedad así es cuánto capital pide, así que eso dice. Un solo héroe: no hay
+  // segundo número que no sea inventarlo.
+  return { label: 'INVERSIÓN', value: fmtMXN(p.totalInvestment), color: colors.neutral }
+}
 
 export function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -199,7 +267,6 @@ export function PropertyDetailPage() {
 
   const p = property
   const stage = p.status
-  const early = isPrePurchase(stage) || stage === 'archivada'
   const sold = stage === 'vendida'
   const errors = p.issues.filter(i => i.severity === 'error')
   const warnings = p.issues.filter(i => i.severity === 'warning')
@@ -304,31 +371,63 @@ export function PropertyDetailPage() {
     />
   )
 
-  // ── Héroes por etapa ────────────────────────────────────────────────────────
-  // Lo que importa de una propiedad cambia con su etapa: antes de comprar, lo
-  // que promete; después, lo que va rindiendo; al vender, lo que dejó.
+  // ── Héroes ──────────────────────────────────────────────────────────────────
+  const heroes = heroesFor(p)
+
+  // Un héroe es una PROMOCIÓN, no una copia: la cifra que sube deja su fila. Una
+  // misma cifra dos veces en la misma pantalla se lee como dos cifras, que es
+  // exactamente lo que hacía confundir el par anualizado/total. Regla única para
+  // las cinco etapas — antes PROYECCIÓN repetía sus dos héroes y RESULTADO no.
   //
-  // Los dos números de una vendida son ANUALIZADO y TOTAL, y la etiqueta tiene
-  // que decir cuál es cuál: una venta a seis meses hacía que el héroe grande
-  // dijera +112% cuando lo ganado fue +45.6%. Se nombran como ya se nombra la
-  // etapa temprana (ROI PROY. ANUAL / ROI PROY. TOTAL) — misma pareja, mismo
-  // orden, mismas palabras — para que los dos pares se lean igual.
-  const heroes = sold
-    ? { label: 'ROI REAL ANUAL', value: p.realizedRoi, second: 'ROI REAL TOTAL', secondValue: p.realizedGainPct, caption: fmtMXN(p.realizedGain) }
-    : early
-      ? { label: 'ROI PROY. ANUAL', value: p.projectedRoi, second: 'ROI PROY. TOTAL', secondValue: p.projectedRoiTotal, caption: hasScore(stage) ? `Score ${p.score ?? '—'}` : undefined }
-      : { label: 'ROI ANUAL', value: p.roi, second: 'GANANCIA NO REALIZADA', secondValue: p.unrealizedGainPct, caption: fmtMXN(p.unrealizedGain) }
+  // Se compara por etiqueta a propósito: que el héroe y la fila que sustituye se
+  // llamen con las mismas palabras es la condición para que sustituirla no
+  // esconda nada, y hacerlo así deja esa condición verificada en vez de supuesta.
+  const promoted = new Set([heroes.label, heroes.second])
 
   // El precio de compra es lo que cuesta adquirir el inmueble como está; la
   // obra es lo que se va a ejecutar encima. Nada de lo que ya está construido
   // y ya está dentro del precio aparece dos veces.
-  const investmentItems = [
+  const costItems = [
     { label: 'Precio de compra', amount: p.purchasePrice ?? 0 },
     { label: 'Costos adq.', amount: p.acquisitionCosts ?? 0 },
     { label: 'Permisos', amount: p.permitsCost ?? 0 },
     { label: 'Subdivisión', amount: p.subdivisionCost ?? 0 },
     { label: 'Obra a ejecutar', amount: p.constructionTotal ?? 0 },
   ]
+  // Con el desglose completo el total ES la suma de los cinco costos y no sobra
+  // nada. Con la inversión capturada a mano sobra lo que nadie clasificó, y ese
+  // resto tiene nombre: es capital del que no se sabe en qué se fue. Decirlo es
+  // más honesto que repartirlo, y es lo que permite que las barras sumen 100%
+  // sin que la cifra grande deje de ser la inversión de la propiedad.
+  const brokenDown = costItems.reduce((sum, i) => sum + i.amount, 0)
+  const uncategorized = (p.totalInvestment ?? 0) - brokenDown
+  const investmentItems = brokenDown > 0 && uncategorized > 1
+    ? [...costItems, { label: 'Sin desglosar', amount: uncategorized }]
+    : costItems
+
+  /**
+   * Una sección de cifras DERIVADAS se dibuja solo si alguna de sus filas tiene
+   * valor — la política de vacío de InvestmentBreakdown, aplicada a las demás.
+   * Una derivada sin valor no es un pendiente de captura sino una pregunta que
+   * esta propiedad no puede contestar, y tres guiones seguidos bajo un título no
+   * informan de nada. Las filas capturables (DATOS, FECHAS) no pasan por aquí:
+   * ahí el guion sí es información, porque señala qué falta teclear.
+   */
+  const statSection = (
+    title: string,
+    rows: Array<[string, number | null | undefined, (n: number | null | undefined) => string]>,
+  ) => {
+    const visible = rows.filter(([label, value]) => value != null && !promoted.has(label))
+    if (visible.length === 0) return null
+    return (
+      <>
+        <SectionDivider label={title} />
+        {visible.map(([label, value, format]) => (
+          <StatRow key={label} label={label} value={format(value)} />
+        ))}
+      </>
+    )
+  }
 
   const tabs: Array<['general' | 'finanzas' | 'analisis', string]> = [
     ['general', 'GENERAL'],
@@ -422,18 +521,20 @@ export function PropertyDetailPage() {
 
               <MetricHero
                 label={heroes.label}
-                value={heroes.value != null ? `${heroes.value > 0 ? '+' : ''}${(heroes.value * 100).toFixed(1)}%` : '—'}
-                color={roiColorOf(heroes.value)}
-                barPct={heroes.value != null ? heroes.value * 100 : 0}
+                value={heroes.value}
+                color={heroes.color}
+                barPct={heroes.barPct}
                 barsReady={barsReady}
                 caption={heroes.caption}
               />
-              <MetricHero
-                label={heroes.second}
-                value={heroes.secondValue != null ? `${heroes.secondValue > 0 ? '+' : ''}${(heroes.secondValue * 100).toFixed(1)}%` : '—'}
-                color={roiColorOf(heroes.secondValue)}
-                size={24}
-              />
+              {heroes.second && (
+                <MetricHero
+                  label={heroes.second}
+                  value={heroes.secondValue!}
+                  color={heroes.secondColor!}
+                  size={24}
+                />
+              )}
 
               <SectionDivider label="DATOS" />
               {/* La inversión son dos hechos, no uno: la base con la que se
@@ -542,14 +643,14 @@ export function PropertyDetailPage() {
                 <>
                   <InvestmentBreakdown
                     label="DESGLOSE DE INVERSIÓN"
-                    total={p.totalInvestment ?? 0}
                     items={investmentItems}
                     barsReady={barsReady}
                   />
-                  <SectionDivider label="MÉTRICAS" />
-                  <StatRow label="INVERSIÓN/m²" value={fmtMXN(p.investmentPerSqm)} />
-                  <StatRow label="VENTA/m²" value={fmtMXN(p.salePerSqm)} />
-                  <StatRow label="COMPRA/m² TERRENO" value={fmtMXN(p.purchasePricePerSqm)} />
+                  {statSection('MÉTRICAS', [
+                    ['INVERSIÓN/m²', p.investmentPerSqm, fmtMXN],
+                    ['VENTA/m²', p.salePerSqm, fmtMXN],
+                    ['COMPRA/m² TERRENO', p.purchasePricePerSqm, fmtMXN],
+                  ])}
                 </>
               )}
 
@@ -585,30 +686,34 @@ export function PropertyDetailPage() {
                 hint: assumptionHint('holdMonths'),
               })}
 
-              {/* La proyección sobrevive a la compra: es contra ella que se mide
-                  la realidad. Solo al vender el servidor la apaga. */}
-              <SectionDivider label="PROYECCIÓN" />
-              <StatRow label="VENTA PROYECTADA" value={fmtMXN(p.projectedSale)} />
-              <StatRow label="GANANCIA PROYECTADA" value={fmtMXN(p.projectedProfit)} />
-              <StatRow label="ROI PROY. ANUAL" value={fmtPct(p.projectedRoi)} />
-              <StatRow label="ROI PROY. TOTAL" value={fmtPct(p.projectedRoiTotal)} />
-              <StatRow label="RENTA ANUAL EST." value={fmtMXN(p.rentAnnual)} />
-              <StatRow label="PLAZO PROYECTADO" value={fmtMonths(p.holdMonths)} />
+              {/* La proyección sobrevive a la compra Y a la venta: es contra
+                  ella que se mide la realidad, y apagarla al vender la apagaba
+                  justo cuando se volvía comprobable. Sus dos ROI solo aparecen
+                  aquí cuando el héroe no los subió — es decir, en una propiedad
+                  que ya tiene una respuesta con más realidad detrás. */}
+              {/* El plazo NO está aquí: es un supuesto, no un resultado del
+                  modelo, y SUPUESTOS lo enseña tres filas arriba con su origen
+                  — que es más de lo que decía este renglón. Además era lo único
+                  que esta sección siempre tenía, así que una propiedad que nunca
+                  se modeló no podía dejar de anunciar una proyección vacía. */}
+              {statSection('PROYECCIÓN', [
+                ['VENTA PROYECTADA', p.projectedSale, fmtMXN],
+                ['GANANCIA PROYECTADA', p.projectedProfit, fmtMXN],
+                ['ROI PROY. ANUAL', p.projectedRoi, fmtPct],
+                ['ROI PROY. TOTAL', p.projectedRoiTotal, fmtPct],
+                ['RENTA ANUAL EST.', p.rentAnnual, fmtMXN],
+              ])}
 
-              {sold && (
-                <>
-                  <SectionDivider label="RESULTADO" />
-                  <StatRow label="PRECIO DE VENTA" value={fmtMXN(p.salePrice)} />
-                  {/* GANANCIA REALIZADA se queda porque son pesos y no se
-                      confunde con nada. El porcentaje total NO se repite aquí:
-                      lo dice el héroe como ROI REAL TOTAL, y tenerlo dos veces
-                      con dos nombres distintos era parte de lo que hacía leer
-                      mal el par anualizado/total. */}
-                  <StatRow label="GANANCIA REALIZADA" value={fmtMXN(p.realizedGain)} />
-                  <StatRow label="ROI REAL ANUAL" value={fmtPct(p.realizedRoi)} />
-                  <StatRow label="PLAZO REAL" value={fmtMonths(p.holdMonthsActual)} />
-                </>
-              )}
+              {/* RESULTADO lo abre la venta, no sus renglones: es la sección de
+                  un hecho, y sin ese hecho no existe aunque alguien haya tecleado
+                  un precio. Adentro sí manda la política de vacío. */}
+              {sold && statSection('RESULTADO', [
+                ['PRECIO DE VENTA', p.salePrice, fmtMXN],
+                ['GANANCIA REALIZADA', p.realizedGain, fmtMXN],
+                ['ROI REAL ANUAL', p.realizedRoi, fmtPct],
+                ['ROI REAL TOTAL', p.realizedGainPct, fmtPct],
+                ['PLAZO REAL', p.holdMonthsActual, fmtMonths],
+              ])}
 
               {p.issues.length > 0 && (
                 <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>

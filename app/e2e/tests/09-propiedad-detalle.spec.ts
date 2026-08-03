@@ -15,8 +15,9 @@ import {
  * investment is captured by hand and the tools of a bought property are open).
  *
  * Every derived figure asserted below was confirmed against the API for exactly
- * these inputs. The ones that move with the calendar — ROI ANUAL and PLAZO REAL
- * on a property still held — are asserted for presence, never for value.
+ * these inputs. PLAZO REAL sí se mueve con el calendario mientras la propiedad
+ * se tenga, así que solo se afirma su presencia; ROI ANUAL ya no: cierra su
+ * reloj en la fecha de la valuación que lo alimenta.
  */
 
 /**
@@ -139,7 +140,13 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(page.getByText('PROYECCIÓN')).toBeVisible()
     await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$870,000')
     await expect(detailRow(page, 'RENTA ANUAL EST.')).toContainText('$240,000')
-    await expect(detailRow(page, 'PLAZO PROYECTADO')).toContainText('12 meses')
+    // Los dos ROI proyectados NO están aquí: los subió el héroe, y un héroe es
+    // una promoción y no una copia. El plazo tampoco: es un supuesto, y
+    // SUPUESTOS lo enseña con su origen.
+    for (const promoted of ['ROI PROY. ANUAL', 'ROI PROY. TOTAL']) {
+      await expect(page.getByText(promoted, { exact: true })).toHaveCount(1)
+    }
+    await expect(detailRow(page, 'PLAZO PROYECTADO (MESES)')).toContainText('12')
     // RESULTADO belongs to a sale that has not happened
     await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
   })
@@ -433,12 +440,16 @@ test.describe('Ficha de propiedad — una en renta', () => {
   test('the heroes turn to what the property is returning', async ({ page }) => {
     await gotoProperty(page, id)
 
-    // ROI ANUAL runs against the months actually held, so it moves every day —
-    // its presence is the contract, not its value.
-    await expect(detailRow(page, 'ROI ANUAL')).toBeVisible()
     // 8,000,000 marked against a 5,000,000 base
     await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('+60.0%')
     await expect(detailRow(page, 'ROI ANUAL')).toContainText('$3,000,000')
+    // El ROI de la marca se anualiza de la compra (2024-01) a la FECHA DE LA
+    // VALUACIÓN (2025-06): diecisiete meses, y ahí se queda. Antes el numerador
+    // era de junio y el denominador llegaba a hoy, así que la cifra bajaba sola
+    // cada mes sin que nadie tocara un dato — por eso este valor no se podía
+    // afirmar. Ahora sí, y la ficha además dice hasta cuándo cuenta.
+    await expect(detailRow(page, 'ROI ANUAL')).toContainText('+39.3%')
+    await expect(detailRow(page, 'ROI ANUAL')).toContainText('AL 2025-06-01')
   })
 
   test('the score is gone — a bought property competes with nobody', async ({ page }) => {
@@ -487,7 +498,12 @@ test.describe('Ficha de propiedad — una en renta', () => {
 
     await expect(page.getByText('PROYECCIÓN')).toBeVisible()
     await expect(detailRow(page, 'VENTA PROYECTADA')).toContainText('$9,000,000')
-    await expect(detailRow(page, 'PLAZO PROYECTADO')).toContainText('24 meses')
+    // El plazo lo dice SUPUESTOS con su origen, que es más de lo que decía la
+    // fila de PROYECCIÓN. Repetido, era además lo único que esa sección siempre
+    // tenía, así que una propiedad que nunca se modeló no podía dejar de
+    // anunciar una proyección vacía.
+    await expect(detailRow(page, 'PLAZO PROYECTADO (MESES)')).toContainText('24')
+    await expect(page.getByText('PLAZO PROYECTADO', { exact: true })).toHaveCount(0)
   })
 
   test('the money tools open once the property is owned', async ({ page }) => {

@@ -167,10 +167,13 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // A bought property competes with nobody: the score is over
     await expect(page.getByText(/^Score/)).toHaveCount(0)
 
-    // Y como nadie ha avaluado nada todavía, la plusvalía no existe: comprar no
-    // produce un avalúo, y la ausencia se dice con un guion, no con un número.
-    // (Que aparezca cuando alguien sí valúa es el test siguiente.)
-    await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('—')
+    // Y como nadie ha avaluado nada todavía, no hay marca que enseñar: comprar
+    // no produce un avalúo. El héroe no se queda por eso en dos guiones — lo
+    // ocupa la proyección, que es la mejor respuesta que esta propiedad tiene
+    // hoy. (Que la marca lo desplace cuando alguien sí valúa es el test que
+    // sigue.)
+    await expect(page.getByText('GANANCIA NO REALIZADA')).toHaveCount(0)
+    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+32.3%')
 
     // The projection it was bought on stays readable — it is what reality is
     // measured against, and in later steps you see everything from before
@@ -191,9 +194,14 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await setNumericField(page, 'VALUACIÓN', '5000000')
     await saveEdits(page)
 
-    // 5,000,000 marked against the 4,000,000 that went in
+    // 5,000,000 marked against the 4,000,000 that went in — y ahora la marca sí
+    // desplaza a la proyección en el héroe, porque tiene más realidad detrás.
     await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('+25.0%')
     await expect(detailRow(page, 'ROI ANUAL')).toContainText('$1,000,000')
+    // Se capturó el monto y no su fecha de corte, así que el reloj del ROI sí
+    // corre a hoy — y la ficha lo dice con esas palabras en vez de dejar leer la
+    // cifra como si fuera de cualquier día.
+    await expect(detailRow(page, 'ROI ANUAL')).toContainText('AL DÍA DE HOY')
   })
 
   // ── En renta ────────────────────────────────────────────────────────────────
@@ -253,17 +261,22 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(detailRow(page, 'ROI REAL TOTAL')).toContainText('+75.0%')
 
     await expect(page.getByText('RESULTADO', { exact: true })).toBeVisible()
-    // El porcentaje total ya lo dice el héroe como ROI REAL TOTAL. Repetirlo
-    // aquí bajo un tercer nombre era parte de lo que hacía leer mal el par
-    // anualizado/total, así que la fila se fue; lo que RESULTADO conserva de la
-    // ganancia son los pesos, que no se confunden con ningún porcentaje.
+    // Los dos porcentajes ya los dicen los héroes, y un héroe es una promoción y
+    // no una copia: sus filas no se repiten aquí. Lo que RESULTADO conserva de
+    // la ganancia son los pesos, que no se confunden con ningún porcentaje.
     await expect(page.getByText('GANANCIA %', { exact: true })).toHaveCount(0)
     await expect(detailRow(page, 'GANANCIA REALIZADA')).toContainText('$3,000,000')
     await expect(detailRow(page, 'PLAZO REAL')).toContainText('24 meses')
+    await expect(page.getByText('ROI REAL ANUAL')).toHaveCount(1)
+    await expect(page.getByText('ROI REAL TOTAL')).toHaveCount(1)
 
-    // A sold asset is a closed fact, not a live mark: the projection goes quiet
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('—')
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('—')
+    // A sold asset is a closed fact, not a live mark: la marca se apaga…
+    await expect(page.getByText('GANANCIA NO REALIZADA')).toHaveCount(0)
+    // …pero el plan NO. Es el par que el modelo promete, y se apagaba justo
+    // cuando se volvía comprobable: se proyectaron 3,000,000 de ganancia y se
+    // realizaron 3,000,000, y las dos cifras tienen que poder leerse juntas.
+    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$3,000,000')
+    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('32.3%')
 
     // Terminal: a sale is the firm's track record, and it is not filed away
     await expect(page.getByRole('button', { name: 'AVANZAR A ▸' })).toHaveCount(0)
@@ -285,7 +298,9 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 /**
  * Archiving is the other way out, and it is not a step forward: it takes a
  * property off the active inventory without deleting anything and without
- * pretending a deal happened.
+ * pretending a deal happened — ni le cambia un número. Se archiva justamente
+ * para poder volver a mirarla, y sin ventana de métricas era la única etapa que
+ * no contestaba nada: toda cifra derivada salía en blanco.
  */
 test.describe.serial('Archivar una propiedad', () => {
   const ARCHIVADA = {
@@ -322,6 +337,12 @@ test.describe.serial('Archivar una propiedad', () => {
     // From archived there is no way back and no way on
     await expect(page.getByRole('button', { name: 'AVANZAR A ▸' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'ARCHIVAR' })).toHaveCount(0)
+
+    // Y conserva lo que tenía: 1,200,000 de venta proyectada sobre una base de
+    // 1,065,000 (1,000,000 más el 6.5% de costos de adquisición supuesto).
+    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+12.7%')
+    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$135,000')
+    await expect(detailRow(page, 'INVERSIÓN')).toContainText('$1,065,000')
   })
 
   test('la tabla la esconde hasta que se piden las archivadas', async ({ page }) => {
