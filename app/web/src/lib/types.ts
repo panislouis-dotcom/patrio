@@ -1,4 +1,19 @@
-export const PROPERTY_TYPES = ['Casa', 'Departamento', 'Local', 'Edificio', 'Lote', 'Bodega'] as const
+// Espeja el CHECK de properties.asset_type en la migración 024.
+export const ASSET_TYPES = ['casa', 'departamento', 'local', 'edificio', 'lote', 'bodega'] as const
+export const ASSET_TYPE_LABEL: Record<string, string> = {
+  casa: 'Casa', departamento: 'Departamento', local: 'Local',
+  edificio: 'Edificio', lote: 'Lote', bodega: 'Bodega',
+}
+
+// Espeja el CHECK de properties.strategy_type.
+export const STRATEGY_TYPES = ['adaptive_reuse', 'ground_up', 'flip', 'hold'] as const
+export const STRATEGY_TYPE_LABEL: Record<string, string> = {
+  adaptive_reuse: 'Reconversión', ground_up: 'Obra nueva',
+  flip: 'Flip', hold: 'Renta',
+}
+
+import type { PropertyStatus } from './status'
+export type { PropertyStatus }
 
 export interface PropertyImage {
   id: number
@@ -7,13 +22,12 @@ export interface PropertyImage {
   contentType: string
   sortOrder: number
   uploadedAt: string
-}
-
-export type ImageType = 'antes' | 'despues'
-
-export interface ProjectImage extends PropertyImage {
   imageType: ImageType
 }
+
+// 'general' es la foto de cualquier etapa; antes/despues solo cobran sentido
+// cuando hubo obra.
+export type ImageType = 'general' | 'antes' | 'despues'
 
 export interface Issue {
   field: string
@@ -21,44 +35,83 @@ export interface Issue {
   severity: 'error' | 'warning'
 }
 
-export interface Prospect {
+// Una propiedad recorre un ciclo de vida (ver lib/status.ts). Los campos
+// existen según la etapa: los CRUDOS siempre se devuelven tal como están en la
+// base — nunca se blanquean, porque en pasos posteriores quieres ver todo lo de
+// antes. Las métricas DERIVADAS sí se apagan (null) cuando su insumo ya no
+// aplica: proyectar el futuro de algo vendido es mentir.
+export interface Property {
   id: number
+  status: PropertyStatus
   name: string
+  assetType: string          // qué es: casa, departamento, local, edificio, lote, bodega
+  strategyType: string | null // cómo se gana: adaptive_reuse, ground_up, flip, hold
   address: string
   city: string
-  status: string
-  type: string
   url: string
   latitude: number
   longitude: number
-  sqmLand: number
-  sqmConstruction: number
-  landPrice: number
-  acquisitionCostPct: number
-  acquisitionCosts: number
-  acquisitionTotal: number
-  permitsCost: number
-  subdivisionCost: number
-  constructionBase: number
-  constructionTotal: number
-  constructionCostPerSqm: number
-  constructionOverhead: number
-  totalInvestment: number
-  projectedSale: number
-  profit: number
-  roi: number | null
-  roiTotal: number | null
-  capRate: number | null
-  landPricePerSqm: number
-  salePerSqm: number
-  investmentPerSqm: number
-  rentMonthly: number
-  rentAnnual: number | null
-  holdMonths: number
   notes: string
   isFavorite: boolean
+  createdAt: string
+  updatedAt: string
   images: PropertyImage[]
-  score: number
+  geometry: Record<string, unknown>
+  milestones: Record<string, string>   // {"YYYY-MM": "label"}
+
+  // --- Insumos de underwriting (capturables desde prospecto) ---
+  sqmLand: number | null
+  sqmConstruction: number | null
+  landPrice: number | null
+  acquisitionCostPct: number | null
+  permitsCost: number | null
+  subdivisionCost: number | null
+  constructionCostPerSqm: number | null
+  constructionOverhead: number | null
+  projectedSale: number | null
+  holdMonths: number | null
+  rentMonthly: number | null
+
+  // --- Base de capital (viva en toda etapa: es historia, no proyección) ---
+  totalInvestment: number | null
+  investmentBasis: 'underwriting' | 'manual' | null
+
+  // --- Datos que solo existen tras comprar ---
+  totalUnits: number | null
+  acquisitionDate: string | null   // YYYY-MM-DD
+  firstRentDate: string | null     // primera renta REAL, nunca planeada
+  valuationDate: string | null
+  currentValuation: number | null
+  saleDate: string | null
+  salePrice: number | null
+
+  // --- Métricas de proyección (prospecto → en_renta; null al vender) ---
+  acquisitionCosts: number | null
+  acquisitionTotal: number | null
+  constructionBase: number | null
+  constructionTotal: number | null
+  landPricePerSqm: number | null
+  salePerSqm: number | null
+  investmentPerSqm: number | null
+  projectedProfit: number | null
+  projectedRoi: number | null
+  projectedRoiTotal: number | null
+  capRate: number | null      // yield on cost — vive desde prospecto
+  rentAnnual: number | null
+
+  // --- Métricas realizadas (desde desarrollo; null al vender) ---
+  unrealizedGain: number | null
+  unrealizedGainPct: number | null
+  roi: number | null                // CAGR contra la valuación actual
+  holdMonthsActual: number | null   // congelado al vender
+
+  // --- Resultado final (solo vendida) ---
+  realizedGain: number | null
+  realizedGainPct: number | null
+  realizedRoi: number | null
+
+  // --- Calculados por el servidor (única casa) ---
+  score: number | null    // solo prospecto/oferta
   issues: Issue[]
 }
 
@@ -74,76 +127,16 @@ export interface QualityEntry {
   issues: Issue[]
 }
 
-export type RawFields = Pick<Prospect,
-  | 'name' | 'address' | 'city' | 'status' | 'type' | 'url'
-  | 'latitude' | 'longitude' | 'sqmLand' | 'sqmConstruction'
-  | 'landPrice' | 'acquisitionCostPct' | 'permitsCost' | 'subdivisionCost'
-  | 'constructionCostPerSqm' | 'constructionOverhead'
-  | 'projectedSale' | 'rentMonthly' | 'holdMonths' | 'notes'
->
-
-export interface Project {
-  id: number
-  name: string
-  type: string
-  address: string
-  city: string
-  status: string
-  totalUnits: number
-  acquisitionDate: string      // YYYY-MM
-  conclusionDate: string       // YYYY-MM (primera renta o venta)
-  totalInvestment: number
-  currentValuation: number
-  valuationDate: string        // YYYY-MM
-  url: string
-  latitude: number
-  longitude: number
-  milestones: Record<string, string>   // {"YYYY-MM": "label"}
-  notes: string
-  isFavorite: boolean
-  images: ProjectImage[]
-  unrealizedGain: number
-  unrealizedGainPct: number
-  holdMonthsActual: number
-  roi: number | null
-  prospectId: number | null
-  // Underwriting superset (Project ⊇ Prospect) — null when the project has no breakdown.
-  // Raw inputs:
-  sqmLand: number | null
-  sqmConstruction: number | null
-  landPrice: number | null
-  acquisitionCostPct: number | null
-  permitsCost: number | null
-  subdivisionCost: number | null
-  constructionCostPerSqm: number | null
-  constructionOverhead: number | null
-  projectedSale: number | null
-  rentMonthly: number | null
-  holdMonths: number | null
-  // Derived breakdown + projected outcomes:
-  acquisitionCosts: number | null
-  acquisitionTotal: number | null
-  constructionBase: number | null
-  constructionTotal: number | null
-  rentAnnual: number | null
-  landPricePerSqm: number | null
-  salePerSqm: number | null
-  investmentPerSqm: number | null
-  capRate: number | null
-  projectedProfit: number | null
-  projectedRoi: number | null
-  projectedRoiTotal: number | null
-}
-
-export type RawProjectFields = Pick<Project,
-  | 'name' | 'type' | 'address' | 'city' | 'status' | 'url'
-  | 'latitude' | 'longitude' | 'totalUnits'
-  | 'acquisitionDate' | 'conclusionDate'
-  | 'totalInvestment' | 'currentValuation' | 'valuationDate'
-  | 'notes'
+// Lo que un PATCH puede escribir: nunca `status` (eso es una transición) y
+// nunca un null (vaciar es clear-fields).
+export type RawPropertyFields = Pick<Property,
+  | 'name' | 'assetType' | 'strategyType' | 'address' | 'city' | 'url'
+  | 'latitude' | 'longitude' | 'notes'
   | 'sqmLand' | 'sqmConstruction' | 'landPrice' | 'acquisitionCostPct'
   | 'permitsCost' | 'subdivisionCost' | 'constructionCostPerSqm'
   | 'constructionOverhead' | 'projectedSale' | 'holdMonths' | 'rentMonthly'
+  | 'totalUnits' | 'acquisitionDate' | 'firstRentDate' | 'valuationDate'
+  | 'totalInvestment' | 'currentValuation' | 'saleDate' | 'salePrice'
 >
 
 export type MemberRole = 'director' | 'responsable_proyecto' | 'lider_proyecto' | 'maestro' | 'ayudante' | 'finder'
@@ -158,7 +151,7 @@ export interface TeamMember {
   createdAt: string
 }
 
-export interface ParsedProspect {
+export interface ParsedProperty {
   name:             string
   address:          string
   city:             string
@@ -233,7 +226,7 @@ export interface ProcessInstance {
   id: number
   templateId: number | null
   templateName: string | null
-  projectId: number | null
+  propertyId: number | null
   projectName: string | null
   ownerId: number | null
   ownerName: string | null
@@ -307,7 +300,7 @@ export interface NodeDetail {
 
 export interface ProfitSplitConfig {
   id: number | null
-  projectId: number | null
+  propertyId: number | null
   exitPrice: number | null
   investorCapital: number | null
   investorRateAnnual: number
@@ -405,9 +398,9 @@ export interface User {
   createdAt: string
 }
 
-export interface ProjectInvestor {
+export interface PropertyInvestor {
   id: number
-  projectId: number
+  propertyId: number
   investorId: number
   investorName: string
   projectName: string
@@ -466,7 +459,7 @@ export interface Comparable {
 
 export interface AnalysisSnapshot {
   id: number
-  prospectId: number
+  propertyId: number
   generatedAt: string
   purchasePrice: number
   remodelCostEstimate: number
@@ -509,7 +502,7 @@ export interface AnalysisSnapshot {
 }
 
 export interface AnalysisRequest {
-  prospectId: number
+  propertyId: number
   interventionLevel?: string
   holdingPeriodMonths?: number
   transactionCostPct?: number
