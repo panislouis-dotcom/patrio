@@ -27,7 +27,11 @@ def build_term_sheet_html(
     """La carta se levanta contra una propiedad concreta — en la práctica una en
     oferta, el trato al que la firma ya se comprometió. `holdMonths` es
     obligatorio: la ruta lo verifica antes de llamar aquí, porque un plazo
-    inventado se propagaría a los tres escenarios de rendimiento."""
+    inventado se propagaría a los tres escenarios de rendimiento.
+
+    Su etiqueta es «Plazo proyectado», el nombre que `holdMonths` tiene en todo
+    el sistema (ver docs/glosario.md). «Plazo estimado» lo confundía con el
+    plazo real, que es otro campo y otra cosa."""
     # Coerce money at the boundary: callers may pass Decimal (NUMERIC columns),
     # and downstream '+'/'*' below mixes these with float literals.
     investment_amount = float(investment_amount)
@@ -389,7 +393,7 @@ strong {{
     <tr><td class="summary-key">Capital</td><td class="summary-val">{_fmt_mxn(investment_amount)}</td></tr>
     <tr><td class="summary-key">Rendimiento</td><td class="summary-val">{rate_pct} anual acumulado</td></tr>
     <tr><td class="summary-key">Pago</td><td class="summary-val">Al cierre de venta de la propiedad</td></tr>
-    <tr><td class="summary-key">Plazo estimado</td><td class="summary-val">{hold_months} meses (sujeto a venta de la propiedad)</td></tr>
+    <tr><td class="summary-key">Plazo proyectado</td><td class="summary-val">{hold_months} meses (sujeto a venta de la propiedad)</td></tr>
   </table>
 </div>
 

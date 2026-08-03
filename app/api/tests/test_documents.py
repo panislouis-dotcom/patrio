@@ -225,7 +225,7 @@ def test_the_track_record_is_what_rents_or_sold(client, sold_property, rented_pr
 
 def test_the_track_record_opens_with_what_it_closed(client, sold_property, rented_property):
     """Una venta cerrada va antes que una marca, aunque la marca presuma más:
-    la rentada trae 200% de plusvalía contra 43.7% de la vendida."""
+    la rentada trae 200% de ganancia no realizada contra 43.7% de la vendida."""
     assert rented_property["unrealizedGainPct"] > sold_property["realizedGainPct"]
     html = build_prospectus_html([sold_property], [rented_property], [], [])
     assert html.index("[TEST] Lote Prueba") < html.index("[TEST] Casa Rentada")
@@ -262,16 +262,21 @@ def test_a_sold_property_reports_its_realized_result(client, sold_property):
     # 5,000,000 - 3,480,000 = 1,520,000 sobre 3,480,000 = 43.7%
     assert _metric('$1.5M <small>43.7%</small>', "Ganancia realizada") in html
     # (5,000,000/3,480,000)^(12/18) - 1, de 2025-01 a 2026-07
-    assert _metric("27.3%", "ROI realizado") in html
+    assert _metric("27.3%", "ROI real anual") in html
     assert _metric("18 meses", "Plazo real") in html
 
 
 def test_a_sold_property_shows_no_projection_and_no_live_mark(client, sold_property):
     html = build_prospectus_html([sold_property], [], [], [])
-    for label in ("Valuación actual", "ROI anual", "Plusvalía", "Cap rate",
-                  "Venta proyectada", "ROI anual proy.", "Cap rate proy."):
+    for label in ("Valuación actual", "ROI anual", "Ganancia no realizada %",
+                  "Cap rate real s/ inversión", "Venta proyectada",
+                  "ROI proy. anual", "Ganancia proyectada %",
+                  "Cap rate proy. s/ inversión"):
         assert _metric_label(label) not in html
     assert '<div class="l">Valuación · ' not in html
+    # Ni con otro sufijo: ninguna tarjeta de una vendida lleva cap rate. (La
+    # portada sí promedia uno, y usa su propia clase.)
+    assert '<div class="l">Cap rate' not in html
 
 
 def test_a_rented_property_reports_its_mark_with_the_valuation_date(client, desarrollo_property):
@@ -282,9 +287,9 @@ def test_a_rented_property_reports_its_mark_with_the_valuation_date(client, desa
     assert "Track Record · 01 · En renta" in html
     assert _metric("$6.0M", "Valuación · ene 2026") in html
     # (6,000,000 - 3,480,000) / 3,480,000
-    assert _metric("72.4%", "Plusvalía") in html
+    assert _metric("72.4%", "Ganancia no realizada %") in html
     # 360,000 de renta anual sobre 3,480,000 invertidos
-    assert _metric("10.3%", "Cap rate") in html
+    assert _metric("10.3%", "Cap rate real s/ inversión") in html
     assert _metric_label("Precio de venta") not in html
     assert _metric_label("Ganancia realizada") not in html
 
@@ -296,7 +301,7 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     html = build_prospectus_html([], [], [], [p])
     assert _kv_row("Precio de compra", "$1,000,000") in html
     assert _kv_row("Costos de adquisición", "$65,000") in html
-    assert _kv_row("Inversión desarrollo", "$2,415,000") in html
+    assert _kv_row("Obra, permisos y subdivisión", "$2,415,000") in html
     assert _metric("$3.5M", "Inversión total") in html
 
 
@@ -308,7 +313,7 @@ def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, tes
     p = get_property(test_property["id"])
     assert p["projectedRoiTotal"] is None
     html = build_prospectus_html([], [], [], [p])
-    assert _metric("—", "Ganancia est.") in html
+    assert _metric("—", "Ganancia proyectada") in html
     assert _metric("—", "Venta proyectada") in html
     assert "-100" not in html
 
@@ -316,7 +321,7 @@ def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, tes
 def test_the_opportunity_cap_rate_comes_from_the_api(client, test_property):
     # 216,000 de renta anual sobre 3,480,000 invertidos = 6.2%
     html = build_prospectus_html([], [], [], [get_property(test_property["id"])])
-    assert _metric("6.2%", "Cap rate") in html
+    assert _metric("6.2%", "Cap rate proy. s/ inversión") in html
 
 
 def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
@@ -324,7 +329,31 @@ def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
                 json={"fields": ["rentMonthlyProjected"]})
     p = get_property(test_property["id"])
     assert p["capRate"] is None
-    assert _metric("—", "Cap rate") in build_prospectus_html([], [], [], [p])
+    assert _metric("—", "Cap rate proy. s/ inversión") in build_prospectus_html([], [], [], [p])
+
+
+def test_the_document_translates_the_enums(client, make_property):
+    """El prospecto lo lee un inversionista: 'Adaptive reuse' y 'Ground up' no
+    son palabras de este negocio ni aparecen en ninguna otra pantalla. Y tipo de
+    activo y estrategia son dos preguntas, así que salen las dos — antes una
+    tapaba a la otra según la tarjeta."""
+    prop = make_property(name="[TEST] Casa Reconvertida",
+                         assetType="edificio", strategyType="adaptive_reuse")
+    html = build_prospectus_html([], [], [], [get_property(prop["id"])])
+    assert _kv_row("Tipo de activo", "Edificio") in html
+    assert _kv_row("Estrategia", "Reconversión") in html
+    for raw in ("adaptive_reuse", "Adaptive reuse", "Ground up", "Hold"):
+        assert raw not in html
+
+
+def test_the_card_subtitle_names_the_stretch_it_measures(client, rented_property):
+    """`holdMonthsActual` se llama plazo real en la ficha y en la tabla; el
+    documento no puede llamarlo «meses en cartera», que además sugiere que se
+    cuentan desde otra cosa. (La tarjeta de una vendida usa el mes de la venta
+    como coleta, y su plazo real va como métrica.)"""
+    html = build_prospectus_html([], [rented_property], [], [])
+    assert f"Plazo real {rented_property['holdMonthsActual']} meses" in html
+    assert "en cartera" not in html
 
 
 # ── Portada ──────────────────────────────────────────────────────────────────
@@ -363,7 +392,7 @@ def test_the_cover_is_dashes_without_a_track_record(client, desarrollo_property)
 
 def test_the_portfolio_summary_separates_sales_from_marks(client, sold_property, rented_property):
     """Capital 3,480,000 + 1,000,000 = 4,480,000. Ventas 5,000,000, marca
-    3,000,000: plusvalía 3,520,000 = 79%. Las dos cifras van en renglones
+    3,000,000: ganancia 3,520,000 = 79%. Las dos cifras van en renglones
     distintos porque una ya se cobró y la otra es una estimación."""
     html = build_prospectus_html([sold_property], [rented_property], [], [])
     assert '<div class="kicker">Portafolio · vendidas y en renta</div>' in html
@@ -371,7 +400,7 @@ def test_the_portfolio_summary_separates_sales_from_marks(client, sold_property,
     assert _metric("$4.5M", "Capital invertido") in html
     assert _metric("$5.0M", "Ventas realizadas") in html
     assert _metric("$3.0M", "Valuación actual") in html
-    assert _metric('$3.5M <small>79%</small>', "Plusvalía total") in html
+    assert _metric('$3.5M <small>79%</small>', "Ganancia del portafolio") in html
 
 
 def test_the_portfolio_summary_names_only_the_stages_it_has(client, rented_property):
