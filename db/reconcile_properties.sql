@@ -117,7 +117,6 @@ WITH esperado AS (
           - (SELECT count(*) FROM :src_projects WHERE prospect_id IS NOT NULL) AS propiedades,
         (SELECT count(*) FROM :src_prospects) + (SELECT count(*) FROM :src_projects) AS entradas_mapa,
         (SELECT count(*) FROM :src_prospect_images) + (SELECT count(*) FROM :src_project_images) AS imagenes,
-        (SELECT coalesce(sum(total_investment),  0) FROM :src_projects) AS inversion,
         (SELECT coalesce(sum(current_valuation), 0) FROM :src_projects) AS valuacion
 ),
 obtenido AS (
@@ -125,7 +124,6 @@ obtenido AS (
         (SELECT count(*) FROM properties)                              AS propiedades,
         (SELECT count(*) FROM property_id_map)                         AS entradas_mapa,
         (SELECT count(*) FROM property_images)                         AS imagenes,
-        (SELECT coalesce(sum(total_investment_captured), 0) FROM properties) AS inversion,
         (SELECT coalesce(sum(current_valuation), 0) FROM properties)   AS valuacion,
         (SELECT count(*) FROM property_status_events)                  AS eventos
 ),
@@ -136,8 +134,13 @@ checks(invariante, esperado, obtenido) AS (
     UNION ALL
     SELECT 'imágenes migradas',          e.imagenes::numeric,      o.imagenes::numeric      FROM esperado e, obtenido o
     UNION ALL
-    SELECT 'suma total_investment',      e.inversion,              o.inversion              FROM esperado e, obtenido o
-    UNION ALL
+    -- «suma total_investment» ya no es comparable: la 027 disolvió la columna
+    -- que 024 llenó. Donde la fila no traía desglose el total pasó a ser su
+    -- `purchase_price`, y donde sí lo traía el total tecleado era redundante y
+    -- se fue. En ninguno de los dos casos queda una columna que sume lo mismo
+    -- que `projects.total_investment`, así que se retira el invariante en vez
+    -- de publicar un DIFIERE que no significa nada. A2 lo sigue reportando del
+    -- lado legacy, que es donde el dato todavía existe tal como se migró.
     SELECT 'suma current_valuation',     e.valuacion,              o.valuacion              FROM esperado e, obtenido o
     UNION ALL
     -- una propiedad migrada = un evento de estado inicial

@@ -7,7 +7,9 @@
 INSERT INTO properties (
   name, asset_type, strategy_type, address, city, status, total_units,
   acquisition_date, first_rent_date,
-  total_investment_captured, current_valuation, valuation_date,
+  purchase_price, acquisition_cost_pct,
+  permits_cost, subdivision_cost, sqm_construction, construction_cost_per_sqm,
+  current_valuation, valuation_date,
   url, latitude, longitude,
   milestones, notes
 ) VALUES (
@@ -20,7 +22,15 @@ INSERT INTO properties (
   13,
   '2021-02-01',
   '2023-07-01',   -- primera renta: 30 meses desde adquisición
-  9500000,
+
+  -- La inversión de $9.5M es un total all-in que nunca se desglosó. En la única
+  -- gramática que existe se dice así: todo en el precio de compra, con el pct de
+  -- adquisición en 0 EXPLÍCITO — NULL significaría «aplica el 6.5% del sistema»
+  -- y le sumaría $617,500 que nadie pagó. Los otros cuatro costos en 0 porque no
+  -- hay obra a ejecutar que sumar aparte: ya está adentro del total.
+  9500000, 0,
+  0, 0, 0, 0,
+
   19000000,
   '2026-04-01',
   'https://refigan.mx/edificio-uno',  -- url (placeholder)

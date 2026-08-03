@@ -8,7 +8,9 @@
 INSERT INTO properties (
   name, asset_type, strategy_type, address, city, status, total_units,
   acquisition_date, first_rent_date,
-  total_investment_captured, current_valuation, valuation_date,
+  purchase_price, acquisition_cost_pct,
+  permits_cost, subdivision_cost, sqm_construction, construction_cost_per_sqm,
+  current_valuation, valuation_date,
   url, latitude, longitude,
   milestones, notes
 ) VALUES (
@@ -21,7 +23,13 @@ INSERT INTO properties (
   3,
   '2022-09-01',
   '2023-09-01',   -- primera renta: 12 meses desde adquisición
-  3730000,
+
+  -- Total all-in de $3.73M que nunca se desglosó: todo entra como precio de
+  -- compra, con el pct de adquisición en 0 EXPLÍCITO (NULL aplicaría el 6.5%
+  -- del sistema y sumaría $242,450 que nadie pagó). Los otros cuatro en 0.
+  3730000, 0,
+  0, 0, 0, 0,
+
   6200000,
   '2026-04-01',
   'https://refigan.mx/casa-centro',  -- url (placeholder)

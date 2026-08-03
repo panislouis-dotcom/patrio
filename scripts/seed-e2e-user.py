@@ -79,13 +79,22 @@ def main() -> int:
                 INSERT INTO properties (
                     name, asset_type, strategy_type, address, city, status,
                     total_units, acquisition_date,
-                    total_investment_captured, current_valuation, valuation_date,
+                    purchase_price, acquisition_cost_pct,
+                    permits_cost, subdivision_cost,
+                    sqm_construction, construction_cost_per_sqm,
+                    current_valuation, valuation_date,
                     url, latitude, longitude
                 ) VALUES (
                     '[SEED] Propiedad E2E', 'edificio', 'ground_up',
                     'Av. E2E 100, Monterrey', 'Monterrey', 'desarrollo',
                     10, '2024-01-01',
-                    5000000, 6000000, '2024-06-01',
+                    -- Inversión all-in de $5M: toda en el precio de compra, con
+                    -- el pct de adquisición en 0 explícito (NULL aplicaría el
+                    -- 6.5% del sistema y la base dejaría de ser $5,000,000).
+                    5000000, 0,
+                    0, 0,
+                    0, 0,
+                    6000000, '2024-06-01',
                     'https://refigan.mx', 25.6866, -100.3161
                 )
                 """,
