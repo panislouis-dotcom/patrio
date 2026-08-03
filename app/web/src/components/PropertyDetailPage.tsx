@@ -290,7 +290,6 @@ export function PropertyDetailPage() {
   const warnings = p.issues.filter(i => i.severity === 'warning')
   const url = field('url') ?? ''
   const acquisitionCostPct = field('acquisitionCostPct')
-  const derivedInvestment = p.investmentBasis === 'underwriting'
 
   // Un supuesto siempre tiene un valor en uso; lo que cambia es quién lo puso.
   // Vaciarlo solo es una operación cuando hay una captura que quitar — de otro
@@ -411,23 +410,20 @@ export function PropertyDetailPage() {
   // El precio de compra es lo que cuesta adquirir el inmueble como está; la
   // obra es lo que se va a ejecutar encima. Nada de lo que ya está construido
   // y ya está dentro del precio aparece dos veces.
-  const costItems = [
+  //
+  // Estas cinco partidas SON la inversión: el total sale de sumarlas, así que
+  // las barras explican todo el capital por construcción. Hubo una sexta,
+  // «Sin desglosar», para el hueco entre un total tecleado a mano y lo que el
+  // desglose sabía explicar; sin ese segundo origen el hueco no existe, y una
+  // fila que solo puede aparecer si el servidor se contradice es una que
+  // taparía la contradicción en vez de dejarla salir.
+  const investmentItems = [
     { label: 'Precio de compra', amount: p.purchasePrice ?? 0 },
     { label: 'Costos adq.', amount: p.acquisitionCosts ?? 0 },
     { label: 'Permisos', amount: p.permitsCost ?? 0 },
     { label: 'Subdivisión', amount: p.subdivisionCost ?? 0 },
     { label: 'Obra a ejecutar', amount: p.constructionTotal ?? 0 },
   ]
-  // Con el desglose completo el total ES la suma de los cinco costos y no sobra
-  // nada. Con la inversión capturada a mano sobra lo que nadie clasificó, y ese
-  // resto tiene nombre: es capital del que no se sabe en qué se fue. Decirlo es
-  // más honesto que repartirlo, y es lo que permite que las barras sumen 100%
-  // sin que la cifra grande deje de ser la inversión de la propiedad.
-  const brokenDown = costItems.reduce((sum, i) => sum + i.amount, 0)
-  const uncategorized = (p.totalInvestment ?? 0) - brokenDown
-  const investmentItems = brokenDown > 0 && uncategorized > 1
-    ? [...costItems, { label: 'Sin desglosar', amount: uncategorized }]
-    : costItems
 
   /**
    * Una sección de cifras DERIVADAS se dibuja solo si alguna de sus filas tiene
@@ -561,21 +557,18 @@ export function PropertyDetailPage() {
               )}
 
               <SectionDivider label="DATOS" />
-              {/* La inversión son dos hechos, no uno: la base con la que se
-                  divide todo, y el número que alguien tecleó. Antes el segundo
-                  desaparecía de la ficha en cuanto el desglose se completaba —
-                  quedaba guardado, invisible e inborrable. */}
+              {/* La inversión no se teclea: es la suma del desglose, en toda
+                  etapa y sin ramas. Había además una fila para capturarla a
+                  mano, y con el desglose completo se anunciaba a sí misma como
+                  «NO SE USA» — un campo que existía para decir que no servía.
+                  Un total all-in se dice donde siempre estuvo su lugar: precio
+                  de compra, con los costos de adquisición en 0. */}
               <EditableRow
                 label="INVERSIÓN"
                 editing={editing}
                 value={fmtMXN(p.totalInvestment)}
-                hint={derivedInvestment ? 'SUMA DEL DESGLOSE' : 'CAPTURA MANUAL'}
+                hint="SUMA DEL DESGLOSE"
               />
-              {(editing || p.totalInvestmentCaptured != null) &&
-                numRow('INVERSIÓN CAPTURADA', 'totalInvestmentCaptured', fmtMXN, {
-                  clearable: 'totalInvestmentCaptured',
-                  hint: derivedInvestment ? 'NO SE USA: MANDA EL DESGLOSE' : undefined,
-                })}
               {numRow('VALUACIÓN', 'currentValuation', fmtMXN, { clearable: 'currentValuation' })}
               {/* Lo que se proyectó cobrar y lo que se cobra son dos columnas y
                   dos filas: confirmar una nunca vuelve a borrar la otra. */}
