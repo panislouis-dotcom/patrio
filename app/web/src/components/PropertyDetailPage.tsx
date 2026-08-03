@@ -64,6 +64,15 @@ const roiColorOf = (roi: number | null | undefined) =>
 /** El porcentaje de un héroe: con signo y un decimal, no el fmtPct de las filas. */
 const fmtSigned = (n: number | null | undefined) =>
   n != null ? `${n > 0 ? '+' : ''}${(n * 100).toFixed(1)}%` : '—'
+/**
+ * Una ganancia, entera. Monto y porcentaje son la misma cifra en dos unidades y
+ * viajan juntas: separarlas dejaba media pareja arriba y media abajo, las dos
+ * llamadas con el mismo nombre. Por eso la etiqueta es la del monto, sin `%` —
+ * el sufijo solo existe para cuando el porcentaje va solo y tiene que nombrarse
+ * a sí mismo, y así impreso nunca va solo.
+ */
+const fmtGain = (amount: number | null | undefined, pct: number | null | undefined) =>
+  `${fmtMXN(amount)} ${fmtSigned(pct)}`
 
 /** Las dos cifras grandes de la ficha, ya formateadas. */
 interface Heroes {
@@ -99,8 +108,13 @@ function heroesFor(p: Property): Heroes {
   if (p.realizedGainPct != null) {
     return {
       label: 'ROI REAL ANUAL', value: fmtSigned(p.realizedRoi), color: roiColorOf(p.realizedRoi),
-      barPct: (p.realizedRoi ?? 0) * 100, caption: fmtMXN(p.realizedGain),
-      second: 'GANANCIA REALIZADA %', secondValue: fmtSigned(p.realizedGainPct),
+      barPct: (p.realizedRoi ?? 0) * 100,
+      // Cada ROI cierra su reloj el día de su propio numerador, y el caption dice
+      // cuál es ese día. Antes cargaba la ganancia en pesos, que ya la dice el
+      // segundo héroe con su etiqueta — un número sin etiqueta se escapaba de la
+      // regla de «cada cifra una vez» justamente por no tener etiqueta.
+      caption: p.saleDate ? `AL ${p.saleDate}` : undefined,
+      second: 'GANANCIA REALIZADA', secondValue: fmtGain(p.realizedGain, p.realizedGainPct),
       secondColor: roiColorOf(p.realizedGainPct),
     }
   }
@@ -112,8 +126,8 @@ function heroesFor(p: Property): Heroes {
       // así que el héroe dice hasta cuándo cuenta. Sin fecha de corte el reloj sí
       // corre a hoy, y entonces lo dice con esas palabras en vez de dejar que la
       // cifra se lea como si fuera de cualquier día.
-      caption: `${fmtMXN(p.unrealizedGain)} · AL ${p.valuationDate ?? 'DÍA DE HOY'}`,
-      second: 'GANANCIA NO REALIZADA %', secondValue: fmtSigned(p.unrealizedGainPct),
+      caption: `AL ${p.valuationDate ?? 'DÍA DE HOY'}`,
+      second: 'GANANCIA NO REALIZADA', secondValue: fmtGain(p.unrealizedGain, p.unrealizedGainPct),
       secondColor: roiColorOf(p.unrealizedGainPct),
     }
   }
@@ -121,8 +135,11 @@ function heroesFor(p: Property): Heroes {
     return {
       label: 'ROI PROY. ANUAL', value: fmtSigned(p.projectedRoi), color: roiColorOf(p.projectedRoi),
       barPct: (p.projectedRoi ?? 0) * 100,
+      // El reloj de este ROI no es una fecha sino el plazo que supone el modelo,
+      // y SUPUESTOS lo publica con su origen. Aquí el caption lleva el score,
+      // que es lo que califica a un candidato mientras sigue compitiendo.
       caption: hasScore(p.status) ? `Score ${p.score ?? '—'}` : undefined,
-      second: 'GANANCIA PROYECTADA %', secondValue: fmtSigned(p.projectedRoiTotal),
+      second: 'GANANCIA PROYECTADA', secondValue: fmtGain(p.projectedProfit, p.projectedRoiTotal),
       secondColor: roiColorOf(p.projectedRoiTotal),
     }
   }
@@ -701,22 +718,19 @@ export function PropertyDetailPage() {
                   se modeló no podía dejar de anunciar una proyección vacía. */}
               {statSection('PROYECCIÓN', [
                 ['VENTA PROYECTADA', p.projectedSale, fmtMXN],
-                ['GANANCIA PROYECTADA', p.projectedProfit, fmtMXN],
+                ['GANANCIA PROYECTADA', p.projectedProfit, v => fmtGain(v, p.projectedRoiTotal)],
                 ['ROI PROY. ANUAL', p.projectedRoi, fmtPct],
-                ['GANANCIA PROYECTADA %', p.projectedRoiTotal, fmtPct],
                 ['RENTA ANUAL EST.', p.rentAnnual, fmtMXN],
               ])}
 
-              {/* RESULTADO lo abre la venta, no sus renglones: es la sección de
-                  un hecho, y sin ese hecho no existe aunque alguien haya tecleado
-                  un precio. Adentro sí manda la política de vacío. */}
-              {sold && statSection('RESULTADO', [
-                ['PRECIO DE VENTA', p.salePrice, fmtMXN],
-                ['GANANCIA REALIZADA', p.realizedGain, fmtMXN],
-                ['ROI REAL ANUAL', p.realizedRoi, fmtPct],
-                ['GANANCIA REALIZADA %', p.realizedGainPct, fmtPct],
-                ['PLAZO REAL', p.holdMonthsActual, fmtMonths],
-              ])}
+              {/* La marca y el resultado NO tienen sección propia, y es la misma
+                  regla que gobierna todo lo de arriba: cada cifra etiquetada vive
+                  en un solo lugar. Sus dos cifras derivadas son precisamente las
+                  que el héroe promueve, y las capturadas ya viven donde se
+                  capturan — VALUACIÓN en DATOS, PRECIO DE VENTA en FECHAS, PLAZO
+                  REAL en DATOS. Una sección que solo puede repetir lo que ya está
+                  en pantalla no organiza nada: solo hace dudar de si son la misma
+                  cifra o dos parecidas. */}
 
               {p.issues.length > 0 && (
                 <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>

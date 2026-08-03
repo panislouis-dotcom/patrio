@@ -103,7 +103,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await gotoProperty(page, id)
 
     await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(PROJECTED_ROI)
-    await expect(detailRow(page, 'GANANCIA PROYECTADA %')).toContainText(PROJECTED_ROI)
+    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText(PROJECTED_ROI)
     // Score is a percentile against the other candidates, so it moves with them:
     // this asserts it is computed and shown, not what it happens to be today.
     await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(/Score \d+/)
@@ -137,17 +137,23 @@ test.describe('Ficha de propiedad — un prospecto', () => {
   test('PROYECCIÓN spells out the bet the property is', async ({ page }) => {
     await gotoProperty(page, id)
 
+    // La ganancia se imprime entera: monto y porcentaje son la misma cifra en dos
+    // unidades. Aquí la sube el héroe, así que ahí va completa.
+    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText(`$870,000 ${PROJECTED_ROI}`)
+
+    // Y lo que queda en la sección es lo que el héroe no subió
     await expect(page.getByText('PROYECCIÓN')).toBeVisible()
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$870,000')
+    await expect(detailRow(page, 'VENTA PROYECTADA')).toContainText('$3,000,000')
     await expect(detailRow(page, 'RENTA ANUAL EST.')).toContainText('$240,000')
-    // Los dos ROI proyectados NO están aquí: los subió el héroe, y un héroe es
-    // una promoción y no una copia. El plazo tampoco: es un supuesto, y
-    // SUPUESTOS lo enseña con su origen.
-    for (const promoted of ['ROI PROY. ANUAL', 'GANANCIA PROYECTADA %']) {
+    // Un héroe es una promoción, no una copia: cada cifra queda una sola vez.
+    for (const promoted of ['ROI PROY. ANUAL', 'GANANCIA PROYECTADA']) {
       await expect(page.getByText(promoted, { exact: true })).toHaveCount(1)
     }
+    // El plazo tampoco está aquí: es un supuesto, y SUPUESTOS lo enseña con su
+    // origen — que es más de lo que decía esta fila.
     await expect(detailRow(page, 'PLAZO PROYECTADO (MESES)')).toContainText('12')
-    // RESULTADO belongs to a sale that has not happened
+    // Lo realizado no tiene sección propia: sus cifras son las que el héroe
+    // promueve, y las capturadas viven donde se capturan.
     await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
   })
 
@@ -440,9 +446,10 @@ test.describe('Ficha de propiedad — una en renta', () => {
   test('the heroes turn to what the property is returning', async ({ page }) => {
     await gotoProperty(page, id)
 
-    // 8,000,000 marked against a 5,000,000 base
-    await expect(detailRow(page, 'GANANCIA NO REALIZADA %')).toContainText('+60.0%')
-    await expect(detailRow(page, 'ROI ANUAL')).toContainText('$3,000,000')
+    // 8,000,000 marked against a 5,000,000 base. El monto y su porcentaje son la
+    // misma cifra en dos unidades y se imprimen juntos: separarlos dejaba media
+    // pareja arriba y media veinte filas abajo, las dos con el mismo nombre.
+    await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('$3,000,000 +60.0%')
     // El ROI de la marca se anualiza de la compra (2024-01) a la FECHA DE LA
     // VALUACIÓN (2025-06): diecisiete meses, y ahí se queda. Antes el numerador
     // era de junio y el denominador llegaba a hoy, así que la cifra bajaba sola

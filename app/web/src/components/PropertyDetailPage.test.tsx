@@ -114,12 +114,10 @@ describe('PropertyDetailPage', () => {
   it('un prospecto muestra su score y su proyección, y ningún resultado de venta', async () => {
     await renderPage(BASE_PROPERTY)
 
-    // El titular y el bloque de proyección nombran la misma métrica: resumen arriba, detalle abajo
-    expect(screen.getAllByText('ROI PROY. ANUAL').length).toBeGreaterThan(0)
+    expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
     expect(screen.getByText('Score 78')).not.toBeNull()
     expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
-    // El bloque de resultado solo existe cuando hay una venta que reportar
-    expect(screen.queryByText('RESULTADO')).toBeNull()
+    // Lo realizado solo existe cuando hay una venta que reportar
     expect(screen.queryByText('GANANCIA REALIZADA')).toBeNull()
     // Antes de la oferta no hay capital que levantar
     expect(screen.queryByText('FINANZAS')).toBeNull()
@@ -129,7 +127,7 @@ describe('PropertyDetailPage', () => {
     await renderPage(RENTED)
 
     expect(screen.getByText('ROI ANUAL')).not.toBeNull()
-    expect(screen.getByText('GANANCIA NO REALIZADA %')).not.toBeNull()
+    expect(screen.getByText('GANANCIA NO REALIZADA')).not.toBeNull()
     // "En pasos de después ves todo lo de antes": la proyección sigue ahí
     expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
     expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
@@ -143,28 +141,41 @@ describe('PropertyDetailPage', () => {
   it('solo una vendida muestra las métricas realizadas', async () => {
     await renderPage(SOLD)
 
-    expect(screen.getByText('RESULTADO')).not.toBeNull()
-    expect(screen.getAllByText('ROI REAL ANUAL').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('$4,270,000').length).toBeGreaterThan(0)
+    expect(screen.getByText('ROI REAL ANUAL')).not.toBeNull()
+    expect(screen.getByText('GANANCIA REALIZADA')).not.toBeNull()
     // Y ya no ofrece a dónde avanzar: vendida es terminal
     expect(screen.queryByText('AVANZAR A ▸')).toBeNull()
     expect(screen.queryByText('ARCHIVAR')).toBeNull()
   })
 
-  it('una vendida dice cuál de sus dos ROI está anualizado', async () => {
+  it('la ganancia se imprime entera: monto y porcentaje son la misma cifra', async () => {
     // 4,270,000 sobre 3,730,000 en 47 meses: +114.5% en total, +22.5% al año.
-    // Son el mismo hecho leído de dos formas, y el héroe grande enseñaba el
-    // anualizado sin decirlo — a seis meses eso pinta un +112% donde se ganó 45%.
+    // El anualizado y el total son dos hechos distintos y cada uno lleva su
+    // nombre — «ROI» solo el anualizado. Pero el monto y su porcentaje son UNO,
+    // y separarlos dejaba media pareja arriba y media veinte filas abajo, las
+    // dos llamadas «ganancia realizada».
     await renderPage(SOLD)
 
-    expect(screen.getAllByText('ROI REAL ANUAL').length).toBeGreaterThan(0)
-    expect(screen.getByText('GANANCIA REALIZADA %')).not.toBeNull()
+    expect(screen.getByText('ROI REAL ANUAL')).not.toBeNull()
     expect(screen.getByText('+22.5%')).not.toBeNull()
-    expect(screen.getByText('+114.5%')).not.toBeNull()
-    // El porcentaje total no se repite bajo un segundo nombre.
-    expect(screen.queryByText('GANANCIA %')).toBeNull()
-    // Los pesos sí se quedan: no se confunden con ningún porcentaje.
     expect(screen.getByText('GANANCIA REALIZADA')).not.toBeNull()
+    expect(screen.getByText('$4,270,000 +114.5%')).not.toBeNull()
+    // Y ninguna de las dos mitades anda suelta por ahí bajo otro nombre.
+    expect(screen.queryByText('$4,270,000')).toBeNull()
+    expect(screen.queryByText('+114.5%')).toBeNull()
+    expect(screen.queryByText('GANANCIA REALIZADA %')).toBeNull()
+  })
+
+  it('el ROI dice hasta qué fecha cuenta, y no repite la ganancia sin etiqueta', async () => {
+    // El caption cargaba la ganancia en pesos, que ya la dice el segundo héroe
+    // con su nombre: un número sin etiqueta se escapaba de la regla de «cada
+    // cifra una vez» justamente por no tener etiqueta. Ahora califica al ROI —
+    // el realizado cierra su reloj en la fecha de venta —, que es lo único para
+    // lo que sirve un caption.
+    await renderPage(SOLD)
+
+    expect(screen.getByText('AL 2026-06-01')).not.toBeNull()
+    expect(screen.queryByText('$4,270,000')).toBeNull()
   })
 
   it('AVANZAR A ofrece solo los destinos que la etapa permite', async () => {
@@ -278,21 +289,25 @@ describe('PropertyDetailPage', () => {
     await renderPage(BASE_PROPERTY)
 
     expect(screen.getAllByText('ROI PROY. ANUAL')).toHaveLength(1)
-    expect(screen.getAllByText('GANANCIA PROYECTADA %')).toHaveLength(1)
+    expect(screen.getAllByText('GANANCIA PROYECTADA')).toHaveLength(1)
     // Lo que la sección sí conserva es todo lo que el héroe no subió
-    expect(screen.getByText('GANANCIA PROYECTADA')).not.toBeNull()
+    expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
+    expect(screen.getByText('RENTA ANUAL EST.')).not.toBeNull()
   })
 
   it('una vendida sigue enseñando el plan contra el que se mide', async () => {
     await renderPage(SOLD)
 
+    // 1,705,000 proyectados contra 4,270,000 realizados: el par que el modelo
+    // promete, legible completo y en la misma pantalla.
     expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
-    expect(screen.getByText('GANANCIA PROYECTADA')).not.toBeNull()
+    expect(screen.getByText('$1,705,000 +23.0%')).not.toBeNull()
+    expect(screen.getByText('$4,270,000 +114.5%')).not.toBeNull()
     // Aquí sí los ROI proyectados vuelven a ser filas: el héroe lo ocupa el
     // resultado, que es la respuesta con más realidad detrás.
     expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
-    // Pero la marca viva sí murió: una vendida no tiene plusvalía sin realizar
-    expect(screen.queryByText('GANANCIA NO REALIZADA %')).toBeNull()
+    // Pero la marca viva sí murió: una vendida no tiene ganancia sin realizar
+    expect(screen.queryByText('GANANCIA NO REALIZADA')).toBeNull()
   })
 
   it('en desarrollo sin avalúo el héroe es la proyección, no dos guiones', async () => {
@@ -305,30 +320,28 @@ describe('PropertyDetailPage', () => {
     })
 
     expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
-    // El anualizado y el total del fixture coinciden a doce meses, así que
-    // +23.0% sale en los dos héroes.
-    expect(screen.getAllByText('+23.0%')).toHaveLength(2)
+    expect(screen.getByText('+23.0%')).not.toBeNull()
+    expect(screen.getByText('$1,705,000 +23.0%')).not.toBeNull()
     expect(screen.queryByText('ROI ANUAL')).toBeNull()
   })
 
-  it('el ROI de la marca dice hasta qué fecha cuenta', async () => {
+  it('el ROI de la marca dice hasta qué fecha cuenta, o que cuenta a hoy', async () => {
     // El numerador es una valuación con fecha y el reloj cierra en ella, así que
-    // la ficha tiene que decir cuál es esa fecha en vez de dejar leer la cifra
-    // como si fuera de cualquier día.
+    // la ficha dice cuál es esa fecha en vez de dejar leer la cifra como si fuera
+    // de cualquier día. Sin fecha de corte el reloj sí corre a hoy, y entonces lo
+    // dice con esas palabras.
     await renderPage(RENTED)
-    expect(screen.getByText('$2,470,000 · AL 2026-04-01')).not.toBeNull()
+    expect(screen.getByText('AL 2026-04-01')).not.toBeNull()
 
     await renderPage({ ...RENTED, valuationDate: null })
-    expect(screen.getByText('$2,470,000 · AL DÍA DE HOY')).not.toBeNull()
+    expect(screen.getByText('AL DÍA DE HOY')).not.toBeNull()
   })
 
   it('una archivada conserva lo que tenía al archivarse', async () => {
     await renderPage({ ...BASE_PROPERTY, status: 'archivada', score: null })
 
     expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
-    // El anualizado y el total del fixture coinciden a doce meses, así que
-    // +23.0% sale en los dos héroes.
-    expect(screen.getAllByText('+23.0%')).toHaveLength(2)
+    expect(screen.getByText('$1,705,000 +23.0%')).not.toBeNull()
     expect(screen.getByText('DESGLOSE DE INVERSIÓN')).not.toBeNull()
     expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
   })
@@ -340,7 +353,6 @@ describe('PropertyDetailPage', () => {
 
     expect(screen.queryByText('MÉTRICAS')).toBeNull()
     expect(screen.queryByText('PROYECCIÓN')).toBeNull()
-    expect(screen.queryByText('RESULTADO')).toBeNull()
   })
 
   it('el desglose nombra el capital que nadie clasificó en vez de esconderlo', async () => {
