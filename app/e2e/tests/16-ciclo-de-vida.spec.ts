@@ -41,9 +41,13 @@ const CICLO = {
   longitude: -100.3161,
 }
 
-const ACQUIRED_ON = '2024-06-01'
-const FIRST_RENT_ON = '2025-06-01'
-const SOLD_ON = '2026-06-01'
+// Las fechas del ciclo de vida se capturan POR MES: el input es `type="month"`
+// y manda `YYYY-MM`. Lo que se teclea y lo que se lee son dos formas del mismo
+// mes, así que cada constante trae su par — nunca una derivada de la otra a
+// mano, que es como se cuelan las discrepancias.
+const ACQUIRED_ON = '2024-06',   ACQUIRED_SHOWN = 'jun 2024'
+const FIRST_RENT_ON = '2025-06', FIRST_RENT_SHOWN = 'jun 2025'
+const SOLD_ON = '2026-06',       SOLD_SHOWN = 'jun 2026'
 
 /** A field of the gate modal — every input carries its label as aria-label. */
 function gateField(page: Page, label: string) {
@@ -129,7 +133,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await gateField(page, 'FECHA DE ADQUISICIÓN').fill('')
     await expect(confirmTransition(page, 'DESARROLLO')).toBeDisabled()
 
-    await gateField(page, 'FECHA DE ADQUISICIÓN').fill('2026-01-15')
+    await gateField(page, 'FECHA DE ADQUISICIÓN').fill('2026-01')
     await expect(confirmTransition(page, 'DESARROLLO')).toBeEnabled()
 
     await page.getByRole('button', { name: 'CANCELAR', exact: true }).click()
@@ -166,7 +170,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 
     await expect(detailRow(page, 'ETAPA')).toContainText('DESARROLLO')
     await expect(detailRow(page, 'UNIDADES')).toContainText('2')
-    await expect(detailRow(page, 'ADQUISICIÓN')).toContainText(ACQUIRED_ON)
+    await expect(detailRow(page, 'ADQUISICIÓN')).toContainText(ACQUIRED_SHOWN)
 
     // A bought property competes with nobody: the score is over
     await expect(page.getByText(/^Score/)).toHaveCount(0)
@@ -214,7 +218,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await advanceTo(page, 'EN RENTA')
 
     // The modal cannot know this is impossible; the domain can, and says so
-    await gateField(page, 'FECHA DE LA PRIMERA RENTA').fill('2024-01-01')
+    await gateField(page, 'FECHA DE LA PRIMERA RENTA').fill('2024-01')
     await gateField(page, 'RENTA MENSUAL COBRADA').fill('40000')
     await confirmTransition(page, 'EN RENTA').click()
 
@@ -233,14 +237,14 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await confirmTransition(page, 'EN RENTA').click()
 
     await expect(detailRow(page, 'ETAPA')).toContainText('EN RENTA')
-    await expect(detailRow(page, 'PRIMERA RENTA')).toContainText(FIRST_RENT_ON)
+    await expect(detailRow(page, 'PRIMERA RENTA')).toContainText(FIRST_RENT_SHOWN)
     await expect(detailRow(page, 'RENTA/MES COBRADA')).toContainText('$40,000')
     // 40,000 × 12 / 4,000,000 — the yield the property is actually producing
-    await expect(detailRow(page, 'CAP RATE REAL')).toContainText('12.0%')
+    await expect(detailRow(page, 'CAP RATE REAL S/ INVERSIÓN')).toContainText('12.0%')
     await expect(detailRow(page, 'RENTA ANUAL COBRADA')).toContainText('$480,000')
     // Nothing was ever modelled, so the projected pair stays empty rather than
     // quietly adopting the collected rent
-    await expect(detailRow(page, 'CAP RATE PROY.')).toContainText('—')
+    await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText('—')
 
     // The rent history is kept: a hold still exits through a sale
     expect(await offeredStages(page)).toEqual(['VENDIDA'])
@@ -261,7 +265,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // 7,000,000 out of 4,000,000, held the twenty-four months between the two
     // dates. El ROI cierra su reloj en la fecha de venta, y lo dice.
     await expect(detailRow(page, 'ROI REAL ANUAL')).toContainText('+32.3%')
-    await expect(detailRow(page, 'ROI REAL ANUAL')).toContainText(`AL ${SOLD_ON}`)
+    await expect(detailRow(page, 'ROI REAL ANUAL')).toContainText(`AL ${SOLD_SHOWN.toUpperCase()}`)
     await expect(detailRow(page, 'GANANCIA REALIZADA')).toContainText('$3,000,000 +75.0%')
 
     // Lo realizado NO tiene sección propia, y es la misma regla que gobierna

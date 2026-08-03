@@ -1,4 +1,5 @@
 import { colors, fonts } from '../../lib/theme'
+import { fmtMonth } from '../../lib/fmt'
 
 /** La historia de la propiedad en fechas: `{"YYYY-MM": "lo que pasó"}`. */
 export function MilestoneTimeline({ milestones }: { milestones: Record<string, string> }) {
@@ -18,7 +19,7 @@ export function MilestoneTimeline({ milestones }: { milestones: Record<string, s
               )}
             </div>
             <div style={{ paddingBottom: '16px' }}>
-              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.05em' }}>{date}</div>
+              <div style={{ fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, letterSpacing: '0.05em' }}>{fmtMonth(date).toUpperCase()}</div>
               <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.neutral, marginTop: '2px' }}>{label}</div>
             </div>
           </div>

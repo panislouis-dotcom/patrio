@@ -19,6 +19,9 @@ interface Field {
   hint?: (p: Property) => string | undefined
 }
 
+/** El mes en curso: las fechas del ciclo de vida se capturan por mes. */
+const thisMonth = () => new Date().toISOString().slice(0, 7)
+/** Hoy al día, para la fecha del EVENTO, que sí es un instante del historial. */
 const today = () => new Date().toISOString().slice(0, 10)
 const str = (v: number | string | null) => (v == null ? '' : String(v))
 
@@ -36,7 +39,7 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
   ],
   desarrollo: [
     { key: 'acquisitionDate', label: 'FECHA DE ADQUISICIÓN', kind: 'date',
-      required: () => true, prefill: p => p.acquisitionDate ?? today() },
+      required: () => true, prefill: p => (p.acquisitionDate ?? thisMonth()).slice(0, 7) },
     { key: 'totalUnits', label: 'UNIDADES', kind: 'int',
       required: () => true, prefill: p => str(p.totalUnits) || '1' },
     // No se pide valuación: comprar no produce un avalúo. Se captura en la
@@ -51,7 +54,7 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
   ],
   en_renta: [
     { key: 'firstRentDate', label: 'FECHA DE LA PRIMERA RENTA', kind: 'date',
-      required: () => true, prefill: p => p.firstRentDate ?? today() },
+      required: () => true, prefill: p => (p.firstRentDate ?? thisMonth()).slice(0, 7) },
     // Sin prefill, y por la misma razón que el precio de venta: la renta que se
     // cobra es un hecho que se conoce. Arrastrarle la estimada lograba que se
     // confirmara sin leer, y esa confirmación borraba la proyección — el par
@@ -65,11 +68,11 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
       required: () => false, prefill: p => str(p.currentValuation),
       hint: () => 'Opcional: solo si ya existe un avalúo.' },
     { key: 'valuationDate', label: 'FECHA DE VALUACIÓN', kind: 'date',
-      required: () => false, prefill: p => p.valuationDate ?? '' },
+      required: () => false, prefill: p => (p.valuationDate ?? '').slice(0, 7) },
   ],
   vendida: [
     { key: 'saleDate', label: 'FECHA DE VENTA', kind: 'date',
-      required: () => true, prefill: () => today() },
+      required: () => true, prefill: () => thisMonth() },
     // Sin prefill: el precio de venta es un hecho que se conoce, y arrastrarle
     // la última valuación solo lograría que se confirmara sin leerlo.
     { key: 'salePrice', label: 'PRECIO DE VENTA', kind: 'money',
@@ -152,7 +155,7 @@ export function TransitionModal({ property, to, onCancel, onConfirm }: Props) {
               {f.label}{f.required(property) ? ' *' : ''}
             </div>
             <input
-              type={f.kind === 'date' ? 'date' : 'number'}
+              type={f.kind === 'date' ? 'month' : 'number'}
               value={values[f.key] ?? ''}
               aria-label={f.label}
               onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
@@ -166,6 +169,10 @@ export function TransitionModal({ property, to, onCancel, onConfirm }: Props) {
           </div>
         ))}
 
+        {/* Esta sí va al día, y no es incoherencia: las fechas de arriba son
+            HECHOS DE LA PROPIEDAD que solo se conocen al mes y solo se usan para
+            contar meses; ésta es cuándo se registró el movimiento, que es un
+            instante del historial y de donde salen los días-en-oferta. */}
         <div>
           <div style={labelStyle}>FECHA DEL CAMBIO</div>
           <input type="date" value={effectiveOn} aria-label="FECHA DEL CAMBIO"
