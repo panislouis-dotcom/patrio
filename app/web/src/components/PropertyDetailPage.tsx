@@ -307,8 +307,14 @@ export function PropertyDetailPage() {
   // ── Héroes por etapa ────────────────────────────────────────────────────────
   // Lo que importa de una propiedad cambia con su etapa: antes de comprar, lo
   // que promete; después, lo que va rindiendo; al vender, lo que dejó.
+  //
+  // Los dos números de una vendida son ANUALIZADO y TOTAL, y la etiqueta tiene
+  // que decir cuál es cuál: una venta a seis meses hacía que el héroe grande
+  // dijera +112% cuando lo ganado fue +45.6%. Se nombran como ya se nombra la
+  // etapa temprana (ROI PROY. ANUAL / ROI PROY. TOTAL) — misma pareja, mismo
+  // orden, mismas palabras — para que los dos pares se lean igual.
   const heroes = sold
-    ? { label: 'ROI REALIZADO', value: p.realizedRoi, second: 'GANANCIA REALIZADA', secondValue: p.realizedGainPct, caption: fmtMXN(p.realizedGain) }
+    ? { label: 'ROI REAL ANUAL', value: p.realizedRoi, second: 'ROI REAL TOTAL', secondValue: p.realizedGainPct, caption: fmtMXN(p.realizedGain) }
     : early
       ? { label: 'ROI PROY. ANUAL', value: p.projectedRoi, second: 'ROI PROY. TOTAL', secondValue: p.projectedRoiTotal, caption: hasScore(stage) ? `Score ${p.score ?? '—'}` : undefined }
       : { label: 'ROI ANUAL', value: p.roi, second: 'GANANCIA NO REALIZADA', secondValue: p.unrealizedGainPct, caption: fmtMXN(p.unrealizedGain) }
@@ -585,9 +591,13 @@ export function PropertyDetailPage() {
                 <>
                   <SectionDivider label="RESULTADO" />
                   <StatRow label="PRECIO DE VENTA" value={fmtMXN(p.salePrice)} />
+                  {/* GANANCIA REALIZADA se queda porque son pesos y no se
+                      confunde con nada. El porcentaje total NO se repite aquí:
+                      lo dice el héroe como ROI REAL TOTAL, y tenerlo dos veces
+                      con dos nombres distintos era parte de lo que hacía leer
+                      mal el par anualizado/total. */}
                   <StatRow label="GANANCIA REALIZADA" value={fmtMXN(p.realizedGain)} />
-                  <StatRow label="GANANCIA %" value={fmtPct(p.realizedGainPct)} />
-                  <StatRow label="ROI REALIZADO" value={fmtPct(p.realizedRoi)} />
+                  <StatRow label="ROI REAL ANUAL" value={fmtPct(p.realizedRoi)} />
                   <StatRow label="PLAZO REAL" value={fmtMonths(p.holdMonthsActual)} />
                 </>
               )}

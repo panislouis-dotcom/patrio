@@ -131,11 +131,27 @@ describe('PropertyDetailPage', () => {
     await renderPage(SOLD)
 
     expect(screen.getByText('RESULTADO')).not.toBeNull()
-    expect(screen.getAllByText('ROI REALIZADO').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('ROI REAL ANUAL').length).toBeGreaterThan(0)
     expect(screen.getAllByText('$4,270,000').length).toBeGreaterThan(0)
     // Y ya no ofrece a dónde avanzar: vendida es terminal
     expect(screen.queryByText('AVANZAR A ▸')).toBeNull()
     expect(screen.queryByText('ARCHIVAR')).toBeNull()
+  })
+
+  it('una vendida dice cuál de sus dos ROI está anualizado', async () => {
+    // 4,270,000 sobre 3,730,000 en 47 meses: +114.5% en total, +22.5% al año.
+    // Son el mismo hecho leído de dos formas, y el héroe grande enseñaba el
+    // anualizado sin decirlo — a seis meses eso pinta un +112% donde se ganó 45%.
+    await renderPage(SOLD)
+
+    expect(screen.getAllByText('ROI REAL ANUAL').length).toBeGreaterThan(0)
+    expect(screen.getByText('ROI REAL TOTAL')).not.toBeNull()
+    expect(screen.getByText('+22.5%')).not.toBeNull()
+    expect(screen.getByText('+114.5%')).not.toBeNull()
+    // El porcentaje total no se repite bajo un segundo nombre.
+    expect(screen.queryByText('GANANCIA %')).toBeNull()
+    // Los pesos sí se quedan: no se confunden con ningún porcentaje.
+    expect(screen.getByText('GANANCIA REALIZADA')).not.toBeNull()
   })
 
   it('AVANZAR A ofrece solo los destinos que la etapa permite', async () => {
