@@ -24,33 +24,33 @@ test.describe('Comparables', () => {
 
   // ── 1. Comparables list page ───────────────────────────────────────────────
 
-  test('/prospectos/comparables loads and shows COMPARABLES count label', async ({ page }) => {
-    await page.goto('/prospectos/comparables')
+  test('/propiedades/comparables loads and shows COMPARABLES count label', async ({ page }) => {
+    await page.goto('/propiedades/comparables')
     // The toolbar always renders "N COMPARABLES" label regardless of count
     await expect(page.getByText(/\d+ COMPARABLES/)).toBeVisible()
   })
 
   test('comparables list shows + NUEVO COMPARABLE button', async ({ page }) => {
-    await page.goto('/prospectos/comparables')
+    await page.goto('/propiedades/comparables')
     await expect(page.getByText('+ NUEVO COMPARABLE')).toBeVisible()
   })
 
   test('comparables list shows table headers: DIRECCIÓN, M², PRECIO', async ({ page }) => {
-    await page.goto('/prospectos/comparables')
+    await page.goto('/propiedades/comparables')
     await expect(page.getByText('DIRECCIÓN')).toBeVisible()
     await expect(page.getByText('M²', { exact: true })).toBeVisible()
     await expect(page.getByText('PRECIO')).toBeVisible()
   })
 
   test('comparables list shows status filter dropdown with Todos option', async ({ page }) => {
-    await page.goto('/prospectos/comparables')
+    await page.goto('/propiedades/comparables')
     const filterSelect = page.locator('select').first()
     await expect(filterSelect).toBeVisible()
     await expect(filterSelect.locator('option', { hasText: 'Todos' })).toBeAttached()
   })
 
   test('status filter dropdown contains Activos, Vendidos, Retirados, Expirados options', async ({ page }) => {
-    await page.goto('/prospectos/comparables')
+    await page.goto('/propiedades/comparables')
     const filterSelect = page.locator('select').first()
     await expect(filterSelect.locator('option', { hasText: 'Activos' })).toBeAttached()
     await expect(filterSelect.locator('option', { hasText: 'Vendidos' })).toBeAttached()
@@ -60,21 +60,21 @@ test.describe('Comparables', () => {
 
   // ── 2. Navigate to create form ────────────────────────────────────────────
 
-  test('clicking + NUEVO COMPARABLE navigates to /prospectos/comparables/nuevo', async ({ page }) => {
-    await page.goto('/prospectos/comparables')
+  test('clicking + NUEVO COMPARABLE navigates to /propiedades/comparables/nuevo', async ({ page }) => {
+    await page.goto('/propiedades/comparables')
     await page.getByText('+ NUEVO COMPARABLE').click()
-    await expect(page).toHaveURL(/\/prospectos\/comparables\/nuevo/)
+    await expect(page).toHaveURL(/\/propiedades\/comparables\/nuevo/)
   })
 
   // ── 3. ComparableForm fields ───────────────────────────────────────────────
 
   test('nuevo comparable form shows "Nuevo Comparable" heading', async ({ page }) => {
-    await page.goto('/prospectos/comparables/nuevo')
+    await page.goto('/propiedades/comparables/nuevo')
     await expect(page.getByText('Nuevo Comparable')).toBeVisible()
   })
 
   test('nuevo comparable form shows required field labels', async ({ page }) => {
-    await page.goto('/prospectos/comparables/nuevo')
+    await page.goto('/propiedades/comparables/nuevo')
     await expect(page.getByText('Dirección *')).toBeVisible()
     await expect(page.getByText('m² *')).toBeVisible()
     await expect(page.getByText('Precio (MXN) *')).toBeVisible()
@@ -84,7 +84,7 @@ test.describe('Comparables', () => {
   })
 
   test('nuevo comparable form shows optional fields: Colonia, Ciudad, Recámaras, Baños', async ({ page }) => {
-    await page.goto('/prospectos/comparables/nuevo')
+    await page.goto('/propiedades/comparables/nuevo')
     await expect(page.getByText('Colonia')).toBeVisible()
     await expect(page.getByText('Ciudad')).toBeVisible()
     await expect(page.getByText('Recámaras')).toBeVisible()
@@ -92,7 +92,7 @@ test.describe('Comparables', () => {
   })
 
   test('nuevo comparable form shows Tipo and Condición selects and GUARDAR/CANCELAR buttons', async ({ page }) => {
-    await page.goto('/prospectos/comparables/nuevo')
+    await page.goto('/propiedades/comparables/nuevo')
     await expect(page.getByText('Tipo')).toBeVisible()
     await expect(page.getByText('Condición')).toBeVisible()
     await expect(page.getByRole('button', { name: 'GUARDAR' })).toBeVisible()
@@ -100,22 +100,22 @@ test.describe('Comparables', () => {
   })
 
   test('submit without required fields shows validation errors', async ({ page }) => {
-    await page.goto('/prospectos/comparables/nuevo')
+    await page.goto('/propiedades/comparables/nuevo')
     await page.getByRole('button', { name: 'GUARDAR' }).click()
     // Validation errors appear for required fields
     await expect(page.getByText('Requerido').first()).toBeVisible()
   })
 
   test('← COMPARABLES back link navigates back to comparables list', async ({ page }) => {
-    await page.goto('/prospectos/comparables/nuevo')
+    await page.goto('/propiedades/comparables/nuevo')
     await page.getByText('← COMPARABLES').click()
-    await expect(page).toHaveURL(/\/prospectos\/comparables$/)
+    await expect(page).toHaveURL(/\/propiedades\/comparables$/)
   })
 
   // ── 4. Create comparable end-to-end ───────────────────────────────────────
 
   test('fill required fields and submit — navigates back to list with new entry', async ({ page }) => {
-    await page.goto('/prospectos/comparables/nuevo')
+    await page.goto('/propiedades/comparables/nuevo')
 
     await page.locator('[data-testid="input-address"]').fill(TEST_ADDRESS)
     await page.locator('[data-testid="input-m2"]').fill('150')
@@ -137,7 +137,7 @@ test.describe('Comparables', () => {
     await page.getByRole('button', { name: 'GUARDAR' }).click()
 
     // After successful save, navigates back to comparables list
-    await expect(page).toHaveURL(/\/prospectos\/comparables$/, { timeout: 10000 })
+    await expect(page).toHaveURL(/\/propiedades\/comparables$/, { timeout: 10000 })
 
     // The new entry should appear in the table
     await expect(page.getByText(TEST_ADDRESS)).toBeVisible()
@@ -146,7 +146,7 @@ test.describe('Comparables', () => {
   // ── 5. Filter behavior ────────────────────────────────────────────────────
 
   test('selecting a status filter updates the COMPARABLES count label', async ({ page }) => {
-    await page.goto('/prospectos/comparables')
+    await page.goto('/propiedades/comparables')
 
     // Get initial count text
     const countLabel = page.getByText(/\d+ COMPARABLES/)

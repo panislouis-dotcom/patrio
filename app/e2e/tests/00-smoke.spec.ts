@@ -44,26 +44,26 @@ test('/login page loads with email and password inputs', async ({ page }) => {
 })
 
 // ── 4. Login success ──────────────────────────────────────────────────────────
-test('login with valid credentials redirects to /prospectos/tabla', async ({ page }) => {
+test('login with valid credentials redirects to /propiedades', async ({ page }) => {
   await page.goto('/login')
   await page.locator('input[type="email"]').fill(E2E_EMAIL)
   await page.locator('input[type="password"]').fill(E2E_PASS)
   await page.locator('button[type="submit"]').click()
-  await expect(page).toHaveURL(/\/prospectos\/tabla/, { timeout: 10_000 })
+  await expect(page).toHaveURL(/\/propiedades/, { timeout: 10_000 })
 })
 
 // ── 5. Nav visible after login ────────────────────────────────────────────────
-test('PROSPECTOS nav link is visible after login', async ({ page }) => {
+test('PROPIEDADES nav link is visible after login', async ({ page }) => {
   await page.goto('/login')
   await page.locator('input[type="email"]').fill(E2E_EMAIL)
   await page.locator('input[type="password"]').fill(E2E_PASS)
   await page.locator('button[type="submit"]').click()
-  await expect(page).toHaveURL(/\/prospectos\/tabla/, { timeout: 10_000 })
-  await expect(page.locator('a', { hasText: 'PROSPECTOS' })).toBeVisible()
+  await expect(page).toHaveURL(/\/propiedades/, { timeout: 10_000 })
+  await expect(page.locator('a', { hasText: 'PROPIEDADES' }).first()).toBeVisible()
 })
 
-// ── 6. API /api/prospects returns 200 with auth ───────────────────────────────
-test('GET /api/prospects returns 200 with valid Authorization header', async () => {
+// ── 6. API /api/properties returns 200 with auth ──────────────────────────────
+test('GET /api/properties returns 200 with valid Authorization header', async () => {
   const ctx = await request.newContext({ baseURL: API_BASE })
 
   // Obtain token via login endpoint
@@ -74,21 +74,38 @@ test('GET /api/prospects returns 200 with valid Authorization header', async () 
   const { access_token } = (await loginRes.json()) as { access_token: string }
 
   // Hit the protected endpoint
-  const prospectsRes = await ctx.get('/api/prospects', {
+  const propertiesRes = await ctx.get('/api/properties', {
     headers: { Authorization: `Bearer ${access_token}` },
   })
-  expect(prospectsRes.status()).toBe(200)
+  expect(propertiesRes.status()).toBe(200)
 
   await ctx.dispose()
 })
 
-// ── 7. Logout ─────────────────────────────────────────────────────────────────
+// ── 7. The old two-entity surface is gone, not redirected ─────────────────────
+// The merge gave every property a fresh id, so a preserved /prospects/19 would
+// answer about a different building. A 404 is the honest answer.
+test('GET /api/prospects and /api/projects are gone', async () => {
+  const ctx = await request.newContext({ baseURL: API_BASE })
+  const loginRes = await ctx.post('/api/auth/login', {
+    data: { email: E2E_EMAIL, password: E2E_PASS },
+  })
+  const { access_token } = (await loginRes.json()) as { access_token: string }
+  const headers = { Authorization: `Bearer ${access_token}` }
+
+  expect((await ctx.get('/api/prospects', { headers })).status()).toBe(404)
+  expect((await ctx.get('/api/projects', { headers })).status()).toBe(404)
+
+  await ctx.dispose()
+})
+
+// ── 8. Logout ─────────────────────────────────────────────────────────────────
 test('SALIR button logs out and redirects to /login', async ({ page }) => {
   await page.goto('/login')
   await page.locator('input[type="email"]').fill(E2E_EMAIL)
   await page.locator('input[type="password"]').fill(E2E_PASS)
   await page.locator('button[type="submit"]').click()
-  await expect(page).toHaveURL(/\/prospectos\/tabla/, { timeout: 10_000 })
+  await expect(page).toHaveURL(/\/propiedades/, { timeout: 10_000 })
 
   // SALIR is always visible in the tab bar — click directly
   await page.getByRole('button', { name: 'SALIR' }).click()

@@ -42,19 +42,19 @@ function mockZones(page: import('@playwright/test').Page) {
 
 test.describe('Sonar', () => {
   test("page loads with scan button 'EJECUTAR SCAN ▸'", async ({ page }) => {
-    await page.goto('/prospectos/sonar')
+    await page.goto('/propiedades/sonar')
     await expect(page.getByText('EJECUTAR SCAN ▸')).toBeVisible()
   })
 
   test('/api/sonar/zones is called on page load', async ({ page }) => {
     const zonesRequest = page.waitForRequest('**/api/sonar/zones', { timeout: 15_000 })
-    await page.goto('/prospectos/sonar')
+    await page.goto('/propiedades/sonar')
     await zonesRequest  // resolves only when the request fires — proves the endpoint is called on mount
   })
 
   test('state dropdown shows Nuevo León', async ({ page }) => {
     await mockZones(page)
-    await page.goto('/prospectos/sonar')
+    await page.goto('/propiedades/sonar')
     // ESTADO <select> is the first select in the header
     const stateSelect = page.locator('select').first()
     await expect(stateSelect).toContainText('Nuevo León', { timeout: 5000 })
@@ -62,7 +62,7 @@ test.describe('Sonar', () => {
 
   test('all 6 city chips are visible after zones load', async ({ page }) => {
     await mockZones(page)
-    await page.goto('/prospectos/sonar')
+    await page.goto('/propiedades/sonar')
     // Chips truncate to first 2 words of municipio name
     for (const label of ['Monterrey', 'San Pedro', 'Santa Catarina', 'García', 'Apodaca', 'Escobedo']) {
       await expect(page.locator('button', { hasText: label })).toBeVisible({ timeout: 5000 })
@@ -71,7 +71,7 @@ test.describe('Sonar', () => {
 
   test('"Todas" button selects all chips and reveals ✕', async ({ page }) => {
     await mockZones(page)
-    await page.goto('/prospectos/sonar')
+    await page.goto('/propiedades/sonar')
     await page.locator('button', { hasText: 'Todas' }).waitFor({ state: 'visible', timeout: 5000 })
     await page.locator('button', { hasText: 'Todas' }).click()
     // ✕ clear button has no title; "Descartar" row buttons have title="Descartar"
@@ -80,7 +80,7 @@ test.describe('Sonar', () => {
 
   test('✕ button clears city selection', async ({ page }) => {
     await mockZones(page)
-    await page.goto('/prospectos/sonar')
+    await page.goto('/propiedades/sonar')
     await page.locator('button', { hasText: 'Todas' }).waitFor({ state: 'visible', timeout: 5000 })
     await page.locator('button', { hasText: 'Todas' }).click()
     const clearBtn = page.locator('button:not([title])').filter({ hasText: '✕' })
@@ -91,7 +91,7 @@ test.describe('Sonar', () => {
 
   test('clicking a city chip toggles its visual state', async ({ page }) => {
     await mockZones(page)
-    await page.goto('/prospectos/sonar')
+    await page.goto('/propiedades/sonar')
     const chip = page.locator('button', { hasText: 'Monterrey' })
     await chip.waitFor({ state: 'visible', timeout: 5000 })
 
@@ -111,7 +111,7 @@ test.describe('Sonar', () => {
       }),
     )
 
-    await page.goto('/prospectos/sonar')
+    await page.goto('/propiedades/sonar')
     await page.getByText('EJECUTAR SCAN ▸').click()
 
     // Portal row shows up during/after scan
@@ -133,7 +133,7 @@ test.describe('Sonar', () => {
       })
     })
 
-    await page.goto('/prospectos/sonar')
+    await page.goto('/propiedades/sonar')
     await page.locator('button', { hasText: 'Monterrey' }).waitFor({ state: 'visible', timeout: 5000 })
     await page.locator('button', { hasText: 'Monterrey' }).click()
     await page.getByText('EJECUTAR SCAN ▸').click()

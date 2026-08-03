@@ -17,83 +17,95 @@ export async function getToken(request: APIRequestContext): Promise<string> {
   return data.access_token
 }
 
-export async function deleteProspectByName(
-  request: APIRequestContext,
-  name: string,
-  token: string,
-): Promise<void> {
-  const res = await request.get(`${API_BASE}/api/prospects`, {
-    headers: await authHeaders(token),
-  })
-  const list = await res.json() as Array<{ name: string; id: number }>
-  for (const target of list.filter(p => p.name === name)) {
-    await request.delete(`${API_BASE}/api/prospects/${target.id}`, {
-      headers: await authHeaders(token),
-    })
-  }
+/** A property as the tests read it back — the raw columns they set, plus status. */
+export interface PropertyRow {
+  id: number
+  name: string
+  status: string
 }
 
-export async function createProspect(
+/**
+ * A property is born a `prospecto`: POST cannot set a status, so a fixture that
+ * needs a later stage walks there through `transitionProperty`.
+ */
+export async function createProperty(
   request: APIRequestContext,
   data: Record<string, unknown>,
   token: string,
-): Promise<{ id: number }> {
-  const res = await request.post(`${API_BASE}/api/prospects`, {
+): Promise<PropertyRow> {
+  const res = await request.post(`${API_BASE}/api/properties`, {
     headers: await authHeaders(token),
     data,
   })
-  if (!res.ok()) throw new Error(`createProspect failed: ${res.status()} ${await res.text()}`)
-  return res.json() as Promise<{ id: number }>
+  if (!res.ok()) throw new Error(`createProperty failed: ${res.status()} ${await res.text()}`)
+  return res.json() as Promise<PropertyRow>
 }
 
-export async function deleteProspect(
+export async function deleteProperty(
   request: APIRequestContext,
   id: number,
   token: string,
 ): Promise<void> {
-  await request.delete(`${API_BASE}/api/prospects/${id}`, {
+  await request.delete(`${API_BASE}/api/properties/${id}`, {
     headers: await authHeaders(token),
   })
 }
 
-export async function createProject(
-  request: APIRequestContext,
-  data: Record<string, unknown>,
-  token: string,
-): Promise<{ id: number }> {
-  const res = await request.post(`${API_BASE}/api/projects`, {
-    headers: await authHeaders(token),
-    data,
-  })
-  if (!res.ok()) throw new Error(`createProject failed: ${res.status()} ${await res.text()}`)
-  return res.json() as Promise<{ id: number }>
-}
-
-export async function deleteProject(
-  request: APIRequestContext,
-  id: number,
-  token: string,
-): Promise<void> {
-  await request.delete(`${API_BASE}/api/projects/${id}`, {
-    headers: await authHeaders(token),
-  })
-}
-
-/** Deletes every match, so a retried worker never trips over its own leftovers. */
-export async function deleteProjectByName(
+/**
+ * Deletes every match, so a retried worker never trips over its own leftovers.
+ * Archived rows are included: a lifecycle test can park a fixture there, and a
+ * leftover nobody lists is a leftover nobody cleans.
+ */
+export async function deletePropertyByName(
   request: APIRequestContext,
   name: string,
   token: string,
 ): Promise<void> {
-  const res = await request.get(`${API_BASE}/api/projects`, {
+  const res = await request.get(`${API_BASE}/api/properties?include_archived=true`, {
     headers: await authHeaders(token),
   })
-  const list = await res.json() as Array<{ name: string; id: number }>
+  const list = await res.json() as PropertyRow[]
   for (const target of list.filter(p => p.name === name)) {
-    await request.delete(`${API_BASE}/api/projects/${target.id}`, {
-      headers: await authHeaders(token),
-    })
+    await deleteProperty(request, target.id, token)
   }
+}
+
+/**
+ * Empties allowlisted fields. It is the only way a value goes away, which is
+ * how a fixture can be given an *incomplete* underwriting breakdown — the state
+ * that makes its capital base a manual figure.
+ */
+export async function clearPropertyFields(
+  request: APIRequestContext,
+  id: number,
+  fields: string[],
+  token: string,
+): Promise<PropertyRow> {
+  const res = await request.post(`${API_BASE}/api/properties/${id}/clear-fields`, {
+    headers: await authHeaders(token),
+    data: { fields },
+  })
+  if (!res.ok()) throw new Error(`clearFields failed: ${res.status()} ${await res.text()}`)
+  return res.json() as Promise<PropertyRow>
+}
+
+/**
+ * Moves a property one stage forward. `body.to` names the destination and the
+ * rest of the body is what that stage demands — the same typed contract the
+ * AVANZAR A ▸ modal posts.
+ */
+export async function transitionProperty(
+  request: APIRequestContext,
+  id: number,
+  body: Record<string, unknown>,
+  token: string,
+): Promise<PropertyRow> {
+  const res = await request.post(`${API_BASE}/api/properties/${id}/transition`, {
+    headers: await authHeaders(token),
+    data: body,
+  })
+  if (!res.ok()) throw new Error(`transition to ${body.to} failed: ${res.status()} ${await res.text()}`)
+  return res.json() as Promise<PropertyRow>
 }
 
 export async function deleteInvestorByName(
