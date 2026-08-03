@@ -1,7 +1,8 @@
 import { test, expect } from '../fixtures/auth'
 import type { Page } from '@playwright/test'
 import {
-  getToken, createProperty, deleteProperty, deletePropertyByName, transitionProperty, API_BASE,
+  getToken, createProperty, deleteProperty, deletePropertyByName, transitionProperty,
+  patchProperty, API_BASE,
 } from '../helpers/api'
 import {
   gotoProperty, detailRow, advanceTo, confirmTransition, enterEditMode, saveEdits, setNumericField,
@@ -350,7 +351,7 @@ test.describe('El portón de desarrollo sin precio de compra', () => {
     await deleteProperty(request, id, token)
   })
 
-  test('el modal dice qué falta y dónde se captura, en vez de dejar confirmar', async ({ page }) => {
+  test('el modal pide el precio de compra ahí mismo, y con él abre el portón', async ({ page }) => {
     await gotoProperty(page, id)
 
     // Suma cero es vacío, no cero: nadie capturó nada, y «$0» afirmaría que la
@@ -360,10 +361,34 @@ test.describe('El portón de desarrollo sin precio de compra', () => {
 
     await advanceTo(page, 'DESARROLLO')
 
-    await expect(page.getByText(
-      'Falta el precio de compra: la inversión es la suma del desglose y sin él no hay ninguna. '
-      + 'Se captura en la ficha.')).toBeVisible()
+    // El precio es el tercer hecho de la compra, junto a la fecha y las
+    // unidades; se captura con ellos en vez de mandar a la ficha y de vuelta.
+    const caja = page.getByLabel('PRECIO DE COMPRA', { exact: true })
+    await expect(caja).toHaveValue('')
     await expect(confirmTransition(page, 'DESARROLLO')).toBeDisabled()
+
+    // La INVERSIÓN se enseña vacía y explica por qué, sin mandar a otro lado.
+    await expect(page.getByText(
+      'Es la suma del desglose. Queda resuelta con el precio de compra que se pide arriba.'
+    )).toBeVisible()
+
+    // Lo que traba es el insumo, no la cifra derivada que falta por él: en
+    // cuanto hay precio el portón abre, aunque la INVERSIÓN de arriba siga
+    // calculada sobre lo guardado y por tanto vacía hasta el momento de grabar.
+    await caja.fill('3200000')
+    await expect(confirmTransition(page, 'DESARROLLO')).toBeEnabled()
+  })
+
+  test('con el precio capturado, avanzar no lo vuelve a preguntar', async ({ page, request }) => {
+    // Se pregunta solo en su ausencia: prellenarlo y dejarlo editable dejaría la
+    // INVERSIÓN de abajo —calculada en el servidor sobre lo ya guardado— vieja
+    // en pantalla mientras alguien teclea encima.
+    await patchProperty(request, id, { purchasePrice: 2_500_000 }, token)
+    await gotoProperty(page, id)
+    await advanceTo(page, 'DESARROLLO')
+
+    await expect(page.getByLabel('PRECIO DE COMPRA', { exact: true })).toHaveCount(0)
+    await expect(confirmTransition(page, 'DESARROLLO')).toBeEnabled()
   })
 })
 

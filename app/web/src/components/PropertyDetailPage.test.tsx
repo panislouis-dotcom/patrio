@@ -323,10 +323,11 @@ describe('PropertyDetailPage', () => {
     expect((within(modal).getByText('DESARROLLO ▸') as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('sin precio de compra, avanzar a desarrollo dice qué falta y dónde', async () => {
-    // El gate de la etapa exige el precio de compra: sin él no hay inversión
-    // que sumar. Decirlo aquí evita que el servidor rebote la transición con un
-    // error que no señala ningún campo.
+  it('sin precio de compra, avanzar a desarrollo lo pide ahí mismo', async () => {
+    // El gate de la etapa exige el precio de compra: sin él no hay inversión que
+    // sumar. Es el tercer hecho de la compra, junto a la fecha y las unidades, y
+    // se captura con ellos — mandar a la ficha y de vuelta era el viaje que este
+    // modal existe para ahorrar.
     await renderPage({
       ...BASE_PROPERTY, status: 'oferta', purchasePrice: null,
       acquisitionCosts: null, acquisitionTotal: null, totalInvestment: 3_900_000,
@@ -335,9 +336,33 @@ describe('PropertyDetailPage', () => {
     fireEvent.click(screen.getByText('AVANZAR A ▸'))
     fireEvent.click(screen.getByText('DESARROLLO'))
     const modal = screen.getByText('OFERTA ▸ DESARROLLO').parentElement!
+    const confirmar = () => within(modal).getByText('DESARROLLO ▸') as HTMLButtonElement
 
-    expect(within(modal).getByText(/Falta el precio de compra/)).not.toBeNull()
-    expect((within(modal).getByText('DESARROLLO ▸') as HTMLButtonElement).disabled).toBe(true)
+    // La caja está y traba el portón mientras siga vacía.
+    const caja = within(modal).getByLabelText('PRECIO DE COMPRA') as HTMLInputElement
+    expect(caja.value).toBe('')
+    expect(confirmar().disabled).toBe(true)
+
+    // Con el precio tecleado el portón abre: lo que trababa era el insumo que
+    // falta, no la cifra derivada que falta por él. El readout se calcula sobre
+    // lo guardado, así que seguiría diciendo «falta» — trabar por él dejaría el
+    // botón muerto con el formulario completo.
+    fireEvent.change(caja, { target: { value: '3200000' } })
+    expect(confirmar().disabled).toBe(false)
+  })
+
+  it('con precio de compra capturado, avanzar a desarrollo no lo vuelve a pedir', async () => {
+    // Se pregunta solo en su ausencia. Prellenarlo y dejarlo editable haría que
+    // la INVERSIÓN de abajo —calculada en el servidor sobre lo ya guardado—
+    // quedara vieja en pantalla mientras alguien teclea encima.
+    await renderPage({ ...BASE_PROPERTY, status: 'oferta', purchasePrice: 3_000_000 })
+
+    fireEvent.click(screen.getByText('AVANZAR A ▸'))
+    fireEvent.click(screen.getByText('DESARROLLO'))
+    const modal = screen.getByText('OFERTA ▸ DESARROLLO').parentElement!
+
+    expect(within(modal).queryByLabelText('PRECIO DE COMPRA')).toBeNull()
+    expect((within(modal).getByText('DESARROLLO ▸') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('una propiedad rentada enseña las dos rentas y los dos cap rates', async () => {

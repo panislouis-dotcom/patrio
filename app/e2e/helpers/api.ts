@@ -90,6 +90,27 @@ export async function clearPropertyFields(
 }
 
 /**
+ * Raises values on a property — the PATCH door of the three.
+ *
+ * It only ever sets: an absent key means "leave it", and emptying has its own
+ * door (`clearPropertyFields`). Use it to arrange a precondition that the test
+ * is not itself exercising; when the capture IS the subject, drive the UI.
+ */
+export async function patchProperty(
+  request: APIRequestContext,
+  id: number,
+  fields: Record<string, unknown>,
+  token: string,
+): Promise<PropertyRow> {
+  const res = await request.patch(`${API_BASE}/api/properties/${id}`, {
+    headers: await authHeaders(token),
+    data: fields,
+  })
+  if (!res.ok()) throw new Error(`patch failed: ${res.status()} ${await res.text()}`)
+  return res.json() as Promise<PropertyRow>
+}
+
+/**
  * Moves a property one stage forward. `body.to` names the destination and the
  * rest of the body is what that stage demands — the same typed contract the
  * AVANZAR A ▸ modal posts.

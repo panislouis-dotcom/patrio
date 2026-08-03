@@ -12,6 +12,12 @@ interface Field {
   /** Obligatorio salvo que la propiedad ya lo traiga capturado. */
   required: (p: Property) => boolean
   prefill: (p: Property) => string
+  /** Se pregunta solo cuando falta. Sirve para los insumos de los que el modal
+      también ENSEÑA una cifra derivada: prellenarlos y dejarlos editables haría
+      que esa cifra —calculada en el servidor sobre lo ya guardado— quedara vieja
+      en pantalla mientras alguien teclea encima. Preguntar solo en su ausencia
+      evita la contradicción sin duplicar el cálculo en el cliente. */
+  show?: (p: Property) => boolean
   /** Se resuelve contra la propiedad: algunos avisos solo tienen sentido con
       lo que ya trae capturado, como la renta que se estimó. */
   hint?: (p: Property) => string | undefined
@@ -42,6 +48,15 @@ const FIELDS: Record<Exclude<PropertyStatus, 'prospecto'>, Field[]> = {
       required: () => true, prefill: p => (p.acquisitionDate ?? thisMonth()).slice(0, 7) },
     { key: 'totalUnits', label: 'UNIDADES', kind: 'int',
       required: () => true, prefill: p => str(p.totalUnits) || '1' },
+    // El tercer hecho de la compra, junto a la fecha y las unidades. Casi toda
+    // propiedad llega con él —es el precio del anuncio— y entonces no se
+    // pregunta: ya está capturado y la INVERSIÓN de abajo lo refleja. Cuando
+    // falta, se pide aquí en vez de mandar a la ficha y de vuelta: es un insumo
+    // del portón como los otros dos, y era el único que no se podía teclear.
+    { key: 'purchasePrice', label: 'PRECIO DE COMPRA', kind: 'money',
+      show: p => !(p.purchasePrice && p.purchasePrice > 0),
+      required: () => true, prefill: () => '',
+      hint: () => 'Lo que se paga por el inmueble como está. La obra a ejecutar se captura aparte.' },
   ],
   en_renta: [
     { key: 'firstRentDate', label: 'FECHA DE LA PRIMERA RENTA', kind: 'date',
@@ -95,7 +110,7 @@ const READOUTS: Partial<Record<Exclude<PropertyStatus, 'prospecto'>, (p: Propert
     value: fmtMXN(p.totalInvestment),
     missing: p.purchasePrice && p.purchasePrice > 0
       ? undefined
-      : 'Falta el precio de compra: la inversión es la suma del desglose y sin él no hay ninguna. Se captura en la ficha.',
+      : 'Es la suma del desglose. Queda resuelta con el precio de compra que se pide arriba.',
   }),
 }
 
@@ -107,7 +122,7 @@ interface Props {
 }
 
 export function TransitionModal({ property, to, onCancel, onConfirm }: Props) {
-  const fields = FIELDS[to]
+  const fields = FIELDS[to].filter(f => f.show?.(property) ?? true)
   const readout = READOUTS[to]?.(property)
   const [values, setValues] = useState<Record<string, string>>(
     () => Object.fromEntries(fields.map(f => [f.key, f.prefill(property)])),
@@ -118,7 +133,13 @@ export function TransitionModal({ property, to, onCancel, onConfirm }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const missing = fields.filter(f => f.required(property) && !values[f.key]?.trim())
-  const canConfirm = !saving && missing.length === 0 && !readout?.missing
+  // Lo que traba el botón son los INSUMOS que faltan, no la cifra derivada que
+  // falta por ellos. El readout se calcula sobre lo ya guardado, así que seguiría
+  // diciendo «falta» mientras alguien teclea justo el dato que lo resuelve — y el
+  // botón quedaría muerto con el formulario completo. Cada dato que el readout
+  // necesita es campo obligatorio del portón; trabar por ambos era contarlo dos
+  // veces, y la segunda cuenta usa datos viejos.
+  const canConfirm = !saving && missing.length === 0
 
   async function confirm() {
     setSaving(true)
