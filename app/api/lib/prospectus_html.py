@@ -174,6 +174,10 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
               color: var(--ink); margin: 8px 0 10mm; }
 .summary .metrics { border-color: rgba(90,122,78,0.25); }
 .summary .metric { border-color: rgba(90,122,78,0.25); background: rgba(255,255,255,0.5); }
+/* Con ventas Y rentas que reportar el resumen crece a cinco columnas: mismo
+   bloque, tipografía un punto más chica para que cada cifra quepa en su celda. */
+.summary .metrics-5 .metric { padding: 4mm 3mm; }
+.summary .metrics-5 .metric .v { font-size: 16pt; }
 
 /* ══ OPPORTUNITY — full page ═════════════════════════════════════════════ */
 .opp { height: 297mm; display: flex; flex-direction: column; }
@@ -326,21 +330,23 @@ def _kv_rows(pairs) -> str:
 # Section builders
 # ---------------------------------------------------------------------------
 
-def _track_roi(p: dict):
-    """El ROI que presume el track record: realizado si ya se vendió, la marca
-    contra costo si sigue en renta."""
-    return p.get("realizedRoi") if p.get("realizedRoi") is not None else p.get("roi")
-
-
-def _cover(month_year: str, operating: list[dict] | None = None) -> str:
-    # Las tres cifras de portada salen de los proyectos operando — nada inventado:
-    # unidades sumadas, y promedio simple (no ponderado) del ROI anualizado y del
-    # cap rate que ya calculó el API. Sin datos → "—".
-    ops = operating or []
-    units = sum(int(_num(p.get("totalUnits"))) for p in ops)
+def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
+    # Las tres cifras de portada salen de datos reales, y cada una de la etapa
+    # que puede sostenerla — promedio simple (no ponderado) de lo que ya calculó
+    # el API, nunca una fórmula reinventada aquí:
+    #   · Unidades en renta — solo las que siguen en renta. La leyenda dice
+    #     "operando hoy" y lo vendido dejó de operar para nosotros.
+    #   · Cap rate promedio — solo en renta: es renta cobrada sobre capital. Una
+    #     vendida ni siquiera trae capRate (la proyección se congela en la venta).
+    #   · ROI promedio — en renta y vendidas: el rendimiento que la firma ya
+    #     entregó o lleva marcado. Ninguna proyección entra aquí; por eso
+    #     desarrollo y las oportunidades no cuentan.
+    # Sin datos → "—", nunca un 0 inventado.
+    units = sum(int(_num(p.get("totalUnits"))) for p in rented)
     units_v = f"{units:,}" if units else "—"
-    roi_avg = _fmt_pct_or_dash(_mean([_track_roi(p) for p in ops]))
-    cap_avg = _fmt_pct_or_dash(_mean([p.get("capRate") for p in ops]))
+    roi_avg = _fmt_pct_or_dash(_mean([p.get("realizedRoi") for p in sold]
+                                     + [p.get("roi") for p in rented]))
+    cap_avg = _fmt_pct_or_dash(_mean([p.get("capRate") for p in rented]))
     return f"""<div class="page-block cover">
   <div class="cover-top">
     <div>
@@ -356,8 +362,8 @@ def _cover(month_year: str, operating: list[dict] | None = None) -> str:
       Tú pones el capital y eres dueño de todo — nosotros lo hacemos realidad, de principio a fin.</p>
     <div class="vp">
       <div class="vp-item"><div class="vp-v">{units_v}</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
-      <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">anualizado, sobre inversión</div></div>
-      <div class="vp-item"><div class="vp-v">{cap_avg}</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">real, no proyectado</div></div>
+      <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">anualizado · vendidas y en renta</div></div>
+      <div class="vp-item"><div class="vp-v">{cap_avg}</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">real, sobre renta cobrada</div></div>
     </div>
   </div>
   <div class="cover-foot">
@@ -367,61 +373,27 @@ def _cover(month_year: str, operating: list[dict] | None = None) -> str:
 </div>"""
 
 
-def _realized_gain_pct(p: dict) -> float:
-    """La plusvalía que el track record presume: realizada si ya se vendió, la
-    marca contra costo si sigue en renta."""
-    return _num(p.get("realizedGainPct") if p.get("realizedGainPct") is not None
-                else p.get("unrealizedGainPct"))
+def _hold_tail(p: dict) -> str:
+    """Meses desde la adquisición — el API los congela en la venta. Se dice "en
+    cartera" y no "de obra" porque eso es literalmente lo que cuentan."""
+    hold = int(_num(p.get("holdMonthsActual")))
+    return f"{hold} meses en cartera" if hold else ""
 
 
-def _project_card(p: dict, kicker: str, projected: bool = False) -> str:
+def _card(p: dict, kicker: str, tail: str, metrics: str) -> str:
+    """La caja que comparten las tres etapas: banda con nombre y meta, cinco
+    métricas y las fotos. Lo único parametrizado es lo que de verdad cambia por
+    etapa — las métricas y la coleta del subtítulo."""
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
     ptype = _esc(_pretty_type(p.get("strategyType") or p.get("assetType")))
     units = int(_num(p.get("totalUnits")))
-    hold = int(_num(p.get("holdMonthsActual")))
 
-    sub_bits = [b for b in [address, city] if b]
-    meta_bits = [b for b in [ptype, f"{units} unidades" if units else "", f"{hold} meses" if hold else ""] if b]
-    sub = " · ".join(sub_bits)
+    sub = " · ".join(b for b in [address, city] if b)
+    meta_bits = [b for b in [ptype, f"{units} unidades" if units else "", tail] if b]
     if meta_bits:
         sub += "  —  " + " · ".join(meta_bits)
-
-    # Cap rate viene del API (renta anual / inversión — una sola fórmula en todo
-    # el sistema): real en operando, proyectado y etiquetado como tal en
-    # desarrollo. Sin renta → "—", nunca inventado.
-    cap = p.get("capRate")
-
-    if projected:
-        # Pre-obra: SOLO cifras del underwriting. currentValuation/unrealizedGainPct
-        # nacen igualadas al costo (0%) al crear el proyecto y leerían como un
-        # avalúo real que nadie hizo.
-        metrics = "".join([
-            _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
-            _metric(_fmt_mxn_compact_or_dash(_sale_or_none(p.get("projectedSale"))), "Venta proyectada"),
-            _metric(_fmt_pct_or_dash(p.get("projectedRoi")), "ROI anual proy."),
-            _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Plusvalía proy."),
-            _metric(_fmt_pct_or_dash(cap), "Cap rate proy."),
-        ])
-    else:
-        # Operando: resultados realizados. La valuación lleva su fecha de corte.
-        sold = p.get("realizedRoi") is not None or p.get("realizedGainPct") is not None
-        if sold:
-            exit_value, exit_label = p.get("salePrice"), f"Venta · {_fmt_month(p.get('saleDate'))}"
-            roi, gain = p.get("realizedRoi"), p.get("realizedGainPct")
-        else:
-            val_month = _fmt_month(p.get("valuationDate"))
-            exit_value = p.get("currentValuation")
-            exit_label = f"Valuación · {val_month}" if val_month else "Valuación actual"
-            roi, gain = p.get("roi"), p.get("unrealizedGainPct")
-        metrics = "".join([
-            _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
-            _metric(_fmt_mxn_compact_or_dash(exit_value), exit_label),
-            _metric(_fmt_pct_or_dash(roi), "ROI anual"),
-            _metric(_fmt_pct_or_dash(gain), "Plusvalía"),
-            _metric(_fmt_pct_or_dash(cap), "Cap rate"),
-        ])
 
     images = p.get("images", [])
     antes = _imgs_by_type(images, "antes")
@@ -447,6 +419,58 @@ def _project_card(p: dict, kicker: str, projected: bool = False) -> str:
 </div>"""
 
 
+def _sold_card(p: dict, kicker: str) -> str:
+    """Una propiedad vendida es un hecho cerrado, y así se presenta: precio de
+    venta, ganancia y ROI realizados, plazo real. Ni una cifra proyectada ni una
+    valuación — el API ya las apagó en vendida, y esta tarjeta tampoco las
+    pediría: presumir una marca cuando existe un precio de venta sería cambiar
+    un resultado por una opinión."""
+    gain, gain_pct = p.get("realizedGain"), p.get("realizedGainPct")
+    gain_v = (f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct(gain_pct, 1)}</small>'
+              if gain is not None and gain_pct is not None else "—")
+    hold = int(_num(p.get("holdMonthsActual")))
+    month = _fmt_month(p.get("saleDate"))
+    metrics = "".join([
+        _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
+        _metric(_fmt_mxn_compact_or_dash(p.get("salePrice")), "Precio de venta"),
+        _metric(gain_v, "Ganancia realizada"),
+        _metric(_fmt_pct_or_dash(p.get("realizedRoi")), "ROI realizado"),
+        _metric(f"{hold} meses" if hold else "—", "Plazo real"),
+    ])
+    tail = f"Vendida · {month}" if month else "Vendida"
+    return _card(p, f"{kicker} · Resultado final", tail, metrics)
+
+
+def _rented_card(p: dict, kicker: str) -> str:
+    """En renta: la marca viva. La valuación lleva su fecha de corte encima
+    porque es una estimación con fecha, no un hecho; el cap rate ya es renta
+    cobrada sobre capital."""
+    val_month = _fmt_month(p.get("valuationDate"))
+    metrics = "".join([
+        _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
+        _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
+                f"Valuación · {val_month}" if val_month else "Valuación actual"),
+        _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
+        _metric(_fmt_pct_or_dash(p.get("unrealizedGainPct")), "Plusvalía"),
+        _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate"),
+    ])
+    return _card(p, f"{kicker} · En renta", _hold_tail(p), metrics)
+
+
+def _development_card(p: dict, kicker: str) -> str:
+    """En desarrollo: SOLO cifras del underwriting, todas etiquetadas como
+    proyección. La valuación inicial de una propiedad recién comprada nace
+    igualada al costo, y publicarla leería como un avalúo que nadie hizo."""
+    metrics = "".join([
+        _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
+        _metric(_fmt_mxn_compact_or_dash(_sale_or_none(p.get("projectedSale"))), "Venta proyectada"),
+        _metric(_fmt_pct_or_dash(p.get("projectedRoi")), "ROI anual proy."),
+        _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Plusvalía proy."),
+        _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy."),
+    ])
+    return _card(p, kicker, _hold_tail(p), metrics)
+
+
 def _team_block(team: list[dict] | None) -> str:
     """Equipo tal como está en la base — nombre completo, rol y su nota/bio.
     Sin equipo capturado no se inventa ninguno: la sección desaparece."""
@@ -470,23 +494,44 @@ def _team_block(team: list[dict] | None) -> str:
     return f'<div class="partners{cols}">{"".join(blocks)}</div>'
 
 
-def _summary_card(track_record: list[dict], team: list[dict] | None = None) -> str:
-    inv = sum(_num(p.get("totalInvestment")) for p in track_record)
-    val = sum(_num(p.get("salePrice") or p.get("currentValuation")) for p in track_record)
-    gain = val - inv
-    metrics = "".join([
-        _metric(str(len(track_record)), "Proyectos"),
-        _metric(_fmt_mxn_compact(inv), "Capital invertido"),
-        _metric(_fmt_mxn_compact(val), "Valuación actual"),
-        _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct_or_dash(gain / inv if inv else None, 0)}</small>',
-                "Plusvalía total"),
-    ])
+def _summary_card(sold: list[dict], rented: list[dict], team: list[dict] | None = None) -> str:
+    """El portafolio que el track record ya produjo: capital desplegado contra lo
+    que ese capital vale hoy. Las vendidas cuentan — son el resultado más fuerte
+    de la firma y dejarlas fuera subvaluaría el historial — pero entran por su
+    precio de venta en un renglón propio, separado de la valuación de lo que
+    sigue en renta. Sumarlas en una sola cifra obligaría a llamar "valuación
+    actual" a dinero que ya se cobró. El encabezado nombra las etapas que
+    resume, y cada renglón desaparece cuando su etapa está vacía."""
+    track = sold + rented
+    inv = sum(_num(p.get("totalInvestment")) for p in track)
+    sales = sum(_num(p.get("salePrice")) for p in sold)
+    marks = sum(_num(p.get("currentValuation")) for p in rented)
+    gain = sales + marks - inv
+
+    cells = [(str(len(track)), "Propiedades"), (_fmt_mxn_compact(inv), "Capital invertido")]
+    if sold:
+        cells.append((_fmt_mxn_compact(sales), "Ventas realizadas"))
+    if rented:
+        cells.append((_fmt_mxn_compact(marks), "Valuación actual"))
+    cells.append((
+        f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct_or_dash(gain / inv if inv else None, 0)}</small>',
+        "Plusvalía total",
+    ))
+    metrics = "".join(_metric(value, label) for value, label in cells)
+
+    scope = " y ".join(s for s in ["vendidas" if sold else "", "en renta" if rented else ""] if s)
+    notes = []
+    if sold:
+        notes.append("Las propiedades vendidas entran por su precio de venta: resultado realizado.")
+    if rented:
+        notes.append("Las que siguen en renta entran por una valuación estimada con base en "
+                     "comparables de mercado, no un avalúo formal — esa plusvalía no está realizada.")
     return f"""<div class="summary">
-  <div class="kicker">Portafolio</div>
-  <h3>Proyectos reales. Resultados reales.</h3>
-  <div class="metrics metrics-4">{metrics}</div>
+  <div class="kicker">Portafolio · {_esc(scope)}</div>
+  <h3>Propiedades reales. Resultados reales.</h3>
+  <div class="metrics metrics-{len(cells)}">{metrics}</div>
   {_team_block(team)}
-  <div class="valuation-note">Valuaciones estimadas con base en comparables de mercado, no avalúo formal. Plusvalía no realizada.</div>
+  <div class="valuation-note">{_esc(" ".join(notes))}</div>
 </div>"""
 
 
@@ -593,27 +638,37 @@ def _closing(month_year: str) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-def build_prospectus_html(track_record: list[dict], development: list[dict],
+def build_prospectus_html(sold: list[dict], rented: list[dict], development: list[dict],
                           opportunity: list[dict], team: list[dict] | None = None) -> str:
-    """The three buckets arrive already partitioned — the caller owns the status
-    vocabulary, this file owns the presentation."""
+    """The four buckets arrive already partitioned — the caller owns the status
+    vocabulary, this file owns the presentation.
+
+    Sold and rented arrive apart, rather than as one "track record", because a
+    closed deal and a held one are not presumed with the same figures: one
+    reports what it collected, the other what it is worth today. Keeping them
+    apart is what lets every number below name its own source instead of
+    guessing which one is present."""
     from datetime import date
     today = date.today()
     month_year = f"{_MESES[today.month].capitalize()} {today.year}"
 
-    track_record = sorted(track_record, key=_realized_gain_pct, reverse=True)
+    # El track record abre con lo cerrado: un resultado realizado es la prueba
+    # más fuerte que tiene la firma, y una marca de valuación no debería colarse
+    # por delante de una venta. Dentro de cada grupo, mayor plusvalía primero.
+    sold = sorted(sold, key=lambda p: _num(p.get("realizedGainPct")), reverse=True)
+    rented = sorted(rented, key=lambda p: _num(p.get("unrealizedGainPct")), reverse=True)
+    track = [(_sold_card, p) for p in sold] + [(_rented_card, p) for p in rented]
 
-    parts = [_cover(month_year, track_record)]
+    parts = [_cover(month_year, rented, sold)]
 
-    if track_record or development:
-        cards = [_project_card(p, f"Track Record · {i:02d}", projected=False)
-                 for i, p in enumerate(track_record, 1)]
-        cards += [_project_card(p, f"En Desarrollo · {j:02d}", projected=True)
+    if track or development:
+        cards = [build(p, f"Track Record · {i:02d}") for i, (build, p) in enumerate(track, 1)]
+        cards += [_development_card(p, f"En Desarrollo · {j:02d}")
                   for j, p in enumerate(development, 1)]
-        # Portfolio summary (realized track record) carries the valuation footnote
-        # and the team block, and fills the trailing half-sheet.
-        if track_record:
-            cards.append(_summary_card(track_record, team))
+        # Portfolio summary carries the valuation footnote and the team block,
+        # and fills the trailing half-sheet.
+        if track:
+            cards.append(_summary_card(sold, rented, team))
         for pair in _chunk(cards, 2):
             parts.append(f'<div class="page-block sheet">{"".join(pair)}</div>')
 

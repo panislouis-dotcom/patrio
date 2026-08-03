@@ -56,18 +56,8 @@ def _embed_images(items: list[dict]) -> None:
                 img["dataUri"] = None
 
 
-# How the prospectus reads a property, by stage. Track record is what the firm
-# has actually done — rented or sold; En Desarrollo is work in progress; the
-# opportunity pages are what an investor can still get into, best-committed
-# first. A prospecto that nobody has bid on is the weakest thing in the deck, so
-# it goes last.
-_TRACK_RECORD_STATUSES = ("en_renta", "vendida")
-_DEVELOPMENT_STATUSES = ("desarrollo",)
-_OPPORTUNITY_STATUSES = ("oferta", "prospecto")
-
-
-def _in_order(favorites: list[dict], statuses: tuple[str, ...]) -> list[dict]:
-    """The favorites of these statuses, grouped in the order the statuses are
+def _by_status(favorites: list[dict], *statuses: str) -> list[dict]:
+    """The favorites in these statuses, grouped in the order the statuses are
     listed — which is the order the document wants them in."""
     return [p for status in statuses for p in favorites if p.get("status") == status]
 
@@ -81,10 +71,19 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
             detail="No favorites set. Mark at least one property as favorite.",
         )
     await asyncio.to_thread(_embed_images, favorites)
+    # Cómo lee el prospecto una propiedad, por etapa. El track record es lo que
+    # la firma ya hizo, y llega en dos cubetas porque una vendida se presume con
+    # su resultado realizado y una en renta con su marca: son dos tarjetas
+    # distintas, no una con condicionales. En desarrollo es obra en curso. Las
+    # páginas de oportunidad son a lo que un inversionista todavía puede
+    # entrar — la oferta encabeza porque es el trato al que la firma ya se
+    # comprometió; un prospecto que nadie ha ofertado es lo más débil del deck y
+    # va al final.
     html = build_prospectus_html(
-        _in_order(favorites, _TRACK_RECORD_STATUSES),
-        _in_order(favorites, _DEVELOPMENT_STATUSES),
-        _in_order(favorites, _OPPORTUNITY_STATUSES),
+        _by_status(favorites, "vendida"),
+        _by_status(favorites, "en_renta"),
+        _by_status(favorites, "desarrollo"),
+        _by_status(favorites, "oferta", "prospecto"),
         get_team_members(),
     )
     try:
