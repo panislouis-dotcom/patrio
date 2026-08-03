@@ -43,21 +43,21 @@ def stage_requirements(status: str, row: dict) -> dict[str, str]:
     missing: dict[str, str] = {}
 
     if status == "oferta" and not _positive(row.get("projected_sale")):
-        missing["projectedSale"] = "Toda oferta modela su salida: falta la venta proyectada."
+        missing["projectedSale"] = "Toda Oferta modela su salida: falta la venta proyectada."
 
     if status == "desarrollo":
         if row.get("acquisition_date") is None:
             missing["acquisitionDate"] = (
-                "Una propiedad en desarrollo ya se compró: falta la fecha de adquisición.")
+                "Una propiedad en Desarrollo ya se compró: falta la fecha de adquisición.")
         if row.get("total_units") is None:
             missing["totalUnits"] = "Falta el número de unidades."
         # Comprar no produce un avalúo. La valuación se captura cuando alguien
-        # de verdad valúa; hasta entonces la plusvalía es None, que es la
-        # respuesta honesta. Exigirla aquí solo lograba que se inventara.
+        # de verdad valúa; hasta entonces la ganancia no realizada es None, que
+        # es la respuesta honesta. Exigirla aquí solo lograba que se inventara.
         if underwriting.basis(row) is None:
             missing["totalInvestmentCaptured"] = (
-                "Falta la base de inversión: captura el total a mano o los cinco "
-                "costos completos del desglose.")
+                "Falta la inversión total: captúrala a mano, o completa los cinco "
+                "costos del desglose para que el sistema la sume.")
 
     if status == "en_renta":
         if row.get("first_rent_date") is None:
@@ -96,27 +96,35 @@ def _pre_purchase_warnings(row: dict, computed: dict) -> list[Issue]:
     stops being the thing under review."""
     issues: list[Issue] = []
     if not row.get("latitude"):
-        issues.append(Issue("latitude", "Coordenada latitud es 0 o faltante", "error"))
+        issues.append(Issue("latitude", "Falta la latitud (o quedó en 0)", "error"))
     if not row.get("longitude"):
-        issues.append(Issue("longitude", "Coordenada longitud es 0 o faltante", "error"))
+        issues.append(Issue("longitude", "Falta la longitud (o quedó en 0)", "error"))
     if not _positive(row.get("purchase_price")):
-        issues.append(Issue("purchasePrice", "Precio de compra es 0", "error"))
+        issues.append(Issue("purchasePrice", "El precio de compra está en 0", "error"))
     if not _positive(row.get("sqm_land")):
-        issues.append(Issue("sqmLand", "Superficie de terreno (m²) es 0", "error"))
+        issues.append(Issue("sqmLand", "La superficie de terreno está en 0", "error"))
+    # `projectedRoi` es el ROI ANUALIZADO — es lo único que el sistema llama ROI.
+    # La cifra sobre el plazo completo es la ganancia proyectada, otro nombre.
     roi = computed.get("projectedRoi")
     if roi is not None and roi < 0:
-        issues.append(Issue("projectedRoi", f"ROI proyectado negativo ({roi:.1%})", "error"))
+        issues.append(Issue("projectedRoi", f"ROI proy. anual negativo ({roi:.1%})", "error"))
     overhead = row.get("construction_overhead")
     if overhead is not None and overhead < 1.0:
-        issues.append(Issue("constructionOverhead", f"Overhead {overhead} < 1.0", "error"))
+        issues.append(Issue(
+            "constructionOverhead",
+            f"El overhead de obra es un multiplicador: ×{overhead} abarata la obra "
+            f"en vez de sumarle indirectos", "error"))
 
     if not _positive(row.get("construction_cost_per_sqm")):
-        issues.append(Issue("constructionCostPerSqm", "Costo de la obra a ejecutar por m² es 0", "warning"))
+        issues.append(Issue("constructionCostPerSqm",
+                            "El costo por m² de la obra a ejecutar está en 0", "warning"))
     if row.get("rent_monthly_projected") is None:
         issues.append(Issue("rentMonthlyProjected", "Renta mensual estimada sin capturar", "warning"))
     acq_pct = row.get("acquisition_cost_pct")
     if acq_pct is not None and acq_pct > 0.10:
-        issues.append(Issue("acquisitionCostPct", f"Costos adquisición altos ({acq_pct:.1%})", "warning"))
+        issues.append(Issue("acquisitionCostPct",
+                            f"Costos de adquisición altos ({acq_pct:.1%} del precio de compra)",
+                            "warning"))
     profit = computed.get("projectedProfit")
     if profit is not None and profit < 500_000:
         issues.append(Issue("projectedProfit", f"Ganancia proyectada < $500k ({profit:,.0f} MXN)", "warning"))
@@ -205,14 +213,15 @@ def run_checks(row: dict, computed: dict, today: date | None = None) -> list[Iss
         issues += _valuation_warnings(row, today)
         if computed.get("capRateActual") is None:
             issues.append(Issue("capRateActual",
-                                "Sin cap rate real: falta la renta cobrada o la base de inversión",
+                                "Sin cap rate real: falta la renta cobrada o la inversión total",
                                 "warning"))
     elif status == "vendida":
         if row.get("acquisition_date") is None:
             issues.append(Issue("acquisitionDate",
-                                "Sin fecha de adquisición no hay plazo ni ROI realizado", "warning"))
+                                "Sin fecha de adquisición no hay plazo real ni ROI real anual",
+                                "warning"))
         if underwriting.basis(row) is None:
             issues.append(Issue("totalInvestmentCaptured",
-                                "Sin base de inversión no hay ganancia realizada", "warning"))
+                                "Sin inversión total no hay ganancia realizada", "warning"))
 
     return issues

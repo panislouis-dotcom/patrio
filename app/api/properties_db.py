@@ -64,6 +64,39 @@ STATUSES = ("prospecto", "oferta", "desarrollo", "en_renta", "vendida", "archiva
 
 INITIAL_STATUS = "prospecto"
 
+# El nombre de cada etapa en las frases que lee una persona. `en_renta` es un
+# valor de columna, no una palabra: ningún mensaje lo publica crudo. Espeja
+# PROPERTY_STATUS_LABEL de app/web/src/lib/status.ts (ahí en mayúsculas, que es
+# el estilo del chip; aquí en prosa).
+STATUS_LABEL = {
+    "prospecto": "Prospecto",
+    "oferta": "Oferta",
+    "desarrollo": "Desarrollo",
+    "en_renta": "En renta",
+    "vendida": "Vendida",
+    "archivada": "Archivada",
+}
+
+
+def status_label(status: str) -> str:
+    return STATUS_LABEL.get(status, status)
+
+
+def _refusal(from_status: str, to_status: str) -> str:
+    """Por qué no, y qué sí. Un rechazo que solo dice «no permitida» obliga a
+    adivinar el grafo; el grafo ya está en ALLOWED_TRANSITIONS, así que se dice.
+    El orden de los destinos es el del ciclo, no el arbitrario del frozenset."""
+    head = (f"No se puede pasar de {status_label(from_status)} "
+            f"a {status_label(to_status)}.")
+    allowed = [s for s in STATUSES if s in ALLOWED_TRANSITIONS.get(from_status, frozenset())]
+    if not allowed:
+        return f"{head} Una propiedad {status_label(from_status)} ya no se mueve."
+    destinations = " o ".join(
+        [", ".join(status_label(s) for s in allowed[:-1]), status_label(allowed[-1])]
+        if len(allowed) > 1 else [status_label(allowed[0])]
+    )
+    return f"{head} Desde {status_label(from_status)} solo se puede pasar a {destinations}."
+
 # Mirrors properties_guard_transition() in migration 024. The API validates first
 # so the user gets a readable 422; the trigger is the net underneath that no
 # UPDATE — from a script, a fixture or a future endpoint — can slip past.
@@ -148,11 +181,85 @@ class PropertyError(Exception):
     """Domain rejection carrying a message written for the user (Spanish)."""
 
 
+# Cada restricción de las migraciones 024/025, dicha como una instrucción que
+# alguien puede seguir. El nombre de la restricción es un identificador de
+# Postgres — «properties_en_renta_needs_first_rent» no le dice a nadie qué
+# teclear, y encima enseña nombres de columnas que no existen en la ficha.
+#
+# La lista está completa a propósito: una restricción sin traducción cae al
+# fallback, que vuelve a publicar el identificador. Si una migración futura
+# agrega un CHECK, agrega también su renglón aquí.
+_CONSTRAINT_MESSAGES = {
+    # Identidad
+    "properties_name_check": "El nombre no puede quedar vacío.",
+    "properties_address_check": "La dirección no puede quedar vacía.",
+    "properties_city_check": "La ciudad no puede quedar vacía.",
+    "properties_status_check": "Esa etapa no existe en el ciclo de vida.",
+    "properties_asset_type_check":
+        "Tipo de activo inválido: se espera casa, departamento, local, edificio, lote o bodega.",
+    "properties_strategy_type_check":
+        "Estrategia inválida: se espera Reconversión, Obra nueva, Flip o Renta.",
+    # Insumos del underwriting — todos «no negativos»
+    "properties_sqm_land_check": "La superficie de terreno no puede ser negativa.",
+    "properties_sqm_construction_check": "La obra a ejecutar no puede ser negativa.",
+    "properties_purchase_price_check": "El precio de compra no puede ser negativo.",
+    "properties_acquisition_cost_pct_check":
+        "Los costos de adquisición no pueden ser un porcentaje negativo.",
+    "properties_permits_cost_check": "El costo de permisos no puede ser negativo.",
+    "properties_subdivision_cost_check": "El costo de subdivisión no puede ser negativo.",
+    "properties_construction_cost_per_sqm_check":
+        "El costo por m² de la obra a ejecutar no puede ser negativo.",
+    "properties_construction_overhead_check":
+        "El overhead de obra es un multiplicador: no puede ser negativo.",
+    "properties_projected_sale_check": "La venta proyectada no puede ser negativa.",
+    "properties_hold_months_check": "El plazo proyectado se captura en meses, mayor que cero.",
+    "properties_rent_monthly_projected_check":
+        "La renta mensual estimada se captura positiva; «no renta» se expresa dejándola vacía.",
+    "properties_rent_monthly_actual_check":
+        "La renta mensual cobrada se captura positiva; «no renta» se expresa dejándola vacía.",
+    # Realidad post-compra
+    "properties_total_units_check": "El número de unidades debe ser mayor que cero.",
+    "properties_sale_price_check": "El precio de venta no puede ser negativo.",
+    "properties_total_investment_captured_check":
+        "La inversión capturada no puede ser negativa.",
+    "properties_current_valuation_check": "La valuación no puede ser negativa.",
+    "properties_milestones_check": "Los hitos se guardan como un objeto de fecha a descripción.",
+    # Coherencia entre etapa y datos
+    "properties_en_renta_needs_first_rent":
+        "Una propiedad En renta necesita la fecha de la primera renta.",
+    "properties_vendida_needs_sale":
+        "Una propiedad Vendida necesita su fecha y su precio de venta.",
+    "properties_first_rent_after_acquisition":
+        "La primera renta no puede ser anterior a la adquisición.",
+    "properties_sale_after_acquisition":
+        "La venta no puede ser anterior a la adquisición.",
+    "properties_sale_after_first_rent":
+        "La venta no puede ser anterior a la primera renta.",
+    # Tablas satélite
+    "property_images_unique_path": "Esa foto ya está cargada en la propiedad.",
+    "property_images_file_path_check": "La foto no llegó con su archivo.",
+    "property_images_image_type_check":
+        "Tipo de foto inválido: se espera general, antes o después.",
+    "property_images_legacy_source_check":
+        "Origen de foto heredada inválido: solo lo escribe la migración 024.",
+    "property_status_events_moves": "Una transición tiene que cambiar de etapa.",
+    "property_status_events_from_status_check":
+        "La etapa de origen del evento no existe en el ciclo de vida.",
+    "property_status_events_to_status_check":
+        "La etapa destino del evento no existe en el ciclo de vida.",
+}
+
+
 def _db_reason(exc: Exception) -> str:
-    """El nombre de la restricción que Postgres rechazó, que dice más que el
-    volcado entero del error."""
+    """Lo que Postgres rechazó, dicho para quien lo va a corregir.
+
+    Traduce por nombre de restricción. Sin traducción — o sin nombre, que es el
+    caso de los RAISE del trigger de transiciones — cae a la primera línea del
+    error, que en el trigger ya viene escrita en español."""
     constraint = getattr(getattr(exc, "diag", None), "constraint_name", None)
-    return constraint or str(exc).strip().splitlines()[0]
+    if constraint in _CONSTRAINT_MESSAGES:
+        return _CONSTRAINT_MESSAGES[constraint]
+    return str(exc).strip().splitlines()[0]
 
 
 @contextmanager
@@ -163,7 +270,7 @@ def _readable_rejection():
     try:
         yield
     except IntegrityError as exc:
-        raise PropertyError(f"La propiedad no cumple una regla de captura: {_db_reason(exc)}")
+        raise PropertyError(_db_reason(exc))
 
 
 class PropertyNotFound(PropertyError):
@@ -588,9 +695,7 @@ def transition(property_id: int, to_status: str, data: dict,
         from_status = before["status"]
 
         if to_status not in ALLOWED_TRANSITIONS.get(from_status, frozenset()):
-            raise InvalidTransition(
-                f"Transición no permitida: {from_status} → {to_status}."
-            )
+            raise InvalidTransition(_refusal(from_status, to_status))
 
         after = {**before, **_plain(columns), "status": to_status}
         missing = stage_requirements(to_status, after)
@@ -651,7 +756,8 @@ def delete_property(property_id: int) -> None:
             raise PropertyError(
                 f"No se puede eliminar la propiedad porque {blocker}."
                 if blocker
-                else f"No se puede eliminar la propiedad: {_db_reason(exc)}"
+                else "No se puede eliminar la propiedad porque algo más en el sistema "
+                     "todavía la usa. Desliga eso primero."
             )
         if deleted.rowcount == 0:
             raise PropertyNotFound(f"Propiedad {property_id} no encontrada")

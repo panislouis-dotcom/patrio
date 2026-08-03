@@ -147,7 +147,10 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 
     expect(res.status()).toBe(422)
     const body = await res.json() as { error: { message: string } }
-    expect(body.error.message).toBe('Transición no permitida: oferta → vendida.')
+    // La frase habla el vocabulario de docs/glosario.md: nombres de etapa, no
+    // valores de columna, y dice a dónde SÍ se puede ir.
+    expect(body.error.message).toBe(
+      'No se puede pasar de Oferta a Vendida. Desde Oferta solo se puede pasar a Desarrollo o Archivada.')
   })
 
   // ── Desarrollo ──────────────────────────────────────────────────────────────

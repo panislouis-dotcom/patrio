@@ -93,8 +93,23 @@ def test_skipping_a_stage_is_refused_before_the_database(client, test_property):
     r = _transition(client, test_property["id"], to="desarrollo",
                     acquisitionDate="2025-01", totalUnits=4, currentValuation=4_000_000)
     assert r.status_code == 422, r.text
-    assert "prospecto" in r.json()["error"]["message"]
+    assert "Prospecto" in r.json()["error"]["message"]
     assert _status(test_property["id"]) == "prospecto"
+
+
+def test_a_refused_move_names_the_stages_in_words(client, desarrollo_property):
+    """El mensaje es para una persona: dice «En renta», no `en_renta`. Un código
+    de columna en la pantalla manda a alguien a leer el esquema para entender un
+    rechazo."""
+    _transition(client, desarrollo_property["id"], to="en_renta",
+                firstRentDate="2026-03", rentMonthlyActual=30_000)
+    r = _transition(client, desarrollo_property["id"], to="desarrollo",
+                    acquisitionDate="2025-01", totalUnits=4)
+    assert r.status_code == 422
+    message = r.json()["error"]["message"]
+    assert message == ("No se puede pasar de En renta a Desarrollo. "
+                       "Desde En renta solo se puede pasar a Vendida o Archivada.")
+    assert "en_renta" not in message
 
 
 def test_vendida_is_terminal(client, desarrollo_property):
@@ -165,6 +180,36 @@ def test_the_graph_matches_the_database_trigger():
 
 
 # ── PATCH cannot move the lifecycle or empty a field ─────────────────────────
+
+def test_a_broken_constraint_comes_back_as_spanish(client, test_property):
+    """La base es la última defensa, y lo que rechaza llega al usuario. El
+    nombre de la restricción («properties_purchase_price_check») no le dice a
+    nadie qué corregir: lo que llega es la frase."""
+    r = client.patch(f"/api/properties/{test_property['id']}", json={"purchasePrice": -1})
+    assert r.status_code == 422, r.text
+    message = r.json()["error"]["message"]
+    assert message == "El precio de compra no puede ser negativo."
+    assert "properties_" not in message
+    assert "check" not in message.lower()
+
+
+def test_every_constraint_of_the_schema_has_a_sentence(client):
+    """Una restricción sin traducción vuelve a publicar su identificador, y eso
+    no se nota hasta que un usuario la rompe. La lista se compara contra el
+    esquema vivo, no contra lo que alguien recordó agregar."""
+    from api.db import get_db
+    from api.properties_db import _CONSTRAINT_MESSAGES
+
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT conname FROM pg_constraint c"
+            " JOIN pg_class t ON t.oid = c.conrelid"
+            " WHERE t.relname IN ('properties', 'property_images', 'property_status_events')"
+            "   AND c.contype IN ('c', 'u')"
+        ).fetchall()
+    live = {r["conname"] for r in rows if not r["conname"].endswith("_not_null")}
+    assert live - set(_CONSTRAINT_MESSAGES) == set()
+
 
 def test_patch_cannot_change_status(client, test_property):
     r = client.patch(f"/api/properties/{test_property['id']}", json={"status": "desarrollo"})
