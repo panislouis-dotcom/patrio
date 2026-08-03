@@ -178,27 +178,31 @@ BEGIN
         ELSE FALSE
     END;
 
+    -- Los mensajes hablan el vocabulario de docs/glosario.md, no el del esquema:
+    -- son lo último que ve alguien que empujó un UPDATE a mano, y «en_renta» o
+    -- «projected_sale > 0» no le dicen qué capturar.
     IF NOT allowed THEN
-        RAISE EXCEPTION 'transición de status no permitida: % → % (propiedad %)',
-            OLD.status, NEW.status, OLD.id USING ERRCODE = 'check_violation';
+        RAISE EXCEPTION 'No se puede pasar de % a % (propiedad %)',
+            property_status_label(OLD.status), property_status_label(NEW.status), OLD.id
+            USING ERRCODE = 'check_violation';
     END IF;
 
     IF NEW.status = 'oferta' AND coalesce(NEW.projected_sale, 0) <= 0 THEN
-        RAISE EXCEPTION 'oferta exige modelo completo: projected_sale > 0 (propiedad %)',
+        RAISE EXCEPTION 'Toda Oferta modela su salida: falta la venta proyectada (propiedad %)',
             OLD.id USING ERRCODE = 'check_violation';
     END IF;
 
     IF NEW.status = 'desarrollo' THEN
         IF NEW.acquisition_date IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige acquisition_date (propiedad %)',
+            RAISE EXCEPTION 'Una propiedad en Desarrollo ya se compró: falta la fecha de adquisición (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
         IF NEW.total_units IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige total_units (propiedad %)',
+            RAISE EXCEPTION 'Falta el número de unidades para pasar a Desarrollo (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
         -- Comprar no produce un avalúo: la valuación NO se exige aquí.
-        -- La base de inversión se resuelve de dos formas y solo de dos: el total
+        -- La inversión total se resuelve de dos formas y solo de dos: el total
         -- capturado a mano, o el desglose COMPLETO de los cinco costos (con uno
         -- faltante el sistema no puede recomputar nada). Los supuestos no
         -- cuentan: tienen default y nunca faltan de verdad.
@@ -209,14 +213,14 @@ BEGIN
            AND NEW.sqm_construction          IS NOT NULL
            AND NEW.construction_cost_per_sqm IS NOT NULL
         ) THEN
-            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment_captured manual o el desglose completo de los cinco costos (propiedad %)',
+            RAISE EXCEPTION 'Falta la inversión total para pasar a Desarrollo: captúrala a mano, o completa los cinco costos del desglose (precio de compra, permisos, subdivisión, y los m² de obra a ejecutar con su costo por m²) (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
 
     IF NEW.status = 'en_renta' THEN
         IF NEW.rent_monthly_actual IS NULL THEN
-            RAISE EXCEPTION 'en_renta exige rent_monthly_actual: la renta cobrada, no la estimada (propiedad %)',
+            RAISE EXCEPTION 'Falta la renta mensual cobrada para pasar a En renta: la que se cobra, no la estimada (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
@@ -267,22 +271,23 @@ BEGIN
     END;
 
     IF NOT allowed THEN
-        RAISE EXCEPTION 'transición de status no permitida: % → % (propiedad %)',
-            OLD.status, NEW.status, OLD.id USING ERRCODE = 'check_violation';
+        RAISE EXCEPTION 'No se puede pasar de % a % (propiedad %)',
+            property_status_label(OLD.status), property_status_label(NEW.status), OLD.id
+            USING ERRCODE = 'check_violation';
     END IF;
 
     IF NEW.status = 'oferta' AND coalesce(NEW.projected_sale, 0) <= 0 THEN
-        RAISE EXCEPTION 'oferta exige modelo completo: projected_sale > 0 (propiedad %)',
+        RAISE EXCEPTION 'Toda Oferta modela su salida: falta la venta proyectada (propiedad %)',
             OLD.id USING ERRCODE = 'check_violation';
     END IF;
 
     IF NEW.status = 'desarrollo' THEN
         IF NEW.acquisition_date IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige acquisition_date (propiedad %)',
+            RAISE EXCEPTION 'Una propiedad en Desarrollo ya se compró: falta la fecha de adquisición (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
         IF NEW.total_units IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige total_units (propiedad %)',
+            RAISE EXCEPTION 'Falta el número de unidades para pasar a Desarrollo (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
         IF NEW.total_investment IS NULL AND NOT (
@@ -294,14 +299,14 @@ BEGIN
            AND NEW.construction_cost_per_sqm IS NOT NULL
            AND NEW.construction_overhead     IS NOT NULL
         ) THEN
-            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment manual o el desglose completo de los siete costos (propiedad %)',
+            RAISE EXCEPTION 'Falta la inversión total para pasar a Desarrollo: captúrala a mano o completa el desglose de costos (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
 
     IF NEW.status = 'en_renta' THEN
         IF NEW.rent_monthly IS NULL THEN
-            RAISE EXCEPTION 'en_renta exige rent_monthly (propiedad %)',
+            RAISE EXCEPTION 'Falta la renta mensual para pasar a En renta (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;

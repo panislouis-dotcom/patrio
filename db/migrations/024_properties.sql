@@ -351,6 +351,23 @@ CREATE INDEX IF NOT EXISTS idx_property_id_map_new ON property_id_map (new_id);
 -- mensaje; esto es la red de abajo — ningún UPDATE puede saltarse el ciclo.
 -- El INSERT no pasa por aquí a propósito: nacer en cualquier estado válido es
 -- legítimo (migración, semillas, altas futuras).
+-- El nombre de cada etapa como lo lee una persona. Los mensajes del trigger
+-- llegan hasta el cliente cuando algo esquiva la validación del API, y ahí no
+-- pueden publicar `en_renta`: eso es un valor de columna, no una palabra.
+-- Espeja STATUS_LABEL de app/api/properties_db.py.
+CREATE OR REPLACE FUNCTION property_status_label(status TEXT) RETURNS TEXT
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE status
+        WHEN 'prospecto'  THEN 'Prospecto'
+        WHEN 'oferta'     THEN 'Oferta'
+        WHEN 'desarrollo' THEN 'Desarrollo'
+        WHEN 'en_renta'   THEN 'En renta'
+        WHEN 'vendida'    THEN 'Vendida'
+        WHEN 'archivada'  THEN 'Archivada'
+        ELSE status
+    END;
+$$;
+
 CREATE OR REPLACE FUNCTION properties_guard_transition() RETURNS TRIGGER
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -368,32 +385,36 @@ BEGIN
         ELSE FALSE
     END;
 
+    -- Cada mensaje dice qué falta capturar, no qué columna falló: es lo último
+    -- que ve alguien que empujó un UPDATE a mano, y una frase accionable ahorra
+    -- ir a leer el esquema.
     IF NOT allowed THEN
-        RAISE EXCEPTION 'transición de status no permitida: % → % (propiedad %)',
-            OLD.status, NEW.status, OLD.id USING ERRCODE = 'check_violation';
+        RAISE EXCEPTION 'No se puede pasar de % a % (propiedad %)',
+            property_status_label(OLD.status), property_status_label(NEW.status), OLD.id
+            USING ERRCODE = 'check_violation';
     END IF;
 
     -- Insumos mínimos por etapa destino. Los CHECKs de tabla ya cubren
     -- en_renta ⇒ first_rent_date y vendida ⇒ sale_date + sale_price; aquí van
     -- los que dependen del destino y no del estado de la fila.
     IF NEW.status = 'oferta' AND coalesce(NEW.projected_sale, 0) <= 0 THEN
-        RAISE EXCEPTION 'oferta exige modelo completo: projected_sale > 0 (propiedad %)',
+        RAISE EXCEPTION 'Toda Oferta modela su salida: falta la venta proyectada (propiedad %)',
             OLD.id USING ERRCODE = 'check_violation';
     END IF;
 
     IF NEW.status = 'desarrollo' THEN
         IF NEW.acquisition_date IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige acquisition_date (propiedad %)',
+            RAISE EXCEPTION 'Una propiedad en Desarrollo ya se compró: falta la fecha de adquisición (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
         IF NEW.total_units IS NULL THEN
-            RAISE EXCEPTION 'desarrollo exige total_units (propiedad %)',
+            RAISE EXCEPTION 'Falta el número de unidades para pasar a Desarrollo (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
         -- Comprar no produce un avalúo: la valuación NO se exige aquí. Se
         -- captura el día que alguien de verdad valúa, y hasta entonces la
-        -- plusvalía es NULL, que es la respuesta honesta.
-        -- La base de inversión se resuelve de dos formas y solo de dos: el total
+        -- ganancia no realizada es NULL, que es la respuesta honesta.
+        -- La inversión total se resuelve de dos formas y solo de dos: el total
         -- capturado a mano, o el desglose COMPLETO de siete campos (con uno
         -- faltante el sistema no puede recomputar nada).
         IF NEW.total_investment IS NULL AND NOT (
@@ -405,14 +426,14 @@ BEGIN
            AND NEW.construction_cost_per_sqm IS NOT NULL
            AND NEW.construction_overhead     IS NOT NULL
         ) THEN
-            RAISE EXCEPTION 'desarrollo exige base de inversión resoluble: total_investment manual o el desglose completo de los siete costos (propiedad %)',
+            RAISE EXCEPTION 'Falta la inversión total para pasar a Desarrollo: captúrala a mano o completa el desglose de costos (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
 
     IF NEW.status = 'en_renta' THEN
         IF NEW.rent_monthly IS NULL THEN
-            RAISE EXCEPTION 'en_renta exige rent_monthly (propiedad %)',
+            RAISE EXCEPTION 'Falta la renta mensual para pasar a En renta (propiedad %)',
                 OLD.id USING ERRCODE = 'check_violation';
         END IF;
     END IF;
