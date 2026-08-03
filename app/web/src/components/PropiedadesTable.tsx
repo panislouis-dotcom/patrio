@@ -118,6 +118,26 @@ function headlineRoi(p: Property): number | null {
   return p.realizedRoi ?? p.roi ?? p.projectedRoi
 }
 
+/**
+ * Un grupo del resumen: su nombre con cuántas propiedades abarca, y sus cifras.
+ * El nombre lleva el conteo pegado porque es lo que le pone alcance a los
+ * números que siguen — sin él, dos grupos contiguos invitan a restarse.
+ */
+function summaryGroup(name: string, figures: Array<[string, string]>): React.ReactNode {
+  return (
+    <span key={name} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginRight: '14px' }}>
+      <span style={{ color: colors.tertiary, letterSpacing: '0.08em' }}>{name}</span>
+      {figures.map(([label, value]) => (
+        <span key={label} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ margin: '0 2px' }}>·</span>
+          <span>{label}:</span>
+          <span style={{ color: colors.neutral }}>{value}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function columnsFor(filter: Filter): Column[] {
   if (filter === 'todas') return ALL_COLUMNS
   if (filter === 'vendida') return SOLD_COLUMNS
@@ -173,10 +193,31 @@ export function PropiedadesTable() {
   const totalErrors = shown.flatMap(p => p.issues).filter(i => i.severity === 'error').length
   const totalWarnings = shown.flatMap(p => p.issues).filter(i => i.severity === 'warning').length
 
-  // El portafolio son las propiedades ya compradas: el capital que trabaja.
-  const held = properties.filter(p => !isPrePurchase(p.status) && p.status !== 'archivada')
-  const sum = (pick: (p: Property) => number | null) =>
-    held.reduce((acc, p) => acc + (pick(p) ?? 0), 0)
+  // ── Resumen del portafolio ──────────────────────────────────────────────────
+  // Es la única cifra agregada del sistema y encabeza la pantalla principal, así
+  // que ningún grupo puede mezclar dos clases de dinero. Se sigue la doctrina que
+  // el prospecto ya documenta: sumar el precio de una venta con la valuación de
+  // lo que sigue en pie obliga a llamar «valuación actual» a dinero que ya se
+  // cobró, y contar $0 por lo que nadie ha avaluado hunde un promedio con un dato
+  // que no existe. Tres grupos, cada uno cerrado sobre su propio conjunto:
+  //
+  //   · EN OPERACIÓN — el capital que hoy está adentro. Las vendidas no cuentan:
+  //     ese dinero ya regresó.
+  //   · AVALUADAS    — solo las que tienen avalúo, y su capital va con ellas, de
+  //     modo que valuación − capital = plusvalía sin que sobre nadie.
+  //   · VENDIDAS     — lo que se cobró y lo que dejó.
+  //
+  // Las archivadas quedan fuera de los tres: archivar es sacar del inventario.
+  const operating = properties.filter(p => p.status === 'desarrollo' || p.status === 'en_renta')
+  // La plusvalía la calcula el servidor por propiedad, así que el subconjunto
+  // «con avalúo» es exactamente aquel en que existe — nunca hay que suponerlo.
+  const appraised = operating.filter(p => p.unrealizedGain != null)
+  const closed = properties.filter(p => p.status === 'vendida')
+  const sum = (rows: Property[], pick: (p: Property) => number | null) =>
+    rows.reduce((acc, p) => acc + (pick(p) ?? 0), 0)
+
+  const appraisedCapital = sum(appraised, p => p.totalInvestment)
+  const unrealized = sum(appraised, p => p.unrealizedGain)
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortAsc(a => !a)
@@ -268,20 +309,21 @@ export function PropiedadesTable() {
         </div>
       </div>
 
-      {/* Resumen del portafolio: solo lo comprado, que es lo único que tiene capital dentro */}
-      {held.length > 0 && (
+      {/* Resumen del portafolio. Cada grupo desaparece cuando su conjunto está
+          vacío, igual que los renglones del prospecto. */}
+      {operating.length + closed.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderBottom: `1px solid ${colors.border}`, fontFamily: fonts.label, fontSize: '11px', color: colors.secondary, flexWrap: 'wrap' }}>
-          <span>Capital desplegado:</span>
-          <span style={{ color: colors.neutral }}>{fmtM(sum(p => p.totalInvestment))}</span>
-          <span style={{ margin: '0 4px' }}>·</span>
-          <span>Valuación total:</span>
-          <span style={{ color: colors.neutral }}>{fmtM(sum(p => p.salePrice ?? p.currentValuation))}</span>
-          <span style={{ margin: '0 4px' }}>·</span>
-          <span>Ganancia:</span>
-          <span style={{ color: colors.neutral }}>{fmtM(sum(p => p.realizedGain ?? p.unrealizedGain))}</span>
-          <span style={{ margin: '0 4px' }}>·</span>
-          <span style={{ color: colors.neutral }}>{held.length}</span>
-          <span>propiedades en portafolio</span>
+          {operating.length > 0 && summaryGroup(`EN OPERACIÓN ${operating.length}`, [
+            ['Capital', fmtM(sum(operating, p => p.totalInvestment))],
+          ])}
+          {appraised.length > 0 && summaryGroup(`AVALUADAS ${appraised.length}`, [
+            ['Valuación', fmtM(sum(appraised, p => p.currentValuation))],
+            ['Plusvalía', `${fmtM(unrealized)} ${fmtPct(appraisedCapital > 0 ? unrealized / appraisedCapital : null)}`],
+          ])}
+          {closed.length > 0 && summaryGroup(`VENDIDAS ${closed.length}`, [
+            ['Ventas', fmtM(sum(closed, p => p.salePrice))],
+            ['Ganancia', fmtM(sum(closed, p => p.realizedGain))],
+          ])}
         </div>
       )}
 

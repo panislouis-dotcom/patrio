@@ -150,11 +150,21 @@ test.describe('Propiedades — la tabla', () => {
 
   // ── Resumen del portafolio ──────────────────────────────────────────────────
 
-  test('the portfolio strip totals only what has been bought', async ({ page }) => {
+  /**
+   * Cada grupo está cerrado sobre su propio conjunto y lleva su conteo pegado al
+   * nombre. Antes era un solo renglón que sumaba el capital de las vendidas
+   * (dinero que ya regresó) al de las que siguen adentro, y llamaba «valuación
+   * total» a la suma del precio de una venta con el avalúo de lo que sigue en
+   * pie, contando $0 por cada propiedad que nadie ha avaluado.
+   */
+  test('the portfolio strip keeps live capital, marks and sales apart', async ({ page }) => {
     await page.goto('/propiedades')
 
-    await expect(page.getByText('Capital desplegado:')).toBeVisible()
-    await expect(page.getByText('propiedades en portafolio')).toBeVisible()
+    await expect(page.getByText(/^EN OPERACIÓN \d+$/)).toBeVisible()
+    await expect(page.getByText(/^AVALUADAS \d+$/)).toBeVisible()
+    await expect(page.getByText('Capital:')).toBeVisible()
+    await expect(page.getByText('Valuación:')).toBeVisible()
+    await expect(page.getByText('Plusvalía:')).toBeVisible()
   })
 
   // ── Favoritos ───────────────────────────────────────────────────────────────
