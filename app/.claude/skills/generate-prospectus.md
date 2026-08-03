@@ -14,32 +14,35 @@ This skill is the only source of truth for prospectus generation. Do not create 
 Read these two files before touching anything else:
 
 - `docs/DESIGN.md` — all color tokens, typography, component rules
-- `data/schema.sql` — field names before querying
+- `db/schema.sql` — field names before querying
 
-## Step 2 — Query the DB
+## Step 2 — Read the favorited properties
+
+There is one table, `properties`, and `status` is the stage of a building's life. **Prefer the API over SQL**: it returns every derived metric already computed for the stage, which is exactly what the document prints. Raw SQL would force you to re-derive them, and re-derived numbers drift.
 
 ```bash
-source .env && docker exec patrio-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
-SELECT name, address, total_investment, current_valuation,
-       total_units, acquisition_date, milestones
-FROM projects WHERE is_favorite = true
-ORDER BY acquisition_date;"
-
-source .env && docker exec patrio-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
-SELECT
-  name, address, hold_months,
-  land_price * (1 + acquisition_cost_pct/100.0)
-    + permits_cost + subdivision_cost
-    + (construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0))
-  AS total_cost,
-  projected_sale,
-  ROUND((rent_monthly * 12) / NULLIF(land_price, 0) * 100, 1) AS cap_rate_pct,
-  rent_monthly, notes
-FROM prospects WHERE is_favorite = true
-ORDER BY projected_sale DESC;"
+curl -s "$REFIGAN_API/api/properties" -H "Authorization: Bearer $REFIGAN_API_KEY" \
+  | jq '[.[] | select(.isFavorite)] | group_by(.status) | map({status: .[0].status, count: length})'
 ```
 
-> **Note:** If no favorites are set, the corresponding section will be empty. Mark at least one prospect and one project as favorite in the web app before running this skill.
+### The four buckets, and why they are four
+
+The document does not have one "track record". It has two, because a closed deal and a held one are not presented with the same figures — one reports what it collected, the other what it is worth today:
+
+| Bucket | `status` | Presented with |
+|---|---|---|
+| Track Record · closed | `vendida` | `salePrice`, `realizedGain`, `realizedGainPct`, `realizedRoi`, `holdMonthsActual` |
+| Track Record · held | `en_renta` | `currentValuation`, `unrealizedGain`, `unrealizedGainPct`, `rentMonthly`, `capRate` |
+| En Desarrollo | `desarrollo` | `totalInvestment`, `currentValuation`, `acquisitionDate`, `milestones`, `totalUnits` |
+| Oportunidad Activa | `oferta`, then `prospecto` | `projectedSale`, `holdMonths`, `capRate`, `totalInvestment` |
+
+Ordering inside each bucket: sold first (a realised result is the strongest proof the firm has, and a valuation mark should never come ahead of a sale), each group sorted by gain descending. In the opportunity pages `oferta` leads — it is the deal the firm has already committed to; an unbid prospect is the weakest page in the deck and goes last.
+
+**Never present a projection as a result.** The names carry the distinction and so must the copy: `projectedProfit`/`projectedRoi` are what the model says; `realizedGain`/`realizedRoi` are what the sale paid. A `vendida` property returns `null` for the whole projection group precisely so the two can never be confused.
+
+> **Note:** If no properties are favorited the endpoint returns `400` and the document has nothing to say. Mark at least one property as favorite in the web app before running this skill.
+
+> **Shortcut:** `POST /api/documents/prospectus` (operation_id `documents_prospectus`) already builds and renders this deck from the same partition. Use this skill when the layout itself is what needs to change; use the endpoint when you just need the current PDF.
 
 ## Step 3 — Write `files/prospectus.html`
 
@@ -50,11 +53,12 @@ Build the HTML using the design tokens from `docs/DESIGN.md`. Apply them directl
 ```text
 Cover page       → dark near-black background, wordmark, headline, date
 Visión section   → problem → emotion → solution (see copywriting rules below)
-Track Record     → ONE page-section per project, each with its own band showing project name
-                   Band label: "TRACK RECORD · 01", title: project name
+Track Record     → ONE page-section per property, each with its own band showing the property name
+                   Band label: "TRACK RECORD · 01", title: property name
                    Content: narrative h2 + paragraph + 3-col KPI grid + timeline
+En Desarrollo    → same card shape, band label "EN DESARROLLO · 01" — works in progress
 Oportunidad      → section band + 4-col KPI grid (Plazo, Cap Rate, Inversión Total, Valuación Proyectada) + two-col (financials | characteristics)
-                   Do NOT show ROI — reveals internal margin. Use Plazo (investment_date → sale_date, in months) instead.
+                   Do NOT show ROI — reveals internal margin. Use Plazo (holdMonths, or acquisitionDate → saleDate once real) instead.
 CTA              → dark near-black background, contact
 ```
 
@@ -129,7 +133,7 @@ Text on all bands stays `neutral` (#F2F0EB) — all three backgrounds are dark e
 
    This keeps the colored band glued to its content — it will never be the last thing on a page with the content starting on the next.
 
-   **CRITICAL: each `.page-section` must fit on one page.** When `break-inside: avoid` is applied to a container taller than a page, Chromium fills the entire previous page with the element's background color before rendering it — producing a solid-color blank page. The fix: never put multiple projects inside one `.page-section`. Give each project its own band + wrapper. For Track Record, each project is its own `<div class="page-section section-track">` with its own `<div class="section-header">` showing the project name as the band title.
+   **CRITICAL: each `.page-section` must fit on one page.** When `break-inside: avoid` is applied to a container taller than a page, Chromium fills the entire previous page with the element's background color before rendering it — producing a solid-color blank page. The fix: never put multiple properties inside one `.page-section`. Give each property its own band + wrapper. For Track Record, each property is its own `<div class="page-section section-track">` with its own `<div class="section-header">` showing the property name as the band title.
 
 2. **`page-break-after: avoid` on `.section-header`** — belt-and-suspenders so the band never orphans even outside a wrapper.
 
@@ -176,7 +180,7 @@ Timeline date     7pt   Inter    color: secondary  letter-spacing: 0.12em  upper
 
 **3-col metric grid** (track record KPIs): `grid-template-columns: repeat(3, 1fr)`
 
-**4-col metric grid** (prospect highlights): `grid-template-columns: repeat(4, 1fr)` — use `metric-value compact` (20pt) so "$10,095,000" doesn't overflow
+**4-col metric grid** (opportunity highlights): `grid-template-columns: repeat(4, 1fr)` — use `metric-value compact` (20pt) so "$10,095,000" doesn't overflow
 
 **2-col content**: `grid-template-columns: 1fr 1fr; gap: 56px` — left col gets financials, right col gets characteristics
 
@@ -292,7 +296,7 @@ Use this verbatim copy every time. Do not paraphrase.
 
 ### Data rendering rules
 
-- **Milestones JSON:** parse `{"YYYY-MM": "description"}`, render as `<table class="timeline">` sorted by key
+- **Milestones JSON:** parse `{"YYYY-MM": "description"}` from the `milestones` column, render as `<table class="timeline">` sorted by key
 - **Numbers:** always formatted as `$X,XXX,XXX` — never raw floats
 - **Headings:** always single line — no `<br>` tags inside `<h2>` or `<h1>`
 

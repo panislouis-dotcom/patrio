@@ -25,33 +25,25 @@ If the user provides both in the same message that invokes the skill, proceed di
 Read these before touching the DB or writing HTML:
 
 - `docs/DESIGN.md` — color tokens, typography
-- `data/schema.sql` — field names before querying
+- `db/schema.sql` — field names before querying
 
-## Step 2 — Query the DB
+## Step 2 — Pick the property
+
+**The pool is `oferta`.** A term sheet commits the firm to terms, so it is raised against a deal the firm is actually bidding on — never against a `prospecto` it is still evaluating. Within that pool, the highest projected ROI wins.
+
+Use the API rather than SQL: it returns `projectedRoi`, `totalInvestment` and `capRate` already computed, and re-deriving them in a query is how the letter ends up disagreeing with the app.
 
 ```bash
-source .env && docker exec patrio-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
-SELECT
-  name, address, hold_months,
-  land_price * (1 + acquisition_cost_pct/100.0)
-    + permits_cost + subdivision_cost
-    + (construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0))
-  AS total_cost,
-  projected_sale,
-  ROUND((rent_monthly * 12) / NULLIF(land_price, 0) * 100, 1) AS cap_rate_pct
-FROM prospects WHERE status = 'evaluating'
-ORDER BY
-  (projected_sale - (
-    land_price * (1 + acquisition_cost_pct/100.0)
-    + permits_cost + subdivision_cost
-    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
-  )) / NULLIF(
-    land_price * (1 + acquisition_cost_pct/100.0)
-    + permits_cost + subdivision_cost
-    + construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0)
-  , 0) DESC
-LIMIT 1;"
+curl -s "$REFIGAN_API/api/properties?status=oferta" -H "Authorization: Bearer $REFIGAN_API_KEY" \
+  | jq 'max_by(.projectedRoi // 0)
+        | {name, address, holdMonths, totalInvestment, projectedSale, projectedRoi, capRate}'
 ```
+
+If the user names a property, use that one instead — but check its status and say so out loud if it is not in `oferta`.
+
+**`holdMonths` is mandatory.** It is the spine of the document: the summary declares it and all three return scenarios are computed on it. If it is `null`, stop and ask for the term. Never substitute a default — an invented term propagates into every number on page 2.
+
+> **Shortcut:** `POST /api/documents/term-sheet` (operation_id `documents_term_sheet`) with `{"investor_name", "investment_amount", "property_id": null, "rate"}` applies exactly this selection rule and renders the PDF. Use this skill when the letter's content or layout needs to change.
 
 ## Step 3 — Calculate return scenarios in Python
 
@@ -167,7 +159,7 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
   <div class="cover-main">
     <div class="cover-prelabel">Carta de Términos de Inversión · [Mes Año]</div>
     <h1 class="cover-investor">[Nombre del Inversionista]</h1>
-    <div class="cover-project">[Nombre del Proyecto]</div>
+    <div class="cover-property">[Nombre de la Propiedad]</div>
     <div class="cover-meta">Documento Confidencial · Solo para uso del destinatario</div>
   </div>
 
@@ -201,7 +193,7 @@ Dark full-bleed page. Three direct flex children: wordmark (top), cover-main (mi
   line-height: 1.1;
   margin: 0 0 16px 0;
 }
-.cover-project {
+.cover-property {
   font-family: 'Inter', sans-serif;
   font-size: 9pt;
   font-weight: 400;
@@ -322,7 +314,7 @@ p {
   <h2 class="section-h2">Resumen de la Inversión</h2>
   <table class="summary-table">
     <tr><td class="summary-key">Inversionista</td><td class="summary-val">[Nombre completo]</td></tr>
-    <tr><td class="summary-key">Proyecto</td><td class="summary-val">[Nombre] · [Dirección]</td></tr>
+    <tr><td class="summary-key">Propiedad</td><td class="summary-val">[Nombre] · [Dirección]</td></tr>
     <tr><td class="summary-key">Capital</td><td class="summary-val">$[Monto] MXN</td></tr>
     <tr><td class="summary-key">Rendimiento</td><td class="summary-val">12.0% anual acumulado</td></tr>
     <tr><td class="summary-key">Pago</td><td class="summary-val">Al cierre de venta de la propiedad</td></tr>
@@ -651,9 +643,11 @@ Confirm `files/term-sheet-[slug].pdf` exists and is non-zero before reporting do
 ## What this skill does NOT do
 
 - Does not generate without investor name and amount — ask first
+- Does not raise a letter against a `prospecto` — the pool is `oferta`
+- Does not invent a term when `holdMonths` is null — ask for it
 - Does not show ROI (reveals internal margin — same rule as prospectus)
 - Does not use Google Fonts CDN — always @font-face with local files
 - Does not hardcode colors — derive from DESIGN.md tokens
 - Does not generate a formal pagaré or legal instrument
 - Does not eyeball or estimate numbers — Python does all calculations
-- Does not use uppercase on cover-project or cover-footer — mixed case, modest tracking
+- Does not use uppercase on cover-property or cover-footer — mixed case, modest tracking

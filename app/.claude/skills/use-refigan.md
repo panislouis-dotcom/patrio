@@ -5,7 +5,9 @@ description: Use when working with any part of the Refigan platform — reading 
 
 # Refigan Platform Reference
 
-Refigan is an internal real-estate operations platform for a Monterrey-based investment firm. It tracks the full deal lifecycle — from sourcing raw prospects to exiting completed projects — and generates investor documents from live data.
+Refigan is an internal real-estate operations platform for a Monterrey-based investment firm. It tracks one thing — a **property** — from the moment it is spotted to the moment it is sold, and generates investor documents from live data.
+
+There is no separate "prospect" and "project". There used to be, and they turned out to be the same building described twice; they were merged into a single `properties` table whose `status` is the stage of its life. Everything below follows from that: what a property *is* does not change as it advances, only what is known about it and what may be done to it.
 
 ## Architecture in One Line
 
@@ -52,19 +54,21 @@ The server detects the token type by prefix: anything starting with `rfg_live_` 
 
 ## Error Format
 
-All errors follow a single envelope:
+All errors follow a single envelope. Read the message from `error.message` — there is no top-level `detail` key, even though FastAPI's own default would have one:
 
 ```json
 {
   "error": {
     "code": "NOT_FOUND",
-    "message": "Prospect not found",
+    "message": "Propiedad no encontrada",
     "request_id": "uuid"
   }
 }
 ```
 
 Standard codes: `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `BAD_REQUEST`, `CONFLICT`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+
+The property domain writes its rejections in Spanish and for a human ("Falta la fecha de la primera renta.", "Transición no permitida: prospecto → desarrollo."). They arrive as `422 VALIDATION_ERROR`. Surface the sentence; do not replace it with the status code.
 
 ---
 
@@ -84,67 +88,128 @@ The spec groups routes by tag. Key `operation_id`s by domain are listed below as
 
 ## Domain Map
 
-### 1. Prospects — deal pipeline before commitment
+### 1. Properties — one entity, one lifecycle
 
-Raw opportunities under evaluation. Financial metrics (ROI, cap rate, IRR, profit) are **auto-computed from raw inputs** in the DB layer — never write computed fields directly.
+Every building the firm has ever looked at is a row in `properties`. `status` says where in its life it is:
 
-**Key raw inputs:** `landPrice`, `sqmLand`, `sqmConstruction`, `constructionCostPerSqm`, `constructionOverhead`, `acquisitionCostPct`, `permitsCost`, `projectedSale`, `rentMonthly`, `holdMonths`.
+```
+prospecto → oferta → desarrollo → en_renta → vendida
+                          └──────────────────────┘
+```
 
-**Statuses:** `scouting` → `evaluating` → `discarded` / promoted to a Project.
+| Status | What it means |
+|---|---|
+| `prospecto` | Spotted and modelled. Nobody has committed to anything. |
+| `oferta` | The firm is bidding. Capital may be raised against it from here. |
+| `desarrollo` | Bought. Works in progress (this absorbs stabilisation — there is no separate state for it). |
+| `en_renta` | Producing real, stable rent. |
+| `vendida` | Sold. **Terminal**, and frozen: a closed deal is a fact, not a live mark. |
+| `archivada` | Dropped. **Terminal**, hidden from the default listing (`?include_archived=true` to see it). |
 
-**Score:** `_score(p, all_prospects)` produces a 0–100 composite (50% ROI, 30% cap rate, 20% profit) using **percentile rank against the full unfiltered dataset** — this is intentional; filter after scoring.
+A property is **born `prospecto`** — `POST /api/properties` cannot set a status, and neither can `PATCH`. Reaching any other stage means living through the one before it.
+
+**Key raw inputs (the underwriting model):** `landPrice`, `sqmLand`, `sqmConstruction`, `constructionCostPerSqm`, `constructionOverhead`, `acquisitionCostPct`, `permitsCost`, `subdivisionCost`, `projectedSale`, `rentMonthly`, `holdMonths`.
+
+**Key recorded facts (post-purchase):** `totalUnits`, `acquisitionDate`, `firstRentDate`, `saleDate`, `salePrice`, `totalInvestment`, `currentValuation`, `valuationDate`, `milestones` (JSON).
+
+**Classification:** `assetType` (`casa`/`departamento`/`local`/`edificio`/`lote`/`bodega`) and `strategyType` (`adaptive_reuse`/`ground_up`/`flip`/`hold`). These are two different questions — what the building is, and what the firm intends to do with it — and they are two different columns.
+
+#### The three ways to write
+
+This is the part that matters most, because each door means exactly one thing:
+
+| Operation | What it does | What it cannot do |
+|---|---|---|
+| `PATCH /api/properties/{id}` | Raise or change a value | Move `status`; empty anything. Null and unset keys are **dropped**, so an omitted field means "leave it alone" |
+| `POST /api/properties/{id}/clear-fields` | Empty an allowlisted nullable column | Touch anything outside the allowlist |
+| `POST /api/properties/{id}/transition` | Move to the next stage, carrying that stage's inputs | Skip a stage, or move without the evidence |
+
+Emptying is its own operation precisely so that "cleared" never has to be guessed from a `0`. `rentMonthly` is the clearest case: `null` means *not captured*, `0` means nothing (it is rejected — a property that earns no rent has an empty rent).
+
+#### Transition gates
+
+`POST /api/properties/{id}/transition` takes a body **discriminated on `to`**. Each destination demands the evidence that the property genuinely lives there. The API checks the gate before the UPDATE, so a refusal is a `422` with a sentence; a DB trigger enforces the same rules underneath as a net.
+
+| `to` | Required in the body | Why |
+|---|---|---|
+| `oferta` | `projectedSale` (unless already captured) | Every offer models its exit, even when the plan is to rent |
+| `desarrollo` | `acquisitionDate`, `totalUnits`, `currentValuation`; `totalInvestment` only when the cost breakdown is incomplete | A property in development has been bought |
+| `en_renta` | `firstRentDate`, `rentMonthly`; `currentValuation` if none is on file | The rent is real, not projected |
+| `vendida` | `saleDate`, `salePrice` | The exit is frozen at its actual figures |
+| `archivada` | — | Terminal drawer; available from any non-terminal stage |
+
+All bodies also accept `effectiveOn` (defaults to today) and `notes`. Every move is recorded in `property_status_events` with its author, so the pipeline has a history: days-in-offer, conversion rate, time-to-first-rent.
+
+Legal moves — anything else is `422 Transición no permitida`:
+`prospecto→oferta` · `oferta→desarrollo` · `desarrollo→{en_renta,vendida}` · `en_renta→vendida` · any non-terminal `→archivada`.
+
+#### Metrics: three groups, chosen by stage
+
+Financial metrics are **auto-computed from raw inputs** — never write a computed field. Which ones exist depends on the stage, and the names say which kind they are:
+
+- **Projection** (`projectedProfit`, `projectedRoi`, `projectedRoiTotal`, `capRate`, `rentAnnual`, per-m² figures) — computed `prospecto` through `en_renta`, `null` once `vendida`. It survives the purchase on purpose: it is what reality gets measured against.
+- **Realised-so-far** (`unrealizedGain`, `unrealizedGainPct`, `roi`) — from `desarrollo` on. A mark against the capital base, so it moves with the valuation and the calendar.
+- **Exit, frozen** (`realizedGain`, `realizedGainPct`, `realizedRoi`) — only `vendida`.
+
+`totalInvestment` is a hybrid, and `investmentBasis` tells you which half you are looking at: `underwriting` when all seven cost inputs are present (the system computes the total and it is read-only), `manual` when they are not (a hand-typed figure is the base). `holdMonthsActual` runs from `acquisitionDate` to today while the property is held, and freezes at the sale.
+
+**Score:** 0–100 composite (50% projected ROI, 30% cap rate, 20% projected profit) as a **percentile rank against the other pre-purchase properties**. It exists only in `prospecto` and `oferta` and is `null` afterwards — a score ranks candidates competing for capital, and a bought property competes with nobody. It is **server-authoritative**: read it, never recompute it.
+
+**Issues:** every property carries an `issues` list — the stage's hard requirements it fails (`severity: "error"`) plus that stage's soft warnings. A prospect is judged on how complete its underwriting is, a building in development on its capital and dates, a rented one on how stale its valuation is.
 
 Key `operation_id`s:
-- `prospects_list` — `GET /api/prospects`
-- `prospects_create` — `POST /api/prospects`
-- `prospects_get` — `GET /api/prospects/{id}`
-- `prospects_update` — `PATCH /api/prospects/{id}`
-- `prospects_delete` — `DELETE /api/prospects/{id}`
-- `prospect_images_upload` — `POST /api/prospects/{id}/images`
-- `prospect_images_delete` — `DELETE /api/prospects/{id}/images/{image_id}`
+- `properties_list` — `GET /api/properties` — filters: `status`, `city`, `is_favorite`, `min_roi`, `max_roi`, `include_archived`
+- `properties_create` — `POST /api/properties` (born `prospecto`; unset fields fall back to server-side capture defaults)
+- `properties_get` — `GET /api/properties/{id}`
+- `properties_update` — `PATCH /api/properties/{id}`
+- `properties_delete` — `DELETE /api/properties/{id}`
+- `properties_transition` — `POST /api/properties/{id}/transition`
+- `properties_clear_fields` — `POST /api/properties/{id}/clear-fields` — body `{"fields": ["rentMonthly", ...]}`
+- `properties_parse` — `POST /api/properties/parse` — AI capture from a URL, pasted text or a screenshot (multipart)
+- `properties_quality` — `GET /api/quality` — every property with what is wrong with it *at its own stage*
+- `property_images_upload` — `POST /api/properties/{id}/images` (form field `image_type`: `general`/`antes`/`despues`)
+- `property_images_delete` — `DELETE /api/properties/{id}/images/{image_id}`
+- `property_images_update_type` — `PATCH /api/properties/{id}/images/{image_id}`
+- `properties_get_geometry` / `properties_set_geometry` — `GET`/`PUT /api/properties/{id}/geometry`
+- `properties_upload_floorplan_image` — `POST /api/properties/{id}/floorplan-image`
 
-Prospects carry an `isFavorite` flag. The prospectus document is built from **favorited** prospects.
+Properties carry an `isFavorite` flag; the prospectus is built from **favorited** ones.
 
-### 2. Projects — committed deals (full lifecycle)
+> **Note on old URLs.** `/api/prospects` and `/api/projects` are gone and are **not** redirected: the merge gave every property a fresh id, so a preserved path would answer about a different building. They return 404. Ids from before the merge are meaningless; look properties up by name.
 
-A project is a prospect that has been committed to. Core fields: `name`, `type`, `address`, `city`, `status`, `totalUnits`, `acquisitionDate`, `conclusionDate`, `totalInvestment`, `currentValuation`, `valuationDate`, `milestones` (JSON).
+### 2. Analyses — financial model snapshots
 
-Key `operation_id`s:
-- `projects_list`, `projects_get`, `projects_create`, `projects_update`, `projects_delete`
-- `project_images_upload` — `POST /api/projects/{id}/images`
-- `project_images_delete`, `project_images_update_type`
-
-### 3. Analyses — financial model snapshots
-
-Run a financial analysis against a prospect to generate a snapshot stored in `analysis_snapshots`. Supports three exit strategies:
+Run a financial analysis against a property to generate a snapshot stored in `analysis_snapshots`. Supports three exit strategies:
 
 - **Flip (build + sell):** revenue = projected sale price minus all costs.
 - **Build & Hold (rent):** revenue = monthly rent × months.
 - **Blended:** weighted average of calculated and manual ARV.
 
-Key request fields: `prospectId`, `interventionLevel` (`"baja"/"media"/"alta"`), `holdingPeriodMonths`, `exitPriceSource` (`"calculated"/"manual"/"blended"`), `arvManualOverride`.
+Key request fields: `propertyId`, `interventionLevel` (`"baja"/"media"/"alta"`), `holdingPeriodMonths`, `exitPriceSource` (`"calculated"/"manual"/"blended"`), `arvManualOverride`.
+
+**Window: `prospecto`, `oferta`, `desarrollo`.** The analyzer values a purchase; after that the answer comes from the rent. Past snapshots stay readable at every later stage.
 
 Key `operation_id`s:
 - `analyses_create` — `POST /api/analyses` (runs analysis, saves snapshot, returns it)
-- `analyses_list` — `GET /api/analyses?prospect_id=<id>`
+- `analyses_list` — `GET /api/analyses?property_id=<id>`
 - `analyses_get` — `GET /api/analyses/{snapshot_id}`
 
 Snapshots include `comparableIds` (list) and `dataQualityWarnings` (list).
 
-### 4. Sonar — real-time market scraper
+### 3. Sonar — real-time market scraper
 
 Scrapes six real-estate portals: Lamudi, Inmuebles24, Mercadolibre, Vivanuncios, Doorvel, Icasas. Results are geocoded via Nominatim. Runs as an SSE stream.
 
 Key `operation_id`s:
 - `sonar_run` — `POST /api/sonar/run` → SSE stream; each line is a JSON signal or `{"done": true}`
-- `sonar_signals_list` — `GET /api/sonar/signals`
-- `sonar_import` — `POST /api/sonar/import` → promote signal to prospect
+- `sonar_signals` — `GET /api/sonar/signals`
+- `sonar_import` — `POST /api/sonar/import` → promote a signal to a **property** (which is born `prospecto`, like any other capture)
 - `sonar_to_comparables` — `POST /api/sonar/to-comparables` → promote signals to comparables
-- `sonar_zones_list` — `GET /api/sonar/zones`
+- `sonar_zones` — `GET /api/sonar/zones`
 - `sonar_zone_medians` — `GET /api/sonar/zone-medians`
 - `sonar_re_geocode` — `POST /api/sonar/re-geocode` → re-run Nominatim on signals
 
-### 5. Comparables — market comp database
+### 4. Comparables — market comp database
 
 Curated price comps used in financial analyses. Fields: `address`, `zoneId`, `m2`, `price`, `listingUrl`, `sourcePortal`, `listedAt`, `neighborhood`, `city`, `lat`, `lng`, `bedrooms`, `bathrooms`, `parkingSpots`, `propertyType`, `condition`, `styleTags`.
 
@@ -154,25 +219,27 @@ Key `operation_id`s:
 - `comparables_create` — `POST /api/comparables`
 - `comparables_get`, `comparables_update`, `comparables_delete`
 
-### 6. Processes / Templates / Tareas — workflow engine
+### 5. Processes / Templates / Tareas — workflow engine
 
 **Two-layer system:**
 
 | Layer | API term | UI term | Purpose |
 |-------|----------|---------|---------|
 | Template | `template` | Proceso | Reusable blueprint — defines the tree of nodes once |
-| Instance | `instance` | Tarea | Live run of a template, attached to an optional project and a start date |
+| Instance | `instance` | Tarea | Live run of a template, attached to an optional property and a start date |
 
-A **tarea** in the UI is always a process instance. Attaching one to a project is done via `projectId` in the create body or a subsequent `PATCH`. A project can have many tareas; a tarea belongs to at most one project.
+A **tarea** in the UI is always a process instance. Attaching one to a property is done via `propertyId` in the create body or a subsequent `PATCH`. A property can have many tareas; a tarea belongs to at most one property.
+
+**Window: `desarrollo`, `en_renta`, `vendida`.** Works are tracked on a building the firm owns; attaching a tarea to a pre-purchase property is rejected.
 
 **Typical workflow:**
 1. Define or reuse a template (`GET /api/process/templates`)
-2. Create an instance from it: `POST /api/process/instances` with `{name, startDate, templateId, projectId}`  
+2. Create an instance from it: `POST /api/process/instances` with `{name, startDate, templateId, propertyId}`  
    — this clones the template's node tree and computes a Gantt schedule from node `durationDays` and `dependsOnId` chains
 3. Track progress per node: `PATCH /api/process/instances/{iid}/nodes/{nid}/state`
-4. List all tareas for a project: `GET /api/process/instances?project_id={pid}`
+4. List all tareas for a property: `GET /api/process/instances?property_id={pid}`
 
-**Instance fields (`InstanceCreate`):** `name`*, `startDate`* (ISO date), `templateId` (clones nodes from template), `projectId` (links to a project), `ownerId`, `dueDate`, `notes`, `status`, `frequencyDays` (recurring), `originInstanceId`.
+**Instance fields (`InstanceCreate`):** `name`*, `startDate`* (ISO date), `templateId` (clones nodes from template), `propertyId` (links to a property), `ownerId`, `dueDate`, `notes`, `status`, `frequencyDays` (recurring), `originInstanceId`.
 
 **Node structure:** Nodes nest via `parentId`, sequence via `dependsOnId`, and embed sub-templates via `sourceTemplateId`. Each node has `durationDays` which feeds the Gantt computation.
 
@@ -186,7 +253,7 @@ Key `operation_id`s:
 - `process_nodes_update` — `PATCH /api/process/nodes/{nid}`
 - `process_nodes_delete` — `DELETE /api/process/nodes/{nid}`
 - `process_template_preview` — `GET /api/process/templates/{tid}/preview`
-- `process_instances_list` — `GET /api/process/instances?project_id={pid}`
+- `process_instances_list` — `GET /api/process/instances?property_id={pid}`
 - `process_instances_create` — `POST /api/process/instances`
 - `process_instances_get` — `GET /api/process/instances/{iid}`
 - `process_instances_update` — `PATCH /api/process/instances/{iid}`
@@ -195,56 +262,67 @@ Key `operation_id`s:
 - `process_node_files_*`, `process_node_comments_*`, `process_instance_files_*`
 - `cotizaciones_list`, `cotizaciones_create` — on `instance-node-states/{state_id}/cotizaciones`
 
-### 7. Proveedores — vendor / supplier directory
+### 6. Proveedores — vendor / supplier directory
 
 Three-level: **categories** → **proveedores** (vendors) → **cotizaciones** (quotes).
 
 Proveedor fields: `name`, `phone`, `email`, `zona`, `status` (`activo`/`vetado`), `calidad`/`puntualidad`/`precio` ratings (1–5), `vetoReason`. Has photos.
 
-Cotización fields: `monto`, `moneda`, `descripcion`, `validezDias`, `fechaCotizacion`, linked to a proveedor and optionally a project node.
+Cotización fields: `monto`, `moneda`, `descripcion`, `validezDias`, `fechaCotizacion`, linked to a proveedor and optionally to a node of a tarea.
 
 Key `operation_id`s:
-- `proveedor_categories_list`, `proveedor_categories_create`
+- `proveedor_categories_list`, `proveedor_categories_create`, `proveedor_categories_update`, `proveedor_categories_delete`
+- `proveedor_categories_set` — `PUT /api/proveedores/{id}/categories`
 - `proveedores_list`, `proveedores_create`, `proveedores_get`, `proveedores_update`, `proveedores_delete`
-- `proveedor_cotizaciones_list`, `proveedor_cotizacion_create`, `proveedor_cotizacion_update`, `proveedor_cotizacion_delete`
-- `proveedor_photos_*`
+- `proveedor_assignments_list` — `GET /api/proveedores/{id}/assignments`
+- `proveedor_photos_upload`, `proveedor_photos_delete`
+- Cotizaciones live on the node state, not on the proveedor: `cotizaciones_list` / `cotizaciones_create` on `/api/instance-node-states/{state_id}/cotizaciones`, then `cotizaciones_update`, `cotizaciones_delete` and `cotizacion_select` on `/api/cotizaciones/{id}`
 
-### 8. Investors — investor CRM
+### 7. Investors — investor CRM
 
-Global investor registry (`/api/investors`) + per-project investment tracking (`/api/projects/{id}/investors`).
+Global investor registry (`/api/investors`) + per-property investment tracking (`/api/properties/{id}/investors`).
 
 Investor fields: `name`, `apellidos`, `email`, `phone`, `temperatura` (warm/cold), `capacidad` (investment capacity), `fuente` (source), `confianza` (trust level), `notes`.
 
-Per-project investment: `status` (`interesado`/`comprometido`/`fondeado`/`retornado`), `interestedAmount`, `committedAmount`, `fundedAmount`, `interestRateAnnual`, `investmentDate`, `returnAmount`, `returnDate`.
+Per-property investment: `status` (`interesado`/`comprometido`/`fondeado`/`retornado`), `interestedAmount`, `committedAmount`, `fundedAmount`, `interestRateAnnual`, `investmentDate`, `returnAmount`, `returnDate`.
+
+**Window: `oferta` onwards.** Capital is raised against a deal the firm is actually bidding on, never against something still being evaluated. Adding an investor to a `prospecto` is a `422`.
 
 Key `operation_id`s:
 - `investors_list`, `investors_create`, `investors_get`, `investors_update`, `investors_delete`
-- `project_investors_list`, `project_investors_add`, `project_investment_update`, `project_investment_delete`
+- `property_investors_list` — `GET /api/properties/{id}/investors`
+- `property_investors_add` — `POST /api/properties/{id}/investors`
+- `property_investment_update` — `PUT /api/properties/{id}/investors/{investment_id}`
+- `property_investment_delete` — `DELETE /api/properties/{id}/investors/{investment_id}`
 
-### 9. Profit — waterfall calculator
+### 8. Profit — waterfall calculator
 
-Computes exit profit distribution for a project across: investor return, finder fee, director cut, team roles (responsable, líder, maestros, ayudantes), and ISR.
+Computes exit profit distribution for a property across: investor return, finder fee, director cut, team roles (responsable, líder, maestros, ayudantes), and ISR.
 
-Two layers: a **template** with firm-wide defaults, and a per-project **config** that overrides them.
+Two layers: a **template** with firm-wide defaults, and a per-property **config** that overrides them.
+
+**Window: `desarrollo` onwards.** There is nothing to split until the money is committed.
 
 Key `operation_id`s:
 - `profit_template_get`, `profit_template_update` — `GET/PUT /api/profit/template`
-- `project_profit_get`, `project_profit_update` — `GET/PUT /api/projects/{id}/profit`
+- `property_profit_get`, `property_profit_update` — `GET/PUT /api/properties/{id}/profit`
 
 Both GET endpoints return `{"config": {...}, "waterfall": {...}}` — the waterfall is always recomputed live.
 
-### 10. Documents — PDF generation
+### 9. Documents — PDF generation
 
 HTML → Playwright/Chromium → PDF. Returns `application/pdf` with a `Content-Disposition: attachment` header.
 
 Key `operation_id`s:
 - `documents_prospectus` — `POST /api/documents/prospectus`
-  - No body required. Builds a 2-page investor pitch from **favorited** prospects.
+  - No body required. Builds the investor pitch from **favorited** properties, partitioned by stage: track record from `vendida` (realised figures) then `en_renta` (current mark), En Desarrollo from `desarrollo`, and the opportunity pages from `oferta` first and `prospecto` last.
+  - `400` when nothing is favorited.
 - `documents_term_sheet` — `POST /api/documents/term-sheet`
-  - Body: `{"investor_name": "...", "investment_amount": 500000, "prospect_id": null, "rate": 0.12}`
-  - If `prospect_id` is null, picks the highest-ROI prospect with `status = "evaluating"`.
+  - Body: `{"investor_name": "...", "investment_amount": 500000, "property_id": null, "rate": 0.12}`
+  - If `property_id` is null, picks the highest projected-ROI property in **`oferta`** — a term sheet is raised against a deal the firm has committed to, not one it is still evaluating.
+  - `400` when the property has no `holdMonths`: the term is the spine of the document and the three return scenarios are computed on it, so it is never invented.
 
-### 11. Team
+### 10. Team
 
 Internal team members. Used in process node assignment and profit waterfall.
 
@@ -252,7 +330,7 @@ Key `operation_id`s:
 - `team_list` — `GET /api/team`
 - `team_create`, `team_update`, `team_delete`
 
-### 12. Users & API Keys
+### 11. Users & API Keys
 
 User management (admin-only for cross-user operations). API key lifecycle.
 
@@ -262,7 +340,7 @@ Key `operation_id`s:
 - `api_keys_create` — `POST /api/auth/api-keys` → returns `{"token": "rfg_live_..."}` (shown once)
 - `api_keys_revoke` — `DELETE /api/auth/api-keys/{id}`
 
-### 13. Auth
+### 12. Auth
 
 - `auth_login` — `POST /api/auth/login` (form body)
 - `auth_me` — `GET /api/auth/me` (returns `{"email": "..."}` for current token)
@@ -275,7 +353,7 @@ This is the most important judgment call you will make.
 
 ### Use the API when:
 
-- You are reading or mutating **existing data** — create a prospect, update a project field, run an analysis, import sonar signals, update node state, add an investor.
+- You are reading or mutating **existing data** — capture a property, correct a field, advance a stage, run an analysis, import sonar signals, update node state, add an investor.
 - The desired outcome is achievable with **existing endpoints** — if the operation_id exists in the spec, use the API.
 - You are running an autonomous agent loop that interacts with real operational data.
 
@@ -301,8 +379,10 @@ This is the most important judgment call you will make.
 
 ## Key Design Principles
 
-1. **Computed fields are not stored raw.** Metrics like ROI, cap rate, IRR, profit are derived in the DB layer from raw inputs. Never patch a computed field directly.
+1. **Computed fields are not stored raw.** Metrics like ROI, cap rate and profit are derived in the domain layer from raw inputs. Never patch a computed field directly.
 2. **One way to do things.** If an operation already has an endpoint, use it. Don't duplicate logic in a new endpoint.
-3. **Score before filter.** When ranking prospects, compute scores against the full dataset, then apply filters. Filtering first distorts percentiles.
+3. **Score before filter.** The score is a percentile against the whole pre-purchase cohort, computed on the server. Read it; filter afterwards. Recomputing it client-side over a filtered subset distorts the ranking — that duplicate used to exist and was deleted.
 4. **12-factor config.** All secrets and environment-specific values come from env vars, never from source code.
 5. **Data integrity first.** A clean, correct DB record is worth more than a fast feature. Validate at boundaries; trust internal code.
+6. **A stage is not a field.** `status` moves only through `POST /transition`, which demands that stage's evidence and records who moved it and when. Nothing else may write it — not `PATCH`, not a script.
+7. **Empty is not zero.** A missing value is `null` and is set only through `clear-fields`. `0` means the number zero. Conflating them is how data disappears silently.

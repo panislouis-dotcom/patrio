@@ -1,8 +1,17 @@
 # Project Image Types — Design Spec
 
 **Date:** 2026-05-22  
-**Status:** Approved  
+**Status:** Approved · **superseded in part** (see note)  
 **Scope:** Projects only (`prospect_images` untouched)
+
+> **Superseded — 2026-08.** Prospects and projects were merged into a single
+> `properties` entity with a status lifecycle. `project_images` and
+> `prospect_images` are now one table, `property_images`, and its `image_type`
+> allows `general` in addition to `antes`/`despues` — every property has a
+> gallery for its whole life, not just after the purchase. The gallery design
+> below (filter bar, coloured badges, per-thumbnail toggle) is what shipped and
+> still describes the UI; only the entity names and the two-table split are
+> stale. See `app/.claude/skills/use-refigan.md` for the current model.
 
 ---
 
