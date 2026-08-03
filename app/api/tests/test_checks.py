@@ -171,6 +171,31 @@ def test_a_rounded_typed_total_is_not_a_disagreement():
         _bought(total_investment_captured=4_740_100), "warning")
 
 
+def test_a_partial_breakdown_larger_than_the_typed_total_cannot_add_up():
+    """Con el desglose incompleto manda el total tecleado y los costos que sí se
+    capturaron son una PARTE de él — que la ficha pinta como barras más un renglón
+    «sin desglosar» por el resto. Una parte mayor que el todo deja al desglose sin
+    forma de sumar su propio total, y es el único caso en que no puede cuadrar.
+
+    Vaciar `permits_cost` rompe el desglose; los costos que quedan siguen sumando
+    4,740,000, así que un total tecleado de 3,000,000 no los cubre."""
+    partial = _bought(permits_cost=None)
+    assert "totalInvestmentCaptured" in _fields(
+        partial | {"total_investment_captured": 3_000_000}, "warning")
+    assert "totalInvestmentCaptured" not in {
+        i.field for i in _issues(partial | {"total_investment_captured": 6_000_000})
+        if "suman más" in i.message}
+
+
+def test_a_valuation_before_the_purchase_has_no_period_to_annualize():
+    """La fecha de valuación ahora es el reloj del ROI de la marca: si es
+    anterior a la compra el periodo sale negativo y no hay ROI que dar."""
+    row = _bought(acquisition_date=date(2025, 6, 1), valuation_date=date(2025, 1, 1),
+                  current_valuation=6_000_000)
+    assert "valuationDate" in _fields(row, "warning")
+    assert metrics(row)["roi"] is None
+
+
 def test_en_renta_wants_the_cap_rate_of_what_it_collects():
     """La renta estimada no salva a una propiedad rentada de no haber capturado
     lo que cobra: el aviso mira `capRateActual`."""

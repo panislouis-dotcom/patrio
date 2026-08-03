@@ -49,11 +49,14 @@ export type AssumptionField = 'acquisitionCostPct' | 'constructionOverhead' | 'h
 
 export type Assumptions = Record<AssumptionField, Assumption>
 
-// Una propiedad recorre un ciclo de vida (ver lib/status.ts). Los campos
-// existen según la etapa: los CRUDOS siempre se devuelven tal como están en la
-// base — nunca se blanquean, porque en pasos posteriores quieres ver todo lo de
-// antes. Las métricas DERIVADAS sí se apagan (null) cuando su insumo ya no
-// aplica: proyectar el futuro de algo vendido es mentir.
+// Una propiedad recorre un ciclo de vida (ver lib/status.ts). Los campos CRUDOS
+// siempre se devuelven tal como están en la base — nunca se blanquean, porque en
+// pasos posteriores quieres ver todo lo de antes.
+//
+// De las DERIVADAS, la etapa solo apaga las que AFIRMAN PROPIEDAD: la marca viva
+// (algo tuyo que alguien valuó) y el resultado de la venta. Todo lo demás se
+// computa siempre y sale null cuando le faltan insumos — misma respuesta, pero
+// derivada del dato. Espeja las ventanas de api/properties_db.py.
 export interface Property {
   id: number
   status: PropertyStatus
@@ -117,7 +120,11 @@ export interface Property {
   saleDate: string | null
   salePrice: number | null
 
-  // --- Métricas de proyección (prospecto → en_renta; null al vender) ---
+  // --- El expediente: en qué se fue el dinero y qué prometió (toda etapa) ---
+  // Sobrevive a la venta a propósito: es el plan contra el que se lee el
+  // resultado, y apagarlo ahí lo apagaba justo cuando se volvía comprobable.
+  // Los cinco primeros son además las barras del DESGLOSE, que tienen que sumar
+  // el total en cualquier etapa.
   acquisitionCosts: number | null
   acquisitionTotal: number | null
   constructionBase: number | null
@@ -130,14 +137,18 @@ export interface Property {
   projectedRoiTotal: number | null
   capRate: number | null      // yield on cost de la renta ESTIMADA
   rentAnnual: number | null   // 12 × renta estimada
-
-  // --- Métricas realizadas (desde desarrollo; null al vender) ---
-  unrealizedGain: number | null
-  unrealizedGainPct: number | null
-  roi: number | null                // CAGR contra la valuación actual
-  holdMonthsActual: number | null   // congelado al vender
   capRateActual: number | null      // las mismas dos fórmulas, con la renta
   rentAnnualActual: number | null   // que de verdad se cobra
+
+  // --- La marca viva (desarrollo, en_renta, archivada; null al vender) ---
+  // Una vendida no tiene ganancia «no realizada»: la realizó.
+  unrealizedGain: number | null
+  unrealizedGainPct: number | null
+  // CAGR contra la valuación, anualizado de la compra a la FECHA DE VALUACIÓN.
+  // No usa holdMonthsActual: un numerador de hace meses sobre un reloj que corre
+  // hasta hoy baja solo cada mes sin que cambie ningún dato.
+  roi: number | null
+  holdMonthsActual: number | null   // el plazo real, corriendo; congelado al vender
 
   // --- Resultado final (solo vendida) ---
   realizedGain: number | null

@@ -2,17 +2,25 @@
 
 A property moves prospecto → oferta → desarrollo → {en_renta | vendida}, with
 en_renta → vendida and any non-terminal state → archivada. What changes along
-the way is not the entity but the *question the numbers answer*, so the metric
-contract carries three groups that appear and disappear together instead of
-degrading into zeros:
+the way is not the entity but the *question the numbers answer*.
 
-  · Projection — what the underwriting says the deal will do. Alive from
-    prospecto through en_renta, gone at the exit: a sold property is a closed
-    fact, not a live model.
-  · Realized  — the mark against the money actually in. From desarrollo (the
-    first state that has an acquisition and a valuation) through en_renta.
-  · Exit      — frozen at the sale, only in vendida, computed off sale_price
-    with the hold stopped at sale_date.
+Only ONE kind of figure is gated by status, and it is not the model: a figure
+that ASSERTS OWNERSHIP. Everything else is computed wherever its inputs exist
+and comes back None when they do not — which is the same answer, arrived at
+from the data instead of from a table of statuses.
+
+  · The record — the cost stack, what the underwriting promised on it, and the
+    yield on each of the two rents. Never gated. A plan does not expire when
+    the deal closes; it becomes the thing the result is graded against, and
+    switching it off at the sale turned the pairs below into a promise that
+    broke at the exact moment it became checkable.
+  · The mark  — unrealizedGain / roi, the valuation against the money in. Gated
+    to {desarrollo, en_renta, archivada}: marking capital you have not put in
+    is not a measurement, it is a wish. Archiving does not sell anything, so an
+    archived property is still owned and its last mark is still its last mark.
+  · The exit  — realizedGain / realizedRoi, only in vendida, computed off
+    sale_price with the hold stopped at sale_date. A sale price on a property
+    that has not sold is not a realized anything.
 
 Two rules keep the contract honest:
   · Raw columns are always returned as stored. Only *derived* figures are gated
@@ -26,7 +34,14 @@ Two rules keep the contract honest:
 Every gain in here is the same pair of finance functions applied to a different
 exit value — projected sale, current valuation, sale price — so the learning
 pairs the firm cares about (projectedProfit ↔ realizedGain, projectedRoi ↔
-realizedRoi) are symmetric by construction rather than by coincidence.
+realizedRoi, capRate ↔ capRateActual) are symmetric by construction rather than
+by coincidence, and both halves of every pair are readable at once.
+
+Each annualized return closes its clock on the date of its own numerator: the
+exit on sale_date, the mark on valuation_date. An annualized figure whose
+numerator is months older than its denominator falls a little every month
+without a single input changing, which is a number that reports the calendar
+instead of the asset.
 """
 from contextlib import contextmanager
 from dataclasses import asdict
@@ -63,8 +78,16 @@ ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     "archivada": frozenset(),
 }
 
-_PROJECTION_STATUSES = frozenset({"prospecto", "oferta", "desarrollo", "en_renta"})
-_REALIZED_STATUSES = frozenset({"desarrollo", "en_renta"})
+# Las dos ventanas que quedan, y las dos gatean una AFIRMACIÓN DE PROPIEDAD.
+# `archivada` está en la marca porque archivar no vende ni devuelve nada: saca
+# la propiedad del inventario activo y le deja exactamente los números que tenía
+# el minuto anterior. Se archiva justamente para poder volver a mirarla, y sin
+# ventana toda cifra derivada salía en blanco — la etapa a la que se llega desde
+# cualquier otra era la única que no contestaba nada.
+#
+# No hay ventana de EXIT para `archivada` y no puede haberla: `vendida` es
+# terminal, así que ninguna archivada tiene una venta que reportar.
+_MARK_STATUSES = frozenset({"desarrollo", "en_renta", "archivada"})
 _EXIT_STATUSES = frozenset({"vendida"})
 
 # A score ranks candidates you can still walk away from. After the purchase the
@@ -201,18 +224,26 @@ def _reject_new_violations(status: str, before: dict, after: dict) -> None:
 
 # ─── Metrics ──────────────────────────────────────────────────────────────────
 
-_PROJECTION_KEYS = (
+# El expediente: en qué se fue el dinero, qué prometió ese dinero, y el yield de
+# cada una de las dos rentas. Ninguna de estas claves está gateada — todas son
+# función de columnas guardadas, y ninguna afirma nada sobre el presente.
+#
+# Los cinco costos y sus derivados por m² están aquí y no entre las cifras del
+# capital por una razón muy concreta: son las barras del DESGLOSE. Apagarlos
+# fuera de la ventana de proyección dejaba a la ficha pintando un desglose cuyas
+# partes visibles sumaban 58-70% de su propio total.
+#
+# capRateActual / rentAnnualActual son las mismas dos fórmulas alimentadas con la
+# renta COBRADA en vez de la modelada. Viven junto a su par para que (capRate ↔
+# capRateActual) se lea como se lee todo pareado en este archivo: lo que dijimos,
+# al lado de lo que pasó — y para que ninguno de los dos se apague sin el otro.
+_RECORD_KEYS = (
     "acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
     "purchasePricePerSqm", "investmentPerSqm", "salePerSqm",
     "projectedProfit", "projectedRoi", "projectedRoiTotal",
-    "capRate", "rentAnnual",
+    "capRate", "rentAnnual", "capRateActual", "rentAnnualActual",
 )
-# capRateActual / rentAnnualActual are the same two formulas fed the COLLECTED
-# rent instead of the modeled one — the yield you are actually getting. They sit
-# in the realized window so that the pair (capRate ↔ capRateActual) reads the way
-# every other pair in this file does: what we said, next to what happened.
-_REALIZED_KEYS = ("unrealizedGain", "unrealizedGainPct", "roi",
-                  "capRateActual", "rentAnnualActual")
+_MARK_KEYS = ("unrealizedGain", "unrealizedGainPct", "roi")
 _EXIT_KEYS = ("realizedGain", "realizedGainPct", "realizedRoi")
 
 # Los supuestos vigentes también son cómputo: la fila puede traerlos vacíos y
@@ -221,7 +252,7 @@ _ASSUMPTION_KEYS = tuple(
     _snake_to_camel(k) for k in underwriting.ASSUMPTION_KEYS
 ) + ("assumptions",)
 
-METRIC_KEYS = _PROJECTION_KEYS + _REALIZED_KEYS + _EXIT_KEYS + _ASSUMPTION_KEYS + (
+METRIC_KEYS = _RECORD_KEYS + _MARK_KEYS + _EXIT_KEYS + _ASSUMPTION_KEYS + (
     "totalInvestment", "investmentBasis", "holdMonthsActual",
 )
 
@@ -248,6 +279,25 @@ def hold_months_actual(row: dict) -> int | None:
     return months_between(acquisition, row.get("sale_date") or date.today())
 
 
+def mark_months(row: dict) -> int | None:
+    """Los meses que la marca anualiza: de la compra a la FECHA DE LA VALUACIÓN.
+
+    No es el plazo real y no debe serlo. Una valuación de hace meses dividida
+    entre un reloj que corre hasta hoy da un ROI que baja solo cada mes sin que
+    cambie ni un dato — el número reporta el calendario, no el activo. Aquí el
+    numerador y el denominador cierran el mismo día, exactamente como el ROI
+    realizado cierra ambos en la fecha de venta.
+
+    Sin fecha de corte no hay contra qué congelar, y una valuación sin fecha
+    afirma implícitamente ser de hoy: se le toma la palabra y el reloj corre a
+    hoy. La ficha lo dice con esas palabras, y checks.py levanta la advertencia
+    de que a esa valuación le falta su fecha."""
+    acquisition = row.get("acquisition_date")
+    if acquisition is None:
+        return None
+    return months_between(acquisition, row.get("valuation_date") or date.today())
+
+
 def conclusion_date(row: dict) -> date | None:
     """When the work stopped: the sale for a flip, the first rent for a hold.
     The waterfall's on-time bonus and the investor hold both close on it."""
@@ -255,7 +305,8 @@ def conclusion_date(row: dict) -> date | None:
 
 
 def metrics(row: dict) -> dict:
-    """The three metric groups for one raw property row (snake_case keys)."""
+    """The record, plus whichever of the two gated groups this status opens, for
+    one raw property row (snake_case keys)."""
     status = row["status"]
     basis = underwriting.basis(row)
     stack = underwriting.metrics(row)
@@ -280,38 +331,41 @@ def metrics(row: dict) -> dict:
     out["assumptions"] = {_snake_to_camel(k): v for k, v in stated.items()}
     out.update({_snake_to_camel(k): v["value"] for k, v in stated.items()})
 
-    out.update(dict.fromkeys(_PROJECTION_KEYS + _REALIZED_KEYS + _EXIT_KEYS))
+    out.update(dict.fromkeys(_MARK_KEYS + _EXIT_KEYS))
 
-    if status in _PROJECTION_STATUSES:
-        sale = row.get("projected_sale")
-        out.update({
-            "acquisitionCosts": stack["acquisition_costs"],
-            "acquisitionTotal": stack["acquisition_total"],
-            "constructionBase": stack["construction_base"],
-            "constructionTotal": stack["construction_total"],
-            "purchasePricePerSqm": stack["purchase_price_per_sqm"],
-            "investmentPerSqm": _per_sqm(basis, row.get("sqm_land")),
-            "salePerSqm": stack["sale_per_sqm"],
-            "projectedProfit": underwriting.gain(basis, sale),
-            "projectedRoiTotal": underwriting.gain_pct(basis, sale),
-            "projectedRoi": _cagr(basis, sale, underwriting.assumption(row, "hold_months")[0]),
-            # Yield on cost off the MODELED rent: this is the projection window,
-            # so it answers "what did the underwriting promise?" and freezes at
-            # the sale together with the rest of the model.
-            "capRate": underwriting.cap_rate(row.get("rent_monthly_projected"), basis),
-            "rentAnnual": underwriting.rent_annual(row.get("rent_monthly_projected")),
-        })
+    # El expediente, sin ventana. Cada cifra es función de columnas guardadas y
+    # sale None cuando no están, que es la misma respuesta a la que llegaba la
+    # ventana — pero derivada del dato y no del estado. Lo que se gana con eso es
+    # que la venta deja de apagar el plan contra el que se mide: la pareja
+    # proyectado ↔ realizado solo sirve si se puede leer completa.
+    sale = row.get("projected_sale")
+    rent_actual = row.get("rent_monthly_actual")
+    out.update({
+        "acquisitionCosts": stack["acquisition_costs"],
+        "acquisitionTotal": stack["acquisition_total"],
+        "constructionBase": stack["construction_base"],
+        "constructionTotal": stack["construction_total"],
+        "purchasePricePerSqm": stack["purchase_price_per_sqm"],
+        "investmentPerSqm": _per_sqm(basis, row.get("sqm_land")),
+        "salePerSqm": stack["sale_per_sqm"],
+        "projectedProfit": underwriting.gain(basis, sale),
+        "projectedRoiTotal": underwriting.gain_pct(basis, sale),
+        "projectedRoi": _cagr(basis, sale, underwriting.assumption(row, "hold_months")[0]),
+        # Yield on cost off the MODELED rent — "what did the underwriting
+        # promise?" — next to the same formula fed the rent actually collected.
+        "capRate": underwriting.cap_rate(row.get("rent_monthly_projected"), basis),
+        "rentAnnual": underwriting.rent_annual(row.get("rent_monthly_projected")),
+        "capRateActual": underwriting.cap_rate(rent_actual, basis),
+        "rentAnnualActual": underwriting.rent_annual(rent_actual),
+    })
 
-    if status in _REALIZED_STATUSES:
+    if status in _MARK_STATUSES:
         valuation = row.get("current_valuation")
-        rent_actual = row.get("rent_monthly_actual")
         out.update({
             "unrealizedGain": underwriting.gain(basis, valuation),
             "unrealizedGainPct": underwriting.gain_pct(basis, valuation),
-            "roi": _cagr(basis, valuation, held),
-            # Same two formulas, fed the rent actually collected.
-            "capRateActual": underwriting.cap_rate(rent_actual, basis),
-            "rentAnnualActual": underwriting.rent_annual(rent_actual),
+            # mark_months, no held: la marca se anualiza contra su propia fecha.
+            "roi": _cagr(basis, valuation, mark_months(row)),
         })
 
     if status in _EXIT_STATUSES:

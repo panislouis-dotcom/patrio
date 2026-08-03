@@ -1,23 +1,28 @@
 """The metric contract, status by status.
 
-Three groups appear and disappear together — projection, realized, exit — and
-the whole point of the consolidation is that none of them ever degrades into a
-fabricated zero. These tests read the API, not the domain module, because the
-contract is what the client sees.
+Solo se gatea por etapa lo que AFIRMA PROPIEDAD: la marca viva y el resultado de
+venta. El expediente — el desglose de costos, lo que ese desglose prometió y el
+yield de cada renta — se computa en toda etapa y sale None cuando le faltan
+insumos, que es la misma respuesta pero derivada del dato y no del estado.
+
+El punto entero de la consolidación es que ninguno de los grupos degrade a un
+cero fabricado. Estas pruebas leen la API y no el módulo de dominio, porque el
+contrato es lo que el cliente ve.
 """
 from decimal import Decimal
 
 from api.db import get_db
 from api.finance import underwriting
 
-# Groups as the client sees them. A status either has the whole group or none of it.
-PROJECTION = ("acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
-              "purchasePricePerSqm", "investmentPerSqm", "salePerSqm",
-              "projectedProfit", "projectedRoi", "projectedRoiTotal", "capRate", "rentAnnual")
-REALIZED = ("unrealizedGain", "unrealizedGainPct", "roi")
-# La renta real solo existe una vez que se cobra, así que sus dos métricas se
-# comprueban aparte: una propiedad en desarrollo tiene REALIZED y no las tiene.
-REALIZED_RENT = ("capRateActual", "rentAnnualActual")
+# El expediente. Sin ventana: aparece cuando sus insumos están, en la etapa que sea.
+RECORD = ("acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
+          "purchasePricePerSqm", "investmentPerSqm", "salePerSqm",
+          "projectedProfit", "projectedRoi", "projectedRoiTotal", "capRate", "rentAnnual")
+# El yield de la renta COBRADA. Va aparte porque su insumo aparece más tarde: una
+# propiedad en desarrollo tiene todo el resto del expediente y no tiene esto.
+RECORD_RENT = ("capRateActual", "rentAnnualActual")
+# Los dos grupos gateados, y los dos gatean una afirmación de propiedad.
+MARK = ("unrealizedGain", "unrealizedGainPct", "roi")
 EXIT = ("realizedGain", "realizedGainPct", "realizedRoi")
 
 
@@ -45,8 +50,8 @@ def _all_present(prop: dict, keys) -> bool:
 
 def test_prospecto_projects_and_has_realized_nothing(client, test_property):
     p = _get(client, test_property["id"])
-    assert _all_present(p, PROJECTION)
-    assert _all_none(p, REALIZED + EXIT)
+    assert _all_present(p, RECORD)
+    assert _all_none(p, MARK + EXIT)
     assert p["holdMonthsActual"] is None   # nothing is being held yet
 
 
@@ -131,13 +136,41 @@ def test_without_breakdown_or_total_there_is_no_basis(client, test_property):
 
 def test_desarrollo_marks_the_valuation_against_the_money_in(client, desarrollo_property):
     p = _get(client, desarrollo_property["id"])
-    assert _all_present(p, PROJECTION)     # the model is still live
-    assert _all_present(p, REALIZED)
+    assert _all_present(p, RECORD)     # the model is still live
+    assert _all_present(p, MARK)
     assert _all_none(p, EXIT)
     # 4,000,000 valuation over the 3,480,000 breakdown total
     assert Decimal(str(p["unrealizedGain"])) == Decimal("520000")
     assert Decimal(str(p["unrealizedGainPct"])) == Decimal("0.1494")
     assert p["holdMonthsActual"] > 0
+
+
+def test_the_mark_is_annualized_against_its_own_valuation_date(client, desarrollo_property):
+    """Compra 2025-01, valuación 2026-01: doce meses exactos, así que el ROI
+    anualizado ES el total (+14.94%) y no una fracción de él.
+
+    El plazo real sigue corriendo — hoy son más de doce meses — y esa es
+    justamente la diferencia: antes el numerador era de enero y el denominador
+    llegaba a hoy, así que la cifra bajaba sola cada mes sin que nadie tocara un
+    dato. Ahora numerador y reloj cierran el mismo día, como el ROI realizado ya
+    cerraba ambos en la fecha de venta."""
+    p = _get(client, desarrollo_property["id"])
+    assert Decimal(str(p["roi"])) == Decimal("0.1494")
+    assert Decimal(str(p["unrealizedGainPct"])) == Decimal("0.1494")
+    assert p["holdMonthsActual"] > 12
+
+
+def test_an_undated_valuation_is_taken_at_its_word_and_says_so(client, desarrollo_property):
+    """Sin fecha de corte no hay contra qué congelar: una valuación sin fecha
+    afirma ser de hoy, se le toma la palabra, y la propiedad carga la advertencia
+    de que le falta. El ROI cambia porque el periodo cambia — que es exactamente
+    la prueba de que el periodo lo pone la fecha de la valuación."""
+    client.post(f"/api/properties/{desarrollo_property['id']}/clear-fields",
+                json={"fields": ["valuationDate"]})
+    p = _get(client, desarrollo_property["id"])
+    assert Decimal(str(p["roi"])) != Decimal("0.1494")
+    assert any(i["field"] == "valuationDate" and "fecha de corte" in i["message"]
+               for i in p["issues"])
 
 
 def test_unrealized_gain_pct_is_none_not_zero_when_uncomputable(client, desarrollo_property):
@@ -156,8 +189,8 @@ def test_unrealized_gain_pct_is_none_not_zero_when_uncomputable(client, desarrol
 def test_en_renta_keeps_projecting_and_marking(client, desarrollo_property):
     p = _advance(client, desarrollo_property["id"], to="en_renta",
                  firstRentDate="2026-03", rentMonthlyActual=20000, currentValuation=4_200_000)
-    assert _all_present(p, PROJECTION)
-    assert _all_present(p, REALIZED + REALIZED_RENT)
+    assert _all_present(p, RECORD)
+    assert _all_present(p, MARK + RECORD_RENT)
     assert _all_none(p, EXIT)
     # La proyección sigue contestando por la renta estimada (18,000/mes)…
     assert Decimal(str(p["capRate"])) == Decimal("0.0621")   # 216,000 / 3,480,000
@@ -168,17 +201,49 @@ def test_en_renta_keeps_projecting_and_marking(client, desarrollo_property):
 
 # ── Exit ─────────────────────────────────────────────────────────────────────
 
-def test_vendida_freezes_everything_into_the_exit_group(client, desarrollo_property):
-    """A sold property is a terminal fact, not a live mark: the model it was
-    bought on and the valuation it was carried at both stop being reported."""
+def test_vendida_reports_its_exit_and_stops_marking(client, desarrollo_property):
+    """A sold property is a terminal fact, not a live mark: the valuation it was
+    carried at stops being reported. Lo que NO se apaga es el plan (el test que
+    sigue) — apagarlo era apagar la mitad de cada pareja."""
     p = _advance(client, desarrollo_property["id"], to="vendida",
                  saleDate="2026-07", salePrice=5_000_000)
-    assert _all_none(p, PROJECTION)
-    assert _all_none(p, REALIZED + REALIZED_RENT)
+    assert _all_none(p, MARK)
     assert _all_present(p, EXIT)
     # 5,000,000 out over 3,480,000 in
     assert Decimal(str(p["realizedGain"])) == Decimal("1520000")
     assert Decimal(str(p["realizedGainPct"])) == Decimal("0.4368")
+
+
+def test_the_projection_survives_the_sale_so_the_pair_can_be_read(client, desarrollo_property):
+    """El par plan-vs-resultado es lo que el modelo promete, y solo sirve si se
+    puede leer completo. La proyección se apagaba al vender — es decir, en el
+    momento exacto en que se volvía comprobable — y con ella se iba la única
+    forma de contestar «¿le atinamos?».
+
+    Se proyectaron 2,500,000 sobre una base de 3,480,000 y se vendió en
+    5,000,000: el plan perdía 980,000 y la venta ganó 1,520,000. Los dos números
+    tienen que estar en la misma respuesta."""
+    p = _advance(client, desarrollo_property["id"], to="vendida",
+                 saleDate="2026-07", salePrice=5_000_000)
+    assert _all_present(p, RECORD)
+    assert Decimal(str(p["projectedProfit"])) == Decimal("-980000")
+    assert Decimal(str(p["projectedRoiTotal"])) == Decimal("-0.2816")
+    assert Decimal(str(p["realizedGain"])) == Decimal("1520000")
+
+
+def test_the_breakdown_of_a_sold_property_adds_up_to_its_own_total(client, desarrollo_property):
+    """Las cinco barras del DESGLOSE son claves del expediente, y al apagarse en
+    la venta la ficha pintaba un desglose cuyas partes visibles sumaban 70% de su
+    propio total. Un desglose que esconde el 30% del capital es peor que ninguno.
+
+    1,000,000 de compra + 65,000 de costos de adquisición + 50,000 de permisos +
+    25,000 de subdivisión + 2,340,000 de obra = 3,480,000."""
+    p = _advance(client, desarrollo_property["id"], to="vendida",
+                 saleDate="2026-07", salePrice=5_000_000)
+    bars = ["purchasePrice", "acquisitionCosts", "permitsCost", "subdivisionCost",
+            "constructionTotal"]
+    assert sum(Decimal(str(p[k])) for k in bars) == Decimal(str(p["totalInvestment"]))
+    assert Decimal(str(p["totalInvestment"])) == Decimal("3480000")
 
 
 def test_the_exit_hold_stops_at_the_sale(client, desarrollo_property):
@@ -200,10 +265,32 @@ def test_the_capital_base_survives_the_sale(client, desarrollo_property):
     assert p["investmentBasis"] == "underwriting"
 
 
-def test_archivada_reports_no_metrics_at_all(client, test_property):
+def test_an_archived_prospect_keeps_the_projection_it_was_archived_with(client, test_property):
+    """Archivar saca la propiedad del inventario activo; no le cambia un dato.
+    Sin ventana de métricas, `archivada` era la única etapa que no contestaba
+    nada — y se archiva precisamente para poder volver a mirarla.
+
+    Lo que sí muere es el score: una propiedad archivada dejó de competir."""
+    before = _get(client, test_property["id"])
     p = _advance(client, test_property["id"], to="archivada")
-    assert _all_none(p, PROJECTION + REALIZED + REALIZED_RENT + EXIT)
+    assert _all_present(p, RECORD)
+    assert p["projectedRoi"] == before["projectedRoi"]
+    assert p["totalInvestment"] == before["totalInvestment"]
+    # No compró nada y nadie la valuó: la marca sigue vacía por falta de datos,
+    # no por falta de ventana. Y nunca hubo venta que reportar.
+    assert _all_none(p, MARK + EXIT)
     assert p["score"] is None
+
+
+def test_an_archived_development_keeps_the_mark_it_was_archived_with(client, desarrollo_property):
+    """La marca es de quien es dueño, y archivar no vende: la propiedad sigue
+    siendo suya y su última valuación sigue siendo su última valuación."""
+    before = _get(client, desarrollo_property["id"])
+    p = _advance(client, desarrollo_property["id"], to="archivada")
+    assert _all_present(p, RECORD + MARK)
+    assert p["unrealizedGain"] == before["unrealizedGain"]
+    assert p["roi"] == before["roi"]
+    assert _all_none(p, EXIT)
 
 
 # ── Score ────────────────────────────────────────────────────────────────────

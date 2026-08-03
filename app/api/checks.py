@@ -132,12 +132,27 @@ def _reconciliation_warnings(row: dict) -> list[Issue]:
     """Cuando existen las dos versiones de la inversión, tienen que contar la
     misma historia. El desglose gana (el sistema sabe sumar mejor que quien
     teclea), pero el total capturado no se borra ni se esconde: si no cuadran,
-    uno de los dos está mal y hay que decirlo en vez de elegir en silencio."""
+    uno de los dos está mal y hay que decirlo en vez de elegir en silencio.
+
+    Con el desglose incompleto no hay dos versiones que confrontar: manda el
+    total tecleado y los costos que sí se capturaron son una parte de él. Una
+    parte, sin embargo, no puede ser mayor que el todo — y cuando lo es, la
+    ficha no tiene forma de pintar un desglose que sume su propio total. Ese es
+    el único caso en que las barras no pueden cuadrar, así que se avisa."""
     captured = row.get("total_investment_captured")
-    if captured is None or not underwriting.has_breakdown(row):
+    if captured is None:
         return []
     typed = to_decimal(captured)
     summed = underwriting.investment(row)
+
+    if not underwriting.has_breakdown(row):
+        if summed > typed:
+            return [Issue("totalInvestmentCaptured",
+                          f"Los costos capturados ({summed:,.0f}) ya suman más que la "
+                          f"inversión capturada ({typed:,.0f}); el desglose no cuadra",
+                          "warning")]
+        return []
+
     gap = abs(typed - summed)
     tolerated = summed * _RECONCILIATION_TOLERANCE if summed > 0 else Decimal(0)
     if gap <= tolerated:
@@ -149,10 +164,17 @@ def _reconciliation_warnings(row: dict) -> list[Issue]:
 
 
 def _valuation_warnings(row: dict, today: date) -> list[Issue]:
-    """A mark is only as good as its date."""
+    """A mark is only as good as its date — and the date now does work: the ROI
+    anual de la marca se anualiza de la compra a ella. Sin fecha el reloj corre
+    a hoy; anterior a la compra el periodo sale negativo y no hay ROI que dar."""
     valuation_date = row.get("valuation_date")
     if valuation_date is None:
         return [Issue("valuationDate", "La valuación no tiene fecha de corte", "warning")]
+    acquisition = row.get("acquisition_date")
+    if acquisition and valuation_date < acquisition:
+        return [Issue("valuationDate",
+                      "La valuación es anterior a la adquisición: no hay periodo que anualizar",
+                      "warning")]
     age = months_between(valuation_date, today)
     if age > _STALE_VALUATION_MONTHS:
         return [Issue("valuationDate", f"Valuación de hace {age} meses", "warning")]
