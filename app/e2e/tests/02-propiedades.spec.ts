@@ -225,10 +225,25 @@ test.describe('Propiedades — la tabla', () => {
     if ((await star.textContent())?.trim() === '☆') await star.click()
     await expect(star).toHaveText('★')
 
-    const download = page.waitForEvent('download', { timeout: 20_000 })
+    // Se vigila la RESPUESTA además de la descarga. Cuando el endpoint falla no
+    // hay descarga que esperar, y el único síntoma era «Timeout 20000ms
+    // esperando el evento download» — que nombra lo que no pasó, no por qué. Un
+    // Chromium ausente en el servidor costó horas de diagnóstico escondido tras
+    // esa frase. Mirar el status primero convierte el timeout en el 500 real.
+    const respuesta = page.waitForResponse(r => r.url().includes('/api/documents/prospectus'))
+    // El `.catch` no traga el fallo: lo convierte en `null` para poder afirmarlo
+    // abajo. Sin él, cuando el status falla primero, esta espera sigue viva y
+    // revienta después del test con un rechazo sin dueño.
+    const descarga = page.waitForEvent('download', { timeout: 20_000 }).catch(() => null)
     await page.getByRole('button', { name: '📄 PROSPECTO' }).click()
 
-    expect((await download).suggestedFilename()).toBe('prospecto.pdf')
+    const res = await respuesta
+    expect(res.status(), `el endpoint del prospecto respondió ${res.status()}: `
+      + `${(await res.text()).slice(0, 400)}`).toBe(200)
+
+    const archivo = await descarga
+    expect(archivo, 'el endpoint respondió 200 pero el navegador no descargó nada').not.toBeNull()
+    expect(archivo!.suggestedFilename()).toBe('prospecto.pdf')
 
     // Se deja como se encontró: el favorito es de quien lo marque, no del PDF.
     await star.click()
