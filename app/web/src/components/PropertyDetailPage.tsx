@@ -448,7 +448,8 @@ export function PropertyDetailPage() {
               <SectionDivider label="FECHAS" />
               {dateRow('ADQUISICIÓN', 'acquisitionDate', 'acquisitionDate')}
               {dateRow('PRIMERA RENTA', 'firstRentDate', 'firstRentDate')}
-              {dateRow('VALUACIÓN', 'valuationDate', 'valuationDate')}
+              {/* "VALUACIÓN" a secas ya nombra el monto en DATOS; aquí es su fecha de corte. */}
+              {dateRow('FECHA DE VALUACIÓN', 'valuationDate', 'valuationDate')}
               {(sold || p.saleDate != null) && (
                 <>
                   {dateRow('VENTA', 'saleDate', 'saleDate')}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { streamSonarRun, importSonarSignal, importSonarToComparables, fetchSonarSignals, fetchZoneMedians, fetchProperties, fetchSonarZones, fetchZones } from '../lib/api'
 import type { SonarRunEvent } from '../lib/api'
@@ -181,6 +181,9 @@ function PortalRow({ name, state, pulse }: { name: string; state: PortalPhase; p
 export function SonarTab() {
   const navigate = useNavigate()
   const [signals, setSignals]         = useState<SonarSignal[]>([])
+  // Marcado en cuanto un escaneo escribe resultados, para que la lectura del
+  // escaneo anterior no los pise si resuelve tarde.
+  const scanWrote                     = useRef(false)
   const [importedUrls, setImportedUrls] = useState<Set<string>>(new Set())
   const [compSavedIds, setCompSavedIds] = useState<Set<number>>(new Set())
   const [compPickerId, setCompPickerId] = useState<number | null>(null)
@@ -239,7 +242,12 @@ export function SonarTab() {
 
   // load last scan + zone config on mount
   useEffect(() => {
+    // La lectura del último escaneo puede resolver DESPUÉS de que un escaneo
+    // nuevo ya escribió sus resultados, y entonces los pisa: el encabezado dice
+    // "1 encontradas" y la tabla dice "Sin señales". Lo viejo solo se pinta si
+    // nadie escribió mientras tanto.
     fetchSonarSignals().then(sigs => {
+      if (scanWrote.current) return
       const { signals: deduped, removed } = deduplicateSignals(sigs)
       setSignals(deduped)
       setDedupRemoved(removed)
@@ -332,6 +340,7 @@ export function SonarTab() {
           ? { phase: 'done', total: prev.total, enriched: ev.enriched }
           : { phase: 'done', total: ev.enriched, enriched: ev.enriched })
         const { signals: deduped, removed } = deduplicateSignals(ev.signals)
+        scanWrote.current = true
         setSignals(deduped)
         setDedupRemoved(removed)
         setDedupPhase({ phase: 'done', removed })
