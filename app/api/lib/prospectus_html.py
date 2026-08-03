@@ -355,7 +355,8 @@ def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
     #   · Cap rate promedio — solo en renta, y de `capRateActual`: renta COBRADA
     #     sobre capital. El `capRate` a secas sale del underwriting, así que
     #     promediarlo aquí publicaría lo que se estimó como si fuera lo que se
-    #     cobra. Una vendida no trae ninguno de los dos: ambos se congelan.
+    #     cobra. Una vendida sí trae ambos (el expediente ya no se apaga en la
+    #     venta), pero ya no cobra renta: por eso queda fuera del promedio.
     #   · ROI promedio — en renta y vendidas: el rendimiento que la firma ya
     #     entregó o lleva marcado. Ninguna proyección entra aquí; por eso
     #     desarrollo y las oportunidades no cuentan.
@@ -446,10 +447,12 @@ def _card(p: dict, kicker: str, tail: str, metrics: str) -> str:
 
 def _sold_card(p: dict, kicker: str) -> str:
     """Una propiedad vendida es un hecho cerrado, y así se presenta: precio de
-    venta, ganancia realizada, ROI real anual y plazo real. Ni una cifra proyectada
-    ni una valuación — el API ya las apagó en vendida, y esta tarjeta tampoco las
-    pediría: presumir una marca cuando existe un precio de venta sería cambiar
-    un resultado por una opinión."""
+    venta, ganancia realizada, ROI real anual y plazo real. Ni una cifra
+    proyectada ni una valuación. El API sí las trae — el expediente sigue vivo
+    después de la venta, para poder comparar lo que se prometió contra lo que
+    pasó — y esta tarjeta decide no imprimirlas: presumir una marca o un plan
+    cuando ya existe un precio de venta sería cambiar un resultado por una
+    opinión. La comparación es una herramienta de la ficha, no del pitch."""
     gain, gain_pct = p.get("realizedGain"), p.get("realizedGainPct")
     gain_v = (f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct(gain_pct, 1)}</small>'
               if gain is not None and gain_pct is not None else "—")
