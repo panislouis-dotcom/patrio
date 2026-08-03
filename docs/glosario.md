@@ -44,6 +44,11 @@ terminada, sin caso especial por tipo de activo.
 una casa construida se contara dos veces). **NO es** el precio del anuncio menos
 nada: el precio del anuncio *es* el precio de compra.
 
+Cuando de una propiedad vieja lo único que se sabe es un total a secas —«costó
+$9.5M todo incluido»— ese total se teclea **aquí**, con costos de adquisición en
+`0`. Es el único lugar donde se captura una cifra all-in, y es la razón por la
+que la inversión total (§4) no necesita casilla propia.
+
 ### Obra a ejecutar — `sqmConstruction` × `constructionCostPerSqm`
 Los metros que **tú** vas a construir o remodelar, por su costo por m².
 
@@ -109,26 +114,32 @@ inmueble antes de tocarlo.
 
 ### Inversión total — `totalInvestment`
 **La** base de capital: todo el dinero que entra. Es el denominador de toda
-ganancia y todo ROI.
+ganancia y todo ROI. Sobrevive a la venta — es historia, no proyección.
 
-Se resuelve de dos formas y solo dos: la suma del desglose completo de los cinco
-costos, o la inversión capturada a mano. Sobrevive a la venta — es historia, no
-proyección.
+Se calcula **siempre** igual, sin ramas: la suma de los cinco costos de captura.
 
-**NO es** una proyección. **NO se llama** «base de inversión»: ese nombre choca
-con `investmentBasis`, que no es un monto sino un origen.
+```
+inversión total = precio de compra × (1 + costos de adquisición %)
+                + permisos + subdivisión
+                + m² de obra × costo por m² × overhead de obra
+```
 
-### Origen de la inversión total — `investmentBasis`
-De dónde salió la inversión total: `underwriting` → **«Suma del desglose»**;
-`manual` → **«Captura manual»**.
+Un componente que nadie capturó vale `0`. No existe «desglose completo» contra
+«incompleto»: la fórmula corre igual con un costo o con los cinco. Si la suma da
+cero —nadie capturó nada— la inversión total queda **vacía**, y se imprime «—».
+Vacía no es cero.
 
-**NO es** un monto.
+**NO se teclea.** No hay campo de inversión total, ni en la ficha ni en el API:
+escribirla es capturar sus componentes. Un total a secas se captura como precio
+de compra con costos de adquisición en `0` (§2).
 
-### Inversión capturada — `totalInvestmentCaptured`
-La cifra tal como alguien la tecleó. Sobrevive aunque el desglose gane.
+**NO tiene origen.** «¿De dónde salió esta cifra?» dejó de ser una pregunta: sale
+del desglose, siempre. Hubo dos maneras de resolverla —la suma y una captura
+manual— y con ellas un campo que decía cuál había ganado y una advertencia para
+cuando no coincidían. Nada de eso existe: dos maneras de calcular un número es
+dos números.
 
-**NO es** la inversión total: cuando ambas existen y no cuadran, manda el
-desglose y la propiedad lleva una advertencia.
+**NO es** una proyección. **NO se llama** «base de inversión» (§12).
 
 ---
 
@@ -296,7 +307,9 @@ estado crudo.
 | Inversión desarrollo | No es un concepto del dominio, es una resta. | Obra, permisos y subdivisión |
 | Ganancia est. | Abrevia dos conceptos a la vez (estimada ≠ proyectada). | Ganancia proyectada |
 | Meses en cartera | Cuenta desde la adquisición, no desde nada de «cartera». | Plazo real |
-| Base de inversión | Choca con `investmentBasis`, que es un origen. | Inversión total |
+| Base de inversión | Segundo nombre de la inversión total, y sugiere que hay bases distintas. Hay una. | Inversión total |
+| Inversión capturada · `totalInvestmentCaptured` | Era un total tecleado que competía con el desglose. Ya no se captura ningún total. | Inversión total — y si lo único que hay es un total, se captura como precio de compra |
+| Captura manual (de la inversión) · `investmentBasis` | Nombraba el segundo origen de una cifra que ahora solo tiene uno. | Nada: la inversión total no lleva procedencia |
 | ROI proyectado (a secas) | Nombró la anual y la total. | ROI proy. anual / Ganancia proyectada % |
 | Cap rate (a secas) | En el mercado significa NOI/valor. | Cap rate sobre inversión (abreviado «s/ inversión» donde no cabe) |
 | `en_renta`, `adaptive_reuse`, `properties_…_check` | Son identificadores, no lenguaje. | «En renta», «Reconversión», una frase accionable |
