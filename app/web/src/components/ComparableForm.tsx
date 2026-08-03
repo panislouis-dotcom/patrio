@@ -178,7 +178,7 @@ export function ComparableForm() {
         notes: form.notes.trim(),
       }
       await createComparable(payload)
-      navigate('/prospectos/comparables')
+      navigate('/propiedades/comparables')
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
@@ -190,7 +190,7 @@ export function ComparableForm() {
     <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
         <button
-          onClick={() => navigate('/prospectos/comparables')}
+          onClick={() => navigate('/propiedades/comparables')}
           style={{
             background: 'none',
             border: 'none',
@@ -446,7 +446,7 @@ export function ComparableForm() {
           {saving ? 'GUARDANDO…' : 'GUARDAR'}
         </button>
         <button
-          onClick={() => navigate('/prospectos/comparables')}
+          onClick={() => navigate('/propiedades/comparables')}
           style={{
             background: 'transparent',
             color: colors.secondary,

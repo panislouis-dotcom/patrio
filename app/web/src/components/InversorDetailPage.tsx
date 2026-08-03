@@ -13,13 +13,13 @@ export function InversorDetailPage() {
   const investorId = Number(id)
 
   const {
-    investor, positions, allProjects,
+    investor, positions, fundableProperties,
     name, setName, apellidos, setApellidos, email, setEmail, phone, setPhone,
     notes, setNotes, temperatura, setTemperatura, capacidad, setCapacidad,
     fuente, setFuente, confianza, setConfianza,
     saving, error, save, handleDelete,
     showAdd, setShowAdd,
-    addProjectId, setAddProjectId,
+    addPropertyId, setAddPropertyId,
     addInterested, setAddInterested, addCommitted, setAddCommitted,
     addFunded, setAddFunded, addRate, setAddRate, addDate, setAddDate,
     adding, handleAddPosition,
@@ -147,7 +147,7 @@ export function InversorDetailPage() {
         {/* ── RIGHT: Positions table ── */}
         <div style={{ overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 6px', borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '4px' }}>
-            <span data-testid="proyectos-section-heading" style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>PROYECTOS</span>
+            <span data-testid="propiedades-section-heading" style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>PROPIEDADES</span>
             <button
               onClick={() => { setShowAdd(v => !v); setEditingId(null) }}
               style={{ background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', padding: '2px 8px' }}
@@ -158,8 +158,8 @@ export function InversorDetailPage() {
 
           {showAdd && (
             <InversorAddPositionForm
-              allProjects={allProjects}
-              projectId={addProjectId}    setProjectId={setAddProjectId}
+              properties={fundableProperties}
+              propertyId={addPropertyId}    setPropertyId={setAddPropertyId}
               interested={addInterested}  setInterested={setAddInterested}
               committed={addCommitted}    setCommitted={setAddCommitted}
               funded={addFunded}          setFunded={setAddFunded}
@@ -172,14 +172,14 @@ export function InversorDetailPage() {
 
           {positions.length === 0 && !showAdd ? (
             <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '8px' }}>
-              Sin proyectos asociados
+              Sin propiedades asociadas
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  {(['PROYECTO', 'FECHA', 'INTERESADO', 'COMPROMETIDO', 'FONDEADO', 'TASA', 'INTERÉS', 'RET %', 'RETORNO', 'PAGADO', 'FECHA PAGO', 'ESTADO', ''] as string[]).map(h => (
-                    <th key={h} style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, textAlign: h === 'PROYECTO' || h === 'FECHA' ? 'left' : 'right', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
+                  {(['PROPIEDAD', 'FECHA', 'INTERESADO', 'COMPROMETIDO', 'FONDEADO', 'TASA', 'INTERÉS', 'RET %', 'RETORNO', 'PAGADO', 'FECHA PAGO', 'ESTADO', ''] as string[]).map(h => (
+                    <th key={h} style={{ padding: '5px 8px', fontFamily: fonts.label, fontSize: '8px', color: colors.secondary, textAlign: h === 'PROPIEDAD' || h === 'FECHA' ? 'left' : 'right', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -189,7 +189,7 @@ export function InversorDetailPage() {
                     key={pos.id}
                     pos={pos}
                     isEditing={editingId === pos.id}
-                    onNavigate={projectId => navigate(`/proyectos/${projectId}`)}
+                    onNavigate={propertyId => navigate(`/propiedades/${propertyId}`)}
                     editDate={editDate}                 setEditDate={setEditDate}
                     editInterested={editInterested}     setEditInterested={setEditInterested}
                     editCommitted={editCommitted}       setEditCommitted={setEditCommitted}

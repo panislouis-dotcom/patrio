@@ -303,14 +303,14 @@ export function ProcesoInstanceDetail() {
           </span>
           <span style={{ color: colors.border }}>·</span>
           <span style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', color: colors.secondary }}>{instance.templateName}</span>
-          {instance.projectName && (
+          {instance.propertyName && (
             <>
               <span style={{ color: colors.border }}>·</span>
               <span
-                onClick={() => navigate(`/proyectos/${instance.projectId}`)}
+                onClick={() => navigate(`/propiedades/${instance.propertyId}`)}
                 style={{ fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em', color: colors.tertiary, cursor: 'pointer', textDecoration: 'underline dotted' }}
               >
-                {instance.projectName}
+                {instance.propertyName}
               </span>
             </>
           )}

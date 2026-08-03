@@ -42,7 +42,7 @@ export function LoginPage() {
       }
       const { access_token } = await res.json()
       login(access_token)
-      navigate('/prospectos/tabla', { replace: true })
+      navigate('/propiedades', { replace: true })
     } catch {
       setError('Error de conexión')
     } finally {

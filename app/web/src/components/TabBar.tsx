@@ -5,19 +5,19 @@ import { changePassword } from '../lib/api'
 import { ApiKeysSection } from './ApiKeysSection'
 
 const topTabs = [
-  { path: '/prospectos', label: 'PROSPECTOS' },
-  { path: '/proyectos', label: 'PROYECTOS' },
+  { path: '/propiedades', label: 'PROPIEDADES' },
   { path: '/inversionistas', label: 'INVERSIONISTAS' },
   { path: '/proveedores', label: 'PROVEEDORES' },
   { path: '/procesos', label: 'PROCESOS' },
   { path: '/equipo', label: 'EQUIPO' },
 ]
 
-const prospectoSubTabs = [
-  { path: '/prospectos/tabla', label: 'TABLA' },
-  { path: '/prospectos/mapa', label: 'MAPA' },
-  { path: '/prospectos/sonar', label: 'SONAR' },
-  { path: '/prospectos/comparables', label: 'COMPARABLES' },
+// Un solo inventario, con las herramientas que lo alimentan al lado.
+const propiedadesSubTabs = [
+  { path: '/propiedades', label: 'TABLA' },
+  { path: '/propiedades/mapa', label: 'MAPA' },
+  { path: '/propiedades/sonar', label: 'SONAR' },
+  { path: '/propiedades/comparables', label: 'COMPARABLES' },
 ]
 
 interface TabBarProps {
@@ -26,7 +26,7 @@ interface TabBarProps {
 
 export function TabBar({ onLogout }: TabBarProps) {
   const location = useLocation()
-  const inProspectos = location.pathname.startsWith('/prospectos')
+  const inPropiedades = location.pathname.startsWith('/propiedades')
 
   const [showSettings, setShowSettings] = useState(false)
   const [currentPw, setCurrentPw] = useState('')
@@ -250,12 +250,12 @@ export function TabBar({ onLogout }: TabBarProps) {
         </div>
       </div>
 
-      {inProspectos && (
+      {inPropiedades && (
         <div style={{
           display: 'flex',
           borderTop: `1px solid ${colors.border}`,
         }}>
-          {prospectoSubTabs.map(({ path, label }) => (
+          {propiedadesSubTabs.map(({ path, label }) => (
             <NavLink
               key={path}
               to={path}
