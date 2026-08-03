@@ -82,13 +82,17 @@ export async function clearField(page: Page, label: string): Promise<void> {
   await page.getByRole('button', { name: `Vaciar ${label}`, exact: true }).click()
 }
 
-/** Opens the AVANZAR A ▸ menu and picks a destination stage, revealing its gate.
+/**
+ * Opens the AVANZAR A ▸ menu and picks a destination stage, revealing its gate.
  *
- * Espera a que la ficha haya cargado antes de abrir el menú: los destinos se
- * calculan del status, así que abrirlo mientras la propiedad todavía viene en
- * camino ofrece un menú que el re-render posterior descarta. */
+ * Assumes the page is loaded — `gotoProperty` is what guarantees that, and every
+ * caller goes through it. This used to re-assert the load itself, from back when
+ * the wait lived nowhere: the destinations are computed from the status, so a
+ * menu opened mid-fetch is one the next render throws away. Now that the wait
+ * has one home, repeating it here only meant failing earlier, with a worse
+ * message, and against a shorter timeout than the real precondition uses.
+ */
 export async function advanceTo(page: Page, stageLabel: string): Promise<void> {
-  await expect(page.getByRole('button', { name: 'EDITAR', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'AVANZAR A ▸' }).click()
   await page.getByRole('button', { name: stageLabel, exact: true }).click()
 }
