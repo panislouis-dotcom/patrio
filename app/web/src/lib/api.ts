@@ -21,10 +21,16 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
   return res
 }
 
-/** El detalle del servidor, que viene escrito para leerse, gana a `API error: N`. */
+/** El detalle del servidor, que viene escrito para leerse, gana a `API error: N`.
+ *
+ * El API envuelve todo error en `{error: {code, message, request_id}}` (ver
+ * `_error` en api/main.py), así que ahí vive la frase: "La primera renta no
+ * puede ser anterior a la adquisición" en vez de un 422 mudo. Se conserva
+ * `detail` como respaldo por si algo responde con la forma cruda de FastAPI. */
 async function detail(res: Response): Promise<string> {
-  const body = await res.json().catch(() => null) as { detail?: string } | null
-  return body?.detail ?? `API error: ${res.status}`
+  const body = await res.json().catch(() => null) as
+    { error?: { message?: string }; detail?: string } | null
+  return body?.error?.message ?? body?.detail ?? `API error: ${res.status}`
 }
 
 // ─── Propiedades ──────────────────────────────────────────────────────────────
