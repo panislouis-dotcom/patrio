@@ -43,13 +43,12 @@ function mockZones(page: import('@playwright/test').Page) {
 /**
  * Empties the persisted signal list the page loads on mount.
  *
- * SonarTab fetches the stored signals in a `useEffect` and calls `setSignals`
- * when that resolves. A mocked scan finishes in milliseconds, so the two race:
- * when the stored list lands last it overwrites the results the scan just
- * produced, and the table goes back to "Sin señales" while the header still
- * reports what the scan found. (A real scan takes seconds, so the app never
- * shows this — but it is the app's race, not the test's.) Serving the list
- * instantly and empty takes the race out of the scan tests.
+ * SonarTab fetches the stored signals in a `useEffect`. That read used to be
+ * able to land *after* a mocked scan had already written its results and
+ * overwrite them — the header said "1 encontradas" and the table said "Sin
+ * señales". The app now guards it (`scanWrote`), so this mock is no longer
+ * what makes the tests pass; it stays because a test about scanning should not
+ * depend on what a live database happens to hold.
  */
 function mockStoredSignals(page: import('@playwright/test').Page) {
   return page.route('**/api/sonar/signals', route =>

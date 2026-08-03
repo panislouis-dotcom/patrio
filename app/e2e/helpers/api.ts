@@ -250,6 +250,61 @@ export async function createInstance(
   return res.json() as Promise<{ id: number; name: string }>
 }
 
+/**
+ * Points a tarea at a property, creating it the first time and reusing it ever
+ * after. Its FK is ON DELETE NO ACTION, so while it points there the property
+ * cannot be deleted — which is the only way to reach that refusal from the UI.
+ *
+ * Reuse rather than create-per-run because the API has no DELETE for instances
+ * (see `deleteInstance`): a fresh one each time would pile up forever, and a
+ * pile of stray tareas is a landmine for any spec that reads the list.
+ */
+export async function attachInstanceToProperty(
+  request: APIRequestContext,
+  name: string,
+  propertyId: number,
+  token: string,
+): Promise<{ id: number }> {
+  const list = await request.get(`${API_BASE}/api/process/instances`, {
+    headers: await authHeaders(token),
+  })
+  const existing = (await list.json() as Array<{ name: string; id: number }>).find(i => i.name === name)
+  const res = existing
+    ? await request.patch(`${API_BASE}/api/process/instances/${existing.id}`, {
+        headers: await authHeaders(token),
+        data: { propertyId },
+      })
+    : await request.post(`${API_BASE}/api/process/instances`, {
+        headers: await authHeaders(token),
+        data: { name, startDate: new Date().toISOString().slice(0, 10), status: 'active', propertyId },
+      })
+  if (!res.ok()) throw new Error(`attachInstanceToProperty failed: ${res.status()} ${await res.text()}`)
+  const body = await res.json() as { id?: number; instance?: { id: number } }
+  return { id: body.instance?.id ?? body.id ?? existing!.id }
+}
+
+/**
+ * Frees the property a tarea is attached to. It is the closest thing to a
+ * cleanup available: the tarea itself survives, because it cannot be removed.
+ */
+export async function detachInstance(
+  request: APIRequestContext,
+  id: number,
+  token: string,
+): Promise<void> {
+  const res = await request.patch(`${API_BASE}/api/process/instances/${id}`, {
+    headers: await authHeaders(token),
+    data: { propertyId: null },
+  })
+  if (!res.ok()) throw new Error(`detachInstance failed: ${res.status()} ${await res.text()}`)
+}
+
+/**
+ * NO-OP — kept because specs call it, but the API has no DELETE for instances:
+ * `/api/process/instances/{id}` answers 405, and this swallows it. A tarea
+ * created by a test therefore outlives the test. Use `detachInstance` when what
+ * you need is to free the property it points at.
+ */
 export async function deleteInstance(
   request: APIRequestContext,
   id: number,

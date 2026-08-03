@@ -65,6 +65,29 @@ def test_delete_missing_property_is_404(client):
     assert client.delete("/api/properties/999999999").status_code == 404
 
 
+def test_delete_blocked_by_a_reference_is_422_with_the_reason(client, test_property):
+    """Something still points at it, so the delete is refused — and refusing is
+    an answer, not a server failure. The row it is held by has to be named: from
+    a bare 500 nobody deduces that a tarea has to be unlinked first."""
+    pid = test_property["id"]
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO process_instances (name, start_date, status, property_id)"
+            " VALUES (%s, CURRENT_DATE, 'active', %s)",
+            ("[TEST] tarea que retiene", pid),
+        )
+    try:
+        r = client.delete(f"/api/properties/{pid}")
+        assert r.status_code == 422
+        assert r.json()["error"]["message"] == (
+            "No se puede eliminar la propiedad porque tiene tareas ligadas.")
+        # And it is still there: a refused delete deletes nothing.
+        assert client.get(f"/api/properties/{pid}").status_code == 200
+    finally:
+        with get_db() as conn:
+            conn.execute("DELETE FROM process_instances WHERE property_id = %s", (pid,))
+
+
 def test_quality_reports_issues_per_property(client, test_property):
     r = client.get("/api/quality")
     assert r.status_code == 200

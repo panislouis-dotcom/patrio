@@ -168,7 +168,9 @@ export function PropertyDetailPage() {
     setEditing(false)
   }
 
+  /** Deja que el error suba: el encabezado lo reporta y la página lo enseña. */
   async function handleDelete() {
+    setSaveError(null)
     await deleteProperty(propertyId)
     navigate('/propiedades')
   }
@@ -339,6 +341,7 @@ export function PropertyDetailPage() {
         onSave={save}
         onCancel={() => { clear(); setEditing(false) }}
         onDelete={handleDelete}
+        onDeleteError={setSaveError}
         actions={
           <>
             {forward.length > 0 && (

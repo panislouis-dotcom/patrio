@@ -18,21 +18,32 @@ export function TasksPanel({ propertyId, instances, onChange }: Props) {
   const [allInstances, setAllInstances] = useState<ProcessInstance[]>([])
   const [linkId, setLinkId] = useState('')
   const [linking, setLinking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function toggleLinkPicker() {
     setShowLink(v => !v)
     setLinkId('')
+    setError(null)
     if (!showLink && allInstances.length === 0) setAllInstances(await fetchInstances())
   }
 
+  /**
+   * Ligar puede negarse —los procesos de obra se abren desde desarrollo, y el
+   * servidor lo dice con esa frase—, así que el rechazo se atrapa y se enseña.
+   * Antes solo había `finally`: la promesa quedaba sin manejar y el panel se
+   * quedaba callado, como si el clic no hubiera ocurrido.
+   */
   async function link() {
     if (!linkId) return
     setLinking(true)
+    setError(null)
     try {
       const { instance } = await updateInstance(Number(linkId), { propertyId })
       onChange([...instances, instance])
       setShowLink(false)
       setLinkId('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo ligar la tarea')
     } finally {
       setLinking(false)
     }
@@ -40,8 +51,13 @@ export function TasksPanel({ propertyId, instances, onChange }: Props) {
 
   async function unlink(inst: ProcessInstance) {
     if (!window.confirm(`¿Desligar "${inst.name}" de esta propiedad?`)) return
-    await updateInstance(inst.id, { propertyId: null })
-    onChange(instances.filter(i => i.id !== inst.id))
+    setError(null)
+    try {
+      await updateInstance(inst.id, { propertyId: null })
+      onChange(instances.filter(i => i.id !== inst.id))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo desligar la tarea')
+    }
   }
 
   const linkedIds = new Set(instances.map(i => i.id))
@@ -83,6 +99,12 @@ export function TasksPanel({ propertyId, instances, onChange }: Props) {
           >
             {linking ? '…' : 'LIGAR'}
           </button>
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" style={{ marginBottom: '12px', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>
+          {error}
         </div>
       )}
 

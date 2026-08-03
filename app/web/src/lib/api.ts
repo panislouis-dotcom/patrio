@@ -182,7 +182,7 @@ export async function* streamSonarRun(cves: string[]): AsyncGenerator<SonarRunEv
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cves }),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   const reader = res.body!.getReader()
   const decoder = new TextDecoder()
   let buf = ''
@@ -204,7 +204,7 @@ export async function importSonarSignal(signal: SonarSignal): Promise<{ property
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(signal),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -213,7 +213,7 @@ export async function importSonarToComparables(signalIds: number[], zoneId: numb
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ signal_ids: signalIds, zone_id: zoneId }),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -233,7 +233,7 @@ export async function fetchZoneMedians(): Promise<Record<string, number>> {
 
 export async function reGeocodeSonarSignals(): Promise<{ queued: number }> {
   const res = await authFetch(`${BASE}/api/sonar/re-geocode`, { method: 'POST' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -256,13 +256,13 @@ export async function createTeamMember(data: { name: string; role: MemberRole; m
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteTeamMember(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/team/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 export async function updateTeamMember(id: number, data: { name?: string; role?: MemberRole; managerId?: number | null; email?: string; notes?: string }): Promise<TeamMember> {
@@ -271,7 +271,7 @@ export async function updateTeamMember(id: number, data: { name?: string; role?:
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -289,7 +289,7 @@ export async function createTemplate(data: { name: string; description?: string 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -299,13 +299,13 @@ export async function updateTemplate(id: number, data: Partial<Pick<ProcessTempl
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteTemplate(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/process/templates/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 export async function fetchTemplatePreview(tid: number): Promise<{ template: ProcessTemplate; nodes: GanttNode[] }> {
@@ -336,7 +336,7 @@ export async function createNode(tid: number, data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -353,13 +353,13 @@ export async function updateNode(nid: number, data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteNode(nid: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/process/nodes/${nid}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ─── Process instances ────────────────────────────
@@ -388,7 +388,7 @@ export async function createInstance(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -409,7 +409,7 @@ export async function updateInstance(iid: number, data: Partial<{
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -454,7 +454,7 @@ export async function updateNodeState(iid: number, nid: number, data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -476,13 +476,13 @@ export async function uploadNodeFile(
   form.append('file', file)
   if (instanceId != null) form.append('instance_id', String(instanceId))
   const res = await authFetch(`${BASE}/api/process/nodes/${nid}/files`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error('Upload failed')
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteNodeFile(fid: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/process/files/${fid}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error('Delete failed')
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ─── Node comments ───────────────────────────────────────────────────────────
@@ -504,13 +504,13 @@ export async function createNodeComment(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ body, author }),
   })
-  if (!res.ok) throw new Error('Failed to create comment')
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteNodeComment(cid: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/process/comments/${cid}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error('Delete failed')
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ─── Node detail ─────────────────────────────────────────────────────────────
@@ -535,7 +535,7 @@ export async function updateProfitTemplate(data: Partial<ProfitSplitConfig>): Pr
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -551,7 +551,7 @@ export async function updatePropertyProfit(id: number, data: Partial<ProfitSplit
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -575,7 +575,7 @@ export async function createInvestor(data: Omit<Investor, 'id' | 'createdAt' | '
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -585,13 +585,13 @@ export async function updateInvestor(id: number, data: Partial<Pick<Investor, 'n
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteInvestor(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/investors/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 export async function fetchPropertyInvestors(propertyId: number): Promise<PropertyInvestor[]> {
@@ -658,7 +658,7 @@ export async function createComparable(data: Partial<Comparable>): Promise<Compa
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -668,13 +668,13 @@ export async function updateComparable(id: number, data: Partial<Comparable>): P
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteComparable(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/comparables/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ─── Analyses ────────────────────────────────────────────────────────────────
@@ -716,10 +716,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ currentPassword, newPassword }),
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string }
-    throw new Error(err.detail ?? `API error: ${res.status}`)
-  }
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ─── User management ─────────────────────────────────────────────────────────
@@ -736,10 +733,7 @@ export async function createUser(email: string, password: string): Promise<User>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string }
-    throw new Error(err.detail ?? `API error: ${res.status}`)
-  }
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -749,19 +743,13 @@ export async function updateUser(id: number, data: { isActive?: boolean; passwor
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string }
-    throw new Error(err.detail ?? `API error: ${res.status}`)
-  }
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteUser(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/users/${id}`, { method: 'DELETE' })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string }
-    throw new Error(err.detail ?? `API error: ${res.status}`)
-  }
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ── Proveedor Categories ──────────────────────────────────────────────────────
@@ -778,7 +766,7 @@ export async function createCategory(data: { name: string; description?: string 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -788,13 +776,13 @@ export async function updateCategory(id: number, data: Partial<Pick<ProveedorCat
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteCategory(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/proveedor-categories/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ── Proveedores ───────────────────────────────────────────────────────────────
@@ -826,7 +814,7 @@ export async function createProveedor(data: Partial<Proveedor> & { name: string 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -836,13 +824,13 @@ export async function updateProveedor(id: number, data: Partial<Proveedor>): Pro
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteProveedor(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/proveedores/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 export async function setProveedorCategories(id: number, categoryIds: number[]): Promise<Proveedor> {
@@ -851,7 +839,7 @@ export async function setProveedorCategories(id: number, categoryIds: number[]):
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ categoryIds }),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -859,13 +847,13 @@ export async function uploadProveedorPhoto(id: number, file: File): Promise<Prov
   const fd = new FormData()
   fd.append('file', file, file.name)
   const res = await authFetch(`${BASE}/api/proveedores/${id}/photos`, { method: 'POST', body: fd })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteProveedorPhoto(proveedorId: number, photoId: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/proveedores/${proveedorId}/photos/${photoId}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ── Cotizaciones ──────────────────────────────────────────────────────────────
@@ -882,7 +870,7 @@ export async function createCotizacion(stateId: number, data: Partial<Cotizacion
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -892,7 +880,7 @@ export async function updateCotizacion(id: number, data: Partial<Cotizacion>): P
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
@@ -902,13 +890,13 @@ export async function selectCotizacion(id: number, instanceNodeStateId: number):
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ instanceNodeStateId }),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
 export async function deleteCotizacion(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/cotizaciones/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new Error(await detail(res))
 }
 
 // ── Floor-plan geometry ──

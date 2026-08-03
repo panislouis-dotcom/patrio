@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/auth'
 import {
   getToken, createProperty, deleteProperty, deletePropertyByName,
-  clearPropertyFields, transitionProperty,
+  clearPropertyFields, transitionProperty, attachInstanceToProperty, detachInstance,
 } from '../helpers/api'
 import {
   detailRow, fieldInput, enterEditMode, saveEdits, setNumericField, clearField,
@@ -464,5 +464,68 @@ test.describe('Ficha de propiedad — una en renta', () => {
     // After the purchase the answer comes from the rent, not from a model
     await expect(page.getByRole('button', { name: 'CORRER ANÁLISIS' })).toHaveCount(0)
     await expect(page.getByText('Sin análisis previos')).toBeVisible()
+  })
+})
+
+/**
+ * A delete the database refuses.
+ *
+ * This exists because the failure used to be silent: the header caught the
+ * error, threw it away, and reset the button — and a delete that says nothing
+ * reads exactly like a delete that worked. The property stayed, the user
+ * believed it was gone. What the page owes them is the reason, in words, and a
+ * button back in the state that means "nothing happened".
+ */
+test.describe('Un borrado que no puede ocurrir', () => {
+  const BLOQUEADA = {
+    name: '[TEST] Propiedad Con Tarea',
+    address: 'Av. Bloqueada 50',
+    city: 'Monterrey',
+    landPrice: 1_000_000,
+    projectedSale: 2_000_000,
+    latitude: 25.6866,
+    longitude: -100.3161,
+  }
+
+  let token: string
+  let id: number
+  let instanceId: number
+
+  test.beforeAll(async ({ request }) => {
+    token = await getToken(request)
+    await deletePropertyByName(request, BLOQUEADA.name, token)
+    id = (await createProperty(request, BLOQUEADA, token)).id
+    // Tareas only attach from desarrollo on, so the property has to get there.
+    await transitionProperty(request, id, { to: 'oferta' }, token)
+    await transitionProperty(request, id, {
+      to: 'desarrollo', acquisitionDate: '2024-01-01', totalUnits: 1, currentValuation: 1_200_000,
+    }, token)
+    instanceId = (await attachInstanceToProperty(request, '[TEST] Tarea Que Retiene', id, token)).id
+  })
+
+  test.afterAll(async ({ request }) => {
+    // Free the property first: while the tarea points at it, it is exactly as
+    // undeletable for the cleanup as it is for the user. The tarea itself stays
+    // — the API has no way to remove one — and the next run reuses it.
+    await detachInstance(request, instanceId, token)
+    await deleteProperty(request, id, token)
+  })
+
+  test('ELIMINAR falla en voz alta y dice qué retiene a la propiedad', async ({ page }) => {
+    await page.goto(`/propiedades/${id}`)
+
+    await page.getByRole('button', { name: 'ELIMINAR', exact: true }).click()
+    await page.getByRole('button', { name: '¿CONFIRMAR BORRADO?' }).click()
+
+    // The server names the blocker; the page prints that sentence, not a code
+    await expect(page.getByText('No se puede eliminar la propiedad porque tiene tareas ligadas.')).toBeVisible()
+
+    // And nothing happened: still here, still deletable-looking, still alive
+    await expect(page).toHaveURL(new RegExp(`/propiedades/${id}$`))
+    await expect(page.getByRole('button', { name: 'ELIMINAR', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '¿CONFIRMAR BORRADO?' })).toHaveCount(0)
+
+    await page.reload()
+    await expect(page.getByText(BLOQUEADA.name)).toBeVisible()
   })
 })

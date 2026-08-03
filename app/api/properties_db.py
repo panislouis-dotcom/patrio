@@ -28,6 +28,7 @@ exit value — projected sale, current valuation, sale price — so the learning
 pairs the firm cares about (projectedProfit ↔ realizedGain, projectedRoi ↔
 realizedRoi) are symmetric by construction rather than by coincidence.
 """
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
@@ -122,6 +123,17 @@ def _db_reason(exc: Exception) -> str:
     volcado entero del error."""
     constraint = getattr(getattr(exc, "diag", None), "constraint_name", None)
     return constraint or str(exc).strip().splitlines()[0]
+
+
+@contextmanager
+def _readable_rejection():
+    """La base es la última defensa, no la primera: cuando algo la rompe, el
+    cliente lee qué regla violó en vez de recibir un 500 que al navegador le
+    llega disfrazado de error de CORS. Toda escritura pasa por aquí."""
+    try:
+        yield
+    except IntegrityError as exc:
+        raise PropertyError(f"La propiedad no cumple una regla de captura: {_db_reason(exc)}")
 
 
 class PropertyNotFound(PropertyError):
@@ -416,16 +428,11 @@ def create_property(data: dict) -> dict:
     names = ", ".join(columns)
     placeholders = ", ".join(["%s"] * len(columns))
     with get_db() as conn:
-        try:
+        with _readable_rejection():
             new_id = conn.execute(
                 f"INSERT INTO properties ({names}) VALUES ({placeholders}) RETURNING id",
                 list(columns.values()),
             ).fetchone()["id"]
-        except IntegrityError as exc:
-            # La base es la última defensa, no la primera: si un alta la rompe,
-            # el cliente merece leer qué regla violó y no un 500 mudo (que
-            # además llega al navegador disfrazado de error de CORS).
-            raise PropertyError(f"La propiedad no cumple una regla de captura: {_db_reason(exc)}")
         conn.execute(
             "INSERT INTO property_status_events (property_id, from_status, to_status, notes)"
             " VALUES (%s, NULL, %s, %s)",
@@ -443,10 +450,11 @@ def update_property(property_id: int, data: dict) -> dict:
         if columns:
             _reject_new_violations(before["status"], before, {**before, **_plain(columns)})
             assignments = ", ".join(f"{col} = %s" for col in columns)
-            conn.execute(
-                f"UPDATE properties SET {assignments} WHERE id = %s",
-                list(columns.values()) + [property_id],
-            )
+            with _readable_rejection():
+                conn.execute(
+                    f"UPDATE properties SET {assignments} WHERE id = %s",
+                    list(columns.values()) + [property_id],
+                )
     return get_property(property_id)
 
 
@@ -463,7 +471,8 @@ def clear_fields(property_id: int, fields: list[str]) -> dict:
         before = _require_row(conn, property_id)
         _reject_new_violations(before["status"], before, {**before, **dict.fromkeys(columns)})
         assignments = ", ".join(f"{col} = NULL" for col in columns)
-        conn.execute(f"UPDATE properties SET {assignments} WHERE id = %s", (property_id,))
+        with _readable_rejection():
+            conn.execute(f"UPDATE properties SET {assignments} WHERE id = %s", (property_id,))
     return get_property(property_id)
 
 
@@ -491,10 +500,11 @@ def transition(property_id: int, to_status: str, data: dict,
 
         assignments = ", ".join(f"{col} = %s" for col in columns)
         assignments = f"{assignments}, status = %s" if assignments else "status = %s"
-        conn.execute(
-            f"UPDATE properties SET {assignments} WHERE id = %s",
-            list(columns.values()) + [to_status, property_id],
-        )
+        with _readable_rejection():
+            conn.execute(
+                f"UPDATE properties SET {assignments} WHERE id = %s",
+                list(columns.values()) + [to_status, property_id],
+            )
         # The actor is identified by email: it is the only thing both auth paths
         # carry, and an API key's own id is not a user id. Resolving it in the
         # statement keeps the write to a single round trip, and an unknown email
@@ -514,9 +524,36 @@ def _plain(columns: dict) -> dict:
     return {k: (v.adapted if isinstance(v, Json) else v) for k, v in columns.items()}
 
 
+# Lo que retiene a una propiedad, dicho como lo entiende quien intenta borrarla.
+# Las tablas que sí caen con ella (fotos, inversionistas, eventos de etapa) no
+# están aquí: su FK es ON DELETE CASCADE y nunca llegan a estorbar.
+#
+# El borrado no usa _readable_rejection() a propósito: ahí la regla rota es de
+# captura ("este valor no es válido") y aquí es de referencia ("algo más todavía
+# la usa"). Son dos frases distintas porque llevan a dos acciones distintas —
+# corregir un campo, o desligar lo que apunta.
+_DELETE_BLOCKERS = {
+    "analysis_snapshots": "tiene análisis guardados",
+    "process_instances": "tiene tareas ligadas",
+    "profit_split_config": "tiene un reparto de utilidades configurado",
+    "signals": "está ligada a una señal del sonar",
+}
+
+
 def delete_property(property_id: int) -> None:
     with get_db() as conn:
-        deleted = conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
+        try:
+            deleted = conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
+        except IntegrityError as exc:
+            # Borrar algo que otra cosa todavía usa es una respuesta legítima, no
+            # una falla del servidor: se responde 422 y se dice qué lo retiene,
+            # porque de un 500 mudo nadie deduce que hay que desligar la tarea.
+            blocker = _DELETE_BLOCKERS.get(getattr(getattr(exc, "diag", None), "table_name", ""))
+            raise PropertyError(
+                f"No se puede eliminar la propiedad porque {blocker}."
+                if blocker
+                else f"No se puede eliminar la propiedad: {_db_reason(exc)}"
+            )
         if deleted.rowcount == 0:
             raise PropertyNotFound(f"Propiedad {property_id} no encontrada")
 
