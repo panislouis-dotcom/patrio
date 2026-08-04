@@ -344,6 +344,33 @@ Key `operation_id`s:
 - `budget_chapter_delete` — `DELETE /api/properties/{id}/budget/chapters/{chapter}`
 - `budget_payment_create` — `POST /api/properties/{id}/budget/lines/{line_id}/payments`
 - `budget_payment_delete` — `DELETE /api/properties/{id}/budget/lines/{line_id}/payments/{payment_id}`
+- `budget_apply` — `POST /api/properties/{id}/budget/apply` — copy another budget over this one (a template, or the works next door)
+- `budget_apply_chapter` — `POST /api/properties/{id}/budget/apply-chapter` — pull one catalog chapter in as a skeleton, at quantity 0 and price 0
+
+#### The catalog and templates — shared memory, never shared numbers
+
+The catalog is **not** nested under a property (`/api/budget/catalog`), and that is the whole point: a budget does not exist without its works, while the catalog is what every job shares — the memory of which line items exist and what they are called.
+
+**Applying the catalog COPIES the text into the line.** From that moment the line belongs to the property and editing the catalog cannot touch it: `itemId` is **provenance, not dependency** (`ON DELETE SET NULL`, and nothing reads it back to build a line). This is deliberately the *opposite* of process templates, which are read live — a process node holds state *about* doing something and its text is a label, while a budget line **is the claim itself**, and it has readers outside the app: the prospectus, the term sheet, `totalInvestment`. Retroactively moving a number an investor already saw is a different class of damage from renaming a task.
+
+**Nothing in the catalog can move a peso of any job**, which is why no route there returns `property`. The two that do move money — applying a template, applying a chapter — live on the property side and return the recomputed ficha like every other budget write.
+
+**Deleting does not exist for the catalog.** `DELETE` deactivates (`isActive = false`) and answers with the switched-off row; a truly deleted item would take the provenance of every budget citing it, including sold properties. Templates *are* deleted for real, and that is consistent: after a copy nothing cites a template.
+
+**A one-off line costs nothing** — create it with no `itemId` and it is a normal line. Forcing everything through the catalog first is the fastest way to make nobody use the module. What keeps the catalog from rotting instead is **deduplication while typing** (`budget_catalog_suggest`, trigram-based) and an explicit, human, one-click promotion from a queue ordered by frequency; promoting relinks the whole group backwards, so the item joins the catalog already knowing its history.
+
+**The catalog stores no price.** Learning one from what was *budgeted* is a self-confirming loop — you budget $1,000, the catalog learns $1,000, next time it suggests $1,000 — so prices are learned only from **closed, paid** lines.
+
+**A template is a budget without a property.** Its `id` is a budget id and can be handed straight to `budget_apply`, exactly like the id of another job's budget. That is the entire machinery behind "start from a template", "start from another job" and "save this one as a template" — one copy operation used three ways.
+
+Key `operation_id`s:
+- `budget_catalog_get` — `GET /api/budget/catalog` — chapters with their items; `?includeInactive=true` to see the switched-off ones
+- `budget_catalog_chapter_create`, `budget_catalog_chapter_update`, `budget_catalog_chapter_deactivate`
+- `budget_catalog_item_create`, `budget_catalog_item_update`, `budget_catalog_item_deactivate`
+- `budget_catalog_suggest` — `GET /api/budget/catalog/suggest?name=…` — "is this the same one as…?", for use while somebody types
+- `budget_catalog_promotion_queue` — `GET /api/budget/catalog/promotion-queue` — loose lines grouped by frequency; it orders, it does not decide
+- `budget_catalog_promote` — `POST /api/budget/catalog/promote` — body `{lineId, chapterId?, itemId?}`; `itemId` merges into an existing item. Returns `{item, created, relinked}`
+- `budget_templates_list`, `budget_template_get`, `budget_template_create` (body `{name, fromBudgetId?}`), `budget_template_update`, `budget_template_delete`
 
 ### 2. Analyses — financial model snapshots
 
