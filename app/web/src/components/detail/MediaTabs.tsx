@@ -21,6 +21,12 @@ interface Props {
  * constante escondida aquí adentro, y agregar una cuarta pestaña obligaba a
  * tocar este archivo aunque no cambie nada de lo que hace. Sigue sin saber qué
  * hay dentro de cada panel: es una barra y un hueco.
+ *
+ * Por eso tampoco es este archivo el que decide que RENDERS sea su propia
+ * pestaña y no una vista de FOTOS, aunque la razón se sostenga igual: una foto
+ * es evidencia y un render es una propuesta. Mezclarlos en la misma tira es cómo
+ * una propuesta termina citada como si fuera el estado real del inmueble. Esa
+ * separación la sostiene quien arma la lista, no la barra.
  */
 export function MediaTabs({ tabs, style }: Props) {
   const [active, setActive] = useState(0)
