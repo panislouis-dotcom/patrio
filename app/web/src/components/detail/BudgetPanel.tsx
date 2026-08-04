@@ -707,6 +707,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                             key={row.name}
                             defaultValue={row.name}
                             aria-label={`Capítulo ${row.name}`}
+                            onFocus={e => e.target.select()}
                             onBlur={e => renameChapter(row.name, e.target.value)}
                             style={{ ...cellInput, background: 'transparent', border: 'none', padding: '3px 0' }}
                           />
@@ -818,6 +819,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                       value={line.unit}
                       aria-label={`Unidad de ${line.name}`}
                       onChange={e => edit(line, { unit: e.target.value })}
+                      onFocus={e => e.target.select()}
                       onBlur={() => commitText(line.id, 'unit')}
                       style={cellInput}
                     />

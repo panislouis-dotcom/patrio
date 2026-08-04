@@ -167,6 +167,22 @@ describe('BudgetPanel', () => {
       .toBeLessThan(donde(screen.getByLabelText('Capítulo Instalaciones')))
   })
 
+  it('las celdas de texto se seleccionan al enfocar, igual que las de dinero', async () => {
+    // Toda partida nace llamándose «Partida nueva» y todo capítulo «Capítulo
+    // nuevo»: texto de arranque, no dato. Sin selección al enfocar había que
+    // borrarlo a mano, mientras que en cantidad o precio bastaba con teclear
+    // encima — dos comportamientos para celdas contiguas de la misma fila.
+    await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+
+    for (const etiqueta of ['Partida Muro de block', 'Unidad de Muro de block', 'Capítulo Albañilería']) {
+      const caja = screen.getByLabelText(etiqueta) as HTMLInputElement
+      caja.setSelectionRange(0, 0)
+      fireEvent.focus(caja)
+      expect([caja.selectionStart, caja.selectionEnd]).toEqual([0, caja.value.length])
+    }
+  })
+
   it('el capítulo SUMA SOLO: nunca captura su total', async () => {
     // Mismo principio que `getProgress()` en ProcesoInstanceDetail y que
     // totalInvestment: un padre deriva su cifra de sus hijos y jamás la teclea.

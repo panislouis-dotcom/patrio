@@ -142,10 +142,23 @@ export function DedupeNameCell({ value, ariaLabel, style, lineId, linked, onChan
 
   return (
     <>
+      {/* Se selecciona al enfocar, igual que las celdas de dinero de la misma
+          fila. Toda partida nace llamándose «Partida nueva» —un texto de
+          arranque, no un dato— y sin esto había que borrarlo a mano mientras
+          que en cantidad o precio bastaba con teclear encima: dos
+          comportamientos para dos celdas contiguas es de lo que hace que
+          capturar se sienta hostil sin que nadie sepa señalar por qué.
+
+          `select()` directo y no en un `setTimeout` como hace `NumericInput`:
+          aquí no hay un reformateo al enfocar con el que competir, así que no
+          hace falta ceder el turno. Eso además deja esta celda A SALVO de la
+          carrera que el docstring de `NumericInput` describe — el tecleo
+          automatizado sí puede escribir en ésta sin hacer clic antes. */}
       <input
         value={value}
         aria-label={ariaLabel}
         onChange={e => onChange(e.target.value)}
+        onFocus={e => e.target.select()}
         onBlur={onBlur}
         style={style}
       />
