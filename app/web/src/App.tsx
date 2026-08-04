@@ -20,6 +20,10 @@ import { InversorDetailPage } from './components/InversorDetailPage'
 import { ProveedoresPage } from './components/ProveedoresPage'
 import { ProveedoresTab } from './components/ProveedoresTab'
 import { TiposPage } from './components/TiposPage'
+import { ObraPage } from './components/budget/ObraPage'
+import { CatalogoObraPage } from './components/budget/CatalogoObraPage'
+import { PromocionQueuePage } from './components/budget/PromocionQueuePage'
+import { PlantillasObraPage } from './components/budget/PlantillasObraPage'
 import { ComparablesTab } from './components/ComparablesTab'
 import { ComparableForm } from './components/ComparableForm'
 import { AnalysisView } from './components/AnalysisView'
@@ -65,6 +69,14 @@ function AppShell() {
             <Route index element={<Navigate to="lista" replace />} />
             <Route path="lista" element={<ProveedoresTab />} />
             <Route path="tipos" element={<TiposPage />} />
+          </Route>
+          {/* El catálogo de obra no es de ninguna propiedad: es del negocio, y
+              la obra de al lado tiene que poder aprender de él. */}
+          <Route path="/obra" element={<ProtectedRoute><ObraPage /></ProtectedRoute>}>
+            <Route index element={<Navigate to="catalogo" replace />} />
+            <Route path="catalogo" element={<CatalogoObraPage />} />
+            <Route path="por-promover" element={<PromocionQueuePage />} />
+            <Route path="plantillas" element={<PlantillasObraPage />} />
           </Route>
           <Route path="/equipo" element={<ProtectedRoute><OrgTab /></ProtectedRoute>} />
           <Route path="/analyses/:id" element={<ProtectedRoute><AnalysisView /></ProtectedRoute>} />
