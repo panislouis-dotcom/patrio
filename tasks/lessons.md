@@ -165,3 +165,35 @@ los usos, que es lo que una prueba por definición no hace.
 compile. `noUnusedLocals` está encendido, así que la suite puede pasar mientras
 `npm run build` falla. **`npx tsc --noEmit` va en la misma vuelta que las pruebas,
 antes de cada commit** — si no, la señal verde afirma más de lo que verificó.
+
+---
+
+## Una salvedad sobre el estado ajeno caduca; el commit donde la escribes, no
+
+**2026-08-03 · «esta ruta no está commiteada» — sí lo estaba**
+
+Un agente cerró un commit advirtiendo que el endpoint que su cliente llama vivía
+solo en el árbol de trabajo. **Ya estaba commiteado**, tres minutos antes, por su
+dueño. La advertencia nació falsa.
+
+El error no fue medir mal: fue medir **temprano**. Un `git status` leído al
+empezar la tarea mostró esos archivos sucios, y esa observación viajó intacta
+hasta el mensaje del commit una hora después. Con varios agentes sobre un mismo
+checkout, **el estado ajeno cambia mientras trabajas** — es la misma familia que
+[[el índice de git es estado compartido]].
+
+Lo que lo vuelve caro es dónde acabó escrita: un chat equivocado lo corrige el
+mensaje siguiente; **un mensaje de commit es permanente y no se reescribe** —
+rebasar un árbol con trabajo de otros en vuelo cuesta más que la frase que
+arregla. Hoy la historia del repo dice algo que no era cierto.
+
+**Cómo aplicarlo**: una afirmación NEGATIVA sobre trabajo ajeno («no existe»,
+«no está commiteado», «todavía no lo expone») tiene fecha de caducidad de
+minutos. Si va a un artefacto permanente, **vuelve a medirla justo antes de
+escribirla**, no cuando la descubriste. Y si solo necesitas avisar, dilo en un
+mensaje —que se corrige— en vez de en un commit —que no.
+
+Corolario del mismo día: la duda vale en las dos direcciones. Cuatro veces se
+reportó como pendiente algo ya hecho, y también llegaron reportes de errores ya
+arreglados. **Antes de actuar sobre el reporte de otro —o sobre el propio de
+hace una hora— vuelve a medir.**
