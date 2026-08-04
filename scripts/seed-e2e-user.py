@@ -125,6 +125,8 @@ def main() -> int:
 
             # Y su presupuesto, con la misma aritmética de la 028: toda propiedad
             # tiene uno, y su suma es el costo de obra con el overhead ya dentro.
+            # `is_residual` prendida (029): es el renglón del que se resta al
+            # detallar, y sin él el costo de obra crecería con cada partida.
             # Las dos semillas capturan 0 de obra, así que la fila nace en $0 —
             # que es lo que dicen sus columnas, y sigue significando «nada
             # capturado», no «cero pesos de obra».
@@ -136,13 +138,14 @@ def main() -> int:
                      WHERE name IN ('[SEED] Terreno E2E', '[SEED] Propiedad E2E')
                     RETURNING id, property_id
                 )
-                INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity, unit_price)
+                INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity, unit_price, is_residual)
                 SELECT n.id, 'Otros', 'Otros, por detallar', 'lote', 1,
                        (coalesce(p.sqm_construction::numeric, 0)
                         * coalesce(p.construction_cost_per_sqm, 0)
                         * CASE WHEN p.construction_overhead IS NULL THEN 1.3
                                WHEN p.construction_overhead = 0     THEN 1
-                               ELSE p.construction_overhead::numeric END)
+                               ELSE p.construction_overhead::numeric END),
+                       TRUE
                   FROM nuevos n JOIN properties p ON p.id = n.property_id
                 """,
             )

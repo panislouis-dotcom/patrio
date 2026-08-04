@@ -367,6 +367,7 @@ CREATE TABLE public.budget_lines (
     notes text DEFAULT ''::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    is_residual boolean DEFAULT false NOT NULL,
     CONSTRAINT budget_lines_actual_quantity_check CHECK ((actual_quantity >= (0)::numeric)),
     CONSTRAINT budget_lines_chapter_name_check CHECK ((chapter_name <> ''::text)),
     CONSTRAINT budget_lines_closed_needs_actual_quantity CHECK (((closed_at IS NULL) OR ((actual_quantity IS NOT NULL) AND (actual_quantity > (0)::numeric)))),
@@ -376,6 +377,13 @@ CREATE TABLE public.budget_lines (
     CONSTRAINT budget_lines_unit_check CHECK ((unit <> ''::text)),
     CONSTRAINT budget_lines_unit_price_check CHECK ((unit_price >= (0)::numeric))
 );
+
+
+--
+-- Name: COLUMN budget_lines.is_residual; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.budget_lines.is_residual IS 'El renglón que absorbe lo que todavía no se detalla: su importe es el total del presupuesto menos la suma de los detallados. No se captura a mano — convertir una resta determinista en una segunda captura es donde nace el descuadre. Uno por presupuesto, y el índice único parcial lo garantiza.';
 
 
 --
@@ -1113,14 +1121,14 @@ COMMENT ON COLUMN public.properties.acquisition_cost_pct IS 'Supuesto: costos de
 -- Name: COLUMN properties.construction_cost_per_sqm; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.properties.construction_cost_per_sqm IS 'Costo por m² de la obra a ejecutar. Todavía es el insumo vivo del costo de obra; su sucesor es la suma de budget_lines (migración 028), y desde la fase 2 esta cifra se deriva —presupuesto ÷ m² de obra— en vez de capturarse.';
+COMMENT ON COLUMN public.properties.construction_cost_per_sqm IS 'RETIRADA como insumo del costo de obra: desde la fase 2 el costo de obra es la suma del presupuesto (budget_lines) y esta cifra se DERIVA —presupuesto ÷ m² de obra— para mostrarse. El API ya no la lee ni la escribe; solo las semillas la usan para calcular el primer renglón. Pendiente de DROP junto con la reescritura de db/seeds.';
 
 
 --
 -- Name: COLUMN properties.construction_overhead; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.properties.construction_overhead IS 'Supuesto: multiplicador de costos indirectos de obra. NULL = se aplica el default del sistema (1.3); un 0 capturado es identidad 1, nunca ×0. La migración 028 lo aplicó una sola vez al sembrar el presupuesto, y desde la fase 2 deja de multiplicar el costo de obra.';
+COMMENT ON COLUMN public.properties.construction_overhead IS 'RETIRADO como multiplicador vivo: la 028 lo aplicó UNA sola vez al sembrar y el 30% de indirectos ya vive dentro del importe del presupuesto. Volver a multiplicar por él inflaría cada costo de obra sin que nada se viera roto. El API ya no lo lee ni lo publica como supuesto; solo las semillas lo usan para calcular el primer renglón. Pendiente de DROP junto con la reescritura de db/seeds.';
 
 
 --
@@ -2846,6 +2854,13 @@ CREATE UNIQUE INDEX uq_budget_items_name ON public.budget_items USING btree (cha
 
 
 --
+-- Name: uq_budget_lines_residual; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_budget_lines_residual ON public.budget_lines USING btree (budget_id) WHERE is_residual;
+
+
+--
 -- Name: uq_budgets_property; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3355,4 +3370,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('025'),
     ('026'),
     ('027'),
-    ('028');
+    ('028'),
+    ('029');
