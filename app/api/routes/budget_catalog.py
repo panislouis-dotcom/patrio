@@ -33,21 +33,29 @@ router = APIRouter()
 # ─── Bodies ───────────────────────────────────────────────────────────────────
 
 class ChapterCreate(BaseModel):
+    """`supplierCategoryId` es el OFICIO que el capítulo requiere —se contrata al
+    albañil, no a «colocación de piso 60×60»— y sus partidas lo heredan."""
     name: str
     sortOrder: int = 0
+    supplierCategoryId: Optional[int] = None
 
 
 class ChapterUpdate(BaseModel):
     name: Optional[str] = None
     sortOrder: Optional[int] = None
     isActive: Optional[bool] = None
+    supplierCategoryId: Optional[int] = None
 
 
 class ItemCreate(BaseModel):
+    """Sin `supplierCategoryId` la partida HEREDA el oficio de su capítulo, que es
+    el caso normal. Se declara solo para la excepción real —impermeabilización
+    dentro de azotea— y por eso el default es None y no una copia del capítulo."""
     chapterId: int
     name: str
     unit: str
     sortOrder: int = 0
+    supplierCategoryId: Optional[int] = None
 
 
 class ItemUpdate(BaseModel):
@@ -56,6 +64,7 @@ class ItemUpdate(BaseModel):
     unit: Optional[str] = None
     sortOrder: Optional[int] = None
     isActive: Optional[bool] = None
+    supplierCategoryId: Optional[int] = None
 
 
 class PromoteRequest(BaseModel):
@@ -94,7 +103,8 @@ def read_catalog(includeInactive: bool = False, _: dict = Depends(get_current_us
              operation_id="budget_catalog_chapter_create")
 def create_chapter(body: ChapterCreate, _: dict = Depends(get_current_user)):
     with get_db() as conn:
-        return catalog.create_chapter(conn, body.name, body.sortOrder)
+        return catalog.create_chapter(conn, body.name, body.sortOrder,
+                                      body.supplierCategoryId)
 
 
 @router.patch("/api/budget/catalog/chapters/{chapter_id}",
@@ -118,7 +128,8 @@ def deactivate_chapter(chapter_id: int, _: dict = Depends(get_current_user)):
              operation_id="budget_catalog_item_create")
 def create_item(body: ItemCreate, _: dict = Depends(get_current_user)):
     with get_db() as conn:
-        return catalog.create_item(conn, body.chapterId, body.name, body.unit, body.sortOrder)
+        return catalog.create_item(conn, body.chapterId, body.name, body.unit,
+                                   body.sortOrder, body.supplierCategoryId)
 
 
 @router.patch("/api/budget/catalog/items/{item_id}",

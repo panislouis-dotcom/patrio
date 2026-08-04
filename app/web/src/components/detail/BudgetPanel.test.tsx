@@ -12,6 +12,7 @@ vi.mock('../../lib/api', async importOriginal => {
     ...actual,
     fetchBudget: vi.fn(),
     getProveedores: vi.fn(async () => PROVEEDORES),
+    getCategories: vi.fn(async () => OFICIOS),
     createBudgetLine: vi.fn(),
     updateBudgetLine: vi.fn(),
     deleteBudgetLine: vi.fn(),
@@ -39,15 +40,28 @@ const proveedor = (over: Partial<Proveedor>): Proveedor => ({
   notes: '', categories: [], photos: [], createdAt: '', updatedAt: '', ...over,
 })
 
-const categoria = (name: string) => ({ id: 1, name, description: '', createdAt: '' })
+/**
+ * Los OFICIOS con los que se contrata. Existen como filas con id propio, y ése
+ * es el cambio: el selector filtra comparando ese id contra el del renglón, no
+ * el nombre del capítulo contra el de la categoría. Por eso «Albañilería» el
+ * oficio y «Albañilería» el capítulo tienen que poder no ser lo mismo, y aquí
+ * lo son a propósito —el nombre coincide, la llave no— para que una prueba que
+ * pase por casualidad de textos no pueda pasar.
+ */
+const OFICIOS = [
+  { id: 7, name: 'Albañilería', description: '', createdAt: '' },
+  { id: 8, name: 'Instalaciones hidrosanitarias', description: '', createdAt: '' },
+]
+
+const categoria = (id: number, name: string) => ({ id, name, description: '', createdAt: '' })
 
 /** El catálogo, para el panel de CATÁLOGO Y PLANTILLAS. */
 const CATALOGO: BudgetCatalogChapter[] = [
   {
-    id: 1, name: 'Acabados', sortOrder: 0, isActive: true,
+    id: 1, name: 'Acabados', sortOrder: 0, isActive: true, supplierCategoryId: null,
     items: [
-      { id: 11, chapterId: 1, name: 'Piso cerámico 60×60', unit: 'm²', sortOrder: 0, isActive: true, usedInLines: 4 },
-      { id: 12, chapterId: 1, name: 'Pintura vinílica', unit: 'm²', sortOrder: 1, isActive: true, usedInLines: 1 },
+      { id: 11, chapterId: 1, name: 'Piso cerámico 60×60', unit: 'm²', sortOrder: 0, isActive: true, supplierCategoryId: null, usedInLines: 4 },
+      { id: 12, chapterId: 1, name: 'Pintura vinílica', unit: 'm²', sortOrder: 1, isActive: true, supplierCategoryId: null, usedInLines: 1 },
     ],
   },
 ]
@@ -63,14 +77,20 @@ const FUENTES: BudgetSource[] = [
 ]
 
 const PROVEEDORES: Proveedor[] = [
-  proveedor({ id: 11, name: 'Albañiles del Norte', categories: [categoria('Albañilería')] }),
-  proveedor({ id: 12, name: 'Plomería Ruiz', categories: [categoria('Instalaciones')] }),
+  proveedor({ id: 11, name: 'Albañiles del Norte', categories: [categoria(7, 'Albañilería')] }),
+  proveedor({
+    id: 12, name: 'Plomería Ruiz',
+    categories: [categoria(8, 'Instalaciones hidrosanitarias')],
+  }),
   proveedor({ id: 13, name: 'El Que Nos Falló', status: 'vetado', vetoReason: 'no volvió' }),
 ]
 
 const line = (over: Partial<BudgetLine>): BudgetLine => ({
   id: 1, budgetId: 9, itemId: null, chapterName: 'Albañilería', name: 'Muro de block',
   unit: 'm²', quantity: 10, unitPrice: 1_000, budgetedAmount: 10_000,
+  // Sin oficio: es como nace un renglón tecleado a mano, y el estado en el que
+  // vive la mayor parte de un presupuesto que apenas se está capturando.
+  supplierCategoryId: null,
   supplierId: null, committedAmount: null, committedOn: null, committedVariance: null,
   actualQuantity: null, paidAmount: null, paidVariance: null, payments: [],
   closedAt: null, sortOrder: 0, notes: '', isResidual: false,
@@ -131,6 +151,7 @@ describe('BudgetPanel', () => {
     vi.mocked(api.fetchBudgetCatalog).mockResolvedValue(CATALOGO)
     vi.mocked(api.fetchBudgetSources).mockResolvedValue(FUENTES)
     vi.mocked(api.suggestBudgetItems).mockResolvedValue([])
+    vi.mocked(api.getCategories).mockResolvedValue(OFICIOS)
   })
 
   it('abre con los capítulos colapsados: la vista inicial son renglones, no cuarenta', async () => {
@@ -213,6 +234,10 @@ describe('BudgetPanel', () => {
     expect(within(fila).queryByLabelText('Cantidad de Otros, por detallar')).toBeNull()
     expect(within(fila).queryByLabelText('Precio unitario de Otros, por detallar')).toBeNull()
     expect(within(fila).queryByLabelText('Proveedor de Otros, por detallar')).toBeNull()
+    // Ni oficio: el remanente no es trabajo de nadie —en cuanto se sepa de qué
+    // es, deja de ser remanente y se vuelve una partida. El CHECK de la 031 lo
+    // sostiene también en la base.
+    expect(within(fila).queryByLabelText('Oficio de Otros, por detallar')).toBeNull()
     expect(within(fila).queryByLabelText('Quitar Otros, por detallar')).toBeNull()
     // Y dice lo que es, para que se vea que se reparte en vez de crecer
     expect(within(fila).getByText('SE REPARTE AL DETALLAR')).not.toBeNull()
@@ -408,10 +433,16 @@ describe('BudgetPanel', () => {
     expect(await screen.findByText(/el presupuesto de obra subió \$120,000/)).not.toBeNull()
   })
 
-  it('el proveedor del capítulo se sugiere, pero ninguno queda fuera', async () => {
-    // La categoría FILTRA y nunca restringe: el día que el plomero haga
-    // albañilería tiene que poder capturarse.
-    await renderPanel(DETALLADO)
+  it('el oficio del renglón sugiere, pero ningún proveedor queda fuera', async () => {
+    // El oficio FILTRA y nunca restringe: el día que el plomero haga albañilería
+    // tiene que poder capturarse. Y filtra por ID, que es el cambio: antes
+    // comparaba el nombre del capítulo contra el de la categoría del proveedor
+    // —dos vocabularios que solo coincidían por casualidad— y con cero
+    // categorías dadas de alta el grupo salía siempre vacío sin decirlo.
+    await renderPanel(budget([
+      line({ id: 1, name: 'Muro de block', supplierCategoryId: 7 }),
+      residual(0),
+    ]))
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
 
     const selector = screen.getByLabelText('Proveedor de Muro de block')
@@ -420,8 +451,63 @@ describe('BudgetPanel', () => {
     expect(opciones).toContain('Plomería Ruiz')
     // El vetado sí queda fuera: eso es una restricción, y es la correcta
     expect(opciones).not.toContain('El Que Nos Falló')
-    // Y el del capítulo va agrupado arriba
-    expect(within(selector).getByRole('group', { name: 'Hacen albañilería' })).not.toBeNull()
+    // Y el del oficio va agrupado arriba, nombrado por el OFICIO y no por el
+    // capítulo: son dos cosas y ahora se pueden llamar distinto.
+    const grupo = within(selector).getByRole('group', { name: 'Hacen albañilería' })
+    expect(within(grupo).getAllByRole('option').map(o => o.textContent))
+      .toEqual(['Albañiles del Norte'])
+  })
+
+  it('un renglón sin oficio no finge un grupo de sugeridos vacío', async () => {
+    // Es el defecto que este cambio vino a matar: el filtro por texto producía
+    // un grupo «Hacen albañilería» que nunca contenía a nadie, y nada lo decía.
+    // Sin oficio no hay a qué parecerse, así que van todos en un solo grupo.
+    await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+
+    const selector = screen.getByLabelText('Proveedor de Muro de block')
+    expect(within(selector).queryByRole('group', { name: /^Hacen/ })).toBeNull()
+    const todos = within(selector).getByRole('group', { name: 'Proveedores' })
+    expect(within(todos).getAllByRole('option')).toHaveLength(2)
+  })
+
+  it('el oficio se captura por renglón, sin proveedor y sin mover un peso', async () => {
+    // EL PUNTO DEL CAMBIO: se sabe qué TIPO de persona hace falta mucho antes
+    // que quién. Un renglón con oficio y sin proveedor es el estado normal de
+    // toda la obra mientras se presupuesta, no una fila a medio llenar.
+    const b = budget([line({ id: 1, name: 'Muro de block' }), residual(0)])
+    await renderPanel(b)
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+    vi.mocked(api.updateBudgetLine).mockResolvedValue({
+      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
+    })
+
+    const oficio = screen.getByLabelText('Oficio de Muro de block') as HTMLSelectElement
+    expect(oficio.value).toBe('')
+    expect(within(oficio).getAllByRole('option').map(o => o.textContent))
+      .toEqual(['— Sin oficio', 'Albañilería', 'Instalaciones hidrosanitarias'])
+
+    fireEvent.change(oficio, { target: { value: '7' } })
+    await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalled())
+    expect(vi.mocked(api.updateBudgetLine).mock.calls[0][2]).toEqual({ supplierCategoryId: 7 })
+
+    // Y se quita, como cualquier otra celda: aquí la caja vacía SÍ vacía.
+    fireEvent.change(oficio, { target: { value: '' } })
+    await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.updateBudgetLine).mock.calls[1][2]).toEqual({ supplierCategoryId: null })
+  })
+
+  it('sin oficios dados de alta el selector lo dice, en vez de quedarse mudo', async () => {
+    // Hoy hay CERO categorías de proveedor en la base. Un selector con una sola
+    // opción vacía se lee como «se rompió», que es exactamente lo que el filtro
+    // por texto hacía sin decirlo.
+    vi.mocked(api.getCategories).mockResolvedValue([])
+    await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+
+    const oficio = screen.getByLabelText('Oficio de Muro de block')
+    expect(within(oficio).getAllByRole('option').map(o => o.textContent))
+      .toEqual(['— No hay oficios dados de alta'])
   })
 
   it('un proveedor vetado que YA está asignado no desaparece del selector', async () => {

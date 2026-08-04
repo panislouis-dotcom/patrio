@@ -22,10 +22,14 @@ const group = (over: Partial<BudgetPromotionGroup>): BudgetPromotionGroup => ({
 
 const catalogChapter = (
   id: number, name: string, items: BudgetCatalogChapter['items'] = [],
-): BudgetCatalogChapter => ({ id, name, sortOrder: 0, isActive: true, items })
+): BudgetCatalogChapter => ({
+  id, name, sortOrder: 0, isActive: true, supplierCategoryId: null, items,
+})
 
-const catalogItem = (id: number, chapterId: number, name: string) =>
-  ({ id, chapterId, name, unit: 'm²', sortOrder: 0, isActive: true, usedInLines: 0 })
+const catalogItem = (id: number, chapterId: number, name: string) => ({
+  id, chapterId, name, unit: 'm²', sortOrder: 0, isActive: true,
+  supplierCategoryId: null, usedInLines: 0,
+})
 
 async function renderCola(
   groups: BudgetPromotionGroup[], catalog: BudgetCatalogChapter[] = [],
@@ -37,7 +41,7 @@ async function renderCola(
 }
 
 const promocion = (name: string, relinked: number, created = true) => ({
-  item: { id: 99, chapterId: 1, name, unit: 'm²', sortOrder: 0, isActive: true, usedInLines: relinked },
+  item: { ...catalogItem(99, 1, name), usedInLines: relinked },
   created,
   relinked,
 })

@@ -53,7 +53,8 @@ LO QUE ESTA CAPA NO HACE, dicho aquí para que no haya que deducirlo:
 # `_line_row` viaja hasta aquí porque una plantilla se lee con el mismo lector
 # que un presupuesto de obra: es un presupuesto de obra sin obra, y dos lectores
 # para la misma fila serían dos formas de la misma respuesta.
-from api.budget_db import BudgetError, BudgetNotFound, copy_lines, _line_row
+from api.budget_db import (
+    BudgetError, BudgetNotFound, copy_lines, require_supplier_category, _line_row)
 from api.db import _row_to_dict
 from api.finance.quantize import frac4, money0
 
@@ -112,6 +113,13 @@ _CHAPTERS_SQL = """
                        'id', i.id, 'chapterId', i.chapter_id, 'name', i.name,
                        'unit', i.unit, 'sortOrder', i.sort_order,
                        'isActive', i.is_active,
+                       -- El oficio de la PARTIDA, sin resolver la herencia: un
+                       -- null aquí es «el de mi capítulo», y la pantalla que lo
+                       -- cura tiene que poder distinguirlo de un override que
+                       -- casualmente coincide con el capítulo. Quien instancia
+                       -- resuelve el coalesce (`catalog_item_copy`); quien cura
+                       -- necesita ver los dos niveles como están escritos.
+                       'supplierCategoryId', i.supplier_category_id,
                        'usedInLines', (SELECT count(*) FROM budget_lines l
                                         WHERE l.item_id = i.id))
                        ORDER BY i.sort_order, i.name) AS items
@@ -181,22 +189,35 @@ def _reject_duplicate_chapter(conn, name: str, chapter_id: int | None = None) ->
             "usa ése o renombra el que quieres dar de alta.")
 
 
-def create_chapter(conn, name: str, sort_order: int = 0) -> dict:
+def create_chapter(conn, name: str, sort_order: int = 0,
+                   supplier_category_id: int | None = None) -> dict:
+    """Un capítulo del catálogo, y con él el OFICIO que declara.
+
+    Nace sin oficio si nadie lo dice, que es el estado normal: el catálogo se
+    forma tecleando, y exigir la categoría para poder dar de alta un capítulo
+    pondría una aduana justo en la operación que tiene que ser barata."""
     name = _clean_name(name, "El capítulo")
     _reject_duplicate_chapter(conn, name)
+    require_supplier_category(conn, supplier_category_id)
     row = conn.execute(
-        "INSERT INTO budget_chapters (name, sort_order) VALUES (%s, %s) RETURNING *",
-        (name, sort_order),
+        "INSERT INTO budget_chapters (name, sort_order, supplier_category_id)"
+        " VALUES (%s, %s, %s) RETURNING *",
+        (name, sort_order, supplier_category_id),
     ).fetchone()
     return _row_to_dict(row)
 
 
 def update_chapter(conn, chapter_id: int, data: dict) -> dict:
-    """Renombra, reordena o prende/apaga un capítulo.
+    """Renombra, reordena, cambia el oficio o prende/apaga un capítulo.
 
     APAGARLO NO BORRA NADA y no toca los renglones que lo nombran: el capítulo de
     un renglón es una COPIA de texto en su fila, no una referencia. Lo único que
-    cambia es que deja de ofrecerse para obra nueva."""
+    cambia es que deja de ofrecerse para obra nueva.
+
+    CAMBIARLE EL OFICIO TAMPOCO MUEVE NADA CAPTURADO, por la misma razón y sin
+    una línea de código: el renglón se llevó el suyo al nacer. Corregir aquí que
+    «Azoteas» la hace un impermeabilizador cambia lo que se copiará mañana, y los
+    presupuestos de ayer no tienen por dónde enterarse."""
     chapter = _chapter(conn, chapter_id)
     _reject_null(data)
     columns = {}
@@ -206,6 +227,11 @@ def update_chapter(conn, chapter_id: int, data: dict) -> dict:
         columns["sort_order"] = data["sortOrder"]
     if "isActive" in data:
         columns["is_active"] = bool(data["isActive"])
+    # Un null SÍ viaja: es «este capítulo ya no declara oficio», y es la única
+    # forma de deshacer una categoría mal puesta. Por eso no está en `_NOT_NULLABLE`.
+    if "supplierCategoryId" in data:
+        columns["supplier_category_id"] = require_supplier_category(
+            conn, data["supplierCategoryId"])
     # Solo los vivos compiten por el nombre. Reactivar es una de las dos puertas
     # por las que se llega a un choque, y la que se olvida.
     if columns.get("is_active", chapter["isActive"]):
@@ -268,7 +294,15 @@ def _reject_duplicate_item(conn, chapter_id: int, name: str, item_id: int | None
             "o promueve el renglón hacia ella para religar lo que se capturó suelto.")
 
 
-def create_item(conn, chapter_id: int, name: str, unit: str, sort_order: int = 0) -> dict:
+def create_item(conn, chapter_id: int, name: str, unit: str, sort_order: int = 0,
+                supplier_category_id: int | None = None) -> dict:
+    """Una partida del catálogo.
+
+    NACE SIN OFICIO PROPIO, y eso no es un dato faltante: hereda el de su
+    capítulo. Se contrata al albañil, no a «colocación de piso 60×60», así que la
+    partida solo declara el suyo cuando de verdad se sale del capítulo
+    —impermeabilización dentro de azotea— y ese es el único caso en el que
+    `supplier_category_id` viaja aquí."""
     chapter = _chapter(conn, chapter_id)
     if not chapter["isActive"]:
         raise BudgetError(
@@ -276,10 +310,11 @@ def create_item(conn, chapter_id: int, name: str, unit: str, sort_order: int = 0
     name = _clean_name(name, "La partida")
     unit = _clean_name(unit, "La partida")
     _reject_duplicate_item(conn, chapter_id, name)
+    require_supplier_category(conn, supplier_category_id)
     row = conn.execute(
-        "INSERT INTO budget_items (chapter_id, name, unit, sort_order)"
-        " VALUES (%s, %s, %s, %s) RETURNING id",
-        (chapter_id, name, unit, sort_order),
+        "INSERT INTO budget_items (chapter_id, name, unit, sort_order, supplier_category_id)"
+        " VALUES (%s, %s, %s, %s, %s) RETURNING id",
+        (chapter_id, name, unit, sort_order, supplier_category_id),
     ).fetchone()
     # Se relee por `_item` en vez de devolver el RETURNING: una sola forma de
     # partida, la misma al crear que al leer.
@@ -306,6 +341,12 @@ def update_item(conn, item_id: int, data: dict) -> dict:
         columns["is_active"] = bool(data["isActive"])
     if "chapterId" in data:
         columns["chapter_id"] = _chapter(conn, data["chapterId"])["id"]
+    # Mandar null es volver a heredar del capítulo, que es cómo se deshace un
+    # override puesto de más. No es lo mismo que el null de un renglón, donde ya
+    # no hay de quién heredar y significa «no se sabe».
+    if "supplierCategoryId" in data:
+        columns["supplier_category_id"] = require_supplier_category(
+            conn, data["supplierCategoryId"])
     if columns.get("is_active", item["isActive"]):
         _reject_duplicate_item(conn, columns.get("chapter_id", item["chapterId"]),
                                columns.get("name", item["name"]), item_id)
@@ -524,7 +565,7 @@ def promote(conn, line_id: int, chapter_id: int | None = None,
     el catálogo, nace: no es una decisión nueva, es la que el renglón ya tenía
     escrita."""
     line = conn.execute(
-        "SELECT id, name, unit, chapter_name, item_id, is_residual"
+        "SELECT id, name, unit, chapter_name, item_id, is_residual, supplier_category_id"
         "  FROM budget_lines WHERE id = %s", (line_id,)).fetchone()
     if line is None:
         raise BudgetNotFound(f"El renglón {line_id} no existe")
@@ -559,10 +600,19 @@ def promote(conn, line_id: int, chapter_id: int | None = None,
         # partida», y eso es exactamente lo que hay que hacer con ella. Crear una
         # segunda con el mismo nombre sería el duplicado que todo esto evita.
         created = existing is None
+        # El oficio que el renglón traía sube con él —perderlo justo en el
+        # momento en que alguien cura la partida sería tirar lo único que se
+        # sabía de ella— pero sube como OVERRIDE, y solo si de verdad lo es: si
+        # coincide con el del capítulo, la partida se queda en NULL y lo hereda.
+        # Copiarlo igual dejaría un override que ya no puede seguir al capítulo
+        # cuando éste se corrija, sin que nadie hubiera pedido esa excepción.
+        override = (None if line["supplier_category_id"] == chapter["supplierCategoryId"]
+                    else line["supplier_category_id"])
         target = (_row_to_dict(existing) if existing is not None
                   else _row_to_dict(conn.execute(
-                      "INSERT INTO budget_items (chapter_id, name, unit) VALUES (%s, %s, %s)"
-                      " RETURNING *", (chapter["id"], line["name"], line["unit"])).fetchone()))
+                      "INSERT INTO budget_items (chapter_id, name, unit, supplier_category_id)"
+                      " VALUES (%s, %s, %s, %s) RETURNING *",
+                      (chapter["id"], line["name"], line["unit"], override)).fetchone()))
 
     relinked = conn.execute(
         f"UPDATE budget_lines SET item_id = %s"

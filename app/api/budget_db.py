@@ -56,6 +56,33 @@ class BudgetNotFound(BudgetError):
     """No existe ese presupuesto, renglón o pago — los routers lo vuelven 404."""
 
 
+# ─── El oficio ────────────────────────────────────────────────────────────────
+#
+# Se sabe QUÉ TIPO de persona hace falta mucho antes de saber QUIÉN: al
+# presupuestar ya se sabe que la partida es de plomería, y a quién se le da se
+# decide semanas después. Por eso la categoría vive en el capítulo del catálogo,
+# se hereda a la partida, se COPIA al renglón y ahí se puede corregir — mientras
+# que `supplier_id` sigue siendo la elección concreta, que llega mucho más tarde.
+# Es el mismo par que la 015 le dio a los procesos de obra: la plantilla declara
+# el tipo, la instancia elige al real.
+
+def require_supplier_category(conn, category_id):
+    """La categoría de proveedor que exista, o un rechazo legible.
+
+    `None` es la respuesta NORMAL —«todavía no se sabe de qué oficio es», o «ya
+    no»— y no se valida: no hay nada que buscar. Lo que se ataja es el id que no
+    existe, porque la FK sola contesta un IntegrityError que llega como 500 mudo
+    y quien lo ve no sabe qué le rechazaron."""
+    if category_id is None:
+        return None
+    row = conn.execute(
+        "SELECT id FROM proveedor_categories WHERE id = %s", (category_id,)
+    ).fetchone()
+    if row is None:
+        raise BudgetNotFound(f"No existe la categoría de proveedor {category_id}")
+    return category_id
+
+
 # ─── La calculadora ───────────────────────────────────────────────────────────
 
 def overhead_factor(construction_overhead) -> Decimal:
@@ -382,6 +409,7 @@ def _settle_residual(conn, budget_id: int, total_objetivo: Decimal) -> Decimal:
 
 _CATALOG_COPY_SQL = """
     SELECT c.name AS chapter_name, i.name, i.unit,
+           coalesce(i.supplier_category_id, c.supplier_category_id) AS supplier_category_id,
            i.is_active AS item_active, c.is_active AS chapter_active
       FROM budget_items i
       JOIN budget_chapters c ON c.id = i.chapter_id
@@ -390,7 +418,18 @@ _CATALOG_COPY_SQL = """
 
 
 def catalog_item_copy(conn, item_id: int) -> dict:
-    """El texto que un renglón copia del catálogo al nacer, y nada más.
+    """El texto y el oficio que un renglón copia del catálogo al nacer, y nada más.
+
+    LA HERENCIA SE RESUELVE AQUÍ Y SE GUARDA RESUELTA. `coalesce(partida,
+    capítulo)` es toda la regla: un NULL en la partida significa «el oficio de mi
+    capítulo», no un dato faltante, y el override existe para la excepción real
+    —impermeabilización dentro de azotea— no para volver a capturar en cada
+    partida lo que el capítulo ya dijo.
+
+    Que el renglón se lleve el resultado en vez de volver a resolverlo cada vez
+    es la doctrina del módulo, la misma que rige el nombre y el importe: el
+    renglón ES la afirmación, y cambiar el capítulo del catálogo en 2027 no puede
+    reescribir de qué oficio era una partida que se contrató en 2026.
 
     Una partida dada de baja no se instancia en obra nueva —esa es la mitad viva
     de la baja lógica— pero los renglones que ya la citan conservan su
@@ -405,7 +444,8 @@ def catalog_item_copy(conn, item_id: int) -> dict:
             "nueva. Los renglones que ya la citan conservan su procedencia; si "
             "vuelve a usarse, reactívala.")
     return {"item_id": item_id, "chapter_name": row["chapter_name"],
-            "name": row["name"], "unit": row["unit"]}
+            "name": row["name"], "unit": row["unit"],
+            "supplier_category_id": row["supplier_category_id"]}
 
 
 # Lo que se copia de un presupuesto a otro. Enumerado y no `SELECT *` porque lo
@@ -413,8 +453,15 @@ def catalog_item_copy(conn, item_id: int) -> dict:
 # cantidad real, cierre y pagos se quedan en su obra. Una plantilla es la forma
 # de un plan, no la ejecución de nadie; copiar el proveedor de la obra anterior
 # sería afirmar un contrato que no existe.
+#
+# `supplier_category_id` SÍ viaja, y ahí está la línea: el OFICIO es parte de la
+# forma del plan —«esta partida la hace un plomero» vale para cualquier obra que
+# la copie— mientras que el PROVEEDOR es a quién se le dio ésta. Copiar el
+# primero ahorra el trabajo que la plantilla existe para ahorrar; copiar el
+# segundo inventaría un contrato.
 _COPIED_LINE_COLUMNS = ("item_id", "chapter_name", "name", "unit",
-                        "quantity", "unit_price", "sort_order", "notes")
+                        "quantity", "unit_price", "supplier_category_id",
+                        "sort_order", "notes")
 
 
 def copy_lines(conn, source_budget_id: int, target_budget_id: int) -> int:
@@ -484,7 +531,8 @@ def apply_chapter(conn, property_id: int, chapter_id: int) -> tuple[int, Decimal
     pueden ser dos renglones legítimos."""
     budget_id = _require_budget(conn, property_id)
     chapter = conn.execute(
-        "SELECT id, name, is_active FROM budget_chapters WHERE id = %s", (chapter_id,)
+        "SELECT id, name, is_active, supplier_category_id FROM budget_chapters WHERE id = %s",
+        (chapter_id,),
     ).fetchone()
     if chapter is None:
         raise BudgetNotFound(f"El capítulo {chapter_id} no existe en el catálogo")
@@ -492,16 +540,22 @@ def apply_chapter(conn, property_id: int, chapter_id: int) -> tuple[int, Decimal
         raise BudgetError(
             f"«{chapter['name']}» está dado de baja en el catálogo y no se usa en obra nueva.")
     total_antes, _ = _totals(conn, budget_id)
+    # El oficio baja resuelto, con el mismo `coalesce(partida, capítulo)` que
+    # `catalog_item_copy`: bajar un capítulo entero y crear sus partidas una por
+    # una tienen que dejar renglones idénticos, o la herencia significaría dos
+    # cosas según por qué puerta se entró.
     copied = conn.execute(
         "INSERT INTO budget_lines"
-        " (budget_id, item_id, chapter_name, name, unit, quantity, unit_price, sort_order)"
-        " SELECT %s, i.id, %s, i.name, i.unit, 0, 0, i.sort_order"
+        " (budget_id, item_id, chapter_name, name, unit, quantity, unit_price,"
+        "  supplier_category_id, sort_order)"
+        " SELECT %s, i.id, %s, i.name, i.unit, 0, 0,"
+        "        coalesce(i.supplier_category_id, %s), i.sort_order"
         "   FROM budget_items i"
         "  WHERE i.chapter_id = %s AND i.is_active"
         "    AND NOT EXISTS (SELECT 1 FROM budget_lines l"
         "                     WHERE l.budget_id = %s AND l.item_id = i.id)"
         "  ORDER BY i.sort_order, i.id",
-        (budget_id, chapter["name"], chapter_id, budget_id),
+        (budget_id, chapter["name"], chapter["supplier_category_id"], chapter_id, budget_id),
     ).rowcount
     return copied, _settle_residual(conn, budget_id, total_antes)
 
@@ -513,13 +567,15 @@ def apply_chapter(conn, property_id: int, chapter_id: int) -> tuple[int, Decimal
 # residuo — ver `_reject_residual_capture`.
 LINE_FIELDS = frozenset({
     "itemId", "chapterName", "name", "unit", "quantity", "unitPrice",
-    "supplierId", "committedAmount", "committedOn", "actualQuantity", "notes",
+    "supplierCategoryId", "supplierId", "committedAmount", "committedOn",
+    "actualQuantity", "notes",
 })
 
 _LINE_COLUMNS = {
     "itemId": "item_id",
     "chapterName": "chapter_name", "name": "name", "unit": "unit",
     "quantity": "quantity", "unitPrice": "unit_price",
+    "supplierCategoryId": "supplier_category_id",
     "supplierId": "supplier_id", "committedAmount": "committed_amount",
     "committedOn": "committed_on", "actualQuantity": "actual_quantity",
     "notes": "notes",
@@ -541,8 +597,14 @@ _LINE_COLUMNS = {
 # `itemId` está aquí por la misma razón, y la suya es la procedencia: decir que
 # un renglón NO era esa partida del catálogo tiene que poder decirse, y decirlo
 # no toca ni el texto ni el importe.
+# `supplierCategoryId` está aquí por la razón más directa de todas: el selector
+# de oficio tiene «— Sin oficio», y elegirlo tiene que quitarlo. Y su null no es
+# el mismo que el de `budget_items`: allá NULL significa «hereda el de mi
+# capítulo», aquí ya no hay de quién heredar — la copia se hizo al nacer y este
+# NULL dice «no se sabe», que es distinto y es un estado legítimo.
 NULLABLE_LINE_FIELDS = frozenset({
-    "itemId", "supplierId", "committedAmount", "committedOn", "actualQuantity",
+    "itemId", "supplierCategoryId", "supplierId", "committedAmount",
+    "committedOn", "actualQuantity",
 })
 
 # En los demás un vacío no es un vaciado: es un renglón roto.
@@ -626,6 +688,7 @@ def create_line(conn, property_id: int, data: dict) -> tuple[int, Decimal]:
     total_antes, _ = _totals(conn, budget_id)
 
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
+    require_supplier_category(conn, data.get("supplierCategoryId"))
     # Al nacer desde el catálogo el texto lo pone el catálogo, aunque el cliente
     # haya mandado otro. Es la deduplicación cobrando: si alguien tecleó «Piso
     # ceramico 60x60», vio el aviso «¿es la misma que Piso cerámico?» y dijo que
@@ -633,6 +696,14 @@ def create_line(conn, property_id: int, data: dict) -> tuple[int, Decimal]:
     # las dos grafías sería partir en dos la historia de precios que acaba de
     # aceptar unir. Después puede editar el renglón; ahí ya hay algo capturado
     # que respetar y por eso `update_line` NUNCA reescribe el texto.
+    #
+    # El OFICIO viaja en ese mismo paquete, incluso cuando el catálogo lo tiene
+    # en blanco: nacer desde una partida es decir «es ésta», y una partida que
+    # todavía no sabe de qué oficio es sigue siendo la afirmación del catálogo.
+    # Ponerle uno tecleado encima haría que dos renglones de la misma partida
+    # nacieran con oficios distintos según quién los capturó, que es justo la
+    # divergencia que instanciar desde el catálogo existe para cerrar. Corregirlo
+    # en el renglón, después, es una edición — y ésa sí se respeta.
     item_id = data.get("itemId")
     if item_id is None:
         _reject_empty(data, required=("chapterName", "name"))
@@ -686,7 +757,12 @@ def update_line(conn, property_id: int, line_id: int, data: dict) -> Decimal:
     if data.get("itemId") is not None:
         # Valida y nada más: el texto del renglón no se toca. La FK sola daría un
         # 500 mudo, y una partida dada de baja no debe estrenar procedencia.
+        #
+        # Y por lo mismo tampoco reescribe el oficio: ligar un renglón a una
+        # partida del catálogo pone la PROCEDENCIA, no vuelve a instanciarlo.
         catalog_item_copy(conn, data["itemId"])
+    if "supplierCategoryId" in data:
+        require_supplier_category(conn, data["supplierCategoryId"])
 
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
     total_antes, _ = _totals(conn, budget_id)

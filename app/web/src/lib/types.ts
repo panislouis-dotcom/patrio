@@ -660,6 +660,19 @@ export interface BudgetLine {
   unitPrice: number
   /** cantidad × precio unitario, derivado por el servidor. */
   budgetedAmount: number
+  /**
+   * El OFICIO: de qué tipo de proveedor es esta partida. Se sabe mucho antes que
+   * `supplierId` —al presupuestar ya se sabe que es plomería, y a quién se le da
+   * se decide semanas después— así que tener oficio sin proveedor es el estado
+   * normal de una obra que se está presupuestando, no un renglón a medias.
+   *
+   * Es una COPIA del catálogo, hecha al instanciar y con la herencia capítulo →
+   * partida ya resuelta, igual que el nombre y la unidad: corregir el catálogo
+   * después no la mueve. FILTRA el selector de proveedores por id — antes se
+   * comparaba el nombre del capítulo contra el de las categorías, dos
+   * vocabularios que solo coincidían por casualidad — y nunca restringe.
+   */
+  supplierCategoryId: number | null
   supplierId: number | null
   /** Lo que se firmó. Null es «no capturado»; un 0 capturado es un 0. */
   committedAmount: number | null
@@ -713,6 +726,8 @@ export interface BudgetLinePatch {
   unit?: string
   quantity?: number
   unitPrice?: number
+  /** El oficio del renglón. `null` lo quita, como en cualquier otra celda. */
+  supplierCategoryId?: number | null
   supplierId?: number | null
   committedAmount?: number | null
   committedOn?: string | null
@@ -739,6 +754,11 @@ export interface BudgetLineCreate {
   unit?: string
   quantity?: number
   unitPrice?: number
+  /**
+   * El oficio, cuando se teclea a mano. Naciendo desde el catálogo (`itemId`) no
+   * se manda: lo pone el catálogo, resolviendo la herencia capítulo → partida.
+   */
+  supplierCategoryId?: number
   /** Presente solo cuando el renglón nace de una partida del catálogo. */
   itemId?: number
 }
@@ -811,6 +831,15 @@ export interface BudgetCatalogItem {
   sortOrder: number
   isActive: boolean
   /**
+   * El oficio propio de la partida. **`null` NO es un dato faltante: es «el de
+   * mi capítulo».** Se contrata al albañil, no a «colocación de piso 60×60», así
+   * que la partida solo lo declara para la excepción real —impermeabilización
+   * dentro de azoteas. El servidor publica los dos niveles sin resolver, porque
+   * quien cura el catálogo necesita distinguir «hereda» de «tiene el mismo por
+   * casualidad»; la herencia se resuelve al instanciar, no al leer.
+   */
+  supplierCategoryId: number | null
+  /**
    * Cuántos renglones la citan. Es exactamente la procedencia que un borrado
    * físico destruiría, y por eso viaja con la partida: la pantalla que la cura
    * puede decir qué se perdería en vez de pedir que se confíe.
@@ -829,6 +858,12 @@ export interface BudgetCatalogChapter {
   name: string
   sortOrder: number
   isActive: boolean
+  /**
+   * El OFICIO que este capítulo requiere, y el nivel donde de verdad vive: se
+   * contrata al albañil, no a «colocación de piso 60×60». Sus partidas lo
+   * heredan mientras no declaren el suyo.
+   */
+  supplierCategoryId: number | null
   items: BudgetCatalogItem[]
 }
 

@@ -48,13 +48,20 @@ class LineCreate(BaseModel):
     Los dos caminos son de primera clase. Obligar a pasar por el catálogo antes
     de poder anotar una partida es la forma más rápida de que nadie use el
     módulo; es el hueco que el sistema de procesos nunca llenó, donde agregar
-    algo a una obra obliga a editar la plantilla de todas."""
+    algo a una obra obliga a editar la plantilla de todas.
+
+    `supplierCategoryId` es el OFICIO —de qué tipo de proveedor es la partida— y
+    `supplierId` es a quién se le dio. Se saben en ese orden y con semanas de
+    diferencia: al presupuestar ya se sabe que es plomería, y quién la hace se
+    decide después. Naciendo desde el catálogo el oficio lo pone el catálogo,
+    resolviendo la herencia capítulo → partida."""
     itemId: Optional[int] = None
     chapterName: Optional[str] = None
     name: Optional[str] = None
     unit: str = "lote"
     quantity: float = 0
     unitPrice: float = 0
+    supplierCategoryId: Optional[int] = None
     supplierId: Optional[int] = None
     committedAmount: Optional[float] = None
     committedOn: Optional[str] = None
@@ -76,14 +83,20 @@ class LineUpdate(BaseModel):
 
     `itemId` aquí liga un renglón que YA existe a una partida del catálogo —la
     otra mitad de la deduplicación: aceptar el aviso «¿es la misma que X?» sobre
-    algo ya capturado. Pone la procedencia y nada más: el nombre, la unidad y el
-    importe se quedan como se capturaron."""
+    algo ya capturado. Pone la procedencia y nada más: el nombre, la unidad, el
+    importe y el oficio se quedan como se capturaron.
+
+    `supplierCategoryId` se corrige por renglón como cualquier otra celda, y un
+    null lo quita. Que un renglón tenga oficio y todavía no proveedor es el
+    estado normal de una obra que se está presupuestando, no un renglón a
+    medias."""
     itemId: Optional[int] = None
     chapterName: Optional[str] = None
     name: Optional[str] = None
     unit: Optional[str] = None
     quantity: Optional[float] = None
     unitPrice: Optional[float] = None
+    supplierCategoryId: Optional[int] = None
     supplierId: Optional[int] = None
     committedAmount: Optional[float] = None
     committedOn: Optional[str] = None

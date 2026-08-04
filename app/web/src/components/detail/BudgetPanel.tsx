@@ -3,12 +3,12 @@ import type React from 'react'
 import {
   fetchBudget, createBudgetLine, updateBudgetLine, deleteBudgetLine, setBudgetTotal,
   renameBudgetChapter, deleteBudgetChapter, addBudgetPayment, deleteBudgetPayment, getProveedores,
-  fetchBudgetCatalog, fetchBudgetSources, applyBudgetSource, applyCatalogChapter,
+  getCategories, fetchBudgetCatalog, fetchBudgetSources, applyBudgetSource, applyCatalogChapter,
   createBudgetTemplate,
 } from '../../lib/api'
 import type {
   Budget, BudgetCatalogChapter, BudgetItemSuggestion, BudgetLine, BudgetLinePatch,
-  BudgetSource, BudgetWrite, Property, Proveedor,
+  BudgetSource, BudgetWrite, Property, Proveedor, ProveedorCategory,
 } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
 import { fmtMXN } from '../../lib/fmt'
@@ -164,6 +164,13 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   const [lines, setLines] = useState<BudgetLine[]>([])
   const [chapters, setChapters] = useState<string[]>([])
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
+  /**
+   * Los oficios con los que se contrata. Viajan con el presupuesto y no con el
+   * panel de catálogo porque el oficio se captura EN EL RENGLÓN, en la visita
+   * normal: es lo que se sabe mientras se presupuesta, mucho antes que quién lo
+   * va a hacer.
+   */
+  const [categories, setCategories] = useState<ProveedorCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   /** Lo que el servidor avisa cuando el detalle rebasó el estimado. */
@@ -234,8 +241,8 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([fetchBudget(propertyId), getProveedores()])
-      .then(([b, ps]) => { receive(b); setProveedores(ps) })
+    Promise.all([fetchBudget(propertyId), getProveedores(), getCategories()])
+      .then(([b, ps, cs]) => { receive(b); setProveedores(ps); setCategories(cs) })
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo cargar el presupuesto'))
       .finally(() => setLoading(false))
   }, [propertyId])
@@ -463,20 +470,31 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     </div>
   )
 
+  const categoryName = (id: number | null) =>
+    categories.find(c => c.id === id)?.name ?? null
+
   /**
-   * Los proveedores de un renglón. La categoría del capítulo FILTRA pero nunca
+   * Los proveedores de un renglón. El OFICIO del renglón FILTRA pero nunca
    * restringe: los que se dedican a eso salen arriba, y todos los demás siguen
    * ahí abajo. El día que el plomero haga albañilería tiene que poder capturarse.
+   *
+   * **Filtra por id.** Antes comparaba el NOMBRE del capítulo contra el de las
+   * categorías del proveedor —dos vocabularios independientes que solo podían
+   * coincidir por casualidad— y con cero categorías dadas de alta el grupo de
+   * sugeridos salía siempre vacío sin que nada lo dijera. Ahora es la misma
+   * llave en los dos lados.
+   *
+   * Sin oficio no hay a qué parecerse y van todos en un grupo: es lo honesto
+   * mientras se presupuesta, y es un grupo vacío menos que fingir.
    *
    * Los vetados no se ofrecen — pero uno YA asignado se queda en la lista, porque
    * sacarlo dejaría el selector en blanco y guardar cualquier otra celda borraría
    * el proveedor sin que nadie lo hubiera pedido.
    */
-  function supplierOptions(chapterName: string, selectedId: number | null) {
+  function supplierOptions(categoryId: number | null, selectedId: number | null) {
     const usable = proveedores.filter(p => p.status !== 'vetado' || p.id === selectedId)
-    const chapter = chapterName.trim().toLowerCase()
-    const matches = (p: Proveedor) =>
-      p.categories.some(c => c.name.trim().toLowerCase() === chapter)
+    if (categoryId == null) return { sugeridos: [], resto: usable }
+    const matches = (p: Proveedor) => p.categories.some(c => c.id === categoryId)
     return { sugeridos: usable.filter(matches), resto: usable.filter(p => !matches(p)) }
   }
 
@@ -671,7 +689,11 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               <th style={th}>UNIDAD</th>
               <th style={{ ...th, textAlign: 'right' }}>P. UNIT.</th>
               <th style={{ ...th, textAlign: 'right' }}>MONTOS</th>
-              <th style={th}>PROVEEDOR</th>
+              {/* Dos celdas apiladas y un solo encabezado: el oficio y el
+                  proveedor son la misma pregunta en dos momentos —qué tipo de
+                  persona y luego quién— y separarlos en dos columnas partiría
+                  en dos lo que se lee de corrido. */}
+              <th style={th}>OFICIO Y PROVEEDOR</th>
               <th style={th} />
             </tr>
           </thead>
@@ -786,7 +808,8 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                 )
               }
 
-              const { sugeridos, resto } = supplierOptions(line.chapterName, line.supplierId)
+              const { sugeridos, resto } = supplierOptions(line.supplierCategoryId, line.supplierId)
+              const oficio = categoryName(line.supplierCategoryId)
               return [
                 <tr key={line.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                   <td style={{ ...td, paddingLeft: `${6 + indent}px` }}>
@@ -865,15 +888,43 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                     )}
                   </td>
                   <td style={td}>
+                    {/* EL OFICIO ARRIBA, Y NO ES UN ADORNO DEL PROVEEDOR: se
+                        sabe semanas antes. Al presupuestar ya se sabe que la
+                        partida es de plomería; a quién se le da se decide
+                        después, y un renglón con oficio y sin proveedor es el
+                        estado normal de toda la obra mientras se presupuesta.
+
+                        Elegirlo no cambia el proveedor ya puesto: filtrar no es
+                        restringir, y borrar una asignación por reordenar una
+                        lista sería la peor forma de enterarse. */}
+                    <select
+                      value={line.supplierCategoryId ?? ''}
+                      aria-label={`Oficio de ${line.name}`}
+                      onChange={e => editNow(line, {
+                        supplierCategoryId: e.target.value ? Number(e.target.value) : null,
+                      })}
+                      style={{
+                        ...cellInput, display: 'block',
+                        fontSize: '10px', color: colors.secondary,
+                      }}
+                    >
+                      {/* Con cero oficios dados de alta el selector sería un
+                          control muerto sin decirlo — que es exactamente lo que
+                          hacía el filtro por texto. Lo dice. */}
+                      <option value="">
+                        {categories.length > 0 ? '— Sin oficio' : '— No hay oficios dados de alta'}
+                      </option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
                     <select
                       value={line.supplierId ?? ''}
                       aria-label={`Proveedor de ${line.name}`}
                       onChange={e => editNow(line, { supplierId: e.target.value ? Number(e.target.value) : null })}
-                      style={cellInput}
+                      style={{ ...cellInput, display: 'block', marginTop: '2px' }}
                     >
                       <option value="">— Sin proveedor</option>
                       {sugeridos.length > 0 && (
-                        <optgroup label={`Hacen ${line.chapterName.toLowerCase()}`}>
+                        <optgroup label={`Hacen ${(oficio ?? '').toLowerCase()}`}>
                           {sugeridos.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </optgroup>
                       )}

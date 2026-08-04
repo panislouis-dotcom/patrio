@@ -14,17 +14,26 @@ vi.mock('../../lib/api', async importOriginal => {
     createCatalogItem: vi.fn(),
     updateCatalogItem: vi.fn(),
     deactivateCatalogItem: vi.fn(),
+    getCategories: vi.fn(),
   }
 })
 
+/** El oficio de la partida nace en null: el caso normal es que herede el suyo. */
 const item = (over: Partial<BudgetCatalogItem>): BudgetCatalogItem => ({
   id: 1, chapterId: 1, name: 'Piso cerámico 60×60', unit: 'm²',
-  sortOrder: 0, isActive: true, usedInLines: 0, ...over,
+  sortOrder: 0, isActive: true, supplierCategoryId: null, usedInLines: 0, ...over,
 })
 
 const chapter = (over: Partial<BudgetCatalogChapter>): BudgetCatalogChapter => ({
-  id: 1, name: 'Acabados', sortOrder: 0, isActive: true, items: [], ...over,
+  id: 1, name: 'Acabados', sortOrder: 0, isActive: true,
+  supplierCategoryId: null, items: [], ...over,
 })
+
+/** Los oficios con los que se contrata: las categorías de proveedor. */
+const OFICIOS = [
+  { id: 7, name: 'Acabados finos', description: '', createdAt: '' },
+  { id: 8, name: 'Impermeabilización', description: '', createdAt: '' },
+]
 
 const CATALOGO: BudgetCatalogChapter[] = [
   chapter({
@@ -47,6 +56,54 @@ describe('CatalogoObraPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(api.getCategories).mockResolvedValue(OFICIOS)
+  })
+
+  it('el oficio se declara en el CAPÍTULO y la partida lo hereda', async () => {
+    // Se contrata al albañil, no a «colocación de piso 60×60». El vacío de la
+    // partida NOMBRA lo que hereda —no es un campo sin llenar— y ésa es la única
+    // diferencia entre los dos selectores, que por lo demás son el mismo.
+    await renderCatalogo([chapter({
+      id: 1, name: 'Acabados', supplierCategoryId: 7,
+      items: [item({ id: 11, name: 'Piso cerámico 60×60' })],
+    })])
+
+    const delCapitulo = screen.getByLabelText('Oficio de Acabados') as HTMLSelectElement
+    expect(delCapitulo.value).toBe('7')
+
+    const deLaPartida = screen.getByLabelText('Oficio de Piso cerámico 60×60') as HTMLSelectElement
+    expect(deLaPartida.value).toBe('')
+    expect(within(deLaPartida).getAllByRole('option').map(o => o.textContent))
+      .toEqual(['— Hereda: Acabados finos', 'Acabados finos', 'Impermeabilización'])
+  })
+
+  it('la partida declara el suyo solo como excepción, y volver a heredar manda null', async () => {
+    // La excepción real —el impermeabilizador dentro de azoteas— tiene que
+    // poder capturarse, y deshacerse: un override puesto de más se quita
+    // devolviendo la partida a su capítulo, no reescribiéndolo a mano.
+    await renderCatalogo([chapter({
+      id: 1, name: 'Azoteas', supplierCategoryId: 7,
+      items: [item({ id: 11, name: 'Impermeabilizante', supplierCategoryId: 8 })],
+    })])
+    vi.mocked(api.updateCatalogItem).mockResolvedValue(item({ id: 11 }))
+
+    const selector = screen.getByLabelText('Oficio de Impermeabilizante') as HTMLSelectElement
+    expect(selector.value).toBe('8')
+
+    fireEvent.change(selector, { target: { value: '' } })
+    await waitFor(() => expect(api.updateCatalogItem).toHaveBeenCalledWith(
+      11, { supplierCategoryId: null }))
+  })
+
+  it('sin oficios dados de alta el selector lo dice, en vez de quedarse mudo', async () => {
+    // Hoy hay CERO categorías de proveedor. Un selector con una sola opción
+    // vacía se lee como «se rompió» — que es lo que hacía el filtro por texto.
+    vi.mocked(api.getCategories).mockResolvedValue([])
+    await renderCatalogo()
+
+    const selector = screen.getByLabelText('Oficio de Acabados')
+    expect(within(selector).getAllByRole('option').map(o => o.textContent))
+      .toEqual(['— No hay oficios dados de alta'])
   })
 
   it('la baja es la ÚNICA baja: apagar, nunca borrar', async () => {

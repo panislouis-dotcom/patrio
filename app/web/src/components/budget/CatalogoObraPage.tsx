@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import type React from 'react'
 import {
   fetchBudgetCatalog, createCatalogChapter, updateCatalogChapter, deactivateCatalogChapter,
-  createCatalogItem, updateCatalogItem, deactivateCatalogItem,
+  createCatalogItem, updateCatalogItem, deactivateCatalogItem, getCategories,
 } from '../../lib/api'
-import type { BudgetCatalogChapter } from '../../lib/types'
+import type { BudgetCatalogChapter, ProveedorCategory } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
 import { plural } from '../../lib/fmt'
 
@@ -46,11 +46,22 @@ const SIN_PRECIO =
  */
 const ALCANCE =
   'Lo que edites aquí aplica a lo que se agregue de ahora en adelante. Los presupuestos '
-  + 'ya capturados no se mueven: cada renglón se llevó su nombre y su precio el día que '
-  + 'se agregó.'
+  + 'ya capturados no se mueven: cada renglón se llevó su nombre, su precio y su oficio el '
+  + 'día que se agregó.'
+
+/**
+ * Por qué el oficio vive en el CAPÍTULO. Es la frase que hace que la partida
+ * heredando no se lea como un campo que a alguien se le olvidó llenar.
+ */
+const OFICIO =
+  'El oficio se declara en el capítulo: se contrata al albañil, no a «colocación de piso '
+  + '60×60». Las partidas lo heredan, y solo declaran el suyo cuando de verdad son la '
+  + 'excepción — el impermeabilizador dentro de azoteas.'
 
 export function CatalogoObraPage() {
   const [chapters, setChapters] = useState<BudgetCatalogChapter[]>([])
+  /** Los oficios con los que se contrata — las categorías de proveedor. */
+  const [oficios, setOficios] = useState<ProveedorCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(false)
@@ -67,7 +78,9 @@ export function CatalogoObraPage() {
 
   useEffect(() => {
     setLoading(true)
-    load()
+    // Los oficios se piden UNA vez y no en cada relectura: son de proveedores,
+    // no del catálogo, y curar una partida no los mueve.
+    Promise.all([load(), getCategories().then(setOficios)])
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo cargar el catálogo'))
       .finally(() => setLoading(false))
   }, [load])
@@ -160,6 +173,39 @@ export function CatalogoObraPage() {
     </button>
   )
 
+  /**
+   * El selector de oficio. Uno solo para el capítulo y para la partida, porque
+   * es la misma columna; lo único que cambia es qué dice su opción vacía, y ahí
+   * está toda la herencia dicha en una línea: en el capítulo «sin oficio» es que
+   * todavía no se sabe, y en la partida es «el de mi capítulo» —una respuesta,
+   * no un hueco.
+   *
+   * Guarda al cambiar y no al soltar: un selector no tiene estado intermedio que
+   * respetar, igual que el de proveedor en la tabla del presupuesto.
+   */
+  const oficioSelect = (
+    label: string, value: number | null, vacio: string,
+    save: (supplierCategoryId: number | null) => Promise<unknown>,
+  ) => (
+    <select
+      value={value ?? ''}
+      aria-label={label}
+      onChange={e => void run(() => save(e.target.value ? Number(e.target.value) : null))}
+      style={{
+        // Ancho para que «— Hereda: Impermeabilización» quepa: el vacío de la
+        // partida es la cadena más larga de esta columna, y es la que más
+        // importa que se lea entera.
+        ...boxed, width: '190px', flexShrink: 0, fontSize: '11px',
+        color: value == null ? colors.secondary : colors.neutral,
+      }}
+    >
+      {/* Sin oficios dados de alta el selector sería un control muerto que no lo
+          dice. Lo dice — es la misma honestidad que el resto de esta pantalla. */}
+      <option value="">{oficios.length > 0 ? vacio : '— No hay oficios dados de alta'}</option>
+      {oficios.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+    </select>
+  )
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: '20px 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
@@ -178,8 +224,11 @@ export function CatalogoObraPage() {
       <div style={{ ...micro, whiteSpace: 'normal', maxWidth: '620px', marginBottom: '6px', lineHeight: 1.5 }}>
         {ALCANCE}
       </div>
-      <div style={{ ...micro, whiteSpace: 'normal', maxWidth: '620px', marginBottom: '14px', lineHeight: 1.5 }}>
+      <div style={{ ...micro, whiteSpace: 'normal', maxWidth: '620px', marginBottom: '6px', lineHeight: 1.5 }}>
         {SIN_PRECIO}
+      </div>
+      <div style={{ ...micro, whiteSpace: 'normal', maxWidth: '620px', marginBottom: '14px', lineHeight: 1.5 }}>
+        {OFICIO}
       </div>
 
       {error && (
@@ -221,6 +270,10 @@ export function CatalogoObraPage() {
                     name => updateCatalogChapter(chapter.id, { name }))}
                   style={{ ...cellInput, flex: 1 }}
                 />
+                {oficioSelect(
+                  `Oficio de ${chapter.name}`, chapter.supplierCategoryId, '— Sin oficio',
+                  supplierCategoryId => updateCatalogChapter(chapter.id, { supplierCategoryId }),
+                )}
                 <span style={micro}>({items.length})</span>
                 {!chapter.isActive && <span style={{ ...micro, color: colors.tertiary }}>DE BAJA</span>}
                 {chapter.isActive && (
@@ -238,7 +291,9 @@ export function CatalogoObraPage() {
                 )}
               </div>
 
-              {open && items.map(item => (
+              {open && items.map(item => {
+                const heredado = oficios.find(o => o.id === chapter.supplierCategoryId)?.name
+                return (
                 <div
                   key={item.id}
                   style={{
@@ -263,6 +318,14 @@ export function CatalogoObraPage() {
                       unit => updateCatalogItem(item.id, { unit }))}
                     style={{ ...cellInput, width: '70px', flexShrink: 0 }}
                   />
+                  {/* La partida solo declara oficio cuando es la excepción; su
+                      vacío NOMBRA lo que hereda, para que no se lea como un
+                      campo sin llenar. */}
+                  {oficioSelect(
+                    `Oficio de ${item.name}`, item.supplierCategoryId,
+                    heredado ? `— Hereda: ${heredado}` : '— Sin oficio',
+                    supplierCategoryId => updateCatalogItem(item.id, { supplierCategoryId }),
+                  )}
                   {/* La procedencia que un borrado físico destruiría, dicha en
                       número. Cero renglones no se imprime: no hay nada que decir. */}
                   {item.usedInLines > 0 && (
@@ -275,7 +338,8 @@ export function CatalogoObraPage() {
                     () => updateCatalogItem(item.id, { isActive: true }),
                   )}
                 </div>
-              ))}
+                )
+              })}
 
               {open && draft?.chapterId === chapter.id && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px 6px 26px' }}>

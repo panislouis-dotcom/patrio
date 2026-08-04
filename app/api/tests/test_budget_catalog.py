@@ -103,6 +103,26 @@ def otra_obra(client):
     _scrap(prop["id"])
 
 
+@pytest.fixture
+def oficios(client):
+    """Los oficios con los que se contrata, sembrados aquí.
+
+    La base real tiene CERO categorías de proveedor, y ése es justamente el
+    hallazgo que hizo falta este cambio: el selector «sugería» comparando el
+    nombre del capítulo contra el de las categorías, así que con cero categorías
+    nunca coincidió con nada y el grupo de sugeridos salía vacío sin que nada lo
+    dijera. Un filtro que no se puede probar contra datos reales se prueba
+    sembrándolos, no suponiéndolos."""
+    ids = {}
+    for oficio in ("Albañilería", "Plomería", "Impermeabilización"):
+        r = client.post("/api/proveedor-categories", json={"name": f"[TEST] {oficio}"})
+        assert r.status_code == 201, r.text
+        ids[oficio] = r.json()["id"]
+    yield ids
+    with get_db() as conn:
+        conn.execute("DELETE FROM proveedor_categories WHERE name LIKE '[TEST]%%'")
+
+
 # ── El invariante central: el catálogo no mueve presupuestos ────────────────
 
 def test_editing_the_catalog_never_moves_a_captured_budget(client, test_property):
@@ -179,6 +199,139 @@ def test_attaching_provenance_to_an_existing_line_does_not_rewrite_it(client, te
     r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
                      json={"itemId": None})
     assert _line_by_id(r.json()["budget"], line_id)["itemId"] is None
+
+
+# ── El oficio: qué TIPO de proveedor, no quién ─────────────────────────────
+#
+# Se sabe qué tipo de persona hace falta mucho antes de saber quién: al
+# presupuestar ya se sabe que la partida es de plomería, y a quién se le da se
+# decide semanas después. El oficio se declara en el CAPÍTULO —se contrata al
+# albañil, no a «colocación de piso 60×60»—, la partida lo hereda, y el renglón
+# lo COPIA al instanciar como copia el nombre y el importe.
+#
+# Lo que esta sección fija es que la copia sea copia de verdad. Si el oficio se
+# resolviera en vivo contra el catálogo, corregir en 2027 de qué tipo es un
+# capítulo cambiaría de qué tipo fue una partida que se contrató en 2026 — y
+# sería el único campo del renglón que ninguno de los otros puede desmentir.
+
+def test_the_trade_is_copied_at_instantiation_and_stops_following_the_catalog(
+        client, test_property, oficios):
+    """El invariante central de la fase, aplicado al oficio: el renglón se lo
+    lleva al nacer y el catálogo deja de poder tocarlo. Lo que se agregue DESPUÉS
+    sí nace con la corrección, que es exactamente lo que la copia promete —
+    cambia lo que se ofrecerá mañana, no lo que se capturó ayer."""
+    chapter = _chapter(client, supplierCategoryId=oficios["Albañilería"])
+    item = _item(client, chapter["id"], "[TEST] Muro de block", "m2")
+    created = _add(client, test_property["id"], itemId=item["id"], quantity=10, unitPrice=1_000)
+    line_id = created["line"]["id"]
+    assert created["line"]["supplierCategoryId"] == oficios["Albañilería"]
+
+    r = client.patch(f"/api/budget/catalog/chapters/{chapter['id']}",
+                     json={"supplierCategoryId": oficios["Plomería"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["supplierCategoryId"] == oficios["Plomería"]
+
+    assert _line_by_id(_budget(client, test_property["id"]), line_id)["supplierCategoryId"] \
+        == oficios["Albañilería"]
+
+    otra = _item(client, chapter["id"], "[TEST] Castillo", "pza")
+    assert _add(client, test_property["id"], itemId=otra["id"])["line"]["supplierCategoryId"] \
+        == oficios["Plomería"]
+
+
+def test_an_item_declares_a_trade_only_as_an_exception(client, test_property, oficios):
+    """La herencia entera: un NULL en la partida no es un dato faltante, es «el
+    de mi capítulo». El override existe para la excepción real —el
+    impermeabilizador dentro de azoteas— y el catálogo publica los DOS niveles
+    como están escritos, porque quien cura necesita distinguir «hereda» de «tiene
+    el mismo por casualidad»."""
+    chapter = _chapter(client, name="[TEST] Azoteas",
+                       supplierCategoryId=oficios["Albañilería"])
+    heredada = _item(client, chapter["id"], "[TEST] Pretil", "ml")
+    propia = _item(client, chapter["id"], "[TEST] Impermeabilizante", "m2",
+                   supplierCategoryId=oficios["Impermeabilización"])
+    assert heredada["supplierCategoryId"] is None
+    assert propia["supplierCategoryId"] == oficios["Impermeabilización"]
+
+    for item, esperado in ((heredada, oficios["Albañilería"]),
+                           (propia, oficios["Impermeabilización"])):
+        assert _add(client, test_property["id"],
+                    itemId=item["id"])["line"]["supplierCategoryId"] == esperado
+
+
+def test_applying_a_chapter_resolves_the_same_inheritance(client, test_property, oficios):
+    """Bajar un capítulo entero y crear sus partidas una por una tienen que dejar
+    renglones idénticos: dos caminos que resolvieran la herencia distinto la
+    volverían dos reglas según por qué puerta se entró."""
+    chapter = _chapter(client, name="[TEST] Azoteas",
+                       supplierCategoryId=oficios["Albañilería"])
+    _item(client, chapter["id"], "[TEST] Pretil", "ml")
+    _item(client, chapter["id"], "[TEST] Impermeabilizante", "m2",
+          supplierCategoryId=oficios["Impermeabilización"])
+
+    r = client.post(f"/api/properties/{test_property['id']}/budget/apply-chapter",
+                    json={"chapterId": chapter["id"]})
+    assert r.status_code == 201, r.text
+    oficio_de = {line["name"]: line["supplierCategoryId"] for line in r.json()["budget"]["lines"]}
+    assert oficio_de["[TEST] Pretil"] == oficios["Albañilería"]
+    assert oficio_de["[TEST] Impermeabilizante"] == oficios["Impermeabilización"]
+
+
+def test_a_line_with_a_trade_and_no_supplier_is_a_valid_state(client, test_property, oficios):
+    """EL PUNTO DEL CAMBIO. Mientras se presupuesta se sabe el oficio y no el
+    proveedor, y ése es el estado normal de una obra entera —no un renglón a
+    medias que haya que completar. El oficio se corrige y se quita por renglón
+    como cualquier otra celda, y su null vacía."""
+    created = _add(client, test_property["id"], chapterName="[TEST] Instalaciones",
+                   name="[TEST] Hidráulica", unit="lote", quantity=1, unitPrice=60_000,
+                   supplierCategoryId=oficios["Plomería"])
+    line_id = created["line"]["id"]
+    assert created["line"]["supplierCategoryId"] == oficios["Plomería"]
+    assert created["line"]["supplierId"] is None
+    assert _dec(created["line"]["budgetedAmount"]) == Decimal("60000")
+
+    url = f"/api/properties/{test_property['id']}/budget/lines/{line_id}"
+    r = client.patch(url, json={"supplierCategoryId": oficios["Albañilería"]})
+    assert _line_by_id(r.json()["budget"], line_id)["supplierCategoryId"] \
+        == oficios["Albañilería"]
+    r = client.patch(url, json={"supplierCategoryId": None})
+    assert _line_by_id(r.json()["budget"], line_id)["supplierCategoryId"] is None
+
+
+def test_a_trade_that_does_not_exist_is_refused_with_its_reason(client, test_property):
+    """La FK sola contestaría un 500 mudo, y quien lo ve no sabría qué le
+    rechazaron. Vale para las tres capas, porque las tres apuntan a la misma
+    tabla."""
+    for url, body in (
+        (f"/api/properties/{test_property['id']}/budget/lines",
+         {"chapterName": "[TEST] X", "name": "[TEST] Y", "supplierCategoryId": 999_999}),
+        ("/api/budget/catalog/chapters", {"name": "[TEST] Z", "supplierCategoryId": 999_999}),
+    ):
+        r = client.post(url, json=body)
+        assert r.status_code == 404, r.text
+        assert "999999" in r.json()["error"]["message"]
+
+
+def test_promoting_carries_the_trade_as_an_override_only_when_it_differs(
+        client, test_property, oficios):
+    """Promover no puede tirar lo único que se sabía de la partida, pero tampoco
+    puede fabricar una excepción: el oficio sube como override solo si de verdad
+    difiere del capítulo. Copiarlo igual dejaría un override que ya no sigue al
+    capítulo cuando éste se corrija, sin que nadie hubiera pedido esa excepción."""
+    chapter = _chapter(client, name="[TEST] Azoteas",
+                       supplierCategoryId=oficios["Albañilería"])
+    igual = _add(client, test_property["id"], chapterName="[TEST] Azoteas",
+                 name="[TEST] Pretil", unit="ml",
+                 supplierCategoryId=oficios["Albañilería"])["line"]
+    distinto = _add(client, test_property["id"], chapterName="[TEST] Azoteas",
+                    name="[TEST] Impermeabilizante", unit="m2",
+                    supplierCategoryId=oficios["Impermeabilización"])["line"]
+
+    for line, esperado in ((igual, None), (distinto, oficios["Impermeabilización"])):
+        r = client.post("/api/budget/catalog/promote",
+                        json={"lineId": line["id"], "chapterId": chapter["id"]})
+        assert r.status_code == 201, r.text
+        assert r.json()["item"]["supplierCategoryId"] == esperado
 
 
 # ── Baja lógica: apagar no borra, y no corta la procedencia ─────────────────
@@ -388,17 +541,23 @@ def test_copying_is_one_operation_used_three_times(client, test_property, otra_o
     assert nombres == ["[TEST] Aplanados", "[TEST] Aplanados", "[TEST] Muros", "[TEST] Muros"]
 
 
-def test_a_template_leaves_out_the_residual_and_the_whole_execution(client, test_property):
+def test_a_template_leaves_out_the_residual_and_the_whole_execution(
+        client, test_property, oficios):
     """El residuo es el remanente de SU obra, no una partida: llevárselo a una
     plantilla lo convertiría en un renglón de $2.3M que después le come el
     residuo a la obra siguiente. Y proveedor, comprometido y pagos se quedan
-    también: una plantilla es la forma de un plan, no el contrato de nadie."""
+    también: una plantilla es la forma de un plan, no el contrato de nadie.
+
+    EL OFICIO SÍ VIAJA, y ahí está la línea entera: «esta partida la hace un
+    albañil» vale para cualquier obra que copie el plan, mientras que a quién se
+    le dio ésta no vale para ninguna otra."""
     with get_db() as conn:
         supplier_id = conn.execute(
             "INSERT INTO proveedores (name) VALUES ('[TEST] Proveedor Catálogo')"
             " RETURNING id").fetchone()["id"]
     created = _add(client, test_property["id"], chapterName="[TEST] Albañilería",
                    name="[TEST] Muros", unit="m2", quantity=100, unitPrice=900,
+                   supplierCategoryId=oficios["Albañilería"],
                    supplierId=supplier_id, committedAmount=95_000, committedOn="2026-05-01")
     client.post(f"/api/properties/{test_property['id']}/budget/lines/"
                 f"{created['line']['id']}/payments", json={"amount": 40_000})
@@ -411,6 +570,7 @@ def test_a_template_leaves_out_the_residual_and_the_whole_execution(client, test
     linea = plantilla["lines"][0]
     assert linea["name"] == "[TEST] Muros"
     assert _dec(linea["budgetedAmount"]) == Decimal("90000")
+    assert linea["supplierCategoryId"] == oficios["Albañilería"]
     assert linea["supplierId"] is None
     assert linea["committedAmount"] is None
     assert linea["paidAmount"] is None

@@ -1082,12 +1082,24 @@ export function fetchBudgetCatalog(
   return catalogRead(catalogUrl(includeInactive ? '?includeInactive=true' : ''))
 }
 
-export function createCatalogChapter(name: string): Promise<BudgetCatalogChapterRow> {
-  return catalogWrite(catalogUrl('/chapters'), 'POST', { name })
+/**
+ * `supplierCategoryId` es el OFICIO del capítulo — el nivel donde de verdad
+ * vive, porque se contrata al albañil y no a «colocación de piso 60×60». Se
+ * omite al dar de alta: el catálogo se forma tecleando, y exigirlo aquí pondría
+ * una aduana en la operación que tiene que ser barata.
+ */
+export function createCatalogChapter(
+  name: string, data: { supplierCategoryId?: number | null } = {},
+): Promise<BudgetCatalogChapterRow> {
+  return catalogWrite(catalogUrl('/chapters'), 'POST', { name, ...data })
 }
 
 export function updateCatalogChapter(
-  id: number, patch: { name?: string; sortOrder?: number; isActive?: boolean },
+  id: number,
+  patch: {
+    name?: string; sortOrder?: number; isActive?: boolean
+    supplierCategoryId?: number | null
+  },
 ): Promise<BudgetCatalogChapterRow> {
   return catalogWrite(catalogUrl(`/chapters/${id}`), 'PATCH', patch)
 }
@@ -1103,8 +1115,13 @@ export function deactivateCatalogChapter(id: number): Promise<BudgetCatalogChapt
   return catalogWrite(catalogUrl(`/chapters/${id}`), 'DELETE')
 }
 
+/**
+ * Sin `supplierCategoryId` la partida HEREDA el oficio de su capítulo, que es el
+ * caso normal — se declara solo para la excepción real, como el
+ * impermeabilizador dentro de azoteas.
+ */
 export function createCatalogItem(
-  data: { chapterId: number; name: string; unit: string },
+  data: { chapterId: number; name: string; unit: string; supplierCategoryId?: number | null },
 ): Promise<BudgetCatalogItem> {
   return catalogWrite(catalogUrl('/items'), 'POST', data)
 }
@@ -1116,7 +1133,11 @@ export function createCatalogItem(
  */
 export function updateCatalogItem(
   id: number,
-  patch: { name?: string; unit?: string; chapterId?: number; sortOrder?: number; isActive?: boolean },
+  patch: {
+    name?: string; unit?: string; chapterId?: number; sortOrder?: number; isActive?: boolean
+    /** `null` devuelve la partida a heredar el oficio de su capítulo. */
+    supplierCategoryId?: number | null
+  },
 ): Promise<BudgetCatalogItem> {
   return catalogWrite(catalogUrl(`/items/${id}`), 'PATCH', patch)
 }
