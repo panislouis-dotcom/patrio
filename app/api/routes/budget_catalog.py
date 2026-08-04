@@ -138,6 +138,29 @@ def deactivate_item(item_id: int, _: dict = Depends(get_current_user)):
         return catalog.deactivate_item(conn, item_id)
 
 
+# ─── El precio que se aprendió ────────────────────────────────────────────────
+
+@router.get("/api/budget/catalog/items/{item_id}/price",
+            operation_id="budget_catalog_item_price")
+def item_price(item_id: int, _: dict = Depends(get_current_user)):
+    """Lo que esta partida ha costado de verdad, para mostrarse al capturarla.
+
+    La cifra sugerida es la MEDIANA de lo PAGADO en renglones cerrados de obra
+    real —nunca de lo presupuestado, que sería el catálogo aprendiendo el número
+    que él mismo puso— y viaja con lo que la respalda: el rango, cuántas
+    observaciones son y de cuántas obras, la última vez con su proveedor, y el
+    sesgo entre lo presupuestado y lo pagado.
+
+    SIN HISTORIA NO CONTESTA `null` A SECAS. Devuelve la misma forma con las
+    cifras en `null` y los contadores en cero, más cuántas obras faltan y cuántos
+    renglones ya citan la partida sin haberse cerrado: durante los primeros meses
+    ése es el estado normal, y es cuando la pantalla más necesita poder decir qué
+    hay que capturar —cerrar los renglones con su cantidad real y sus pagos— para
+    que algún día haya algo que sugerir."""
+    with get_db() as conn:
+        return catalog.item_price(conn, item_id)
+
+
 # ─── Deduplicación y promoción ────────────────────────────────────────────────
 
 @router.get("/api/budget/catalog/suggest", operation_id="budget_catalog_suggest")

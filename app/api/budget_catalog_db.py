@@ -30,6 +30,11 @@ LAS TRES PIEZAS, Y EL ORDEN EN QUE SE NECESITAN
      crece solo se llena de duplicados casi iguales, y el problema no es agregar,
      es fusionar.
 
+Las tres existen para que la cuarta pueda existir: `item_price`, el precio que la
+partida aprendió de las obras cerradas. Una historia partida en tres grafías nunca
+junta tres observaciones de nada, así que la deduplicación no es la antesala del
+aprendizaje — es su condición.
+
 LO QUE ESTA CAPA NO HACE, dicho aquí para que no haya que deducirlo:
 
   · No fusiona por similitud. La similitud propone; ligar dos grafías a la misma
@@ -50,7 +55,7 @@ LO QUE ESTA CAPA NO HACE, dicho aquí para que no haya que deducirlo:
 # para la misma fila serían dos formas de la misma respuesta.
 from api.budget_db import BudgetError, BudgetNotFound, copy_lines, _line_row
 from api.db import _row_to_dict
-from api.finance.quantize import money0
+from api.finance.quantize import frac4, money0
 
 # La normalización entera, y es literal a propósito: minúsculas y espacios de
 # orilla. No quita acentos —`unaccent()` no es IMMUTABLE y volver «ceramico» y
@@ -227,8 +232,23 @@ def deactivate_chapter(conn, chapter_id: int) -> dict:
 
 # ─── Partidas del catálogo ────────────────────────────────────────────────────
 
+# `usedInLines` viaja en TODA respuesta de partida —lectura y escritura— para que
+# el cliente tenga un solo tipo y no releer el catálogo entero después de crear
+# una. Es la cifra que explica por qué el borrado físico no existe, así que es
+# parte de lo que una partida ES, no un extra de la lista.
+#
+# El capítulo no recibe el mismo trato y la asimetría es a propósito: lo que le
+# falta a su fila de escritura es `items`, que es una COLECCIÓN —otro payload,
+# que el cliente ya modela aparte— y no un escalar que haga falta para pintar la
+# fila del capítulo mismo.
+_ITEM_SQL = """
+    SELECT i.*, (SELECT count(*) FROM budget_lines l WHERE l.item_id = i.id) AS used_in_lines
+      FROM budget_items i WHERE i.id = %s
+"""
+
+
 def _item(conn, item_id: int) -> dict:
-    row = conn.execute("SELECT * FROM budget_items WHERE id = %s", (item_id,)).fetchone()
+    row = conn.execute(_ITEM_SQL, (item_id,)).fetchone()
     if row is None:
         raise BudgetNotFound(f"La partida {item_id} no existe en el catálogo")
     return _row_to_dict(row)
@@ -529,6 +549,186 @@ def _chapter_by_name(conn, name: str) -> dict:
     if row is not None:
         return _row_to_dict(row)
     return create_chapter(conn, name)
+
+
+# ─── El precio que se aprendió ────────────────────────────────────────────────
+#
+# LA SUGERENCIA SALE SIEMPRE DE LO PAGADO, JAMÁS DE LO PRESUPUESTADO. Es la regla
+# de la que depende que este módulo sirva de algo: sugerir desde el presupuestado
+# histórico es un bucle de autoconfirmación —presupuestas $1,000, el catálogo
+# aprende $1,000, la próxima vez sugiere $1,000— en el que el catálogo repetiría
+# para siempre una suposición que alguien hizo una vez sin tocar nunca la
+# realidad. Aquí `budgeted_unit_price` se lee EXCLUSIVAMENTE para calcular el
+# sesgo; ninguna cifra que se publique como precio viene de él.
+#
+# Y todo esto lee la VISTA, que ya dejó fuera lo que envenena la historia: los
+# renglones abiertos (un pago sin cierre es un anticipo, no un precio), las
+# plantillas (una intención, no una obra) y los cierres sin un peso pagado.
+
+# Las obras distintas que hacen que la sugerencia valga. Tres, y son OBRAS, no
+# renglones: la misma partida escrita cinco veces en un presupuesto son cinco
+# copias de un mismo criterio, mientras que tres obras son tres negociaciones
+# independientes. El número no bloquea nada —el precio se publica desde la
+# primera observación, porque es lo que de verdad se pagó y callarlo no lo hace
+# más cierto— pero viaja en la respuesta para que la interfaz pueda decir
+# «faltan dos obras» en vez de presentar un caso aislado como si fuera una regla.
+MIN_PROPERTIES = 3
+
+# El sesgo solo puede medirse donde hay las DOS cifras de verdad. Un renglón que
+# nadie presupuestó llega con `unit_price = 0` —la captura es celda por celda y
+# nacer sin precio es normal— y contarlo diría «el presupuesto quedó 100% abajo»,
+# que es exactamente la clase de número que parece plausible y no lo es. El piso
+# de lo pagado es además la guarda de la división: la vista redondea a dos
+# decimales, así que un precio unitario minúsculo puede llegar en 0.00.
+_COMPARABLE = "o.budgeted_unit_price > 0 AND o.actual_unit_price > 0"
+
+_PRICE_STATS_SQL = f"""
+    SELECT count(*)                                  AS observations,
+           count(DISTINCT o.property_id)             AS properties,
+           round(percentile_cont(0.5) WITHIN GROUP (ORDER BY o.actual_unit_price)::numeric, 2)
+                                                     AS median_unit_price,
+           round(min(o.actual_unit_price), 2)        AS min_unit_price,
+           round(max(o.actual_unit_price), 2)        AS max_unit_price,
+           count(*) FILTER (WHERE {_COMPARABLE})     AS bias_observations,
+           round((percentile_cont(0.5) WITHIN GROUP (
+                      ORDER BY (o.budgeted_unit_price - o.actual_unit_price)
+                               / o.actual_unit_price)
+                  FILTER (WHERE {_COMPARABLE}))::numeric, 4)  AS bias_delta,
+           count(*) FILTER (WHERE {_COMPARABLE}
+                              AND o.budgeted_unit_price < o.actual_unit_price) AS bias_below,
+           count(*) FILTER (WHERE {_COMPARABLE}
+                              AND o.budgeted_unit_price > o.actual_unit_price) AS bias_above,
+           count(*) FILTER (WHERE {_COMPARABLE}
+                              AND o.budgeted_unit_price = o.actual_unit_price) AS bias_exact
+      FROM budget_price_observations o
+     WHERE o.item_id = %s
+"""
+
+_LAST_OBSERVATION_SQL = """
+    SELECT o.closed_at, o.property_id, p.name AS property_name,
+           o.supplier_id, s.name AS supplier_name,
+           o.actual_unit_price AS unit_price, o.budgeted_unit_price,
+           o.actual_quantity, o.paid_amount
+      FROM budget_price_observations o
+      JOIN properties p       ON p.id = o.property_id
+      LEFT JOIN proveedores s ON s.id = o.supplier_id
+     WHERE o.item_id = %s
+     ORDER BY o.closed_at DESC, o.line_id DESC
+     LIMIT 1
+"""
+
+# El corte por proveedor con `rating_calidad` al lado, que es la pregunta de
+# negociación completa: quién cobra menos ENTRE LOS QUE TRABAJAN BIEN. El precio
+# solo no la contesta —el más barato puede ser el que hay que volver a llamar— y
+# la calificación sola tampoco.
+#
+# El JOIN es cerrado a propósito: una observación sin proveedor cuenta para la
+# mediana general (se pagó de verdad) pero no puede aparecer aquí, porque «sin
+# proveedor» no es alguien con quien se pueda negociar la próxima.
+_BY_SUPPLIER_SQL = """
+    SELECT o.supplier_id, s.name AS supplier_name, s.rating_calidad, s.status,
+           count(*)                      AS observations,
+           count(DISTINCT o.property_id) AS properties,
+           round(percentile_cont(0.5) WITHIN GROUP (ORDER BY o.actual_unit_price)::numeric, 2)
+                                         AS median_unit_price,
+           max(o.closed_at)              AS last_closed_at
+      FROM budget_price_observations o
+      JOIN proveedores s ON s.id = o.supplier_id
+     WHERE o.item_id = %s
+     GROUP BY o.supplier_id, s.name, s.rating_calidad, s.status
+     ORDER BY median_unit_price, s.name
+"""
+
+# Lo que le falta a esta partida para tener historia, contado sobre los renglones
+# de obra real que ya la citan. Es la mitad de la respuesta que sirve durante los
+# primeros meses —cuando no hay una sola observación de nada— y sin ella la
+# pantalla vacía no tendría cómo decir qué capturar para llenarse.
+_PENDING_SQL = """
+    SELECT count(*)                                      AS lines,
+           count(*) FILTER (WHERE l.closed_at IS NULL)   AS open_lines,
+           count(*) FILTER (WHERE l.closed_at IS NULL
+                              AND coalesce(pagos.paid, 0) > 0)  AS paid_but_open,
+           count(*) FILTER (WHERE l.closed_at IS NOT NULL
+                              AND coalesce(pagos.paid, 0) = 0)  AS closed_without_payment
+      FROM budget_lines l
+      JOIN budgets b ON b.id = l.budget_id
+      LEFT JOIN LATERAL (SELECT sum(p.amount) AS paid
+                           FROM budget_line_payments p
+                          WHERE p.line_id = l.id) pagos ON TRUE
+     WHERE l.item_id = %s AND b.property_id IS NOT NULL
+"""
+
+
+def _bias(stats: dict) -> dict | None:
+    """Cuánto se desvió SISTEMÁTICAMENTE lo presupuestado de lo pagado, y en
+    cuántas de cuántas observaciones el desvío fue en la misma dirección.
+
+    Es el hallazgo de más valor de toda la fase, y no un adorno del precio: un
+    precio unitario dice cuánto cuesta algo, mientras que el sesgo dice cómo se
+    equivoca quien presupuesta — «lo presupuestado quedó 12% abajo de lo pagado,
+    en 4 de 4». Eso se corrige una vez y mejora todos los presupuestos futuros.
+
+    `medianDeltaPct` es la MEDIANA de las desviaciones relativas de cada
+    observación, no la resta de las dos medianas: la resta compararía el renglón
+    de en medio de una lista contra el de en medio de otra, que pueden ser
+    renglones distintos. Se publica como fracción con signo —negativa cuando lo
+    presupuestado quedó por debajo de lo pagado, que es el caso normal en obra—
+    igual que el resto de los porcentajes del repo.
+
+    `sameDirection` cuenta contra la dirección de esa mediana, y es lo que separa
+    un sesgo de un promedio de errores que se cancelan: 4 de 4 es una costumbre
+    que se corrige, 2 de 4 es ruido."""
+    comparable = stats["bias_observations"]
+    if not comparable:
+        return None
+    delta = stats["bias_delta"]
+    same = (stats["bias_below"] if delta < 0 else
+            stats["bias_above"] if delta > 0 else stats["bias_exact"])
+    return {
+        "medianDeltaPct": frac4(delta),
+        "observations": comparable,
+        "sameDirection": same,
+    }
+
+
+def item_price(conn, item_id: int) -> dict:
+    """El precio que la partida aprendió de las obras cerradas — con su rango, su
+    respaldo, la última vez y el sesgo.
+
+    Todo sale de lo PAGADO. La única cifra presupuestada que se lee es la que
+    entra al sesgo, y el sesgo es una comparación, no una sugerencia.
+
+    LA RESPUESTA VACÍA ES EL CASO PRINCIPAL, no un borde. El catálogo arranca sin
+    una sola observación y así va a estar durante meses —aprende desde la tercera
+    obra cerrada— así que la respuesta sin historia tiene que decir qué falta para
+    que empiece a haberla: cuántas obras faltan (`propertiesNeeded`) y cuántos
+    renglones ya citan la partida sin haberse vuelto observación (`pending`), que
+    es lo único accionable que hay en ese momento. Un `null` mudo dejaría a quien
+    captura sin saber que lo que falta es cerrar renglones con su cantidad real y
+    sus pagos, y entonces la pantalla llena no llega nunca."""
+    item = _item(conn, item_id)
+    stats = conn.execute(_PRICE_STATS_SQL, (item_id,)).fetchone()
+    last = conn.execute(_LAST_OBSERVATION_SQL, (item_id,)).fetchone()
+    suppliers = conn.execute(_BY_SUPPLIER_SQL, (item_id,)).fetchall()
+    pending = conn.execute(_PENDING_SQL, (item_id,)).fetchone()
+    return {
+        "itemId": item["id"],
+        "name": item["name"],
+        "unit": item["unit"],
+        "observations": stats["observations"],
+        "properties": stats["properties"],
+        "propertiesNeeded": max(0, MIN_PROPERTIES - stats["properties"]),
+        # La mediana y no el promedio: con tres observaciones un renglón atípico
+        # —el m² de piso que se contrató con material incluido— destruye un
+        # promedio, y la mediana lo aguanta sin enterarse.
+        "suggestedUnitPrice": stats["median_unit_price"],
+        "minUnitPrice": stats["min_unit_price"],
+        "maxUnitPrice": stats["max_unit_price"],
+        "lastObservation": _row_to_dict(last),
+        "bias": _bias(stats),
+        "bySupplier": [_row_to_dict(row) for row in suppliers],
+        "pending": _row_to_dict(pending),
+    }
 
 
 # ─── Plantillas ───────────────────────────────────────────────────────────────
