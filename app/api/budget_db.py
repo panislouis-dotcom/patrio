@@ -129,13 +129,38 @@ def calculator_estimate(sqm_construction, construction_cost_per_sqm,
 #
 # Los pagos se suman en su propio LATERAL: unirlos al mismo nivel que los
 # renglones multiplicaría cada `cantidad × precio` por su número de pagos.
+#
+# CADA VARIACIÓN COMPARA CONTRA EL PLAN DE LOS RENGLONES QUE YA TIENEN ESA CIFRA,
+# no contra el presupuesto entero, y ahí está la única sutileza de este fragmento.
+# Restar el presupuesto completo era aritméticamente correcto y engañoso igual:
+# firmar en cero UNA partida de $200,000 publicaba «comprometido vs presupuesto
+# −$4,095,000», que no es la brecha contra el plan sino cuánto FALTA por
+# comprometer. Ese número se enciende en cuanto cualquier renglón tiene
+# compromiso, arranca en «casi todo el presupuesto» por definición y domina la
+# pantalla durante toda la obra diciendo algo que su etiqueta no promete.
+#
+# Con el FILTER la pregunta se vuelve estable y contestable: «en lo que ya firmé,
+# ¿voy arriba o abajo del plan?», y no se mueve porque falte firmar cosas. De paso
+# el total vuelve a ser la SUMA DE SUS RENGLONES —cada uno ya publicaba su propia
+# variación contra su propio importe (ver `_line_row`)— y una tabla cuyo total no
+# es la suma de lo que enseña es una tabla que nadie puede cuadrar.
+#
+# Lo que falta por comprometer o por pagar es otra pregunta, y si algún día se
+# publica será con otro nombre: es `presupuestado − comprometido`, y un número
+# cuyo nombre tiene que alargarse para ser honesto casi siempre son dos números.
 def totals_sql(property_ref: str) -> str:
-    """El subselect de las tres cifras para la propiedad que `property_ref`
+    """El subselect de las cifras de obra para la propiedad que `property_ref`
     nombre — una columna del query de afuera (`p.id`) o un parámetro (`%s`)."""
     return f"""
     SELECT coalesce(sum(l.quantity * l.unit_price), 0) AS construction_budgeted,
            sum(l.committed_amount)                     AS construction_committed,
-           sum(pagos.paid)                             AS construction_paid
+           sum(pagos.paid)                             AS construction_paid,
+           sum(l.committed_amount)
+             - sum(l.quantity * l.unit_price) FILTER (WHERE l.committed_amount IS NOT NULL)
+                                                       AS construction_committed_variance,
+           sum(pagos.paid)
+             - sum(l.quantity * l.unit_price) FILTER (WHERE pagos.paid IS NOT NULL)
+                                                       AS construction_paid_variance
       FROM budgets b
       JOIN budget_lines l ON l.budget_id = b.id
       LEFT JOIN LATERAL (SELECT sum(p.amount) AS paid
@@ -156,21 +181,28 @@ def metrics(row: dict) -> dict:
     budgeted = to_decimal(row.get("construction_budgeted"))
     committed = row.get("construction_committed")
     paid = row.get("construction_paid")
+    committed_variance = row.get("construction_committed_variance")
+    paid_variance = row.get("construction_paid_variance")
     sqm = to_decimal(row.get("sqm_construction"))
 
     return {
         "constructionBudgeted": money0(budgeted),
         "constructionCommitted": money0(committed) if committed is not None else None,
         "constructionPaid": money0(paid) if paid is not None else None,
-        # La brecha contra el plan, en las dos etapas de la ejecución. Es la
-        # misma resta alimentada con dos hechos distintos, así que comparten
-        # familia de nombre y se distinguen por la etapa. Ninguna corrige el
-        # presupuestado para que empate: el presupuesto era un plan, el pago es
-        # un hecho, y la información útil es justamente la diferencia.
+        # La brecha contra el plan EN LO QUE YA TIENE ESA CIFRA —no contra el
+        # presupuesto entero— así que contesta «en lo que ya firmé (o ya pagué),
+        # ¿voy arriba o abajo?» y no «cuánto me falta». Las dos son la misma
+        # resta alimentada con dos hechos distintos, por eso comparten familia de
+        # nombre y se distinguen por la etapa. Ninguna corrige el presupuestado
+        # para que empate: el presupuesto era un plan, el pago es un hecho, y la
+        # información útil es justamente la diferencia. La resta la hace el SQL,
+        # que es donde vive el recorte; aquí solo se redondea y se decide el
+        # vacío, que es el mismo de siempre: sin nada firmado no hay brecha, y un
+        # 0 ahí se leería como «va justo al plan».
         "constructionCommittedVariance":
-            money0(to_decimal(committed) - budgeted) if committed is not None else None,
+            money0(committed_variance) if committed_variance is not None else None,
         "constructionPaidVariance":
-            money0(to_decimal(paid) - budgeted) if paid is not None else None,
+            money0(paid_variance) if paid_variance is not None else None,
         "constructionCostPerSqm": money(budgeted / sqm) if sqm > 0 else None,
     }
 

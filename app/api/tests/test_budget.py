@@ -297,7 +297,9 @@ def test_committing_and_paying_never_redefine_the_investment(client, test_proper
     assert r.status_code == 200, r.text
     r = r.json()
     assert _dec(r["property"]["constructionCommitted"]) == Decimal("620000")
-    assert _dec(r["property"]["constructionCommittedVariance"]) == Decimal("-1720000")
+    # 620,000 firmados contra los 500,000 planeados DE ESE RENGLÓN. No contra los
+    # 2,340,000 del presupuesto entero: eso diría cuánto falta por comprometer.
+    assert _dec(r["property"]["constructionCommittedVariance"]) == Decimal("120000")
     assert _dec(r["property"]["totalInvestment"]) == inversion
 
     r = client.post(f"/api/properties/{test_property['id']}/budget/lines/{line_id}/payments",
@@ -310,6 +312,105 @@ def test_committing_and_paying_never_redefine_the_investment(client, test_proper
     assert _dec(r["property"]["constructionPaid"]) == Decimal("550000")
     assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
     assert _dec(r["property"]["totalInvestment"]) == inversion
+
+
+def test_the_committed_variance_only_measures_what_has_been_signed(client, test_property):
+    """La cifra que Ed mira todos los días durante una obra, y la que estaba
+    contestando otra pregunta.
+
+    «Comprometido vs presupuesto» promete «en qué difiere lo que firmé de lo que
+    planeé». Restando el presupuesto ENTERO decía «cuánto falta por comprometer»:
+    se encendía en cuanto cualquier renglón tuviera compromiso, arrancaba en casi
+    todo el presupuesto por definición y solo se movía hacia cero conforme se
+    firmaba lo demás. Con una sola partida firmada en cero llegó a publicar
+    −$4,095,000 de una obra que nadie había contratado.
+
+    Los cuatro estados, y en ninguno se mueve porque falte firmar cosas."""
+    cocina = _add(client, test_property["id"], name="Cocina",
+                  quantity=1, unitPrice=500_000)["line"]["id"]
+    fachada = _add(client, test_property["id"], name="Fachada",
+                   quantity=1, unitPrice=300_000)["line"]["id"]
+
+    # (1) Nada firmado: la variación no existe. Un 0 diría «va justo al plan».
+    assert _get(client, test_property["id"])["constructionCommittedVariance"] is None
+
+    # (2) Uno por DEBAJO de su plan: 450,000 contra 500,000.
+    r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{cocina}",
+                     json={"committedAmount": 450_000})
+    assert _dec(r.json()["property"]["constructionCommittedVariance"]) == Decimal("-50000")
+
+    # (3) Uno por ENCIMA: 380,000 contra 300,000. La brecha es la suma de las dos
+    # y no la de un presupuesto que todavía tiene 1,540,000 sin contratar.
+    r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{fachada}",
+                     json={"committedAmount": 380_000})
+    assert _dec(r.json()["property"]["constructionCommittedVariance"]) == Decimal("30000")
+
+    # (4) Todo firmado. Se ajusta el total a lo detallado para que no quede
+    # residuo —el remanente no se contrata, se detalla— y ahí las dos lecturas
+    # coinciden: cuando no falta nada por firmar, comparar contra lo firmado y
+    # comparar contra el presupuesto entero son la misma resta.
+    r = client.put(f"/api/properties/{test_property['id']}/budget/total",
+                   json={"amount": 800_000})
+    assert r.status_code == 200, r.text
+    p = r.json()["property"]
+    assert _dec(p["constructionBudgeted"]) == Decimal("800000")
+    assert _dec(p["constructionCommittedVariance"]) == Decimal("30000")
+    assert (_dec(p["constructionCommittedVariance"])
+            == _dec(p["constructionCommitted"]) - _dec(p["constructionBudgeted"]))
+
+
+def test_the_total_variance_is_the_sum_of_the_lines_that_have_one(client, test_property):
+    """La propiedad que vuelve cuadrable la pantalla: cada renglón ya publicaba su
+    variación contra su propio importe, y el total tiene que ser esa suma. Cuando
+    el total se restaba contra el presupuesto entero, la columna sumaba una cosa y
+    el renglón de totales decía otra — sin que ninguno de los dos estuviera mal
+    por separado, que es la peor forma de estar mal."""
+    for name, price, committed in (("Cocina", 500_000, 450_000),
+                                   ("Fachada", 300_000, 380_000),
+                                   ("Jardín", 200_000, None)):
+        line_id = _add(client, test_property["id"], name=name,
+                       quantity=1, unitPrice=price)["line"]["id"]
+        if committed is not None:
+            client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
+                         json={"committedAmount": committed})
+
+    budget = _budget(client, test_property["id"])
+    suma = sum(_dec(line["committedVariance"]) for line in budget["lines"]
+               if line["committedVariance"] is not None)
+
+    assert suma == Decimal("30000")
+    assert _dec(_get(client, test_property["id"])["constructionCommittedVariance"]) == suma
+
+
+def test_the_paid_variance_compares_only_the_lines_that_have_been_paid(client, test_property):
+    """El mismo defecto y la misma corrección, pero aquí era peor: una obra a
+    medio pagar publicaba una brecha del tamaño de lo que le falta, que solo
+    significa «todavía no termina».
+
+    Queda una ambigüedad más chica que esta cifra no puede resolver sola: contra
+    su renglón, un anticipo se ve igual que un pago final barato. Eso lo distingue
+    `closed_at` —la misma pieza de la que depende la historia de precios— y
+    mientras no exista forma de cerrar un renglón, esta variación se lee «de lo
+    pagado hasta hoy», no «de lo que costó»."""
+    cocina = _add(client, test_property["id"], name="Cocina",
+                  quantity=1, unitPrice=500_000)["line"]["id"]
+    _add(client, test_property["id"], name="Fachada", quantity=1, unitPrice=300_000)
+
+    r = client.post(f"/api/properties/{test_property['id']}/budget/lines/{cocina}/payments",
+                    json={"amount": 300_000})
+    assert r.status_code == 201, r.text
+    p = r.json()["property"]
+
+    # 300,000 pagados contra los 500,000 planeados de ESE renglón. Contra el
+    # presupuesto entero serían −2,040,000, casi todo «lo que aún no se paga».
+    assert _dec(p["constructionPaidVariance"]) == Decimal("-200000")
+    assert _dec(p["constructionPaid"]) == Decimal("300000")
+
+    # Y el que ya se pasó del plan lo dice en positivo, sin que el resto del
+    # presupuesto sin pagar lo esconda.
+    r = client.post(f"/api/properties/{test_property['id']}/budget/lines/{cocina}/payments",
+                    json={"amount": 260_000})
+    assert _dec(r.json()["property"]["constructionPaidVariance"]) == Decimal("60000")
 
 
 def test_the_variance_is_shown_and_the_plan_is_not_corrected(client, test_property):
@@ -366,7 +467,11 @@ def test_a_zero_commitment_is_not_the_same_as_no_commitment(client, test_propert
     r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
                      json={"committedAmount": 0})
     assert _dec(r.json()["property"]["constructionCommitted"]) == Decimal("0")
-    assert _dec(r.json()["property"]["constructionCommittedVariance"]) == Decimal("-2340000")
+    # Firmar en cero un renglón de 500,000 es ir 500,000 abajo del plan EN ESE
+    # RENGLÓN. Comparado contra el presupuesto entero eran −2,340,000, que es la
+    # cifra que la verificación en vivo destapó: aritmética correcta, pregunta
+    # equivocada.
+    assert _dec(r.json()["property"]["constructionCommittedVariance"]) == Decimal("-500000")
 
     r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
                      json={"committedAmount": None})
