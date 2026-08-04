@@ -1,0 +1,219 @@
+# Presupuesto de obra — análisis y diseño
+
+> Documento de exploración. Nada de esto está implementado ni acordado todavía.
+
+## Lo que pidió Ed
+
+Una pestaña PRESUPUESTO junto a MAPA / FOTOS / PLANOS, cuya suma alimente el costo
+de construcción. Textual:
+
+- "cuando vemos una oportunidad ponemos el gasto estimado pero luego queremos
+  poderlo actualizar en función de actualizar el inventario"
+- **"pero no quiero que sean números distintos"**
+- "tal vez el inventario empieza con una sola fila de otros con el total definido
+  y luego la vamos actualizando"
+- "tal vez queremos poder tener alguna especie de template o templates y con el
+  tiempo ir mejorándolo"
+- "muchas cosas se van a repetir pero tal vez va a haber cosas nuevas ya sean
+  generales o por proyecto"
+
+Y contestó el alcance: **tres cifras por partida** (presupuestado, comprometido,
+pagado) · **dos niveles** (capítulo → partida) · **solo captura el equipo
+interno** · **cada partida ligada a un proveedor desde el inicio**.
+
+## La tensión, nombrada
+
+"No quiero que sean números distintos" y "quiero presupuestado + comprometido +
+pagado" no se contradicen, pero solo si el diseño distingue dos cosas:
+
+| | |
+|---|---|
+| **El mismo concepto medido dos veces** | Duplicación. Es lo que se rechaza, y lo que la migración 027 acaba de eliminar de la inversión total. |
+| **Conceptos distintos que coexisten** | Control de obra. Lo que planeas, lo que firmaste, lo que pagaste. Tres hechos, no tres versiones. |
+
+Si la interfaz no hace esa diferencia obvia, renace el problema que se acaba de
+matar.
+
+## Hallazgos que cambian el diseño
+
+### 1. Las tres cifras ya existen en la plataforma, con otro nombre
+
+`PropertyInvestor` tiene `interestedAmount` / `committedAmount` / `fundedAmount`.
+Un monto planeado y dos etapas de ejecución contra ese plan — **la misma forma de
+negocio**, aplicada al dinero que entra en vez del que sale. No es un concepto
+nuevo: es un embudo que el producto ya modela.
+
+### 2. La interfaz está casi resuelta por código propio
+
+`ProcesoInstanceDetail.tsx` ya hace en producción lo que el presupuesto necesita:
+
+- jerarquía colapsable (`collapsed: Set<number>`, `toggleCollapse`, chevron ▶/▼)
+- **los padres suman solos** — `getProgress()` deriva el valor del capítulo de sus
+  hijos; nunca se captura. Mismo principio que `totalInvestment`, que jamás se teclea
+- **sin botón EDITAR/GUARDAR**: cada celda siempre activa, guarda al cambiar, con
+  parche optimista
+- **selector de proveedor por renglón** (`ProcesoNodeDetail.tsx:419-427`),
+  filtrando los `vetado`
+
+El presupuesto no inventa patrones: **compone tres que ya funcionan** — el árbol
+colapsable, el embudo de tres montos, y el catálogo de proveedores.
+
+### 3. Pero la maquinaria de plantillas NO se debe reusar tal cual
+
+Las plantillas de proceso se leen **en vivo**, no se copian al instanciar. Y los
+borrados van en cascada:
+
+```
+template_nodes ──CASCADE──▶ instance_node_states  (avance, fechas, proveedor)
+               ──CASCADE──▶ node_files            (fotos de obra)
+               ──CASCADE──▶ node_comments
+process_templates ──CASCADE──▶ process_instances  (todas)
+```
+
+`delete_node_route` solo valida que el nodo exista. `handleDelete()` no confirma
+nada. **Borrar un nodo de plantilla destruye el avance capturado, las fotos y los
+comentarios de todas las propiedades que la usaban.**
+
+Hoy no hay nada que perder — la base local tiene 0 instancias — pero es la
+doctrina que el presupuesto iba a heredar. Para un checklist da igual que un
+nombre se actualice retroactivamente; **para dinero es inaceptable** que editar un
+precio de catálogo altere el presupuesto ya cerrado de una propiedad vendida.
+
+**Doctrina para el presupuesto: copiar al instanciar.** Cada partida nace con su
+propio nombre, unidad, cantidad y precio, más un `source_item_id` que apunta al
+catálogo solo para trazabilidad y que nunca se vuelve a leer en vivo.
+
+### 4. Ya hubo un intento y murió
+
+`projects.budget` (JSON) existió desde la migración 000 y se borró en la 023: el
+dato era *"fabricated seed-era JSON (never captured through the app)"*. Nunca se
+usó.
+
+Por qué murió, y qué hace distinto a éste: aquel era un blob sin estructura, sin
+plantillas que abarataran empezar, y **desconectado de cualquier cifra que
+importara**. Nadie captura datos que no mueven nada. Éste mueve el costo de
+construcción, la inversión, el ROI y el PDF del inversionista — y arranca con una
+sola fila en vez de una hoja en blanco.
+
+## La pregunta central — DECIDIDA
+
+Con cuatro candidatos a ser "el costo de obra" —la fórmula, y las sumas de
+presupuestado, comprometido y pagado— ¿cuál alimenta `totalInvestment`, del que
+cuelgan el ROI, el cap rate y el PDF del inversionista?
+
+La trampa: *"usa el presupuesto si existe, si no la fórmula"* **ya es una rama
+condicional** — exactamente el patrón que la 027 eliminó.
+
+Hubo desacuerdo real. **Codex sostuvo** que `totalInvestment` no debe cambiar de
+fuente jamás y que el presupuesto debe vivir aparte sin tocarlo nunca. El
+argumento es serio —ningún número cambia de significado por etapa— pero deja **dos
+respuestas vivas** a la pregunta "¿cuánto va a costar la obra?", y contradice de
+frente lo que Ed pidió.
+
+La distinción que resuelve el desacuerdo:
+
+| | |
+|---|---|
+| `rentMonthlyProjected` vs `rentMonthlyActual` | Lo que crees que vas a cobrar vs lo que el inquilino paga. **Dos hechos distintos.** Coexisten para siempre; compararlos es el aprendizaje. |
+| Fórmula vs suma de partidas | Los dos son planes del **mismo gasto futuro**, uno grueso y otro detallado. **Un hecho a dos resoluciones.** |
+
+"El mismo concepto medido dos veces" es exactamente lo que 027 mató.
+
+### La decisión de Ed, y lo que simplificó
+
+**(1) El presupuesto es el costo de obra. (2) Existe desde `prospecto`** — hay que
+poder presupuestar antes de ofertar.
+
+La segunda respuesta elimina la parte más frágil del diseño. Si el presupuesto
+solo naciera en `desarrollo` haría falta **un momento de traspaso**, y toda costura
+se rompe. Naciendo con la propiedad, no hay traspaso que diseñar:
+
+- Al capturar una propiedad se siembra **una fila «Otros, por detallar»** con el
+  estimado grueso. Esa fila YA es el presupuesto.
+- `m² × $/m²` deja de ser una fórmula que compite y se vuelve **una calculadora**
+  para llegar al primer número. El resultado vive en el presupuesto, no en un
+  campo paralelo.
+- Nunca hay dos respuestas vivas, en ninguna etapa, ni por un instante — y no
+  porque una gane, sino porque nunca hubo dos.
+- **Sin gate de etapa.** El presupuesto acompaña a la propiedad como el desglose de
+  costos, no como una herramienta que se abre (a diferencia de procesos y reparto).
+
+De las tres cifras, la que alimenta `totalInvestment` es **presupuestado** — el
+plan. `comprometido` y `pagado` son ejecución contra ese plan y generan métricas
+NUEVAS (avance de obra en dinero); nunca redefinen la inversión.
+
+### Consecuencias sobre las columnas de hoy
+
+- **`sqm_construction` sobrevive intacto.** Es metraje físico, no costo; lo usan el
+  analizador de mercado y el PDF, indiferentes a lo que cueste la obra.
+- **`construction_cost_per_sqm` deja de capturarse** y pasa a derivarse
+  (presupuesto ÷ metraje). Es el mismo movimiento que la 027 hizo con la inversión
+  capturada: un campo menos que mantener y uno menos que pueda contradecir a otro.
+  Dejarlo vivo pero ignorado sería recrear el bug «NO SE USA» que se arregló hoy.
+- **`construction_overhead` queda sin resolver** — ver preguntas abiertas.
+
+### Dos correcciones que vinieron de Codex y se adoptan
+
+**La fila «otros» se decrementa sola, y el total no crece al detallar.**
+*Detallar no crea costo, solo lo distribuye.* Si repartes $300k entre cocina y
+fachada, «otros» no es una opinión: es el remanente. Dejarlo editable a mano
+convierte una resta determinista en una segunda captura, y ahí nace el descuadre.
+Si de verdad creció el alcance, eso es **otra operación** (aumentar el
+presupuesto); mezclarla con "detallar" las vuelve indistinguibles.
+
+**No se congela ningún baseline.** Era redundante: la proyección original ya queda
+visible como historia. El baseline ya existe, solo hay que no borrarlo.
+
+**Cuando lo pagado supera lo presupuestado** —lo normal en obra, no la excepción—
+se muestra la variación por partida y en total. No se esconde, no se bloquea, y el
+presupuestado **no se corrige solo** para que empate: el presupuesto era un plan,
+el pago es un hecho, y la información útil es la brecha.
+
+## Invariantes que cualquier diseño debe respetar
+
+1. **Una sola fórmula sin ramas para `totalInvestment`.** Dos maneras de calcular
+   un número es dos números (`docs/glosario.md` §4).
+2. **Ausente = 0; suma 0 = «nada capturado» → se imprime «—»**, nunca $0.
+3. **`sqm_construction` es metraje físico y sobrevive intacto** — lo usan el
+   analizador de mercado y el PDF, independientes del costo.
+4. **`construction_cost_per_sqm` es precio unitario compuesto** — es justo lo que un
+   presupuesto por partidas no tiene. Candidato a re-derivarse (suma ÷ metraje).
+5. **Overhead: un 0 capturado es identidad, nunca ×0** — multiplicar por cero
+   borraría obra que alguien sí capturó. Hay un test que lo fija.
+6. **Vocabulario muerto que no debe resucitar**: `investmentBasis`,
+   `totalInvestmentCaptured`.
+7. **Familia de borrado**: el presupuesto pertenece a la de RESTRICT con 422
+   legible (como `profit_split_config`), no a la de CASCADE silencioso. Perder
+   captura manual sin avisar es perder trabajo real.
+
+## Lo que NO entra en la primera versión
+
+- Layout de tarjetas para teléfono. Sería el primer breakpoint responsivo de toda
+  la app; el colapso de capítulos ya reduce la vista inicial a 5 renglones.
+- Reordenamiento por arrastre: no existe en ningún lado del repo.
+- Centavos en precios unitarios. Toda la app redondea a pesos enteros; romper esa
+  convención en una pantalla es peor que la imprecisión.
+- Retenciones, IVA, estimaciones de obra, órdenes de cambio como entidad propia.
+- Que el catálogo sugiera precios automáticamente. **Pero los datos que lo harán
+  posible se capturan desde el día uno** — obra, fecha, proveedor, cantidad,
+  unidad, pagado. Esa capacidad no se reconstruye después.
+
+## Preguntas abiertas
+
+1. **El overhead de obra (×1.3).** Hoy es un multiplicador con una regla semántica
+   protegida por un test: un 0 capturado es identidad, nunca ×0, porque multiplicar
+   por cero borraría obra que alguien sí capturó. Con un presupuesto por capítulos,
+   ¿los indirectos son un capítulo más que se captura, un porcentaje sobre el
+   subtotal, o sigue siendo un multiplicador sobre la suma? Un capítulo es lo más
+   honesto (se ve de qué está hecho) pero obliga a capturarlo en cada propiedad;
+   el multiplicador es gratis pero opaco.
+2. **Las 18 propiedades existentes** necesitan que se les siembre su fila «otros»
+   con el costo de obra que hoy calcula la fórmula, sin mover un peso. Es el mismo
+   tipo de migración que la 027, con la misma prueba de no-movimiento.
+3. Cuando una partida se paga de más, ¿el sistema lo señala y ya, o exige una nota
+   explicando por qué?
+4. ¿Una plantilla por estrategia (remodelación / obra nueva / adecuación), o una
+   sola con capítulos opcionales? El repo ya distingue `strategy_type`.
+5. ¿La partida guarda una fecha de pago? Sin ella no hay curva de desembolso ni se
+   puede responder "cuánto voy a necesitar el mes que entra" — pero es un campo más
+   por renglón.
