@@ -4,6 +4,7 @@ import { fetchInvestors, createInvestor } from '../lib/api'
 import type { Investor, InvestorTemperatura, InvestorCapacidad, InvestorFuente, InvestorConfianza } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtM } from '../lib/fmt'
+import { pageFill } from '../lib/styles'
 
 const inputStyle: React.CSSProperties = {
   background: 'transparent',
@@ -96,7 +97,7 @@ export function InversoresTab() {
   if (error) return <div style={{ padding: '32px', color: '#E62300' }}>Error: {error}</div>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 49px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', ...pageFill }}>
       {/* Summary strip */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderBottom: `1px solid ${colors.border}`, fontFamily: fonts.label, fontSize: '11px', color: colors.secondary, flexWrap: 'wrap' }}>
         <span>Total interesado:</span>

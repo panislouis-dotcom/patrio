@@ -4,6 +4,7 @@ import { colors, fonts } from '../lib/theme'
 import { fetchComparables, deleteComparable } from '../lib/api'
 import { fmtMXN } from '../lib/fmt'
 import type { Comparable } from '../lib/types'
+import { pageFill } from '../lib/styles'
 
 const thStyle: React.CSSProperties = {
   padding: '6px 10px',
@@ -68,7 +69,7 @@ export function ComparablesTab() {
   const filtered = filterStatus ? comps.filter(c => c.status === filterStatus) : comps
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 49px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', ...pageFill }}>
       <div style={{
         display: 'flex',
         alignItems: 'center',

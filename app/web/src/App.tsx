@@ -29,6 +29,7 @@ import { ComparablesTab } from './components/ComparablesTab'
 import { ComparableForm } from './components/ComparableForm'
 import { AnalysisView } from './components/AnalysisView'
 import { globalStyles, colors } from './lib/theme'
+import { pageFill } from './lib/styles'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isLoggedIn } = useAuth()
@@ -40,8 +41,23 @@ function AppShell() {
   return (
     <>
       <style>{globalStyles}</style>
-      <div style={{ minHeight: '100vh', background: colors.dark }}>
+      {/* Columna flex de altura EXACTA: la barra ocupa lo que ocupe y la página
+          se queda con el resto. Así ninguna pantalla necesita saber cuánto mide
+          la barra —que cambia de alto según la sección y en /login ni se
+          dibuja—, y el 49 mágico que estaba copiado en quince lugares deja de
+          existir en vez de corregirse.
+
+          `100vh` y no `minHeight`: un mínimo no es una altura definida, y sin
+          altura definida `flex: 1` no acota nada — el hijo crece y la página
+          vuelve a desbordarse.
+
+          Quien scrollea es el hueco, no el documento. La barra queda FUERA de
+          él, así que ya no puede taparse a sí misma: el síntoma de comerse el
+          encabezado al desplazarse se vuelve imposible por construcción, no por
+          un z-index bien puesto. */}
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: colors.dark }}>
         {isLoggedIn && <TabBar onLogout={logout} />}
+        <div style={{ ...pageFill, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           {/* Prospectos y proyectos eran la misma cosa contada dos veces. No hay
@@ -85,6 +101,7 @@ function AppShell() {
               y nada más — una app en blanco, indistinguible de una rota. */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </div>
       </div>
     </>
   )

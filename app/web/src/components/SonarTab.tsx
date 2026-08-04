@@ -5,6 +5,7 @@ import type { SonarRunEvent } from '../lib/api'
 import type { SonarSignal, SonarState, Zone } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtM } from '../lib/fmt'
+import { pageFill } from '../lib/styles'
 
 function fmtPpsqm(n: number) {
   if (!n) return '—'
@@ -402,7 +403,7 @@ export function SonarTab() {
   const hasRun     = runSummary !== null
 
   return (
-    <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ ...pageFill, display: 'flex', flexDirection: 'column' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: `1px solid ${colors.border}`, gap: '12px', flexWrap: 'wrap' }}>

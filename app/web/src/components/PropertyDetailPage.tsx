@@ -18,7 +18,7 @@ import {
 } from '../lib/status'
 import type { PropertyStatus } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
-import { fieldInput } from '../lib/styles'
+import { fieldInput, pageFill } from '../lib/styles'
 import { fmtMXN, fmtPct, fmtPctSigned, fmtMonth } from '../lib/fmt'
 import { fieldLabel } from '../lib/fields'
 import { useEdits } from '../lib/useEdits'
@@ -275,14 +275,14 @@ export function PropertyDetailPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', ...pageFill, color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>
         Cargando…
       </div>
     )
   }
   if (error || !property) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: '#E62300', fontFamily: fonts.sans, fontSize: '13px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', ...pageFill, color: '#E62300', fontFamily: fonts.sans, fontSize: '13px' }}>
         {error ?? 'No encontrada'}
       </div>
     )
@@ -471,9 +471,13 @@ export function PropertyDetailPage() {
        fijarla en 100vh dejaría la mitad de abajo recortada sin forma de llegar
        a ella. Por eso en angosto la página recupera su scroll vertical. */
     <div style={{
+      // Angosta CRECE con su contenido —`1 0 auto`— para que la página pueda
+      // scrollear en vertical; ancha se queda con el hueco exacto y deja que
+      // scrolleen sus dos columnas por dentro. Ninguna de las dos sabe cuánto
+      // mide la barra de navegación: ver `pageFill`.
       ...(narrow
-        ? { minHeight: 'calc(100vh - 49px)' }
-        : { height: 'calc(100vh - 49px)', overflow: 'hidden' }),
+        ? { flex: '1 0 auto' }
+        : { ...pageFill, overflow: 'hidden' }),
       display: 'flex', flexDirection: 'column', background: colors.dark,
     }}>
 

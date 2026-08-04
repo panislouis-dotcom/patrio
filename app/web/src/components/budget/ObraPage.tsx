@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { colors, fonts } from '../../lib/theme'
+import { pageFill } from '../../lib/styles'
 
 /**
  * La casa de lo que el presupuesto de obra sabe pero no le pertenece a ninguna
@@ -21,7 +22,7 @@ const subTabs = [
 
 export function ObraPage() {
   return (
-    <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ ...pageFill, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, background: colors.dark, flexShrink: 0 }}>
         {subTabs.map(({ path, label }) => (
           <NavLink
