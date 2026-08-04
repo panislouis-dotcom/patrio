@@ -45,7 +45,13 @@ export interface Assumption {
   source: AssumptionSource
 }
 
-export type AssumptionField = 'acquisitionCostPct' | 'constructionOverhead' | 'holdMonths'
+// Son DOS. `constructionOverhead` era el tercero y se retiró del contrato: dejó
+// de multiplicar nada. Se aplica una sola vez, al calcular el primer renglón del
+// presupuesto, y desde ahí vive dentro del importe. Un supuesto que no mueve
+// dinero no es un supuesto — publicarlo dejaría en la ficha un número que se
+// puede leer, comparar y editar sin que mueva un peso, que es el defecto «NO SE
+// USA» otra vez y con otro nombre.
+export type AssumptionField = 'acquisitionCostPct' | 'holdMonths'
 
 export type Assumptions = Record<AssumptionField, Assumption>
 
@@ -103,8 +109,10 @@ export interface Property {
   // Nunca son null: si nadie eligió, vale el default del modelo. `assumptions`
   // dice cuál de los dos casos es, que es lo único que la ficha necesita para
   // no volver a computar dinero con un número invisible.
+  //
+  // Son DOS. `constructionOverhead` se retiró del contrato con la fórmula que
+  // multiplicaba: ver AssumptionField.
   acquisitionCostPct: number
-  constructionOverhead: number
   holdMonths: number
   assumptions: Assumptions
 
@@ -202,7 +210,7 @@ export type RawPropertyFields = Pick<Property,
   | 'latitude' | 'longitude' | 'notes'
   | 'sqmLand' | 'sqmConstruction' | 'purchasePrice' | 'acquisitionCostPct'
   | 'permitsCost' | 'subdivisionCost'
-  | 'constructionOverhead' | 'projectedSale' | 'holdMonths'
+  | 'projectedSale' | 'holdMonths'
   | 'rentMonthlyProjected' | 'rentMonthlyActual'
   | 'totalUnits' | 'acquisitionDate' | 'firstRentDate' | 'valuationDate'
   | 'currentValuation' | 'saleDate' | 'salePrice'
@@ -234,6 +242,10 @@ export interface PropertyCreate {
   acquisitionCostPct?: number
   permitsCost?: number
   subdivisionCost?: number
+  // Los dos insumos de la CALCULADORA con la que nace el presupuesto —junto a
+  // sqmConstruction—, y por eso siguen aquí aunque un PATCH ya no los acepte:
+  // se reciben una vez, producen el importe del primer renglón y se olvidan. El
+  // resultado vive en el presupuesto, no en un campo paralelo que lo contradiga.
   constructionCostPerSqm?: number
   constructionOverhead?: number
   projectedSale?: number
@@ -249,8 +261,11 @@ export interface PropertyCreate {
 export const CLEARABLE_FIELDS = [
   'assetType', 'strategyType',
   'sqmLand', 'sqmConstruction', 'purchasePrice', 'acquisitionCostPct',
-  'permitsCost', 'subdivisionCost', 'constructionCostPerSqm',
-  'constructionOverhead', 'projectedSale', 'holdMonths',
+  'permitsCost', 'subdivisionCost',
+  // Los dos de obra ya no están: vaciar solo tiene sentido sobre algo que se
+  // captura, y ninguno de los dos se captura. El costo de obra se cambia
+  // capturando partidas o ajustando el total del presupuesto.
+  'projectedSale', 'holdMonths',
   'rentMonthlyProjected', 'rentMonthlyActual',
   'totalUnits', 'acquisitionDate', 'firstRentDate', 'saleDate', 'salePrice',
   'currentValuation', 'valuationDate',

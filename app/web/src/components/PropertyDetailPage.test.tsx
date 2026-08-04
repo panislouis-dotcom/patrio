@@ -45,12 +45,12 @@ const BASE_PROPERTY: Property = {
   sqmLand: 400, sqmConstruction: 250, purchasePrice: 3_000_000,
   acquisitionCostPct: 0.065, permitsCost: 150_000, subdivisionCost: 50_000,
   // Derivada, no capturada: 3,900,000 presupuestados ÷ 250 m² de obra.
-  constructionCostPerSqm: 15_600, constructionOverhead: 1.3,
+  constructionCostPerSqm: 15_600,
   projectedSale: 9_000_000, holdMonths: 12,
   rentMonthlyProjected: 30_000, rentMonthlyActual: null,
+  // Son DOS: el overhead se retiró del contrato con la fórmula que multiplicaba.
   assumptions: {
     acquisitionCostPct: { value: 0.065, source: 'captured' },
-    constructionOverhead: { value: 1.3, source: 'captured' },
     holdMonths: { value: 12, source: 'captured' },
   },
   totalInvestment: 7_295_000,
@@ -269,16 +269,19 @@ describe('PropertyDetailPage', () => {
       ...BASE_PROPERTY,
       assumptions: {
         acquisitionCostPct: { value: 0.065, source: 'default' },
-        constructionOverhead: { value: 1.3, source: 'captured' },
-        holdMonths: { value: 12, source: 'default' },
+        holdMonths: { value: 12, source: 'captured' },
       },
     })
 
     // Sin entrar a edición: eran invisibles y aun así cobraban.
     expect(screen.getByText('SUPUESTOS')).not.toBeNull()
     expect(screen.getByText('COSTOS ADQ. (%)')).not.toBeNull()
-    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(2)
+    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(1)
     expect(screen.getAllByText('CAPTURADO')).toHaveLength(1)
+    // Y el overhead no está entre ellos: dejó de mover dinero, así que dejó de
+    // ser un supuesto. Un número que se puede editar sin que cambie un peso es
+    // el defecto «NO SE USA» con otro nombre.
+    expect(screen.queryByText('OVERHEAD DE OBRA')).toBeNull()
   })
 
   it('la ficha nunca ofrece capturar un total: la inversión es el desglose', async () => {
@@ -487,7 +490,7 @@ describe('PropertyDetailPage', () => {
 
     expect(screen.getByText('COSTOS ADQ. (%)')).not.toBeNull()
     expect(screen.getByText('0.0%')).not.toBeNull()
-    expect(screen.getAllByText('CAPTURADO')).toHaveLength(3)
+    expect(screen.getAllByText('CAPTURADO')).toHaveLength(2)
     expect(screen.queryByText('SUPUESTO POR OMISIÓN')).toBeNull()
     // Y el 0 tampoco se cuela como barra de $0 en el desglose.
     expect(screen.queryByText('COSTOS ADQ.')).toBeNull()

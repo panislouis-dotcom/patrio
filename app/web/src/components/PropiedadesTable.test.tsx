@@ -24,11 +24,10 @@ const base = (over: Partial<Property>): Property => ({
   images: [], geometry: {}, milestones: {},
   sqmLand: 0, sqmConstruction: 0, purchasePrice: null, acquisitionCostPct: 0.065,
   permitsCost: null, subdivisionCost: null, constructionCostPerSqm: null,
-  constructionOverhead: 1.3, projectedSale: null, holdMonths: 12,
+  projectedSale: null, holdMonths: 12,
   rentMonthlyProjected: null, rentMonthlyActual: null,
   assumptions: {
     acquisitionCostPct: { value: 0.065, source: 'default' },
-    constructionOverhead: { value: 1.3, source: 'default' },
     holdMonths: { value: 12, source: 'default' },
   },
   totalInvestment: null,

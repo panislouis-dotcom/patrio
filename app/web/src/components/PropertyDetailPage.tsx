@@ -19,7 +19,7 @@ import {
 import type { PropertyStatus } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput } from '../lib/styles'
-import { fmtMXN, fmtPct, fmtPctSigned, fmtOverhead, fmtMonth } from '../lib/fmt'
+import { fmtMXN, fmtPct, fmtPctSigned, fmtMonth } from '../lib/fmt'
 import { fieldLabel } from '../lib/fields'
 import { useEdits } from '../lib/useEdits'
 import { MetricHero } from './finance/MetricHero'
@@ -726,11 +726,13 @@ export function PropertyDetailPage() {
                   />
                 }
               />
-              {numRow('OVERHEAD DE OBRA', 'constructionOverhead', fmtOverhead, {
-                step: 0.01,
-                clearable: isCaptured('constructionOverhead') ? 'constructionOverhead' : undefined,
-                hint: assumptionHint('constructionOverhead'),
-              })}
+              {/* El overhead de obra ya no está, y no es un descuido: dejó de
+                  multiplicar nada. Se aplica una sola vez, al calcular el primer
+                  renglón del presupuesto al dar de alta la propiedad, y desde
+                  ahí vive DENTRO del importe. Un supuesto que no mueve dinero no
+                  es un supuesto — dejarlo aquí sería un número que se puede leer,
+                  comparar y hasta editar sin que cambie un peso, que es el mismo
+                  defecto «NO SE USA» que la inversión capturada ya tuvo. */}
               {numRow('PLAZO PROYECTADO (MESES)', 'holdMonths', fmtNum, {
                 clearable: isCaptured('holdMonths') ? 'holdMonths' : undefined,
                 hint: assumptionHint('holdMonths'),

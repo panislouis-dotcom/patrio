@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtPct, fmtPctSigned, fmtOverhead, fmtMonth, fmtM, fmtMXN } from './fmt'
+import { fmtPct, fmtPctSigned, fmtMonth, fmtM, fmtMXN } from './fmt'
 
 /**
  * Una sola regla, y es la que el backend defiende columna por columna: vacío es
@@ -48,22 +48,6 @@ describe('fmtPctSigned', () => {
 
   it('vacío sigue siendo guion', () => {
     expect(fmtPctSigned(null)).toBe('—')
-  })
-})
-
-describe('fmtOverhead', () => {
-  it('dice que es un multiplicador y cuánto añade', () => {
-    expect(fmtOverhead(1.3)).toBe('×1.3 (+30%)')
-    expect(fmtOverhead(1)).toBe('×1 (0%)')
-  })
-
-  it('un multiplicador por debajo de 1 abarata la obra, y se ve', () => {
-    // checks.py ya lo marca como error; aquí al menos se lee lo que hace.
-    expect(fmtOverhead(0.8)).toBe('×0.8 (-20%)')
-  })
-
-  it('vacío es guion', () => {
-    expect(fmtOverhead(null)).toBe('—')
   })
 })
 
