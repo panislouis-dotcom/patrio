@@ -146,9 +146,17 @@ def _delete_property(property_id: int) -> None:
         conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
 
 
-# The complete five-cost breakdown plus the two assumptions it prices with, so
-# a fixture that wants one can pass it straight into a create or a transition.
-# 1,000,000×1.065 + 50,000 + 25,000 + 200×9,000×1.3 = 3,480,000.
+# The complete cost breakdown of a property, for a CREATE and only a create.
+#
+# It used to say "a create or a transition", and that stopped being true when the
+# cost of works became the budget's sum: `constructionCostPerSqm` and
+# `constructionOverhead` are no longer writable fields but inputs to the
+# CALCULATOR that seeds the first budget line, which only POST /api/properties
+# runs. Hand this dict to a PATCH or a transition and those two are dropped in
+# silence — the property is born with no works, and nothing raises.
+#
+# 1,000,000×1.065 + 50,000 + 25,000 + 200×9,000×1.3 = 3,480,000, where the last
+# term is the seeded budget and therefore `constructionBudgeted`.
 UNDERWRITING = dict(
     purchasePrice=1_000_000, acquisitionCostPct=0.065, permitsCost=50_000,
     subdivisionCost=25_000, sqmConstruction=200, constructionCostPerSqm=9_000,
