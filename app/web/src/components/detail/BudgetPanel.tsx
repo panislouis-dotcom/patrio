@@ -382,10 +382,13 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     if (!name || budgetId == null) return
     setError(null)
     try {
+      // Contesta el DETALLE —con `lines`, sin `lineCount`— así que la lista se
+      // vuelve a leer en vez de meterle esta respuesta dentro: son dos formas
+      // distintas de una plantilla, y la de la lista es la que el selector pinta.
       const created = await createBudgetTemplate({ name, fromBudgetId: budgetId })
-      setTemplates(prev => [...prev, created])
+      setTemplates(await fetchBudgetTemplates())
       setTemplateName('')
-      setNotice(`Se guardó «${created.name}» como plantilla, con ${created.lineCount} renglones.`)
+      setNotice(`Se guardó «${created.name}» como plantilla, con ${created.lines.length} renglones.`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar la plantilla')
     }

@@ -653,9 +653,13 @@ describe('BudgetPanel', () => {
     const onChange = await renderPanel(DETALLADO)
     fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
     await screen.findByLabelText('Nombre de la plantilla')
+    // El servidor contesta el DETALLE: `lines` es el ARREGLO de renglones y NO
+    // trae `lineCount`. Fijarlo con la forma real es lo que impide que la
+    // pantalla vuelva a leer el conteo de la lista en la respuesta de la
+    // escritura — que se pinta «undefined renglones» sin que falle nada.
     vi.mocked(api.createBudgetTemplate).mockResolvedValue({
-      id: 600, name: 'Obra nueva', notes: '', lineCount: 3, total: 100_000,
-      createdAt: '', updatedAt: '',
+      id: 600, name: 'Obra nueva', notes: '', createdAt: '', updatedAt: '',
+      lines: [line({ id: 1 }), line({ id: 2 }), line({ id: 3 })],
     })
 
     fireEvent.change(screen.getByLabelText('Nombre de la plantilla'), { target: { value: '  Obra nueva  ' } })
@@ -665,7 +669,11 @@ describe('BudgetPanel', () => {
     await waitFor(() => expect(api.createBudgetTemplate).toHaveBeenCalledWith({
       name: 'Obra nueva', fromBudgetId: 9,
     }))
-    expect(await screen.findByText(/Se guardó «Obra nueva» como plantilla/)).not.toBeNull()
+    expect(await screen.findByText(/Se guardó «Obra nueva» como plantilla, con 3 renglones/))
+      .not.toBeNull()
+    // Y la lista se vuelve a leer en vez de meterle dentro la respuesta del
+    // detalle: son dos formas distintas de una plantilla.
+    await waitFor(() => expect(api.fetchBudgetTemplates).toHaveBeenCalledTimes(2))
     // La obra de la que salió queda exactamente igual: nada que refrescar
     expect(onChange).not.toHaveBeenCalled()
   })

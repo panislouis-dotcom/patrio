@@ -948,6 +948,25 @@ export interface BudgetTemplate {
   updatedAt: string
 }
 
+/**
+ * La plantilla CON sus renglones: lo que devuelven el detalle y las tres
+ * escrituras (`POST`, `PATCH`, `DELETE`), todas por `get_template`.
+ *
+ * Es otro tipo que `BudgetTemplate` a propósito, y la diferencia es justo la
+ * trampa que el servidor renombró para no tender: aquí `lines` es el ARREGLO de
+ * renglones, y no hay `lineCount` ni `total` porque el detalle no los cuenta.
+ * Usar el tipo de la lista sobre esta respuesta pinta «undefined renglones» sin
+ * que falle nada — que es la forma en que estos errores se pagan.
+ */
+export interface BudgetTemplateDetail {
+  id: number
+  name: string
+  notes: string
+  lines: BudgetLine[]
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Zone {
   id: number
   name: string

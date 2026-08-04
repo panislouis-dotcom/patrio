@@ -1,4 +1,4 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetCatalogChapterRow, BudgetCatalogItemRow } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetCatalogItemRow } from './types'
 import type { FloorPlanModel } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -1200,13 +1200,13 @@ export function fetchBudgetTemplates(): Promise<BudgetTemplate[]> {
  */
 export function createBudgetTemplate(
   data: { name: string; fromBudgetId?: number },
-): Promise<BudgetTemplate> {
+): Promise<BudgetTemplateDetail> {
   return catalogWrite(templatesUrl(), 'POST', data)
 }
 
 export function updateBudgetTemplate(
   id: number, patch: { name?: string; notes?: string },
-): Promise<BudgetTemplate> {
+): Promise<BudgetTemplateDetail> {
   return catalogWrite(templatesUrl(`/${id}`), 'PATCH', patch)
 }
 
@@ -1215,6 +1215,6 @@ export function updateBudgetTemplate(
  * copiar, nada cita a una plantilla — los renglones que salieron de ella se
  * llevaron el texto. No hay procedencia que romper porque nunca la hubo.
  */
-export function deleteBudgetTemplate(id: number): Promise<BudgetTemplate> {
+export function deleteBudgetTemplate(id: number): Promise<BudgetTemplateDetail> {
   return catalogWrite(templatesUrl(`/${id}`), 'DELETE')
 }
