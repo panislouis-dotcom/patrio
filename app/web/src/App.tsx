@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { LoginPage } from './components/LoginPage'
+import { NotFound } from './components/NotFound'
 import { TabBar } from './components/TabBar'
 import { PropiedadesTable } from './components/PropiedadesTable'
 import { PropertyDetailPage } from './components/PropertyDetailPage'
@@ -80,6 +81,9 @@ function AppShell() {
           </Route>
           <Route path="/equipo" element={<ProtectedRoute><OrgTab /></ProtectedRoute>} />
           <Route path="/analyses/:id" element={<ProtectedRoute><AnalysisView /></ProtectedRoute>} />
+          {/* El comodín, al final. Sin él una URL mal tecleada pintaba la barra
+              y nada más — una app en blanco, indistinguible de una rota. */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
     </>
