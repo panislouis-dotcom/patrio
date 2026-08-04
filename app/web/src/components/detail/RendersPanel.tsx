@@ -137,6 +137,16 @@ export function RendersPanel({
         <p style={{ color: colors.tertiary, fontSize: '12px' }}>{error}</p>
       )}
 
+      {/* Un botón muerto sin explicación se lee como «no pasó nada». Elegir el
+          preset es la acción obvia —es el control grande— pero la que habilita
+          es elegir foto, y la tira de miniaturas no parece un paso obligatorio.
+          Así que el botón dice qué le falta en vez de quedarse callado. */}
+      {sourceId == null && images.length > 0 && (
+        <p style={{ ...label, letterSpacing: 0, textTransform: 'none', color: colors.tertiary }}>
+          Elige una foto base arriba para generar.
+        </p>
+      )}
+
       {/* ── Acciones ── */}
       {naming ? (
         <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'flex-end' }}>
@@ -167,6 +177,18 @@ export function RendersPanel({
       <div>
         <div style={label}>Renders ({renders.length})</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, marginTop: spacing.sm }}>
+          {/* La señal va DONDE el usuario está mirando. Antes lo único que
+              cambiaba era la etiqueta del botón, y la lista se quedaba idéntica
+              65 segundos: indistinguible de que el click no hubiera servido. */}
+          {busy && (
+            <div style={{ border: `1px dashed ${colors.border}`, borderRadius: radius.sm,
+                          padding: spacing.lg, textAlign: 'center', background: colors.surface }}>
+              <p style={{ ...label, color: colors.primary }}>Generando render…</p>
+              <p style={{ ...label, letterSpacing: 0, textTransform: 'none', marginTop: '6px' }}>
+                Puede tardar cerca de un minuto. No cierres la pestaña.
+              </p>
+            </div>
+          )}
           {renders.map(r => (
             <RenderCard key={r.id} render={r} source={byId.get(r.sourceImageId ?? -1) ?? null}
                         base={base} onDelete={() => onDeleteRender(r.id)}

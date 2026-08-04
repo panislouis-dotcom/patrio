@@ -38,7 +38,36 @@ function setup(over: Partial<Parameters<typeof RendersPanel>[0]> = {}) {
 describe('RendersPanel', () => {
   it('no permite generar sin una foto elegida', () => {
     setup()
-    expect(screen.getByRole('button', { name: /GENERAR/i }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: /GENERAR RENDER/i }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('dice QUÉ falta cuando no se puede generar', () => {
+    // Un botón muerto sin explicación se lee como «no pasó nada»: elegir preset
+    // es la acción obvia, pero la que habilita es elegir foto.
+    setup()
+    expect(screen.getByText(/elige una foto base/i)).not.toBeNull()
+  })
+
+  it('deja de reclamar la foto en cuanto la eliges', () => {
+    setup()
+    fireEvent.click(screen.getByAltText('fachada.jpg'))
+    expect(screen.queryByText(/elige una foto base/i)).toBeNull()
+  })
+
+  it('mientras genera, aparece una tarjeta en la lista — donde el usuario mira', async () => {
+    // Tarda ~65 s. La única señal era una etiqueta chiquita en el botón, así que
+    // la lista de renders no cambiaba en más de un minuto.
+    let resolver: (v: PropertyRender) => void = () => {}
+    const pendiente = new Promise<PropertyRender>(r => { resolver = r })
+    setup({ onGenerate: vi.fn().mockReturnValue(pendiente) })
+
+    fireEvent.click(screen.getByAltText('fachada.jpg'))
+    fireEvent.change(screen.getByLabelText(/texto del prompt/i), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+
+    expect(await screen.findByText(/generando render/i)).not.toBeNull()
+    expect(screen.getByText(/puede tardar/i)).not.toBeNull()
+    resolver(renderRow(9))
   })
 
   it('elegir un preset llena el texto editable', () => {
