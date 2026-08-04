@@ -33,6 +33,10 @@ def _residual(budget: dict) -> dict:
     return next(line for line in budget["lines"] if line["isResidual"])
 
 
+def _line_by_id(budget: dict, line_id: int) -> dict:
+    return next(line for line in budget["lines"] if line["id"] == line_id)
+
+
 def _add(client, property_id: int, **body) -> dict:
     r = client.post(f"/api/properties/{property_id}/budget/lines", json={
         "chapterName": "Albañilería", "name": "Partida", "unit": "m2", **body})
@@ -279,6 +283,82 @@ def test_the_variance_is_shown_and_the_plan_is_not_corrected(client, test_proper
     assert _dec(r["line"]["budgetedAmount"]) == Decimal("500000")
     assert _dec(r["line"]["paidAmount"]) == Decimal("620000")
     assert _dec(r["line"]["paidVariance"]) == Decimal("120000")
+
+
+# ── Vaciar una celda es decir null, y decir null tiene que llegar ───────────
+
+def test_a_null_empties_the_cell_instead_of_being_ignored(client, test_property):
+    """Al revés que en la ficha, aquí un null VIAJA y significa «quítalo». El
+    selector de proveedor tiene «— Sin proveedor», y elegirlo tiene que quitar
+    el proveedor: descartar ese null dejaba el dato en la base con la pantalla
+    diciendo que ya no estaba, sin error y sin pista, hasta que alguien recarga
+    y el proveedor viejo reaparece."""
+    with get_db() as conn:
+        supplier_id = conn.execute(
+            "INSERT INTO proveedores (name) VALUES ('[TEST] Proveedor Presupuesto')"
+            " RETURNING id").fetchone()["id"]
+    created = _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000,
+                   supplierId=supplier_id, committedAmount=480_000,
+                   committedOn="2026-05-01", actualQuantity=1.2)
+    line_id = created["line"]["id"]
+    assert created["line"]["supplierId"] == supplier_id
+
+    for field in ("supplierId", "committedAmount", "committedOn", "actualQuantity"):
+        r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
+                         json={field: None})
+        assert r.status_code == 200, r.text
+        assert _line_by_id(r.json()["budget"], line_id)[field] is None, field
+
+    # Y sigue vacío al releer: lo que se ve en pantalla es lo que quedó guardado.
+    assert _line_by_id(_budget(client, test_property["id"]), line_id)["supplierId"] is None
+    with get_db() as conn:
+        conn.execute("DELETE FROM proveedores WHERE id = %s", (supplier_id,))
+
+
+def test_a_zero_commitment_is_not_the_same_as_no_commitment(client, test_property):
+    """La razón por la que el vaciado no se puede resolver con un centinela:
+    firmar en cero es un hecho, y confundirlo con «no se ha firmado» borraría la
+    distinción que esta capa cuida en todas partes."""
+    created = _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
+    line_id = created["line"]["id"]
+    r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
+                     json={"committedAmount": 0})
+    assert _dec(r.json()["property"]["constructionCommitted"]) == Decimal("0")
+    assert _dec(r.json()["property"]["constructionCommittedVariance"]) == Decimal("-2340000")
+
+    r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
+                     json={"committedAmount": None})
+    assert r.json()["property"]["constructionCommitted"] is None
+    assert r.json()["property"]["constructionCommittedVariance"] is None
+
+
+def test_what_is_not_sent_is_not_touched(client, test_property):
+    """`exclude_unset`, no `exclude_none`: un PATCH describe solo lo que cambió,
+    así que las celdas ausentes del cuerpo se quedan como estaban."""
+    created = _add(client, test_property["id"], name="Cocina", quantity=1,
+                   unitPrice=500_000, committedAmount=480_000)
+    line_id = created["line"]["id"]
+    r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
+                     json={"unitPrice": 600_000})
+    line = _line_by_id(r.json()["budget"], line_id)
+    assert _dec(line["committedAmount"]) == Decimal("480000")
+    assert _dec(line["budgetedAmount"]) == Decimal("600000")
+
+
+def test_a_not_nullable_cell_is_refused_with_its_reason(client, test_property):
+    """En estos un vacío no es un vaciado: es un renglón roto. La columna es NOT
+    NULL, así que sin el rechazo el 422 legible llegaría como un 500 mudo."""
+    created = _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
+    line_id = created["line"]["id"]
+    for field, fragmento in (("name", "necesita un nombre"),
+                             ("chapterName", "vive en un capítulo"),
+                             ("unit", "necesita una unidad"),
+                             ("quantity", "se pone en 0"),
+                             ("unitPrice", "se pone en 0")):
+        r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
+                         json={field: None})
+        assert r.status_code == 422, f"{field}: {r.text}"
+        assert fragmento in r.json()["error"]["message"], field
 
 
 def test_a_payment_is_deleted_not_rewritten(client, test_property):

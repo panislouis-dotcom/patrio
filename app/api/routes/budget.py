@@ -52,8 +52,16 @@ class LineCreate(BaseModel):
 
 
 class LineUpdate(BaseModel):
-    """Todo opcional: cada celda se guarda al cambiar. La ruta descarta los
-    `None`, así que un PATCH sube o cambia un valor pero nunca lo quita."""
+    """Todo opcional: cada celda se guarda al cambiar, y el cuerpo describe SOLO
+    lo que cambió.
+
+    Aquí un `null` sí viaja y sí significa algo — «quítalo»— al revés que en la
+    ficha, donde vaciar es su propia operación (`clear-fields`). La diferencia
+    es que allá se edita con un botón GUARDAR y una caja en blanco quiere decir
+    «no la toques», mientras que aquí el selector de proveedor tiene «— Sin
+    proveedor» y elegirlo tiene que quitar el proveedor. Por eso la ruta usa
+    `exclude_unset` y no `exclude_none`: lo que el cliente no mandó se queda
+    fuera, y lo que mandó en null llega como null."""
     chapterName: Optional[str] = None
     name: Optional[str] = None
     unit: Optional[str] = None
@@ -135,7 +143,7 @@ def update_line(property_id: int, line_id: int, body: LineUpdate,
                 _: dict = Depends(get_current_user)):
     with get_db() as conn:
         increase = budget_db.update_line(
-            conn, property_id, line_id, body.model_dump(exclude_none=True))
+            conn, property_id, line_id, body.model_dump(exclude_unset=True))
         budget = budget_db.get_budget(conn, property_id)
     return _written(property_id, budget, _line_of(budget, line_id), increase)
 

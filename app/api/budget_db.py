@@ -314,6 +314,33 @@ _LINE_COLUMNS = {
     "notes": "notes",
 }
 
+# Los campos donde un `null` es un MENSAJE —«quítalo»— y no una omisión.
+#
+# Es la diferencia con la ficha, donde vaciar es su propia operación
+# (`clear-fields`) porque ahí un null nunca viaja. Aquí la captura es celda por
+# celda: el selector de proveedor tiene «— Sin proveedor», y elegirlo tiene que
+# quitar el proveedor. Descartar ese null dejaba el dato anterior en la base con
+# la pantalla diciendo que ya no estaba — sin error y sin pista, hasta que
+# alguien recarga y el proveedor viejo reaparece.
+#
+# Y no se resuelve con un centinela: `committed_amount = 0` es un valor
+# legítimo —se firmó en cero— y confundirlo con «no se ha firmado» es
+# exactamente la distinción que esta capa cuida en todas partes.
+NULLABLE_LINE_FIELDS = frozenset({
+    "supplierId", "committedAmount", "committedOn", "actualQuantity",
+})
+
+# En los demás un vacío no es un vaciado: es un renglón roto. La columna es NOT
+# NULL, así que sin este rechazo el 422 legible llegaría como un 500 mudo.
+_NOT_NULLABLE_MESSAGES = {
+    "chapterName": "Toda partida vive en un capítulo: el capítulo no se puede vaciar.",
+    "name": "La partida necesita un nombre: no se puede vaciar.",
+    "unit": "La partida necesita una unidad: no se puede vaciar.",
+    "quantity": "La cantidad no se vacía; se pone en 0.",
+    "unitPrice": "El precio unitario no se vacía; se pone en 0.",
+    "notes": "Las notas se dejan en blanco, no se vacían.",
+}
+
 
 def _get_line(conn, budget_id: int, line_id: int) -> dict:
     row = conn.execute(
@@ -373,7 +400,11 @@ def create_line(conn, property_id: int, data: dict) -> tuple[int, Decimal]:
 
 def update_line(conn, property_id: int, line_id: int, data: dict) -> Decimal:
     """Cambia un renglón detallado y vuelve a cuadrar el residuo contra el total
-    que el presupuesto tenía antes."""
+    que el presupuesto tenía antes.
+
+    `data` trae SOLO lo que el cliente mandó, y un `None` ahí significa «quítalo»
+    —no «no lo toques»—: los cuatro campos de NULLABLE_LINE_FIELDS se vacían así
+    y no hay otra puerta para hacerlo."""
     budget_id = _require_budget(conn, property_id)
     row = conn.execute(
         "SELECT is_residual FROM budget_lines WHERE id = %s AND budget_id = %s",
@@ -386,6 +417,9 @@ def update_line(conn, property_id: int, line_id: int, data: dict) -> Decimal:
     # restando bien, pero dejaría de leerse como lo que es.
     if row["is_residual"] and (set(data) - {"notes"}):
         raise BudgetError(_RESIDUAL_IS_NOT_TYPED)
+    for field, message in _NOT_NULLABLE_MESSAGES.items():
+        if field in data and data[field] is None:
+            raise BudgetError(message)
 
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
     total_antes, _ = _totals(conn, budget_id)
