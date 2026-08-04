@@ -1,4 +1,4 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate } from './types'
 import type { FloorPlanModel } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -1018,4 +1018,200 @@ export function deleteBudgetPayment(
   propertyId: number, lineId: number, paymentId: number,
 ): Promise<BudgetWrite> {
   return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments/${paymentId}`), 'DELETE')
+}
+
+/**
+ * Arrancar desde otra obra o desde una plantilla. **Es la misma llamada**, y no
+ * por ahorro: una plantilla es un presupuesto sin propiedad, así que distinguir
+ * el origen aquí sería inventar una diferencia que el modelo no tiene.
+ *
+ * Los renglones se SUMAN a lo que ya hubiera y el residuo baja lo que ellos
+ * suben: el total no se mueve, igual que al detallar a mano.
+ */
+export function applyBudgetSource(propertyId: number, budgetId: number): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, '/apply'), 'POST', { budgetId })
+}
+
+/** Baja un capítulo entero del catálogo como esqueleto: cantidad 0 y precio 0. */
+export function applyCatalogChapter(propertyId: number, chapterId: number): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, '/apply-chapter'), 'POST', { chapterId })
+}
+
+// ── El catálogo de obra ───────────────────────────────────────────────────────
+//
+// NO va anidado bajo una propiedad, al revés que el presupuesto, y la diferencia
+// dice lo que son: un presupuesto no existe sin su obra, mientras que el
+// catálogo es lo que todas las obras COMPARTEN — la memoria de qué partidas
+// existen y cómo se llaman.
+//
+// Que compartan memoria y no números es la línea que este módulo cuida: ninguna
+// de estas funciones devuelve `property`, porque nada de lo que se hace en el
+// catálogo puede mover un peso de ninguna obra. Las dos que sí lo hacen
+// —aplicar una plantilla, bajar un capítulo— viven arriba, del lado de la
+// propiedad, y devuelven `BudgetWrite` como toda escritura de presupuesto.
+
+const catalogUrl = (path = '') => `${BASE}/api/budget/catalog${path}`
+
+async function catalogRead<T>(url: string): Promise<T> {
+  const res = await authFetch(url)
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+async function catalogWrite<T>(url: string, method: string, body?: unknown): Promise<T> {
+  const res = await authFetch(url, {
+    method,
+    ...(body !== undefined
+      ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+      : {}),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+/**
+ * El catálogo entero, capítulos con sus partidas.
+ *
+ * `includeInactive` es para la pantalla que lo CURA, que necesita ver lo apagado
+ * para poder reactivarlo. Todo lo demás —el aviso de duplicado, bajar un
+ * capítulo a una obra— lee solo lo vivo.
+ */
+export function fetchBudgetCatalog(
+  { includeInactive = false }: { includeInactive?: boolean } = {},
+): Promise<BudgetCatalogChapter[]> {
+  return catalogRead(catalogUrl(includeInactive ? '?includeInactive=true' : ''))
+}
+
+export function createCatalogChapter(name: string): Promise<BudgetCatalogChapter> {
+  return catalogWrite(catalogUrl('/chapters'), 'POST', { name })
+}
+
+export function updateCatalogChapter(
+  id: number, patch: { name?: string; sortOrder?: number; isActive?: boolean },
+): Promise<BudgetCatalogChapter> {
+  return catalogWrite(catalogUrl(`/chapters/${id}`), 'PATCH', patch)
+}
+
+/**
+ * **DA DE BAJA, NO BORRA**, y el verbo miente un poco a propósito para no
+ * inventar una ruta paralela: el servidor pone `is_active = FALSE` y contesta la
+ * fila apagada. Se llama por lo que hace y no por su verbo, porque quien lee
+ * esta llamada necesita saber lo segundo. Revivirla es un PATCH con
+ * `isActive: true` — por eso no hay un `reactivate` aparte.
+ */
+export function deactivateCatalogChapter(id: number): Promise<BudgetCatalogChapter> {
+  return catalogWrite(catalogUrl(`/chapters/${id}`), 'DELETE')
+}
+
+export function createCatalogItem(
+  data: { chapterId: number; name: string; unit: string },
+): Promise<BudgetCatalogItem> {
+  return catalogWrite(catalogUrl('/items'), 'POST', data)
+}
+
+/**
+ * Corregir el catálogo NO toca ningún presupuesto ya capturado, ni el texto ni
+ * el importe: instanciar copia, y nada vuelve a leer esta fila. Es el invariante
+ * central de la fase y no cuesta una línea de código sostenerlo.
+ */
+export function updateCatalogItem(
+  id: number,
+  patch: { name?: string; unit?: string; chapterId?: number; sortOrder?: number; isActive?: boolean },
+): Promise<BudgetCatalogItem> {
+  return catalogWrite(catalogUrl(`/items/${id}`), 'PATCH', patch)
+}
+
+/** Da de baja la partida. Los renglones que ya la citan conservan su procedencia. */
+export function deactivateCatalogItem(id: number): Promise<BudgetCatalogItem> {
+  return catalogWrite(catalogUrl(`/items/${id}`), 'DELETE')
+}
+
+/**
+ * «¿Es la misma que ésta?», contestado mientras alguien escribe.
+ *
+ * Es la única pieza que evita que el catálogo se pudra, y aquí pesa más que en
+ * cualquier otro proyecto: no hay presupuestos viejos que importar, así que la
+ * única fuente del catálogo es lo que se teclee de aquí en adelante. Un nombre
+ * partido en tres variantes nunca junta tres observaciones de nada.
+ *
+ * `lineId` excluye el renglón que se está editando para que no se sugiera a sí
+ * mismo. Al escribir uno nuevo no hace falta: todavía no existe.
+ *
+ * SUGIERE, no bloquea. La similitud ordena candidatos; quien decide que dos
+ * nombres son la misma partida es una persona.
+ */
+export function suggestBudgetItems(
+  name: string, { limit = 5, lineId }: { limit?: number; lineId?: number } = {},
+): Promise<BudgetItemSuggestion[]> {
+  const params = new URLSearchParams({ name, limit: String(limit) })
+  if (lineId != null) params.set('lineId', String(lineId))
+  return catalogRead(catalogUrl(`/suggest?${params}`))
+}
+
+/**
+ * Los renglones sueltos agrupados por nombre normalizado. Lo que el catálogo
+ * todavía no sabe y ya se escribió más de una vez, ordenado por en cuántas OBRAS
+ * aparece: la máquina ordena, el humano decide.
+ */
+export function fetchPromotionQueue(limit = 20): Promise<BudgetPromotionGroup[]> {
+  return catalogRead(catalogUrl(`/promotion-queue?limit=${limit}`))
+}
+
+/**
+ * Sube un renglón suelto al catálogo y religa hacia atrás su grupo entero: la
+ * partida nace **ya sabiendo lo que cuesta**, con toda la historia que ya existía
+ * apuntándole en vez de empezar a contar desde cero.
+ *
+ * Se pide por el RENGLÓN y no por el nombre porque el renglón ya trae su texto,
+ * su unidad y su capítulo: repetirlos en la petición sería darle al cliente la
+ * oportunidad de mandar unos distintos de los que se van a religar.
+ *
+ * `itemId` fusiona con una partida que ya existe —la operación que de verdad
+ * hacía falta, porque el problema del catálogo nunca fue agregar—; `chapterId`
+ * la crea en otro capítulo. Sin ninguno de los dos nace donde el renglón ya
+ * decía. Explícito y con un clic, nunca automático: un catálogo que crece solo
+ * se llena de duplicados casi iguales.
+ */
+export function promoteBudgetLine(
+  lineId: number, target: { chapterId?: number; itemId?: number } = {},
+): Promise<BudgetPromotion> {
+  return catalogWrite(catalogUrl('/promote'), 'POST', { lineId, ...target })
+}
+
+// ── Plantillas ────────────────────────────────────────────────────────────────
+//
+// Una plantilla es un presupuesto sin propiedad, así que su `id` es un id de
+// presupuesto y se pasa tal cual a `applyBudgetSource`, igual que el de la obra
+// de al lado. Ésa es toda la maquinaria detrás de «arrancar desde plantilla» y
+// «arrancar desde otra obra».
+
+const templatesUrl = (path = '') => `${BASE}/api/budget/templates${path}`
+
+export function fetchBudgetTemplates(): Promise<BudgetTemplate[]> {
+  return catalogRead(templatesUrl())
+}
+
+/**
+ * Nace vacía, o copiando cualquier presupuesto: el de una obra —«guarda ésta
+ * como plantilla»— o el de otra plantilla. Un solo camino para las tres.
+ */
+export function createBudgetTemplate(
+  data: { name: string; fromBudgetId?: number },
+): Promise<BudgetTemplate> {
+  return catalogWrite(templatesUrl(), 'POST', data)
+}
+
+export function updateBudgetTemplate(
+  id: number, patch: { name?: string; notes?: string },
+): Promise<BudgetTemplate> {
+  return catalogWrite(templatesUrl(`/${id}`), 'PATCH', patch)
+}
+
+/**
+ * Se borra de verdad, y no contradice la baja lógica del catálogo: después de
+ * copiar, nada cita a una plantilla — los renglones que salieron de ella se
+ * llevaron el texto. No hay procedencia que romper porque nunca la hubo.
+ */
+export function deleteBudgetTemplate(id: number): Promise<BudgetTemplate> {
+  return catalogWrite(templatesUrl(`/${id}`), 'DELETE')
 }

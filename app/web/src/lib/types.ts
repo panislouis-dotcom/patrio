@@ -718,6 +718,14 @@ export interface BudgetLinePatch {
   committedOn?: string | null
   actualQuantity?: number | null
   notes?: string
+  /**
+   * La procedencia, y se escribe SOLA. Adoptar la partida del catálogo desde el
+   * aviso de duplicado manda `itemId` junto con el nombre y la unidad copiados;
+   * decir que un renglón NO era esa partida manda `null` y no toca ni el texto
+   * ni un peso. Nunca se manda un importe con ella: el catálogo no guarda
+   * precio, y ligar un renglón no puede reescribir lo que ya se capturó.
+   */
+  itemId?: number | null
 }
 
 /**
@@ -731,6 +739,8 @@ export interface BudgetLineCreate {
   unit?: string
   quantity?: number
   unitPrice?: number
+  /** Presente solo cuando el renglón nace de una partida del catálogo. */
+  itemId?: number
 }
 
 export interface BudgetPaymentCreate {
@@ -765,6 +775,148 @@ export interface BudgetWrite {
    * cifra que permite decir cuál de las dos acaba de pasar.
    */
   budgetIncrease: number
+}
+
+// ── El catálogo de obra ───────────────────────────────────────────────────────
+//
+// El catálogo es lo CURADO: lo que alguien ya decidió que es una partida. No
+// guarda precio y eso es deliberado (migración 028) — sugerir desde un precio
+// guardado es un bucle de autoconfirmación que nunca toca la realidad. Lo que
+// aporta es el NOMBRE, que es lo que permite que dos obras hablen de la misma
+// cosa y que la historia de precios llegue a tener más de una observación.
+//
+// Espejan lo que sirve `api/routes/budget_catalog.py`.
+
+/**
+ * Una partida del catálogo. **No tiene precio, y no es un olvido.**
+ *
+ * `isActive` es la baja lógica, y es la única baja que existe: apagar una
+ * partida la saca de la obra NUEVA y deja intacta la procedencia de los
+ * renglones que ya la citan. Borrarla de verdad sería la única operación capaz
+ * de cortar la trazabilidad de un presupuesto ya cerrado, así que el servidor no
+ * la ofrece: su `DELETE` es esta baja lógica y contesta la fila apagada.
+ */
+export interface BudgetCatalogItem {
+  id: number
+  chapterId: number
+  name: string
+  unit: string
+  sortOrder: number
+  isActive: boolean
+  /**
+   * Cuántos renglones la citan. Es exactamente la procedencia que un borrado
+   * físico destruiría, y por eso viaja con la partida: la pantalla que la cura
+   * puede decir qué se perdería en vez de pedir que se confíe.
+   */
+  usedInLines: number
+}
+
+/** Un capítulo del catálogo, con sus partidas. Se apaga; no se borra. */
+export interface BudgetCatalogChapter {
+  id: number
+  name: string
+  sortOrder: number
+  isActive: boolean
+  items: BudgetCatalogItem[]
+}
+
+/**
+ * Un candidato a «es la misma partida que estás escribiendo».
+ *
+ * Viene de DOS memorias y las dos importan desde el primer día. El CATÁLOGO es
+ * lo curado; los RENGLONES SUELTOS son todo lo demás — y mientras el catálogo
+ * esté vacío son la única memoria que existe. Sugerir solo desde el catálogo
+ * dejaría la deduplicación muda justo en los meses en que el catálogo se está
+ * formando, que es exactamente cuando el daño se hace y no se ve.
+ *
+ * Adoptar un nombre suelto no liga nada (`itemId` sigue null): junta el grupo,
+ * que es lo que hace que la cola de promoción llegue a contar cuatro y no cuatro
+ * veces uno.
+ */
+export interface BudgetItemSuggestion {
+  source: 'catalog' | 'lines'
+  /** Null cuando todavía no está en el catálogo: es un renglón suelto ya escrito. */
+  itemId: number | null
+  chapterId: number | null
+  chapterName: string
+  name: string
+  unit: string
+  /** 0–1, de `word_similarity`. ORDENA candidatos; no decide por nadie. */
+  similarity: number
+  /** En cuántos renglones aparece ya este nombre. */
+  usedInLines: number
+}
+
+/**
+ * Un grupo de la cola de promoción: renglones sueltos que se escribieron igual,
+ * esperando a que alguien diga que son una partida.
+ *
+ * Las dos medianas se llaman por lo que son porque son cosas distintas, y
+ * confundirlas envenena el catálogo en silencio. `medianPaidUnitPrice` sale de
+ * renglones CERRADOS y es la única que es historia; `medianBudgetedUnitPrice` es
+ * lo que alguien planeó, sirve para decidir si promover y su valor está en la
+ * DIFERENCIA contra el pagado, nunca en hacer de precio. Un nombre común para
+ * las dos las volvería intercambiables, y la de arriba es la que se autoconfirma.
+ */
+export interface BudgetPromotionGroup {
+  /**
+   * El renglón que representa al grupo. Promover se pide por él y no por el
+   * nombre: el servidor religa a partir de ahí a todos sus equivalentes.
+   */
+  lineId: number
+  /** `lower(btrim(name))`. Es la identidad del grupo, y su clave en la lista. */
+  normalized: string
+  /** El nombre tal como se escribió, para enseñarlo. */
+  name: string
+  unit: string
+  chapterName: string
+  /** Los capítulos donde vive, para proponer dónde ficharla. */
+  chapters: string[]
+  /** En cuántos RENGLONES aparece. */
+  usedInLines: number
+  /**
+   * En cuántas OBRAS distintas. Es lo que ordena la cola, y con razón: cinco
+   * renglones en la misma obra son cinco veces un mismo criterio, mientras que
+   * tres obras son tres observaciones independientes — que es lo que hace que el
+   * catálogo llegue a aprender un precio.
+   */
+  properties: number
+  medianBudgetedUnitPrice: number | null
+  /** Null mientras ningún renglón del grupo se haya cerrado con pago. */
+  medianPaidUnitPrice: number | null
+  /** Cuántos cierres pagados sostienen la mediana de arriba. */
+  paidObservations: number
+}
+
+/** Lo que contesta promover. */
+export interface BudgetPromotion {
+  item: BudgetCatalogItem
+  /** False cuando se FUSIONÓ con una partida que ya existía en vez de crearla. */
+  created: boolean
+  /**
+   * Cuántos renglones quedaron religados. Religar escribe `item_id` y NADA MÁS:
+   * ni el nombre, ni la unidad, ni el precio, ni el importe de un presupuesto ya
+   * capturado se mueven. Promover reconoce una partida; no reescribe historia.
+   */
+  relinked: number
+}
+
+/**
+ * Una plantilla de obra. **Es un presupuesto sin propiedad**, así que su `id` es
+ * un id de PRESUPUESTO y se pasa tal cual a «arrancar desde»: el mismo campo por
+ * el que viaja el presupuesto de otra obra. Ésa es toda la maquinaria que hay
+ * detrás de las tres formas de copiar.
+ */
+export interface BudgetTemplate {
+  id: number
+  name: string
+  notes: string
+  /** Cuántos renglones trae. */
+  lines: number
+  /** La suma presupuestada de esos renglones. */
+  total: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Zone {
