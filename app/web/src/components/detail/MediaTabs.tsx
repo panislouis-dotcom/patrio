@@ -2,37 +2,46 @@ import { useState } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../../lib/theme'
 
-const TABS = ['mapa', 'fotos', 'plano'] as const
-type MediaTab = typeof TABS[number]
+export interface MediaTab {
+  /** Lo que se lee en la pestaña. Se imprime en mayúsculas y ordena la barra. */
+  label: string
+  panel: React.ReactNode
+}
 
 interface Props {
-  mapa: React.ReactNode
-  fotos: React.ReactNode
-  plano: React.ReactNode
+  tabs: MediaTab[]
   style?: React.CSSProperties
 }
 
-/** Center column of the detail pages: MAPA / FOTOS / PLANO tab bar plus the active panel. */
-export function MediaTabs({ mapa, fotos, plano, style }: Props) {
-  const [tab, setTab] = useState<MediaTab>('mapa')
-  const panels: Record<MediaTab, React.ReactNode> = { mapa, fotos, plano }
+/**
+ * La columna central de las fichas: la barra de pestañas y el panel activo.
+ *
+ * Recibe una LISTA y no un prop por pestaña. Con `mapa` / `fotos` / `plano` como
+ * nombres fijos, el orden en pantalla no lo decidía quien arma la ficha sino una
+ * constante escondida aquí adentro, y agregar una cuarta pestaña obligaba a
+ * tocar este archivo aunque no cambie nada de lo que hace. Sigue sin saber qué
+ * hay dentro de cada panel: es una barra y un hueco.
+ */
+export function MediaTabs({ tabs, style }: Props) {
+  const [active, setActive] = useState(0)
+  const current = tabs[active] ?? tabs[0]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', ...style }}>
       <div style={{ flexShrink: 0, display: 'flex', borderBottom: `1px solid ${colors.border}`, padding: '0 20px', background: colors.dark }}>
-        {TABS.map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{
+        {tabs.map((t, i) => (
+          <button key={t.label} onClick={() => setActive(i)} style={{
             background: 'transparent', border: 'none',
-            borderBottom: tab === t ? `2px solid ${colors.primary}` : '2px solid transparent',
-            color: tab === t ? colors.neutral : colors.secondary,
+            borderBottom: i === active ? `2px solid ${colors.primary}` : '2px solid transparent',
+            color: i === active ? colors.neutral : colors.secondary,
             cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
             letterSpacing: '0.12em', padding: '10px 16px 8px', marginBottom: '-1px',
           }}>
-            {t.toUpperCase()}
+            {t.label.toUpperCase()}
           </button>
         ))}
       </div>
-      {panels[tab]}
+      {current?.panel}
     </div>
   )
 }
