@@ -131,6 +131,10 @@ def create_line(property_id: int, body: LineCreate, _: dict = Depends(get_curren
     """Detallar: la partida sube lo mismo que el residual baja, así que el costo
     de obra —y con él la inversión total— no se mueve un peso."""
     with get_db() as conn:
+        # `exclude_none` aquí y `exclude_unset` en el PATCH, y la diferencia es
+        # deliberada: al CREAR, «no vino» y «vino en null» dan la misma fila —la
+        # columna nace NULL de todos modos— así que no hay nada que distinguir.
+        # Al ACTUALIZAR sí lo hay, y ahí el null es la única forma de vaciar.
         line_id, increase = budget_db.create_line(
             conn, property_id, body.model_dump(exclude_none=True))
         budget = budget_db.get_budget(conn, property_id)
