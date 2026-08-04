@@ -134,3 +134,34 @@ se disfraza de valor válido — antes fue `fmt.ts` imprimiendo `—` para un 0 
 **Cómo aplicarlo**: cada campo opcional es un lugar donde un typo pasa por dato
 bueno. Cuando algo huela raro, la pregunta útil no es *"¿qué está fallando?"* sino
 **"¿qué nunca se ha ejecutado, y qué se está aceptando en silencio?"**.
+
+---
+
+## Una prueba escrita de memoria se pone de acuerdo consigo misma
+
+**2026-08-03 · `lineCount` leído como `lines` en el catálogo de obra**
+
+El cliente leía `t.lines` de la lista de plantillas. El servidor manda `lineCount`,
+y lo manda con ese nombre a propósito: en el DETALLE de una plantilla `lines` es el
+ARREGLO de renglones, y un campo que es número en la lista y lista en el detalle es
+una trampa que ya se había quitado del lado del servidor. El cliente la volvió a
+tender. La pantalla habría pintado «undefined RENGLONES».
+
+**Había una prueba sobre esa pantalla, y pasaba.** Su fixture repetía el mismo
+nombre equivocado, así que afirmaba que el código estaba de acuerdo consigo mismo.
+Es la misma familia que `landPrice`: no falla nada, solo aparece un dato inventado.
+
+Lo que sí lo encontró fue **corregir el TIPO contra el servidor**. Al arreglarlo,
+salió de golpe en los cinco lugares donde vivía — incluido el de producción, que la
+prueba tapaba.
+
+**Cómo aplicarlo**: un fixture escrito a mano es una segunda copia del contrato, y
+las dos copias se equivocan juntas. Antes de escribir la prueba, **lee el nombre en
+el código que sirve el dato**, no en el mensaje que lo describe ni en la memoria. Y
+cuando algo del contrato se corrija, corrige el TIPO primero: el compilador enumera
+los usos, que es lo que una prueba por definición no hace.
+
+**Corolario, cobrado tres veces el mismo día**: `vitest` verde no dice que el árbol
+compile. `noUnusedLocals` está encendido, así que la suite puede pasar mientras
+`npm run build` falla. **`npx tsc --noEmit` va en la misma vuelta que las pruebas,
+antes de cada commit** — si no, la señal verde afirma más de lo que verificó.
