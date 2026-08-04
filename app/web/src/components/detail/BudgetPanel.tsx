@@ -3,12 +3,12 @@ import type React from 'react'
 import {
   fetchBudget, createBudgetLine, updateBudgetLine, deleteBudgetLine, setBudgetTotal,
   renameBudgetChapter, deleteBudgetChapter, addBudgetPayment, deleteBudgetPayment, getProveedores,
-  fetchBudgetCatalog, fetchBudgetTemplates, applyBudgetSource, applyCatalogChapter,
+  fetchBudgetCatalog, fetchBudgetSources, applyBudgetSource, applyCatalogChapter,
   createBudgetTemplate,
 } from '../../lib/api'
 import type {
   Budget, BudgetCatalogChapter, BudgetItemSuggestion, BudgetLine, BudgetLinePatch,
-  BudgetTemplate, BudgetWrite, Property, Proveedor,
+  BudgetSource, BudgetWrite, Property, Proveedor,
 } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
 import { fmtMXN } from '../../lib/fmt'
@@ -140,6 +140,17 @@ function preview(line: BudgetLine, patch: BudgetLinePatch): BudgetLine {
   return { ...next, budgetedAmount: Math.round(next.quantity * next.unitPrice) }
 }
 
+/**
+ * Plantillas y obras vienen en la MISMA lista porque son la misma cosa, y el
+ * servidor ya las manda ordenadas —plantillas primero, cada bloque alfabético—.
+ * Aquí solo se parten en dos para enseñarlas, que es donde la diferencia sí
+ * importa: «Remodelación casa antigua» y «Modesto 415» no se eligen por la
+ * misma razón, aunque se copien con la misma línea de código.
+ */
+function sourceGroup(sources: BudgetSource[], kind: 'template' | 'property'): BudgetSource[] {
+  return sources.filter(f => (f.propertyId == null) === (kind === 'template'))
+}
+
 /** Un nombre de capítulo que no choque con los que ya existen. */
 function freshChapterName(taken: string[]): string {
   const base = 'Capítulo nuevo'
@@ -184,7 +195,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
    */
   const [sourcing, setSourcing] = useState(false)
   const [catalog, setCatalog] = useState<BudgetCatalogChapter[]>([])
-  const [templates, setTemplates] = useState<BudgetTemplate[]>([])
+  const [sources, setSources] = useState<BudgetSource[]>([])
   const [pickedChapter, setPickedChapter] = useState<number | ''>('')
   const [pickedSource, setPickedSource] = useState<number | ''>('')
   const [templateName, setTemplateName] = useState('')
@@ -366,8 +377,8 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     const opening = !sourcing
     setSourcing(opening)
     if (!opening) return
-    Promise.all([fetchBudgetCatalog(), fetchBudgetTemplates()])
-      .then(([c, t]) => { setCatalog(c); setTemplates(t) })
+    Promise.all([fetchBudgetCatalog(), fetchBudgetSources(propertyId)])
+      .then(([c, f]) => { setCatalog(c); setSources(f) })
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer el catálogo'))
   }
 
@@ -386,7 +397,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
       // vuelve a leer en vez de meterle esta respuesta dentro: son dos formas
       // distintas de una plantilla, y la de la lista es la que el selector pinta.
       const created = await createBudgetTemplate({ name, fromBudgetId: budgetId })
-      setTemplates(await fetchBudgetTemplates())
+      setSources(await fetchBudgetSources(propertyId))
       setTemplateName('')
       setNotice(`Se guardó «${created.name}» como plantilla, con ${created.lines.length} renglones.`)
     } catch (e) {
@@ -549,12 +560,10 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-            {/* «Arrancar desde otra obra» es la MISMA llamada con el id del
-                presupuesto de al lado —el servidor no las distingue, y con razón:
-                una plantilla es un presupuesto sin propiedad. Hoy solo se pueden
-                elegir plantillas porque no hay endpoint que liste los
-                presupuestos de las demás obras; en cuanto lo haya, es un
-                `optgroup` más en este mismo selector. */}
+            {/* Plantilla y obra son la MISMA llamada con el id del presupuesto
+                que sea: el servidor no las distingue porque una plantilla es un
+                presupuesto sin propiedad. Aquí se separan solo para elegirlas,
+                que es donde la diferencia sí importa. */}
             <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>
               ARRANCAR DESDE
             </span>
@@ -564,12 +573,25 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               onChange={e => setPickedSource(e.target.value ? Number(e.target.value) : '')}
               style={{ ...cellInput, width: '220px' }}
             >
-              <option value="">— Elegir plantilla</option>
-              {templates.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name} · {t.lineCount} renglones · {fmtMXN(t.total)}
-                </option>
-              ))}
+              <option value="">— Elegir plantilla u obra</option>
+              {sourceGroup(sources, 'template').length > 0 && (
+                <optgroup label="Plantillas">
+                  {sourceGroup(sources, 'template').map(f => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} · {f.lineCount} renglones · {fmtMXN(f.total)}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {sourceGroup(sources, 'property').length > 0 && (
+                <optgroup label="Otras obras">
+                  {sourceGroup(sources, 'property').map(f => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} · {f.lineCount} renglones · {fmtMXN(f.total)}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             <button
               disabled={pickedSource === ''}
@@ -579,7 +601,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                 // copiar dos veces duplica los renglones, porque dos renglones
                 // con el mismo nombre pueden ser dos renglones legítimos y el
                 // servidor no puede saber cuál es el caso. Lo sabe quien copia.
-                const cual = templates.find(t => t.id === pickedSource)
+                const cual = sources.find(t => t.id === pickedSource)
                 if (!window.confirm(
                   `¿Copiar los ${cual?.lineCount ?? ''} renglones de «${cual?.name ?? ''}» a esta obra? `
                   + 'Se suman a lo que ya hay; copiar dos veces los duplica.',
@@ -591,7 +613,14 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
             >
               COPIAR RENGLONES
             </button>
-            <span style={micro}>Se suman a lo que ya hay; el residuo baja y el total no se mueve.</span>
+            {/* Una obra sin nada detallado no aparece en la lista, y eso no es
+                un defecto: no tiene nada que dar. Se dice, porque el vacío de un
+                selector se lee como «se rompió». */}
+            <span style={micro}>
+              {sources.length > 0
+                ? 'Se suman a lo que ya hay; el residuo baja y el total no se mueve.'
+                : 'Todavía no hay de dónde copiar. Detalla partidas en una obra, o guárdala como plantilla, y aparecerá aquí.'}
+            </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>

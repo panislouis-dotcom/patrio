@@ -35,6 +35,19 @@ const SIN_PRECIO =
   'El catálogo guarda el NOMBRE y la UNIDAD, nunca el precio: sugerir desde un precio '
   + 'guardado es repetir para siempre una suposición. El precio se aprende de lo pagado.'
 
+/**
+ * Qué alcanza lo que se edita aquí. **Dicho en afirmativo**, porque «no cambia
+ * los presupuestos viejos» describe lo que el sistema NO hace y eso se lee como
+ * una limitación o como que el rename falló.
+ *
+ * La segunda oración es la que hace el trabajo: da el MECANISMO, y con el
+ * mecanismo la regla deja de parecer arbitraria.
+ */
+const ALCANCE =
+  'Lo que edites aquí aplica a lo que se agregue de ahora en adelante. Los presupuestos '
+  + 'ya capturados no se mueven: cada renglón se llevó su nombre y su precio el día que '
+  + 'se agregó.'
+
 export function CatalogoObraPage() {
   const [chapters, setChapters] = useState<BudgetCatalogChapter[]>([])
   const [loading, setLoading] = useState(true)
@@ -134,9 +147,9 @@ export function CatalogoObraPage() {
     <button
       onClick={() => {
         if (isActive && !window.confirm(
-          `¿Dar de baja «${label}»? Deja de ofrecerse en obra nueva`
-          + (usedInLines ? `, pero los ${usedInLines} renglones que ya la usan la conservan` : '')
-          + '. Nada de lo capturado se toca.',
+          `¿Dar de baja «${label}»?`
+          + (usedInLines ? ` Los ${usedInLines} renglones que ya la usan la conservan;` : '')
+          + ' deja de ofrecerse para obra nueva.',
         )) return
         void run(isActive ? apagar : revivir)
       }}
@@ -160,6 +173,9 @@ export function CatalogoObraPage() {
           />
           VER LAS DADAS DE BAJA
         </label>
+      </div>
+      <div style={{ ...micro, whiteSpace: 'normal', maxWidth: '620px', marginBottom: '6px', lineHeight: 1.5 }}>
+        {ALCANCE}
       </div>
       <div style={{ ...micro, whiteSpace: 'normal', maxWidth: '620px', marginBottom: '14px', lineHeight: 1.5 }}>
         {SIN_PRECIO}

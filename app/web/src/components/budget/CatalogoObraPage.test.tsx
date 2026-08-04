@@ -79,9 +79,11 @@ describe('CatalogoObraPage', () => {
     const fila = screen.getByLabelText('Partida Piso cerámico 60×60').closest('div')!
     fireEvent.click(within(fila).getByText('DESACTIVAR'))
 
+    // En AFIRMATIVO y con lo que se conserva PRIMERO: «no cambia nada» describe
+    // lo que el sistema no hace, y eso se lee como que algo falló.
     const aviso = vi.mocked(window.confirm).mock.calls[0][0]
-    expect(aviso).toMatch(/los 4 renglones que ya la usan la conservan/i)
-    expect(aviso).toMatch(/Nada de lo capturado se toca/i)
+    expect(aviso).toMatch(/Los 4 renglones que ya la usan la conservan/i)
+    expect(aviso).toMatch(/deja de ofrecerse para obra nueva/i)
   })
 
   it('lo dado de baja se puede ver y reactivar, no queda enterrado', async () => {

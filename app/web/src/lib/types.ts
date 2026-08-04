@@ -815,21 +815,13 @@ export interface BudgetCatalogItem {
    * físico destruiría, y por eso viaja con la partida: la pantalla que la cura
    * puede decir qué se perdería en vez de pedir que se confíe.
    *
-   * **Solo lo cuenta la LECTURA del catálogo.** Por eso una escritura devuelve
-   * `BudgetCatalogItemRow` y no esto — ver ahí por qué son dos tipos.
+   * Viaja en TODA respuesta de partida, lectura y escritura, así que **es parte
+   * de lo que una partida ES** y no un extra de la lista. Por eso hay un solo
+   * tipo para ella: una entidad con dos formas obliga a modelar las dos y a
+   * releer para reconciliarlas.
    */
   usedInLines: number
 }
-
-/**
- * La partida como la devuelve una ESCRITURA: la fila, sin el contador.
- *
- * Son dos tipos porque el servidor manda dos cosas, y un solo tipo con
- * `usedInLines` obligatorio sería el cliente afirmando un campo que no llega —
- * la clase de mentira que no falla al compilar y aparece como `undefined` en
- * pantalla. Quien necesite el contador después de escribir, relee el catálogo.
- */
-export type BudgetCatalogItemRow = Omit<BudgetCatalogItem, 'usedInLines'>
 
 /** Un capítulo del catálogo, con sus partidas. Se apaga; no se borra. */
 export interface BudgetCatalogChapter {
@@ -840,7 +832,13 @@ export interface BudgetCatalogChapter {
   items: BudgetCatalogItem[]
 }
 
-/** El capítulo como lo devuelve una escritura: sin `items`, por lo mismo. */
+/**
+ * El capítulo como lo devuelve una ESCRITURA: sin `items`.
+ *
+ * La asimetría con la partida es deliberada y del servidor: lo que le falta
+ * aquí es una COLECCIÓN —otro payload, que ya se modela aparte— y no un escalar
+ * que haga falta para pintar la fila del capítulo.
+ */
 export type BudgetCatalogChapterRow = Omit<BudgetCatalogChapter, 'items'>
 
 /**
@@ -913,7 +911,7 @@ export interface BudgetPromotionGroup {
 
 /** Lo que contesta promover. */
 export interface BudgetPromotion {
-  item: BudgetCatalogItemRow
+  item: BudgetCatalogItem
   /** False cuando se FUSIONÓ con una partida que ya existía en vez de crearla. */
   created: boolean
   /**
@@ -946,6 +944,32 @@ export interface BudgetTemplate {
   total: number
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * Un presupuesto del que se puede COPIAR: una plantilla o la obra de al lado.
+ *
+ * Una sola forma para las dos porque son la misma cosa —una plantilla es un
+ * presupuesto sin propiedad— y `id` es un id de PRESUPUESTO que va directo a
+ * «arrancar desde». `propertyId` solo separa las dos secciones del selector.
+ *
+ * Contesta una pregunta distinta de `BudgetTemplate`: «¿de dónde puedo copiar?»
+ * no es «¿qué plantillas administro?», y por eso tiene ruta y tipo propios en
+ * vez de una bandera.
+ */
+export interface BudgetSource {
+  id: number
+  /** El nombre de la plantilla, o el de la propiedad si es una obra. */
+  name: string
+  /** Null = es una plantilla. */
+  propertyId: number | null
+  /**
+   * Cuántos renglones se van a COPIAR, que no es cuántos tiene: el residuo
+   * nunca viaja. El número es exactamente lo que va a aparecer después, así que
+   * se puede prometer tal cual.
+   */
+  lineCount: number
+  total: number
 }
 
 /**

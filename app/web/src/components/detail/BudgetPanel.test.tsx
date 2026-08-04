@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import type {
-  Budget, BudgetCatalogChapter, BudgetItemSuggestion, BudgetLine, BudgetTemplate, Property,
+  Budget, BudgetCatalogChapter, BudgetItemSuggestion, BudgetLine, BudgetSource, Property,
   Proveedor,
 } from '../../lib/types'
 import { BudgetPanel } from './BudgetPanel'
@@ -25,7 +25,7 @@ vi.mock('../../lib/api', async importOriginal => {
     // quiere —sugiere y no bloquea— y las pruebas la ejercen abajo.
     suggestBudgetItems: vi.fn(async () => []),
     fetchBudgetCatalog: vi.fn(async () => CATALOGO),
-    fetchBudgetTemplates: vi.fn(async () => PLANTILLAS),
+    fetchBudgetSources: vi.fn(async () => FUENTES),
     applyCatalogChapter: vi.fn(),
     applyBudgetSource: vi.fn(),
     createBudgetTemplate: vi.fn(),
@@ -52,10 +52,14 @@ const CATALOGO: BudgetCatalogChapter[] = [
   },
 ]
 
-/** Una plantilla es un presupuesto sin propiedad: su id es un id de presupuesto. */
-const PLANTILLAS: BudgetTemplate[] = [
-  { id: 500, name: 'Remodelación casa antigua', notes: '', lineCount: 18, total: 1_800_000, createdAt: '', updatedAt: '' },
-  { id: 501, name: 'Obra nueva', notes: '', lineCount: 22, total: 2_300_000, createdAt: '', updatedAt: '' },
+/**
+ * De dónde se puede copiar. Plantillas y obras llegan en UNA lista porque son la
+ * misma cosa —una plantilla es un presupuesto sin propiedad— ya ordenada por el
+ * servidor, plantillas primero.
+ */
+const FUENTES: BudgetSource[] = [
+  { id: 500, name: 'Remodelación casa antigua', propertyId: null, lineCount: 18, total: 1_800_000 },
+  { id: 501, name: 'Modesto 415', propertyId: 3, lineCount: 22, total: 2_300_000 },
 ]
 
 const PROVEEDORES: Proveedor[] = [
@@ -118,7 +122,16 @@ const DETALLADO = budget([
 ])
 
 describe('BudgetPanel', () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    // `clearAllMocks` borra las LLAMADAS, no las implementaciones: un
+    // `mockResolvedValue` puesto por una prueba sobrevive a las siguientes y las
+    // hace depender del orden en que corren. Reponer los valores por omisión
+    // aquí es lo que las mantiene independientes.
+    vi.clearAllMocks()
+    vi.mocked(api.fetchBudgetCatalog).mockResolvedValue(CATALOGO)
+    vi.mocked(api.fetchBudgetSources).mockResolvedValue(FUENTES)
+    vi.mocked(api.suggestBudgetItems).mockResolvedValue([])
+  })
 
   it('abre con los capítulos colapsados: la vista inicial son renglones, no cuarenta', async () => {
     // Es la decisión que hace usable la tabla en un teléfono sin estrenar el
@@ -591,12 +604,42 @@ describe('BudgetPanel', () => {
       line: null, budget: DETALLADO, property: propiedad() as Property, budgetIncrease: 0,
     })
 
+    // Las dos salen del MISMO selector, en dos secciones: el servidor no las
+    // distingue y la llamada es una sola.
+    expect(within(selector).getByRole('group', { name: 'Plantillas' })).not.toBeNull()
+    expect(within(selector).getByRole('group', { name: 'Otras obras' })).not.toBeNull()
+
     fireEvent.change(selector, { target: { value: '500' } })
     fireEvent.click(screen.getByText('COPIAR RENGLONES'))
-
     await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 500))
+
+    // Y arrancar desde la obra de al lado es la misma llamada con otro id
+    fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '501' } })
+    fireEvent.click(screen.getByText('COPIAR RENGLONES'))
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 501))
+
     // Y se dice que reparten en vez de crecer, que es lo que hace el residuo
     expect(screen.getByText(/el residuo baja y el total no se mueve/)).not.toBeNull()
+  })
+
+  it('la obra que pregunta se excluye del servidor, no filtrando aquí', async () => {
+    // `apply` rechaza copiarse sobre sí mismo con un 422, y ofrecer una opción
+    // que solo puede dar error es hacer que alguien descubra la regla chocando.
+    await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    await screen.findByLabelText('Presupuesto de origen')
+
+    expect(api.fetchBudgetSources).toHaveBeenCalledWith(7)
+  })
+
+  it('sin nada de dónde copiar lo dice, en vez de dejar un selector vacío', async () => {
+    // Una obra sin partidas detalladas no aparece en la lista y eso no es un
+    // defecto: no tiene nada que dar. El vacío de un selector se lee como roto.
+    vi.mocked(api.fetchBudgetSources).mockResolvedValue([])
+    await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+
+    expect(await screen.findByText(/Todavía no hay de dónde copiar/)).not.toBeNull()
   })
 
   it('copiar un presupuesto se confirma, porque copiar dos veces duplica', async () => {
@@ -673,7 +716,7 @@ describe('BudgetPanel', () => {
       .not.toBeNull()
     // Y la lista se vuelve a leer en vez de meterle dentro la respuesta del
     // detalle: son dos formas distintas de una plantilla.
-    await waitFor(() => expect(api.fetchBudgetTemplates).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api.fetchBudgetSources).toHaveBeenCalledTimes(2))
     // La obra de la que salió queda exactamente igual: nada que refrescar
     expect(onChange).not.toHaveBeenCalled()
   })

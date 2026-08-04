@@ -1,4 +1,4 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetCatalogItemRow } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetSource } from './types'
 import type { FloorPlanModel } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -1105,7 +1105,7 @@ export function deactivateCatalogChapter(id: number): Promise<BudgetCatalogChapt
 
 export function createCatalogItem(
   data: { chapterId: number; name: string; unit: string },
-): Promise<BudgetCatalogItemRow> {
+): Promise<BudgetCatalogItem> {
   return catalogWrite(catalogUrl('/items'), 'POST', data)
 }
 
@@ -1117,12 +1117,12 @@ export function createCatalogItem(
 export function updateCatalogItem(
   id: number,
   patch: { name?: string; unit?: string; chapterId?: number; sortOrder?: number; isActive?: boolean },
-): Promise<BudgetCatalogItemRow> {
+): Promise<BudgetCatalogItem> {
   return catalogWrite(catalogUrl(`/items/${id}`), 'PATCH', patch)
 }
 
 /** Da de baja la partida. Los renglones que ya la citan conservan su procedencia. */
-export function deactivateCatalogItem(id: number): Promise<BudgetCatalogItemRow> {
+export function deactivateCatalogItem(id: number): Promise<BudgetCatalogItem> {
   return catalogWrite(catalogUrl(`/items/${id}`), 'DELETE')
 }
 
@@ -1187,6 +1187,26 @@ export function promoteBudgetLine(
 // presupuesto y se pasa tal cual a `applyBudgetSource`, igual que el de la obra
 // de al lado. Ésa es toda la maquinaria detrás de «arrancar desde plantilla» y
 // «arrancar desde otra obra».
+
+/**
+ * De dónde se puede copiar: plantillas Y obras, en una sola lista, porque son la
+ * misma cosa. El servidor las manda ya ordenadas —plantillas primero, luego
+ * obras, cada bloque alfabético— así que el selector las pinta tal cual.
+ *
+ * Dos comportamientos que no se deducen de la forma y que la pantalla tiene que
+ * respetar: `lineCount` cuenta lo COPIABLE (el residuo nunca viaja, así que el
+ * número se puede prometer), y **los presupuestos sin nada copiable no
+ * aparecen** — que una obra no esté en la lista no es un defecto, es que no
+ * tiene nada que dar.
+ *
+ * `excludePropertyId` saca a la obra que pregunta. `apply` ya rechaza copiarse
+ * sobre sí mismo con un 422, y ofrecer una opción que solo puede dar error es
+ * hacer que alguien descubra la regla chocando con ella.
+ */
+export function fetchBudgetSources(excludePropertyId?: number): Promise<BudgetSource[]> {
+  const query = excludePropertyId != null ? `?excludePropertyId=${excludePropertyId}` : ''
+  return catalogRead(`${BASE}/api/budget/sources${query}`)
+}
 
 const templatesUrl = (path = '') => `${BASE}/api/budget/templates${path}`
 
