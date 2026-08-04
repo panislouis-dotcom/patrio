@@ -253,6 +253,44 @@ describe('BudgetPanel', () => {
     expect(vi.mocked(api.updateBudgetLine).mock.calls[0].slice(1)).toEqual([1, { unitPrice: 1500 }])
   })
 
+  it('vaciar el nombre de una partida no lo manda: se revierte a lo guardado', async () => {
+    // `name` y `unit` son NOT NULL con CHECK (<> '') en la 028. Ahí un vacío no
+    // es un vaciado sino un renglón roto, y el servidor solo rechaza el null —
+    // una cadena vacía llegaría hasta el CHECK. No contradice la regla de las
+    // celdas de dinero: en el comprometido el vacío ES el mensaje, y aquí no hay
+    // ningún mensaje que mandar porque el campo no tiene estado vacío.
+    const b = budget([line({ id: 1, name: 'Muro de block', unit: 'm²' }), residual(0)])
+    await renderPanel(b)
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+
+    const caja = screen.getByLabelText('Partida Muro de block') as HTMLInputElement
+    fireEvent.change(caja, { target: { value: '' } })
+    fireEvent.blur(caja)
+
+    expect(api.updateBudgetLine).not.toHaveBeenCalled()
+    expect((screen.getByLabelText('Partida Muro de block') as HTMLInputElement).value)
+      .toBe('Muro de block')
+  })
+
+  it('vaciar la unidad tampoco, y no se lleva por delante lo demás del renglón', async () => {
+    // El nombre nuevo sí se guarda: revertir la celda que no puede quedar vacía
+    // no puede descartar los cambios buenos que la acompañaban.
+    const b = budget([line({ id: 1, name: 'Muro de block', unit: 'm²' }), residual(0)])
+    await renderPanel(b)
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+    vi.mocked(api.updateBudgetLine).mockResolvedValue({
+      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
+    })
+
+    fireEvent.change(screen.getByLabelText('Partida Muro de block'), { target: { value: 'Muro de tabique' } })
+    const unidad = screen.getByLabelText('Unidad de Muro de tabique')
+    fireEvent.change(unidad, { target: { value: '  ' } })
+    fireEvent.blur(unidad)
+
+    await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalled())
+    expect(vi.mocked(api.updateBudgetLine).mock.calls[0][2]).toEqual({ name: 'Muro de tabique' })
+  })
+
   it('mientras se teclea, el importe sigue a la cantidad en vez de quedarse viejo', async () => {
     await renderPanel(budget([
       line({ id: 1, name: 'Muro de block', quantity: 10, unitPrice: 1_000, budgetedAmount: 10_000 }),

@@ -177,10 +177,22 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
    */
   const pending = useRef(new Map<number, BudgetLinePatch>())
 
+  /**
+   * Lo último que dijo el servidor, para poder revertir una celda que no se
+   * puede vaciar. `lines` lleva el borrador de lo que se está tecleando, así que
+   * no sirve para saber a qué volver.
+   */
+  const served = useRef(new Map<number, BudgetLine>())
+
+  function receive(next: BudgetLine[]) {
+    served.current = new Map(next.map(l => [l.id, l]))
+    setLines(next)
+  }
+
   useEffect(() => {
     setLoading(true)
     Promise.all([fetchBudget(propertyId), getProveedores()])
-      .then(([b, ps]) => { setLines(b.lines); setChapters(b.chapters); setProveedores(ps) })
+      .then(([b, ps]) => { receive(b.lines); setChapters(b.chapters); setProveedores(ps) })
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo cargar el presupuesto'))
       .finally(() => setLoading(false))
   }, [propertyId])
@@ -193,7 +205,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     setError(null)
     try {
       const { budget, property: updated, budgetIncrease } = await op()
-      setLines(budget.lines)
+      receive(budget.lines)
       setChapters(budget.chapters)
       onPropertyChange(updated)
       // Detallar reparte un total que no se mueve. Cuando el detalle lo rebasa,
@@ -205,7 +217,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
         : null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar')
-      fetchBudget(propertyId).then(b => { setLines(b.lines); setChapters(b.chapters) }).catch(() => {})
+      fetchBudget(propertyId).then(b => { receive(b.lines); setChapters(b.chapters) }).catch(() => {})
     }
   }
 
@@ -225,6 +237,31 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   function editNow(line: BudgetLine, patch: BudgetLinePatch) {
     edit(line, patch)
     commit(line.id)
+  }
+
+  /**
+   * Suelta una celda de texto que NO PUEDE quedar vacía.
+   *
+   * `name` y `unit` son NOT NULL con `CHECK (<> '')` en la 028. Ahí un vacío no
+   * es un vaciado sino un renglón roto —el servidor lo dice con esas palabras
+   * para el null— así que la caja vacía se revierte a lo guardado en vez de
+   * mandarse. No contradice la regla de las celdas de dinero: en el comprometido
+   * el vacío ES el mensaje, y aquí no hay ningún mensaje que mandar, porque el
+   * campo no tiene estado vacío que representar.
+   */
+  function commitText(lineId: number, field: 'name' | 'unit') {
+    const patch = pending.current.get(lineId)
+    const draft = patch?.[field]
+    if (draft !== undefined && !draft.trim()) {
+      const { [field]: _descartado, ...resto } = patch!
+      if (Object.keys(resto).length) pending.current.set(lineId, resto)
+      else pending.current.delete(lineId)
+      const saved = served.current.get(lineId)?.[field]
+      if (saved !== undefined) {
+        setLines(prev => prev.map(l => (l.id === lineId ? { ...l, [field]: saved } : l)))
+      }
+    }
+    commit(lineId)
   }
 
   /**
@@ -511,7 +548,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                       value={line.name}
                       aria-label={`Partida ${line.name}`}
                       onChange={e => edit(line, { name: e.target.value })}
-                      onBlur={() => commit(line.id)}
+                      onBlur={() => commitText(line.id, 'name')}
                       style={cellInput}
                     />
                   </td>
@@ -530,7 +567,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                       value={line.unit}
                       aria-label={`Unidad de ${line.name}`}
                       onChange={e => edit(line, { unit: e.target.value })}
-                      onBlur={() => commit(line.id)}
+                      onBlur={() => commitText(line.id, 'unit')}
                       style={cellInput}
                     />
                   </td>
