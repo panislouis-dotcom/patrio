@@ -22,6 +22,7 @@ import { fieldInput } from '../lib/styles'
 import { fmtMXN, fmtPct, fmtPctSigned, fmtMonth } from '../lib/fmt'
 import { fieldLabel } from '../lib/fields'
 import { useEdits } from '../lib/useEdits'
+import { useNarrowViewport } from '../lib/useNarrowViewport'
 import { MetricHero } from './finance/MetricHero'
 import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { LatLonPicker } from './LatLonPicker'
@@ -166,6 +167,9 @@ export function PropertyDetailPage() {
   const [leftTab, setLeftTab] = useState<'general' | 'finanzas' | 'analisis'>('general')
   const [transitionTo, setTransitionTo] = useState<Exclude<PropertyStatus, 'prospecto'> | null>(null)
   const [showAdvance, setShowAdvance] = useState(false)
+
+  /** Debajo de 900px las dos columnas se apilan. Es el único breakpoint del repo. */
+  const narrow = useNarrowViewport()
 
   const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
   const planApiRef = useRef<PlanApi | null>(null)
@@ -462,7 +466,16 @@ export function PropertyDetailPage() {
   ]
 
   return (
-    <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
+    /* En dos columnas la ficha ocupa exactamente la pantalla y cada columna
+       scrollea por dentro. Apilada no puede: la altura la manda el contenido, y
+       fijarla en 100vh dejaría la mitad de abajo recortada sin forma de llegar
+       a ella. Por eso en angosto la página recupera su scroll vertical. */
+    <div style={{
+      ...(narrow
+        ? { minHeight: 'calc(100vh - 49px)' }
+        : { height: 'calc(100vh - 49px)', overflow: 'hidden' }),
+      display: 'flex', flexDirection: 'column', background: colors.dark,
+    }}>
 
       {/* El menú de AVANZAR A vive dentro del encabezado, y `fade` le crea un
           contexto de apilamiento propio con su transform: sin un z-index aquí,
@@ -523,10 +536,27 @@ export function PropertyDetailPage() {
 
       <ErrorBanner message={saveError} />
 
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '360px 1fr', overflow: 'hidden' }}>
+      {/* La columna izquierda mide 360px FIJOS. Debajo de 900px eso no deja
+          nada para la de medios —en un teléfono de 390 le quedaban 15— y la
+          pestaña PRESUPUESTO tenía ancho visible cero, con la página entera
+          scrolleando en horizontal en vez de la tabla. Apiladas, cada una toma
+          el ancho completo. Ver `useNarrowViewport` para por qué es el único
+          breakpoint del repo y por qué no es un `@media` de CSS. */}
+      <div style={{
+        flex: 1, display: 'grid',
+        gridTemplateColumns: narrow ? '1fr' : '360px 1fr',
+        overflow: narrow ? 'visible' : 'hidden',
+      }}>
 
         {/* ── IZQUIERDA: GENERAL / FINANZAS / ANÁLISIS ── */}
-        <div style={{ ...fade(80), borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Apilada, el borde que separaba las columnas pasa a ser el que las
+            separa de arriba abajo. */}
+        <div style={{
+          ...fade(80),
+          [narrow ? 'borderBottom' : 'borderRight']: `1px solid ${colors.border}`,
+          display: 'flex', flexDirection: 'column',
+          overflow: narrow ? 'visible' : 'hidden',
+        }}>
           <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
             {tabs.map(([tab, label]) => (
               <button key={tab} onClick={() => setLeftTab(tab)} style={{
