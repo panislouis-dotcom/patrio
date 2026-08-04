@@ -169,6 +169,112 @@ se muestra la variación por partida y en total. No se esconde, no se bloquea, y
 presupuestado **no se corrige solo** para que empate: el presupuesto era un plan,
 el pago es un hecho, y la información útil es la brecha.
 
+## El catálogo que aprende
+
+### La doctrina correcta ya existe en el repo, y es para dinero
+
+La referencia en vivo de las plantillas de proceso **es la excepción, no la regla** —
+y es la excepción justo en el único subsistema cuyo objeto no es dinero. Para dinero
+el repo ya tiene dos patrones mejores:
+
+- **`remodel_costs`**: catálogo con `valid_from` / `valid_until` / `source`. Un precio
+  no se edita: se le pone fecha de fin y se inserta el nuevo, con procedencia. Es
+  literalmente «el catálogo que mejora sin borrar lo que fue verdad».
+- **`analysis_snapshots`**: copia congelada de insumos, supuestos y hasta la identidad
+  de la evidencia (`comparable_ids`).
+
+**El presupuesto copia al instanciar.** Cada renglón nace con su propio nombre,
+unidad, cantidad y precio; `item_id` apunta al catálogo con `ON DELETE SET NULL` —
+**procedencia, no dependencia**. Editar el catálogo nunca toca un presupuesto ya
+capturado.
+
+### Ninguna cifra total se guarda
+
+`presupuestado = cantidad × precio_unitario`. `pagado = SUM(pagos)`. Siempre
+derivados. Guardar un `paid_amount` sería el antipatrón que el glosario ya declaró
+muerto: *"Ya no se captura ningún total."*
+
+### `closed_at` es la pieza de la que depende todo
+
+Sin ella, $50,000 pagados pueden ser un anticipo o el costo final, y nada distingue
+uno de otro. **La historia de precios solo lee renglones cerrados.** Contar anticipos
+la envenena en silencio: precios sistemáticamente bajos, sin que nada se vea roto.
+
+### Los precios se aprenden de lo PAGADO, nunca de lo presupuestado
+
+Sugerir desde el presupuestado histórico es un bucle de autoconfirmación:
+presupuestas $1,000 → el catálogo aprende $1,000 → la próxima vez sugiere $1,000. El
+catálogo repetiría para siempre una suposición que alguien hizo una vez y jamás
+tocaría la realidad.
+
+**Pero el presupuestado se guarda, porque su diferencia es el hallazgo.** El sesgo
+vale más que el precio unitario mismo, y con tres obras ya es accionable:
+
+> *"Tu presupuesto de instalaciones se queda 18% corto, en 4 de 4 obras."*
+
+Lo que se ve al agregar un renglón — nunca la cifra sola:
+
+```
+Colocación de piso cerámico · m²
+  Sugerido    $1,180 /m²      mediana de 4 obras cerradas
+  Rango       $980 – $1,450
+  Última vez  sep-2026 · Casa Modesto 415 · Acabados del Norte · $1,210
+  Sesgo       lo presupuestado quedó 12% abajo de lo pagado (4 de 4)
+```
+
+**Mediana, no promedio**: con tres obras un renglón atípico destruye un promedio. Y
+**la historia es una VISTA, no una tabla** — no hay nada que sincronizar, así que no
+se puede desincronizar.
+
+### El catálogo se pudre si no se cuida al escribir
+
+Inventar una partida no debe costar nada: se crea a mano con `item_id = NULL` dentro
+de un capítulo. Obligar a pasar por el catálogo primero es la forma más rápida de que
+nadie use el módulo. **Es exactamente el hueco que procesos nunca resolvió**: ahí,
+agregar algo a una obra obliga a editar la plantilla de todas.
+
+Pero sin deduplicación al teclear, en seis obras hay «Piso cerámico», «Colocación
+piso cerámico» y «Piso ceramico 60x60» como tres partidas distintas, y la historia de
+precios queda partida en tres. Un aviso al escribir —*"¿es la misma que X del
+catálogo?"*— **es la única pieza de interfaz que evita que el catálogo se pudra**, y
+es barata.
+
+**Promover es explícito y con un clic**, desde una cola ordenada por frecuencia. Al
+promover se religan hacia atrás todos los renglones del grupo: la partida nace al
+catálogo **ya sabiendo lo que cuesta**. Automático no: sin curador, un catálogo que
+crece solo se llena de duplicados casi iguales, y el problema no es agregar, es
+fusionar. La máquina ordena, el humano decide.
+
+### Una plantilla es un presupuesto sin propiedad
+
+Copiar es **una** operación usada tres veces: arrancar desde plantilla, arrancar desde
+otra obra, guardar ésta como plantilla. Un solo camino de código. Se pueden tener
+«Remodelación casa antigua», «Obra nueva» y «Adecuación de local» sin una línea extra.
+
+**Composición de bloques, no.** Es lo que hace procesos con `source_template_id`, y
+ahí se ve el costo: la expansión está truncada a un solo nivel, más un detector de
+ciclos completo. Arrancar desde otra obra y borrar tres renglones cuesta treinta
+segundos y cero código.
+
+## Tres defectos latentes encontrados de paso
+
+Ninguno bloquea este feature; los tres son del mismo tipo —una garantía que se cree
+tener y no se tiene— y conviene saberlos.
+
+1. **La cascada de plantillas era evitable.** `process_instances.template_id` **es
+   nullable**: el FK pudo haber sido `ON DELETE SET NULL` y las instancias habrían
+   sobrevivido huérfanas pero íntegras. Se eligió `CASCADE`. Eso mueve el hallazgo de
+   «decisión discutible» a «descuido».
+2. **`cotizaciones.is_selected` no tiene unicidad en la base.** Los índices son
+   `pkey`, `node_state` y `proveedor` — ninguno único sobre la selección. La regla
+   «una sola seleccionada» vive en dos `UPDATE` de código sin transacción explícita.
+   Es la razón para NO leer la cotización seleccionada como fuente del monto
+   comprometido en v1.
+3. **El congelamiento de duraciones solo existe en la interfaz.**
+   `durationLockedAt` es un campo de paso en el API —sin validación que rechace un
+   cambio— y el bloqueo es un `disabled` en el front. Un congelamiento que vive en la
+   UI no es un congelamiento.
+
 ## Invariantes que cualquier diseño debe respetar
 
 1. **Una sola fórmula sin ramas para `totalInvestment`.** Dos maneras de calcular
@@ -200,20 +306,41 @@ el pago es un hecho, y la información útil es la brecha.
 
 ## Preguntas abiertas
 
-1. **El overhead de obra (×1.3).** Hoy es un multiplicador con una regla semántica
-   protegida por un test: un 0 capturado es identidad, nunca ×0, porque multiplicar
-   por cero borraría obra que alguien sí capturó. Con un presupuesto por capítulos,
-   ¿los indirectos son un capítulo más que se captura, un porcentaje sobre el
-   subtotal, o sigue siendo un multiplicador sobre la suma? Un capítulo es lo más
-   honesto (se ve de qué está hecho) pero obliga a capturarlo en cada propiedad;
-   el multiplicador es gratis pero opaco.
-2. **Las 18 propiedades existentes** necesitan que se les siembre su fila «otros»
-   con el costo de obra que hoy calcula la fórmula, sin mover un peso. Es el mismo
-   tipo de migración que la 027, con la misma prueba de no-movimiento.
-3. Cuando una partida se paga de más, ¿el sistema lo señala y ya, o exige una nota
-   explicando por qué?
-4. ¿Una plantilla por estrategia (remodelación / obra nueva / adecuación), o una
-   sola con capítulos opcionales? El repo ya distingue `strategy_type`.
-5. ¿La partida guarda una fecha de pago? Sin ella no hay curva de desembolso ni se
-   puede responder "cuánto voy a necesitar el mes que entra" — pero es un campo más
-   por renglón.
+**1. ¿El presupuesto lleva solo costos directos, o incluye los indirectos?** La más
+urgente, y la única que puede corromper cifras en silencio. Hoy el overhead es un
+multiplicador ×1.3 sobre la obra. Si los capítulos ya incluyen indirectos y el
+multiplicador se queda, **todo costo de obra queda inflado 30% sin que nada se vea
+roto**. Si los indirectos son un capítulo que se captura, el overhead pasa a 1.0 y se
+ve de qué está hecho — más honesto, pero hay que capturarlo en cada propiedad.
+
+**2. ¿Cuándo se «cierra» una partida — al último pago, al recibir el trabajo?**
+Define el gatillo de `closed_at`, del que depende toda la historia de precios. **Si
+las partidas nunca se cierran, el catálogo nunca aprende.** Conviene que el cierre
+sea automático al marcar el último pago como finiquito, no un botón aparte que se
+olvide.
+
+**3. ¿Hay presupuestos de obras pasadas en Excel?** Importar dos o tres da historia
+de precios **desde el día uno** en vez de a la tercera obra. Probablemente el mayor
+retorno por hora de todo el feature.
+
+**4. ¿Las cantidades se miden (m², ml, pza) o casi todo se contrata «a lote»?** Si
+domina el lote, el aprendizaje se degrada a "cuánto costó este tipo de trabajo la
+última vez" — sirve, pero la interfaz cambia.
+
+**5. ¿Los capítulos que usas coinciden con las categorías de proveedores que ya
+cargaste?** Si sí, se siembran ligados y el filtro del selector funciona desde el
+primer día.
+
+**6. Cuando una partida se paga de más, ¿el sistema lo señala y ya, o exige una nota
+explicando por qué?**
+
+**7. ¿Tiene sentido separar precios por zona dentro del centro de Monterrey?** Si sí,
+hay que agregar `zone_id` a `properties` — hoy solo lo tienen `comparables` y
+`remodel_costs`, así que la historia se rebana por estrategia y tipo de activo, no
+por zona.
+
+## Trabajo obligado, no opcional
+
+Las **18 propiedades existentes** necesitan que se les siembre su fila «Otros, por
+detallar» con el costo de obra que hoy calcula la fórmula, sin mover un peso. Mismo
+tipo de migración que la 027, con la misma prueba de no-movimiento sobre las 18.
