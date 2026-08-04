@@ -46,6 +46,18 @@ def main() -> int:
                 (email, password_hash),
             )
 
+            # El presupuesto de obra retiene a su propiedad (RESTRICT, migración
+            # 028): sin soltarlo primero, resembrar falla con una violación de FK.
+            # Se suelta explícitamente porque eso es lo que compra el RESTRICT —
+            # que tirar captura de obra sea una decisión y no un efecto colateral.
+            cur.execute(
+                """
+                DELETE FROM budgets
+                 WHERE property_id IN (SELECT id FROM properties
+                                        WHERE name IN ('[SEED] Terreno E2E', '[SEED] Propiedad E2E'))
+                """,
+            )
+
             # Seed a pre-purchase property so row-click/detail-page E2E tests have data.
             # Both rent columns stay NULL: they only store positive rents.
             cur.execute("DELETE FROM properties WHERE name = '[SEED] Terreno E2E'")
@@ -108,6 +120,30 @@ def main() -> int:
                 SELECT id, NULL, status, created_at::date, 'Alta de semilla E2E'
                   FROM properties
                  WHERE name IN ('[SEED] Terreno E2E', '[SEED] Propiedad E2E')
+                """,
+            )
+
+            # Y su presupuesto, con la misma aritmética de la 028: toda propiedad
+            # tiene uno, y su suma es el costo de obra con el overhead ya dentro.
+            # Las dos semillas capturan 0 de obra, así que la fila nace en $0 —
+            # que es lo que dicen sus columnas, y sigue significando «nada
+            # capturado», no «cero pesos de obra».
+            cur.execute(
+                """
+                WITH nuevos AS (
+                    INSERT INTO budgets (property_id)
+                    SELECT id FROM properties
+                     WHERE name IN ('[SEED] Terreno E2E', '[SEED] Propiedad E2E')
+                    RETURNING id, property_id
+                )
+                INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity, unit_price)
+                SELECT n.id, 'Otros', 'Otros, por detallar', 'lote', 1,
+                       (coalesce(p.sqm_construction::numeric, 0)
+                        * coalesce(p.construction_cost_per_sqm, 0)
+                        * CASE WHEN p.construction_overhead IS NULL THEN 1.3
+                               WHEN p.construction_overhead = 0     THEN 1
+                               ELSE p.construction_overhead::numeric END)
+                  FROM nuevos n JOIN properties p ON p.id = n.property_id
                 """,
             )
 
