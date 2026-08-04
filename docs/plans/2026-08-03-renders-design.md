@@ -66,6 +66,57 @@ Los sembrados nombran especies de `plantas_regionales.md` (mezquite,
 anacahuita, agave verde, lechuguilla, salvia azul, zacate búfalo): un render con
 pasto inglés vende un jardín que se muere en el primer agosto de Monterrey.
 
+## La tarjeta del render: orden por función, no por estética
+
+La tarjeta abre con **lo que permite juzgar el render** —marca de propuesta,
+fecha, modelo, y el prompt completo— y sólo después enseña las imágenes, en par:
+**foto base | propuesta**.
+
+Ese orden salió de tres defectos que sólo aparecieron abriendo la pestaña en un
+navegador, los tres con la misma raíz —la tarjeta ponía primero el pixel y
+después todo lo que sirve para entenderlo—:
+
+1. **La marca «Propuesta» estaba en el pie**, debajo de una imagen de 1024 px:
+   fuera de pantalla, y un recorte de la imagen la dejaba atrás. La garantía
+   central del diseño no puede depender de que alguien alcance a scrollear.
+2. **El prompt tenía el problema idéntico** un poco más abajo. El render
+   quedaba huérfano de lo único que explica de dónde salió.
+3. **`source_image_id` se guardaba desde el primer commit y no se mostraba
+   nunca.** Un render sólo significa algo al lado de su antes: ese contraste no
+   es decoración, es el argumento que se le enseña a un inversionista.
+
+Cuando la foto base se borró, la tarjeta lo dice con todas sus letras. Nacer sin
+origen y haber perdido el origen son cosas distintas, y el `ON DELETE SET NULL`
+existe para distinguirlas: callarlo desperdiciaba la decisión.
+
+## «Le piqué y no pasó nada»
+
+Reproducido con Playwright instrumentando cada capa. Dos fallas distintas, misma
+raíz: **la pantalla nunca decía en qué estado estaba ni qué necesitaba.**
+
+| Momento | Botón | Peticiones de red |
+|---|---|---|
+| Al llegar | `GENERAR RENDER` deshabilitado | — |
+| Tras elegir preset | sigue deshabilitado | — |
+| **Click sin foto** | sigue deshabilitado | **0** |
+| Click con foto | `GENERANDO…` | POST → 201 a los **65.8 s** (79.5 s en otra corrida) |
+
+- **Elegir preset es la acción obvia** —es el control grande— pero la que
+  habilita el botón es **elegir foto**, y la tira de miniaturas parece
+  decorativa. Un botón muerto que no explica por qué está muerto es exactamente
+  «no pasó nada». Ahora lo dice, y la pista desaparece al elegir.
+- **Un minuto sin señal se lee igual que un click que no sirvió.** La única
+  pista era la etiqueta del botón; la lista de renders —donde está la mirada—
+  no cambiaba. Ahora aparece ahí una tarjeta de progreso con la duración
+  esperada.
+
+> Pendiente honesto: un minuto sigue siendo mucho, y el mensaje lo tapa, no lo
+> resuelve. Lo correcto a futuro es generar en segundo plano —guardar el render
+> «en proceso» y que la pestaña lo actualice sola— para poder seguir trabajando.
+
+Los tres scripts de diagnóstico quedan en `app/e2e/scripts/`, fuera del
+`testDir` de Playwright: son para mirar la pantalla, no para bloquear CI.
+
 ## Lo que se aprendió probando contra la API real
 
 - **`gpt-image-2` rechaza `input_fidelity`** con `400
@@ -95,7 +146,7 @@ renders son opcionales, la ficha no depende de ellos.
 ## Verificación
 
 - `pytest`: 380 pasan (17 nuevas de renders)
-- `vitest`: 233 pasan (9 nuevas)
+- `vitest`: 241 pasan (17 nuevas)
 - `tsc --noEmit`: limpio
 - Migración 028 aplicada a la BD de dev del worktree; los 6 sembrados leídos vía API
 - **Render real generado extremo a extremo** contra OpenAI: HTTP 201, imagen
