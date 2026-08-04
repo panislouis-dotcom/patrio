@@ -14,22 +14,75 @@ import migration024 from '../../../../db/migrations/024_properties.sql?raw'
 import statusSource from './status.ts?raw'
 
 /**
- * `CLEARABLE_FIELDS` del cliente dice ser un espejo de `properties_db.py`, y un
- * espejo escrito a mano se desincroniza en cuanto alguien retire un campo del
- * servidor. Pasó dos veces en un solo día al mover el costo de obra al
- * presupuesto: primero `constructionCostPerSqm`, luego `constructionOverhead`.
+ * ═══ EL ARNÉS CONTRA LOS ESPEJOS ESCRITOS A MANO ═══
  *
- * El síntoma es feo y silencioso — la ficha ofrece un botón ✕ que dispara un
- * 422 «Campos no vaciables», o deja de ofrecer uno que sí existe — y ninguna de
- * las dos cosas la nota nadie hasta que un usuario la pisa. Así que en vez de
- * recordar la lista, se lee de la fuente.
+ * El cliente lleva una decena de listas que dicen «espeja X del servidor»: qué
+ * se puede escribir, qué se puede vaciar, qué supuestos existen, qué tipos de
+ * activo admite la base, a qué etapas se puede avanzar, cuándo abre cada
+ * herramienta, con qué supuestos corre el analizador. Cada una es una copia
+ * hecha a mano de algo que vive en Python o en SQL, y ninguna tenía forma de
+ * enterarse cuando el original cambiaba.
  *
- * Y esto es lo ÚNICO que se prueba desde aquí. La invariante «nada vaciable
- * puede ser no escribible» es una relación entre dos frozensets de Python y vive
- * donde le toca — `test_property_routes.py::test_nothing_clearable_is_unwritable`
- * —, porque ahí rompe antes y en el idioma de quien la puede violar. Duplicarla
- * aquí daría dos rojos por una sola causa. Lo que sí solo se puede ver desde
- * este lado es que la lista esté copiada igual en los dos lenguajes.
+ * Este archivo las lee de la fuente con `?raw` en vez de recordarlas. Es el
+ * mismo truco que `fields.test.ts` ya usaba con `checks.py`, y evita meter
+ * @types/node al proyecto sólo para una prueba.
+ *
+ * ─── POR QUÉ APUNTAN AL TIPO Y NO A LAS FIXTURES ───
+ *
+ * Ésta es la parte que no es obvia y que costó un bug caro, así que va escrita:
+ *
+ *   **Las fixtures no pueden desincronizarse estructuralmente — `tsc` las
+ *   obliga. Lo que se desincroniza es `types.ts`. Y entonces las fixtures se
+ *   acomodan al tipo equivocado, y la suite certifica el mundo viejo.**
+ *
+ * Cómo se vio: el servidor retiró `constructionOverhead` del contrato. El tipo
+ * `Property` siguió declarándolo, así que las fixtures siguieron poniéndolo y
+ * `tsc` siguió contento. La ficha leía `p.assumptions.constructionOverhead.source`
+ * sobre un objeto que ya no venía —`undefined.source`— y la columna izquierda se
+ * caía ENTERA contra el servidor real, con la suite en verde.
+ *
+ * Por eso no sirve de nada auditar fixtures: hay que atar el TIPO a su fuente.
+ * Y por eso `ASSUMPTION_FIELDS` y `RAW_PROPERTY_FIELDS` son listas `as const` con
+ * el tipo derivado de ellas en vez de uniones sueltas — un tipo no se puede
+ * comparar contra nada en tiempo de ejecución; una lista sí, y para el
+ * compilador es exactamente lo mismo.
+ *
+ * ─── QUÉ VIGILA CADA UNA, Y CONTRA QUÉ ───
+ *
+ *   CLEARABLE_FIELDS       ← properties_db.CLEARABLE_FIELDS
+ *   RAW_PROPERTY_FIELDS    ← properties_db.WRITABLE_FIELDS
+ *   ASSUMPTION_FIELDS      ← underwriting.ASSUMPTION_DEFAULTS
+ *   ASSET/STRATEGY_TYPES   ← los CHECK de la migración 024
+ *   ALLOWED_TRANSITIONS    ← el trigger de la migración 024
+ *   las 4 ventanas de etapa ← los frozensets de properties_db
+ *   ANALYSIS_DEFAULTS      ← los DEFAULT_* de analyzer.py
+ *
+ * Lo que cuesta cada desincronización está dicho en cada `it`, porque no es el
+ * mismo daño: un vaciable de más es un botón que solo puede dar 422; un
+ * escribible de más es un PATCH que se ignora en silencio; un tipo de activo de
+ * más es un CHECK violado al guardar; una transición de más es un botón que
+ * lleva a un error, y una de menos, un camino del negocio inalcanzable.
+ *
+ * ─── CÓMO SE MANTIENE HONESTO ───
+ *
+ * Estas pruebas se verifican POR MUTACIÓN, no por leerlas: cambiar cada lista
+ * del cliente tiene que poner en rojo exactamente una. Una prueba de espejo que
+ * no puede fallar es la enfermedad que este archivo cura, no la cura.
+ *
+ * Lo que NO vive aquí: la invariante «nada vaciable puede ser no escribible».
+ * Es una relación entre dos frozensets de Python y su casa es
+ * `test_property_routes.py::test_nothing_clearable_is_unwritable`, donde rompe
+ * antes y en el idioma de quien la puede violar. Duplicarla daría dos rojos por
+ * una sola causa. Desde este lado solo se puede ver una cosa —que la lista esté
+ * copiada igual en los dos lenguajes— y eso es lo único que se prueba.
+ */
+
+/**
+ * Los campos de un `frozenset({…})` de Python, leídos del archivo fuente.
+ *
+ * El recorte busca la línea literal `NOMBRE = frozenset({` y lee hasta el primer
+ * `})`. Está anotado también del lado de `properties_db.py`, encima de las dos
+ * listas: renombrarlas o cambiar esa forma rompe esta prueba, y romper está bien.
  */
 function pythonSet(source: string, name: string): string[] {
   const start = source.indexOf(`${name} = frozenset({`)
@@ -38,7 +91,7 @@ function pythonSet(source: string, name: string): string[] {
   // Los comentarios se quitan ANTES de buscar lo entrecomillado. Sin esto, una
   // palabra entre comillas dobles dentro de un `#` agrega un campo fantasma y la
   // comparación pasa o falla por la razón equivocada — que es peor que no tener
-  // la prueba, porque una prueba que miente se cree.
+  // la prueba, porque una prueba que truena se arregla y una que miente se cree.
   const cuerpo = source.slice(start, end).replace(/#.*$/gm, '')
   return [...cuerpo.matchAll(/"([a-zA-Z_]+)"/g)].map(m => m[1])
 }
@@ -68,6 +121,12 @@ function statusList(name: string): string[] {
 
 describe('el espejo del contrato no se desincroniza en silencio', () => {
   it('CLEARABLE_FIELDS dice exactamente lo que properties_db permite vaciar', () => {
+    // Éste se desincronizó DOS VECES en un solo día al mover el costo de obra al
+    // presupuesto: primero `constructionCostPerSqm`, luego `constructionOverhead`.
+    // Uno de más es un botón ✕ en la ficha que solo puede producir un 422
+    // «Campos no vaciables»; uno de menos es un campo que sí se puede vaciar y
+    // que la ficha deja de ofrecer. Ninguna de las dos la nota nadie hasta que un
+    // usuario la pisa.
     const servidor = pythonSet(propertiesDbSource, 'CLEARABLE_FIELDS')
 
     expect(servidor.length).toBeGreaterThan(10)  // si el recorte falla, esto avisa
