@@ -1,10 +1,14 @@
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+
+_ROOT = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(_ROOT / "scripts"))
 
 # ── Resolve env file ─────────────────────────────────────────────────────────
 _env_file = Path(__file__).parent.parent.parent.parent / ".env"
@@ -87,6 +91,25 @@ def _bootstrap_test_db() -> None:
     _run_dbmate(_TEST_URL)
 
 
+def _refuse_colliding_migrations() -> None:
+    """Antes de migrar nada, no después.
+
+    El bootstrap tira y rehace la base de prueba en cada sesión, así que una
+    colisión de números la encuentra dbmate ANTES que cualquier prueba: la
+    sesión entera muere en este archivo con un `duplicate key ...
+    schema_migrations_pkey` enterrado en treinta líneas de log, y
+    test_migrations_contract.py —que existe justamente para explicarlo— no
+    alcanza a correr. Preguntando aquí, la primera línea que se lee dice qué
+    pasó y qué hacer.
+    """
+    import check_migration_numbers
+
+    queja = check_migration_numbers.problem()
+    if queja:
+        raise RuntimeError(f"conftest: {queja}")
+
+
+_refuse_colliding_migrations()
 _bootstrap_test_db()
 
 # ── Shared fixtures ───────────────────────────────────────────────────────────
