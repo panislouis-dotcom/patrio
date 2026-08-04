@@ -150,7 +150,8 @@ NUEVAS (avance de obra en dinero); nunca redefinen la inversión.
   (presupuesto ÷ metraje). Es el mismo movimiento que la 027 hizo con la inversión
   capturada: un campo menos que mantener y uno menos que pueda contradecir a otro.
   Dejarlo vivo pero ignorado sería recrear el bug «NO SE USA» que se arregló hoy.
-- **`construction_overhead` queda sin resolver** — ver preguntas abiertas.
+- **`construction_overhead` se retira como multiplicador vivo** — se aplica una sola
+  vez, al sembrar, y queda dentro del número. Ver la sección del overhead más abajo.
 
 ### Dos correcciones que vinieron de Codex y se adoptan
 
@@ -256,6 +257,27 @@ ahí se ve el costo: la expansión está truncada a un solo nivel, más un detec
 ciclos completo. Arrancar desde otra obra y borrar tres renglones cuesta treinta
 segundos y cero código.
 
+## El riesgo que este cambio introduce, y que hay que vigilar
+
+Separar la obra en dos tablas gana honestidad y pierde una garantía. El prospecto
+imprime «Obra a ejecutar: 200 m²» leyendo la COLUMNA de la propiedad, y junto a eso
+una cifra de dinero que ahora lee OTRA tabla (`budget_lines`).
+
+**Antes la fórmula los ataba**: mover los m² movía el dinero. Ahora son
+independientes, y una propiedad a la que le editen el metraje después del alta puede
+publicarle a un inversionista «400 m² de obra» junto a una inversión total sin un
+peso de obra, sin que nada se vea roto.
+
+Hoy está tapado porque el alta por API crea el presupuesto en la misma transacción,
+pero eso es suerte de implementación, no una garantía. Vale una verificación de
+calidad que lo nombre: metraje de obra capturado con presupuesto en cero.
+
+**Mejora concreta pendiente**: el PDF calcula la obra RESTANDO dos totales
+(`totalInvestment − acquisitionTotal`). Funcionaba cuando no había alternativa; hoy
+existe `constructionBudgeted` como campo directo. La resta depende de que nadie
+agregue un quinto costo al stack — el día que alguien lo haga, la etiqueta «Obra,
+permisos y subdivisión» miente sin avisar.
+
 ## Tres defectos latentes encontrados de paso
 
 Ninguno bloquea este feature; los tres son del mismo tipo —una garantía que se cree
@@ -282,8 +304,8 @@ tener y no se tiene— y conviene saberlos.
 2. **Ausente = 0; suma 0 = «nada capturado» → se imprime «—»**, nunca $0.
 3. **`sqm_construction` es metraje físico y sobrevive intacto** — lo usan el
    analizador de mercado y el PDF, independientes del costo.
-4. **`construction_cost_per_sqm` es precio unitario compuesto** — es justo lo que un
-   presupuesto por partidas no tiene. Candidato a re-derivarse (suma ÷ metraje).
+4. **`construction_cost_per_sqm` era precio unitario compuesto** — justo lo que un
+   presupuesto por partidas no tiene. Dejó de capturarse y se deriva (suma ÷ metraje).
 5. **Overhead: un 0 capturado es identidad, nunca ×0** — multiplicar por cero
    borraría obra que alguien sí capturó. Hay un test que lo fija.
 6. **Vocabulario muerto que no debe resucitar**: `investmentBasis`,
