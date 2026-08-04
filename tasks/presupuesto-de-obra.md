@@ -304,24 +304,37 @@ tener y no se tiene— y conviene saberlos.
   posible se capturan desde el día uno** — obra, fecha, proveedor, cantidad,
   unidad, pagado. Esa capacidad no se reconstruye después.
 
+## El overhead — decidido, con la puerta abierta a revertirlo
+
+**Decisión tomada (Ed puede tumbarla):** el overhead se aplica **una sola vez, al
+sembrar**, y queda dentro del número.
+
+Hoy la fórmula es `m² × $/m² × 1.3`; ese 30% de indirectos ya vive dentro de la
+cifra. Cuando esa cifra se convierte en la fila «Otros, por detallar», el
+multiplicador ya cumplió su función y **no se vuelve a aplicar jamás**, porque desde
+ahí la suma del presupuesto es el costo.
+
+Metraje, precio por m² y overhead quedan los tres como **entradas de una
+calculadora** que produce el primer renglón, no como campos que sigan alimentando
+nada. El riesgo de inflar 30% en silencio desaparece por construcción.
+
+Desglosar los indirectos en su propio capítulo es una decisión por obra, no una regla
+del sistema. La plantilla por omisión lo ofrecerá.
+
 ## Preguntas abiertas
 
-**1. ¿El presupuesto lleva solo costos directos, o incluye los indirectos?** La más
-urgente, y la única que puede corromper cifras en silencio. Hoy el overhead es un
-multiplicador ×1.3 sobre la obra. Si los capítulos ya incluyen indirectos y el
-multiplicador se queda, **todo costo de obra queda inflado 30% sin que nada se vea
-roto**. Si los indirectos son un capítulo que se captura, el overhead pasa a 1.0 y se
-ve de qué está hecho — más honesto, pero hay que capturarlo en cada propiedad.
-
-**2. ¿Cuándo se «cierra» una partida — al último pago, al recibir el trabajo?**
+**1. ¿Cuándo se «cierra» una partida — al último pago, al recibir el trabajo?**
 Define el gatillo de `closed_at`, del que depende toda la historia de precios. **Si
 las partidas nunca se cierran, el catálogo nunca aprende.** Conviene que el cierre
 sea automático al marcar el último pago como finiquito, no un botón aparte que se
 olvide.
 
-**3. ¿Hay presupuestos de obras pasadas en Excel?** Importar dos o tres da historia
-de precios **desde el día uno** en vez de a la tercera obra. Probablemente el mayor
-retorno por hora de todo el feature.
+**~~3. ¿Hay presupuestos de obras pasadas en Excel?~~** CONTESTADA: no hay. El
+catálogo arranca vacío y empieza a sugerir precios desde la tercera obra cerrada.
+Consecuencia: la deduplicación al escribir importa MÁS, no menos — sin historia que
+importar, la única fuente del catálogo es lo que se teclee de aquí en adelante, y un
+catálogo partido en tres variantes del mismo nombre nunca llega a tener tres
+observaciones de nada.
 
 **4. ¿Las cantidades se miden (m², ml, pza) o casi todo se contrata «a lote»?** Si
 domina el lote, el aprendizaje se degrada a "cuánto costó este tipo de trabajo la
@@ -339,8 +352,66 @@ hay que agregar `zone_id` a `properties` — hoy solo lo tienen `comparables` y
 `remodel_costs`, así que la historia se rebana por estrategia y tipo de activo, no
 por zona.
 
-## Trabajo obligado, no opcional
+## Plan por fases
 
-Las **18 propiedades existentes** necesitan que se les siembre su fila «Otros, por
-detallar» con el costo de obra que hoy calcula la fórmula, sin mover un peso. Mismo
-tipo de migración que la 027, con la misma prueba de no-movimiento sobre las 18.
+Cada fase deja la rama verde y con evidencia local. Ejecución con subagentes
+(implementador → revisión de conformidad → revisión de calidad), como el resto de
+las entregas de este proyecto.
+
+### Fase 1 — Datos
+- Migración con las cinco tablas: `budget_chapters`, `budget_items` (catálogo);
+  `budgets`, `budget_lines`, `budget_line_payments` (la obra).
+- **Siembra de las 18 propiedades**: una fila «Otros, por detallar» con el costo de
+  obra que hoy produce la fórmula, overhead ya aplicado.
+- `construction_cost_per_sqm` deja de ser insumo y pasa a derivarse (suma ÷ metraje).
+  `sqm_construction` sobrevive intacto; `construction_overhead` se retira como
+  multiplicador vivo.
+- **Prueba de no-movimiento sobre las 18**, como en la 027: ningún costo de obra ni
+  ninguna inversión total cambia un peso.
+- Vista `budget_price_observations` (solo renglones cerrados).
+
+### Fase 2 — Backend
+- Capa de dominio del presupuesto; `totalInvestment` pasa a leer la suma
+  presupuestada. **Sin ramas**: la suma es la única fuente en toda etapa.
+- Endpoints por renglón, capítulo y pago. Cada respuesta devuelve
+  `{línea, property}` para que la ficha se refresque de una sola vez.
+- Métricas nuevas: obra comprometida, obra pagada, y su variación contra lo
+  presupuestado.
+- Gate de borrado: el presupuesto entra a la familia RESTRICT con 422 legible.
+
+### Fase 3 — La pestaña
+- Cuarta pestaña junto a MAPA / FOTOS / PLANOS, **sin gate de etapa**.
+- Tabla jerárquica componiendo lo que ya existe: colapso y rollup de
+  `ProcesoInstanceDetail`, celdas siempre activas con autosave, selector de proveedor
+  filtrado por categoría.
+- «Otros» como **residuo automático**: el total no se mueve al detallar.
+- Móvil: capítulos colapsados por omisión, montos apilados en una celda, scroll
+  horizontal local. Sin layout de tarjetas.
+
+### Fase 4 — Catálogo y plantillas
+- CRUD del catálogo con baja lógica (`is_active`), nunca borrado.
+- Copia al instanciar; `item_id` como procedencia con `ON DELETE SET NULL`.
+- Renglón suelto (`item_id NULL`) sin fricción — el hueco que procesos nunca llenó.
+- **Deduplicación al escribir** (`pg_trgm`): la única pieza que evita que el catálogo
+  se pudra.
+- Cola de promoción por frecuencia, con religado hacia atrás de la historia.
+- Una plantilla es un presupuesto sin propiedad. Sin composición de bloques.
+
+### Fase 5 — Precios que aprenden
+- Sugerencia por mediana de renglones cerrados, con rango, última vez y **el sesgo
+  presupuestado-vs-pagado**.
+- Cruce con `rating_calidad` para contestar quién cobra menos entre los que trabajan
+  bien.
+
+### Fase 6 — Vocabulario y documentos
+- Entradas nuevas en `docs/glosario.md` con las cuatro cifras de obra bien
+  distinguidas, y los términos muertos que no deben resucitar.
+- `use-refigan.md` (contrato MCP) y verificación de que el PDF y el term sheet siguen
+  correctos — ambos leen totales ya sumados, así que deberían ser inmunes.
+
+## Trabajo independiente de este feature
+
+La cascada de plantillas (`ON DELETE CASCADE` evitable, sin confirmación en la UI)
+no bloquea el presupuesto —que no reusa esa maquinaria— pero se vuelve peligrosa el
+día que se empiecen a usar procesos de obra. Hoy hay 0 instancias, así que arreglarlo
+ahora no cuesta migración de datos. Decisión de Ed sobre cuándo.
