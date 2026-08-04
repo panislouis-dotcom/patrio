@@ -361,6 +361,46 @@ def test_a_not_nullable_cell_is_refused_with_its_reason(client, test_property):
         assert fragmento in r.json()["error"]["message"], field
 
 
+def test_an_emptied_text_cell_is_refused_the_same_as_a_null(client, test_property):
+    """`""` no es `None`, y los tres de texto llevan CHECK (<> '') además de NOT
+    NULL: hay DOS formas de vaciarlos y las dos tienen que rebotar aquí. La
+    cadena vacía es la que se cuela sin querer —seleccionar el nombre, borrarlo
+    y hacer clic en otro lado— y llegaba hasta el CHECK, donde el 422 legible se
+    volvía el 500 mudo que esta guarda existe para evitar."""
+    created = _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
+    line_id = created["line"]["id"]
+    for field, fragmento in (("name", "necesita un nombre"),
+                             ("chapterName", "vive en un capítulo"),
+                             ("unit", "necesita una unidad")):
+        for vacio in ("", "   "):
+            r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
+                             json={field: vacio})
+            assert r.status_code == 422, f"{field}={vacio!r}: {r.text}"
+            assert fragmento in r.json()["error"]["message"], field
+
+
+def test_the_new_line_is_held_to_the_same_rule_as_the_edit(client, test_property):
+    """El alta validaba dos campos y la edición ninguno, y esa asimetría ERA el
+    defecto: nada obligaba a las dos a decir lo mismo, así que `unit` quedó sin
+    revisar de un lado y los tres del otro. Ahora es una sola guarda."""
+    for field in ("chapterName", "name", "unit"):
+        r = client.post(f"/api/properties/{test_property['id']}/budget/lines", json={
+            "chapterName": "Albañilería", "name": "Muros", "unit": "m2", field: ""})
+        assert r.status_code == 422, f"{field}: {r.text}"
+
+
+def test_notes_may_be_blank_because_blank_is_what_no_note_looks_like(client, test_property):
+    """El recorte de espacios NO aplica aquí, y la diferencia es la que dice su
+    propia frase: las notas se dejan en blanco, no se vacían."""
+    created = _add(client, test_property["id"], name="Cocina", quantity=1,
+                   unitPrice=500_000, notes="revisar medidas")
+    line_id = created["line"]["id"]
+    r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
+                     json={"notes": ""})
+    assert r.status_code == 200, r.text
+    assert _line_by_id(r.json()["budget"], line_id)["notes"] == ""
+
+
 def test_a_payment_is_deleted_not_rewritten(client, test_property):
     created = _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
     line_id = created["line"]["id"]

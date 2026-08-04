@@ -330,16 +330,43 @@ NULLABLE_LINE_FIELDS = frozenset({
     "supplierId", "committedAmount", "committedOn", "actualQuantity",
 })
 
-# En los demás un vacío no es un vaciado: es un renglón roto. La columna es NOT
-# NULL, así que sin este rechazo el 422 legible llegaría como un 500 mudo.
-_NOT_NULLABLE_MESSAGES = {
+# En los demás un vacío no es un vaciado: es un renglón roto.
+#
+# Los tres de TEXTO llevan `NOT NULL` y además `CHECK (<> '')` desde la 028, así
+# que hay dos formas de vaciarlos y las dos tienen que rebotar aquí: `null` y
+# `""`. La cadena vacía es la que se cuela sin querer —seleccionar el nombre de
+# una partida, borrarlo y hacer clic en otro lado, que es lo que hace cualquiera
+# antes de reescribirlo— y sin esta guarda llegaba hasta el CHECK, donde el 422
+# legible se convierte en el 500 mudo que la guarda existe para evitar.
+_REQUIRED_TEXT = {
     "chapterName": "Toda partida vive en un capítulo: el capítulo no se puede vaciar.",
     "name": "La partida necesita un nombre: no se puede vaciar.",
     "unit": "La partida necesita una unidad: no se puede vaciar.",
+}
+
+# Aquí solo el `null` es rechazable. `quantity` y `unitPrice` son numéricos y
+# una cadena no les llega nunca; en `notes` el blanco SÍ es legítimo —lo dice su
+# propia frase— así que queda fuera del recorte de espacios.
+_REQUIRED_VALUE = {
     "quantity": "La cantidad no se vacía; se pone en 0.",
     "unitPrice": "El precio unitario no se vacía; se pone en 0.",
     "notes": "Las notas se dejan en blanco, no se vacían.",
 }
+
+
+def _reject_empty(data: dict, *, required: tuple[str, ...] = ()) -> None:
+    """Una sola guarda para el alta y para la edición.
+
+    Estaba duplicada a medias —el alta validaba dos campos y la edición
+    ninguno— y esa asimetría era el defecto: nada obligaba a las dos a decir lo
+    mismo, así que `unit` quedó sin revisar de un lado y los tres del otro.
+    `required` nombra lo que además tiene que VENIR, no solo llegar con algo."""
+    for field, message in _REQUIRED_TEXT.items():
+        if (field in data or field in required) and not str(data.get(field) or "").strip():
+            raise BudgetError(message)
+    for field, message in _REQUIRED_VALUE.items():
+        if field in data and data[field] is None:
+            raise BudgetError(message)
 
 
 def _get_line(conn, budget_id: int, line_id: int) -> dict:
@@ -375,11 +402,8 @@ def create_line(conn, property_id: int, data: dict) -> tuple[int, Decimal]:
     budget_id = _require_budget(conn, property_id)
     total_antes, _ = _totals(conn, budget_id)
 
+    _reject_empty(data, required=("chapterName", "name"))
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
-    if not (columns.get("chapter_name") or "").strip():
-        raise BudgetError("Toda partida vive en un capítulo: falta el capítulo.")
-    if not (columns.get("name") or "").strip():
-        raise BudgetError("La partida necesita un nombre.")
     # Una partida puede nacer sin cantidad ni precio: la captura es celda por
     # celda con autoguardado, y exigir la fila completa de golpe convertiría un
     # estado intermedio normal en un error.
@@ -417,9 +441,7 @@ def update_line(conn, property_id: int, line_id: int, data: dict) -> Decimal:
     # restando bien, pero dejaría de leerse como lo que es.
     if row["is_residual"] and (set(data) - {"notes"}):
         raise BudgetError(_RESIDUAL_IS_NOT_TYPED)
-    for field, message in _NOT_NULLABLE_MESSAGES.items():
-        if field in data and data[field] is None:
-            raise BudgetError(message)
+    _reject_empty(data)
 
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
     total_antes, _ = _totals(conn, budget_id)
