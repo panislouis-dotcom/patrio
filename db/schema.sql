@@ -16,6 +16,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
+-- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pg_trgm; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
+
+
+--
 -- Name: properties_guard_transition(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -90,6 +104,25 @@ BEGIN
     NEW.updated_at := now();
     RETURN NEW;
 END;
+$$;
+
+
+--
+-- Name: property_status_label(text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.property_status_label(status text) RETURNS text
+    LANGUAGE sql IMMUTABLE
+    AS $$
+    SELECT CASE status
+        WHEN 'prospecto'  THEN 'Prospecto'
+        WHEN 'oferta'     THEN 'Oferta'
+        WHEN 'desarrollo' THEN 'Desarrollo'
+        WHEN 'en_renta'   THEN 'En renta'
+        WHEN 'vendida'    THEN 'Vendida'
+        WHEN 'archivada'  THEN 'Archivada'
+        ELSE status
+    END;
 $$;
 
 
@@ -251,8 +284,16 @@ CREATE TABLE public.budget_chapters (
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    supplier_category_id bigint,
     CONSTRAINT budget_chapters_name_check CHECK ((name <> ''::text))
 );
+
+
+--
+-- Name: COLUMN budget_chapters.supplier_category_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.budget_chapters.supplier_category_id IS 'El OFICIO que este capítulo requiere: se contrata al albañil, no a «colocación de piso 60×60». Sus partidas lo heredan mientras no declaren el suyo. NULL = todavía no se sabe, que es el estado normal mientras el catálogo se forma.';
 
 
 --
@@ -287,9 +328,17 @@ CREATE TABLE public.budget_items (
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    supplier_category_id bigint,
     CONSTRAINT budget_items_name_check CHECK ((name <> ''::text)),
     CONSTRAINT budget_items_unit_check CHECK ((unit <> ''::text))
 );
+
+
+--
+-- Name: COLUMN budget_items.supplier_category_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.budget_items.supplier_category_id IS 'Override del oficio del capítulo, para la excepción real —impermeabilización dentro de azotea—. NULL NO es un dato faltante: es «el de mi capítulo», y por eso no se copia hacia abajo al crear la partida.';
 
 
 --
@@ -368,12 +417,14 @@ CREATE TABLE public.budget_lines (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     is_residual boolean DEFAULT false NOT NULL,
+    supplier_category_id bigint,
     CONSTRAINT budget_lines_actual_quantity_check CHECK ((actual_quantity >= (0)::numeric)),
     CONSTRAINT budget_lines_chapter_name_check CHECK ((chapter_name <> ''::text)),
     CONSTRAINT budget_lines_closed_needs_actual_quantity CHECK (((closed_at IS NULL) OR ((actual_quantity IS NOT NULL) AND (actual_quantity > (0)::numeric)))),
     CONSTRAINT budget_lines_committed_amount_check CHECK ((committed_amount >= (0)::numeric)),
     CONSTRAINT budget_lines_name_check CHECK ((name <> ''::text)),
     CONSTRAINT budget_lines_quantity_check CHECK ((quantity >= (0)::numeric)),
+    CONSTRAINT budget_lines_residual_has_no_category CHECK (((NOT is_residual) OR (supplier_category_id IS NULL))),
     CONSTRAINT budget_lines_unit_check CHECK ((unit <> ''::text)),
     CONSTRAINT budget_lines_unit_price_check CHECK ((unit_price >= (0)::numeric))
 );
@@ -384,6 +435,13 @@ CREATE TABLE public.budget_lines (
 --
 
 COMMENT ON COLUMN public.budget_lines.is_residual IS 'El renglón que absorbe lo que todavía no se detalla: su importe es el total del presupuesto menos la suma de los detallados. No se captura a mano — convertir una resta determinista en una segunda captura es donde nace el descuadre. Uno por presupuesto, y el índice único parcial lo garantiza.';
+
+
+--
+-- Name: COLUMN budget_lines.supplier_category_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.budget_lines.supplier_category_id IS 'El oficio que este renglón requiere, COPIADO del catálogo al instanciar como el nombre, la unidad y el precio: editar el catálogo después no lo mueve. FILTRA el selector de proveedores por id —no por el nombre del capítulo, que era una coincidencia de textos— y nunca restringe: el día que el plomero haga albañilería tiene que poder capturarse. Que un renglón tenga oficio y todavía no proveedor es el estado normal mientras se presupuesta.';
 
 
 --
@@ -1128,7 +1186,7 @@ COMMENT ON COLUMN public.properties.construction_cost_per_sqm IS 'RETIRADA como 
 -- Name: COLUMN properties.construction_overhead; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.properties.construction_overhead IS 'RETIRADO como multiplicador vivo: la 028 lo aplicó UNA sola vez al sembrar y el 30% de indirectos ya vive dentro del importe del presupuesto. Volver a multiplicar por él inflaría cada costo de obra sin que nada se viera roto. El API ya no lo lee ni lo publica como supuesto; solo las semillas lo usan para calcular el primer renglón. Pendiente de DROP junto con la reescritura de db/seeds.';
+COMMENT ON COLUMN public.properties.construction_overhead IS 'RETIRADO como multiplicador vivo: la 032 lo aplicó UNA sola vez al sembrar y el 30% de indirectos ya vive dentro del importe del presupuesto. Volver a multiplicar por él inflaría cada costo de obra sin que nada se viera roto. El API ya no lo lee ni lo publica como supuesto; solo las semillas lo usan para calcular el primer renglón. Pendiente de DROP junto con la reescritura de db/seeds.';
 
 
 --
@@ -1262,6 +1320,45 @@ CREATE SEQUENCE public.property_investors_id_seq
 --
 
 ALTER SEQUENCE public.property_investors_id_seq OWNED BY public.property_investors.id;
+
+
+--
+-- Name: property_renders; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.property_renders (
+    id bigint NOT NULL,
+    property_id bigint NOT NULL,
+    source_image_id bigint,
+    file_path text NOT NULL,
+    content_type text NOT NULL,
+    prompt_id bigint,
+    prompt_text text NOT NULL,
+    provider text NOT NULL,
+    model text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT property_renders_file_path_check CHECK ((file_path <> ''::text)),
+    CONSTRAINT property_renders_prompt_text_check CHECK ((prompt_text <> ''::text))
+);
+
+
+--
+-- Name: property_renders_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.property_renders_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: property_renders_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.property_renders_id_seq OWNED BY public.property_renders.id;
 
 
 --
@@ -1552,6 +1649,41 @@ CREATE SEQUENCE public.remodel_costs_id_seq
 --
 
 ALTER SEQUENCE public.remodel_costs_id_seq OWNED BY public.remodel_costs.id;
+
+
+--
+-- Name: render_prompts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.render_prompts (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    body text NOT NULL,
+    is_default boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    archived_at timestamp with time zone,
+    CONSTRAINT render_prompts_body_check CHECK ((body <> ''::text)),
+    CONSTRAINT render_prompts_name_check CHECK ((name <> ''::text))
+);
+
+
+--
+-- Name: render_prompts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.render_prompts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: render_prompts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.render_prompts_id_seq OWNED BY public.render_prompts.id;
 
 
 --
@@ -1992,6 +2124,13 @@ ALTER TABLE ONLY public.property_investors ALTER COLUMN id SET DEFAULT nextval('
 
 
 --
+-- Name: property_renders id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_renders ALTER COLUMN id SET DEFAULT nextval('public.property_renders_id_seq'::regclass);
+
+
+--
 -- Name: property_status_events id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2038,6 +2177,13 @@ ALTER TABLE ONLY public.proveedores ALTER COLUMN id SET DEFAULT nextval('public.
 --
 
 ALTER TABLE ONLY public.remodel_costs ALTER COLUMN id SET DEFAULT nextval('public.remodel_costs_id_seq'::regclass);
+
+
+--
+-- Name: render_prompts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.render_prompts ALTER COLUMN id SET DEFAULT nextval('public.render_prompts_id_seq'::regclass);
 
 
 --
@@ -2314,6 +2460,22 @@ ALTER TABLE ONLY public.property_investors
 
 
 --
+-- Name: property_renders property_renders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_renders
+    ADD CONSTRAINT property_renders_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: property_renders property_renders_unique_path; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_renders
+    ADD CONSTRAINT property_renders_unique_path UNIQUE (property_id, file_path);
+
+
+--
 -- Name: property_status_events property_status_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2383,6 +2545,14 @@ ALTER TABLE ONLY public.remodel_costs
 
 ALTER TABLE ONLY public.remodel_costs
     ADD CONSTRAINT remodel_costs_zone_id_intervention_level_valid_from_key UNIQUE (zone_id, intervention_level, valid_from);
+
+
+--
+-- Name: render_prompts render_prompts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.render_prompts
+    ADD CONSTRAINT render_prompts_pkey PRIMARY KEY (id);
 
 
 --
@@ -2511,6 +2681,13 @@ CREATE INDEX idx_budget_items_chapter ON public.budget_items USING btree (chapte
 
 
 --
+-- Name: idx_budget_items_name_trgm; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_budget_items_name_trgm ON public.budget_items USING gin (name public.gin_trgm_ops);
+
+
+--
 -- Name: idx_budget_line_payments_line; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2529,6 +2706,27 @@ CREATE INDEX idx_budget_lines_budget ON public.budget_lines USING btree (budget_
 --
 
 CREATE INDEX idx_budget_lines_item ON public.budget_lines USING btree (item_id) WHERE (item_id IS NOT NULL);
+
+
+--
+-- Name: idx_budget_lines_name_trgm; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_budget_lines_name_trgm ON public.budget_lines USING gin (name public.gin_trgm_ops);
+
+
+--
+-- Name: idx_budget_lines_promotable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_budget_lines_promotable ON public.budget_lines USING btree (lower(btrim(name))) WHERE ((item_id IS NULL) AND (NOT is_residual));
+
+
+--
+-- Name: idx_budget_lines_supplier_category; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_budget_lines_supplier_category ON public.budget_lines USING btree (supplier_category_id) WHERE (supplier_category_id IS NOT NULL);
 
 
 --
@@ -2763,6 +2961,13 @@ CREATE INDEX idx_property_images_property ON public.property_images USING btree 
 
 
 --
+-- Name: idx_property_renders_property; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_property_renders_property ON public.property_renders USING btree (property_id, created_at DESC);
+
+
+--
 -- Name: idx_prov_cat_links_cat; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2774,6 +2979,13 @@ CREATE INDEX idx_prov_cat_links_cat ON public.proveedor_category_links USING btr
 --
 
 CREATE INDEX idx_proveedor_photos_prov ON public.proveedor_photos USING btree (proveedor_id);
+
+
+--
+-- Name: idx_render_prompts_name_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_render_prompts_name_active ON public.render_prompts USING btree (lower(name)) WHERE (archived_at IS NULL);
 
 
 --
@@ -2947,11 +3159,27 @@ ALTER TABLE ONLY public.api_keys
 
 
 --
+-- Name: budget_chapters budget_chapters_supplier_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.budget_chapters
+    ADD CONSTRAINT budget_chapters_supplier_category_id_fkey FOREIGN KEY (supplier_category_id) REFERENCES public.proveedor_categories(id) ON DELETE SET NULL;
+
+
+--
 -- Name: budget_items budget_items_chapter_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.budget_items
     ADD CONSTRAINT budget_items_chapter_id_fkey FOREIGN KEY (chapter_id) REFERENCES public.budget_chapters(id);
+
+
+--
+-- Name: budget_items budget_items_supplier_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.budget_items
+    ADD CONSTRAINT budget_items_supplier_category_id_fkey FOREIGN KEY (supplier_category_id) REFERENCES public.proveedor_categories(id) ON DELETE SET NULL;
 
 
 --
@@ -2976,6 +3204,14 @@ ALTER TABLE ONLY public.budget_lines
 
 ALTER TABLE ONLY public.budget_lines
     ADD CONSTRAINT budget_lines_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.budget_items(id) ON DELETE SET NULL;
+
+
+--
+-- Name: budget_lines budget_lines_supplier_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.budget_lines
+    ADD CONSTRAINT budget_lines_supplier_category_id_fkey FOREIGN KEY (supplier_category_id) REFERENCES public.proveedor_categories(id) ON DELETE SET NULL;
 
 
 --
@@ -3203,6 +3439,30 @@ ALTER TABLE ONLY public.property_investors
 
 
 --
+-- Name: property_renders property_renders_prompt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_renders
+    ADD CONSTRAINT property_renders_prompt_id_fkey FOREIGN KEY (prompt_id) REFERENCES public.render_prompts(id) ON DELETE SET NULL;
+
+
+--
+-- Name: property_renders property_renders_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_renders
+    ADD CONSTRAINT property_renders_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id) ON DELETE CASCADE;
+
+
+--
+-- Name: property_renders property_renders_source_image_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_renders
+    ADD CONSTRAINT property_renders_source_image_id_fkey FOREIGN KEY (source_image_id) REFERENCES public.property_images(id) ON DELETE SET NULL;
+
+
+--
 -- Name: property_status_events property_status_events_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3371,4 +3631,7 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('026'),
     ('027'),
     ('028'),
-    ('029');
+    ('032'),
+    ('033'),
+    ('034'),
+    ('035');
