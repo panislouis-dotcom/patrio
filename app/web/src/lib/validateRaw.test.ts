@@ -39,16 +39,40 @@ describe('validateRaw', () => {
     expect(issues.some(i => i.field === 'sqmLand' && i.severity === 'error')).toBe(true)
   })
 
-  it('errors on constructionOverhead below 1.0', () => {
-    const issues = validateRaw({ ...VALID, constructionOverhead: 0.8 })
-    expect(issues.some(i => i.field === 'constructionOverhead' && i.severity === 'error')).toBe(true)
+  it('el overhead ya no se valida: dejó de ser una regla que alguien pueda violar', () => {
+    // Era un `error` que bloqueaba el alta, más estricto que el
+    // `CHECK (construction_overhead >= 0)` de la base, y sin ninguna regla del
+    // servidor detrás desde que el multiplicador salió del contrato: `checks.py`
+    // lo retiró a propósito. Dos definiciones de «bien capturado» es lo que este
+    // archivo existe para no tener.
+    for (const overhead of [0.8, 1.0, undefined]) {
+      expect(validateRaw({ ...VALID, constructionOverhead: overhead })).toHaveLength(0)
+    }
   })
 
-  it('does not error on constructionOverhead exactly 1.0', () => {
-    expect(validateRaw({ ...VALID, constructionOverhead: 1.0 })).toHaveLength(0)
+  it('avisa por la obra en cero, no por el campo que ya no se captura', () => {
+    // El costo por m² es hoy un RESULTADO —presupuesto ÷ metraje—, así que
+    // pedirlo era pedir que se tecleara un derivado. Lo que sí importa al dar de
+    // alta es que la calculadora produzca algo: sin metraje o sin precio por m²
+    // la propiedad nace con la obra en cero.
+    for (const roto of [{ sqmConstruction: 0 }, { constructionCostPerSqm: 0 }]) {
+      const issues = validateRaw({ ...VALID, ...roto })
+      expect(issues).toEqual([{
+        field: 'constructionBudgeted',
+        message: 'La obra presupuestada está en 0',
+        severity: 'warning',
+      }])
+    }
   })
 
-  it('does not error on missing optional fields', () => {
-    expect(validateRaw({ ...VALID, constructionOverhead: undefined })).toHaveLength(0)
+  it('el aviso dice exactamente lo que dirá el servidor en cuanto la fila exista', () => {
+    // Espeja `checks.py::_pre_purchase_warnings` al pie de la letra: mismo
+    // `field` y misma frase. Si divergen, el formulario y la ficha nombran el
+    // mismo problema de dos maneras y parecen dos problemas.
+    const [aviso] = validateRaw({ ...VALID, constructionCostPerSqm: 0 })
+    expect(aviso.field).toBe('constructionBudgeted')
+    expect(aviso.message).toBe('La obra presupuestada está en 0')
+    // Y el nombre viejo no sobrevive en ningún lado
+    expect(validateRaw({}).some(i => i.field === 'constructionCostPerSqm')).toBe(false)
   })
 })
