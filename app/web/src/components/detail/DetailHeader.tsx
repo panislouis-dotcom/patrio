@@ -56,14 +56,22 @@ export function DetailHeader({
     }
   }
 
+  // El encabezado ENVUELVE en vez de estirar la página. Con el volver, el
+  // título, la etapa y hasta cinco acciones mide ~594px, y en un teléfono
+  // empujaba el documento entero a scrollear en horizontal. Aquí envolver gana
+  // al scroll local que usan la barra de navegación y la tabla del presupuesto:
+  // los botones son el destino, no algo que se hojea, y escondidos tras un
+  // arrastre lateral dejarían de encontrarse. Por eso la altura es MÍNIMA y no
+  // fija — con dos renglones, la de 52px recortaba el segundo.
   return (
     <div style={{
       flexShrink: 0,
-      height: '52px',
+      minHeight: '52px',
       display: 'flex',
+      flexWrap: 'wrap',
       alignItems: 'center',
       gap: '16px',
-      padding: '0 24px',
+      padding: '6px 24px',
       borderBottom: `1px solid ${colors.border}`,
       background: colors.dark,
       ...style,

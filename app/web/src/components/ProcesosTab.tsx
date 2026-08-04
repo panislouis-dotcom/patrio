@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { colors, fonts } from '../lib/theme'
+import { pageFill } from '../lib/styles'
 
 const subTabs = [
   { path: '/procesos/plantillas', label: 'PLANTILLAS' },
@@ -8,7 +9,7 @@ const subTabs = [
 
 export function ProcesosTab() {
   return (
-    <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ ...pageFill, display: 'flex', flexDirection: 'column' }}>
       {/* Sub-nav */}
       <div style={{
         display: 'flex',

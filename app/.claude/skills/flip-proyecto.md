@@ -12,12 +12,13 @@ Generates a comprehensive mobile-first HTML project evaluation for a committed f
 ## Vocabulary — this skill does not speak the platform's
 
 **Read `docs/glosario.md` before you reuse a word from here.** This card is a
-back-of-envelope screen with its own ratio model, and three of its labels name
+back-of-envelope screen with its own ratio model, and four of its labels name
 formulas that the platform names differently:
 
 | Here | Formula here | The platform's word for it |
 |---|---|---|
-| Inversión total | adquisición ×1.065 + obra ×1.10 + comercialización | **not** `totalInvestment` — the platform has no comercialización term and prices obra with an overhead multiplier (×1.3 by default), so the two numbers will not match |
+| Inversión total | adquisición ×1.065 + obra ×1.10 + comercialización | **not** `totalInvestment` — the platform has no comercialización term, and its obra is the **sum of the property's work budget**, not a lump budget times a contingency factor, so the two numbers will not match |
+| Presupuesto de obra | one number the user types, before the ×1.10 contingency | **not** the platform's **Obra presupuestada** (`constructionBudgeted`), which is the sum of captured budget lines and already carries its indirect costs inside. Pasting that figure in here and then applying the ×1.10 stacks two cushions |
 | ROI anual | operator's net profit, after the investor cuota and ISR, annualized | **not** `projectedRoi`, which annualizes the gain over the whole investment before any split |
 | Margen bruto | (venta − inversión) / **venta** | **not** Ganancia proy. total, which divides by the **inversión** |
 

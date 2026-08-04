@@ -19,26 +19,29 @@ export const FIELD_LABEL: Record<string, string> = {
   // Insumos de captura
   purchasePrice: 'Precio de compra',
   sqmLand: 'Superficie de terreno',
-  constructionCostPerSqm: 'Costo por m² de la obra a ejecutar',
   projectedSale: 'Venta proyectada',
   rentMonthlyProjected: 'Renta mensual estimada',
   rentMonthlyActual: 'Renta mensual cobrada',
 
-  // Supuestos
+  // Supuestos. Son DOS: `constructionOverhead` se retiró del contrato con la
+  // fórmula que multiplicaba, y con él su verificación — una etiqueta sin
+  // verificación viva es ruido que hace creer que el campo todavía se revisa.
   acquisitionCostPct: 'Costos de adquisición (%)',
-  constructionOverhead: 'Overhead de obra',
-  holdMonths: 'Plazo proyectado',
 
   // Hechos posteriores a la compra
   totalUnits: 'Unidades',
   acquisitionDate: 'Fecha de adquisición',
   firstRentDate: 'Fecha de la primera renta',
   valuationDate: 'Fecha de valuación',
-  currentValuation: 'Valuación',
   saleDate: 'Fecha de venta',
   salePrice: 'Precio de venta',
 
   // Métricas
+  // La obra presupuestada es la SUMA del presupuesto, así que su advertencia no
+  // dice «captura este campo» sino «este presupuesto está en ceros»: se atiende
+  // en la pestaña PRESUPUESTO, renglón por renglón. Sustituyó a la del costo por
+  // m², que pedía teclear lo que hoy es un resultado.
+  constructionBudgeted: 'Obra presupuestada',
   projectedRoi: 'ROI proy. anual',
   projectedProfit: 'Ganancia proyectada',
   capRateActual: 'Cap rate real sobre inversión',

@@ -125,11 +125,15 @@ prospecto → oferta → desarrollo → en_renta → vendida
 
 A property is **born `prospecto`** — `POST /api/properties` cannot set a status, and neither can `PATCH`. Reaching any other stage means living through the one before it.
 
-**Key raw inputs (the underwriting model):** `purchasePrice` (Precio de compra), `sqmLand`, `sqmConstruction` + `constructionCostPerSqm` (Obra a ejecutar), `permitsCost` (Permisos), `subdivisionCost` (Subdivisión), `projectedSale` (Venta proyectada — *not* a valuation), `rentMonthlyProjected` (Renta mensual estimada).
+**Key raw inputs (the underwriting model):** `purchasePrice` (Precio de compra), `sqmLand`, `sqmConstruction` (Metros de obra a ejecutar), `permitsCost` (Permisos), `subdivisionCost` (Subdivisión), `projectedSale` (Venta proyectada — *not* a valuation), `rentMonthlyProjected` (Renta mensual estimada).
 
-`purchasePrice` is what it costs to **acquire the building as it stands** — a bare lot or a finished house, no special case per asset type. `sqmConstruction` × `constructionCostPerSqm` is the work *you will execute* on top: a remodel, an extension, a ground-up build. Nothing already paid for inside the purchase price appears in them, which is what stops a built house being counted twice.
+`purchasePrice` is what it costs to **acquire the building as it stands** — a bare lot or a finished house, no special case per asset type. The work *you will execute* on top — a remodel, an extension, a ground-up build — is priced in the property's **work budget**, line by line (below), and nothing already paid for inside the purchase price appears there, which is what stops a built house being counted twice.
 
-**Assumptions** — `acquisitionCostPct`, `constructionOverhead`, `holdMonths` — are not inputs like the rest. They always have a value in force, and the payload publishes it under its own key *plus* its provenance in `assumptions`: `{"holdMonths": {"value": 12, "source": "default" | "captured"}}`. `default` means nobody chose and the model applied its own (6.5%, ×1.3, 12 months); `captured` means a person decided. Writing one captures it; clearing it hands it back to the model.
+`sqmConstruction` is that work's **physical footage and prices nothing.** It was half of a formula — `sqmConstruction × constructionCostPerSqm` — and survives that formula's retirement because the market analyzer and the PDF read it, and because it is the divisor of the derived cost per m².
+
+**Assumptions** — `acquisitionCostPct` and `holdMonths` — are not inputs like the rest. They always have a value in force, and the payload publishes it under its own key *plus* its provenance in `assumptions`: `{"holdMonths": {"value": 12, "source": "default" | "captured"}}`. `default` means nobody chose and the model applied its own (6.5%, 12 months); `captured` means a person decided. Writing one captures it; clearing it hands it back to the model.
+
+There used to be three. **`constructionOverhead` is no longer an assumption and no longer published**: it multiplies nothing. The ×1.3 of indirect costs is applied exactly once — when the budget's first line is seeded — and lives inside that amount from then on. Do not go looking for it in a payload, and never re-apply it to a construction figure you read: doing so inflates the cost of works by 30% with nothing looking broken.
 
 **Key recorded facts (post-purchase):** `totalUnits`, `acquisitionDate`, `firstRentDate`, `rentMonthlyActual`, `saleDate`, `salePrice`, `currentValuation`, `valuationDate`, `milestones` (JSON).
 
@@ -190,10 +194,11 @@ other. Buying a building does not produce an appraisal, and demanding one only
 ever got one invented. Capture the valuation when a real one exists; until then
 `unrealizedGain` is `null`, which is the honest answer.
 
-Nothing else is a gate. `desarrollo` does **not** require the three assumptions
-(`acquisitionCostPct`, `constructionOverhead`, `holdMonths`): they always resolve,
-so a gate on them could never fail — it would only make every freshly captured
-property claim a complete underwriting it never had.
+Nothing else is a gate. `desarrollo` does **not** require the two assumptions
+(`acquisitionCostPct`, `holdMonths`): they always resolve, so a gate on them
+could never fail — it would only make every freshly captured property claim a
+complete underwriting it never had. Nor is the work budget a gate: it exists
+from birth, so there is never a stage at which it is missing.
 
 All bodies also accept `effectiveOn` (defaults to today) and `notes`. Every move is recorded in `property_status_events` with its author, so the pipeline has a history: days-in-offer, conversion rate, time-to-first-rent.
 
@@ -215,7 +220,10 @@ it, and the yield of each of the two rents.
 | Field | Name it by |
 |---|---|
 | `acquisitionCosts` · `acquisitionTotal` | Costos de adquisición · Total de adquisición |
-| `constructionBase` · `constructionTotal` | Obra a ejecutar (base / total) |
+| `constructionBudgeted` | **Obra presupuestada** — the sum of the work budget, and the only cost of works there is |
+| `constructionCommitted` · `constructionPaid` | **Obra comprometida** · **Obra pagada** — signed for, and out of the bank |
+| `constructionCommittedVariance` · `constructionPaidVariance` | **Comprometido vs presupuesto** · **Pagado vs presupuesto** — execution minus plan, so positive means overrun |
+| `constructionCostPerSqm` | **Costo por m² de obra** — derived (budget ÷ footage), never captured |
 | `purchasePricePerSqm` · `investmentPerSqm` · `salePerSqm` | per-m² figures |
 | `projectedProfit` · `projectedRoiTotal` | **Ganancia proyectada** · **Ganancia proyectada %** |
 | `projectedRoi` | **ROI proy. anual** — annualized over `holdMonths` |
@@ -258,7 +266,7 @@ with no branches:
 ```
 totalInvestment = purchasePrice × (1 + acquisitionCostPct)
                 + permitsCost + subdivisionCost
-                + sqmConstruction × constructionCostPerSqm × constructionOverhead
+                + constructionBudgeted
 ```
 
 A component nobody captured counts as 0, so there is no "complete" versus
@@ -266,6 +274,14 @@ A component nobody captured counts as 0, so there is no "complete" versus
 capital base of zero. There is no second way to reach the figure and no field
 saying which way was taken: `totalInvestmentCaptured` and `investmentBasis` both
 existed and are gone, because two ways to compute one number is two numbers.
+
+The last term was `sqmConstruction × constructionCostPerSqm × constructionOverhead`
+until the work budget arrived, and the same rule is why it changed rather than
+gaining a branch. **There is no "use the budget if it exists, else the formula"** —
+that disjunction is two numbers wearing one name. Every property has a budget
+from birth (it is created in the same transaction as the row, and the migration
+that introduced it seeded one for every property that already existed, to the
+peso), so the sum is defined in every stage and the question never arises.
 
 **A lump sum is written as `purchasePrice`.** When all that is known about an
 older property is "it cost $9.5M all in", capture `purchasePrice: 9500000` with
@@ -297,6 +313,64 @@ Key `operation_id`s:
 Properties carry an `isFavorite` flag; the prospectus is built from **favorited** ones.
 
 > **Note on old URLs.** `/api/prospects` and `/api/projects` are gone and are **not** redirected: the merge gave every property a fresh id, so a preserved path would answer about a different building. They return 404. Ids from before the merge are meaningless; look properties up by name.
+
+#### The work budget — where "what will the works cost" lives
+
+`constructionBudgeted` is not a column. It is `SUM(quantity × unitPrice)` over the property's budget lines, derived on every read, and it is the **only** answer to what the works cost — in every stage, `prospecto` included.
+
+**No stage gate.** The budget travels with the property like the rest of the cost breakdown, not like a tool that opens later: investors open at `oferta`, the waterfall and tareas at `desarrollo`, but you must be able to budget a building before bidding on it. It is nested under `/api/properties/{id}/budget` because that is what it is — a budget does not exist without its property and is shared with no other.
+
+Two levels: **capítulo → partida**. A chapter is a name its lines carry (`chapterName`), not a row, so it exists exactly as long as some line names it — which is why nothing creates an empty one.
+
+**No total is ever stored.** Budgeted, committed and paid are derived every time somebody asks, exactly like `totalInvestment`. There is no `paidAmount` column to write and no total to PATCH.
+
+**The residual line absorbs detail.** Every budget is born with one line — «Otros, por detallar», `isResidual: true` — carrying the rough estimate the calculator produced from `sqmConstruction`, `constructionCostPerSqm` and the overhead. Adding a $300k line drops the residual by $300k, so **detailing does not change the cost of works, it distributes it**; deleting a line returns the amount and does not move it either. Raising the budget is therefore a *different* operation, and every write returns `budgetIncrease` — 0 in the normal case, non-zero only when the detail overflowed the residual, which is a real increase reported rather than let through in silence. The residual never accepts `quantity`/`unitPrice` from a client: it is a remainder, not a capture.
+
+**Every write returns `{line, budget, property, budgetIncrease}`.** The `property` comes back recomputed, because moving a line moves the cost of works and with it `totalInvestment`, `projectedProfit`, `projectedRoi` and `capRate`. Take it whole; do not re-fetch the property and do not re-sum the lines client-side.
+
+Per line: `budgetedAmount` (`quantity × unitPrice`), `committedAmount` (what was signed with a supplier) and `paidAmount` (the sum of its payments), plus `committedVariance` and `paidVariance` against the budgeted figure. **A payment never touches the budgeted amount** — paying does not change what the works were planned to cost, and the gap between the two is the information. Payments are append-only: a mis-keyed one is deleted, never rewritten.
+
+In a line `PATCH`, **a `null` travels and means "clear it"** — the opposite of the property ficha, where emptying is its own operation. The route uses `exclude_unset`, not `exclude_none`, because the supplier selector has a "— Sin proveedor" option and choosing it must remove the supplier. On `POST` a null is dropped instead: an absent column and a null column produce the same new row, so there is nothing to distinguish.
+
+Deleting a property that holds captured work is a `422` with its reason in words, not a silent cascade.
+
+Key `operation_id`s:
+- `budget_get` — `GET /api/properties/{id}/budget` → `{id, propertyId, lines, chapters}`, residual last
+- `budget_line_create` — `POST /api/properties/{id}/budget/lines` — `chapterName` and `name` required; the rest is filled cell by cell
+- `budget_line_update` — `PATCH /api/properties/{id}/budget/lines/{line_id}`
+- `budget_line_delete` — `DELETE /api/properties/{id}/budget/lines/{line_id}`
+- `budget_set_total` — `PUT /api/properties/{id}/budget/total` — body `{"amount": n}`; the one operation that moves the cost of works, and where a re-run of the calculator lands
+- `budget_chapter_rename` — `PATCH /api/properties/{id}/budget/chapters/{chapter}`
+- `budget_chapter_delete` — `DELETE /api/properties/{id}/budget/chapters/{chapter}`
+- `budget_payment_create` — `POST /api/properties/{id}/budget/lines/{line_id}/payments`
+- `budget_payment_delete` — `DELETE /api/properties/{id}/budget/lines/{line_id}/payments/{payment_id}`
+- `budget_apply` — `POST /api/properties/{id}/budget/apply` — copy another budget over this one (a template, or the works next door)
+- `budget_apply_chapter` — `POST /api/properties/{id}/budget/apply-chapter` — pull one catalog chapter in as a skeleton, at quantity 0 and price 0
+
+#### The catalog and templates — shared memory, never shared numbers
+
+The catalog is **not** nested under a property (`/api/budget/catalog`), and that is the whole point: a budget does not exist without its works, while the catalog is what every job shares — the memory of which line items exist and what they are called.
+
+**Applying the catalog COPIES the text into the line.** From that moment the line belongs to the property and editing the catalog cannot touch it: `itemId` is **provenance, not dependency** (`ON DELETE SET NULL`, and nothing reads it back to build a line). This is deliberately the *opposite* of process templates, which are read live — a process node holds state *about* doing something and its text is a label, while a budget line **is the claim itself**, and it has readers outside the app: the prospectus, the term sheet, `totalInvestment`. Retroactively moving a number an investor already saw is a different class of damage from renaming a task.
+
+**Nothing in the catalog can move a peso of any job**, which is why no route there returns `property`. The two that do move money — applying a template, applying a chapter — live on the property side and return the recomputed ficha like every other budget write.
+
+**Deleting does not exist for the catalog.** `DELETE` deactivates (`isActive = false`) and answers with the switched-off row; a truly deleted item would take the provenance of every budget citing it, including sold properties. Templates *are* deleted for real, and that is consistent: after a copy nothing cites a template.
+
+**A one-off line costs nothing** — create it with no `itemId` and it is a normal line. Forcing everything through the catalog first is the fastest way to make nobody use the module. What keeps the catalog from rotting instead is **deduplication while typing** (`budget_catalog_suggest`, trigram-based) and an explicit, human, one-click promotion from a queue ordered by frequency; promoting relinks the whole group backwards, so the item joins the catalog already knowing its history.
+
+**The catalog stores no price.** Learning one from what was *budgeted* is a self-confirming loop — you budget $1,000, the catalog learns $1,000, next time it suggests $1,000 — so prices are learned only from **closed, paid** lines.
+
+**A template is a budget without a property.** Its `id` is a budget id and can be handed straight to `budget_apply`, exactly like the id of another job's budget. That is the entire machinery behind "start from a template", "start from another job" and "save this one as a template" — one copy operation used three ways.
+
+Key `operation_id`s:
+- `budget_catalog_get` — `GET /api/budget/catalog` — chapters with their items; `?includeInactive=true` to see the switched-off ones
+- `budget_catalog_chapter_create`, `budget_catalog_chapter_update`, `budget_catalog_chapter_deactivate`
+- `budget_catalog_item_create`, `budget_catalog_item_update`, `budget_catalog_item_deactivate`
+- `budget_catalog_suggest` — `GET /api/budget/catalog/suggest?name=…` — "is this the same one as…?", for use while somebody types
+- `budget_catalog_promotion_queue` — `GET /api/budget/catalog/promotion-queue` — loose lines grouped by frequency; it orders, it does not decide
+- `budget_catalog_promote` — `POST /api/budget/catalog/promote` — body `{lineId, chapterId?, itemId?}`; `itemId` merges into an existing item. Returns `{item, created, relinked}`
+- `budget_templates_list`, `budget_template_get`, `budget_template_create` (body `{name, fromBudgetId?}`), `budget_template_update`, `budget_template_delete`
 
 ### 2. Analyses — financial model snapshots
 

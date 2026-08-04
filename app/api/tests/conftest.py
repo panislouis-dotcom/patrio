@@ -1,10 +1,14 @@
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+
+_ROOT = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(_ROOT / "scripts"))
 
 # ── Resolve env file ─────────────────────────────────────────────────────────
 _env_file = Path(__file__).parent.parent.parent.parent / ".env"
@@ -87,6 +91,25 @@ def _bootstrap_test_db() -> None:
     _run_dbmate(_TEST_URL)
 
 
+def _refuse_colliding_migrations() -> None:
+    """Antes de migrar nada, no después.
+
+    El bootstrap tira y rehace la base de prueba en cada sesión, así que una
+    colisión de números la encuentra dbmate ANTES que cualquier prueba: la
+    sesión entera muere en este archivo con un `duplicate key ...
+    schema_migrations_pkey` enterrado en treinta líneas de log, y
+    test_migrations_contract.py —que existe justamente para explicarlo— no
+    alcanza a correr. Preguntando aquí, la primera línea que se lee dice qué
+    pasó y qué hacer.
+    """
+    import check_migration_numbers
+
+    queja = check_migration_numbers.problem()
+    if queja:
+        raise RuntimeError(f"conftest: {queja}")
+
+
+_refuse_colliding_migrations()
 _bootstrap_test_db()
 
 # ── Shared fixtures ───────────────────────────────────────────────────────────
@@ -139,15 +162,24 @@ def _delete_property(property_id: int) -> None:
     """Satellites first: their FKs to properties have no ON DELETE CASCADE."""
     with get_db() as conn:
         conn.execute("DELETE FROM analysis_snapshots WHERE property_id = %s", (property_id,))
+        conn.execute("DELETE FROM budgets WHERE property_id = %s", (property_id,))
         conn.execute("DELETE FROM profit_split_config WHERE property_id = %s", (property_id,))
         conn.execute("DELETE FROM process_instances WHERE property_id = %s", (property_id,))
         conn.execute("UPDATE signals SET property_id = NULL WHERE property_id = %s", (property_id,))
         conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
 
 
-# The complete five-cost breakdown plus the two assumptions it prices with, so
-# a fixture that wants one can pass it straight into a create or a transition.
-# 1,000,000×1.065 + 50,000 + 25,000 + 200×9,000×1.3 = 3,480,000.
+# The complete cost breakdown of a property, for a CREATE and only a create.
+#
+# It used to say "a create or a transition", and that stopped being true when the
+# cost of works became the budget's sum: `constructionCostPerSqm` and
+# `constructionOverhead` are no longer writable fields but inputs to the
+# CALCULATOR that seeds the first budget line, which only POST /api/properties
+# runs. Hand this dict to a PATCH or a transition and those two are dropped in
+# silence — the property is born with no works, and nothing raises.
+#
+# 1,000,000×1.065 + 50,000 + 25,000 + 200×9,000×1.3 = 3,480,000, where the last
+# term is the seeded budget and therefore `constructionBudgeted`.
 UNDERWRITING = dict(
     purchasePrice=1_000_000, acquisitionCostPct=0.065, permitsCost=50_000,
     subdivisionCost=25_000, sqmConstruction=200, constructionCostPerSqm=9_000,

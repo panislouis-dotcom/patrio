@@ -35,17 +35,6 @@ export function fmtPctSigned(n: number | null | undefined): string {
   return n != null ? `${n > 0 ? '+' : ''}${(n * 100).toFixed(1)}%` : '—'
 }
 
-/**
- * El overhead de obra es un MULTIPLICADOR, no un porcentaje: 1.3 significa
- * «×1.3», o sea +30% de indirectos sobre el costo directo. Se enseñaba como un
- * `1.3` pelón, que se puede leer como 1.3% o como $1.30 con la misma facilidad.
- */
-export function fmtOverhead(n: number | null | undefined): string {
-  if (n == null) return '—'
-  const surcharge = Math.round((n - 1) * 1000) / 10
-  return `×${n} (${surcharge > 0 ? '+' : ''}${surcharge}%)`
-}
-
 /** Compacto para tablas: $2.4M, $850k, $0. Lleva el signo de los negativos. */
 export function fmtM(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -83,6 +72,19 @@ export function fmtMonth(iso: string | null | undefined): string {
   const index = Number(month) - 1
   if (!year || !MESES[index]) return iso
   return `${MESES[index]} ${year}`
+}
+
+/**
+ * Una cuenta con su sustantivo concordado: «1 renglón», «4 renglones».
+ *
+ * Vive aquí y no suelto en cada pantalla porque ya se había escrito tres veces
+ * y una de las tres se equivocaba — la cola de promoción concordaba OBRA/OBRAS
+ * correctamente y en la misma línea imprimía «2 RENGLONES» para uno solo. Una
+ * regla de idioma repetida a mano se aplica a medias, y en una app en español
+ * «1 RENGLONES» es lo primero que se lee de una plantilla.
+ */
+export function plural(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`
 }
 
 /** Pesos enteros con separadores: «$1,234,567». Cero es $0. */

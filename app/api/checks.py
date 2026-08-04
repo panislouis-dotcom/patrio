@@ -110,16 +110,13 @@ def _pre_purchase_warnings(row: dict, computed: dict) -> list[Issue]:
     roi = computed.get("projectedRoi")
     if roi is not None and roi < 0:
         issues.append(Issue("projectedRoi", f"ROI proy. anual negativo ({roi:.1%})", "error"))
-    overhead = row.get("construction_overhead")
-    if overhead is not None and overhead < 1.0:
-        issues.append(Issue(
-            "constructionOverhead",
-            f"El overhead de obra es un multiplicador: ×{overhead} abarata la obra "
-            f"en vez de sumarle indirectos", "error"))
-
-    if not _positive(row.get("construction_cost_per_sqm")):
-        issues.append(Issue("constructionCostPerSqm",
-                            "El costo por m² de la obra a ejecutar está en 0", "warning"))
+    # El overhead de obra ya no se valida aquí y no es un descuido: dejó de
+    # multiplicar nada. Se aplica una sola vez, al calcular el primer renglón
+    # del presupuesto, y desde ahí vive dentro del importe. Una regla sobre un
+    # número que no mueve dinero es una regla que nadie puede violar.
+    if not _positive(computed.get("constructionBudgeted")):
+        issues.append(Issue("constructionBudgeted",
+                            "La obra presupuestada está en 0", "warning"))
     if row.get("rent_monthly_projected") is None:
         issues.append(Issue("rentMonthlyProjected", "Renta mensual estimada sin capturar", "warning"))
     acq_pct = row.get("acquisition_cost_pct")

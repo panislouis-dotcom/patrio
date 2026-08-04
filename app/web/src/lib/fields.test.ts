@@ -4,6 +4,7 @@ import { validateRaw } from './validateRaw'
 // El propio `checks.py`, como texto. Leerlo con `?raw` en vez de con `fs` evita
 // meter @types/node al proyecto sólo para una prueba.
 import checksSource from '../../../api/checks.py?raw'
+import validateRawSource from './validateRaw.ts?raw'
 
 /**
  * `FIELD_LABEL` es un espejo del contrato: la lista de `field` que un issue
@@ -31,6 +32,25 @@ describe('toda etiqueta que la ficha puede necesitar existe', () => {
     ]
     expect(issues.length).toBeGreaterThan(0)
     expect(issues.map(i => i.field).filter(f => !(f in FIELD_LABEL))).toEqual([])
+  })
+
+  it('ninguna etiqueta sobrevive a la verificación que la nombraba', () => {
+    // La dirección que faltaba. Una etiqueta sin verificación viva es ruido, y
+    // ruido que engaña: hace creer que el campo todavía se revisa. Quedaron
+    // cuatro al mover el costo de obra al presupuesto — las dos de obra, más
+    // `currentValuation` y `holdMonths`, que llevaban más tiempo huérfanas.
+    //
+    // La comprobación es A PROPÓSITO más floja que la de arriba: basta con que
+    // el nombre aparezca entrecomillado en alguna de las dos fuentes. Las dos
+    // direcciones no cuestan lo mismo si el recorte falla. Que se escape un
+    // emisor deja un identificador en pantalla y la prueba de arriba lo cobra;
+    // que se escape una etiqueta viva haría que alguien la borrara por muerta, y
+    // ESE es el bug que este archivo existe para prevenir. Ante la duda, esta
+    // mitad calla.
+    const fuentes = checksSource + validateRawSource
+    const huérfanas = Object.keys(FIELD_LABEL).filter(f => !fuentes.includes(`"${f}"`) && !fuentes.includes(`'${f}'`))
+
+    expect(huérfanas).toEqual([])
   })
 
   it('ninguna etiqueta se queda en inglés ni en camelCase', () => {

@@ -1,6 +1,17 @@
 import type { GanttNode } from './types'
 
-export function computeDepths(nodes: GanttNode[]): Map<number, number> {
+/**
+ * Lo único que hace falta para tener profundidad: un id y de quién cuelga.
+ * `GanttNode` lo cumple, y también las filas del presupuesto, que se arman en
+ * memoria a partir de renglones agrupados por capítulo. Pedir el nodo completo
+ * obligaría a inventar veinte campos de proceso para poder indentar una tabla.
+ */
+export interface TreeNode {
+  id: number
+  parentId: number | null
+}
+
+export function computeDepths(nodes: TreeNode[]): Map<number, number> {
   const depths = new Map<number, number>()
   const parentMap = new Map(nodes.map(n => [n.id, n.parentId]))
 

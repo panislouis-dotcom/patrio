@@ -7,6 +7,7 @@ import { fmtPct, fmtPctSigned, fmtM } from '../lib/fmt'
 import { SmartPropertyModal } from './SmartPropertyModal'
 import { LIFECYCLE, PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL, isPrePurchase } from '../lib/status'
 import type { PropertyStatus } from '../lib/status'
+import { pageFill } from '../lib/styles'
 
 type Filter = 'todas' | PropertyStatus
 
@@ -290,7 +291,7 @@ export function PropiedadesTable() {
   if (error) return <div style={{ padding: '32px', color: '#E62300' }}>Error: {error}</div>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 49px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', ...pageFill }}>
 
       {/* Toolbar: chips de etapa + acciones */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '6px 12px', borderBottom: `1px solid ${colors.border}`, flexWrap: 'wrap' }}>

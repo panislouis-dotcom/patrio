@@ -27,21 +27,49 @@ def test_pct2_two_dp():
 from api.finance import underwriting as uw
 
 # Clean inputs (float-exact) so Decimal output matches the float4 SQL view byte-for-byte.
+#
+# `construction_budgeted` son los 2,340,000 que la fórmula vieja producía con
+# 200 m² × 9,000 × 1.3 — el mismo dinero, dicho como lo dice ahora el
+# presupuesto: una cifra que llega entera y con el overhead ya adentro.
+# `sqm_construction` sigue aquí porque sigue siendo metraje físico, y ya no
+# pone precio a nada.
 INPUTS = dict(
     purchase_price=1_000_000, acquisition_cost_pct=0.065,
     permits_cost=50_000, subdivision_cost=25_000,
-    sqm_construction=200, construction_cost_per_sqm=9_000,
-    construction_overhead=1.3, projected_sale=2_500_000,
+    construction_budgeted=2_340_000, sqm_construction=200,
+    projected_sale=2_500_000,
     hold_months=18, rent_monthly_projected=18_000, sqm_land=300,
 )
 
 _RAW_ARGS = ("purchase_price", "acquisition_cost_pct", "permits_cost", "subdivision_cost",
-             "sqm_construction", "construction_cost_per_sqm", "construction_overhead")
+             "construction_budgeted")
 
 
 def test_investment_raw_unrounded_single_expression():
-    # 1_000_000*1.065 + 50_000 + 25_000 + 200*9_000*1.3 = 1_065_000 + 75_000 + 2_340_000
+    # 1_000_000*1.065 + 50_000 + 25_000 + 2_340_000 = 1_065_000 + 75_000 + 2_340_000
     assert uw.investment_raw(**{k: INPUTS[k] for k in _RAW_ARGS}) == Decimal("3480000.000")
+
+
+def test_the_budgeted_work_enters_whole_and_is_never_multiplied():
+    """El riesgo central del cambio de fuente: el overhead ya está DENTRO de la
+    cifra presupuestada —se aplicó una sola vez, al sembrar— así que el stack
+    tiene que sumarla tal cual. Si algún factor sobreviviera aquí, cada costo de
+    obra crecería 30% sin un solo test rojo y sin nada que se viera roto.
+
+    2,340,000 presupuestados suman 2,340,000. No 3,042,000."""
+    solo_obra = dict(purchase_price=0, acquisition_cost_pct=0,
+                     permits_cost=0, subdivision_cost=0,
+                     construction_budgeted=2_340_000)
+    assert uw.investment_raw(**solo_obra) == Decimal("2340000")
+    assert uw.investment(solo_obra) == Decimal("2340000")
+
+
+def test_the_stack_takes_no_multiplier_it_could_re_apply():
+    """No es solo que no se aplique: es que no hay dónde pasarlo. Un overhead
+    que se pudiera enviar es un overhead que alguien puede volver a enviar."""
+    import inspect
+    assert "overhead" not in inspect.signature(uw.investment_raw).parameters
+    assert "construction_overhead" not in uw.ASSUMPTION_DEFAULTS
 
 
 # Regression oracle: the exact figures the prospect_metrics view produced for INPUTS
@@ -51,12 +79,15 @@ def test_investment_raw_unrounded_single_expression():
 # cap_rate is the one figure that no longer matches the old view: the 2026-07 formula
 # change made it yield on cost (216,000 / 3,480,000 = 0.0621) instead of the view's
 # rent*12*0.70 / projected_sale (0.0605).
+#
+# `construction_base` y `construction_total` ya no salen de aquí: la obra llega
+# entera y la publica el módulo del presupuesto, junto a lo comprometido y lo
+# pagado contra ella. El total que producían —2,340,000— sigue dentro de
+# `total_investment`, que es lo que esta ancla existe para fijar.
 _EXPECTED = {
     "total_investment": Decimal("3480000"),
     "acquisition_costs": Decimal("65000"),
     "acquisition_total": Decimal("1065000"),
-    "construction_base": Decimal("1800000"),
-    "construction_total": Decimal("2340000"),
     "profit": Decimal("-980000"),
     "cap_rate": Decimal("0.0621"),
     "purchase_price_per_sqm": Decimal("3333.33"),
@@ -70,22 +101,26 @@ _EXPECTED = {
 
 def test_metrics_matches_locked_oracle(client, test_property):
     """finance.underwriting reproduces the figures the prospect_metrics view
-    produced, reading a real properties row (the view itself is long gone)."""
+    produced, reading a real properties row (the view itself is long gone) con
+    el costo de obra de su presupuesto."""
+    from api import budget_db
     from api.db import get_db
     with get_db() as conn:
         conn.execute(
             """UPDATE properties SET purchase_price=%s, acquisition_cost_pct=%s, permits_cost=%s,
-                   subdivision_cost=%s, sqm_construction=%s, construction_cost_per_sqm=%s,
-                   construction_overhead=%s, projected_sale=%s, hold_months=%s,
+                   subdivision_cost=%s, sqm_construction=%s, projected_sale=%s, hold_months=%s,
                    rent_monthly_projected=%s, sqm_land=%s WHERE id=%s""",
             (INPUTS["purchase_price"], INPUTS["acquisition_cost_pct"], INPUTS["permits_cost"],
-             INPUTS["subdivision_cost"], INPUTS["sqm_construction"], INPUTS["construction_cost_per_sqm"],
-             INPUTS["construction_overhead"], INPUTS["projected_sale"], INPUTS["hold_months"],
-             INPUTS["rent_monthly_projected"], INPUTS["sqm_land"], test_property["id"]))
+             INPUTS["subdivision_cost"], INPUTS["sqm_construction"], INPUTS["projected_sale"],
+             INPUTS["hold_months"], INPUTS["rent_monthly_projected"], INPUTS["sqm_land"],
+             test_property["id"]))
+        budget_db.set_total(conn, test_property["id"], INPUTS["construction_budgeted"])
         base = conn.execute("SELECT * FROM properties WHERE id=%s",
                             (test_property["id"],)).fetchone()
+        total = conn.execute(
+            budget_db.totals_sql("%s"), (test_property["id"],)).fetchone()
 
-    m = uw.metrics(dict(base))
+    m = uw.metrics(dict(base, **total))
     for key, expected in _EXPECTED.items():
         assert m[key] == expected, f"{key}: {m[key]} != {expected}"
 
@@ -93,7 +128,7 @@ def test_metrics_matches_locked_oracle(client, test_property):
 def test_metrics_zero_guards_return_none():
     m = uw.metrics(dict(
         purchase_price=0, acquisition_cost_pct=0, permits_cost=0, subdivision_cost=0,
-        sqm_construction=0, construction_cost_per_sqm=0, construction_overhead=1,
+        construction_budgeted=0, sqm_construction=0,
         projected_sale=0, hold_months=0, rent_monthly_projected=0, sqm_land=0,
     ))
     assert m["roi"] is None
@@ -113,26 +148,23 @@ def test_the_purchase_price_is_not_counted_twice():
     built_house = dict(
         purchase_price=4_000_000, acquisition_cost_pct=0.065,
         permits_cost=0, subdivision_cost=0,
-        sqm_construction=0, construction_cost_per_sqm=0, construction_overhead=None,
+        construction_budgeted=0, sqm_construction=0,
         projected_sale=None, hold_months=None, rent_monthly_projected=None, sqm_land=None,
     )
-    m = uw.metrics(built_house)
-    assert m["total_investment"] == Decimal("4260000")
-    assert m["construction_total"] == Decimal("0")
+    assert uw.metrics(built_house)["total_investment"] == Decimal("4260000")
 
 
 def test_the_work_to_execute_is_what_gets_added_on_top():
-    """La misma casa, remodelando 100 m² a 6,000/m² con overhead 1.3: el precio
-    de compra no se mueve y encima aparecen exactamente 780,000 de obra."""
+    """La misma casa con 780,000 presupuestados de obra: el precio de compra no
+    se mueve y encima aparecen exactamente esos 780,000."""
     remodel = dict(
         purchase_price=4_000_000, acquisition_cost_pct=0.065,
         permits_cost=0, subdivision_cost=0,
-        sqm_construction=100, construction_cost_per_sqm=6_000, construction_overhead=1.3,
+        construction_budgeted=780_000, sqm_construction=100,
         projected_sale=None, hold_months=None, rent_monthly_projected=None, sqm_land=None,
     )
     m = uw.metrics(remodel)
     assert m["acquisition_total"] == Decimal("4260000")
-    assert m["construction_total"] == Decimal("780000")
     assert m["total_investment"] == Decimal("5040000")
 
 
@@ -171,21 +203,30 @@ def test_an_absent_assumption_is_the_model_default_and_says_so():
 
 
 def test_a_stored_assumption_is_a_decision_and_says_so():
-    row = dict(acquisition_cost_pct=0.08, construction_overhead=1.15, hold_months=24)
+    row = dict(acquisition_cost_pct=0.08, hold_months=24)
     assert uw.assumption(row, "acquisition_cost_pct") == (0.08, "captured")
     assert uw.assumptions(row) == {
         "acquisition_cost_pct": {"value": 0.08, "source": "captured"},
-        "construction_overhead": {"value": 1.15, "source": "captured"},
         "hold_months": {"value": 24, "source": "captured"},
     }
+
+
+def test_the_overhead_is_no_longer_an_assumption():
+    """Un supuesto es un número que el modelo aplica cuando nadie eligió, y que
+    por eso hay que poder ver. El overhead ya no aplica nada: se usó una vez
+    para calcular el primer renglón del presupuesto y ahí quedó, dentro del
+    importe. Publicarlo seguiría poniendo en la ficha una cifra editable que no
+    mueve un peso."""
+    assert "construction_overhead" not in uw.assumptions({})
+    assert tuple(uw.ASSUMPTION_KEYS) == ("acquisition_cost_pct", "hold_months")
 
 
 def test_capturing_the_default_value_changes_only_the_provenance():
     """Un supuesto vacío y uno capturado con el mismo número dan el mismo dinero.
     Lo único que cambia es que uno lo eligió alguien, y eso es lo que la ficha
     tiene que poder decir."""
-    absent = dict(INPUTS, acquisition_cost_pct=None, construction_overhead=None, hold_months=None)
-    captured = dict(INPUTS, acquisition_cost_pct=0.065, construction_overhead=1.3, hold_months=12)
+    absent = dict(INPUTS, acquisition_cost_pct=None, hold_months=None)
+    captured = dict(INPUTS, acquisition_cost_pct=0.065, hold_months=12)
     assert uw.metrics(absent)["total_investment"] == uw.metrics(captured)["total_investment"]
     assert uw.assumptions(absent)["hold_months"]["source"] == "default"
     assert uw.assumptions(captured)["hold_months"]["source"] == "captured"
@@ -256,50 +297,6 @@ def test_the_underwriting_stack_reads_the_projected_rent():
     m = uw.metrics(dict(INPUTS, rent_monthly_actual=90_000))
     assert m["rent_annual"] == Decimal("216000")
     assert m["cap_rate"] == Decimal("0.0621")
-
-
-# acquisition_cost_pct capturado en 0 a propósito: estas pruebas aíslan el
-# overhead, y dejarlo vacío le metería el 6.5% supuesto al total.
-_NO_OVERHEAD = dict(
-    purchase_price=2_000_000, acquisition_cost_pct=0, permits_cost=None, subdivision_cost=None,
-    sqm_construction=120, construction_cost_per_sqm=1_000, construction_overhead=None,
-    projected_sale=None, hold_months=None, rent_monthly_projected=None, sqm_land=None,
-)
-
-
-def test_absent_overhead_is_no_surcharge_not_no_construction():
-    """Overhead multiplies construction, so a missing multiplier must read as ×1
-    in the raw arithmetic. Treating it as ×0 erased the 120,000 of construction
-    the user explicitly captured. (Above this layer an absent overhead resolves
-    to the model default instead — investment_raw is pure arithmetic and never
-    guesses.)"""
-    assert uw.investment_raw(**{k: _NO_OVERHEAD[k] for k in _RAW_ARGS}) == Decimal("2120000")
-
-
-def test_a_captured_zero_overhead_is_no_surcharge():
-    """0 no es un multiplicador con sentido — la UI lo escribe para un campo
-    vacío tan seguido como el NULL — pero sí es una captura, así que no se le
-    aplica el default: significa «sin sobrecosto indirecto»."""
-    m = uw.metrics(dict(_NO_OVERHEAD, construction_overhead=0))
-    assert m["total_investment"] == Decimal("2120000")
-    assert m["construction_base"] == m["construction_total"] == Decimal("120000")
-
-
-def test_overhead_still_multiplies_when_given():
-    """The surcharge itself is untouched: 1.3 keeps costing +30%."""
-    m = uw.metrics(dict(_NO_OVERHEAD, construction_overhead=1.3))
-    assert m["construction_total"] == Decimal("156000")
-    assert m["total_investment"] == Decimal("2156000")
-
-
-def test_an_empty_overhead_costs_the_assumed_thirty_percent():
-    """Vacío ya no es «sin sobrecosto»: es el supuesto del modelo, el mismo 1.3
-    que antes vivía escondido en los defaults de captura. La diferencia es que
-    ahora se puede ver y cambiar."""
-    m = uw.metrics(dict(_NO_OVERHEAD))
-    assert m["construction_total"] == Decimal("156000")
-    assert uw.assumptions(_NO_OVERHEAD)["construction_overhead"] == {
-        "value": Decimal("1.3"), "source": "default"}
 
 
 def test_metrics_cap_rate_ignores_projected_sale():

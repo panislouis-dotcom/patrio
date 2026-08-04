@@ -50,6 +50,34 @@ comparten una propiedad sospechosa (aquí, ser los dos que llevan `[SEED]`).
 
 ---
 
+## Con varios agentes en un mismo checkout, el índice de git es estado compartido
+
+**2026-08-04 · el barrido de espejos que aterrizó en el commit ajeno**
+
+Un agente montó su commit quirúrgicamente: puso al índice solo sus hunks y dejó el
+resto del archivo en el árbol para no barrer el trabajo a medias de otro. Entre su
+`git add` y su `git commit` pasaron segundos — y en esa ventana **otro agente
+commiteó, y se llevó el índice**. Sus 141 líneas de pruebas de contrato viven hoy
+bajo un título que dice `docs(skills)`.
+
+La técnica era correcta en aislamiento y es exactamente la que no se debe usar aquí:
+`git add` sin commit inmediato deja estado global que cualquiera puede consumir.
+
+**Cómo aplicarlo**: con varios agentes sobre un checkout, `add` y `commit` van en la
+MISMA operación, sin ventana entre ellos. Para trabajo que de verdad se solapa en los
+mismos archivos, worktrees separados (`isolation: "worktree"`) — el repo ya tiene el
+patrón en `.worktrees/`.
+
+**Y no reescribas historia para arreglarlo.** Un commit mal titulado cuesta que
+alguien no encuentre una explicación; un rebase sobre un árbol con trabajo en vuelo
+cuesta el trabajo de otro. La asimetría es obvia una vez que se ve.
+
+Es la misma forma que [[patrio-espejos-escritos-a-mano]] y que los otros defectos de
+esta semana: **algo que funciona porque nadie más lo toca, y deja de funcionar en
+silencio cuando alguien más lo toca.**
+
+---
+
 ## Verde en local puede significar «contaminado», no «correcto»
 
 **2026-08-03 · el Chromium que le faltaba al API en CI**
@@ -106,3 +134,66 @@ se disfraza de valor válido — antes fue `fmt.ts` imprimiendo `—` para un 0 
 **Cómo aplicarlo**: cada campo opcional es un lugar donde un typo pasa por dato
 bueno. Cuando algo huela raro, la pregunta útil no es *"¿qué está fallando?"* sino
 **"¿qué nunca se ha ejecutado, y qué se está aceptando en silencio?"**.
+
+---
+
+## Una prueba escrita de memoria se pone de acuerdo consigo misma
+
+**2026-08-03 · `lineCount` leído como `lines` en el catálogo de obra**
+
+El cliente leía `t.lines` de la lista de plantillas. El servidor manda `lineCount`,
+y lo manda con ese nombre a propósito: en el DETALLE de una plantilla `lines` es el
+ARREGLO de renglones, y un campo que es número en la lista y lista en el detalle es
+una trampa que ya se había quitado del lado del servidor. El cliente la volvió a
+tender. La pantalla habría pintado «undefined RENGLONES».
+
+**Había una prueba sobre esa pantalla, y pasaba.** Su fixture repetía el mismo
+nombre equivocado, así que afirmaba que el código estaba de acuerdo consigo mismo.
+Es la misma familia que `landPrice`: no falla nada, solo aparece un dato inventado.
+
+Lo que sí lo encontró fue **corregir el TIPO contra el servidor**. Al arreglarlo,
+salió de golpe en los cinco lugares donde vivía — incluido el de producción, que la
+prueba tapaba.
+
+**Cómo aplicarlo**: un fixture escrito a mano es una segunda copia del contrato, y
+las dos copias se equivocan juntas. Antes de escribir la prueba, **lee el nombre en
+el código que sirve el dato**, no en el mensaje que lo describe ni en la memoria. Y
+cuando algo del contrato se corrija, corrige el TIPO primero: el compilador enumera
+los usos, que es lo que una prueba por definición no hace.
+
+**Corolario, cobrado tres veces el mismo día**: `vitest` verde no dice que el árbol
+compile. `noUnusedLocals` está encendido, así que la suite puede pasar mientras
+`npm run build` falla. **`npx tsc --noEmit` va en la misma vuelta que las pruebas,
+antes de cada commit** — si no, la señal verde afirma más de lo que verificó.
+
+---
+
+## Una salvedad sobre el estado ajeno caduca; el commit donde la escribes, no
+
+**2026-08-03 · «esta ruta no está commiteada» — sí lo estaba**
+
+Un agente cerró un commit advirtiendo que el endpoint que su cliente llama vivía
+solo en el árbol de trabajo. **Ya estaba commiteado**, tres minutos antes, por su
+dueño. La advertencia nació falsa.
+
+El error no fue medir mal: fue medir **temprano**. Un `git status` leído al
+empezar la tarea mostró esos archivos sucios, y esa observación viajó intacta
+hasta el mensaje del commit una hora después. Con varios agentes sobre un mismo
+checkout, **el estado ajeno cambia mientras trabajas** — es la misma familia que
+[[el índice de git es estado compartido]].
+
+Lo que lo vuelve caro es dónde acabó escrita: un chat equivocado lo corrige el
+mensaje siguiente; **un mensaje de commit es permanente y no se reescribe** —
+rebasar un árbol con trabajo de otros en vuelo cuesta más que la frase que
+arregla. Hoy la historia del repo dice algo que no era cierto.
+
+**Cómo aplicarlo**: una afirmación NEGATIVA sobre trabajo ajeno («no existe»,
+«no está commiteado», «todavía no lo expone») tiene fecha de caducidad de
+minutos. Si va a un artefacto permanente, **vuelve a medirla justo antes de
+escribirla**, no cuando la descubriste. Y si solo necesitas avisar, dilo en un
+mensaje —que se corrige— en vez de en un commit —que no.
+
+Corolario del mismo día: la duda vale en las dos direcciones. Cuatro veces se
+reportó como pendiente algo ya hecho, y también llegaron reportes de errores ya
+arreglados. **Antes de actuar sobre el reporte de otro —o sobre el propio de
+hace una hora— vuelve a medir.**

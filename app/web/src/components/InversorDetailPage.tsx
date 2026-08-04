@@ -6,6 +6,7 @@ import { StatRow } from './StatRow'
 import { useInversorDetail } from '../hooks/useInversorDetail'
 import { InversorAddPositionForm } from './InversorAddPositionForm'
 import { InversorPositionRow } from './InversorPositionRow'
+import { pageFill } from '../lib/styles'
 
 export function InversorDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -32,7 +33,7 @@ export function InversorDetailPage() {
 
   if (!investor) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', ...pageFill, color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>
         CARGANDO…
       </div>
     )
@@ -45,7 +46,7 @@ export function InversorDetailPage() {
   )
 
   return (
-    <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
+    <div style={{ ...pageFill, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
 
       {/* ── HEADER ── */}
       <div style={{

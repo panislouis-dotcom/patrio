@@ -1,5 +1,13 @@
 # Una sola manera de calcular la inversión total
 
+> **BITÁCORA CERRADA — SUPERADA POR LAS MIGRACIONES 032-034.**
+> Este documento describe la migración 027 y su regla era cierta cuando se escribió.
+> Ya no lo es en un punto: el último término de la fórmula —`m² × costo/m² × overhead`—
+> dejó de ser fuente. El costo de obra es hoy **la suma del presupuesto por partidas**,
+> y `m² × $/m²` quedó como la calculadora que produce su primer renglón.
+> La regla vigente vive en `docs/glosario.md`; el diseño, en `presupuesto-de-obra.md`.
+> Se conserva sin reescribir porque es el registro de una entrega, no un contrato.
+
 ## Decisión del usuario
 
 > "no me gusta que haya 2 opciones quiero que todas se hagan de la misma manera.
@@ -98,3 +106,7 @@ Casa Centro y Edificio Uno migraron como compra all-in (`pct = 0`). El total es
 exacto, el desglose no existe porque nunca se capturó. Cuando quiera repartirlo
 entre compra, permisos y obra, los campos están visibles y editables y el total se
 recalcula solo.
+
+> Nota posterior (migraciones 032-034): sigue siendo cierto para compra, costos de
+> adquisición, permisos y subdivisión. **La obra ya no**: dejó de ser un par de campos
+> de la ficha y se reparte por renglones en la pestaña PRESUPUESTO.

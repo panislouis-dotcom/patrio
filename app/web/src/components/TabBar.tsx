@@ -8,6 +8,7 @@ const topTabs = [
   { path: '/propiedades', label: 'PROPIEDADES' },
   { path: '/inversionistas', label: 'INVERSIONISTAS' },
   { path: '/proveedores', label: 'PROVEEDORES' },
+  { path: '/obra', label: 'OBRA' },
   { path: '/procesos', label: 'PROCESOS' },
   { path: '/equipo', label: 'EQUIPO' },
 ]
@@ -90,9 +91,15 @@ export function TabBar({ onLogout }: TabBarProps) {
       top: 0,
       zIndex: 100,
     }}>
-      <div style={{ display: 'flex' }}>
+      {/* Las dos filas SCROLLEAN EN SÍ MISMAS en vez de estirar la página. Con
+          siete destinos, el engrane y SALIR, la barra mide ~905px y en un
+          teléfono empujaba el documento entero a scrollear en horizontal: la
+          ficha se iba de lado al deslizar. Es la misma regla que usa la tabla
+          del presupuesto — el que se desborda se lleva su propio scroll. */}
+      <div style={{ display: 'flex', overflowX: 'auto', scrollbarWidth: 'none' }}>
         <span style={{
           padding: '0 24px',
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           fontFamily: fonts.label,
@@ -110,6 +117,8 @@ export function TabBar({ onLogout }: TabBarProps) {
             end={path === '/equipo' || path === '/procesos'}
             style={({ isActive }) => ({
               padding: '14px 20px',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
               fontFamily: fonts.label,
               fontSize: '11px',
               letterSpacing: '0.12em',
@@ -123,7 +132,7 @@ export function TabBar({ onLogout }: TabBarProps) {
         ))}
 
         {/* Right side: gear + logout */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'stretch' }}>
+        <div style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', alignItems: 'stretch' }}>
           {/* Gear settings button + dropdown */}
           <div ref={panelRef} style={{ display: 'flex', alignItems: 'stretch', position: 'relative' }}>
             <button
@@ -253,6 +262,8 @@ export function TabBar({ onLogout }: TabBarProps) {
       {inPropiedades && (
         <div style={{
           display: 'flex',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
           borderTop: `1px solid ${colors.border}`,
         }}>
           {propiedadesSubTabs.map(({ path, label }) => (
@@ -262,6 +273,8 @@ export function TabBar({ onLogout }: TabBarProps) {
               end
               style={({ isActive }) => ({
                 padding: '8px 16px',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
                 fontFamily: fonts.label,
                 fontSize: '9px',
                 letterSpacing: '0.12em',

@@ -1,8 +1,23 @@
 """CRUD and images on /api/properties. The lifecycle lives in
 test_property_lifecycle, the numbers in test_property_metrics."""
+from api import properties_db
 from api.db import get_db
 
 from .conftest import _delete_property
+
+
+def test_nothing_clearable_is_unwritable():
+    """Vaciar solo tiene sentido sobre algo que se captura, así que lo vaciable
+    es un subconjunto de lo escribible. Un campo que se puede vaciar pero no
+    escribir es una fila de la ficha con un botón ✕ que solo puede producir un
+    422 — que es exactamente lo que quedó a medio camino cuando el costo de obra
+    pasó a ser la suma del presupuesto y sus dos insumos dejaron de capturarse.
+
+    La prueba vive aquí, sobre los frozensets, y no en el espejo del cliente:
+    esto es una invariante entre dos listas de Python y tiene que romperse en
+    pytest, no en otra suite y en otro lenguaje."""
+    assert properties_db.CLEARABLE_FIELDS <= properties_db.WRITABLE_FIELDS, (
+        sorted(properties_db.CLEARABLE_FIELDS - properties_db.WRITABLE_FIELDS))
 
 
 def test_list_returns_the_property(client, test_property):
@@ -88,6 +103,34 @@ def test_delete_blocked_by_a_reference_is_422_with_the_reason(client, test_prope
     finally:
         with get_db() as conn:
             conn.execute("DELETE FROM process_instances WHERE property_id = %s", (pid,))
+
+
+def test_delete_blocked_by_captured_budget_work_is_422_with_the_reason(client, test_property):
+    """El presupuesto de obra está en la familia de RESTRICT, no en la de CASCADE:
+    lleva captura manual —cantidades medidas, precios negociados, pagos— y perder
+    eso en un borrado mudo es perder trabajo real. Se rechaza y se dice qué la
+    retiene, que es lo que le permite a alguien decidir tirarlo a propósito."""
+    pid = test_property["id"]
+    r = client.post(f"/api/properties/{pid}/budget/lines", json={
+        "chapterName": "Albañilería", "name": "Muros", "unit": "m2",
+        "quantity": 100, "unitPrice": 900})
+    assert r.status_code == 201, r.text
+    r = client.delete(f"/api/properties/{pid}")
+    assert r.status_code == 422
+    assert r.json()["error"]["message"] == (
+        "No se puede eliminar la propiedad porque tiene un presupuesto de obra.")
+    assert client.get(f"/api/properties/{pid}").status_code == 200
+
+
+def test_a_seeded_budget_does_not_block_the_delete(client, test_property):
+    """Desde que TODA propiedad nace con presupuesto, retener por su sola
+    existencia habría dejado el borrado inservible: ninguna propiedad se podría
+    borrar nunca. Lo que retiene es lo que alguien CAPTURÓ —una partida, un
+    proveedor, un compromiso, un pago—, no la fila que puso el sistema."""
+    pid = test_property["id"]
+    assert client.get(f"/api/properties/{pid}/budget").json()["lines"]
+    assert client.delete(f"/api/properties/{pid}").status_code == 204
+    assert client.get(f"/api/properties/{pid}").status_code == 404
 
 
 def test_quality_reports_issues_per_property(client, test_property):

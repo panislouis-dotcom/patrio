@@ -21,10 +21,11 @@ import {
 } from '../lib/status'
 import type { PropertyStatus } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
-import { fieldInput } from '../lib/styles'
-import { fmtMXN, fmtPct, fmtPctSigned, fmtOverhead, fmtMonth } from '../lib/fmt'
+import { fieldInput, pageFill } from '../lib/styles'
+import { fmtMXN, fmtPct, fmtPctSigned, fmtMonth } from '../lib/fmt'
 import { fieldLabel } from '../lib/fields'
 import { useEdits } from '../lib/useEdits'
+import { useNarrowViewport } from '../lib/useNarrowViewport'
 import { MetricHero } from './finance/MetricHero'
 import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { LatLonPicker } from './LatLonPicker'
@@ -40,6 +41,7 @@ import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
 import { RendersPanel } from './detail/RendersPanel'
+import { BudgetPanel } from './detail/BudgetPanel'
 import { SectionDivider } from './detail/SectionDivider'
 import { ErrorBanner } from './detail/ErrorBanner'
 import { TransitionModal } from './detail/TransitionModal'
@@ -170,6 +172,9 @@ export function PropertyDetailPage() {
   const [transitionTo, setTransitionTo] = useState<Exclude<PropertyStatus, 'prospecto'> | null>(null)
   const [showAdvance, setShowAdvance] = useState(false)
 
+  /** Debajo de 900px las dos columnas se apilan. Es el único breakpoint del repo. */
+  const narrow = useNarrowViewport()
+
   const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
   const planApiRef = useRef<PlanApi | null>(null)
   const [planDirty, setPlanDirty] = useState(false)
@@ -284,14 +289,14 @@ export function PropertyDetailPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', ...pageFill, color: colors.secondary, fontFamily: fonts.label, fontSize: '11px' }}>
         Cargando…
       </div>
     )
   }
   if (error || !property) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 49px)', color: '#E62300', fontFamily: fonts.sans, fontSize: '13px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', ...pageFill, color: '#E62300', fontFamily: fonts.sans, fontSize: '13px' }}>
         {error ?? 'No encontrada'}
       </div>
     )
@@ -436,7 +441,12 @@ export function PropertyDetailPage() {
     { label: 'Costos adq.', amount: p.acquisitionCosts ?? 0 },
     { label: 'Permisos', amount: p.permitsCost ?? 0 },
     { label: 'Subdivisión', amount: p.subdivisionCost ?? 0 },
-    { label: 'Obra a ejecutar', amount: p.constructionTotal ?? 0 },
+    // La obra ya no es una fórmula: es la SUMA DEL PRESUPUESTO, capturada
+    // renglón por renglón en la pestaña PRESUPUESTO. Antes era
+    // `m² × $/m² × overhead`, y con eso vivían dos respuestas a «cuánto va a
+    // costar la obra» en cuanto alguien empezara a detallarla. Ahora nunca hay
+    // dos —y no porque una gane, sino porque nunca hubo dos.
+    { label: 'Obra a ejecutar', amount: p.constructionBudgeted ?? 0 },
   ]
 
   /**
@@ -470,7 +480,20 @@ export function PropertyDetailPage() {
   ]
 
   return (
-    <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.dark }}>
+    /* En dos columnas la ficha ocupa exactamente la pantalla y cada columna
+       scrollea por dentro. Apilada no puede: la altura la manda el contenido, y
+       fijarla en 100vh dejaría la mitad de abajo recortada sin forma de llegar
+       a ella. Por eso en angosto la página recupera su scroll vertical. */
+    <div style={{
+      // Angosta CRECE con su contenido —`1 0 auto`— para que la página pueda
+      // scrollear en vertical; ancha se queda con el hueco exacto y deja que
+      // scrolleen sus dos columnas por dentro. Ninguna de las dos sabe cuánto
+      // mide la barra de navegación: ver `pageFill`.
+      ...(narrow
+        ? { flex: '1 0 auto' }
+        : { ...pageFill, overflow: 'hidden' }),
+      display: 'flex', flexDirection: 'column', background: colors.dark,
+    }}>
 
       {/* El menú de AVANZAR A vive dentro del encabezado, y `fade` le crea un
           contexto de apilamiento propio con su transform: sin un z-index aquí,
@@ -531,10 +554,27 @@ export function PropertyDetailPage() {
 
       <ErrorBanner message={saveError} />
 
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '360px 1fr', overflow: 'hidden' }}>
+      {/* La columna izquierda mide 360px FIJOS. Debajo de 900px eso no deja
+          nada para la de medios —en un teléfono de 390 le quedaban 15— y la
+          pestaña PRESUPUESTO tenía ancho visible cero, con la página entera
+          scrolleando en horizontal en vez de la tabla. Apiladas, cada una toma
+          el ancho completo. Ver `useNarrowViewport` para por qué es el único
+          breakpoint del repo y por qué no es un `@media` de CSS. */}
+      <div style={{
+        flex: 1, display: 'grid',
+        gridTemplateColumns: narrow ? '1fr' : '360px 1fr',
+        overflow: narrow ? 'visible' : 'hidden',
+      }}>
 
         {/* ── IZQUIERDA: GENERAL / FINANZAS / ANÁLISIS ── */}
-        <div style={{ ...fade(80), borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Apilada, el borde que separaba las columnas pasa a ser el que las
+            separa de arriba abajo. */}
+        <div style={{
+          ...fade(80),
+          [narrow ? 'borderBottom' : 'borderRight']: `1px solid ${colors.border}`,
+          display: 'flex', flexDirection: 'column',
+          overflow: narrow ? 'visible' : 'hidden',
+        }}>
           <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
             {tabs.map(([tab, label]) => (
               <button key={tab} onClick={() => setLeftTab(tab)} style={{
@@ -664,8 +704,16 @@ export function PropertyDetailPage() {
                   <SectionDivider label="DESGLOSE DE INVERSIÓN" />
                   {numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
                   {numRow('TERRENO (m²)', 'sqmLand', fmtNum, { clearable: 'sqmLand' })}
+                  {/* El metraje se queda: es FÍSICO, y lo leen el analizador de
+                      mercado y el PDF, a los que no les importa lo que cueste la
+                      obra. El costo por m² NO: desde que la obra es la suma del
+                      presupuesto, ese precio es un resultado —presupuesto ÷
+                      metraje— y no un insumo. Dejarlo capturable aquí daría un
+                      segundo lugar donde teclear el costo de obra, que es
+                      exactamente la contradicción que la pestaña PRESUPUESTO
+                      existe para cerrar. Se captura en la PESTAÑA, renglón por
+                      renglón. */}
                   {numRow('OBRA A EJECUTAR (m²)', 'sqmConstruction', fmtNum, { clearable: 'sqmConstruction' })}
-                  {numRow('COSTO OBRA/m²', 'constructionCostPerSqm', fmtMXN, { clearable: 'constructionCostPerSqm' })}
                   {numRow('PERMISOS', 'permitsCost', fmtMXN, { clearable: 'permitsCost' })}
                   {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN, { clearable: 'subdivisionCost' })}
                   {numRow('VENTA PROYECTADA', 'projectedSale', fmtMXN, { clearable: 'projectedSale' })}
@@ -681,6 +729,25 @@ export function PropertyDetailPage() {
                     ['INVERSIÓN/m²', p.investmentPerSqm, fmtMXN],
                     ['VENTA/m²', p.salePerSqm, fmtMXN],
                     ['COMPRA/m² TERRENO', p.purchasePricePerSqm, fmtMXN],
+                    // Vive con las demás derivadas y ya no arriba con lo que se
+                    // teclea: es presupuesto ÷ metraje, un RESULTADO de haber
+                    // presupuestado. Mientras fue campo capturable era la
+                    // segunda respuesta a cuánto cuesta la obra.
+                    ['OBRA/m²', p.constructionCostPerSqm, fmtMXN],
+                  ])}
+                  {/* El avance de obra EN DINERO. Son cifras NUEVAS, no otra
+                      versión de la inversión: lo que la obra va a costar y lo
+                      que ya se pagó de ella son dos preguntas distintas, y solo
+                      la primera es capital invertido. Lo presupuestado no está
+                      aquí porque ya es la barra «Obra a ejecutar» de arriba —
+                      cada cifra etiquetada vive en un solo lugar.
+                      La sección entera desaparece mientras nadie firme ni pague:
+                      cuatro guiones bajo un título no informan de nada. */}
+                  {statSection('AVANCE DE OBRA', [
+                    ['OBRA COMPROMETIDA', p.constructionCommitted, fmtMXN],
+                    ['OBRA PAGADA', p.constructionPaid, fmtMXN],
+                    ['COMPROMETIDO VS PRESUPUESTO', p.constructionCommittedVariance, fmtMXN],
+                    ['PAGADO VS PRESUPUESTO', p.constructionPaidVariance, fmtMXN],
                   ])}
                 </>
               )}
@@ -707,11 +774,13 @@ export function PropertyDetailPage() {
                   />
                 }
               />
-              {numRow('OVERHEAD DE OBRA', 'constructionOverhead', fmtOverhead, {
-                step: 0.01,
-                clearable: isCaptured('constructionOverhead') ? 'constructionOverhead' : undefined,
-                hint: assumptionHint('constructionOverhead'),
-              })}
+              {/* El overhead de obra ya no está, y no es un descuido: dejó de
+                  multiplicar nada. Se aplica una sola vez, al calcular el primer
+                  renglón del presupuesto al dar de alta la propiedad, y desde
+                  ahí vive DENTRO del importe. Un supuesto que no mueve dinero no
+                  es un supuesto — dejarlo aquí sería un número que se puede leer,
+                  comparar y hasta editar sin que cambie un peso, que es el mismo
+                  defecto «NO SE USA» que la inversión capturada ya tuvo. */}
               {numRow('PLAZO PROYECTADO (MESES)', 'holdMonths', fmtNum, {
                 clearable: isCaptured('holdMonths') ? 'holdMonths' : undefined,
                 hint: assumptionHint('holdMonths'),
@@ -824,61 +893,93 @@ export function PropertyDetailPage() {
           )}
         </div>
 
-        {/* ── CENTRO: Mapa / Fotos / Plano ── */}
+        {/* ── CENTRO: Mapa / Fotos / Plano / Renders / Presupuesto ──
+            El presupuesto no lleva ventana de etapa, a diferencia de las
+            herramientas de la columna izquierda: acompaña a la propiedad desde
+            prospecto como el desglose de costos, porque hay que poder
+            presupuestar antes de ofertar.
+
+            RENDERS va aquí como pestaña propia y no como una vista de FOTOS a
+            propósito: una foto es evidencia y un render es una propuesta.
+            Mezclarlos en la misma tira es cómo una propuesta termina citada como
+            si fuera el estado real del inmueble. La barra no sabe de esto —
+            recibe la lista tal cual va— así que la separación se sostiene aquí. */}
         <MediaTabs
           style={fade(160)}
-          mapa={<MapPanel lat={p.latitude} lon={p.longitude} markerColor={PROPERTY_STATUS_COLOR[stage]} />}
-          fotos={
-            <PhotoGallery
-              images={p.images}
-              base={BASE}
-              onUpload={async (file, imageType) => {
-                const img = await uploadPropertyImage(p.id, file, imageType)
-                setProperty(prev => prev ? { ...prev, images: [...prev.images, img] } : prev)
-              }}
-              onDelete={async imageId => {
-                await deletePropertyImage(p.id, imageId)
-                setProperty(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
-              }}
-              onChangeType={async (imageId: number, next: ImageType) => {
-                const updated = await updatePropertyImageType(p.id, imageId, next)
-                setProperty(prev => prev ? { ...prev, images: prev.images.map(i => i.id === imageId ? updated : i) } : prev)
-              }}
-            />
-          }
-          plano={geometry !== null && (
-            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              <FloorPlanEditor
-                initial={geometry}
-                onSave={async m => setGeometry(await savePropertyGeometry(p.id, m))}
-                onUploadImage={file => uploadFloorplanImage(p.id, file)}
-                onReady={onPlanReady}
-                onDirtyChange={setPlanDirty}
-              />
-            </div>
-          )}
-          renders={
-            <RendersPanel
-              images={p.images}
-              prompts={renderPrompts}
-              renders={renders}
-              base={BASE}
-              onGenerate={async req => {
-                const created = await generatePropertyRender(p.id, req)
-                setRenders(prev => [created, ...prev])
-                return created
-              }}
-              onSavePrompt={async ({ name, body }) => {
-                const created = await createRenderPrompt(name, body)
-                setRenderPrompts(prev => [...prev, created])
-                return created
-              }}
-              onDeleteRender={async renderId => {
-                await deletePropertyRender(p.id, renderId)
-                setRenders(prev => prev.filter(r => r.id !== renderId))
-              }}
-            />
-          }
+          tabs={[
+            {
+              label: 'mapa',
+              panel: <MapPanel lat={p.latitude} lon={p.longitude} markerColor={PROPERTY_STATUS_COLOR[stage]} />,
+            },
+            {
+              label: 'fotos',
+              panel: (
+                <PhotoGallery
+                  images={p.images}
+                  base={BASE}
+                  onUpload={async (file, imageType) => {
+                    const img = await uploadPropertyImage(p.id, file, imageType)
+                    setProperty(prev => prev ? { ...prev, images: [...prev.images, img] } : prev)
+                  }}
+                  onDelete={async imageId => {
+                    await deletePropertyImage(p.id, imageId)
+                    setProperty(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
+                  }}
+                  onChangeType={async (imageId: number, next: ImageType) => {
+                    const updated = await updatePropertyImageType(p.id, imageId, next)
+                    setProperty(prev => prev ? { ...prev, images: prev.images.map(i => i.id === imageId ? updated : i) } : prev)
+                  }}
+                />
+              ),
+            },
+            {
+              label: 'plano',
+              panel: geometry !== null && (
+                <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+                  <FloorPlanEditor
+                    initial={geometry}
+                    onSave={async m => setGeometry(await savePropertyGeometry(p.id, m))}
+                    onUploadImage={file => uploadFloorplanImage(p.id, file)}
+                    onReady={onPlanReady}
+                    onDirtyChange={setPlanDirty}
+                  />
+                </div>
+              ),
+            },
+            {
+              label: 'renders',
+              panel: (
+                <RendersPanel
+                  images={p.images}
+                  prompts={renderPrompts}
+                  renders={renders}
+                  base={BASE}
+                  onGenerate={async req => {
+                    const created = await generatePropertyRender(p.id, req)
+                    setRenders(prev => [created, ...prev])
+                    return created
+                  }}
+                  onSavePrompt={async ({ name, body }) => {
+                    const created = await createRenderPrompt(name, body)
+                    setRenderPrompts(prev => [...prev, created])
+                    return created
+                  }}
+                  onDeleteRender={async renderId => {
+                    await deletePropertyRender(p.id, renderId)
+                    setRenders(prev => prev.filter(r => r.id !== renderId))
+                  }}
+                />
+              ),
+            },
+            {
+              // Cada escritura del presupuesto devuelve la propiedad
+              // recalculada: la suma presupuestada ES el costo de obra, así que
+              // tocar un renglón mueve la inversión, el ROI y el cap rate. Un
+              // solo setProperty y la ficha entera queda al día.
+              label: 'presupuesto',
+              panel: <BudgetPanel property={p} onPropertyChange={setProperty} />,
+            },
+          ]}
         />
       </div>
 

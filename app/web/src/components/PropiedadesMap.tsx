@@ -6,6 +6,7 @@ import type { Property } from '../lib/types'
 import { PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL, hasScore } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
 import { fmtPct } from '../lib/fmt'
+import { pageFill } from '../lib/styles'
 
 /**
  * El mapa pinta el ciclo de vida, no el score: dónde está el capital y dónde
@@ -29,7 +30,7 @@ export function PropiedadesMap() {
   if (loading) return <div style={{ padding: '32px', color: colors.secondary }}>Cargando…</div>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 49px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', ...pageFill }}>
       <div style={{ flex: 1, position: 'relative' }}>
         <MapContainer
           center={[25.6866, -100.3161]}

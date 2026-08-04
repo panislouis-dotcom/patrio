@@ -33,3 +33,6 @@ app/api/var/files/**
 00Tree.html
 .env
 docs/superpowers/.coverage
+
+# Árboles de trabajo aislados (git worktree): son checkouts, no fuente
+.worktrees/

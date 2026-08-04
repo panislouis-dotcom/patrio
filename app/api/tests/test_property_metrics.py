@@ -15,7 +15,8 @@ from api.db import get_db
 from api.finance import underwriting
 
 # El expediente. Sin ventana: aparece cuando sus insumos están, en la etapa que sea.
-RECORD = ("acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
+RECORD = ("acquisitionCosts", "acquisitionTotal", "constructionBudgeted",
+          "constructionCostPerSqm",
           "purchasePricePerSqm", "investmentPerSqm", "salePerSqm",
           "projectedProfit", "projectedRoi", "projectedRoiTotal", "capRate", "rentAnnual")
 # El yield de la renta COBRADA. Va aparte porque su insumo aparece más tarde: una
@@ -62,15 +63,17 @@ def test_projection_matches_the_underwriting_engine(client, test_property):
     inputs = {
         "purchase_price": 1_000_000, "acquisition_cost_pct": 0.065, "permits_cost": 50_000,
         "subdivision_cost": 25_000, "sqm_construction": 200,
-        "construction_cost_per_sqm": 9_000, "construction_overhead": 1.3,
+        # Los 2,340,000 que el presupuesto sembró con la calculadora del alta:
+        # 200 m² × 9,000 × 1.3, overhead ya adentro.
+        "construction_budgeted": 2_340_000,
         "projected_sale": 2_500_000, "hold_months": 18, "rent_monthly_projected": 18_000,
         "sqm_land": 300,
     }
     expected = underwriting.metrics(inputs)
+    assert Decimal(str(p["constructionBudgeted"])) == Decimal("2340000")
     for camel, snake in [
         ("totalInvestment", "total_investment"), ("acquisitionCosts", "acquisition_costs"),
-        ("acquisitionTotal", "acquisition_total"), ("constructionBase", "construction_base"),
-        ("constructionTotal", "construction_total"), ("projectedProfit", "profit"),
+        ("acquisitionTotal", "acquisition_total"), ("projectedProfit", "profit"),
         ("projectedRoi", "roi"), ("projectedRoiTotal", "roi_total"), ("capRate", "cap_rate"),
         ("purchasePricePerSqm", "purchase_price_per_sqm"), ("salePerSqm", "sale_per_sqm"),
         ("investmentPerSqm", "investment_per_sqm"), ("rentAnnual", "rent_annual"),
@@ -129,8 +132,10 @@ def test_an_all_in_total_is_captured_as_a_purchase_price(client, test_property):
     $617,500 a un número que ya venía completo."""
     client.patch(f"/api/properties/{test_property['id']}",
                  json={"purchasePrice": 9_500_000, "acquisitionCostPct": 0,
-                       "permitsCost": 0, "subdivisionCost": 0,
-                       "sqmConstruction": 0, "constructionCostPerSqm": 0})
+                       "permitsCost": 0, "subdivisionCost": 0, "sqmConstruction": 0})
+    # La obra ya no se apaga tecleando un $/m² en 0: se apaga dejando el
+    # presupuesto en 0, que es donde vive el costo de obra.
+    client.put(f"/api/properties/{test_property['id']}/budget/total", json={"amount": 0})
     p = _get(client, test_property["id"])
     assert Decimal(str(p["totalInvestment"])) == Decimal("9500000")
     assert p["assumptions"]["acquisitionCostPct"]["source"] == "captured"
@@ -141,7 +146,8 @@ def test_an_empty_cost_stack_is_no_basis_at_all(client, test_property):
     ficha lo tiene que seguir pintando como «—»."""
     client.patch(f"/api/properties/{test_property['id']}",
                  json={"purchasePrice": 0, "permitsCost": 0, "subdivisionCost": 0,
-                       "sqmConstruction": 0, "constructionCostPerSqm": 0})
+                       "sqmConstruction": 0})
+    client.put(f"/api/properties/{test_property['id']}/budget/total", json={"amount": 0})
     p = _get(client, test_property["id"])
     assert p["totalInvestment"] is None
     assert p["projectedProfit"] is None
@@ -195,9 +201,9 @@ def test_unrealized_gain_pct_is_none_not_zero_when_uncomputable(client, desarrol
     with get_db() as conn:
         conn.execute(
             "UPDATE properties SET purchase_price = NULL, permits_cost = NULL,"
-            " subdivision_cost = NULL, sqm_construction = NULL,"
-            " construction_cost_per_sqm = NULL WHERE id = %s",
+            " subdivision_cost = NULL, sqm_construction = NULL WHERE id = %s",
             (desarrollo_property["id"],))
+    client.put(f"/api/properties/{desarrollo_property['id']}/budget/total", json={"amount": 0})
     p = _get(client, desarrollo_property["id"])
     assert p["totalInvestment"] is None
     assert p["unrealizedGainPct"] is None
@@ -259,7 +265,7 @@ def test_the_breakdown_of_a_sold_property_adds_up_to_its_own_total(client, desar
     p = _advance(client, desarrollo_property["id"], to="vendida",
                  saleDate="2026-07", salePrice=5_000_000)
     bars = ["purchasePrice", "acquisitionCosts", "permitsCost", "subdivisionCost",
-            "constructionTotal"]
+            "constructionBudgeted"]
     assert sum(Decimal(str(p[k])) for k in bars) == Decimal(str(p["totalInvestment"]))
     assert Decimal(str(p["totalInvestment"])) == Decimal("3480000")
 
@@ -354,7 +360,7 @@ def test_a_captured_purchase_price_is_not_inflated(client):
     p = r.json()
     try:
         assert Decimal(str(p["totalInvestment"])) == Decimal("4260000")   # 4,000,000 × 1.065
-        assert Decimal(str(p["constructionTotal"])) == Decimal("0")
+        assert Decimal(str(p["constructionBudgeted"])) == Decimal("0")
         assert Decimal(str(p["acquisitionCosts"])) == Decimal("260000")
     finally:
         client.delete(f"/api/properties/{p['id']}")
@@ -373,9 +379,9 @@ def test_the_real_rent_does_not_overwrite_the_estimated_one(client, desarrollo_p
 
 
 def test_an_assumption_says_whether_anybody_chose_it(client, test_property):
-    """El plazo del fixture está capturado; el overhead y los costos de
-    adquisición también. Vaciar uno lo devuelve al supuesto del modelo — mismo
-    número que antes tenía escondido, ahora con su origen a la vista."""
+    """El plazo del fixture está capturado, y los costos de adquisición también.
+    Vaciar uno lo devuelve al supuesto del modelo — mismo número que antes tenía
+    escondido, ahora con su origen a la vista."""
     p = _get(client, test_property["id"])
     assert p["assumptions"]["acquisitionCostPct"] == {"value": 0.065, "source": "captured"}
 
@@ -400,7 +406,6 @@ def test_a_new_property_assumes_nothing_it_can_be_asked_about(client):
     try:
         assert {k: v["source"] for k, v in p["assumptions"].items()} == {
             "acquisitionCostPct": "default",
-            "constructionOverhead": "default",
             "holdMonths": "default",
         }
         assert Decimal(str(p["totalInvestment"])) == Decimal("2130000")

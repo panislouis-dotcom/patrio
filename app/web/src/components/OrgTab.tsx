@@ -5,6 +5,7 @@ import {
 } from '../lib/api'
 import type { TeamMember, MemberRole, User } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
+import { pageFill } from '../lib/styles'
 // ─── Role metadata ───────────────────────────────
 
 const ROLE_LABEL: Record<MemberRole, string> = {
@@ -619,7 +620,7 @@ export function OrgTab() {
   }
 
   return (
-    <div style={{ height: 'calc(100vh - 49px)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ ...pageFill, display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',

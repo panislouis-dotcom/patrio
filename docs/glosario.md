@@ -5,7 +5,8 @@ el modal, el PDF, la carta de términos, los mensajes de error y las skills.
 
 La regla que ordena todo lo demás: **una fórmula, un nombre**. Si dos cifras
 salen de la misma función alimentada con salidas distintas, comparten familia de
-nombre y se distinguen por la etapa (*proyectada* / *no realizada* / *realizada*).
+nombre y se distinguen por la etapa: *proyectada* / *no realizada* / *realizada*
+para la ganancia, *presupuestada* / *comprometida* / *pagada* para la obra.
 Si dos cifras salen de fórmulas distintas, no pueden compartir nombre.
 
 Cada entrada dice qué ES y qué NO es. La segunda mitad es la que evita las
@@ -49,11 +50,37 @@ $9.5M todo incluido»— ese total se teclea **aquí**, con costos de adquisici�
 `0`. Es el único lugar donde se captura una cifra all-in, y es la razón por la
 que la inversión total (§4) no necesita casilla propia.
 
-### Obra a ejecutar — `sqmConstruction` × `constructionCostPerSqm`
-Los metros que **tú** vas a construir o remodelar, por su costo por m².
+### Metros de obra a ejecutar — `sqmConstruction`
+Los metros que **tú** vas a construir o remodelar. Metraje **físico**: lo leen el
+analizador de mercado y el PDF, a los que no les importa cuánto cueste la obra.
 
 **NO son** los metros que el inmueble ya tiene construidos. Lo ya edificado ya
 se pagó dentro del precio de compra y no vuelve a aparecer.
+
+**NO le ponen precio a nada.** Este metraje ya no se multiplica por nada para
+llegar al costo de obra; ese costo se captura renglón por renglón, aquí abajo.
+
+### Presupuesto de obra — los renglones de `budget_lines`
+Lo que la obra va a costar, capturado partida por partida —`cantidad × precio
+unitario`— en la pestaña PRESUPUESTO, con dos niveles (capítulo → partida). Es
+el **único** lugar donde se captura el costo de la obra, y su suma es la obra
+presupuestada (§4).
+
+**NO es** una herramienta que se abra en Desarrollo, **y no tiene compuerta de
+etapa**: nace con la propiedad, en la misma transacción que su fila, con un solo
+renglón —«Otros, por detallar»— que trae el estimado grueso. Hay que poder
+presupuestar antes de ofertar.
+
+**NO guarda ningún total.** Presupuestado, comprometido y pagado se derivan cada
+vez que alguien pregunta, igual que la inversión total: un total almacenado es
+un segundo lugar donde vive el mismo peso, y dos lugares terminan diciendo cosas
+distintas.
+
+**Detallar no crea costo, lo distribuye.** Cuando una partida nueva se lleva
+$300k, «Otros, por detallar» baja $300k y el costo de obra no se mueve un peso.
+El residuo no se teclea: es el remanente. Si de verdad creció el alcance eso es
+**otra operación** —ajustar el total del presupuesto— y existe aparte justamente
+para que las dos se distingan.
 
 ### Permisos — `permitsCost` · Subdivisión — `subdivisionCost`
 Costos directos capturados aparte, en pesos.
@@ -80,14 +107,13 @@ dejándola vacía.
 
 ## 3. Supuestos
 
-Tres números que **siempre** tienen un valor vigente: el que capturó una persona,
-o el que aplica el modelo. El payload publica el valor vigente bajo su llave y su
-procedencia en `assumptions`.
+**Dos** números que **siempre** tienen un valor vigente: el que capturó una
+persona, o el que aplica el modelo. El payload publica el valor vigente bajo su
+llave y su procedencia en `assumptions`.
 
 | Nombre canónico | Campo | Omisión | Qué es |
 |---|---|---|---|
 | Costos de adquisición (%) | `acquisitionCostPct` | 6.5% | Fracción **aditiva** sobre el precio de compra. |
-| Overhead de obra | `constructionOverhead` | ×1.3 | **Multiplicador** de indirectos de obra. Se muestra como `×1.3`, nunca como `30%`. |
 | Plazo proyectado | `holdMonths` | 12 meses | Meses de compra a salida que asume el modelo. |
 
 Procedencia (`assumptions[x].source`): `captured` → **«Capturado»**;
@@ -96,9 +122,15 @@ Procedencia (`assumptions[x].source`): `captured` → **«Capturado»**;
 **NO son** costos: un supuesto nunca falta, solo cambia de origen. Por eso la
 compuerta de Desarrollo no los exige.
 
+Eran tres. **El overhead de obra dejó de ser un supuesto y ya no se publica**: no
+multiplica ninguna cifra viva. Se aplica una sola vez, al sembrar el primer
+renglón del presupuesto, y desde ahí vive dentro del importe (§4). Un supuesto
+que no mueve dinero no es un supuesto: es un número que se puede leer, comparar
+y hasta editar sin que nada cambie — el defecto «no se usa» con otro nombre.
+
 ---
 
-## 4. Costos derivados e inversión
+## 4. Costos derivados, obra e inversión
 
 ### Costos de adquisición — `acquisitionCosts`
 `precio de compra × costos de adquisición (%)`. ISAI, notario, avalúo.
@@ -109,25 +141,129 @@ compuerta de Desarrollo no los exige.
 `precio de compra + costos de adquisición`. Lo que cuesta quedarse con el
 inmueble antes de tocarlo.
 
-### Obra a ejecutar (base) — `constructionBase` · Obra a ejecutar (total) — `constructionTotal`
-`m² × costo por m²`, y lo mismo con el overhead aplicado.
+### La obra: cuatro cifras, y solo una es capital
+
+El costo de obra **es la suma del presupuesto**, en toda etapa y sin una sola
+rama. Las otras tres miden la ejecución contra ese plan, son métricas nuevas y
+**ninguna redefine la inversión**: lo que la obra va a costar y lo que ya se pagó
+de ella son dos preguntas distintas.
+
+| Nombre canónico | Campo | Qué es | Qué NO es |
+|---|---|---|---|
+| Obra presupuestada | `constructionBudgeted` | La suma de los renglones (`cantidad × precio unitario`). El plan — y **el único costo de obra que existe**: es la barra del desglose y lo único que entra a la inversión total. | No es una fórmula ni un campo que alguien teclee: se mueve capturando partidas o ajustando el total del presupuesto. No es «lo que llevamos gastado». |
+| Obra comprometida | `constructionCommitted` | Lo ya **contratado** con un proveedor y todavía no pagado: la suma de los montos comprometidos por renglón. | No es dinero que salió del banco. Y no es una cotización: una cotización es una oferta, un compromiso es una firma. |
+| Obra pagada | `constructionPaid` | Lo que **salió del banco**: la suma de los pagos capturados por renglón. | No es el costo de la obra, ni lo corrige. Un pago no toca lo presupuestado. |
+| Comprometido vs presupuesto | `constructionCommittedVariance` | `obra comprometida − obra presupuestada`. | No es un error a resolver: es la brecha, y es la información. |
+| Pagado vs presupuesto | `constructionPaidVariance` | `obra pagada − obra presupuestada`. | Lo mismo, en la segunda etapa de la ejecución. |
+
+Las dos variaciones son **la misma resta alimentada con dos hechos distintos**,
+así que comparten familia de nombre y se distinguen por la etapa. El signo se lee
+siempre igual: **positivo es sobrecosto** —se firmó o se pagó más de lo
+planeado—, negativo es que todavía no se llega al plan.
+
+Que lo pagado rebase lo presupuestado es lo normal en obra, no la excepción. Se
+muestra, no se bloquea, y **lo presupuestado no se corrige solo para que empate**:
+el presupuesto era un plan, el pago es un hecho, y borrar la diferencia entre los
+dos es borrar lo único que se aprende de la obra.
+
+**Vacío.** La obra presupuestada cae a **0** —«nada capturado»—, porque es un
+sumando de la inversión y un sumando siempre tiene que ser un número. La
+comprometida y la pagada se quedan **vacías**: que nadie haya firmado nada no es
+«$0 comprometido», y un cero ahí se leería como un hecho. Sus variaciones
+desaparecen con ellas.
+
+### Costo por m² de obra — `constructionCostPerSqm`
+`obra presupuestada ÷ metros de obra a ejecutar`. Vacío sin metraje: dividir
+entre cero no da «$0/m²», no da nada.
+
+Donde el espacio manda se abrevia **«Obra/m²»**, junto a las otras cifras por
+metro. La abreviatura es la misma concesión que «s/ inversión» en el cap rate
+(§8): se acorta el nombre, no se cambia.
+
+**Ya NO se captura**, y no está entre los campos escribibles del API. Fue un
+insumo, y mientras lo fue era la segunda respuesta a cuánto cuesta la obra. Hoy
+es un **resultado** de haber presupuestado: se publica para mostrarse y nada lo
+vuelve a leer para calcular dinero. El costo de obra se cambia capturando
+partidas, no tecleando un precio unitario compuesto que un desglose por partidas
+justamente no tiene.
+
+### La fórmula dejó de ser fuente y quedó como calculadora
+
+`m² × $/m² × overhead` fue el costo de obra. Ya no lo es. Hoy es una
+**calculadora**: al dar de alta una propiedad produce el importe del primer
+renglón del presupuesto —«Otros, por detallar»— y ahí termina su trabajo. Desde
+ese instante manda la suma.
+
+Sus tres entradas corrieron suertes distintas, y conviene saber cuál es cuál:
+
+| Entrada | Qué le pasó |
+|---|---|
+| `sqmConstruction` | **Sobrevive intacto**, como metraje físico (§2). Lo leen el analizador de mercado y el PDF, y es el divisor del costo por m² derivado. Ya no le pone precio a nada. |
+| `constructionCostPerSqm` | **Pasó a derivarse**: presupuesto ÷ metraje. Dejó de capturarse. |
+| Overhead de obra | **Se aplica una sola vez, al sembrar**, y queda dentro del importe. Dejó de ser un supuesto publicado (§3). |
+
+Las tres siguen entrando por la pantalla de alta —el overhead con su ×1.3 por
+omisión si nadie lo teclea— y la calculadora se puede volver a correr después: el
+resultado entra por la operación que ajusta el total del presupuesto, que mueve
+el renglón residual. **Ninguna de las tres se guarda como insumo del costo de
+obra**; solo el metraje se guarda, y se guarda por ser metraje.
+
+**Volver a aplicar el overhead es la trampa central de este subsistema.**
+Inflaría un 30% el costo de obra de cada propiedad sin un test rojo, sin un
+mensaje de error y sin nada roto a la vista: solo números más grandes que parecen
+plausibles. Por eso el módulo de underwriting ya no conoce la palabra ni acepta
+un multiplicador que pudiera volver a aplicar.
+
+#### Por qué esto no abre una segunda fuente
+
+Tener a la vez una fórmula y una suma parece violar la regla que ordena este
+capítulo —una sola manera de calcular la inversión, sin ramas—. No la viola, y la
+razón es precisa: **la fórmula nunca fue una segunda fuente, porque no coexiste
+con la suma.** Produce el primer renglón y se retira. En ningún instante —ni en
+Prospecto, ni el segundo después de la captura— hay dos respuestas vivas a
+«¿cuánto va a costar la obra?».
+
+Tampoco existe la rama *«usa el presupuesto si existe, si no la fórmula»*, que
+sería la misma disyunción disfrazada de conveniencia: **el presupuesto existe
+siempre.** Nace con la propiedad, en la misma transacción que su fila, y la
+migración que lo introdujo le sembró uno a cada propiedad que ya existía, al
+peso. Por eso el costo de obra no tiene que preguntar en qué etapa está ni si hay
+presupuesto: no hay caso en que no lo haya.
+
+El contraste que fija la diferencia es con **la renta estimada y la renta
+cobrada** (§2), que sí coexisten para siempre:
+
+| | |
+|---|---|
+| Renta estimada ↔ renta cobrada | **Dos hechos distintos.** Lo que el underwriting supuso, y lo que el inquilino paga. Coexisten porque compararlos es el aprendizaje, y ninguno sustituye al otro. |
+| Fórmula ↔ suma del presupuesto | **Un hecho a dos resoluciones.** Los dos son planes del mismo gasto futuro, uno grueso y otro detallado. El mismo concepto medido dos veces es duplicación — y es lo que esta regla mata. |
+
+Obra presupuestada ↔ obra pagada es del **primer** tipo, no del segundo: son dos
+hechos distintos —lo que la obra va a costar y lo que ya salió del banco— y por
+eso pueden y deben coexistir, igual que las dos rentas.
 
 ### Inversión total — `totalInvestment`
 **La** base de capital: todo el dinero que entra. Es el denominador de toda
 ganancia y todo ROI. Sobrevive a la venta — es historia, no proyección.
 
-Se calcula **siempre** igual, sin ramas: la suma de los cinco costos de captura.
+Se calcula **siempre** igual, sin ramas: la suma de los cinco costos del
+desglose.
 
 ```
 inversión total = precio de compra × (1 + costos de adquisición %)
                 + permisos + subdivisión
-                + m² de obra × costo por m² × overhead de obra
+                + obra presupuestada
 ```
 
+El último término es la suma del presupuesto, en toda etapa y sin preguntar nada.
+Fue `m² × $/m² × overhead`; esa fórmula sigue existiendo, pero como calculadora
+que produce el primer renglón y no como una segunda respuesta que pudiera
+ganarle a la suma (arriba).
+
 Un componente que nadie capturó vale `0`. No existe «desglose completo» contra
-«incompleto»: la fórmula corre igual con un costo o con los cinco. Si la suma da
-cero —nadie capturó nada— la inversión total queda **vacía**, y se imprime «—».
-Vacía no es cero.
+«incompleto»: la expresión corre igual con un costo o con los cinco. Si la suma
+da cero —nadie capturó nada— la inversión total queda **vacía**, y se imprime
+«—». Vacía no es cero.
 
 **NO se teclea.** No hay campo de inversión total, ni en la ficha ni en el API:
 escribirla es capturar sus componentes. Un total a secas se captura como precio
@@ -305,6 +441,11 @@ estado crudo.
 | Valuación proyectada | Mezcla valuación con venta proyectada. | Venta proyectada |
 | Precio propiedad · Precio terreno | El precio es de adquirir el inmueble completo. | Precio de compra |
 | Inversión desarrollo | No es un concepto del dominio, es una resta. | Obra, permisos y subdivisión |
+| Obra a ejecutar (base) · Obra a ejecutar (total) · `constructionBase` · `constructionTotal` | Eran el mismo gasto con y sin overhead. Sin un overhead que aplicar serían dos nombres para un número, y ninguno de los dos existe ya en el contrato. | Obra presupuestada |
+| «Obra a ejecutar» como nombre de una cifra en pesos | Nombra los **metros**, no el dinero. Usarlo para `constructionBudgeted` le pone un segundo nombre a la única cifra de obra que es capital, y encima al lado de «obra comprometida» y «obra pagada», que sí se distinguen por la etapa. | Obra presupuestada — y «Metros de obra a ejecutar» para el metraje |
+| Overhead de obra como supuesto vigente · `constructionOverhead` en el payload | Dejó de multiplicar nada: se aplica una sola vez al sembrar el presupuesto y vive dentro del importe. Publicarlo sería un número que se lee, se compara y no mueve un peso. | Nada: el overhead ya está dentro de la obra presupuestada |
+| «Costo por m² de la obra» como algo que se captura | Fue insumo, y mientras lo fue era la segunda respuesta a cuánto cuesta la obra. | Costo por m² de obra — derivado, presupuesto ÷ metraje |
+| Costo de obra «si hay presupuesto, si no la fórmula» | Es la rama condicional que dos maneras de calcular un número siempre traen puesta. Toda propiedad tiene presupuesto desde que nace. | La obra presupuestada, sin condición |
 | Ganancia est. | Abrevia dos conceptos a la vez (estimada ≠ proyectada). | Ganancia proyectada |
 | Meses en cartera | Cuenta desde la adquisición, no desde nada de «cartera». | Plazo real |
 | Base de inversión | Segundo nombre de la inversión total, y sugiere que hay bases distintas. Hay una. | Inversión total |
