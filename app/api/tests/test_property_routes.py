@@ -90,6 +90,25 @@ def test_delete_blocked_by_a_reference_is_422_with_the_reason(client, test_prope
             conn.execute("DELETE FROM process_instances WHERE property_id = %s", (pid,))
 
 
+def test_delete_blocked_by_its_budget_is_422_with_the_reason(client, test_property):
+    """El presupuesto de obra está en la familia de RESTRICT, no en la de CASCADE:
+    lleva captura manual —cantidades medidas, precios negociados, pagos— y perder
+    eso en un borrado mudo es perder trabajo real. Se rechaza y se dice qué la
+    retiene, que es lo que le permite a alguien decidir tirarlo a propósito."""
+    pid = test_property["id"]
+    with get_db() as conn:
+        conn.execute("INSERT INTO budgets (property_id) VALUES (%s)", (pid,))
+    try:
+        r = client.delete(f"/api/properties/{pid}")
+        assert r.status_code == 422
+        assert r.json()["error"]["message"] == (
+            "No se puede eliminar la propiedad porque tiene un presupuesto de obra.")
+        assert client.get(f"/api/properties/{pid}").status_code == 200
+    finally:
+        with get_db() as conn:
+            conn.execute("DELETE FROM budgets WHERE property_id = %s", (pid,))
+
+
 def test_quality_reports_issues_per_property(client, test_property):
     r = client.get("/api/quality")
     assert r.status_code == 200

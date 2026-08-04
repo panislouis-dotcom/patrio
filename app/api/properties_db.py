@@ -738,6 +738,10 @@ def _plain(columns: dict) -> dict:
 # corregir un campo, o desligar lo que apunta.
 _DELETE_BLOCKERS = {
     "analysis_snapshots": "tiene análisis guardados",
+    # El presupuesto de obra retiene, no cae en cascada: sus renglones llevan
+    # cantidades medidas, precios negociados y pagos hechos, y eso es captura
+    # manual que ningún borrado debe llevarse sin que alguien lo decida.
+    "budgets": "tiene un presupuesto de obra",
     "process_instances": "tiene tareas ligadas",
     "profit_split_config": "tiene un reparto de utilidades configurado",
     "signals": "está ligada a una señal del sonar",
