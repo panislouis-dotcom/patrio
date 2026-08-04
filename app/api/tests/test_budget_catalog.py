@@ -280,6 +280,28 @@ def test_emptying_a_catalog_cell_that_cannot_be_empty_says_why(client):
     assert [i["id"] for i in capitulo["items"]] == [item["id"]]
 
 
+def test_every_item_response_carries_its_used_in_lines(client, test_property):
+    """La misma forma al leer y al escribir, para que el cliente tenga UN tipo y
+    no tenga que releer el catálogo entero después de crear una partida.
+
+    `usedInLines` es la cifra que explica por qué el borrado físico no existe, así
+    que es parte de lo que una partida ES — no un extra de la lista."""
+    chapter = _chapter(client)
+    item = _item(client, chapter["id"], "[TEST] Piso cerámico", "m2")
+    assert item["usedInLines"] == 0
+
+    _add(client, test_property["id"], itemId=item["id"], quantity=40, unitPrice=1_200)
+    r = client.patch(f"/api/budget/catalog/items/{item['id']}", json={"sortOrder": 3})
+    assert r.json()["usedInLines"] == 1
+    r = client.delete(f"/api/budget/catalog/items/{item['id']}")
+    assert r.json()["usedInLines"] == 1, "la baja no corta la procedencia, y lo dice"
+
+    # Y coincide con lo que publica la lectura, que es de donde salía antes.
+    capitulo = next(c for c in client.get("/api/budget/catalog?includeInactive=true").json()
+                    if c["id"] == chapter["id"])
+    assert next(i for i in capitulo["items"] if i["id"] == item["id"])["usedInLines"] == 1
+
+
 def test_a_duplicate_item_in_the_same_chapter_is_refused_with_its_reason(client):
     """Dos veces la misma partida es la historia de precios partida en dos: el
     rechazo dice qué hacer en vez de dejar salir un 500 del índice único."""
@@ -436,6 +458,67 @@ def test_two_templates_cannot_share_a_name(client):
     r = client.post("/api/budget/templates", json={"name": "[TEST] obra nueva"})
     assert r.status_code == 422
     assert "Ya hay una plantilla" in r.json()["error"]["message"]
+
+
+def _sources(client, **params) -> list[dict]:
+    r = client.get("/api/budget/sources", params=params)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_the_sources_list_answers_where_can_i_copy_from(client, test_property, otra_obra):
+    """«¿Qué plantillas administro?» y «¿de dónde puedo copiar?» son dos
+    preguntas. `apply` siempre aceptó el id de cualquier presupuesto —plantilla u
+    obra, que para copiar son lo mismo— pero sin esta lista «arrancar desde otra
+    obra» era una capacidad que nadie podía encontrar."""
+    _add(client, otra_obra["id"], chapterName="[TEST] Albañilería", name="[TEST] Muros",
+         unit="m2", quantity=100, unitPrice=900)
+    plantilla = client.post("/api/budget/templates", json={
+        "name": "[TEST] Obra nueva",
+        "fromBudgetId": _budget(client, otra_obra["id"])["id"]}).json()
+
+    fuentes = {f["id"]: f for f in _sources(client)}
+    obra = fuentes[_budget(client, otra_obra["id"])["id"]]
+    assert obra["propertyId"] == otra_obra["id"]
+    # El presupuesto de una obra no tiene nombre propio: hereda el de su
+    # propiedad, que es lo que hay que enseñar en el selector.
+    assert obra["name"] == otra_obra["name"]
+    assert (obra["lineCount"], _dec(obra["total"])) == (1, Decimal("90000"))
+    assert fuentes[plantilla["id"]]["propertyId"] is None
+
+    # Las plantillas van primero: es un `optgroup`, no un orden que el cliente
+    # tenga que deducir.
+    orden = [f["propertyId"] is None for f in _sources(client)]
+    assert orden == sorted(orden, reverse=True)
+
+
+def test_a_source_counts_only_what_it_would_actually_copy(client, test_property, otra_obra):
+    """El residuo no se copia, así que contarlo prometería un renglón que nunca
+    llega. Y una obra apenas capturada es SOLO su residuo: sin el filtro, el
+    selector serían dieciocho renglones en cero con las dos obras útiles
+    perdidas entre ellos."""
+    assert all(f["id"] != _budget(client, otra_obra["id"])["id"] for f in _sources(client)), \
+        "una obra sin detallar no es una respuesta a «de dónde copio»"
+
+    _add(client, otra_obra["id"], chapterName="[TEST] Albañilería", name="[TEST] Muros",
+         unit="m2", quantity=100, unitPrice=900)
+    fuente = next(f for f in _sources(client)
+                  if f["id"] == _budget(client, otra_obra["id"])["id"])
+    # Su presupuesto tiene DOS renglones —el residuo y el detallado— y solo uno
+    # se copia.
+    assert len(_budget(client, otra_obra["id"])["lines"]) == 2
+    assert fuente["lineCount"] == 1
+
+
+def test_a_property_is_not_offered_as_a_source_to_itself(client, test_property):
+    """`apply` ya lo rechaza con un 422; ofrecerlo en el selector sería hacer que
+    el usuario descubra la regla chocando con ella."""
+    _add(client, test_property["id"], chapterName="[TEST] Albañilería", name="[TEST] Muros",
+         unit="m2", quantity=100, unitPrice=900)
+    propio = _budget(client, test_property["id"])["id"]
+    assert any(f["id"] == propio for f in _sources(client))
+    assert all(f["id"] != propio
+               for f in _sources(client, excludePropertyId=test_property["id"]))
 
 
 def test_a_template_is_listed_deleted_and_leaves_nothing_behind(client, test_property):

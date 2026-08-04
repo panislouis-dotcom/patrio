@@ -209,6 +209,23 @@ def list_templates(_: dict = Depends(get_current_user)):
         return catalog.list_templates(conn)
 
 
+@router.get("/api/budget/sources", operation_id="budget_sources_list")
+def list_sources(excludePropertyId: Optional[int] = None,
+                 _: dict = Depends(get_current_user)):
+    """De dónde se puede copiar: plantillas y obras, en una sola lista.
+
+    Es otra pregunta que «¿qué plantillas administro?», y por eso tiene ruta
+    propia en vez de una bandera en `/templates`: allá una plantilla está
+    definida como presupuesto sin propiedad, y un listado que ofreciera obras
+    devolvería filas que su propio `{id}` rechaza.
+
+    `lineCount` es lo que de verdad se va a copiar —el residuo queda fuera— y los
+    presupuestos sin nada copiable no aparecen. `propertyId` distingue las dos
+    secciones del selector; el `id` va directo a `POST .../budget/apply`."""
+    with get_db() as conn:
+        return catalog.list_sources(conn, exclude_property_id=excludePropertyId)
+
+
 @router.post("/api/budget/templates", status_code=201,
              operation_id="budget_template_create")
 def create_template(body: TemplateCreate, _: dict = Depends(get_current_user)):

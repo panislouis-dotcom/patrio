@@ -278,10 +278,12 @@ def create_item(conn, chapter_id: int, name: str, unit: str, sort_order: int = 0
     _reject_duplicate_item(conn, chapter_id, name)
     row = conn.execute(
         "INSERT INTO budget_items (chapter_id, name, unit, sort_order)"
-        " VALUES (%s, %s, %s, %s) RETURNING *",
+        " VALUES (%s, %s, %s, %s) RETURNING id",
         (chapter_id, name, unit, sort_order),
     ).fetchone()
-    return _row_to_dict(row)
+    # Se relee por `_item` en vez de devolver el RETURNING: una sola forma de
+    # partida, la misma al crear que al leer.
+    return _item(conn, row["id"])
 
 
 def update_item(conn, item_id: int, data: dict) -> dict:
@@ -310,11 +312,9 @@ def update_item(conn, item_id: int, data: dict) -> dict:
     if not columns:
         return item
     assignments = ", ".join(f"{col} = %s" for col in columns)
-    row = conn.execute(
-        f"UPDATE budget_items SET {assignments} WHERE id = %s RETURNING *",
-        list(columns.values()) + [item_id],
-    ).fetchone()
-    return _row_to_dict(row)
+    conn.execute(f"UPDATE budget_items SET {assignments} WHERE id = %s",
+                 list(columns.values()) + [item_id])
+    return _item(conn, item_id)
 
 
 def deactivate_item(conn, item_id: int) -> dict:
@@ -762,6 +762,62 @@ def _template_row(row) -> dict:
 
 def list_templates(conn) -> list[dict]:
     return [_template_row(row) for row in conn.execute(_TEMPLATES_SQL).fetchall()]
+
+
+# ─── De dónde se puede copiar ─────────────────────────────────────────────────
+#
+# «¿Qué plantillas administro?» y «¿de dónde puedo copiar?» son dos preguntas, y
+# esta lista existe porque la segunda no tenía respuesta: `apply` acepta el id de
+# CUALQUIER presupuesto —una plantilla o la obra de al lado, que para copiar son
+# lo mismo— pero no había forma de enumerar las obras, así que «arrancar desde
+# otra obra» era una capacidad que nadie podía encontrar.
+#
+# Va aparte de `/templates` y no como una bandera suya, porque una plantilla está
+# DEFINIDA como presupuesto sin propiedad y `_require_template` lo sostiene: un
+# `/templates?includeProperties=true` ofrecería filas cuyo propio `{id}`, PATCH y
+# DELETE las rechazan. Un listado que ofrece lo que su propio recurso no acepta
+# es peor que no tener el listado.
+#
+# DOS DETALLES QUE LA HACEN ÚTIL EN VEZ DE MERAMENTE CORRECTA:
+#
+#   · `line_count` cuenta lo COPIABLE, no lo que hay. El residuo no se copia, así
+#     que incluirlo prometería un renglón que nunca llega — y en toda obra apenas
+#     capturada el residuo es lo único que hay. Aquí el número es exactamente
+#     cuántos renglones van a aparecer.
+#   · Por eso mismo se filtran los presupuestos sin nada que copiar. Hoy casi
+#     toda propiedad tiene solo su residuo: sin el filtro, el selector serían
+#     dieciocho renglones en cero y las dos obras que sí sirven, perdidas entre
+#     ellos. Un presupuesto del que no sale nada no es una respuesta a «de dónde
+#     puedo copiar».
+
+_SOURCES_SQL = """
+    SELECT b.id,
+           coalesce(nullif(b.name, ''), p.name) AS name,
+           b.property_id,
+           t.line_count, t.total
+      FROM budgets b
+      LEFT JOIN properties p ON p.id = b.property_id
+      JOIN LATERAL (
+            SELECT count(*) AS line_count,
+                   coalesce(sum(l.quantity * l.unit_price), 0) AS total
+              FROM budget_lines l
+             WHERE l.budget_id = b.id AND NOT l.is_residual) t ON TRUE
+     WHERE t.line_count > 0
+       AND (%s::bigint IS NULL OR b.property_id IS DISTINCT FROM %s::bigint)
+     ORDER BY (b.property_id IS NOT NULL), lower(coalesce(nullif(b.name, ''), p.name))
+"""
+
+
+def list_sources(conn, exclude_property_id: int | None = None) -> list[dict]:
+    """Los presupuestos de los que se puede copiar: plantillas primero, luego
+    obras, cada una con su nombre y cuántos renglones traería.
+
+    `exclude_property_id` saca el presupuesto de la obra que está preguntando.
+    `apply` ya rechaza copiarse sobre sí mismo con un 422, y ofrecer en un
+    selector una opción que solo puede dar error es hacer que el usuario
+    descubra la regla chocando con ella."""
+    rows = conn.execute(_SOURCES_SQL, (exclude_property_id, exclude_property_id)).fetchall()
+    return [_template_row(row) for row in rows]
 
 
 def _require_template(conn, template_id: int) -> dict:
