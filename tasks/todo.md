@@ -1,6 +1,6 @@
 # Una sola manera de calcular la inversión total
 
-> **BITÁCORA CERRADA — SUPERADA POR LAS MIGRACIONES 028-030.**
+> **BITÁCORA CERRADA — SUPERADA POR LAS MIGRACIONES 032-034.**
 > Este documento describe la migración 027 y su regla era cierta cuando se escribió.
 > Ya no lo es en un punto: el último término de la fórmula —`m² × costo/m² × overhead`—
 > dejó de ser fuente. El costo de obra es hoy **la suma del presupuesto por partidas**,
@@ -107,6 +107,6 @@ exacto, el desglose no existe porque nunca se capturó. Cuando quiera repartirlo
 entre compra, permisos y obra, los campos están visibles y editables y el total se
 recalcula solo.
 
-> Nota posterior (migraciones 028-030): sigue siendo cierto para compra, costos de
+> Nota posterior (migraciones 032-034): sigue siendo cierto para compra, costos de
 > adquisición, permisos y subdivisión. **La obra ya no**: dejó de ser un par de campos
 > de la ficha y se reparte por renglones en la pestaña PRESUPUESTO.

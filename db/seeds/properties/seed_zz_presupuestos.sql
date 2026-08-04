@@ -1,20 +1,20 @@
 -- Presupuesto de obra de cada propiedad sembrada · corre AL FINAL
 --
 -- Las semillas insertan propiedades después de las migraciones, así que la
--- siembra de la 028 no las alcanza: en una base recién reseteada quedarían 18
+-- siembra de la 032 no las alcanza: en una base recién reseteada quedarían 18
 -- propiedades sin presupuesto. Este archivo cierra ese hueco, y el `zz_` del
 -- nombre es lo que lo mantiene cerrado — seed-db corre los archivos ordenados,
 -- así que toda propiedad nueva que se siembre antes queda cubierta sin tocar
 -- nada más.
 --
--- Es la misma aritmética de la 028, y tiene que seguir siéndolo: una fila
+-- Es la misma aritmética de la 032, y tiene que seguir siéndolo: una fila
 -- «Otros, por detallar» cuyo importe es el costo de obra con el overhead YA
 -- APLICADO —un 0 capturado es identidad 1, un NULL resuelve al default 1.3—
 -- para que el presupuesto y la fórmula digan el mismo número al peso. Los
 -- ::numeric evitan que Postgres promueva a flotante y empiece a diferir de lo
 -- que calcula Python por ruido de redondeo.
 --
--- La fila nace con `is_residual` PRENDIDA (migración 029): es el renglón que
+-- La fila nace con `is_residual` PRENDIDA (migración 033): es el renglón que
 -- absorbe lo que todavía no se detalla, y sin la bandera detallar una partida
 -- no tendría de dónde restar — el costo de obra crecería con cada renglón que
 -- alguien capturara, sin nada que se viera roto.

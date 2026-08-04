@@ -35,7 +35,7 @@ import { colors, fonts } from '../../lib/theme'
  * y no cuatro veces uno.
  */
 
-/** La misma normalización que el índice de la 030: `lower(btrim(name))`. */
+/** La misma normalización que el índice de la 034: `lower(btrim(name))`. */
 const normalize = (s: string) => s.trim().toLowerCase()
 
 /**

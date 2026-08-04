@@ -272,7 +272,7 @@ COMMENT ON VIEW budget_price_observations IS
 -- leen igual. Una sola definición para el número que esta migración promete no
 -- mover.
 
-CREATE TEMP TABLE _028_obra ON COMMIT DROP AS
+CREATE TEMP TABLE _032_obra ON COMMIT DROP AS
 SELECT id AS property_id,
        (coalesce(sqm_construction::numeric, 0)
         * coalesce(construction_cost_per_sqm, 0)
@@ -286,14 +286,14 @@ SELECT id AS property_id,
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM budgets) THEN
-        RAISE EXCEPTION '028: ya hay presupuestos en la base antes de sembrar. La siembra no es idempotente — revisa el estado antes de volver a correr.'
+        RAISE EXCEPTION '032: ya hay presupuestos en la base antes de sembrar. La siembra no es idempotente — revisa el estado antes de volver a correr.'
             USING ERRCODE = 'check_violation';
     END IF;
 END;
 $$;
 
 INSERT INTO budgets (property_id)
-SELECT property_id FROM _028_obra ORDER BY property_id;
+SELECT property_id FROM _032_obra ORDER BY property_id;
 
 -- Una sola fila, la que el diseño pidió: el estimado grueso entero, sin detallar.
 -- Detallar después no crea costo, solo lo distribuye, y «Otros» es el remanente.
@@ -307,7 +307,7 @@ SELECT property_id FROM _028_obra ORDER BY property_id;
 INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity, unit_price)
 SELECT b.id, 'Otros', 'Otros, por detallar', 'lote', 1, o.costo_obra
   FROM budgets b
-  JOIN _028_obra o ON o.property_id = b.property_id;
+  JOIN _032_obra o ON o.property_id = b.property_id;
 
 -- ── 5. La migración prueba su propia promesa ─────────────────────────────────
 -- Propiedad por propiedad: la suma del presupuesto contra la fórmula. Al peso,
@@ -321,7 +321,7 @@ BEGIN
                              p.name, p.id, o.costo_obra, coalesce(s.total, 0)),
                       '; ' ORDER BY p.id)
       INTO txt
-      FROM _028_obra o
+      FROM _032_obra o
       JOIN properties p ON p.id = o.property_id
       LEFT JOIN budgets b ON b.property_id = o.property_id
       LEFT JOIN LATERAL (SELECT sum(l.quantity * l.unit_price) AS total
@@ -329,7 +329,7 @@ BEGIN
      WHERE coalesce(s.total, 0) <> o.costo_obra;
     IF txt IS NOT NULL THEN
         RAISE EXCEPTION
-            '028: el presupuesto sembrado no reproduce el costo de obra de estas propiedades. La siembra tiene que dar el mismo número al peso o la inversión total se mueve: %', txt
+            '032: el presupuesto sembrado no reproduce el costo de obra de estas propiedades. La siembra tiene que dar el mismo número al peso o la inversión total se mueve: %', txt
             USING ERRCODE = 'check_violation';
     END IF;
 END;
@@ -343,9 +343,9 @@ $$;
 -- solo se le agrega por qué no va a morir con ellas.
 
 COMMENT ON COLUMN properties.construction_cost_per_sqm IS
-    'Costo por m² de la obra a ejecutar. Todavía es el insumo vivo del costo de obra; su sucesor es la suma de budget_lines (migración 028), y desde la fase 2 esta cifra se deriva —presupuesto ÷ m² de obra— en vez de capturarse.';
+    'Costo por m² de la obra a ejecutar. Todavía es el insumo vivo del costo de obra; su sucesor es la suma de budget_lines (migración 032), y desde la fase 2 esta cifra se deriva —presupuesto ÷ m² de obra— en vez de capturarse.';
 COMMENT ON COLUMN properties.construction_overhead IS
-    'Supuesto: multiplicador de costos indirectos de obra. NULL = se aplica el default del sistema (1.3); un 0 capturado es identidad 1, nunca ×0. La migración 028 lo aplicó una sola vez al sembrar el presupuesto, y desde la fase 2 deja de multiplicar el costo de obra.';
+    'Supuesto: multiplicador de costos indirectos de obra. NULL = se aplica el default del sistema (1.3); un 0 capturado es identidad 1, nunca ×0. La migración 032 lo aplicó una sola vez al sembrar el presupuesto, y desde la fase 2 deja de multiplicar el costo de obra.';
 COMMENT ON COLUMN properties.sqm_construction IS
     'Metros cuadrados de obra A EJECUTAR — la que se va a construir o remodelar, no la que el inmueble ya tiene. Sobrevive al presupuesto: es metraje FÍSICO y lo leen el analizador de mercado y el PDF, a los que no les importa cuánto cueste la obra.';
 
@@ -384,7 +384,7 @@ BEGIN
                        ELSE p.construction_overhead::numeric END)
     ) t;
     IF capturado > 0 THEN
-        RAISE EXCEPTION '028 no se puede revertir: hay presupuesto capturado (partidas, pagos, plantillas o catálogo) que estas tablas son las únicas en tener. Exporta lo capturado antes de tirar el módulo.'
+        RAISE EXCEPTION '032 no se puede revertir: hay presupuesto capturado (partidas, pagos, plantillas o catálogo) que estas tablas son las únicas en tener. Exporta lo capturado antes de tirar el módulo.'
             USING ERRCODE = 'check_violation';
     END IF;
 END;

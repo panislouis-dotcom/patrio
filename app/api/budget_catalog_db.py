@@ -62,7 +62,7 @@ from api.finance.quantize import frac4, money0
 # orilla. No quita acentos —`unaccent()` no es IMMUTABLE y volver «ceramico» y
 # «cerámico» el mismo grupo sería fusionar por máquina, que es justo lo que esta
 # capa no hace. La similitud los pone uno junto al otro y decide quien mira.
-# Espeja al índice parcial de la migración 030; si una cambia, la otra deja de
+# Espeja al índice parcial de la migración 034; si una cambia, la otra deja de
 # usarse sin que nada se vea roto.
 _NORMALIZED = "lower(btrim(%s))"
 
@@ -174,7 +174,7 @@ def _chapter(conn, chapter_id: int) -> dict:
 
 
 def _reject_duplicate_chapter(conn, name: str, chapter_id: int | None = None) -> None:
-    """El índice único parcial de la 028 ya lo impide; esto lo dice en español.
+    """El índice único parcial de la 032 ya lo impide; esto lo dice en español.
 
     Sin la revisión previa el choque llega como IntegrityError —un 500 mudo— y
     quien lo ve no sabe que el nombre ya existe, ni dónde."""
@@ -375,7 +375,7 @@ def deactivate_item(conn, item_id: int) -> dict:
 # «1 OBRA · 2 RENGLONES» de una partida que existe en una sola obra, y el segundo
 # renglón era la copia que el sistema mismo hizo al guardar la plantilla.
 #
-# Es EL MISMO predicado que `budget_price_observations` (migración 028) aplica
+# Es EL MISMO predicado que `budget_price_observations` (migración 032) aplica
 # para que el catálogo no aprenda de sí mismo, y está escrito aquí una sola vez
 # para que la regla se lea igual en los dos lados: una plantilla es una
 # intención, no una observación.

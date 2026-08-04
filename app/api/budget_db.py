@@ -3,7 +3,7 @@
 Desde la fase 2 el costo de obra de una propiedad ES la suma de su presupuesto,
 en toda etapa y sin una sola rama. No hay «usa el presupuesto si existe, si no
 la fórmula»: esa disyunción es dos números, y es exactamente lo que la 027
-eliminó de la inversión total. Por eso la 028 sembró un presupuesto para TODA
+eliminó de la inversión total. Por eso la 032 sembró un presupuesto para TODA
 propiedad —con el costo que la fórmula daba, al peso— y por eso `create_property`
 siembra el suyo en la misma transacción que la fila.
 
@@ -24,7 +24,7 @@ segundo lugar donde vive el mismo peso y dos lugares terminan diciendo cosas
 distintas.
 
 EL OVERHEAD ESTÁ ADENTRO, UNA SOLA VEZ. El ×1.3 de indirectos se aplica cuando
-se calcula el primer renglón —al sembrar, aquí abajo, o en la migración 028— y
+se calcula el primer renglón —al sembrar, aquí abajo, o en la migración 032— y
 desde ahí vive dentro del importe. Nada vuelve a multiplicarlo. Es la trampa
 central de este módulo: volver a aplicarlo inflaría un 30% el costo de obra de
 cada propiedad sin un test rojo, sin un error, solo con números más grandes que
@@ -127,10 +127,10 @@ def calculator_estimate(sqm_construction, construction_cost_per_sqm,
     Esto es todo lo que queda de la fórmula que antes era el costo de obra: una
     CALCULADORA para llegar al primer número, no un campo que siga alimentando
     nada. Su resultado se guarda como el importe del renglón residual y desde
-    ahí manda el presupuesto. Espeja al peso la aritmética de la migración 028,
+    ahí manda el presupuesto. Espeja al peso la aritmética de la migración 032,
     incluido que un NULL resuelve al default y un 0 capturado es identidad.
 
-    Lo único que la 028 no tuvo que decidir —un factor por debajo de 1— lo rechaza
+    Lo único que la 032 no tuvo que decidir —un factor por debajo de 1— lo rechaza
     `overhead_factor` antes de que el estimado exista: sembrar con él dejaría la
     obra encogida dentro del renglón «Otros», donde ya no se corrige sola."""
     overhead = (CONSTRUCTION_OVERHEAD_DEFAULT if construction_overhead is None
@@ -609,7 +609,7 @@ NULLABLE_LINE_FIELDS = frozenset({
 
 # En los demás un vacío no es un vaciado: es un renglón roto.
 #
-# Los tres de TEXTO llevan `NOT NULL` y además `CHECK (<> '')` desde la 028, así
+# Los tres de TEXTO llevan `NOT NULL` y además `CHECK (<> '')` desde la 032, así
 # que hay dos formas de vaciarlos y las dos tienen que rebotar aquí: `null` y
 # `""`. La cadena vacía es la que se cuela sin querer —seleccionar el nombre de
 # una partida, borrarlo y hacer clic en otro lado, que es lo que hace cualquiera

@@ -325,7 +325,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   /**
    * Suelta una celda de texto que NO PUEDE quedar vacía.
    *
-   * `name` y `unit` son NOT NULL con `CHECK (<> '')` en la 028. Ahí un vacío no
+   * `name` y `unit` son NOT NULL con `CHECK (<> '')` en la 032. Ahí un vacío no
    * es un vaciado sino un renglón roto —el servidor lo dice con esas palabras
    * para el null— así que la caja vacía se revierte a lo guardado en vez de
    * mandarse. No contradice la regla de las celdas de dinero: en el comprometido

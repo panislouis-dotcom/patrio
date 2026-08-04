@@ -97,7 +97,7 @@ const line = (over: Partial<BudgetLine>): BudgetLine => ({
   createdAt: '', updatedAt: '', ...over,
 })
 
-/** El renglón que la 028 le siembra a toda propiedad: el estimado grueso entero. */
+/** El renglón que la 032 le siembra a toda propiedad: el estimado grueso entero. */
 const residual = (unitPrice: number): BudgetLine => line({
   id: 99, chapterName: 'Otros', name: 'Otros, por detallar', unit: 'lote',
   quantity: 1, unitPrice, budgetedAmount: unitPrice, isResidual: true,
@@ -235,7 +235,7 @@ describe('BudgetPanel', () => {
     expect(within(fila).queryByLabelText('Precio unitario de Otros, por detallar')).toBeNull()
     expect(within(fila).queryByLabelText('Proveedor de Otros, por detallar')).toBeNull()
     // Ni oficio: el remanente no es trabajo de nadie —en cuanto se sepa de qué
-    // es, deja de ser remanente y se vuelve una partida. El CHECK de la 031 lo
+    // es, deja de ser remanente y se vuelve una partida. El CHECK de la 035 lo
     // sostiene también en la base.
     expect(within(fila).queryByLabelText('Oficio de Otros, por detallar')).toBeNull()
     expect(within(fila).queryByLabelText('Quitar Otros, por detallar')).toBeNull()
@@ -337,7 +337,7 @@ describe('BudgetPanel', () => {
   })
 
   it('vaciar el nombre de una partida no lo manda: se revierte a lo guardado', async () => {
-    // `name` y `unit` son NOT NULL con CHECK (<> '') en la 028. Ahí un vacío no
+    // `name` y `unit` son NOT NULL con CHECK (<> '') en la 032. Ahí un vacío no
     // es un vaciado sino un renglón roto, y el servidor solo rechaza el null —
     // una cadena vacía llegaría hasta el CHECK. No contradice la regla de las
     // celdas de dinero: en el comprometido el vacío ES el mensaje, y aquí no hay

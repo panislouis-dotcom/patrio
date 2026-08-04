@@ -53,7 +53,7 @@
 -- ESTA MIGRACIÓN NO ESCRIBE UNA SOLA FILA. Las tres columnas nacen en NULL y no
 -- hay UPDATE que las llene: no existe un mapa de capítulos a oficios que se
 -- pueda deducir sin inventarlo, y la única fuente honesta es quien captura. Por
--- eso tampoco hay guarda de no-movimiento como en la 028: no hay aritmética que
+-- eso tampoco hay guarda de no-movimiento como en la 032: no hay aritmética que
 -- vigilar, no se toca ninguna columna de dinero, y `budget_price_observations`
 -- sigue publicando exactamente las mismas filas con las mismas cifras.
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ ALTER TABLE budget_lines
 -- todavía no se reparte. Darle categoría sería afirmar que lo que falta por
 -- detallar ya se sabe de qué es —y en cuanto se sepa, deja de ser residuo y se
 -- vuelve una partida. El API ya rechaza toda escritura sobre el residuo que no
--- sea una nota; esto lo vuelve un hecho de la fila, como la 029 hizo con
+-- sea una nota; esto lo vuelve un hecho de la fila, como la 033 hizo con
 -- `is_residual` mismo.
 ALTER TABLE budget_lines
   ADD CONSTRAINT budget_lines_residual_has_no_category
@@ -115,7 +115,7 @@ COMMENT ON COLUMN budget_lines.supplier_category_id IS
 -- se deduce del nombre del capítulo —ésa era justamente la coincidencia de
 -- textos que esta migración vino a eliminar— ni del proveedor, que en la mayoría
 -- de los renglones todavía no existe. Un DROP mudo se llevaría captura manual
--- irrecuperable, así que primero se pregunta, igual que en la 028.
+-- irrecuperable, así que primero se pregunta, igual que en la 032.
 
 DO $$
 DECLARE capturado BIGINT;
@@ -126,7 +126,7 @@ BEGIN
         UNION ALL SELECT 1 FROM budget_lines WHERE supplier_category_id IS NOT NULL
     ) t;
     IF capturado > 0 THEN
-        RAISE EXCEPTION '031 no se puede revertir: hay % filas con oficio capturado, y estas columnas son el único lugar donde vive. No se deduce del capítulo ni del proveedor — expórtalo antes de tirarlas.', capturado
+        RAISE EXCEPTION '035 no se puede revertir: hay % filas con oficio capturado, y estas columnas son el único lugar donde vive. No se deduce del capítulo ni del proveedor — expórtalo antes de tirarlas.', capturado
             USING ERRCODE = 'check_violation';
     END IF;
 END;

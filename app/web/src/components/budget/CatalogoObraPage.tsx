@@ -31,7 +31,7 @@ import { plural } from '../../lib/fmt'
  * para el mismo módulo.
  */
 
-/** El catálogo no guarda precio (migración 028), y la pantalla lo dice. */
+/** El catálogo no guarda precio (migración 032), y la pantalla lo dice. */
 const SIN_PRECIO =
   'El catálogo guarda el NOMBRE y la UNIDAD, nunca el precio: sugerir desde un precio '
   + 'guardado es repetir para siempre una suposición. El precio se aprende de lo pagado.'

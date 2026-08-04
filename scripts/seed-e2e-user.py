@@ -47,7 +47,7 @@ def main() -> int:
             )
 
             # El presupuesto de obra retiene a su propiedad (RESTRICT, migración
-            # 028): sin soltarlo primero, resembrar falla con una violación de FK.
+            # 032): sin soltarlo primero, resembrar falla con una violación de FK.
             # Se suelta explícitamente porque eso es lo que compra el RESTRICT —
             # que tirar captura de obra sea una decisión y no un efecto colateral.
             cur.execute(
@@ -123,9 +123,9 @@ def main() -> int:
                 """,
             )
 
-            # Y su presupuesto, con la misma aritmética de la 028: toda propiedad
+            # Y su presupuesto, con la misma aritmética de la 032: toda propiedad
             # tiene uno, y su suma es el costo de obra con el overhead ya dentro.
-            # `is_residual` prendida (029): es el renglón del que se resta al
+            # `is_residual` prendida (033): es el renglón del que se resta al
             # detallar, y sin él el costo de obra crecería con cada partida.
             # Las dos semillas capturan 0 de obra, así que la fila nace en $0 —
             # que es lo que dicen sus columnas, y sigue significando «nada

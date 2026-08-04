@@ -59,7 +59,7 @@ def test_the_calculator_applies_the_overhead_exactly_once():
 
 def test_an_absent_overhead_costs_the_assumed_thirty_percent():
     """Vacío no es «sin sobrecosto»: es el supuesto del sistema, el mismo ×1.3
-    que la migración 028 aplicó al sembrar. Que la calculadora y la siembra
+    que la migración 032 aplicó al sembrar. Que la calculadora y la siembra
     resuelvan igual es lo que permitió que el cambio de fuente no moviera un
     peso en ninguna de las 18 propiedades."""
     assert budget_db.calculator_estimate(120, 1_000) == Decimal("156000.0")

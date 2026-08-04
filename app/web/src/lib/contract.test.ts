@@ -141,7 +141,7 @@ describe('el espejo del contrato no se desincroniza en silencio', () => {
     const fuente = [
       'CLEARABLE_FIELDS = frozenset({',
       '    "assetType",',
-      '    # ojo: "purchasePrice" se retiró en la 028',
+      '    # ojo: "purchasePrice" se retiró en la 032',
       '    "sqmLand",  # y "permitsCost" también',
       '})',
     ].join('\n')

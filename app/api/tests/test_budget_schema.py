@@ -8,7 +8,7 @@ Lo que fija esta suite son las decisiones que, si se rompen, no se ven rotas:
     historia solo lee cierres de obra real que de verdad se pagaron.
 
 La aritmética de la siembra no se re-teclea aquí a propósito: la guarda de la
-propia migración 028 la compara contra la fórmula propiedad por propiedad, y esa
+propia migración 032 la compara contra la fórmula propiedad por propiedad, y esa
 prueba corre en todos los entornos, incluido prod. Duplicarla en pytest sería
 copiar el número que se quiere vigilar.
 """
@@ -147,7 +147,7 @@ def test_the_residual_has_no_trade(obra):
     """«Otros, por detallar» no es trabajo de ningún oficio: es lo que todavía no
     se reparte, y en cuanto se sepa de qué es deja de ser residuo y se vuelve una
     partida. El API ya rechaza toda escritura sobre el residuo que no sea una
-    nota; el CHECK lo vuelve un hecho de la fila, como la 029 hizo con
+    nota; el CHECK lo vuelve un hecho de la fila, como la 033 hizo con
     `is_residual` mismo."""
     with get_db() as conn:
         category_id = conn.execute(

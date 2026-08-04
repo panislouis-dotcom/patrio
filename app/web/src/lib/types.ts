@@ -665,7 +665,7 @@ export interface BudgetLinePayment {
  * Un renglón del presupuesto de obra.
  *
  * El capítulo va por NOMBRE y no por id porque es una COPIA, no una referencia
- * (migración 028): editar el catálogo nunca puede reescribir lo que ya se
+ * (migración 032): editar el catálogo nunca puede reescribir lo que ya se
  * capturó. Un capítulo, en la tabla, es lo que resulta de agrupar por este
  * texto — no hay una entidad aparte que pueda quedar vacía ni desincronizarse.
  *
@@ -834,7 +834,7 @@ export interface BudgetWrite {
 // ── El catálogo de obra ───────────────────────────────────────────────────────
 //
 // El catálogo es lo CURADO: lo que alguien ya decidió que es una partida. No
-// guarda precio y eso es deliberado (migración 028) — sugerir desde un precio
+// guarda precio y eso es deliberado (migración 032) — sugerir desde un precio
 // guardado es un bucle de autoconfirmación que nunca toca la realidad. Lo que
 // aporta es el NOMBRE, que es lo que permite que dos obras hablen de la misma
 // cosa y que la historia de precios llegue a tener más de una observación.
