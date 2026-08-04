@@ -38,9 +38,20 @@ router = APIRouter()
 class LineCreate(BaseModel):
     """Una partida nueva. Capítulo y nombre son obligatorios —una partida sin
     capítulo no se puede agrupar, y una sin nombre no dice qué se va a hacer—;
-    lo demás se llena celda por celda con autoguardado."""
-    chapterName: str
-    name: str
+    lo demás se llena celda por celda con autoguardado.
+
+    Salvo que venga `itemId`: ahí la partida nace DESDE el catálogo, que pone el
+    capítulo, el nombre y la unidad copiándolos a este renglón. `itemId` queda
+    como procedencia —de dónde salió— y nunca se vuelve a leer para armar la
+    fila: editar el catálogo después no puede tocar lo que aquí se capturó.
+
+    Los dos caminos son de primera clase. Obligar a pasar por el catálogo antes
+    de poder anotar una partida es la forma más rápida de que nadie use el
+    módulo; es el hueco que el sistema de procesos nunca llenó, donde agregar
+    algo a una obra obliga a editar la plantilla de todas."""
+    itemId: Optional[int] = None
+    chapterName: Optional[str] = None
+    name: Optional[str] = None
     unit: str = "lote"
     quantity: float = 0
     unitPrice: float = 0
@@ -61,7 +72,13 @@ class LineUpdate(BaseModel):
     «no la toques», mientras que aquí el selector de proveedor tiene «— Sin
     proveedor» y elegirlo tiene que quitar el proveedor. Por eso la ruta usa
     `exclude_unset` y no `exclude_none`: lo que el cliente no mandó se queda
-    fuera, y lo que mandó en null llega como null."""
+    fuera, y lo que mandó en null llega como null.
+
+    `itemId` aquí liga un renglón que YA existe a una partida del catálogo —la
+    otra mitad de la deduplicación: aceptar el aviso «¿es la misma que X?» sobre
+    algo ya capturado. Pone la procedencia y nada más: el nombre, la unidad y el
+    importe se quedan como se capturaron."""
+    itemId: Optional[int] = None
     chapterName: Optional[str] = None
     name: Optional[str] = None
     unit: Optional[str] = None
@@ -86,6 +103,20 @@ class TotalUpdate(BaseModel):
 
 class ChapterRename(BaseModel):
     name: str
+
+
+class BudgetApply(BaseModel):
+    """El presupuesto que se copia sobre éste.
+
+    UN SOLO CAMPO para las dos cosas que se pueden copiar, porque son la misma:
+    una plantilla es un presupuesto sin propiedad, así que su id y el id del
+    presupuesto de otra obra viajan por aquí sin distinguirse. Dos campos serían
+    dos ramas, y la segunda es la que se queda sin arreglar."""
+    budgetId: int
+
+
+class ChapterApply(BaseModel):
+    chapterId: int
 
 
 # ─── La respuesta ─────────────────────────────────────────────────────────────
@@ -163,6 +194,49 @@ def delete_line(property_id: int, line_id: int, _: dict = Depends(get_current_us
     # El renglón viaja tal como estaba: un borrado también es una escritura, y el
     # cliente tiene que poder decir qué fila quitar de la tabla.
     return _written(property_id, budget, line, Decimal(0))
+
+
+# ─── Arrancar desde algo que ya existe ────────────────────────────────────────
+#
+# Las dos puertas por las que el catálogo y las plantillas entran a una obra, y
+# las dos COPIAN. Después de copiar no queda ninguna liga viva: el renglón lleva
+# su propio texto y su propio importe, y `itemId` es procedencia, no dependencia.
+# Editar la plantilla o el catálogo mañana no mueve un peso de lo que hoy se
+# copió — que es lo contrario de las plantillas de proceso, y es deliberado,
+# porque aquí el objeto es dinero y tiene lectores fuera de la app.
+#
+# Ninguna de las dos mueve el total: los renglones copiados salen del residuo,
+# igual que al detallar a mano. `budgetIncrease` solo deja de ser 0 si lo copiado
+# rebasa lo que la obra tenía presupuestado, que ya no es detallar sino aumentar
+# el presupuesto, y por eso se reporta.
+
+@router.post("/api/properties/{property_id}/budget/apply", status_code=201,
+             operation_id="budget_apply")
+def apply_budget(property_id: int, body: BudgetApply,
+                 _: dict = Depends(get_current_user)):
+    """Copia otro presupuesto sobre éste — una plantilla o la obra de al lado."""
+    with get_db() as conn:
+        copied, increase = budget_db.apply_budget(conn, property_id, body.budgetId)
+        budget = budget_db.get_budget(conn, property_id)
+    return {**_written(property_id, budget, None, increase), "linesAdded": copied}
+
+
+@router.post("/api/properties/{property_id}/budget/apply-chapter", status_code=201,
+             operation_id="budget_apply_chapter")
+def apply_chapter(property_id: int, body: ChapterApply,
+                  _: dict = Depends(get_current_user)):
+    """Baja un capítulo entero del catálogo como esqueleto: los nombres y las
+    unidades, en cantidad 0 y precio 0. El catálogo no guarda precio a
+    propósito —aprenderlo de lo presupuestado sería repetir para siempre una
+    suposición que alguien hizo una vez— así que lo teclea quien captura, hasta
+    que la historia de lo pagado pueda sugerirlo.
+
+    Repetirlo no duplica: las partidas que esta obra ya trae del catálogo se
+    saltan, porque `itemId` da identidad exacta."""
+    with get_db() as conn:
+        copied, increase = budget_db.apply_chapter(conn, property_id, body.chapterId)
+        budget = budget_db.get_budget(conn, property_id)
+    return {**_written(property_id, budget, None, increase), "linesAdded": copied}
 
 
 # ─── El total ─────────────────────────────────────────────────────────────────

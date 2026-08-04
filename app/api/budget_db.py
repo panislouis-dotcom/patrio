@@ -296,17 +296,167 @@ def _settle_residual(conn, budget_id: int, total_objetivo: Decimal) -> Decimal:
     return max(Decimal(0), detallado - total_objetivo)
 
 
+# ─── Instanciar desde el catálogo: se COPIA, no se referencia ─────────────────
+#
+# Es la doctrina central del módulo y es LO CONTRARIO de lo que hacen las
+# plantillas de proceso de este repo, que se leen en vivo. La diferencia no es de
+# gusto:
+#
+#   · Un nodo de proceso guarda ESTADO SOBRE hacer algo —avance, fechas, fotos—
+#     y su texto es una etiqueta. Renombrar «Pintura» a «Pintura y acabados» en
+#     la plantilla mejora la etiqueta de todas las obras a la vez, y nadie pierde
+#     nada.
+#   · Un renglón de presupuesto ES LA AFIRMACIÓN MISMA. «40 m² de piso cerámico a
+#     $1,200» no es una etiqueta sobre un hecho: es el hecho, y el número le
+#     pertenece a la propiedad, no al catálogo.
+#
+# Y el presupuesto tiene lectores FUERA de la app: el prospecto del inversionista,
+# el term sheet, `totalInvestment`. Mover retroactivamente un número que un
+# inversionista ya vio es de otra clase de daño que renombrar una tarea — el
+# primero se corrige con una llamada incómoda, el segundo no se nota.
+#
+# Por eso `item_id` es PROCEDENCIA, no dependencia: `ON DELETE SET NULL` en el
+# esquema, y aquí nada vuelve a leerlo para armar el renglón. Editar el catálogo
+# no puede tocar un presupuesto ya capturado porque no hay camino por donde.
+
+_CATALOG_COPY_SQL = """
+    SELECT c.name AS chapter_name, i.name, i.unit,
+           i.is_active AS item_active, c.is_active AS chapter_active
+      FROM budget_items i
+      JOIN budget_chapters c ON c.id = i.chapter_id
+     WHERE i.id = %s
+"""
+
+
+def catalog_item_copy(conn, item_id: int) -> dict:
+    """El texto que un renglón copia del catálogo al nacer, y nada más.
+
+    Una partida dada de baja no se instancia en obra nueva —esa es la mitad viva
+    de la baja lógica— pero los renglones que ya la citan conservan su
+    procedencia intacta, que es la otra mitad y la razón de que el borrado físico
+    no exista."""
+    row = conn.execute(_CATALOG_COPY_SQL, (item_id,)).fetchone()
+    if row is None:
+        raise BudgetNotFound(f"La partida {item_id} no existe en el catálogo")
+    if not (row["item_active"] and row["chapter_active"]):
+        raise BudgetError(
+            f"«{row['name']}» está dada de baja en el catálogo y no se usa en obra "
+            "nueva. Los renglones que ya la citan conservan su procedencia; si "
+            "vuelve a usarse, reactívala.")
+    return {"item_id": item_id, "chapter_name": row["chapter_name"],
+            "name": row["name"], "unit": row["unit"]}
+
+
+# Lo que se copia de un presupuesto a otro. Enumerado y no `SELECT *` porque lo
+# que NO está es la decisión: proveedor, monto comprometido, fecha de firma,
+# cantidad real, cierre y pagos se quedan en su obra. Una plantilla es la forma
+# de un plan, no la ejecución de nadie; copiar el proveedor de la obra anterior
+# sería afirmar un contrato que no existe.
+_COPIED_LINE_COLUMNS = ("item_id", "chapter_name", "name", "unit",
+                        "quantity", "unit_price", "sort_order", "notes")
+
+
+def copy_lines(conn, source_budget_id: int, target_budget_id: int) -> int:
+    """Copia los renglones de un presupuesto a otro. Devuelve cuántos.
+
+    ESTA es la operación que se usa tres veces —arrancar desde plantilla,
+    arrancar desde otra obra, guardar ésta como plantilla— porque las tres son la
+    misma: una plantilla es un presupuesto sin propiedad, y copiar no distingue
+    de dónde a dónde va. Tres nombres para un camino de código serían tres
+    caminos de código, y el tercero es el que se queda sin arreglar.
+
+    El residuo NO se copia. Es el remanente de SU presupuesto —lo que a esa obra
+    le falta por detallar— y llevárselo a una plantilla lo convertiría en una
+    partida de $2.3M que después le come el residuo a la obra siguiente.
+
+    `item_id` SÍ se copia, incluso si esa partida del catálogo ya se dio de baja,
+    y no contradice que una partida retirada no se estrene en obra nueva: eso es
+    sobre ELEGIR del catálogo. Copiar un presupuesto no elige nada — arrastra la
+    procedencia que el renglón original ya tenía, y quitársela sería perder la
+    única prueba de que las dos obras hablaban de la misma partida."""
+    columns = ", ".join(_COPIED_LINE_COLUMNS)
+    source = ", ".join(f"l.{c}" for c in _COPIED_LINE_COLUMNS)
+    return conn.execute(
+        f"INSERT INTO budget_lines (budget_id, {columns})"
+        f" SELECT %s, {source} FROM budget_lines l"
+        "  WHERE l.budget_id = %s AND NOT l.is_residual"
+        "  ORDER BY l.chapter_name, l.sort_order, l.id",
+        (target_budget_id, source_budget_id),
+    ).rowcount
+
+
+def apply_budget(conn, property_id: int, source_budget_id: int) -> tuple[int, Decimal]:
+    """Arranca esta obra desde otro presupuesto —una plantilla o la obra de al
+    lado, que para el código son lo mismo.
+
+    Los renglones se SUMAN a lo que ya hubiera: el residuo baja lo que ellos
+    suben y el total no se mueve, igual que al detallar a mano. No hay
+    composición de bloques ni expansión recursiva —eso es lo que hacen las
+    plantillas de proceso con `source_template_id`, y ahí se ve el costo: la
+    expansión quedó truncada a un nivel más un detector de ciclos completo.
+    Arrancar desde otra obra y borrar tres renglones cuesta treinta segundos y
+    cero código."""
+    budget_id = _require_budget(conn, property_id)
+    if source_budget_id == budget_id:
+        raise BudgetError("Un presupuesto no se copia sobre sí mismo.")
+    if conn.execute("SELECT 1 FROM budgets WHERE id = %s",
+                    (source_budget_id,)).fetchone() is None:
+        raise BudgetNotFound(f"No existe el presupuesto {source_budget_id} que se quiere copiar")
+    total_antes, _ = _totals(conn, budget_id)
+    copied = copy_lines(conn, source_budget_id, budget_id)
+    return copied, _settle_residual(conn, budget_id, total_antes)
+
+
+def apply_chapter(conn, property_id: int, chapter_id: int) -> tuple[int, Decimal]:
+    """Baja un capítulo entero del catálogo al presupuesto, como esqueleto.
+
+    Nace en cantidad 0 y precio 0 —y por eso no mueve un peso: el catálogo NO
+    guarda precio, a propósito. Sugerir desde un precio guardado es el bucle de
+    autoconfirmación que el diseño rechazó: presupuestas $1,000, el catálogo
+    aprende $1,000, la próxima vez sugiere $1,000, y nunca toca la realidad. El
+    precio se aprende de lo PAGADO en renglones cerrados (fase 5, vista
+    `budget_price_observations`); mientras tanto lo teclea quien captura.
+
+    Es idempotente: las partidas que este presupuesto ya trae del catálogo no se
+    duplican. Se puede porque `item_id` da identidad exacta — lo que no se puede
+    hacer al copiar otro presupuesto, donde dos renglones con el mismo nombre
+    pueden ser dos renglones legítimos."""
+    budget_id = _require_budget(conn, property_id)
+    chapter = conn.execute(
+        "SELECT id, name, is_active FROM budget_chapters WHERE id = %s", (chapter_id,)
+    ).fetchone()
+    if chapter is None:
+        raise BudgetNotFound(f"El capítulo {chapter_id} no existe en el catálogo")
+    if not chapter["is_active"]:
+        raise BudgetError(
+            f"«{chapter['name']}» está dado de baja en el catálogo y no se usa en obra nueva.")
+    total_antes, _ = _totals(conn, budget_id)
+    copied = conn.execute(
+        "INSERT INTO budget_lines"
+        " (budget_id, item_id, chapter_name, name, unit, quantity, unit_price, sort_order)"
+        " SELECT %s, i.id, %s, i.name, i.unit, 0, 0, i.sort_order"
+        "   FROM budget_items i"
+        "  WHERE i.chapter_id = %s AND i.is_active"
+        "    AND NOT EXISTS (SELECT 1 FROM budget_lines l"
+        "                     WHERE l.budget_id = %s AND l.item_id = i.id)"
+        "  ORDER BY i.sort_order, i.id",
+        (budget_id, chapter["name"], chapter_id, budget_id),
+    ).rowcount
+    return copied, _settle_residual(conn, budget_id, total_antes)
+
+
 # ─── Renglones ────────────────────────────────────────────────────────────────
 
 # Lo que un cliente puede escribir en un renglón. `is_residual` no está: el
 # residuo lo nombra el sistema. `quantity`/`unit_price` tampoco se aceptan en el
 # residuo — ver `_reject_residual_capture`.
 LINE_FIELDS = frozenset({
-    "chapterName", "name", "unit", "quantity", "unitPrice",
+    "itemId", "chapterName", "name", "unit", "quantity", "unitPrice",
     "supplierId", "committedAmount", "committedOn", "actualQuantity", "notes",
 })
 
 _LINE_COLUMNS = {
+    "itemId": "item_id",
     "chapterName": "chapter_name", "name": "name", "unit": "unit",
     "quantity": "quantity", "unitPrice": "unit_price",
     "supplierId": "supplier_id", "committedAmount": "committed_amount",
@@ -326,8 +476,12 @@ _LINE_COLUMNS = {
 # Y no se resuelve con un centinela: `committed_amount = 0` es un valor
 # legítimo —se firmó en cero— y confundirlo con «no se ha firmado» es
 # exactamente la distinción que esta capa cuida en todas partes.
+#
+# `itemId` está aquí por la misma razón, y la suya es la procedencia: decir que
+# un renglón NO era esa partida del catálogo tiene que poder decirse, y decirlo
+# no toca ni el texto ni el importe.
 NULLABLE_LINE_FIELDS = frozenset({
-    "supplierId", "committedAmount", "committedOn", "actualQuantity",
+    "itemId", "supplierId", "committedAmount", "committedOn", "actualQuantity",
 })
 
 # En los demás un vacío no es un vaciado: es un renglón roto.
@@ -398,12 +552,31 @@ def create_line(conn, property_id: int, data: dict) -> tuple[int, Decimal]:
 
     Devuelve (id del renglón, cuánto creció el presupuesto). Lo segundo es 0 en
     el caso normal; solo deja de serlo cuando el detalle rebasa el total, que es
-    aumentar el presupuesto y tiene que poder distinguirse de detallar."""
+    aumentar el presupuesto y tiene que poder distinguirse de detallar.
+
+    Con `itemId` la partida nace DESDE el catálogo y el catálogo pone el texto;
+    sin él nace suelta, que es el caso barato a propósito — obligar a pasar por
+    el catálogo antes de poder anotar una partida es la forma más rápida de que
+    nadie use el módulo. Es el hueco que el sistema de procesos nunca llenó: allá
+    agregar algo a una obra obliga a editar la plantilla de TODAS, incluidas las
+    terminadas. Aquí el renglón libre vive en su presupuesto y no toca nada más,
+    y para llevarlo al catálogo está la promoción, que es explícita."""
     budget_id = _require_budget(conn, property_id)
     total_antes, _ = _totals(conn, budget_id)
 
-    _reject_empty(data, required=("chapterName", "name"))
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
+    # Al nacer desde el catálogo el texto lo pone el catálogo, aunque el cliente
+    # haya mandado otro. Es la deduplicación cobrando: si alguien tecleó «Piso
+    # ceramico 60x60», vio el aviso «¿es la misma que Piso cerámico?» y dijo que
+    # sí, lo que quiso decir es que la partida es la del catálogo — quedarse con
+    # las dos grafías sería partir en dos la historia de precios que acaba de
+    # aceptar unir. Después puede editar el renglón; ahí ya hay algo capturado
+    # que respetar y por eso `update_line` NUNCA reescribe el texto.
+    item_id = data.get("itemId")
+    if item_id is None:
+        _reject_empty(data, required=("chapterName", "name"))
+    else:
+        columns.update(catalog_item_copy(conn, item_id))
     # Una partida puede nacer sin cantidad ni precio: la captura es celda por
     # celda con autoguardado, y exigir la fila completa de golpe convertiría un
     # estado intermedio normal en un error.
@@ -427,8 +600,15 @@ def update_line(conn, property_id: int, line_id: int, data: dict) -> Decimal:
     que el presupuesto tenía antes.
 
     `data` trae SOLO lo que el cliente mandó, y un `None` ahí significa «quítalo»
-    —no «no lo toques»—: los cuatro campos de NULLABLE_LINE_FIELDS se vacían así
-    y no hay otra puerta para hacerlo."""
+    —no «no lo toques»—: los cinco campos de NULLABLE_LINE_FIELDS se vacían así
+    y no hay otra puerta para hacerlo.
+
+    `itemId` aquí es la otra mitad de la deduplicación: ligar un renglón que YA
+    existe a una partida del catálogo. Solo pone la procedencia — el nombre, la
+    unidad y el importe se quedan exactamente como se capturaron. Que al crear
+    mande el catálogo y al editar mande lo capturado no es una inconsistencia: al
+    nacer no hay nada que preservar, después sí, y ese después incluye
+    presupuestos que un inversionista ya leyó."""
     budget_id = _require_budget(conn, property_id)
     row = conn.execute(
         "SELECT is_residual FROM budget_lines WHERE id = %s AND budget_id = %s",
@@ -442,6 +622,10 @@ def update_line(conn, property_id: int, line_id: int, data: dict) -> Decimal:
     if row["is_residual"] and (set(data) - {"notes"}):
         raise BudgetError(_RESIDUAL_IS_NOT_TYPED)
     _reject_empty(data)
+    if data.get("itemId") is not None:
+        # Valida y nada más: el texto del renglón no se toca. La FK sola daría un
+        # 500 mudo, y una partida dada de baja no debe estrenar procedencia.
+        catalog_item_copy(conn, data["itemId"])
 
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
     total_antes, _ = _totals(conn, budget_id)
