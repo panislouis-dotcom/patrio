@@ -1,4 +1,5 @@
-from api.db import _camel_to_snake, RAW_FIELDS
+from api.db import _camel_to_snake, _snake_to_camel
+from api.properties_db import CLEARABLE_FIELDS, WRITABLE_FIELDS
 
 
 def test_camel_to_snake_simple():
@@ -13,15 +14,17 @@ def test_camel_to_snake_single():
     assert _camel_to_snake("name") == "name"
 
 
-def test_raw_fields_contains_expected():
-    assert "latitude" in RAW_FIELDS
-    assert "landPrice" in RAW_FIELDS
-    assert "constructionOverhead" in RAW_FIELDS
-    assert "holdMonths" in RAW_FIELDS
-    assert len(RAW_FIELDS) == 21
+def test_snake_to_camel_roundtrips_every_writable_field():
+    for field in WRITABLE_FIELDS:
+        assert _snake_to_camel(_camel_to_snake(field)) == field
 
 
-def test_parse_project_roi_decimal_safe(client, test_project):
-    from api.db import get_project
-    p = get_project(test_project["id"])
-    assert "roi" in p and "unrealizedGain" in p and "unrealizedGainPct" in p
+def test_clearable_is_a_subset_of_writable_plus_lifecycle_facts():
+    """Anything emptiable must be something the domain knows how to write back;
+    otherwise clearing it would be a one-way door."""
+    assert CLEARABLE_FIELDS <= WRITABLE_FIELDS
+
+
+def test_status_is_writable_through_neither_door():
+    assert "status" not in WRITABLE_FIELDS
+    assert "status" not in CLEARABLE_FIELDS

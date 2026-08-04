@@ -174,6 +174,10 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
               color: var(--ink); margin: 8px 0 10mm; }
 .summary .metrics { border-color: rgba(90,122,78,0.25); }
 .summary .metric { border-color: rgba(90,122,78,0.25); background: rgba(255,255,255,0.5); }
+/* Con ventas Y rentas que reportar el resumen crece a cinco columnas: mismo
+   bloque, tipografía un punto más chica para que cada cifra quepa en su celda. */
+.summary .metrics-5 .metric { padding: 4mm 3mm; }
+.summary .metrics-5 .metric .v { font-size: 16pt; }
 
 /* ══ OPPORTUNITY — full page ═════════════════════════════════════════════ */
 .opp { height: 297mm; display: flex; flex-direction: column; }
@@ -278,9 +282,25 @@ def _mean(values: list) -> float | None:
     return sum(present) / len(present) if present else None
 
 
+# Vocabulario de los dos enums de clasificación (espejo de ASSET_TYPE_LABEL y
+# STRATEGY_TYPE_LABEL en app/web/src/lib/types.ts, y de los CHECK de la migración
+# 024). Un mismo diccionario porque las dos columnas caen en el mismo hueco del
+# subtítulo; las llaves no se pisan.
+_TYPE_LABEL = {
+    "casa": "Casa", "departamento": "Departamento", "local": "Local",
+    "edificio": "Edificio", "lote": "Lote", "bodega": "Bodega",
+    "adaptive_reuse": "Reconversión", "ground_up": "Obra nueva",
+    "flip": "Flip", "hold": "Renta",
+}
+
+
 def _pretty_type(raw) -> str:
-    """Human label from a raw DB enum: 'adaptive_reuse' → 'Adaptive reuse'."""
-    return str(raw or "").replace("_", " ").strip().capitalize()
+    """Etiqueta de dominio para un enum crudo: 'adaptive_reuse' → 'Reconversión'.
+
+    Un valor fuera del vocabulario no se publica: 'Adaptive reuse' era un
+    concepto que no existe en ninguna otra pantalla, y traducirlo a medias
+    (guiones bajos por espacios) solo hacía que pareciera español."""
+    return _TYPE_LABEL.get(str(raw or "").strip(), "")
 
 
 def _chunk(seq, n):
@@ -326,15 +346,26 @@ def _kv_rows(pairs) -> str:
 # Section builders
 # ---------------------------------------------------------------------------
 
-def _cover(month_year: str, operating: list[dict] | None = None) -> str:
-    # Las tres cifras de portada salen de los proyectos operando — nada inventado:
-    # unidades sumadas, y promedio simple (no ponderado) del ROI anualizado y del
-    # cap rate que ya calculó el API. Sin datos → "—".
-    ops = operating or []
-    units = sum(int(_num(p.get("totalUnits"))) for p in ops)
+def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
+    # Las tres cifras de portada salen de datos reales, y cada una de la etapa
+    # que puede sostenerla — promedio simple (no ponderado) de lo que ya calculó
+    # el API, nunca una fórmula reinventada aquí:
+    #   · Unidades en renta — solo las que siguen en renta. La leyenda dice
+    #     "operando hoy" y lo vendido dejó de operar para nosotros.
+    #   · Cap rate promedio — solo en renta, y de `capRateActual`: renta COBRADA
+    #     sobre capital. El `capRate` a secas sale del underwriting, así que
+    #     promediarlo aquí publicaría lo que se estimó como si fuera lo que se
+    #     cobra. Una vendida sí trae ambos (el expediente ya no se apaga en la
+    #     venta), pero ya no cobra renta: por eso queda fuera del promedio.
+    #   · ROI promedio — en renta y vendidas: el rendimiento que la firma ya
+    #     entregó o lleva marcado. Ninguna proyección entra aquí; por eso
+    #     desarrollo y las oportunidades no cuentan.
+    # Sin datos → "—", nunca un 0 inventado.
+    units = sum(int(_num(p.get("totalUnits"))) for p in rented)
     units_v = f"{units:,}" if units else "—"
-    roi_avg = _fmt_pct_or_dash(_mean([p.get("roi") for p in ops]))
-    cap_avg = _fmt_pct_or_dash(_mean([p.get("capRate") for p in ops]))
+    roi_avg = _fmt_pct_or_dash(_mean([p.get("realizedRoi") for p in sold]
+                                     + [p.get("roi") for p in rented]))
+    cap_avg = _fmt_pct_or_dash(_mean([p.get("capRateActual") for p in rented]))
     return f"""<div class="page-block cover">
   <div class="cover-top">
     <div>
@@ -350,8 +381,8 @@ def _cover(month_year: str, operating: list[dict] | None = None) -> str:
       Tú pones el capital y eres dueño de todo — nosotros lo hacemos realidad, de principio a fin.</p>
     <div class="vp">
       <div class="vp-item"><div class="vp-v">{units_v}</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
-      <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">anualizado, sobre inversión</div></div>
-      <div class="vp-item"><div class="vp-v">{cap_avg}</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">real, no proyectado</div></div>
+      <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">anualizado · vendidas y en renta</div></div>
+      <div class="vp-item"><div class="vp-v">{cap_avg}</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">renta cobrada sobre inversión</div></div>
     </div>
   </div>
   <div class="cover-foot">
@@ -361,47 +392,34 @@ def _cover(month_year: str, operating: list[dict] | None = None) -> str:
 </div>"""
 
 
-def _project_card(p: dict, kicker: str, projected: bool = False) -> str:
+def _hold_tail(p: dict) -> str:
+    """El plazo real: meses desde la adquisición, congelados en la venta por el
+    API. Se nombra "plazo real" y no "meses en cartera" ni "meses de obra" porque
+    es el mismo `holdMonthsActual` que la ficha y la tabla ya llaman así — y
+    porque se cuenta desde que la propiedad es tuya, se haga obra o no."""
+    hold = int(_num(p.get("holdMonthsActual")))
+    return f"Plazo real {hold} meses" if hold else ""
+
+
+def _card(p: dict, kicker: str, tail: str, metrics: str) -> str:
+    """La caja que comparten las tres etapas: banda con nombre y meta, cinco
+    métricas y las fotos. Lo único parametrizado es lo que de verdad cambia por
+    etapa — las métricas y la coleta del subtítulo."""
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
-    ptype = _esc(_pretty_type(p.get("type")))
+    # Qué ES el inmueble y qué se HACE con él son dos preguntas y dos columnas.
+    # Se imprimen las dos: elegir una como sustituta de la otra hacía que la
+    # misma posición del subtítulo dijera «Edificio» en una tarjeta y
+    # «Reconversión» en la siguiente.
+    asset = _esc(_pretty_type(p.get("assetType")))
+    strategy = _esc(_pretty_type(p.get("strategyType")))
     units = int(_num(p.get("totalUnits")))
-    hold = int(_num(p.get("holdMonthsActual")))
 
-    sub_bits = [b for b in [address, city] if b]
-    meta_bits = [b for b in [ptype, f"{units} unidades" if units else "", f"{hold} meses" if hold else ""] if b]
-    sub = " · ".join(sub_bits)
+    sub = " · ".join(b for b in [address, city] if b)
+    meta_bits = [b for b in [asset, strategy, f"{units} unidades" if units else "", tail] if b]
     if meta_bits:
         sub += "  —  " + " · ".join(meta_bits)
-
-    # Cap rate viene del API (renta anual / inversión — una sola fórmula en todo
-    # el sistema): real en operando, proyectado y etiquetado como tal en
-    # desarrollo. Sin renta → "—", nunca inventado.
-    cap = p.get("capRate")
-
-    if projected:
-        # Pre-obra: SOLO cifras del underwriting. currentValuation/unrealizedGainPct
-        # nacen igualadas al costo (0%) al crear el proyecto y leerían como un
-        # avalúo real que nadie hizo.
-        metrics = "".join([
-            _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
-            _metric(_fmt_mxn_compact_or_dash(_sale_or_none(p.get("projectedSale"))), "Venta proyectada"),
-            _metric(_fmt_pct_or_dash(p.get("projectedRoi")), "ROI anual proy."),
-            _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Plusvalía proy."),
-            _metric(_fmt_pct_or_dash(cap), "Cap rate proy."),
-        ])
-    else:
-        # Operando: resultados realizados. La valuación lleva su fecha de corte.
-        val_month = _fmt_month(p.get("valuationDate"))
-        metrics = "".join([
-            _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
-            _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
-                    f"Valuación · {val_month}" if val_month else "Valuación actual"),
-            _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
-            _metric(_fmt_pct_or_dash(p.get("unrealizedGainPct")), "Plusvalía"),
-            _metric(_fmt_pct_or_dash(cap), "Cap rate"),
-        ])
 
     images = p.get("images", [])
     antes = _imgs_by_type(images, "antes")
@@ -427,6 +445,61 @@ def _project_card(p: dict, kicker: str, projected: bool = False) -> str:
 </div>"""
 
 
+def _sold_card(p: dict, kicker: str) -> str:
+    """Una propiedad vendida es un hecho cerrado, y así se presenta: precio de
+    venta, ganancia realizada, ROI real anual y plazo real. Ni una cifra
+    proyectada ni una valuación. El API sí las trae — el expediente sigue vivo
+    después de la venta, para poder comparar lo que se prometió contra lo que
+    pasó — y esta tarjeta decide no imprimirlas: presumir una marca o un plan
+    cuando ya existe un precio de venta sería cambiar un resultado por una
+    opinión. La comparación es una herramienta de la ficha, no del pitch."""
+    gain, gain_pct = p.get("realizedGain"), p.get("realizedGainPct")
+    gain_v = (f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct(gain_pct, 1)}</small>'
+              if gain is not None and gain_pct is not None else "—")
+    hold = int(_num(p.get("holdMonthsActual")))
+    month = _fmt_month(p.get("saleDate"))
+    metrics = "".join([
+        _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
+        _metric(_fmt_mxn_compact_or_dash(p.get("salePrice")), "Precio de venta"),
+        _metric(gain_v, "Ganancia realizada"),
+        _metric(_fmt_pct_or_dash(p.get("realizedRoi")), "ROI real anual"),
+        _metric(f"{hold} meses" if hold else "—", "Plazo real"),
+    ])
+    tail = f"Vendida · {month}" if month else "Vendida"
+    return _card(p, f"{kicker} · Resultado final", tail, metrics)
+
+
+def _rented_card(p: dict, kicker: str) -> str:
+    """En renta: la marca viva. La valuación lleva su fecha de corte encima
+    porque es una estimación con fecha, no un hecho; el cap rate es `capRateActual`,
+    la renta efectivamente cobrada sobre el capital — el track record no publica
+    lo que se estimó cobrar."""
+    val_month = _fmt_month(p.get("valuationDate"))
+    metrics = "".join([
+        _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
+        _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
+                f"Valuación · {val_month}" if val_month else "Valuación actual"),
+        _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
+        _metric(_fmt_pct_or_dash(p.get("unrealizedGainPct")), "Ganancia no realizada %"),
+        _metric(_fmt_pct_or_dash(p.get("capRateActual")), "Cap rate real s/ inversión"),
+    ])
+    return _card(p, f"{kicker} · En renta", _hold_tail(p), metrics)
+
+
+def _development_card(p: dict, kicker: str) -> str:
+    """En desarrollo: SOLO cifras del underwriting, todas etiquetadas como
+    proyección. La valuación inicial de una propiedad recién comprada nace
+    igualada al costo, y publicarla leería como un avalúo que nadie hizo."""
+    metrics = "".join([
+        _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión total"),
+        _metric(_fmt_mxn_compact_or_dash(_sale_or_none(p.get("projectedSale"))), "Venta proyectada"),
+        _metric(_fmt_pct_or_dash(p.get("projectedRoi")), "ROI proy. anual"),
+        _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Ganancia proyectada %"),
+        _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy. s/ inversión"),
+    ])
+    return _card(p, kicker, _hold_tail(p), metrics)
+
+
 def _team_block(team: list[dict] | None) -> str:
     """Equipo tal como está en la base — nombre completo, rol y su nota/bio.
     Sin equipo capturado no se inventa ninguno: la sección desaparece."""
@@ -450,23 +523,48 @@ def _team_block(team: list[dict] | None) -> str:
     return f'<div class="partners{cols}">{"".join(blocks)}</div>'
 
 
-def _summary_card(projects: list[dict], team: list[dict] | None = None) -> str:
-    inv = sum(_num(p.get("totalInvestment")) for p in projects)
-    val = sum(_num(p.get("currentValuation")) for p in projects)
-    gain = val - inv
-    metrics = "".join([
-        _metric(str(len(projects)), "Proyectos"),
-        _metric(_fmt_mxn_compact(inv), "Capital invertido"),
-        _metric(_fmt_mxn_compact(val), "Valuación actual"),
-        _metric(f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct_or_dash(gain / inv if inv else None, 0)}</small>',
-                "Plusvalía total"),
-    ])
+def _summary_card(sold: list[dict], rented: list[dict], team: list[dict] | None = None) -> str:
+    """El portafolio que el track record ya produjo: capital desplegado contra lo
+    que ese capital vale hoy. Las vendidas cuentan — son el resultado más fuerte
+    de la firma y dejarlas fuera subvaluaría el historial — pero entran por su
+    precio de venta en un renglón propio, separado de la valuación de lo que
+    sigue en renta. Sumarlas en una sola cifra obligaría a llamar "valuación
+    actual" a dinero que ya se cobró. El encabezado nombra las etapas que
+    resume, y cada renglón desaparece cuando su etapa está vacía."""
+    track = sold + rented
+    inv = sum(_num(p.get("totalInvestment")) for p in track)
+    sales = sum(_num(p.get("salePrice")) for p in sold)
+    marks = sum(_num(p.get("currentValuation")) for p in rented)
+    gain = sales + marks - inv
+
+    cells = [(str(len(track)), "Propiedades"), (_fmt_mxn_compact(inv), "Capital invertido")]
+    if sold:
+        cells.append((_fmt_mxn_compact(sales), "Ventas realizadas"))
+    if rented:
+        cells.append((_fmt_mxn_compact(marks), "Valuación actual"))
+    # Agregado sin campo de API, y se nombra como lo que es: la ganancia DEL
+    # PORTAFOLIO, no la de ninguna propiedad. Mezcla dinero cobrado con
+    # estimaciones a propósito — la nota al pie lo dice — y por eso no puede
+    # llamarse «ganancia realizada» ni compartir nombre con las de una ficha.
+    cells.append((
+        f'{_fmt_mxn_compact(gain)} <small>{_fmt_pct_or_dash(gain / inv if inv else None, 0)}</small>',
+        "Ganancia del portafolio",
+    ))
+    metrics = "".join(_metric(value, label) for value, label in cells)
+
+    scope = " y ".join(s for s in ["vendidas" if sold else "", "en renta" if rented else ""] if s)
+    notes = []
+    if sold:
+        notes.append("Las propiedades vendidas entran por su precio de venta: resultado realizado.")
+    if rented:
+        notes.append("Las que siguen en renta entran por una valuación estimada con base en "
+                     "comparables de mercado, no un avalúo formal — esa ganancia no está realizada.")
     return f"""<div class="summary">
-  <div class="kicker">Portafolio</div>
-  <h3>Proyectos reales. Resultados reales.</h3>
-  <div class="metrics metrics-4">{metrics}</div>
+  <div class="kicker">Portafolio · {_esc(scope)}</div>
+  <h3>Propiedades reales. Resultados reales.</h3>
+  <div class="metrics metrics-{len(cells)}">{metrics}</div>
   {_team_block(team)}
-  <div class="valuation-note">Valuaciones estimadas con base en comparables de mercado, no avalúo formal. Plusvalía no realizada.</div>
+  <div class="valuation-note">{_esc(" ".join(notes))}</div>
 </div>"""
 
 
@@ -474,55 +572,66 @@ def _opportunity(p: dict) -> str:
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
-    ptype = _esc(_pretty_type(p.get("type")))
+    asset = _esc(_pretty_type(p.get("assetType")))
+    strategy = _esc(_pretty_type(p.get("strategyType")))
     hold = int(_num(p.get("holdMonths")))
     total_inv = p.get("totalInvestment")
     projected_sale = p.get("projectedSale")
-    profit = p.get("profit")
-    # Una sola fuente para la ganancia: el ROI total del API. Es None cuando no hay
-    # venta modelada (prospecto sólo de renta) — entonces no hay ganancia estimada
-    # que mostrar, en vez del -100% que salía de recalcularla aquí.
-    roi_total = p.get("roiTotal")
+    profit = p.get("projectedProfit")
+    # Monto y porcentaje son la MISMA cifra en dos unidades, así que llevan un
+    # solo nombre y viajan juntos: «Ganancia proyectada». El porcentaje sale del
+    # API (`projectedRoiTotal`) y es None cuando no hay venta modelada
+    # (prospecto sólo de renta) — entonces no hay ganancia que mostrar, en vez
+    # del -100% que salía de recalcularla aquí.
+    roi_total = p.get("projectedRoiTotal")
     gain_value = (f'{_fmt_mxn_compact_or_dash(profit)} <small>{_fmt_pct(roi_total, 1)}</small>'
                   if roi_total is not None else "—")
     cap_rate = p.get("capRate")
-    rent_m = p.get("rentMonthly")
+    rent_m = p.get("rentMonthlyProjected")
     rent_a = p.get("rentAnnual")
     sqm_land = _num(p.get("sqmLand"))
     sqm_con = _num(p.get("sqmConstruction"))
     inv_ppsqm = p.get("investmentPerSqm")
-    land_price = p.get("landPrice")
+    purchase_price = p.get("purchasePrice")
     acq_costs = p.get("acquisitionCosts")
-    # Todo lo que se invierte encima de comprar la propiedad: obra + permisos +
-    # subdivisión. Se resta de los dos totales del API en vez de volver a sumar
-    # aquí una fórmula que ya vive en el underwriting. Como acquisitionTotal es
-    # precio + costos de adquisición, los tres renglones cuadran exactamente con
-    # la Inversión total de la tarjeta.
+    # Todo lo que se invierte encima de adquirir la propiedad, que son exactamente
+    # tres cosas del desglose: obra a ejecutar, permisos y subdivisión. Se obtiene
+    # restando de los dos totales del API en vez de volver a sumar aquí una
+    # fórmula que ya vive en el underwriting. Como acquisitionTotal es precio +
+    # costos de adquisición, los tres renglones cuadran exactamente con la
+    # Inversión total de la tarjeta.
     dev_investment = _num(total_inv) - _num(p.get("acquisitionTotal"))
 
     metrics = "".join([
-        _metric(f"{hold}m" if hold else "—", "Plazo"),
+        _metric(f"{hold}m" if hold else "—", "Plazo proyectado"),
         _metric(_fmt_mxn_compact_or_dash(total_inv), "Inversión total"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
-        _metric(gain_value, "Ganancia est."),
-        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate"),
+        _metric(gain_value, "Ganancia proyectada"),
+        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ inversión"),
     ])
 
+    # La ganancia proyectada, monto y porcentaje, ya vive en su métrica de arriba:
+    # aquí solo van los renglones del desglose de costos y de la renta modelada.
+    # El renglón «ROI proyectado» que estaba aquí repetía ese mismo porcentaje
+    # bajo un nombre que en otras superficies designaba la cifra ANUALIZADA —
+    # el mismo número dos veces, y el nombre para dos números distintos.
     financieros = _kv_rows([
-        ("Precio propiedad", _fmt_mxn(land_price) if _num(land_price) else None),
+        ("Precio de compra", _fmt_mxn(purchase_price) if _num(purchase_price) else None),
         ("Costos de adquisición", _fmt_mxn(acq_costs) if _num(acq_costs) else None),
-        ("Inversión desarrollo", _fmt_mxn(dev_investment) if dev_investment > 0 else None),
-        ("ROI proyectado", _fmt_pct(roi_total, 1) if roi_total is not None else None),
-        ("Renta mensual est.", _fmt_mxn(rent_m) if _num(rent_m) else None),
-        ("Renta anual est.", _fmt_mxn(rent_a) if _num(rent_a) else None),
+        ("Obra, permisos y subdivisión", _fmt_mxn(dev_investment) if dev_investment > 0 else None),
+        ("Renta mensual estimada", _fmt_mxn(rent_m) if _num(rent_m) else None),
+        ("Renta anual estimada", _fmt_mxn(rent_a) if _num(rent_a) else None),
         ("Inversión / m²", _fmt_mxn(inv_ppsqm) if _num(inv_ppsqm) else None),
     ])
     ubicacion = _kv_rows([
         ("Dirección", address or None),
         ("Ciudad", city or None),
-        ("Tipo", ptype or None),
+        ("Tipo de activo", asset or None),
+        ("Estrategia", strategy or None),
         ("Terreno", f"{int(sqm_land):,} m²" if sqm_land else None),
-        ("Construcción", f"{int(sqm_con):,} m²" if sqm_con else None),
+        # `sqmConstruction` son los metros de obra A EJECUTAR, no los que el
+        # inmueble ya tiene: «Construcción» a secas se leía como lo segundo.
+        ("Obra a ejecutar", f"{int(sqm_con):,} m²" if sqm_con else None),
     ])
 
     images = _imgs_by_type(p.get("images", []))
@@ -573,48 +682,41 @@ def _closing(month_year: str) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-# Estados en obra/ramp-up (vocabulario de app/web/src/lib/status.ts, más el
-# 'en_proceso' heredado que sigue en datos). 'exited' es un negocio cerrado y
-# 'operating' es track record: ninguno de los dos puede leerse "En Desarrollo".
-_DEVELOPMENT_STATUSES = {"construction", "stabilizing", "en_proceso"}
+def build_prospectus_html(sold: list[dict], rented: list[dict], development: list[dict],
+                          opportunity: list[dict], team: list[dict] | None = None) -> str:
+    """The four buckets arrive already partitioned — the caller owns the status
+    vocabulary, this file owns the presentation.
 
-
-def build_prospectus_html(projects: list[dict], prospects: list[dict],
-                          team: list[dict] | None = None) -> str:
+    Sold and rented arrive apart, rather than as one "track record", because a
+    closed deal and a held one are not presumed with the same figures: one
+    reports what it collected, the other what it is worth today. Keeping them
+    apart is what lets every number below name its own source instead of
+    guessing which one is present."""
     from datetime import date
     today = date.today()
     month_year = f"{_MESES[today.month].capitalize()} {today.year}"
 
-    # Track record = projects already operating (realized results).
-    # En desarrollo = projects still pre-obra (projected figures, not achieved).
-    operating = [p for p in projects if str(p.get("status")) == "operating"]
-    development = [p for p in projects if str(p.get("status")) in _DEVELOPMENT_STATUSES]
-    # Un proyecto que no cae en ningún cubo se queda fuera del PDF; que no sea en
-    # silencio — normalmente es un 'exited' marcado como favorito o un estado nuevo.
-    for p in projects:
-        status = str(p.get("status"))
-        if status != "operating" and status not in _DEVELOPMENT_STATUSES:
-            logger.warning("project %r left out of the prospectus: status %r is "
-                           "neither operating nor in development", p.get("name"), p.get("status"))
+    # El track record abre con lo cerrado: un resultado realizado es la prueba
+    # más fuerte que tiene la firma, y una marca de valuación no debería colarse
+    # por delante de una venta. Dentro de cada grupo, mayor ganancia primero.
+    sold = sorted(sold, key=lambda p: _num(p.get("realizedGainPct")), reverse=True)
+    rented = sorted(rented, key=lambda p: _num(p.get("unrealizedGainPct")), reverse=True)
+    track = [(_sold_card, p) for p in sold] + [(_rented_card, p) for p in rented]
 
-    parts = [_cover(month_year, operating)]
+    parts = [_cover(month_year, rented, sold)]
 
-    # Strongest → weakest by realized plusvalía (la que ya calculó el API).
-    operating.sort(key=lambda p: _num(p.get("unrealizedGainPct")), reverse=True)
-
-    if operating or development:
-        cards = [_project_card(p, f"Track Record · {i:02d}", projected=False)
-                 for i, p in enumerate(operating, 1)]
-        cards += [_project_card(p, f"En Desarrollo · {j:02d}", projected=True)
+    if track or development:
+        cards = [build(p, f"Track Record · {i:02d}") for i, (build, p) in enumerate(track, 1)]
+        cards += [_development_card(p, f"En Desarrollo · {j:02d}")
                   for j, p in enumerate(development, 1)]
-        # Portfolio summary (realized track record) carries the valuation footnote
-        # and the team block, and fills the trailing half-sheet.
-        if operating:
-            cards.append(_summary_card(operating, team))
+        # Portfolio summary carries the valuation footnote and the team block,
+        # and fills the trailing half-sheet.
+        if track:
+            cards.append(_summary_card(sold, rented, team))
         for pair in _chunk(cards, 2):
             parts.append(f'<div class="page-block sheet">{"".join(pair)}</div>')
 
-    for p in prospects:
+    for p in opportunity:
         parts.append(_opportunity(p))
 
     parts.append(_closing(month_year))

@@ -1,7 +1,14 @@
 # LatLonPicker — Design Spec
 
 **Date:** 2026-05-17
-**Status:** Approved
+**Status:** Approved · **entity names superseded** (see note)
+
+> **Superseded — 2026-08.** Prospects and projects were merged into a single
+> `properties` entity with a status lifecycle. The components named below no
+> longer exist under those names: `SmartProspectModal` → `SmartPropertyModal`,
+> `ProspectDetailPage` + `ProjectDetailPage` → one `PropertyDetailPage`,
+> `ProspectForm` → `PropertyForm`, `ProspectMap` → `PropiedadesMap`. The
+> `LatLonPicker` design itself shipped as specified and is unchanged.
 
 ## Context
 

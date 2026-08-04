@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from api.auth import get_current_user
-from api.db import create_prospect, create_comparable, get_db
+from api.db import create_comparable, get_db
+from api.properties_db import create_property
 from api import sonar_db, geo
 from scraper import lamudi, icasas, doorvel, inmuebles24, mercadolibre, vivanuncios
 from scraper.base import SignalRaw
@@ -273,30 +274,19 @@ class _ImportRequest(BaseModel):
 
 @router.post("/api/sonar/import", status_code=201, operation_id="sonar_import")
 def sonar_import(req: _ImportRequest, _: dict = Depends(get_current_user)):
-    city = req.municipioName or req.city
-    prospect = create_prospect({
-        "name":                   req.title,
-        "address":                req.address or req.title,
-        "city":                   city,
-        "status":                 "evaluating",
-        "type":                   "",
-        "url":                    req.url,
-        "latitude":               req.lat or 0.0,
-        "longitude":              req.lon or 0.0,
-        "sqmLand":                req.sqmLand,
-        "sqmConstruction":        0.0,
-        "landPrice":              req.price,
-        "acquisitionCostPct":     0.065,
-        "permitsCost":            0.0,
-        "subdivisionCost":        0.0,
-        "constructionCostPerSqm": 0.0,
-        "constructionOverhead":   1.3,
-        "projectedSale":          0.0,
-        "holdMonths":             12,
-        "rentMonthly":            0,
-        "notes":                  "-",
+    """Capture a listing as a property, in prospecto. Only what the portal gave
+    us is filled in; the rest comes from the shared capture defaults."""
+    captured = create_property({
+        "name":      req.title,
+        "address":   req.address or req.title,
+        "city":      req.municipioName or req.city,
+        "url":       req.url,
+        "latitude":  req.lat or 0.0,
+        "longitude": req.lon or 0.0,
+        "sqmLand":   req.sqmLand,
+        "purchasePrice": req.price,
     })
-    return {"prospect": prospect}
+    return {"property": captured}
 
 
 @router.get("/api/sonar/zones", operation_id="sonar_zones")

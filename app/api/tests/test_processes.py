@@ -83,15 +83,9 @@ def test_delete_node(client, test_process_node):
     # fixture teardown is a no-op
 
 
-def test_requires_auth(client):
-    from api.main import app
-    from api.auth import get_current_user
-    app.dependency_overrides.clear()
-    try:
-        r = client.get("/api/process/templates")
-        assert r.status_code == 401
-    finally:
-        app.dependency_overrides[get_current_user] = lambda: {"id": 1, "email": "test@test.com"}
+def test_requires_auth(client, anonymous):
+    r = client.get("/api/process/templates")
+    assert r.status_code == 401
 
 
 def test_cycle_detection(client):

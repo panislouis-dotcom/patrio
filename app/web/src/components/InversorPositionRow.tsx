@@ -1,11 +1,11 @@
-import type { ProjectInvestor } from '../lib/types'
+import type { PropertyInvestor } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtMXN } from '../lib/fmt'
 
 interface Props {
-  pos: ProjectInvestor
+  pos: PropertyInvestor
   isEditing: boolean
-  onNavigate: (projectId: number) => void
+  onNavigate: (propertyId: number) => void
   editDate: string
   setEditDate: (v: string) => void
   editInterested: string
@@ -21,11 +21,11 @@ interface Props {
   editReturnDate: string
   setEditReturnDate: (v: string) => void
   savingEdit: boolean
-  onSave: (pos: ProjectInvestor) => void
+  onSave: (pos: PropertyInvestor) => void
   onCancel: () => void
-  onLiquidar: (pos: ProjectInvestor) => void
-  onRemove: (pos: ProjectInvestor) => void
-  onStartEdit: (pos: ProjectInvestor) => void
+  onLiquidar: (pos: PropertyInvestor) => void
+  onRemove: (pos: PropertyInvestor) => void
+  onStartEdit: (pos: PropertyInvestor) => void
 }
 
 const iStyle: React.CSSProperties = {
@@ -59,9 +59,9 @@ export function InversorPositionRow({
     <tr key={pos.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
       <td
         style={{ padding: '5px 8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, cursor: 'pointer' }}
-        onClick={() => onNavigate(pos.projectId)}
+        onClick={() => onNavigate(pos.propertyId)}
       >
-        {pos.projectName || `Proyecto ${pos.projectId}`}
+        {pos.propertyName || `Propiedad ${pos.propertyId}`}
       </td>
       {isEditing ? (
         <>

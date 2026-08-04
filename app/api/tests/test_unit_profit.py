@@ -28,10 +28,11 @@ def test_waterfall_isr_applied():
         assert abs(float(result["isr"]) - float(result["operatorGross"]) * 0.30) < 1.0
 
 
-def test_waterfall_zero_exit_no_crash():
+def test_waterfall_falls_back_to_the_valuation_when_no_exit_is_captured():
     config = {**_CONFIG, "exitPrice": 0}
     result = compute_waterfall(_PROJECT, config, _TEAM)
-    assert result["grossProfit"] <= 0
+    assert result["exitPriceSource"] == "valuacion"
+    assert result["grossProfit"] == 0
 
 
 def test_waterfall_scenarios_present():

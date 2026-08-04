@@ -1,0 +1,383 @@
+import { useState } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
+import { LatLonPicker } from './LatLonPicker'
+import type { PropertyCreate } from '../lib/types'
+import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
+import { validateRaw } from '../lib/validateRaw'
+import { fieldLabel } from '../lib/fields'
+import { colors, fonts } from '../lib/theme'
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section style={{ marginBottom: '32px' }}>
+      <div style={{
+        fontFamily: fonts.label,
+        fontSize: '10px',
+        color: colors.secondary,
+        textTransform: 'uppercase',
+        letterSpacing: '0.12em',
+        marginBottom: '12px',
+        borderBottom: `1px solid ${colors.border}`,
+        paddingBottom: '8px',
+      }}>
+        {title}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function FieldLabel({ children }: { children: ReactNode }) {
+  return (
+    <div style={{
+      fontFamily: fonts.label,
+      fontSize: '10px',
+      color: colors.secondary,
+      textTransform: 'uppercase',
+      letterSpacing: '0.08em',
+      marginBottom: '4px',
+    }}>
+      {children}
+    </div>
+  )
+}
+
+// ── input style ───────────────────────────────────────────────────────────────
+
+const inputStyle: CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  borderBottom: `1px solid ${colors.border}`,
+  color: colors.neutral,
+  fontFamily: fonts.sans,
+  fontSize: '13px',
+  padding: '4px 0',
+  width: '100%',
+  outline: 'none',
+}
+
+const gridTwo: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: '16px',
+}
+
+// ── props ─────────────────────────────────────────────────────────────────────
+
+interface Props {
+  initial: Partial<PropertyCreate>
+  onSave: (data: PropertyCreate) => Promise<void>
+  onCancel?: () => void
+  saving: boolean
+  saveError: string | null
+}
+
+// ── component ─────────────────────────────────────────────────────────────────
+
+export function PropertyForm({ initial, onSave, onCancel, saving, saveError }: Props) {
+  const [form, setForm] = useState<Partial<PropertyCreate>>(initial)
+
+  const issues = validateRaw(form)
+  const hasErrors = issues.some(i => i.severity === 'error')
+
+  function set<K extends keyof PropertyCreate>(key: K, value: PropertyCreate[K]) {
+    setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  return (
+    <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 20px' }}>
+
+      {/* ── General ─────────────────────────────────────────────────── */}
+      <Section title="General">
+        <div style={{ marginBottom: '16px' }}>
+          <FieldLabel>Nombre</FieldLabel>
+          <input
+            style={inputStyle}
+            type="text"
+            value={form.name ?? ''}
+            onChange={e => set('name', e.target.value)}
+          />
+        </div>
+        <div style={{ marginBottom: '16px' }}>
+          <FieldLabel>Dirección</FieldLabel>
+          <input
+            style={inputStyle}
+            type="text"
+            value={form.address ?? ''}
+            onChange={e => set('address', e.target.value)}
+          />
+        </div>
+        <div style={{ ...gridTwo, marginBottom: '16px' }}>
+          <div>
+            <FieldLabel>Ciudad</FieldLabel>
+            <input
+              style={inputStyle}
+              type="text"
+              value={form.city ?? ''}
+              onChange={e => set('city', e.target.value)}
+            />
+          </div>
+          <div>
+            <FieldLabel>URL</FieldLabel>
+            <input
+              style={inputStyle}
+              type="text"
+              value={form.url ?? ''}
+              onChange={e => set('url', e.target.value)}
+            />
+          </div>
+        </div>
+        {/* Qué es y cómo se gana: dos preguntas distintas, dos campos distintos.
+            No hay campo de estado — toda propiedad nace prospecto. */}
+        <div style={{ ...gridTwo, marginBottom: '16px' }}>
+          <div>
+            <FieldLabel>Tipo de activo</FieldLabel>
+            <select
+              style={{ ...inputStyle, cursor: 'pointer' }}
+              value={form.assetType ?? ''}
+              onChange={e => set('assetType', e.target.value)}
+            >
+              <option value="">— seleccionar —</option>
+              {ASSET_TYPES.map(t => <option key={t} value={t}>{ASSET_TYPE_LABEL[t]}</option>)}
+            </select>
+          </div>
+          <div>
+            <FieldLabel>Estrategia</FieldLabel>
+            <select
+              style={{ ...inputStyle, cursor: 'pointer' }}
+              value={form.strategyType ?? ''}
+              onChange={e => set('strategyType', e.target.value)}
+            >
+              <option value="">— seleccionar —</option>
+              {STRATEGY_TYPES.map(t => <option key={t} value={t}>{STRATEGY_TYPE_LABEL[t]}</option>)}
+            </select>
+          </div>
+        </div>
+      </Section>
+
+      {/* ── Ubicación ───────────────────────────────────────────────── */}
+      <Section title="Ubicación">
+        <LatLonPicker
+          lat={form.latitude ?? 0}
+          lon={form.longitude ?? 0}
+          onChange={(newLat, newLon) => {
+            set('latitude', newLat)
+            set('longitude', newLon)
+          }}
+        />
+      </Section>
+
+      {/* ── Tamaño ──────────────────────────────────────────────────── */}
+      <Section title="Tamaño">
+        <div style={gridTwo}>
+          <div>
+            <FieldLabel>m² Terreno</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              value={form.sqmLand ?? ''}
+              onChange={e => set('sqmLand', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div>
+            <FieldLabel>m² de obra a ejecutar</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              value={form.sqmConstruction ?? ''}
+              onChange={e => set('sqmConstruction', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+        </div>
+      </Section>
+
+      {/* ── Costos de adquisición ───────────────────────────────────── */}
+      <Section title="Costos de adquisición">
+        <div style={{ ...gridTwo, marginBottom: '16px' }}>
+          <div>
+            <FieldLabel>Precio de compra (MXN)</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              value={form.purchasePrice ?? ''}
+              onChange={e => set('purchasePrice', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div>
+            <FieldLabel>Costo adquisición (%)</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              step="0.1"
+              value={form.acquisitionCostPct !== undefined ? +(form.acquisitionCostPct * 100).toFixed(4) : ''}
+              onChange={e => { const v = parseFloat(e.target.value); setForm(prev => ({ ...prev, acquisitionCostPct: isNaN(v) ? undefined : v / 100 })) }}
+            />
+          </div>
+        </div>
+        <div style={gridTwo}>
+          <div>
+            <FieldLabel>Permisos (MXN)</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              value={form.permitsCost ?? ''}
+              onChange={e => set('permitsCost', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div>
+            <FieldLabel>Subdivisión (MXN)</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              value={form.subdivisionCost ?? ''}
+              onChange={e => set('subdivisionCost', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+        </div>
+      </Section>
+
+      {/* ── Obra a ejecutar ─────────────────────────────────────────── */}
+      <Section title="Obra a ejecutar">
+        <div style={gridTwo}>
+          <div>
+            <FieldLabel>Costo/m² de obra a ejecutar (MXN)</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              value={form.constructionCostPerSqm ?? ''}
+              onChange={e => set('constructionCostPerSqm', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div>
+            <FieldLabel>Overhead (factor, ej. 1.15)</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              step="0.01"
+              value={form.constructionOverhead ?? ''}
+              onChange={e => { const v = parseFloat(e.target.value); setForm(prev => ({ ...prev, constructionOverhead: isNaN(v) ? undefined : v })) }}
+            />
+          </div>
+        </div>
+      </Section>
+
+      {/* ── Proyección ──────────────────────────────────────────────── */}
+      <Section title="Proyección">
+        <div style={{ ...gridTwo, marginBottom: '16px' }}>
+          <div>
+            <FieldLabel>Venta proyectada (MXN)</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              value={form.projectedSale ?? ''}
+              onChange={e => set('projectedSale', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div>
+            <FieldLabel>Renta mensual estimada (MXN)</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              value={form.rentMonthlyProjected ?? ''}
+              onChange={e => set('rentMonthlyProjected', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+        </div>
+        <div style={gridTwo}>
+          <div>
+            <FieldLabel>Plazo (meses)</FieldLabel>
+            <input
+              style={inputStyle}
+              type="number"
+              value={form.holdMonths ?? ''}
+              onChange={e => set('holdMonths', parseInt(e.target.value) || 0)}
+            />
+          </div>
+        </div>
+      </Section>
+
+      {/* ── Notas ───────────────────────────────────────────────────── */}
+      <Section title="Notas">
+        <textarea
+          style={{
+            ...inputStyle,
+            resize: 'vertical',
+            minHeight: '96px',
+            borderBottom: 'none',
+            border: `1px solid ${colors.border}`,
+            padding: '8px',
+          }}
+          value={form.notes ?? ''}
+          onChange={e => set('notes', e.target.value)}
+        />
+      </Section>
+
+      {/* ── Validation issues ────────────────────────────────────────── */}
+      {issues.length > 0 && (
+        <div style={{ marginBottom: '20px' }}>
+          {issues.map((issue, i) => (
+            <div
+              key={i}
+              style={{
+                fontFamily: fonts.sans,
+                fontSize: '12px',
+                color: issue.severity === 'error' ? '#eb1616' : '#a56a07',
+                padding: '4px 0',
+              }}
+            >
+              {issue.severity === 'error' ? '✕' : '△'} <strong>{fieldLabel(issue.field)}</strong>: {issue.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Save error ───────────────────────────────────────────────── */}
+      {saveError && (
+        <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: '#eb1616', marginBottom: '12px' }}>
+          {saveError}
+        </div>
+      )}
+
+      {/* ── Actions ──────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <button
+          onClick={() => onSave(form as PropertyCreate)}
+          disabled={hasErrors || saving}
+          style={{
+            background: hasErrors || saving ? colors.border : colors.primary,
+            color: colors.neutral,
+            border: 'none',
+            cursor: hasErrors || saving ? 'not-allowed' : 'pointer',
+            fontFamily: fonts.label,
+            fontSize: '11px',
+            letterSpacing: '0.1em',
+            padding: '10px 24px',
+            opacity: hasErrors || saving ? 0.6 : 1,
+            transition: 'opacity 0.15s',
+          }}
+        >
+          {saving ? 'Guardando…' : 'GUARDAR'}
+        </button>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            style={{
+              background: 'transparent',
+              color: colors.secondary,
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              fontFamily: fonts.label,
+              fontSize: '11px',
+              letterSpacing: '0.1em',
+              padding: '10px 24px',
+            }}
+          >
+            CANCELAR
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}

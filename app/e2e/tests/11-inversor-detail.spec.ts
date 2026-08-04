@@ -166,38 +166,38 @@ test.describe('Inversor Detail Page', () => {
     await expect(page.getByRole('button', { name: 'GUARDAR' })).toBeVisible({ timeout: 8000 })
   })
 
-  // ── 7. PROYECTOS panel (right panel) ──────────────────────────────────────
+  // ── 7. PROPIEDADES panel (right panel) ────────────────────────────────────
 
-  test('PROYECTOS section heading is visible with + AGREGAR button', async ({ page }) => {
+  test('PROPIEDADES section heading is visible with + AGREGAR button', async ({ page }) => {
     const hasRows = await requireInvestors(page)
     if (!hasRows) return
 
     await goToFirstInversorDetail(page)
 
-    await expect(page.locator('[data-testid="proyectos-section-heading"]')).toBeVisible()
+    await expect(page.locator('[data-testid="propiedades-section-heading"]')).toBeVisible()
     await expect(page.getByText('+ AGREGAR')).toBeVisible()
   })
 
-  test('PROYECTOS section shows table headers or empty state', async ({ page }) => {
+  test('PROPIEDADES section shows table headers or empty state', async ({ page }) => {
     const hasRows = await requireInvestors(page)
     if (!hasRows) return
 
     await goToFirstInversorDetail(page)
 
-    // Use count() to avoid strict mode violation — getByText('PROYECTO') can match nav links too.
-    // A table header <th> with "PROYECTO" text is unambiguous.
-    const projectsHeader = page.locator('th').filter({ hasText: /^PROYECTO$/ })
-    const emptyState = page.locator('text=Sin proyectos asociados')
+    // Use count() to avoid strict mode violation — getByText('PROPIEDAD') can match
+    // nav links too. A table header <th> with "PROPIEDAD" text is unambiguous.
+    const propertiesHeader = page.locator('th').filter({ hasText: /^PROPIEDAD$/ })
+    const emptyState = page.locator('text=Sin propiedades asociadas')
     // .count() does not auto-wait; wait for whichever state renders before reading,
     // otherwise React's async fetch races the counts and the assertion fails spuriously.
-    await projectsHeader.or(emptyState).first().waitFor({ state: 'visible', timeout: 8_000 })
+    await propertiesHeader.or(emptyState).first().waitFor({ state: 'visible', timeout: 8_000 })
 
-    const hasTable = await projectsHeader.count() > 0
+    const hasTable = await propertiesHeader.count() > 0
     const hasEmpty = await emptyState.count() > 0
     expect(hasTable || hasEmpty).toBe(true)
   })
 
-  test('clicking + AGREGAR opens add position form with project selector', async ({ page }) => {
+  test('clicking + AGREGAR opens add position form with property selector', async ({ page }) => {
     const hasRows = await requireInvestors(page)
     if (!hasRows) return
 
@@ -205,7 +205,7 @@ test.describe('Inversor Detail Page', () => {
 
     await page.getByText('+ AGREGAR').click()
 
-    // The add form contains a project select and INTERESADO/COMPROMETIDO/FONDEADO labels
+    // The add form contains a property select and INTERESADO/COMPROMETIDO/FONDEADO labels
     await expect(page.getByText('INTERESADO').first()).toBeVisible()
     await expect(page.getByText('COMPROMETIDO').first()).toBeVisible()
     await expect(page.getByText('FONDEADO').first()).toBeVisible()

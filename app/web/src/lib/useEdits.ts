@@ -8,10 +8,10 @@ import { useCallback, useState } from 'react'
  * Reverting a field is therefore `setField(key, undefined)`, which removes the
  * key from the payload entirely.
  *
- * Only pass `null` where the endpoint accepts it: prospect PATCHes drop nulls
- * (`exclude_none`) over NOT NULL columns, so those callers must clear with
- * `setField(key, undefined)` — a `null` would read as cleared in the UI while
- * the server quietly kept the old value.
+ * Nunca se pasa `null`: un PATCH de propiedad no vacía nada (los nulls se
+ * filtran antes de salir), así que revertir un campo es
+ * `setField(key, undefined)`. Vaciarlo de verdad es otra operación —
+ * POST /clear-fields — y por eso tiene su propio botón.
  */
 export function useEdits<T extends object>(base: T | null) {
   const [edits, setEdits] = useState<Partial<T>>({})

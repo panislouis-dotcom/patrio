@@ -108,12 +108,6 @@ def test_delete_nonexistent_404(client):
     assert r.status_code == 404
 
 
-def test_requires_auth(client):
-    from api.main import app
-    from api.auth import get_current_user
-    app.dependency_overrides.clear()
-    try:
-        r = client.get("/api/users")
-        assert r.status_code == 401
-    finally:
-        app.dependency_overrides[get_current_user] = lambda: {"id": 1, "email": "test@test.com"}
+def test_requires_auth(client, anonymous):
+    r = client.get("/api/users")
+    assert r.status_code == 401

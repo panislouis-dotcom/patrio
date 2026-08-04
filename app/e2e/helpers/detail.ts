@@ -2,10 +2,30 @@ import { expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 
 /**
- * Selectors for the in-place edit model shared by the project and prospect
- * detail pages: one header toggles the whole left column between viewing and
- * editing, and GUARDAR ▸ / CANCELAR only exist while there are pending edits.
+ * Selectors for the in-place edit model of the property detail page: one header
+ * toggles the whole left column between viewing and editing, and GUARDAR ▸ /
+ * CANCELAR only exist while there are pending edits.
+ *
+ * Writing has exactly three doors, and each has its own helper here:
+ *   · PATCH  — type into a row and `saveEdits`; an empty box means "leave it".
+ *   · clear-fields — `clearField`, the ✕ beside the box, applied immediately.
+ *   · transition — `advanceTo`, which opens the stage's gate modal.
  */
+
+/**
+ * Opens a property's detail page and waits for it to actually be one.
+ *
+ * The page renders "Cargando…" until the property and its geometry both
+ * resolve, so an assertion fired straight after `goto` is racing that fetch
+ * rather than the thing it means to check. Under load that race is lost often
+ * enough to matter, and it fails as "element not found" — which reads like the
+ * element is wrong rather than absent. Every test here means "given this
+ * property's page is open, …"; this is that precondition, stated once.
+ */
+export async function gotoProperty(page: Page, id: number): Promise<void> {
+  await page.goto(`/propiedades/${id}`)
+  await expect(page.getByRole('button', { name: 'EDITAR', exact: true })).toBeVisible({ timeout: 15_000 })
+}
 
 /**
  * The row a detail page renders for `label`.
@@ -51,4 +71,33 @@ export async function saveEdits(page: Page): Promise<void> {
   await expect(guardar).toBeVisible()
   await guardar.click()
   await expect(guardar).not.toBeVisible()
+}
+
+/**
+ * Empties a field through POST /clear-fields — the ✕ next to the box. It applies
+ * on click, without a GUARDAR, because emptying is its own operation and not a
+ * pending edit.
+ */
+export async function clearField(page: Page, label: string): Promise<void> {
+  await page.getByRole('button', { name: `Vaciar ${label}`, exact: true }).click()
+}
+
+/**
+ * Opens the AVANZAR A ▸ menu and picks a destination stage, revealing its gate.
+ *
+ * Assumes the page is loaded — `gotoProperty` is what guarantees that, and every
+ * caller goes through it. This used to re-assert the load itself, from back when
+ * the wait lived nowhere: the destinations are computed from the status, so a
+ * menu opened mid-fetch is one the next render throws away. Now that the wait
+ * has one home, repeating it here only meant failing earlier, with a worse
+ * message, and against a shorter timeout than the real precondition uses.
+ */
+export async function advanceTo(page: Page, stageLabel: string): Promise<void> {
+  await page.getByRole('button', { name: 'AVANZAR A ▸' }).click()
+  await page.getByRole('button', { name: stageLabel, exact: true }).click()
+}
+
+/** The confirm button of the gate modal — labelled with the destination stage. */
+export function confirmTransition(page: Page, stageLabel: string): Locator {
+  return page.getByRole('button', { name: `${stageLabel} ▸`, exact: true })
 }

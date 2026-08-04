@@ -6,14 +6,22 @@ const BAR_COLORS = [colors.primary, '#654F6F', '#5C5D8D', colors.tertiary, color
 export interface BreakdownItem { label: string; amount: number }
 
 /**
- * The serif-total + animated per-item bars block, shared by the prospect and
- * project detail pages. Zero-amount items are filtered; renders null when empty.
+ * The serif-total + animated per-item bars block. Zero-amount items are
+ * filtered; renders null when empty.
+ *
+ * El total es la SUMA DE SUS PARTIDAS y no un número que le pasen: recibiéndolo
+ * aparte, el componente podía pintar barras que sumaran 70% de la cifra grande
+ * que él mismo estaba anunciando, y los porcentajes de cada renglón mentían
+ * juntos. Ahora los porcentajes suman 100% por construcción y no hay forma de
+ * llamarlo mal. Que las partidas expliquen todo el capital es responsabilidad
+ * de quien las arma — aquí solo no se puede prometer un total que no se enseña.
  */
-export function InvestmentBreakdown({ label, total, items, barsReady }: {
-  label: string; total: number; items: BreakdownItem[]; barsReady: boolean
+export function InvestmentBreakdown({ label, items, barsReady }: {
+  label: string; items: BreakdownItem[]; barsReady: boolean
 }) {
   const visible = items.filter(i => i.amount > 0)
   if (visible.length === 0) return null
+  const total = visible.reduce((sum, i) => sum + i.amount, 0)
   return (
     <div style={{ marginTop: '20px' }}>
       <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, padding: '12px 0 6px', borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '4px' }}>

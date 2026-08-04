@@ -1,7 +1,7 @@
 """
 Investment analyzer engine.
 
-Given a prospect, calculates:
+Given a property, calculates:
 1. Market-estimated exit price from active comparables
 2. Remodel cost from zone + intervention level
 3. ARV (After Repair Value)
@@ -24,10 +24,26 @@ from api.finance.analysis import (
     npv as _npv, monthly_payment as _monthly_payment,
 )
 
+# ─── Supuestos por omisión ───────────────────────────────
+# Los siete supuestos del modelo viven aquí, con nombre, en un solo lugar: son
+# lo que el formulario prellena y lo que cada snapshot guarda. Un número
+# escondido en medio de una fórmula no se puede ni mostrar ni discutir, y estas
+# corridas publican COSTOS FINANCIAMIENTO, CASH ON CASH, NPV e IRR como
+# resultados.
+DEFAULT_TRANSACTION_COST_PCT = 0.08
+DEFAULT_FINANCIAMIENTO_PCT = 0.60
+DEFAULT_TASA_INTERES_CREDITO = 0.13
+DEFAULT_PLAZO_CREDITO_MESES = 240
+DEFAULT_GASTOS_OPERATIVOS_PCT = 0.30
+DEFAULT_LISTING_HAIRCUT = 0.06
+DEFAULT_DISCOUNT_RATE = 0.10
+# Último recurso cuando la zona no tiene tabla de costos de obra.
+DEFAULT_REMODEL_COST_PER_M2 = 9000
+
 
 # ─── Exceptions ──────────────────────────────────────
 
-class ProspectNotFound(Exception):
+class PropertyNotFound(Exception):
     pass
 
 
@@ -40,7 +56,7 @@ class InsufficientData(Exception):
 @dataclass
 class AnalysisResult:
     snapshot_id: int
-    prospect_id: int
+    property_id: int
     generated_at: str
 
     # Inputs
@@ -48,10 +64,13 @@ class AnalysisResult:
     remodel_cost_estimate: float
     remodel_cost_per_m2: float
     intervention_level: str
+    transaction_cost_pct: float
     transaction_costs: float
     financing_costs: float
     total_cost: float
     holding_period_months: int
+    listing_haircut: float
+    discount_rate: float
 
     # Exit prices
     exit_price_manual: Optional[float]
@@ -113,17 +132,18 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 def find_comparables(
     zone_id: int,
     property_type: str = "casa",
-    prospect_lat: float | None = None,
-    prospect_lng: float | None = None,
-    prospect_sqm: float | None = None,
+    subject_lat: float | None = None,
+    subject_lng: float | None = None,
+    subject_sqm: float | None = None,
     max_km: float = 5.0,
-    listing_haircut: float = 0.06,
+    listing_haircut: float = DEFAULT_LISTING_HAIRCUT,
 ) -> tuple[list[dict], float | None]:
     """
     Find active comparables for a zone with distance/size/type filtering.
 
     Returns (comps, avg_comp_distance_km).
-    Applies a 6% listing-to-sale haircut on prices.
+    Applies the listing-to-sale haircut on prices — an asking price is not a
+    sale price, and how much to knock off is a judgement call the caller owns.
     """
     with get_db() as conn:
         rows = conn.execute(
@@ -143,21 +163,21 @@ def find_comparables(
     comps = [c for c in comps if (c.get("property_type") or "casa").lower() == property_type.lower()]
 
     # Filter by size ±25%
-    if prospect_sqm and prospect_sqm > 0:
+    if subject_sqm and subject_sqm > 0:
         comps = [
             c for c in comps
-            if c.get("m2") and 0.75 * prospect_sqm <= c["m2"] <= 1.25 * prospect_sqm
+            if c.get("m2") and 0.75 * subject_sqm <= c["m2"] <= 1.25 * subject_sqm
         ]
 
     # Filter by distance, attach _dist_km for sorting.
     # Comps without coordinates are kept as valid data (we can't measure distance, not exclude them).
     avg_dist_km: float | None = None
-    if prospect_lat is not None and prospect_lng is not None:
+    if subject_lat is not None and subject_lng is not None:
         with_dist = []
         no_coords = []
         for c in comps:
             if c.get("lat") is not None and c.get("lng") is not None:
-                d = _haversine_km(prospect_lat, prospect_lng, c["lat"], c["lng"])
+                d = _haversine_km(subject_lat, subject_lng, c["lat"], c["lng"])
                 if d <= max_km:
                     c["_dist_km"] = round(d, 3)
                     with_dist.append(c)
@@ -286,57 +306,64 @@ def compute_confidence(
     return score, notes, warnings
 
 
-def analyze_prospect(
-    prospect_id: int,
+def analyze_property(
+    property_id: int,
     *,
     intervention_level: str = "media",
     holding_period_months: int = 12,
-    transaction_cost_pct: float = 0.08,
+    transaction_cost_pct: float = DEFAULT_TRANSACTION_COST_PCT,
     exit_price_source: str = "calculated",
     arv_manual_override: float | None = None,
+    listing_haircut: float = DEFAULT_LISTING_HAIRCUT,
+    discount_rate: float = DEFAULT_DISCOUNT_RATE,
     # Build & Hold params
     renta_mensual_estimada: float | None = None,
-    financiamiento_pct: float = 0.60,
-    tasa_interes_credito: float = 0.13,
-    plazo_credito_meses: int = 240,
-    gastos_operativos_pct: float = 0.30,
-    discount_rate: float = 0.10,
+    financiamiento_pct: float = DEFAULT_FINANCIAMIENTO_PCT,
+    tasa_interes_credito: float = DEFAULT_TASA_INTERES_CREDITO,
+    plazo_credito_meses: int = DEFAULT_PLAZO_CREDITO_MESES,
+    gastos_operativos_pct: float = DEFAULT_GASTOS_OPERATIVOS_PCT,
 ) -> AnalysisResult:
     """
-    Run full investment analysis on a prospect.
+    Run full investment analysis on a property.
 
     Returns an AnalysisResult and saves an immutable snapshot.
     """
     now = datetime.now(timezone.utc)
     warnings: list[str] = []
 
-    # ── 1. Load prospect ─────────────────────────────
+    # ── 1. Load property ─────────────────────────────
     with get_db() as conn:
-        prospect = conn.execute(
-            """SELECT id, name, city, type, sqm_land, sqm_construction, land_price,
-                      acquisition_cost_pct, projected_sale, rent_monthly,
+        row = conn.execute(
+            """SELECT id, name, city, asset_type, sqm_land, sqm_construction, purchase_price,
+                      acquisition_cost_pct, projected_sale, rent_monthly_projected,
                       latitude, longitude
-               FROM prospects WHERE id = %s""",
-            (prospect_id,),
+               FROM properties WHERE id = %s""",
+            (property_id,),
         ).fetchone()
 
-    if prospect is None:
-        raise ProspectNotFound(f"Prospect {prospect_id} not found")
+    if row is None:
+        raise PropertyNotFound(f"Propiedad {property_id} no encontrada")
 
-    p = dict(prospect)
+    p = dict(row)
     # Coerce money to float at the single load boundary: rows from NUMERIC
-    # columns arrive as Decimal, and the analyzer's iterative float models
-    # (IRR/NPV/amortization) can't mix Decimal with float literals.
-    purchase_price = float(p["land_price"])
-    sqm_construction = float(p["sqm_construction"])
-    projected_sale = float(p["projected_sale"])
-    rent_monthly = float(p["rent_monthly"] or 0)
+    # columns arrive as Decimal (and the underwriting inputs are nullable), and
+    # the analyzer's iterative float models (IRR/NPV/amortization) can't mix
+    # Decimal with float literals.
+    # El analizador siempre modeló "lo que pagas por el inmueble como está" y
+    # sumó la obra aparte; hasta la 025 esa cifra se llamaba `land_price` y el
+    # nombre decía otra cosa. Ahora la columna se llama como lo que guarda.
+    purchase_price = float(p["purchase_price"] or 0)
+    sqm_construction = float(p["sqm_construction"] or 0)
+    projected_sale = float(p["projected_sale"] or 0)
+    # La renta que este modelo usa es la proyectada: valora una compra que aún
+    # no se hace, así que la renta cobrada no le toca.
+    rent_monthly = float(p["rent_monthly_projected"] or 0)
 
     # Data quality check: projected_sale placeholder
     if projected_sale and projected_sale < purchase_price * 0.10:
         warnings.append(
-            f"projected_sale (${projected_sale:,.0f}) parece placeholder "
-            f"(< 10% de land_price ${purchase_price:,.0f})"
+            f"La venta proyectada (${projected_sale:,.0f}) parece un placeholder: "
+            f"es menos del 10% del precio de compra (${purchase_price:,.0f})"
         )
 
     # ── 2. Determine zone ────────────────────────────
@@ -361,13 +388,43 @@ def analyze_prospect(
     zone_id = zone_row["id"]
 
     # ── 3. Remodel cost ──────────────────────────────
-    # Detect obra_nueva: sqm_construction = 0
+    # DE DÓNDE SALE EL COSTO DE OBRA — una sola fuente, a propósito.
+    #
+    # Hay dos modelos de obra en el sistema y sumarlos sería contar dos veces el
+    # mismo peso, que es justo el bug que la 025 mató en la captura:
+    #   · el de la PROPIEDAD (`construction_cost_per_sqm` × overhead), que es lo
+    #     que el operador presupuestó para este trato;
+    #   · el del ANALIZADOR (`remodel_costs` por zona y nivel de intervención),
+    #     que es el precio de mercado de la obra en esa zona.
+    #
+    # El analizador corre su ESCENARIO PROPIO: toma su $/m² de la tabla de zona
+    # y NO suma la obra presupuestada de la propiedad — de ahí que este módulo
+    # jamás lea `construction_cost_per_sqm` ni `construction_overhead`. Esa es
+    # la razón de ser de la herramienta: contrastar el presupuesto propio contra
+    # lo que la zona dice que cuesta. Si sumara ambos, no compararía nada.
+    #
+    # Lo único que toma de la propiedad son los METROS: el área es un hecho
+    # físico del inmueble, no un supuesto de costo, y por eso no duplica nada.
     actual_intervention = intervention_level
-    remodel_area = sqm_construction
-    if sqm_construction == 0:
-        actual_intervention = "obra_nueva"
-        remodel_area = p["sqm_land"]
-        warnings.append("sqm_construction=0 → usando obra_nueva sobre sqm_land")
+    if intervention_level == "obra_nueva":
+        # Construir de cero se mide sobre el terreno, no sobre lo que se va a
+        # remodelar. Es una elección explícita del formulario.
+        remodel_area = float(p["sqm_land"] or 0)
+    else:
+        remodel_area = sqm_construction
+
+    # Desde la 025 `sqm_construction` son los metros de obra A EJECUTAR, así que
+    # 0 significa "no hay obra que hacer" — comprar y quedarse. Antes se
+    # interpretaba como "es un lote pelón" y se cambiaba solo a obra nueva sobre
+    # TODO el terreno: el escenario más caro posible, inventado. En una casa sin
+    # obra capturada eso agregaba millones de costo que nadie presupuestó. Quien
+    # quiera valorar un ground-up lo pide por su nombre en el formulario.
+    if remodel_area <= 0:
+        warnings.append(
+            "Sin metros de obra capturados: esta corrida valora la compra tal cual, "
+            "sin costo de remodelación. Para modelar obra, captura los m² a ejecutar "
+            "o elige intervención 'obra nueva'."
+        )
 
     remodel_data = get_remodel_cost(zone_id, actual_intervention)
     remodel_zone_match = True
@@ -388,8 +445,12 @@ def analyze_prospect(
         cost_per_m2 = float(remodel_data["cost_per_m2_mxn"])
         remodel_updated_at = remodel_data.get("updated_at")
     else:
-        cost_per_m2 = 9000  # absolute fallback
-        warnings.append("Sin datos de remodel_costs, usando $9,000/m² por defecto")
+        cost_per_m2 = DEFAULT_REMODEL_COST_PER_M2
+        # Solo es un supuesto en uso si hay metros que multiplicar. Anunciar un
+        # $/m² por omisión sobre cero metros describe un cálculo que no ocurrió.
+        if remodel_area > 0:
+            warnings.append(
+                f"Sin datos de remodel_costs, usando ${cost_per_m2:,.0f}/m² por defecto")
 
     remodel_cost = remodel_area * cost_per_m2
 
@@ -404,13 +465,14 @@ def analyze_prospect(
 
     # ── 5. Find comparables & calculate exit price ───
     sale_sqm = sqm_construction if sqm_construction > 0 else p["sqm_land"]
-    prop_type = (p.get("type") or "casa").lower()
+    prop_type = (p.get("asset_type") or "casa").lower()
     comps, avg_comp_distance_km = find_comparables(
         zone_id,
         property_type=prop_type,
-        prospect_lat=p["latitude"],
-        prospect_lng=p["longitude"],
-        prospect_sqm=sale_sqm,
+        subject_lat=p["latitude"],
+        subject_lng=p["longitude"],
+        subject_sqm=sale_sqm,
+        listing_haircut=listing_haircut,
     )
     comp_ids = [c["id"] for c in comps]
     comp_ppm2 = [c["price_per_m2"] for c in comps if c.get("price_per_m2")]
@@ -521,67 +583,53 @@ def analyze_prospect(
         confidence_level = "low"
 
     # ── 9. Save snapshot ─────────────────────────────
+    # Un dict en vez de dos listas paralelas de cuarenta posiciones: agregar una
+    # columna dejaba de ser seguro en cuanto el valor N tenía que caer justo
+    # sobre el nombre N. Los supuestos se guardan SIEMPRE, aunque no haya renta:
+    # el financiamiento mueve `financing_costs` del flip, así que un snapshot
+    # que no los guarde no puede explicar su propio costo total.
+    snapshot = {
+        "property_id": property_id, "generated_at": now,
+        "purchase_price": purchase_price,
+        "remodel_cost_estimate": remodel_cost, "remodel_cost_per_m2": cost_per_m2,
+        "intervention_level": actual_intervention,
+        "transaction_cost_pct": transaction_cost_pct, "transaction_costs": transaction_costs,
+        "financing_costs": financing_costs,
+        "listing_haircut": listing_haircut, "discount_rate": discount_rate,
+        "total_cost": total_cost, "holding_period_months": holding_period_months,
+        "exit_price_manual": projected_sale,
+        "exit_price_calculated_low": exit_low,
+        "exit_price_calculated_mid": exit_mid,
+        "exit_price_calculated_high": exit_high,
+        "exit_price_source": exit_price_source if exit_mid is not None else "manual",
+        "exit_price_used": exit_used, "manual_vs_market_delta_pct": delta_pct,
+        "arv_manual_override": arv_manual_override,
+        "comparable_count": len(comps), "comparable_ids": json.dumps(comp_ids),
+        "avg_comp_distance_km": avg_comp_distance_km,
+        "gross_margin": gross_margin, "roi_pct": roi_pct, "irr_pct": irr_pct,
+        "cap_rate_pct": cap_rate_pct,
+        "confidence_score": score, "confidence_notes": conf_notes,
+        "data_quality_warnings": json.dumps(warnings),
+        "renta_mensual_estimada": rent_estimate if rent_estimate > 0 else None,
+        "tasa_interes_credito": tasa_interes_credito,
+        "plazo_credito_meses": plazo_credito_meses,
+        "financiamiento_pct": financiamiento_pct,
+        "gastos_operativos_pct": gastos_operativos_pct,
+        "noi_anual": noi_anual, "debt_service_anual": debt_service_anual,
+        "cash_flow_anual": cash_flow_anual, "cash_on_cash_yr1_pct": cash_on_cash_yr1,
+        "break_even_months": break_even, "npv_10yr": npv_10yr, "irr_10yr_pct": irr_10yr,
+    }
+    columns = ", ".join(snapshot)
+    placeholders = ", ".join(["%s"] * len(snapshot))
     with get_db() as conn:
         cur = conn.execute(
-            """INSERT INTO analysis_snapshots (
-                prospect_id, generated_at,
-                purchase_price, remodel_cost_estimate, remodel_cost_per_m2,
-                intervention_level, transaction_costs, financing_costs,
-                total_cost, holding_period_months,
-                exit_price_manual,
-                exit_price_calculated_low, exit_price_calculated_mid, exit_price_calculated_high,
-                exit_price_source, exit_price_used, manual_vs_market_delta_pct,
-                arv_manual_override,
-                comparable_count, comparable_ids, avg_comp_distance_km,
-                gross_margin, roi_pct, irr_pct, cap_rate_pct,
-                confidence_score, confidence_notes, data_quality_warnings,
-                renta_mensual_estimada, tasa_interes_credito, plazo_credito_meses,
-                financiamiento_pct, gastos_operativos_pct,
-                noi_anual, debt_service_anual, cash_flow_anual,
-                cash_on_cash_yr1_pct, break_even_months, npv_10yr, irr_10yr_pct
-            ) VALUES (
-                %s, %s,
-                %s, %s, %s,
-                %s, %s, %s,
-                %s, %s,
-                %s,
-                %s, %s, %s,
-                %s, %s, %s,
-                %s,
-                %s, %s, %s,
-                %s, %s, %s, %s,
-                %s, %s, %s,
-                %s, %s, %s,
-                %s, %s,
-                %s, %s, %s,
-                %s, %s, %s, %s
-            ) RETURNING id""",
-            (
-                prospect_id, now,
-                purchase_price, remodel_cost, cost_per_m2,
-                actual_intervention, transaction_costs, financing_costs,
-                total_cost, holding_period_months,
-                projected_sale,
-                exit_low, exit_mid, exit_high,
-                exit_price_source if exit_mid is not None else "manual",
-                exit_used, delta_pct,
-                arv_manual_override,
-                len(comps), json.dumps(comp_ids), avg_comp_distance_km,
-                gross_margin, roi_pct, irr_pct, cap_rate_pct,
-                score, conf_notes, json.dumps(warnings),
-                rent_estimate if rent_estimate > 0 else None,
-                tasa_interes_credito if rent_estimate > 0 else None,
-                plazo_credito_meses if rent_estimate > 0 else None,
-                financiamiento_pct if rent_estimate > 0 else None,
-                gastos_operativos_pct if rent_estimate > 0 else None,
-                noi_anual, debt_service_anual, cash_flow_anual,
-                cash_on_cash_yr1, break_even, npv_10yr, irr_10yr,
-            ),
+            f"INSERT INTO analysis_snapshots ({columns}) VALUES ({placeholders}) RETURNING id",
+            list(snapshot.values()),
         )
         snapshot_id = cur.fetchone()["id"]
 
     # ── 10. Build human summary ──────────────────────
-    summary_parts = [f"Análisis #{snapshot_id} para prospect #{prospect_id}"]
+    summary_parts = [f"Análisis #{snapshot_id} para propiedad #{property_id}"]
     if roi_pct is not None:
         summary_parts.append(f"ROI flip: {roi_pct:.1f}%")
     if exit_mid:
@@ -596,16 +644,19 @@ def analyze_prospect(
 
     return AnalysisResult(
         snapshot_id=snapshot_id,
-        prospect_id=prospect_id,
+        property_id=property_id,
         generated_at=now.isoformat(),
         purchase_price=purchase_price,
         remodel_cost_estimate=remodel_cost,
         remodel_cost_per_m2=cost_per_m2,
         intervention_level=actual_intervention,
+        transaction_cost_pct=transaction_cost_pct,
         transaction_costs=transaction_costs,
         financing_costs=financing_costs,
         total_cost=total_cost,
         holding_period_months=holding_period_months,
+        listing_haircut=listing_haircut,
+        discount_rate=discount_rate,
         exit_price_manual=projected_sale,
         exit_price_calculated_low=exit_low,
         exit_price_calculated_mid=exit_mid,

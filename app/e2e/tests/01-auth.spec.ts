@@ -12,8 +12,8 @@ test('unauthenticated / redirects to /login', async ({ page }) => {
   await expect(page).toHaveURL(/\/login/)
 })
 
-test('unauthenticated /prospectos/tabla redirects to /login', async ({ page }) => {
-  await page.goto('/prospectos/tabla')
+test('unauthenticated /propiedades redirects to /login', async ({ page }) => {
+  await page.goto('/propiedades')
   await expect(page).toHaveURL(/\/login/)
 })
 
@@ -25,14 +25,14 @@ test('login with wrong credentials shows error', async ({ page }) => {
   await expect(page.getByText('Correo o contraseña incorrectos')).toBeVisible()
 })
 
-test('login success redirects to prospectos', async ({ page }) => {
+test('login success redirects to propiedades', async ({ page }) => {
   await page.goto('/login')
   await page.locator('input[type="email"]').fill(E2E_EMAIL)
   await page.locator('input[type="password"]').fill(E2E_PASS)
   // Use explicit button selector — getByText could match other elements if React hasn't updated
   await page.locator('button[type="submit"]').click()
-  await expect(page).toHaveURL(/\/prospectos\/tabla/, { timeout: 10_000 })
-  await expect(page.locator('a', { hasText: 'PROSPECTOS' })).toBeVisible()
+  await expect(page).toHaveURL(/\/propiedades/, { timeout: 10_000 })
+  await expect(page.locator('a', { hasText: 'PROPIEDADES' }).first()).toBeVisible()
 })
 
 test('SALIR button logs out and redirects to /login', async ({ page }) => {
@@ -41,7 +41,7 @@ test('SALIR button logs out and redirects to /login', async ({ page }) => {
   await page.locator('input[type="email"]').fill(E2E_EMAIL)
   await page.locator('input[type="password"]').fill(E2E_PASS)
   await page.locator('button[type="submit"]').click()
-  await expect(page).toHaveURL(/\/prospectos\/tabla/, { timeout: 10_000 })
+  await expect(page).toHaveURL(/\/propiedades/, { timeout: 10_000 })
   // SALIR is always visible in the tab bar — click directly
   await page.getByRole('button', { name: 'SALIR' }).click()
   await expect(page).toHaveURL(/\/login/)
@@ -53,7 +53,7 @@ test('change password panel opens', async ({ page }) => {
   await page.locator('input[type="email"]').fill(E2E_EMAIL)
   await page.locator('input[type="password"]').fill(E2E_PASS)
   await page.locator('button[type="submit"]').click()
-  await expect(page).toHaveURL(/\/prospectos\/tabla/, { timeout: 10_000 })
+  await expect(page).toHaveURL(/\/propiedades/, { timeout: 10_000 })
   // Open settings gear dropdown
   await page.locator('button[title="Configuración"]').click()
   await expect(page.getByPlaceholder('Contraseña actual')).toBeVisible()

@@ -1,20 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  fetchInvestor, updateInvestor, deleteInvestor, fetchProjects,
-  addProjectInvestor, updateProjectInvestment, deleteProjectInvestment,
+  fetchInvestor, updateInvestor, deleteInvestor, fetchProperties,
+  addPropertyInvestor, updatePropertyInvestment, deletePropertyInvestment,
 } from '../lib/api'
 import type {
-  Investor, ProjectInvestor, Project,
+  Investor, PropertyInvestor, Property,
   InvestorTemperatura, InvestorCapacidad, InvestorFuente, InvestorConfianza,
 } from '../lib/types'
+import { takesInvestors } from '../lib/status'
 
 export function useInversorDetail(investorId: number) {
   const navigate = useNavigate()
 
   const [investor, setInvestor] = useState<Investor | null>(null)
-  const [positions, setPositions] = useState<ProjectInvestor[]>([])
-  const [allProjects, setAllProjects] = useState<Project[]>([])
+  const [positions, setPositions] = useState<PropertyInvestor[]>([])
+  const [fundableProperties, setFundableProperties] = useState<Property[]>([])
 
   // Profile fields
   const [name, setName] = useState('')
@@ -31,7 +32,7 @@ export function useInversorDetail(investorId: number) {
 
   // Add-position form
   const [showAdd, setShowAdd] = useState(false)
-  const [addProjectId, setAddProjectId] = useState<string>('')
+  const [addPropertyId, setAddPropertyId] = useState<string>('')
   const [addInterested, setAddInterested] = useState<string>('')
   const [addCommitted, setAddCommitted] = useState<string>('')
   const [addFunded, setAddFunded] = useState<string>('')
@@ -64,7 +65,9 @@ export function useInversorDetail(investorId: number) {
       setFuente(data.fuente ?? '')
       setConfianza(data.confianza ?? '')
     })
-    fetchProjects().then(setAllProjects)
+    // Solo se puede posicionar capital donde el servidor lo acepta: de oferta
+    // en adelante. Ofrecer el resto sería ofrecer un 422.
+    fetchProperties().then(ps => setFundableProperties(ps.filter(p => takesInvestors(p.status))))
   }, [investorId])
 
   async function save() {
@@ -95,19 +98,16 @@ export function useInversorDetail(investorId: number) {
   }
 
   async function handleAddPosition() {
-    if (!addProjectId) return
+    if (!addPropertyId) return
     setAdding(true)
-    const projectId = Number(addProjectId)
+    const propertyId = Number(addPropertyId)
     const interested = parseFloat(addInterested) || 0
     const committed = parseFloat(addCommitted) || 0
     const funded = parseFloat(addFunded) || 0
     const rate = parseFloat(addRate) / 100 || 0.12
-    const status: ProjectInvestor['status'] =
-      funded > 0 ? 'fondeado' : committed > 0 ? 'comprometido' : 'interesado'
     try {
-      const pos = await addProjectInvestor(projectId, {
+      const pos = await addPropertyInvestor(propertyId, {
         investorId,
-        status,
         interestedAmount: interested,
         committedAmount: committed,
         fundedAmount: funded,
@@ -117,7 +117,7 @@ export function useInversorDetail(investorId: number) {
       })
       setPositions(prev => [...prev, pos])
       setShowAdd(false)
-      setAddProjectId('')
+      setAddPropertyId('')
       setAddInterested('')
       setAddCommitted('')
       setAddFunded('')
@@ -130,7 +130,7 @@ export function useInversorDetail(investorId: number) {
     }
   }
 
-  function startEdit(pos: ProjectInvestor) {
+  function startEdit(pos: PropertyInvestor) {
     setEditingId(pos.id)
     setEditInterested(pos.interestedAmount ? String(pos.interestedAmount) : '')
     setEditCommitted(pos.committedAmount ? String(pos.committedAmount) : '')
@@ -141,17 +141,14 @@ export function useInversorDetail(investorId: number) {
     setEditReturnDate(pos.returnDate ?? '')
   }
 
-  async function handleSaveEdit(pos: ProjectInvestor) {
+  async function handleSaveEdit(pos: PropertyInvestor) {
     setSavingEdit(true)
     const interested = parseFloat(editInterested) || 0
     const committed = parseFloat(editCommitted) || 0
     const funded = parseFloat(editFunded) || 0
     const rate = parseFloat(editRate) / 100 || 0.12
-    const status: ProjectInvestor['status'] =
-      funded > 0 ? 'fondeado' : committed > 0 ? 'comprometido' : 'interesado'
     try {
-      const updated = await updateProjectInvestment(pos.projectId, pos.id, {
-        status,
+      const updated = await updatePropertyInvestment(pos.propertyId, pos.id, {
         interestedAmount: interested,
         committedAmount: committed,
         fundedAmount: funded,
@@ -169,10 +166,10 @@ export function useInversorDetail(investorId: number) {
     }
   }
 
-  async function handleRemovePosition(pos: ProjectInvestor) {
-    if (!window.confirm(`¿Quitar esta inversión de "${pos.projectName || `Proyecto ${pos.projectId}`}"?`)) return
+  async function handleRemovePosition(pos: PropertyInvestor) {
+    if (!window.confirm(`¿Quitar esta inversión de "${pos.propertyName || `Propiedad ${pos.propertyId}`}"?`)) return
     try {
-      await deleteProjectInvestment(pos.projectId, pos.id)
+      await deletePropertyInvestment(pos.propertyId, pos.id)
       setPositions(prev => prev.filter(p => p.id !== pos.id))
       if (editingId === pos.id) setEditingId(null)
     } catch (e: unknown) {
@@ -180,10 +177,10 @@ export function useInversorDetail(investorId: number) {
     }
   }
 
-  async function handleLiquidar(pos: ProjectInvestor) {
+  async function handleLiquidar(pos: PropertyInvestor) {
     const today = new Date().toISOString().split('T')[0]
     try {
-      const updated = await updateProjectInvestment(pos.projectId, pos.id, {
+      const updated = await updatePropertyInvestment(pos.propertyId, pos.id, {
         returnAmount: pos.expectedReturn,
         returnDate: today,
       })
@@ -194,14 +191,14 @@ export function useInversorDetail(investorId: number) {
   }
 
   return {
-    investor, positions, allProjects,
+    investor, positions, fundableProperties,
     name, setName, apellidos, setApellidos, email, setEmail, phone, setPhone,
     notes, setNotes, temperatura, setTemperatura, capacidad, setCapacidad,
     fuente, setFuente, confianza, setConfianza,
     saving, error,
     save, handleDelete,
     showAdd, setShowAdd,
-    addProjectId, setAddProjectId,
+    addPropertyId, setAddPropertyId,
     addInterested, setAddInterested, addCommitted, setAddCommitted,
     addFunded, setAddFunded, addRate, setAddRate, addDate, setAddDate,
     adding, handleAddPosition,

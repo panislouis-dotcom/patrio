@@ -174,15 +174,28 @@ jobs:
         run: npx wait-on http://localhost:5173 --timeout 15000
 
       # ── Playwright ──────────────────────────────────────────────────
+      # Dos Playwright distintos viven en este job y cada uno necesita SU
+      # Chromium: el de Node maneja el navegador de las pruebas, y el de Python
+      # —dentro del API— es el que imprime el prospecto en PDF. Cada versión de
+      # Playwright fija un build propio (1.59 de Node pide chromium-1217; 1.62
+      # de Python pide otro), así que instalar uno no sirve para el otro.
+      #
+      # Que faltara el de Python no rompía nada visible: el endpoint del PDF
+      # devolvía error, el navegador nunca disparaba la descarga, y la prueba
+      # moría por timeout a los 20s — un síntoma que no nombra su causa. En
+      # local pasaba porque una máquina de trabajo acumula builds de versiones
+      # viejas y alguno servía. El Dockerfile ya hacía esto bien; CI no.
       - name: Cache Playwright browsers
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('app/e2e/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('app/e2e/package-lock.json', 'app/api/requirements.txt') }}
       - name: Install E2E deps
         run: cd app/e2e && npm ci
-      - name: Install Playwright browsers
+      - name: Install Playwright browsers (Node — el navegador de las pruebas)
         run: cd app/e2e && npx playwright install --with-deps chromium
+      - name: Install Playwright browsers (Python — el que imprime el PDF)
+        run: python -m playwright install --with-deps chromium
       - name: Run E2E tests
         env:
           E2E_USER: test@refigan.com

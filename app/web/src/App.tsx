@@ -3,11 +3,10 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { LoginPage } from './components/LoginPage'
 import { TabBar } from './components/TabBar'
-import { ProspectTable } from './components/ProspectTable'
-import { ProspectDetailPage } from './components/ProspectDetailPage'
-import { ProspectMap } from './components/ProspectMap'
-import { ProjectsTab } from './components/ProjectsTab'
-import { ProjectDetailPage } from './components/ProjectDetailPage'
+import { PropiedadesTable } from './components/PropiedadesTable'
+import { PropertyDetailPage } from './components/PropertyDetailPage'
+import { NewPropertyPage } from './components/NewPropertyPage'
+import { PropiedadesMap } from './components/PropiedadesMap'
 import { SonarTab } from './components/SonarTab'
 import { ProcesosTab } from './components/ProcesosTab'
 import { ProcesoTemplateList } from './components/ProcesoTemplateList'
@@ -40,18 +39,18 @@ function AppShell() {
         {isLoggedIn && <TabBar onLogout={logout} />}
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/" element={<Navigate to="/prospectos/tabla" replace />} />
-          <Route path="/prospectos" element={<Navigate to="/prospectos/tabla" replace />} />
-          <Route path="/tabla" element={<Navigate to="/prospectos/tabla" replace />} />
-          <Route path="/mapa" element={<Navigate to="/prospectos/mapa" replace />} />
+          {/* Prospectos y proyectos eran la misma cosa contada dos veces. No hay
+              redirecciones de sus URLs viejas: los ids cambiaron con la fusión,
+              y mandar un bookmark a la propiedad equivocada es peor que un 404. */}
+          <Route path="/" element={<Navigate to="/propiedades" replace />} />
 
-          <Route path="/prospectos/tabla" element={<ProtectedRoute><ProspectTable /></ProtectedRoute>} />
-          <Route path="/prospectos/tabla/:id" element={<ProtectedRoute><ProspectDetailPage /></ProtectedRoute>} />
-          <Route path="/prospectos/mapa" element={<ProtectedRoute><ProspectMap /></ProtectedRoute>} />
-          <Route path="/prospectos/sonar" element={<ProtectedRoute><SonarTab /></ProtectedRoute>} />
-          <Route path="/sonar" element={<Navigate to="/prospectos/sonar" replace />} />
-          <Route path="/proyectos" element={<ProtectedRoute><ProjectsTab /></ProtectedRoute>} />
-          <Route path="/proyectos/:id" element={<ProtectedRoute><ProjectDetailPage /></ProtectedRoute>} />
+          <Route path="/propiedades" element={<ProtectedRoute><PropiedadesTable /></ProtectedRoute>} />
+          <Route path="/propiedades/nueva" element={<ProtectedRoute><NewPropertyPage /></ProtectedRoute>} />
+          <Route path="/propiedades/mapa" element={<ProtectedRoute><PropiedadesMap /></ProtectedRoute>} />
+          <Route path="/propiedades/sonar" element={<ProtectedRoute><SonarTab /></ProtectedRoute>} />
+          <Route path="/propiedades/comparables" element={<ProtectedRoute><ComparablesTab /></ProtectedRoute>} />
+          <Route path="/propiedades/comparables/nuevo" element={<ProtectedRoute><ComparableForm /></ProtectedRoute>} />
+          <Route path="/propiedades/:id" element={<ProtectedRoute><PropertyDetailPage /></ProtectedRoute>} />
           <Route path="/procesos" element={<ProtectedRoute><ProcesosTab /></ProtectedRoute>}>
             <Route index element={<Navigate to="plantillas" replace />} />
             <Route path="plantillas" element={<ProcesoTemplateList />} />
@@ -68,8 +67,6 @@ function AppShell() {
             <Route path="tipos" element={<TiposPage />} />
           </Route>
           <Route path="/equipo" element={<ProtectedRoute><OrgTab /></ProtectedRoute>} />
-          <Route path="/prospectos/comparables" element={<ProtectedRoute><ComparablesTab /></ProtectedRoute>} />
-          <Route path="/prospectos/comparables/nuevo" element={<ProtectedRoute><ComparableForm /></ProtectedRoute>} />
           <Route path="/analyses/:id" element={<ProtectedRoute><AnalysisView /></ProtectedRoute>} />
         </Routes>
       </div>

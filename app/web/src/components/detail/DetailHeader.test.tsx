@@ -3,7 +3,7 @@ import { DetailHeader } from './DetailHeader'
 import { colors } from '../../lib/theme'
 
 const base = {
-  backLabel: 'PROYECTOS',
+  backLabel: 'PROPIEDADES',
   onBack: () => {},
   title: 'Casa Roma',
   statusLabel: 'CONSTRUCCIÓN',
@@ -63,7 +63,7 @@ describe('DetailHeader', () => {
   })
 
   it('renders the actions slot', () => {
-    render(<DetailHeader {...base} actions={<button>CONVERTIR ▸ PROYECTO</button>} />)
-    expect(screen.getByText('CONVERTIR ▸ PROYECTO')).not.toBeNull()
+    render(<DetailHeader {...base} actions={<button>AVANZAR A ▸</button>} />)
+    expect(screen.getByText('AVANZAR A ▸')).not.toBeNull()
   })
 })

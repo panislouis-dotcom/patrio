@@ -71,10 +71,13 @@ test.describe('Procesos', () => {
 
   test('/procesos/tareas loads with instance list', async ({ page }) => {
     await page.goto('/procesos/tareas')
-    // The instance list renders its header section regardless of data
-    // Check for the table header or an empty-state message
+    // Data or none, the list renders one of exactly two things. The alternatives
+    // have to be mutually exclusive: an `.or()` chain that also matched the
+    // <table> resolved to two elements the moment a tarea existed, and failed on
+    // strict mode — a test that only passed while the table was empty.
     await expect(
-      page.getByText('NOMBRE').or(page.getByText('Sin tareas')).or(page.locator('table'))
+      page.getByRole('columnheader', { name: 'NOMBRE' })
+        .or(page.getByText('Sin tareas. Crea una desde una plantilla.')),
     ).toBeVisible({ timeout: 8000 })
   })
 })

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { fetchInstances, createInstance, fetchTemplates, fetchProjects, fetchTeam } from '../lib/api'
-import type { ProcessInstance, ProcessTemplate, Project, TeamMember } from '../lib/types'
+import { fetchInstances, createInstance, fetchTemplates, fetchProperties, fetchTeam } from '../lib/api'
+import type { ProcessInstance, ProcessTemplate, Property, TeamMember } from '../lib/types'
+import { takesTasks } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
 import { PROCESS_INSTANCE_STATUS_COLOR } from '../lib/status'
 
@@ -36,7 +37,7 @@ export function ProcesoInstanceList() {
 
   const [instances, setInstances] = useState<ProcessInstance[]>([])
   const [templates, setTemplates] = useState<ProcessTemplate[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
+  const [properties, setProperties] = useState<Property[]>([])
   const [team, setTeam] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [typeFilter, setTypeFilter] = useState<string>('all')
@@ -51,28 +52,29 @@ export function ProcesoInstanceList() {
   // Form fields
   const [newName, setNewName] = useState('')
   const [newTemplateId, setNewTemplateId] = useState<string>('')
-  const [newProjectId, setNewProjectId] = useState<string>('')
+  const [newPropertyId, setNewPropertyId] = useState<string>('')
   const [newOwnerId, setNewOwnerId] = useState<string>('')
   const [newStartDate, setNewStartDate] = useState(new Date().toISOString().slice(0, 10))
   const [newFrequencyDays, setNewFrequencyDays] = useState<string>('')
   const [newDueDate, setNewDueDate] = useState<string>('')
 
   useEffect(() => {
-    Promise.all([fetchInstances(), fetchTemplates(), fetchProjects(), fetchTeam()]).then(
-      ([insts, tmps, projs, members]) => {
+    Promise.all([fetchInstances(), fetchTemplates(), fetchProperties(), fetchTeam()]).then(
+      ([insts, tmps, props, members]) => {
         setInstances(insts)
         setTemplates(tmps)
-        setProjects(projs)
+        // Una tarea de obra se liga a lo que ya se compró; antes no hay obra.
+        setProperties(props.filter(p => takesTasks(p.status)))
         setTeam(members)
         setLoading(false)
       }
     )
   }, [])
 
-  // Pre-fill form from URL params (e.g. from ProjectDetailPage "+ NUEVA TAREA")
+  // Pre-fill form from URL params (e.g. from PropertyDetailPage "+ NUEVA TAREA")
   useEffect(() => {
-    const pId = searchParams.get('proyecto')
-    if (pId) { setNewProjectId(pId); setShowForm(true) }
+    const pId = searchParams.get('propiedad')
+    if (pId) { setNewPropertyId(pId); setShowForm(true) }
   }, [])
 
   async function handleCreate(e: React.FormEvent) {
@@ -83,7 +85,7 @@ export function ProcesoInstanceList() {
       const inst = await createInstance({
         name: newName.trim(),
         templateId: newTemplateId ? Number(newTemplateId) : null,
-        projectId: newProjectId ? Number(newProjectId) : null,
+        propertyId: newPropertyId ? Number(newPropertyId) : null,
         ownerId: newOwnerId ? Number(newOwnerId) : null,
         startDate: newStartDate,
         frequencyDays: newFrequencyDays ? Number(newFrequencyDays) : null,
@@ -222,9 +224,9 @@ export function ProcesoInstanceList() {
             <option value="">Sin proceso</option>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-          <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} style={inputStyle}>
-            <option value="">— Sin proyecto</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          <select value={newPropertyId} onChange={e => setNewPropertyId(e.target.value)} aria-label="Propiedad" style={inputStyle}>
+            <option value="">— Sin propiedad</option>
+            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <input
             type="number"

@@ -25,14 +25,20 @@ interface Props {
   onSave: () => void
   onCancel: () => void
   onDelete: () => void | Promise<void>
-  /** Extra buttons between the status chip and EDITAR, e.g. CONVERTIR ▸ PROYECTO. */
+  /**
+   * Por qué falló el borrado, para que la página lo muestre donde ya muestra
+   * los demás errores. Sin esto el fallo sería mudo — y un borrado mudo se lee
+   * como un borrado que funcionó.
+   */
+  onDeleteError?: (message: string) => void
+  /** Extra buttons between the status chip and EDITAR, e.g. AVANZAR A ▸. */
   actions?: React.ReactNode
   style?: React.CSSProperties
 }
 
 export function DetailHeader({
   backLabel, onBack, title, editingTitle, statusLabel, statusColor,
-  editing, onToggleEdit, hasChanges, saving, onSave, onCancel, onDelete, actions, style,
+  editing, onToggleEdit, hasChanges, saving, onSave, onCancel, onDelete, onDeleteError, actions, style,
 }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -41,7 +47,10 @@ export function DetailHeader({
     setDeleting(true)
     try {
       await onDelete()
-    } catch {
+    } catch (e) {
+      // El fallo se cuenta antes de volver: la fila regresa a ELIMINAR, que es
+      // el estado de "no pasó nada", y el motivo queda a la vista arriba.
+      onDeleteError?.(e instanceof Error ? e.message : 'No se pudo eliminar')
       setDeleting(false)
       setConfirmDelete(false)
     }

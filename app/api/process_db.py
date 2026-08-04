@@ -6,14 +6,14 @@ TEMPLATE_RAW_FIELDS = {"name", "description"}
 NODE_RAW_FIELDS = {"name", "description", "sortOrder", "dependsOnId", "durationDays", "parentId", "sourceTemplateId", "supplierCategoryId"}
 INSTANCE_RAW_FIELDS = {
     "name", "startDate", "status", "notes",
-    "templateId", "projectId", "ownerId",
+    "templateId", "propertyId", "ownerId",
     "frequencyDays", "dueDate", "completedAt",
     "originInstanceId", "durationLockedAt",
 }
 
 
 def _derive_task_type(row: dict) -> str:
-    if row.get('projectId'): return 'proyecto'
+    if row.get('propertyId'): return 'proyecto'
     if row.get('frequencyDays'): return 'periodica'
     return 'one_time'
 STATE_RAW_FIELDS = {"status", "assigneeId", "actualStart", "actualEnd", "notes", "durationOverrideDays", "supplierId"}
@@ -180,11 +180,11 @@ _INSTANCE_SELECT = """
     SELECT
         pi.*,
         pt.name  AS template_name,
-        pr.name  AS project_name,
+        pr.name  AS property_name,
         tm.name  AS owner_name
     FROM process_instances pi
     LEFT JOIN process_templates pt ON pt.id = pi.template_id
-    LEFT JOIN projects pr          ON pr.id = pi.project_id
+    LEFT JOIN properties pr        ON pr.id = pi.property_id
     LEFT JOIN team_members tm      ON tm.id = pi.owner_id
 """
 
@@ -222,7 +222,7 @@ def sync_periodic_series():
         create_instance({
             'name': origin['name'],
             'templateId': origin.get('templateId'),
-            'projectId': origin.get('projectId'),
+            'propertyId': origin.get('propertyId'),
             'ownerId': origin.get('ownerId'),
             'frequencyDays': freq,
             'startDate': current_start.isoformat(),
@@ -232,12 +232,12 @@ def sync_periodic_series():
         })
 
 
-def get_instances(project_id: Optional[int] = None) -> list[dict]:
+def get_instances(property_id: Optional[int] = None) -> list[dict]:
     query = _INSTANCE_SELECT
     params: list = []
-    if project_id is not None:
-        query += " WHERE pi.project_id = %s"
-        params.append(project_id)
+    if property_id is not None:
+        query += " WHERE pi.property_id = %s"
+        params.append(property_id)
     query += " ORDER BY pi.created_at DESC"
     with get_db() as conn:
         rows = conn.execute(query, params).fetchall()

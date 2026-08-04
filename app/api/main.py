@@ -8,9 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pathlib import Path
 from api.config import ALLOWED_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD_HASH
-from api.routes import prospects, projects, sonar, team, processes, profit, investors, users, comparables, analyses, documents, proveedores
+from api.routes import properties, sonar, team, processes, profit, investors, users, comparables, analyses, documents, proveedores
 from api.routes.auth import router as auth_router
 from api.db import get_db
+from api.properties_db import PropertyError, PropertyNotFound
 from api.process_db import sync_periodic_series
 from api import geo
 from api.auth import hash_password
@@ -108,13 +109,30 @@ def _status_to_code(status: int) -> str:
     }.get(status, f"HTTP_{status}")
 
 
+def _error(status: int, message, headers: dict | None = None) -> JSONResponse:
+    return JSONResponse(
+        status_code=status,
+        content={"error": {"code": _status_to_code(status), "message": message, "request_id": str(uuid.uuid4())}},
+        headers=headers or {},
+    )
+
+
 @app.exception_handler(HTTPException)
 async def _http_exc(request: Request, exc: HTTPException) -> JSONResponse:
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"error": {"code": _status_to_code(exc.status_code), "message": exc.detail, "request_id": str(uuid.uuid4())}},
-        headers=getattr(exc, "headers", None) or {},
-    )
+    return _error(exc.status_code, exc.detail, getattr(exc, "headers", None))
+
+
+# The property domain rejects in its own vocabulary; these two handlers are what
+# keep a refused transition or a bad date a 422 with a sentence, instead of the
+# 500 the database trigger would raise a moment later.
+@app.exception_handler(PropertyNotFound)
+async def _property_not_found(request: Request, exc: PropertyNotFound) -> JSONResponse:
+    return _error(404, str(exc))
+
+
+@app.exception_handler(PropertyError)
+async def _property_rejected(request: Request, exc: PropertyError) -> JSONResponse:
+    return _error(422, str(exc))
 
 
 @app.exception_handler(RequestValidationError)
@@ -127,8 +145,7 @@ async def _validation_exc(request: Request, exc: RequestValidationError) -> JSON
 
 from api import storage as _storage
 
-app.include_router(prospects.router)
-app.include_router(projects.router)
+app.include_router(properties.router)
 app.include_router(sonar.router)
 app.include_router(team.router)
 app.include_router(processes.router)

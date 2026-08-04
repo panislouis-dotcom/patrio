@@ -17,12 +17,17 @@ def test_return_pct():
 
 def test_hold_months_active_uses_today():
     import datetime as _dt
-    assert inv.hold_months("2025-01", None, today=_dt.date(2026, 1, 1)) == 12
+    assert inv.hold_months(_dt.date(2025, 1, 1), None, today=_dt.date(2026, 1, 1)) == 12
 
 
 def test_hold_months_with_conclusion():
     import datetime as _dt
-    assert inv.hold_months("2025-01", _dt.date(2026, 7, 1)) == 18
+    assert inv.hold_months(_dt.date(2025, 1, 1), _dt.date(2026, 7, 1)) == 18
+
+
+def test_hold_months_is_zero_before_the_acquisition():
+    """Nothing has been held, so nothing has accrued."""
+    assert inv.hold_months(None, None) == 0
 
 
 def test_totals_sums_positions():

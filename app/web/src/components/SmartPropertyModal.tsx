@@ -1,0 +1,506 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { parseProperty, createProperty, uploadPropertyImage } from '../lib/api'
+import type { ParsedProperty } from '../lib/types'
+import { ASSET_TYPES, ASSET_TYPE_LABEL } from '../lib/types'
+import { colors, fonts } from '../lib/theme'
+import { LatLonPicker } from './LatLonPicker'
+
+interface Props {
+  onClose: () => void
+  onCreated: () => void
+}
+
+// Lo que no se captura aquí lo pone CAPTURE_DEFAULTS en el servidor: una sola
+// definición de con qué nace una propiedad, valga la que valga la puerta de
+// entrada (este modal, el sonar, un feed futuro).
+
+const inp: React.CSSProperties = {
+  background:   'transparent',
+  border:       'none',
+  color:        colors.neutral,
+  fontFamily:   fonts.sans,
+  fontSize:     '13px',
+  padding:      '4px 0',
+  width:        '100%',
+  outline:      'none',
+}
+
+function Field({
+  label, value, onChange, type = 'text', filled = false, placeholder = '',
+}: {
+  label: string
+  value: string | number
+  onChange: (v: string) => void
+  type?: string
+  filled?: boolean
+  placeholder?: string
+}) {
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+        <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          {label}
+        </span>
+        {filled && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.06em' }}>✓</span>}
+      </div>
+      <div style={{ borderBottom: `1px solid ${filled ? colors.primary : colors.border}`, transition: 'border-color 0.2s' }}>
+        <input
+          type={type}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          style={{ ...inp, color: filled ? colors.neutral : colors.secondary }}
+        />
+      </div>
+    </div>
+  )
+}
+
+export function SmartPropertyModal({ onClose, onCreated }: Props) {
+  const [step, setStep]           = useState<'capture' | 'review'>('capture')
+  const [url, setUrl]             = useState('')
+  const [text, setText]           = useState('')
+  const [parsing, setParsing]     = useState(false)
+  const [parseError, setParseError] = useState<string | null>(null)
+
+  const [parsed, setParsed]       = useState<ParsedProperty | null>(null)
+  const [name, setName]           = useState('')
+  const [address, setAddress]     = useState('')
+  const [city, setCity]           = useState('Monterrey')
+  const [purchasePrice, setPurchasePrice] = useState(0)
+  const [sqmLand, setSqmLand]     = useState(0)
+  // Obra A EJECUTAR — la que se va a construir o remodelar. Empieza en cero
+  // aunque el anuncio traiga metros construidos: esos ya están pagados dentro
+  // del precio de compra.
+  const [sqmConstruction, setSqmConstruction]               = useState(0)
+  const [projectedSale, setProjectedSale]                   = useState(0)
+  // Vacío = el plazo lo supone el modelo (12 meses) y la ficha lo dirá. Poner
+  // 12 aquí lo guardaba como si alguien lo hubiera elegido.
+  const [holdMonths, setHoldMonths]                         = useState(0)
+  const [constructionCostPerSqm, setConstructionCostPerSqm] = useState(0)
+  const [rentMonthlyProjected, setRentMonthlyProjected] = useState(0)
+
+  const [image, setImage]               = useState<Blob | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [tipo, setTipo]           = useState('')
+
+  const [saving, setSaving]       = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [lat, setLat]             = useState(0)
+  const [lon, setLon]             = useState(0)
+
+  const handleImageSelect = useCallback((blob: Blob) => {
+    setImagePreview(prev => { if (prev) URL.revokeObjectURL(prev); return null })
+    setImage(blob)
+    setImagePreview(URL.createObjectURL(blob))
+  }, [])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      if (step !== 'capture') return
+      const item = Array.from(e.clipboardData?.items ?? []).find(i => i.type.startsWith('image/'))
+      if (!item) return
+      const blob = item.getAsFile()
+      if (blob) handleImageSelect(blob)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [handleImageSelect, step])
+
+  async function handleAnalyze() {
+    setParsing(true)
+    setParseError(null)
+    try {
+      const result = await parseProperty(url.trim(), text.trim(), image ?? undefined)
+      setParsed(result)
+      setName(result.name || '')
+      setAddress(result.address || '')
+      setCity(result.city || 'Monterrey')
+      setTipo(result.type || '')
+      setPurchasePrice(result.price || 0)
+      setSqmLand(result.sqmLand || 0)
+      // result.sqmConstruction NO se copia a propósito: son los metros que el
+      // inmueble YA tiene, y multiplicarlos por un costo de obra sumaba una
+      // segunda vez lo que el precio del anuncio ya cobraba. Se conservan como
+      // nota al guardar.
+      setLat(result.latitude ?? 0)
+      setLon(result.longitude ?? 0)
+      setStep('review')
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Error al analizar')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  async function handleSave() {
+    if (!canSave) return
+    setSaving(true)
+    setSaveError(null)
+    // Lo construido según el anuncio es un hecho del inmueble que vale la pena
+    // conservar; lo que no puede es entrar al modelo como obra por ejecutar.
+    const built = parsed?.sqmConstruction
+      ? `Construido según el anuncio: ${parsed.sqmConstruction} m².`
+      : ''
+    const notes = [text.trim() || parsed?.notes || '', built].filter(Boolean).join('\n\n')
+    try {
+      const created = await createProperty({
+        name:                 name.trim(),
+        address:              address.trim() || name.trim(),
+        city:                 city.trim() || 'Monterrey',
+        assetType:            tipo || undefined,
+        purchasePrice,
+        sqmLand,
+        sqmConstruction,
+        projectedSale,
+        // Sin plazo capturado el modelo aplica el suyo y lo declara.
+        holdMonths:           holdMonths || undefined,
+        constructionCostPerSqm,
+        // Una renta de 0 no es una renta: la ausencia se expresa dejándola
+        // vacía. Mandar el cero lo rechaza la base (rent_monthly_* > 0).
+        rentMonthlyProjected: rentMonthlyProjected || undefined,
+        url:                  url.trim() || undefined,
+        notes:                notes || undefined,
+        latitude:             lat,
+        longitude:            lon,
+      })
+      if (image && created?.id) {
+        try { await uploadPropertyImage(created.id, image instanceof File ? image : new File([image], 'screenshot.png', { type: image.type })) } catch { /* non-fatal */ }
+      }
+      onCreated()
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Count how many key fields were filled by the parser
+  const filledCount = parsed
+    ? [parsed.name, parsed.address, parsed.price, parsed.sqmLand, parsed.latitude]
+        .filter(v => v !== '' && v !== 0 && v != null).length
+    : 0
+
+  const canAnalyze = (url.trim() || text.trim() || image) && !parsing
+
+  // Solo se bloquea lo que impide reconocer el inmueble. Lo que le falte al
+  // modelo lo dirá su propia lista de issues en cuanto exista la fila: capturar
+  // rápido y completar después es como se trabaja un prospecto.
+  const saveBlockers: string[] = []
+  if (!name.trim())    saveBlockers.push('Nombre')
+  if (!purchasePrice)  saveBlockers.push('Precio de compra')
+  const canSave = !saving && saveBlockers.length === 0
+
+  const overlay: React.CSSProperties = {
+    position: 'fixed', inset: 0,
+    background: 'rgba(0,0,0,0.7)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 1000,
+  }
+  const box: React.CSSProperties = {
+    background:   colors.surfaceAlt,
+    border:       `1px solid ${colors.border}`,
+    borderRadius: '2px',
+    padding:      '28px 32px',
+    width:        '440px',
+    maxWidth:     'calc(100vw - 32px)',
+    maxHeight:    'calc(100vh - 64px)',
+    overflowY:    'auto',
+  }
+  const btn = (primary: boolean, disabled = false): React.CSSProperties => ({
+    background:   primary ? colors.primary : 'transparent',
+    border:       primary ? 'none' : `1px solid ${colors.border}`,
+    color:        primary ? colors.neutral : colors.secondary,
+    fontFamily:   fonts.label,
+    fontSize:     '10px',
+    letterSpacing: '0.1em',
+    padding:      '6px 14px',
+    cursor:       disabled ? 'not-allowed' : 'pointer',
+    opacity:      disabled ? 0.5 : 1,
+  })
+
+  return (
+    <div style={overlay} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={box}>
+
+        {/* Header */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ fontFamily: fonts.label, fontSize: '11px', color: colors.neutral, letterSpacing: '0.12em' }}>
+            NUEVA PROPIEDAD
+          </div>
+          {step === 'review' && (
+            <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.08em', marginTop: '4px' }}>
+              ◈ {filledCount} campo{filledCount !== 1 ? 's' : ''} encontrado{filledCount !== 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
+
+        {/* ── Step 1: Capture ── */}
+        {step === 'capture' && (
+          <>
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '4px', textTransform: 'uppercase' }}>
+                URL (opcional)
+              </div>
+              <div style={{ borderBottom: `1px solid ${colors.border}` }}>
+                <input
+                  type="url"
+                  value={url}
+                  onChange={e => setUrl(e.target.value)}
+                  placeholder="https://lamudi.com.mx/..."
+                  style={{ ...inp, color: url ? colors.neutral : colors.secondary }}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', marginBottom: '4px', textTransform: 'uppercase' }}>
+                Descripción / notas
+              </div>
+              <div style={{ border: `1px solid ${colors.border}`, padding: '8px' }}>
+                <textarea
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  placeholder="Pega descripción, mensaje, o escribe lo que sabes de la propiedad…"
+                  rows={4}
+                  style={{ ...inp, resize: 'vertical', lineHeight: '1.5', color: text ? colors.neutral : colors.secondary }}
+                />
+              </div>
+            </div>
+
+            {/* Image paste / drop zone */}
+            <div
+              style={{
+                border: `1px dashed ${imagePreview ? colors.primary : colors.border}`,
+                borderRadius: '2px',
+                padding: '16px',
+                marginBottom: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                position: 'relative',
+              }}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault()
+                const file = e.dataTransfer.files[0]
+                if (file?.type.startsWith('image/')) handleImageSelect(file)
+              }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImageSelect(file)
+                }}
+              />
+              {imagePreview ? (
+                <>
+                  <img src={imagePreview} alt="preview" style={{ maxHeight: '120px', maxWidth: '100%', objectFit: 'contain' }} />
+                  <button
+                    style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '0.06em' }}
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (imagePreview) URL.revokeObjectURL(imagePreview)
+                      setImage(null)
+                      setImagePreview(null)
+                    }}
+                  >
+                    QUITAR IMAGEN
+                  </button>
+                </>
+              ) : (
+                <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.06em', textAlign: 'center' }}>
+                  PEGAR IMAGEN (Ctrl+V) · ARRASTRAR · O HACER CLIC
+                </span>
+              )}
+            </div>
+
+            {parseError && (
+              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: '#E62300', marginBottom: '16px' }}>
+                {parseError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button style={btn(false)} onClick={onClose}>CANCELAR</button>
+              <button style={btn(false)} onClick={() => setStep('review')}>LLENAR MANUALMENTE ▸</button>
+              <button style={btn(true, !canAnalyze)} onClick={handleAnalyze} disabled={!canAnalyze}>
+                {parsing ? 'ANALIZANDO…' : 'ANALIZAR ▸'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── Step 2: Review ── */}
+        {step === 'review' && (
+          <>
+            <Field
+              label="Nombre"
+              value={name}
+              onChange={setName}
+              filled={!!parsed?.name}
+              placeholder="Nombre de la propiedad"
+            />
+            <Field
+              label="Dirección"
+              value={address}
+              onChange={setAddress}
+              filled={!!parsed?.address}
+              placeholder="Calle, colonia, ciudad"
+            />
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+                <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  Tipo
+                </span>
+                {tipo && <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.06em' }}>✓</span>}
+              </div>
+              <div style={{ borderBottom: `1px solid ${tipo ? colors.primary : colors.border}`, transition: 'border-color 0.2s' }}>
+                <select
+                  value={tipo}
+                  onChange={e => setTipo(e.target.value)}
+                  style={{ ...inp, color: tipo ? colors.neutral : colors.secondary, cursor: 'pointer' }}
+                >
+                  <option value="">— seleccionar —</option>
+                  {ASSET_TYPES.map(t => <option key={t} value={t}>{ASSET_TYPE_LABEL[t]}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Field
+                label="Ciudad"
+                value={city}
+                onChange={setCity}
+                filled={!!parsed?.city && parsed.city !== 'Monterrey'}
+                placeholder="Monterrey"
+              />
+              <Field
+                label="M² Terreno"
+                value={sqmLand || ''}
+                onChange={v => setSqmLand(parseFloat(v) || 0)}
+                type="number"
+                filled={(parsed?.sqmLand ?? 0) > 0}
+                placeholder="0"
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Field
+                label="Obra a ejecutar (m²)"
+                value={sqmConstruction || ''}
+                onChange={v => setSqmConstruction(parseFloat(v) || 0)}
+                type="number"
+                filled={false}
+                placeholder={parsed?.sqmConstruction ? `0 · ya construidos: ${parsed.sqmConstruction}` : '0'}
+              />
+              <Field
+                label="Costo obra/m² (MXN)"
+                value={constructionCostPerSqm || ''}
+                onChange={v => setConstructionCostPerSqm(parseFloat(v) || 0)}
+                type="number"
+                filled={false}
+                placeholder="0"
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Field
+                label="Precio de compra (MXN)"
+                value={purchasePrice || ''}
+                onChange={v => setPurchasePrice(parseFloat(v) || 0)}
+                type="number"
+                filled={(parsed?.price ?? 0) > 0}
+                placeholder="0"
+              />
+              <Field
+                label="Venta proyectada (MXN)"
+                value={projectedSale || ''}
+                onChange={v => setProjectedSale(parseFloat(v) || 0)}
+                type="number"
+                filled={false}
+                placeholder="0"
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Field
+                label="Renta mensual estimada (MXN)"
+                value={rentMonthlyProjected || ''}
+                onChange={v => setRentMonthlyProjected(parseFloat(v) || 0)}
+                type="number"
+                filled={false}
+                placeholder="0"
+              />
+              <Field
+                label="Plazo (meses)"
+                value={holdMonths || ''}
+                onChange={v => setHoldMonths(parseInt(v) || 0)}
+                type="number"
+                filled={false}
+                placeholder="12 · supuesto"
+              />
+            </div>
+
+            {/* Geo info strip */}
+            {parsed?.municipioName && (
+              <div style={{ marginBottom: '8px' }}>
+                <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.primary, letterSpacing: '0.06em' }}>
+                  📍 {parsed.municipioName}{parsed.colonia ? ` · ${parsed.colonia}` : ''}
+                </span>
+              </div>
+            )}
+
+            {/* Lat/lon picker */}
+            <div style={{ marginBottom: '20px' }}>
+              <LatLonPicker lat={lat} lon={lon} onChange={(newLat, newLon) => { setLat(newLat); setLon(newLon) }} />
+            </div>
+
+            {saveBlockers.length > 0 && (
+              <div style={{ marginBottom: '12px' }}>
+                {saveBlockers.map((b, i) => (
+                  <div key={i} style={{ fontFamily: fonts.label, fontSize: '9px', color: '#E62300', letterSpacing: '0.05em', lineHeight: '1.8' }}>
+                    ✕ {b}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {saveError && (
+              <div style={{ fontFamily: fonts.label, fontSize: '10px', color: '#E62300', marginBottom: '16px' }}>
+                {saveError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+              <button style={btn(false)} onClick={() => { setStep('capture'); setSaveError(null) }}>← VOLVER</button>
+              <button style={btn(true, !canSave)} onClick={handleSave} disabled={!canSave}>
+                {saving ? 'GUARDANDO…' : 'GUARDAR ▸'}
+              </button>
+            </div>
+          </>
+        )}
+
+      </div>
+    </div>
+  )
+}

@@ -11,35 +11,61 @@ This skill is the only source of truth for prospectus generation. Do not create 
 
 ## Step 1 — Read sources
 
-Read these two files before touching anything else:
+Read these three files before touching anything else:
 
+- `docs/glosario.md` — **the name of every number.** One concept, one name, on
+  every surface. Do not invent a label; if the figure you are about to print has
+  no entry there, you are about to publish a concept that does not exist.
 - `docs/DESIGN.md` — all color tokens, typography, component rules
-- `data/schema.sql` — field names before querying
+- `db/schema.sql` — field names before querying
 
-## Step 2 — Query the DB
+## Step 2 — Read the favorited properties
+
+There is one table, `properties`, and `status` is the stage of a building's life. **Prefer the API over SQL**: it returns every derived metric already computed for the stage, which is exactly what the document prints. Raw SQL would force you to re-derive them, and re-derived numbers drift.
 
 ```bash
-source .env && docker exec patrio-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
-SELECT name, address, total_investment, current_valuation,
-       total_units, acquisition_date, milestones
-FROM projects WHERE is_favorite = true
-ORDER BY acquisition_date;"
-
-source .env && docker exec patrio-db-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -F'|' -c "
-SELECT
-  name, address, hold_months,
-  land_price * (1 + acquisition_cost_pct/100.0)
-    + permits_cost + subdivision_cost
-    + (construction_cost_per_sqm * sqm_land * (1 + construction_overhead/100.0))
-  AS total_cost,
-  projected_sale,
-  ROUND((rent_monthly * 12) / NULLIF(land_price, 0) * 100, 1) AS cap_rate_pct,
-  rent_monthly, notes
-FROM prospects WHERE is_favorite = true
-ORDER BY projected_sale DESC;"
+curl -s "$REFIGAN_API/api/properties" -H "Authorization: Bearer $REFIGAN_API_KEY" \
+  | jq '[.[] | select(.isFavorite)] | group_by(.status) | map({status: .[0].status, count: length})'
 ```
 
-> **Note:** If no favorites are set, the corresponding section will be empty. Mark at least one prospect and one project as favorite in the web app before running this skill.
+### The four buckets, and why they are four
+
+The document does not have one "track record". It has two, because a closed deal and a held one are not presented with the same figures — one reports what it collected, the other what it is worth today:
+
+Every label below is the canonical one from `docs/glosario.md`. This table is the
+inventory of what each bucket may print — it mirrors `_sold_card`,
+`_rented_card`, `_development_card` and `_opportunity` in
+`app/api/lib/prospectus_html.py`, and it is verified against them, not
+remembered.
+
+| Bucket | `status` | Field → label |
+|---|---|---|
+| Track Record · closed | `vendida` | `totalInvestment` Inversión total · `salePrice` Precio de venta · `realizedGain`+`realizedGainPct` Ganancia realizada · `realizedRoi` ROI real anual · `holdMonthsActual` Plazo real |
+| Track Record · held | `en_renta` | `totalInvestment` Inversión total · `currentValuation` Valuación · *(fechada con `valuationDate`)* · `roi` ROI anual · `unrealizedGainPct` Ganancia no realizada % · `capRateActual` Cap rate real s/ inversión |
+| En Desarrollo | `desarrollo` | `totalInvestment` Inversión total · `projectedSale` Venta proyectada · `projectedRoi` ROI proy. anual · `projectedRoiTotal` Ganancia proyectada % · `capRate` Cap rate proy. s/ inversión |
+| Oportunidad Activa | `oferta`, then `prospecto` | `holdMonths` Plazo proyectado · `totalInvestment` Inversión total · `projectedSale` Venta proyectada · `projectedProfit`+`projectedRoiTotal` Ganancia proyectada · `capRate` Cap rate proy. s/ inversión |
+
+Ordering inside each bucket: sold first (a realised result is the strongest proof the firm has, and a valuation mark should never come ahead of a sale), each group sorted by gain descending. In the opportunity pages `oferta` leads — it is the deal the firm has already committed to; an unbid prospect is the weakest page in the deck and goes last.
+
+**En Desarrollo prints no valuation.** A property bought last month has a
+valuation that was born equal to its cost, and printing it reads as an appraisal
+nobody performed. What that stage can honestly show is its projection.
+
+**Never present a projection as a result.** `projectedProfit` / `projectedRoi`
+are what the model says; `realizedGain` / `realizedRoi` are what the sale paid.
+Both groups are computed on every property — the API stopped gating the
+projection so the plan-vs-result pair stays readable — so the *labels* are what
+keeps them apart. That is exactly why the table above is a field→label map and
+not a list of fields.
+
+**Two enums, never raw.** `assetType` (Casa · Departamento · Local · Edificio ·
+Lote · Bodega) and `strategyType` (Reconversión · Obra nueva · Flip · Renta) are
+two different questions. Print both, translated. «Adaptive reuse» and «Ground
+up» are not words in this business.
+
+> **Note:** If no properties are favorited the endpoint returns `400` and the document has nothing to say. Mark at least one property as favorite in the web app before running this skill.
+
+> **Shortcut:** `POST /api/documents/prospectus` (operation_id `documents_prospectus`) already builds and renders this deck from the same partition. Use this skill when the layout itself is what needs to change; use the endpoint when you just need the current PDF.
 
 ## Step 3 — Write `files/prospectus.html`
 
@@ -50,13 +76,26 @@ Build the HTML using the design tokens from `docs/DESIGN.md`. Apply them directl
 ```text
 Cover page       → dark near-black background, wordmark, headline, date
 Visión section   → problem → emotion → solution (see copywriting rules below)
-Track Record     → ONE page-section per project, each with its own band showing project name
-                   Band label: "TRACK RECORD · 01", title: project name
+Track Record     → ONE page-section per property, each with its own band showing the property name
+                   Band label: "TRACK RECORD · 01", title: property name
                    Content: narrative h2 + paragraph + 3-col KPI grid + timeline
-Oportunidad      → section band + 4-col KPI grid (Plazo, Cap Rate, Inversión Total, Valuación Proyectada) + two-col (financials | characteristics)
-                   Do NOT show ROI — reveals internal margin. Use Plazo (investment_date → sale_date, in months) instead.
+En Desarrollo    → same card shape, band label "EN DESARROLLO · 01" — works in progress
+Oportunidad      → section band + KPI grid (Plazo proyectado, Inversión total, Venta proyectada,
+                   Ganancia proyectada, Cap rate proy. sobre inversión) + two-col (financials | characteristics)
+                   «Valuación proyectada» does not exist: that number is the Venta proyectada
+                   (projectedSale). A valuación is a dated estimate of what the property is worth
+                   TODAY, and no opportunity has one.
 CTA              → dark near-black background, contact
 ```
+
+> **Open question — how much margin the opportunity page shows.** This skill used
+> to say "do NOT show ROI, it reveals internal margin", while
+> `POST /api/documents/prospectus` prints **Ganancia proyectada** as an amount
+> *and* a percentage on that very page — which discloses strictly more than a ROI
+> would. The rule and the shipped document disagree, and which one wins is a
+> product call, not a vocabulary one. Until it is decided, the endpoint is the
+> truth and the bucket table above describes it. Do not resolve this by inventing
+> a third behaviour.
 
 ### CSS rules (derive values from DESIGN.md tokens)
 
@@ -129,7 +168,7 @@ Text on all bands stays `neutral` (#F2F0EB) — all three backgrounds are dark e
 
    This keeps the colored band glued to its content — it will never be the last thing on a page with the content starting on the next.
 
-   **CRITICAL: each `.page-section` must fit on one page.** When `break-inside: avoid` is applied to a container taller than a page, Chromium fills the entire previous page with the element's background color before rendering it — producing a solid-color blank page. The fix: never put multiple projects inside one `.page-section`. Give each project its own band + wrapper. For Track Record, each project is its own `<div class="page-section section-track">` with its own `<div class="section-header">` showing the project name as the band title.
+   **CRITICAL: each `.page-section` must fit on one page.** When `break-inside: avoid` is applied to a container taller than a page, Chromium fills the entire previous page with the element's background color before rendering it — producing a solid-color blank page. The fix: never put multiple properties inside one `.page-section`. Give each property its own band + wrapper. For Track Record, each property is its own `<div class="page-section section-track">` with its own `<div class="section-header">` showing the property name as the band title.
 
 2. **`page-break-after: avoid` on `.section-header`** — belt-and-suspenders so the band never orphans even outside a wrapper.
 
@@ -176,7 +215,7 @@ Timeline date     7pt   Inter    color: secondary  letter-spacing: 0.12em  upper
 
 **3-col metric grid** (track record KPIs): `grid-template-columns: repeat(3, 1fr)`
 
-**4-col metric grid** (prospect highlights): `grid-template-columns: repeat(4, 1fr)` — use `metric-value compact` (20pt) so "$10,095,000" doesn't overflow
+**4-col metric grid** (opportunity highlights): `grid-template-columns: repeat(4, 1fr)` — use `metric-value compact` (20pt) so "$10,095,000" doesn't overflow
 
 **2-col content**: `grid-template-columns: 1fr 1fr; gap: 56px` — left col gets financials, right col gets characteristics
 
@@ -292,8 +331,16 @@ Use this verbatim copy every time. Do not paraphrase.
 
 ### Data rendering rules
 
-- **Milestones JSON:** parse `{"YYYY-MM": "description"}`, render as `<table class="timeline">` sorted by key
+- **Milestones JSON:** parse `{"YYYY-MM": "description"}` from the `milestones` column, render as `<table class="timeline">` sorted by key
 - **Numbers:** always formatted as `$X,XXX,XXX` — never raw floats
+- **Labels:** taken from `docs/glosario.md`, never improvised. A metric label
+  names one API field; if two cards show the same field they use the same words,
+  and if one label would fit two fields it is the wrong label. Banned outright:
+  *Plusvalía*, *Valuación proyectada*, *Inversión desarrollo*, *Ganancia est.*,
+  *meses en cartera*, and *Cap rate* without its denominator (the formula is
+  yield on cost, and «cap rate» alone means NOI over market value).
+- **Enums:** `assetType` and `strategyType` are translated, never printed raw and
+  never de-underscored into fake Spanish
 - **Headings:** always single line — no `<br>` tags inside `<h2>` or `<h1>`
 
 ### Font loading — always use local @font-face, never Google Fonts CDN
@@ -378,6 +425,10 @@ Confirm `files/prospectus.pdf` exists before reporting done.
 ## What NOT to do
 
 - Do not create `scripts/generate_prospectus.py` or any external script
+- Do not invent a label — read them from `docs/glosario.md`; a number whose name
+  you had to make up is a number the reader cannot check
+- Do not print a raw enum (`adaptive_reuse`) or a half-translated one ("Adaptive reuse")
+- Do not put a valuation on an `En Desarrollo` card — nobody appraised it
 - Do not hardcode colors — read them from `docs/DESIGN.md`
 - Do not put `<br>` inside headings
 - Do not show raw float numbers — always format as currency

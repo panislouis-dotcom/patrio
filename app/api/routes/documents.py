@@ -8,7 +8,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
-from api.db import get_projects, get_prospects, get_prospect, get_team_members
+from api.db import get_team_members
+from api.properties_db import get_properties, get_property
 from api.lib.prospectus_html import build_prospectus_html, render_to_pdf
 from api.lib.term_sheet_html import build_term_sheet_html
 from api.auth import get_current_user
@@ -55,18 +56,36 @@ def _embed_images(items: list[dict]) -> None:
                 img["dataUri"] = None
 
 
+def _by_status(favorites: list[dict], *statuses: str) -> list[dict]:
+    """The favorites in these statuses, grouped in the order the statuses are
+    listed — which is the order the document wants them in."""
+    return [p for status in statuses for p in favorites if p.get("status") == status]
+
+
 @router.post("/prospectus", operation_id="documents_prospectus")
 async def generate_prospectus(current_user: dict = Depends(get_current_user)):
-    projects = [p for p in get_projects() if p.get("isFavorite")]
-    prospects = [p for p in get_prospects() if p.get("isFavorite")]
-    if not projects and not prospects:
+    favorites = [p for p in get_properties() if p.get("isFavorite")]
+    if not favorites:
         raise HTTPException(
             status_code=400,
-            detail="No favorites set. Mark at least one project or prospect as favorite.",
+            detail="No favorites set. Mark at least one property as favorite.",
         )
-    await asyncio.to_thread(_embed_images, projects)
-    await asyncio.to_thread(_embed_images, prospects)
-    html = build_prospectus_html(projects, prospects, get_team_members())
+    await asyncio.to_thread(_embed_images, favorites)
+    # Cómo lee el prospecto una propiedad, por etapa. El track record es lo que
+    # la firma ya hizo, y llega en dos cubetas porque una vendida se presume con
+    # su resultado realizado y una en renta con su marca: son dos tarjetas
+    # distintas, no una con condicionales. En desarrollo es obra en curso. Las
+    # páginas de oportunidad son a lo que un inversionista todavía puede
+    # entrar — la oferta encabeza porque es el trato al que la firma ya se
+    # comprometió; un prospecto que nadie ha ofertado es lo más débil del deck y
+    # va al final.
+    html = build_prospectus_html(
+        _by_status(favorites, "vendida"),
+        _by_status(favorites, "en_renta"),
+        _by_status(favorites, "desarrollo"),
+        _by_status(favorites, "oferta", "prospecto"),
+        get_team_members(),
+    )
     try:
         pdf = await asyncio.wait_for(render_to_pdf(html), timeout=_RENDER_TIMEOUT_S)
     except Exception:
@@ -87,23 +106,36 @@ def _slugify(s: str) -> str:
 class TermSheetRequest(BaseModel):
     investor_name: str
     investment_amount: float
-    prospect_id: Optional[int] = None
+    property_id: Optional[int] = None
     rate: float = 0.12
 
 
 @router.post("/term-sheet", operation_id="documents_term_sheet")
 async def generate_term_sheet(body: TermSheetRequest, _: dict = Depends(get_current_user)):
-    if body.prospect_id is not None:
-        prospect = get_prospect(body.prospect_id)
-        if prospect is None:
-            raise HTTPException(status_code=400, detail="Prospect not found")
+    if body.property_id is not None:
+        subject = get_property(body.property_id)
+        if subject is None:
+            raise HTTPException(status_code=400, detail="Propiedad no encontrada")
     else:
-        candidates = [p for p in get_prospects() if p.get("status") == "evaluating"]
+        # The pool is `oferta`: a term sheet is raised against a deal the firm is
+        # actually bidding on, not against one it is still evaluating.
+        candidates = [p for p in get_properties() if p.get("status") == "oferta"]
         if not candidates:
-            raise HTTPException(status_code=400, detail="No evaluating prospects found")
-        prospect = max(candidates, key=lambda p: p.get("roi") or 0)
+            raise HTTPException(status_code=400, detail="No hay propiedades en oferta")
+        subject = max(candidates, key=lambda p: p.get("projectedRoi") or 0)
 
-    html = build_term_sheet_html(prospect, body.investor_name, body.investment_amount, body.rate)
+    # El plazo es la columna vertebral del documento: el resumen lo declara y los
+    # tres escenarios de rendimiento se calculan sobre él. Tiene que estar
+    # CAPTURADO: el modelo siempre puede suponer 12 meses, y suponerlos sirve
+    # para rankear un prospecto, pero no para comprometerle un plazo por escrito
+    # a un inversionista con nombre y apellido.
+    if subject.get("assumptions", {}).get("holdMonths", {}).get("source") != "captured":
+        raise HTTPException(
+            status_code=400,
+            detail="La propiedad no tiene plazo modelado: captúralo antes de emitir la carta.",
+        )
+
+    html = build_term_sheet_html(subject, body.investor_name, body.investment_amount, body.rate)
     try:
         pdf = await asyncio.wait_for(render_to_pdf(html), timeout=_RENDER_TIMEOUT_S)
     except Exception:

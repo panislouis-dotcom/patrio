@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { streamSonarRun, importSonarSignal, importSonarToComparables, fetchSonarSignals, fetchZoneMedians, fetchProspects, fetchSonarZones, fetchZones } from '../lib/api'
+import { streamSonarRun, importSonarSignal, importSonarToComparables, fetchSonarSignals, fetchZoneMedians, fetchProperties, fetchSonarZones, fetchZones } from '../lib/api'
 import type { SonarRunEvent } from '../lib/api'
 import type { SonarSignal, SonarState, Zone } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
@@ -181,15 +181,18 @@ function PortalRow({ name, state, pulse }: { name: string; state: PortalPhase; p
 export function SonarTab() {
   const navigate = useNavigate()
   const [signals, setSignals]         = useState<SonarSignal[]>([])
+  // Marcado en cuanto un escaneo escribe resultados, para que la lectura del
+  // escaneo anterior no los pise si resuelve tarde.
+  const scanWrote                     = useRef(false)
   const [importedUrls, setImportedUrls] = useState<Set<string>>(new Set())
   const [compSavedIds, setCompSavedIds] = useState<Set<number>>(new Set())
   const [compPickerId, setCompPickerId] = useState<number | null>(null)
   const [zones, setZones] = useState<Zone[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
 
-  // Pre-load saved prospect URLs so signals already imported show "GUARDADA" across sessions
+  // Pre-load saved property URLs so signals already imported show "GUARDADA" across sessions
   useEffect(() => {
-    fetchProspects().then(ps => {
+    fetchProperties().then(ps => {
       const urls = new Set(ps.map(p => p.url).filter(Boolean))
       setImportedUrls(urls as Set<string>)
     }).catch(() => {})
@@ -239,7 +242,12 @@ export function SonarTab() {
 
   // load last scan + zone config on mount
   useEffect(() => {
+    // La lectura del último escaneo puede resolver DESPUÉS de que un escaneo
+    // nuevo ya escribió sus resultados, y entonces los pisa: el encabezado dice
+    // "1 encontradas" y la tabla dice "Sin señales". Lo viejo solo se pinta si
+    // nadie escribió mientras tanto.
     fetchSonarSignals().then(sigs => {
+      if (scanWrote.current) return
       const { signals: deduped, removed } = deduplicateSignals(sigs)
       setSignals(deduped)
       setDedupRemoved(removed)
@@ -332,6 +340,7 @@ export function SonarTab() {
           ? { phase: 'done', total: prev.total, enriched: ev.enriched }
           : { phase: 'done', total: ev.enriched, enriched: ev.enriched })
         const { signals: deduped, removed } = deduplicateSignals(ev.signals)
+        scanWrote.current = true
         setSignals(deduped)
         setDedupRemoved(removed)
         setDedupPhase({ phase: 'done', removed })
@@ -352,7 +361,7 @@ export function SonarTab() {
     setRunSummary(null)
     setSignals([])
     setZoneFilter('all')
-    // importedUrls intentionally preserved — pre-loaded prospect URLs stay across scans
+    // importedUrls intentionally preserved — pre-loaded property URLs stay across scans
     try {
       for await (const ev of streamSonarRun(selectedCves)) handleEvent(ev)
     } catch (e) {
@@ -364,9 +373,9 @@ export function SonarTab() {
 
   async function handleImport(s: SonarSignal) {
     try {
-      const { prospect } = await importSonarSignal(s)
+      const { property } = await importSonarSignal(s)
       setImportedUrls(prev => new Set([...prev, s.url]))
-      navigate(`/prospectos/tabla/${prospect.id}`)
+      navigate(`/propiedades/${property.id}`)
     } catch {
       setActionError('Error al importar')
     }

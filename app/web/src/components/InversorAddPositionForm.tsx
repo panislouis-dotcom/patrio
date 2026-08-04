@@ -1,10 +1,10 @@
-import type { Project } from '../lib/types'
+import type { Property } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 
 interface Props {
-  allProjects: Project[]
-  projectId: string
-  setProjectId: (v: string) => void
+  properties: Property[]
+  propertyId: string
+  setPropertyId: (v: string) => void
   interested: string
   setInterested: (v: string) => void
   committed: string
@@ -30,7 +30,7 @@ const fStyle: React.CSSProperties = {
 }
 
 export function InversorAddPositionForm({
-  allProjects, projectId, setProjectId,
+  properties, propertyId, setPropertyId,
   interested, setInterested, committed, setCommitted, funded, setFunded,
   rate, setRate, date, setDate, adding, onAdd,
 }: Props) {
@@ -42,9 +42,9 @@ export function InversorAddPositionForm({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px', padding: '10px', background: colors.surface, border: `1px solid ${colors.border}` }}>
-      <select value={projectId} onChange={e => setProjectId(e.target.value)} style={fStyle}>
-        <option value="">— seleccionar proyecto —</option>
-        {allProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      <select value={propertyId} onChange={e => setPropertyId(e.target.value)} aria-label="Propiedad" style={fStyle}>
+        <option value="">— seleccionar propiedad —</option>
+        {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 60px 120px', gap: '6px' }}>
         {amountFields.map(([label, val, setter]) => (
@@ -64,12 +64,12 @@ export function InversorAddPositionForm({
       </div>
       <button
         onClick={onAdd}
-        disabled={!projectId || adding}
+        disabled={!propertyId || adding}
         style={{
-          background: !projectId ? colors.border : colors.primary,
+          background: !propertyId ? colors.border : colors.primary,
           border: 'none',
           color: colors.neutral,
-          cursor: !projectId ? 'not-allowed' : 'pointer',
+          cursor: !propertyId ? 'not-allowed' : 'pointer',
           fontFamily: fonts.label,
           fontSize: '9px',
           letterSpacing: '0.08em',

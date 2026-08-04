@@ -9,12 +9,34 @@ interface Props {
   input?: React.ReactNode
   /** Small caption beside the value, e.g. "CALCULADA DEL DESGLOSE". */
   hint?: string
+  /**
+   * Vaciar el campo. Es una acción aparte y explícita porque una caja en blanco
+   * ya significa otra cosa — "no lo toques" — y confundir las dos es como se
+   * borran datos sin querer.
+   */
+  onClear?: () => void
 }
 
 /** A StatRow that swaps its value for an input while the page is in edit mode. */
-export function EditableRow({ label, editing, value, input, hint }: Props) {
+export function EditableRow({ label, editing, value, input, hint, onClear }: Props) {
+  // El input queda como hijo directo del 55%: con o sin botón de vaciar, todas
+  // las filas alinean su caja en la misma columna.
   const right = editing && input != null
-    ? <span style={{ width: '55%', flexShrink: 0 }}>{input}</span>
+    ? (
+      <span style={{ width: '55%', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {input}
+        {onClear && (
+          <button
+            onClick={onClear}
+            title="Vaciar el campo"
+            aria-label={`Vaciar ${label}`}
+            style={{ flexShrink: 0, background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', lineHeight: 1, padding: '4px 6px' }}
+          >
+            ✕
+          </button>
+        )}
+      </span>
+    )
     : <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>{value}</span>
 
   return (

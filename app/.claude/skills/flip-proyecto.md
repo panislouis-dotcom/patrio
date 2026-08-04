@@ -9,6 +9,22 @@ description: Use when asked to generate a full project evaluation template for a
 
 Generates a comprehensive mobile-first HTML project evaluation for a committed flip opportunity. Extends the Patrio project format (plantilla_patrio_proyectos.xlsx) with Section 4 rewritten to reflect the operator/investor split model. Includes obra distribution breakdown, timeline, and full financial waterfall.
 
+## Vocabulary — this skill does not speak the platform's
+
+**Read `docs/glosario.md` before you reuse a word from here.** This card is a
+back-of-envelope screen with its own ratio model, and three of its labels name
+formulas that the platform names differently:
+
+| Here | Formula here | The platform's word for it |
+|---|---|---|
+| Inversión total | adquisición ×1.065 + obra ×1.10 + comercialización | **not** `totalInvestment` — the platform has no comercialización term and prices obra with an overhead multiplier (×1.3 by default), so the two numbers will not match |
+| ROI anual | operator's net profit, after the investor cuota and ISR, annualized | **not** `projectedRoi`, which annualizes the gain over the whole investment before any split |
+| Margen bruto | (venta − inversión) / **venta** | **not** Ganancia proy. total, which divides by the **inversión** |
+
+So: do not paste a figure from this card into a property, a prospectus or a term
+sheet, and do not call a figure from those "ROI anual" because this card does.
+When the answer has to agree with the app, read it from the API.
+
 ## Step 0 — Ask for inputs
 
 Before generating anything, ask:
@@ -391,7 +407,7 @@ body {
   </div>
   <div class="hero-metric">
     <div class="value">[ROI]%</div>
-    <div class="label">ROI ANUAL</div>
+    <div class="label">ROI ANUAL OPERADOR</div>
   </div>
   <div class="hero-metric">
     <div class="value">[MULTIPLO]x</div>
@@ -574,7 +590,7 @@ body {
   <div class="hero-row" style="margin-top:16px;">
     <div class="hero-metric">
       <div class="value">[ROI]%</div>
-      <div class="label">ROI ANUAL</div>
+      <div class="label">ROI ANUAL OPERADOR</div>
     </div>
     <div class="hero-metric">
       <div class="value">[MARGEN]%</div>
@@ -602,7 +618,8 @@ body {
 - Replace ALL bracketed placeholders with computed values
 - Format numbers with commas: `$1,234,567`
 - For hero metrics use abbreviated format if > 1M: `$561K` or `$4.5M`
-- ROI and margins as percentage with 1 decimal
+- ROI and margins as percentage with 1 decimal; the ROI card is labelled
+  *ROI anual operador* — it is the operator's net return, not `projectedRoi`
 - Timeline months are estimates — user can customize
 - Default obra period = ~70% of total months (rounded)
 - Default comercialización start = obra end
