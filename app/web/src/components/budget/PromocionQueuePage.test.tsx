@@ -9,7 +9,6 @@ vi.mock('../../lib/api', async importOriginal => {
     ...actual,
     fetchPromotionQueue: vi.fn(),
     fetchBudgetCatalog: vi.fn(),
-    createCatalogChapter: vi.fn(),
     promoteBudgetLine: vi.fn(),
   }
 })
@@ -70,18 +69,19 @@ describe('PromocionQueuePage', () => {
     expect(screen.getByText(/Ningún importe se movió/)).not.toBeNull()
   })
 
-  it('con el catálogo vacío la cola sigue sirviendo: crea el capítulo y promueve', async () => {
-    // Es el caso del día uno, y sin él la cola sería una lista de cosas que no se
-    // pueden promover a ningún lado.
+  it('con el catálogo vacío la cola se cura con UN clic y sin alta previa', async () => {
+    // Es el estado del día uno. Sin destino explícito el servidor usa el
+    // capítulo que el renglón ya traía y lo crea si hace falta, así que el
+    // cliente no manda nada: crear el capítulo aquí antes sería un segundo
+    // camino a lo mismo, con una ventana en medio donde el capítulo existe y la
+    // partida no.
     await renderCola([group({})], [])
-    vi.mocked(api.createCatalogChapter).mockResolvedValue(catalogChapter(7, 'Acabados'))
     vi.mocked(api.promoteBudgetLine).mockResolvedValue(promocion('Piso cerámico 60×60', 4))
 
-    expect(screen.getByText('+ Crear capítulo «Acabados»')).not.toBeNull()
+    expect(screen.getByText('En su capítulo «Acabados» (se crea)')).not.toBeNull()
     fireEvent.click(screen.getByText('AGREGAR AL CATÁLOGO ▸'))
 
-    await waitFor(() => expect(api.createCatalogChapter).toHaveBeenCalledWith('Acabados'))
-    await waitFor(() => expect(api.promoteBudgetLine).toHaveBeenCalledWith(77, { chapterId: 7 }))
+    await waitFor(() => expect(api.promoteBudgetLine).toHaveBeenCalledWith(77, {}))
   })
 
   it('fusionar con una partida que ya existe manda itemId, no capítulo', async () => {

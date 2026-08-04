@@ -45,14 +45,23 @@ const normalize = (s: string) => s.trim().toLowerCase()
  */
 export const DEBOUNCE_MS = 250
 
-/** Debajo de tres letras no hay nada que deduplicar: «pi» se parece a todo. */
+/**
+ * Debajo de tres letras no hay nada que deduplicar, y el número está MEDIDO
+ * contra el catálogo real, no estimado: con una o dos letras el primer resultado
+ * es un empate de similitud —ruido que crece con el tamaño del catálogo— y desde
+ * la tercera el candidato correcto ya sale arriba.
+ */
 const MIN_CHARS = 3
 
 /**
  * Cuántos candidatos se traen. Se enseña UNO —una pregunta, no un menú— pero se
- * piden tres para que «NO, ES OTRA» tenga a dónde bajar.
+ * piden varios para que «NO, ES OTRA» tenga a dónde bajar.
+ *
+ * No se filtra por similitud aquí: el corte está medido en el servidor contra
+ * nombres reales, y un segundo umbral en el cliente sería una segunda definición
+ * de «se parece» que nadie volvería a calibrar.
  */
-const CANDIDATES = 3
+const CANDIDATES = 5
 
 interface Props {
   value: string
@@ -165,15 +174,20 @@ export function DedupeNameCell({ value, ariaLabel, style, lineId, linked, onChan
  * parecido»— obliga a abrir otra pantalla para saber qué se está aceptando.
  */
 function question(s: BudgetItemSuggestion, typed: string): string {
+  // El CAPÍTULO va en la frase, y es la mitad de la información. El duplicado
+  // suele estar tecleado bajo otro capítulo —«Piso cerámico» en Acabados contra
+  // «Colocación piso cerámico» en Albañilería— que es justo el caso que
+  // justifica todo esto; sin decirlo, aceptar la sugerencia es a ciegas.
+  const donde = s.chapterName ? ` (${s.chapterName})` : ''
   if (s.itemId != null) {
     return normalize(s.name) === normalize(typed)
-      ? `«${s.name}» ya está en el catálogo.`
-      : `¿Es la misma que «${s.name}» del catálogo?`
+      ? `«${s.name}» ya está en el catálogo${donde}.`
+      : `¿Es la misma que «${s.name}»${donde} del catálogo?`
   }
   // Todavía no está en el catálogo: alguien ya la escribió y nadie la ha
   // fichado. Escribirla igual es lo que hace que llegue a la cola de promoción
   // como un grupo de N en vez de como N grupos de uno.
   return s.usedInLines > 1
-    ? `«${s.name}» ya se escribió en ${s.usedInLines} renglones.`
-    : `«${s.name}» ya se escribió antes.`
+    ? `«${s.name}»${donde} ya se escribió en ${s.usedInLines} renglones.`
+    : `«${s.name}»${donde} ya se escribió antes.`
 }

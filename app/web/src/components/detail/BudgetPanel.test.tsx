@@ -54,8 +54,8 @@ const CATALOGO: BudgetCatalogChapter[] = [
 
 /** Una plantilla es un presupuesto sin propiedad: su id es un id de presupuesto. */
 const PLANTILLAS: BudgetTemplate[] = [
-  { id: 500, name: 'Remodelación casa antigua', notes: '', lines: 18, total: 1_800_000, createdAt: '', updatedAt: '' },
-  { id: 501, name: 'Obra nueva', notes: '', lines: 22, total: 2_300_000, createdAt: '', updatedAt: '' },
+  { id: 500, name: 'Remodelación casa antigua', notes: '', lineCount: 18, total: 1_800_000, createdAt: '', updatedAt: '' },
+  { id: 501, name: 'Obra nueva', notes: '', lineCount: 22, total: 2_300_000, createdAt: '', updatedAt: '' },
 ]
 
 const PROVEEDORES: Proveedor[] = [
@@ -586,6 +586,7 @@ describe('BudgetPanel', () => {
     await renderPanel(DETALLADO)
     fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
     const selector = await screen.findByLabelText('Presupuesto de origen')
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.applyBudgetSource).mockResolvedValue({
       line: null, budget: DETALLADO, property: propiedad() as Property, budgetIncrease: 0,
     })
@@ -598,12 +599,62 @@ describe('BudgetPanel', () => {
     expect(screen.getByText(/el residuo baja y el total no se mueve/)).not.toBeNull()
   })
 
+  it('copiar un presupuesto se confirma, porque copiar dos veces duplica', async () => {
+    // No es idempotente, al revés que bajar un capítulo del catálogo: dos
+    // renglones con el mismo nombre pueden ser dos renglones legítimos y el
+    // servidor no puede saber cuál es el caso. Lo sabe quien copia.
+    await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    const selector = await screen.findByLabelText('Presupuesto de origen')
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    fireEvent.change(selector, { target: { value: '500' } })
+    fireEvent.click(screen.getByText('COPIAR RENGLONES'))
+
+    expect(api.applyBudgetSource).not.toHaveBeenCalled()
+    expect(vi.mocked(window.confirm).mock.calls[0][0])
+      .toMatch(/los 18 renglones de «Remodelación casa antigua»/)
+  })
+
+  it('copiar dice cuántos renglones cayeron: no se ven, los capítulos están cerrados', async () => {
+    await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    await screen.findByLabelText('Presupuesto de origen')
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(api.applyBudgetSource).mockResolvedValue({
+      line: null, budget: DETALLADO, property: propiedad() as Property,
+      budgetIncrease: 0, linesAdded: 18,
+    })
+
+    fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '500' } })
+    fireEvent.click(screen.getByText('COPIAR RENGLONES'))
+
+    expect(await screen.findByText(/Se copiaron 18 renglones/)).not.toBeNull()
+  })
+
+  it('bajar dos veces el mismo capítulo no duplica, y lo dice', async () => {
+    // `apply-chapter` SÍ es idempotente: `item_id` da identidad exacta. Por eso
+    // el botón se puede dejar siempre activo sin confirmación.
+    await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    await screen.findByLabelText('Capítulo del catálogo')
+    vi.mocked(api.applyCatalogChapter).mockResolvedValue({
+      line: null, budget: DETALLADO, property: propiedad() as Property,
+      budgetIncrease: 0, linesAdded: 0,
+    })
+
+    fireEvent.change(screen.getByLabelText('Capítulo del catálogo'), { target: { value: '1' } })
+    fireEvent.click(screen.getByText('BAJAR'))
+
+    expect(await screen.findByText(/No había nada nuevo que copiar/)).not.toBeNull()
+  })
+
   it('guardar como plantilla copia ESTE presupuesto y no toca la obra', async () => {
     const onChange = await renderPanel(DETALLADO)
     fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
     await screen.findByLabelText('Nombre de la plantilla')
     vi.mocked(api.createBudgetTemplate).mockResolvedValue({
-      id: 600, name: 'Obra nueva', notes: '', lines: 3, total: 100_000,
+      id: 600, name: 'Obra nueva', notes: '', lineCount: 3, total: 100_000,
       createdAt: '', updatedAt: '',
     })
 

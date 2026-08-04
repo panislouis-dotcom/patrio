@@ -57,8 +57,24 @@ describe('DedupeNameCell', () => {
 
     teclear('Piso ceramico')
 
-    expect(await screen.findByText(/¿Es la misma que «Piso cerámico 60×60» del catálogo\?/))
+    // El CAPÍTULO va en la frase, y es la mitad de la información: el duplicado
+    // suele estar tecleado bajo otro capítulo, que es el caso que justifica todo
+    // esto. Sin decirlo, aceptar la sugerencia sería a ciegas.
+    expect(await screen.findByText(/¿Es la misma que «Piso cerámico 60×60» \(Acabados\) del catálogo\?/))
       .not.toBeNull()
+  })
+
+  it('el capítulo del candidato se dice, aunque sea otro que el del renglón', async () => {
+    // «Piso cerámico» en Acabados contra «Colocación piso cerámico» en
+    // Albañilería es exactamente el duplicado que hay que poder ver.
+    vi.mocked(api.suggestBudgetItems).mockResolvedValue([
+      suggestion({ chapterName: 'Albañilería', name: 'Colocación piso cerámico' }),
+    ])
+    render(<Harness />)
+
+    teclear('Piso ceramico')
+
+    expect(await screen.findByText(/«Colocación piso cerámico» \(Albañilería\)/)).not.toBeNull()
   })
 
   it('SUGIERE y no bloquea: el renglón se guarda con el aviso en pantalla', async () => {
@@ -108,7 +124,8 @@ describe('DedupeNameCell', () => {
 
     teclear('Piso ceramico')
 
-    expect(await screen.findByText(/«Piso cerámico» ya se escribió en 3 renglones/)).not.toBeNull()
+    expect(await screen.findByText(/«Piso cerámico» \(Acabados\) ya se escribió en 3 renglones/))
+      .not.toBeNull()
     // El botón dice otra cosa porque hace otra cosa: no hay catálogo al que ligarse
     fireEvent.click(screen.getByText('USAR ESE NOMBRE'))
     expect((onAdopt.mock.calls[0][0] as BudgetItemSuggestion).itemId).toBeNull()
@@ -216,6 +233,7 @@ describe('DedupeNameCell', () => {
 
     teclear('  piso cerámico 60×60 ')
 
-    expect(await screen.findByText('«Piso cerámico 60×60» ya está en el catálogo.')).not.toBeNull()
+    expect(await screen.findByText('«Piso cerámico 60×60» ya está en el catálogo (Acabados).'))
+      .not.toBeNull()
   })
 })

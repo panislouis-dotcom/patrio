@@ -1,4 +1,4 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetCatalogChapterRow, BudgetCatalogItemRow } from './types'
 import type { FloorPlanModel } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -1082,13 +1082,13 @@ export function fetchBudgetCatalog(
   return catalogRead(catalogUrl(includeInactive ? '?includeInactive=true' : ''))
 }
 
-export function createCatalogChapter(name: string): Promise<BudgetCatalogChapter> {
+export function createCatalogChapter(name: string): Promise<BudgetCatalogChapterRow> {
   return catalogWrite(catalogUrl('/chapters'), 'POST', { name })
 }
 
 export function updateCatalogChapter(
   id: number, patch: { name?: string; sortOrder?: number; isActive?: boolean },
-): Promise<BudgetCatalogChapter> {
+): Promise<BudgetCatalogChapterRow> {
   return catalogWrite(catalogUrl(`/chapters/${id}`), 'PATCH', patch)
 }
 
@@ -1099,13 +1099,13 @@ export function updateCatalogChapter(
  * esta llamada necesita saber lo segundo. Revivirla es un PATCH con
  * `isActive: true` — por eso no hay un `reactivate` aparte.
  */
-export function deactivateCatalogChapter(id: number): Promise<BudgetCatalogChapter> {
+export function deactivateCatalogChapter(id: number): Promise<BudgetCatalogChapterRow> {
   return catalogWrite(catalogUrl(`/chapters/${id}`), 'DELETE')
 }
 
 export function createCatalogItem(
   data: { chapterId: number; name: string; unit: string },
-): Promise<BudgetCatalogItem> {
+): Promise<BudgetCatalogItemRow> {
   return catalogWrite(catalogUrl('/items'), 'POST', data)
 }
 
@@ -1117,12 +1117,12 @@ export function createCatalogItem(
 export function updateCatalogItem(
   id: number,
   patch: { name?: string; unit?: string; chapterId?: number; sortOrder?: number; isActive?: boolean },
-): Promise<BudgetCatalogItem> {
+): Promise<BudgetCatalogItemRow> {
   return catalogWrite(catalogUrl(`/items/${id}`), 'PATCH', patch)
 }
 
 /** Da de baja la partida. Los renglones que ya la citan conservan su procedencia. */
-export function deactivateCatalogItem(id: number): Promise<BudgetCatalogItem> {
+export function deactivateCatalogItem(id: number): Promise<BudgetCatalogItemRow> {
   return catalogWrite(catalogUrl(`/items/${id}`), 'DELETE')
 }
 
@@ -1168,9 +1168,12 @@ export function fetchPromotionQueue(limit = 20): Promise<BudgetPromotionGroup[]>
  *
  * `itemId` fusiona con una partida que ya existe —la operación que de verdad
  * hacía falta, porque el problema del catálogo nunca fue agregar—; `chapterId`
- * la crea en otro capítulo. Sin ninguno de los dos nace donde el renglón ya
- * decía. Explícito y con un clic, nunca automático: un catálogo que crece solo
- * se llena de duplicados casi iguales.
+ * la crea en otro capítulo. **Sin ninguno de los dos nace donde el renglón ya
+ * decía, y el capítulo se crea si no existía**: por eso el catálogo vacío no
+ * necesita un paso previo desde el cliente.
+ *
+ * Explícito y con un clic, nunca automático: un catálogo que crece solo se
+ * llena de duplicados casi iguales, y el problema no es agregar, es fusionar.
  */
 export function promoteBudgetLine(
   lineId: number, target: { chapterId?: number; itemId?: number } = {},

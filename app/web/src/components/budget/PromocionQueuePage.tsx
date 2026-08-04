@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type React from 'react'
-import {
-  fetchPromotionQueue, fetchBudgetCatalog, createCatalogChapter, promoteBudgetLine,
-} from '../../lib/api'
+import { fetchPromotionQueue, fetchBudgetCatalog, promoteBudgetLine } from '../../lib/api'
 import type { BudgetCatalogChapter, BudgetPromotionGroup } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
 import { fmtMXN } from '../../lib/fmt'
@@ -41,8 +39,14 @@ import { fmtMXN } from '../../lib/fmt'
  * tres variantes de un nombre, no por que le falte una.
  */
 type Destino =
+  /**
+   * Donde el renglón ya decía. **No manda nada**: el servidor toma el capítulo
+   * que el renglón trae escrito y lo crea si el catálogo aún no lo tiene. Por
+   * eso el catálogo vacío —el estado del día uno— se cura con un solo clic y
+   * sin un alta previa que alguien tendría que recordar hacer.
+   */
+  | { kind: 'suyo'; name: string }
   | { kind: 'chapter'; chapterId: number }
-  | { kind: 'newChapter'; name: string }
   | { kind: 'item'; itemId: number }
 
 const normalize = (s: string) => s.trim().toLowerCase()
@@ -54,24 +58,24 @@ const normalize = (s: string) => s.trim().toLowerCase()
  * lista de cosas que no se pueden promover a ningún lado.
  */
 function propose(group: BudgetPromotionGroup, catalog: BudgetCatalogChapter[]): Destino | null {
-  const preferido = group.chapters[0] ?? group.chapterName
+  const preferido = group.chapterName || group.chapters[0]
   if (!preferido) return null
   const existente = catalog.find(c => normalize(c.name) === normalize(preferido))
   return existente
     ? { kind: 'chapter', chapterId: existente.id }
-    : { kind: 'newChapter', name: preferido }
+    : { kind: 'suyo', name: preferido }
 }
 
 function encode(d: Destino): string {
   if (d.kind === 'chapter') return `cap:${d.chapterId}`
   if (d.kind === 'item') return `item:${d.itemId}`
-  return `nueva:${d.name}`
+  return 'suyo'
 }
 
-function decode(value: string): Destino | null {
+function decode(value: string, group: BudgetPromotionGroup): Destino | null {
   if (value.startsWith('cap:')) return { kind: 'chapter', chapterId: Number(value.slice(4)) }
   if (value.startsWith('item:')) return { kind: 'item', itemId: Number(value.slice(5)) }
-  if (value.startsWith('nueva:')) return { kind: 'newChapter', name: value.slice(6) }
+  if (value === 'suyo') return { kind: 'suyo', name: group.chapterName }
   return null
 }
 
@@ -103,14 +107,17 @@ export function PromocionQueuePage() {
     setNotice(null)
     setBusy(group.normalized)
     try {
-      // Crear el capítulo antes de promover es lo que hace que la cola sirva con
-      // el catálogo vacío, que es exactamente como arranca este proyecto.
-      const target = destino.kind === 'newChapter'
-        ? { chapterId: (await createCatalogChapter(destino.name)).id }
-        : destino.kind === 'chapter'
-          ? { chapterId: destino.chapterId }
-          : { itemId: destino.itemId }
+      // Sin destino explícito el servidor usa el capítulo que el renglón ya
+      // traía, creándolo si hace falta. Crearlo aquí antes sería un segundo
+      // camino para lo mismo, y con una ventana en medio donde el capítulo
+      // existe y la partida no.
+      const target = destino.kind === 'chapter' ? { chapterId: destino.chapterId }
+        : destino.kind === 'item' ? { itemId: destino.itemId }
+        : {}
       const { item, created, relinked } = await promoteBudgetLine(group.lineId, target)
+      // `relinked` es el valor entero de la operación: la partida nace al
+      // catálogo con la historia que ya existía apuntándole, en vez de empezar
+      // a contar desde cero. Sin ese número esto parece un trámite.
       setNotice(
         `«${item.name}» ${created ? 'entró al catálogo' : 'se fusionó con la del catálogo'}`
         + ` y quedaron ${relinked} renglones religados. Ningún importe se movió.`,
@@ -178,7 +185,7 @@ export function PromocionQueuePage() {
         {groups.map(group => {
           const propuesta = propose(group, catalog)
           const valor = chosen[group.normalized] ?? (propuesta ? encode(propuesta) : '')
-          const destino = decode(valor)
+          const destino = decode(valor, group)
           const trabajando = busy === group.normalized
           return (
             <div
@@ -210,8 +217,8 @@ export function PromocionQueuePage() {
                 style={select}
               >
                 <option value="">— Elegir destino</option>
-                {propuesta?.kind === 'newChapter' && (
-                  <option value={encode(propuesta)}>+ Crear capítulo «{propuesta.name}»</option>
+                {propuesta?.kind === 'suyo' && (
+                  <option value="suyo">En su capítulo «{propuesta.name}» (se crea)</option>
                 )}
                 {catalog.length > 0 && (
                   <optgroup label="Crear en el capítulo">

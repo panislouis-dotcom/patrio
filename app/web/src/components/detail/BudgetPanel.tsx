@@ -236,16 +236,27 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   async function run(op: () => Promise<BudgetWrite>) {
     setError(null)
     try {
-      const { budget, property: updated, budgetIncrease } = await op()
+      const { budget, property: updated, budgetIncrease, linesAdded } = await op()
       receive(budget)
       onPropertyChange(updated)
       // Detallar reparte un total que no se mueve. Cuando el detalle lo rebasa,
       // el residuo llega a 0 y la obra sí pasa a costar más — que ya no es
       // detallar sino aumentar el presupuesto. Se dice en vez de dejar que el
       // total suba en silencio.
-      setNotice(budgetIncrease > 0
-        ? `El detalle rebasó el estimado: el presupuesto de obra subió ${fmtMXN(budgetIncrease)}.`
-        : null)
+      //
+      // `linesAdded` solo llega al copiar, y se dice porque copiar es la única
+      // escritura cuyo efecto no se ve entero en pantalla: los renglones caen
+      // dentro de capítulos que están colapsados.
+      setNotice([
+        linesAdded != null
+          ? (linesAdded > 0
+              ? `Se copiaron ${linesAdded} renglones.`
+              : 'No había nada nuevo que copiar: esas partidas ya estaban.')
+          : null,
+        budgetIncrease > 0
+          ? `El detalle rebasó el estimado: el presupuesto de obra subió ${fmtMXN(budgetIncrease)}.`
+          : null,
+      ].filter(Boolean).join(' ') || null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar')
       fetchBudget(propertyId).then(receive).catch(() => {})
@@ -374,7 +385,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
       const created = await createBudgetTemplate({ name, fromBudgetId: budgetId })
       setTemplates(prev => [...prev, created])
       setTemplateName('')
-      setNotice(`Se guardó «${created.name}» como plantilla, con ${created.lines} renglones.`)
+      setNotice(`Se guardó «${created.name}» como plantilla, con ${created.lineCount} renglones.`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar la plantilla')
     }
@@ -553,7 +564,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               <option value="">— Elegir plantilla</option>
               {templates.map(t => (
                 <option key={t.id} value={t.id}>
-                  {t.name} · {t.lines} renglones · {fmtMXN(t.total)}
+                  {t.name} · {t.lineCount} renglones · {fmtMXN(t.total)}
                 </option>
               ))}
             </select>
@@ -561,6 +572,15 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               disabled={pickedSource === ''}
               onClick={() => {
                 if (pickedSource === '') return
+                // A diferencia de bajar un capítulo, esto NO es idempotente:
+                // copiar dos veces duplica los renglones, porque dos renglones
+                // con el mismo nombre pueden ser dos renglones legítimos y el
+                // servidor no puede saber cuál es el caso. Lo sabe quien copia.
+                const cual = templates.find(t => t.id === pickedSource)
+                if (!window.confirm(
+                  `¿Copiar los ${cual?.lineCount ?? ''} renglones de «${cual?.name ?? ''}» a esta obra? `
+                  + 'Se suman a lo que ya hay; copiar dos veces los duplica.',
+                )) return
                 void run(() => applyBudgetSource(propertyId, pickedSource))
                 setPickedSource('')
               }}

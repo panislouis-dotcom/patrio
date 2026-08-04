@@ -79,7 +79,7 @@ export function PlantillasObraPage() {
               {t.name}
             </span>
             <span style={micro}>
-              {t.lines} RENGLONES · {fmtMXN(t.total)}
+              {t.lineCount} RENGLONES · {fmtMXN(t.total)}
             </span>
           </div>
         ))}

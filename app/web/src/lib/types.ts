@@ -775,6 +775,13 @@ export interface BudgetWrite {
    * cifra que permite decir cuál de las dos acaba de pasar.
    */
   budgetIncrease: number
+  /**
+   * Cuántos renglones se copiaron. Solo lo mandan `apply` y `apply-chapter`;
+   * en toda otra escritura no existe, y por eso es opcional en vez de 0 — «no
+   * se copió nada» y «esta operación no copia» son cosas distintas, y la
+   * segunda no tiene una cifra que enseñar.
+   */
+  linesAdded?: number
 }
 
 // ── El catálogo de obra ───────────────────────────────────────────────────────
@@ -807,9 +814,22 @@ export interface BudgetCatalogItem {
    * Cuántos renglones la citan. Es exactamente la procedencia que un borrado
    * físico destruiría, y por eso viaja con la partida: la pantalla que la cura
    * puede decir qué se perdería en vez de pedir que se confíe.
+   *
+   * **Solo lo cuenta la LECTURA del catálogo.** Por eso una escritura devuelve
+   * `BudgetCatalogItemRow` y no esto — ver ahí por qué son dos tipos.
    */
   usedInLines: number
 }
+
+/**
+ * La partida como la devuelve una ESCRITURA: la fila, sin el contador.
+ *
+ * Son dos tipos porque el servidor manda dos cosas, y un solo tipo con
+ * `usedInLines` obligatorio sería el cliente afirmando un campo que no llega —
+ * la clase de mentira que no falla al compilar y aparece como `undefined` en
+ * pantalla. Quien necesite el contador después de escribir, relee el catálogo.
+ */
+export type BudgetCatalogItemRow = Omit<BudgetCatalogItem, 'usedInLines'>
 
 /** Un capítulo del catálogo, con sus partidas. Se apaga; no se borra. */
 export interface BudgetCatalogChapter {
@@ -819,6 +839,9 @@ export interface BudgetCatalogChapter {
   isActive: boolean
   items: BudgetCatalogItem[]
 }
+
+/** El capítulo como lo devuelve una escritura: sin `items`, por lo mismo. */
+export type BudgetCatalogChapterRow = Omit<BudgetCatalogChapter, 'items'>
 
 /**
  * Un candidato a «es la misma partida que estás escribiendo».
@@ -890,7 +913,7 @@ export interface BudgetPromotionGroup {
 
 /** Lo que contesta promover. */
 export interface BudgetPromotion {
-  item: BudgetCatalogItem
+  item: BudgetCatalogItemRow
   /** False cuando se FUSIONÓ con una partida que ya existía en vez de crearla. */
   created: boolean
   /**
@@ -911,8 +934,14 @@ export interface BudgetTemplate {
   id: number
   name: string
   notes: string
-  /** Cuántos renglones trae. */
-  lines: number
+  /**
+   * Cuántos renglones trae. **`lineCount` y no `lines`**, y el nombre importa:
+   * en el DETALLE de una plantilla `lines` es el ARREGLO de renglones, y un
+   * campo que es un número en la lista y una lista en el detalle es una trampa
+   * que se paga en el cliente. El servidor lo renombró para no tenderla; leerlo
+   * mal aquí sería volver a tenderla desde este lado.
+   */
+  lineCount: number
   /** La suma presupuestada de esos renglones. */
   total: number
   createdAt: string
