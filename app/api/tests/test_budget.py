@@ -75,6 +75,24 @@ def test_a_captured_zero_overhead_is_no_surcharge_not_no_construction():
     assert budget_db.overhead_factor(1.3) == Decimal("1.3")
 
 
+def test_an_overhead_below_one_is_refused_because_indirect_costs_never_cheapen():
+    """La misma regla que hace que el 0 sea identidad dice qué hacer con el 0.5, y
+    dice que no: un multiplicador de indirectos suma o no suma, jamás resta. El
+    0.5 se teclea queriendo decir «50% de indirectos» —que es 1.5— y aplicado tal
+    cual dejaría la obra a la mitad.
+
+    El mensaje trae el número correcto porque el rechazo tiene que poder
+    resolverse sin adivinar cuál de las dos convenciones espera el sistema."""
+    with pytest.raises(budget_db.BudgetError) as rechazo:
+        budget_db.overhead_factor(0.5)
+    assert "1.5" in str(rechazo.value)
+
+    # Y el negativo por la misma puerta: antes llegaba hasta el CHECK del renglón
+    # como un 500 mudo, porque un importe negativo no se puede guardar.
+    with pytest.raises(budget_db.BudgetError):
+        budget_db.calculator_estimate(200, 9_000, -1)
+
+
 # ── Una propiedad nace con su presupuesto ───────────────────────────────────
 
 def test_a_new_property_is_born_with_its_budget(client, test_property):
@@ -88,6 +106,30 @@ def test_a_new_property_is_born_with_its_budget(client, test_property):
     # 200 m² × 9,000 × 1.3 del fixture, con el overhead ya adentro.
     assert _dec(residual["budgetedAmount"]) == Decimal("2340000")
     assert _dec(test_property["constructionBudgeted"]) == Decimal("2340000")
+
+
+def test_a_property_is_not_born_with_its_work_shrunk_in_silence(client):
+    """El caso donde la regla se paga: la calculadora corre al dar de alta y su
+    resultado se queda dentro de «Otros, por detallar» para siempre. Un 0.5
+    aceptado ahí no produce un número raro que alguien note — produce una obra a
+    mitad de precio que se ve perfectamente plausible, y que ya no se corrige
+    arreglando el campo.
+
+    La propiedad tampoco nace a medias: el estimado se calcula ANTES de abrir la
+    transacción, así que el rechazo no deja fila que limpiar."""
+    encogida = "[TEST] Obra Encogida"
+    r = client.post("/api/properties", json={
+        "name": encogida, "address": "Calle Test 1", "city": "Monterrey",
+        "purchasePrice": 1_000_000, "sqmConstruction": 200,
+        "constructionCostPerSqm": 9_000, "constructionOverhead": 0.5})
+
+    assert r.status_code == 422, r.text
+    assert "1.5" in r.json()["error"]["message"]
+    with get_db() as conn:
+        sobrevivientes = conn.execute(
+            "SELECT count(*) AS n FROM properties WHERE name = %s", (encogida,)
+        ).fetchone()["n"]
+    assert sobrevivientes == 0, "un alta rechazada no deja propiedad a medias"
 
 
 def test_the_budget_is_the_cost_of_work_in_every_stage(client, desarrollo_property):

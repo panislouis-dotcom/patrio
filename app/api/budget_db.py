@@ -59,13 +59,38 @@ class BudgetNotFound(BudgetError):
 # ─── La calculadora ───────────────────────────────────────────────────────────
 
 def overhead_factor(construction_overhead) -> Decimal:
-    """El overhead de obra es un MULTIPLICADOR (1.3 = +30% de indirectos), así
-    que un cero capturado significa «sin sobrecosto» —identidad 1, nunca ×0, que
-    borraría la obra que alguien sí capturó. Compárese con el pct de adquisición,
-    una fracción aditiva cuya identidad sí es 0.
+    """UN OVERHEAD NUNCA ACHICA LA OBRA. Es la regla entera, y vale para todo el
+    rango: de 1 en adelante suma indirectos, el 0 no suma nada, y por debajo de 1
+    no hay nada que aceptar porque no existe la lectura en la que un multiplicador
+    de indirectos abarate lo que va a costar la obra.
+
+    El overhead es un MULTIPLICADOR (1.3 = +30% de indirectos), así que un cero
+    capturado significa «sin sobrecosto» —identidad 1, nunca ×0, que borraría la
+    obra que alguien sí capturó. Compárese con el pct de adquisición, una fracción
+    aditiva cuya identidad sí es 0. Y 0.5 no es una tercera cosa: es esa misma
+    confusión a medio camino —quien lo teclea suele querer decir «50% de
+    indirectos», que se captura 1.5— con la diferencia de que el 0 tiene una
+    lectura correcta y el 0.5 no tiene ninguna.
+
+    Se rechaza aquí y no en un formulario porque el MCP y las semillas también
+    llaman a la calculadora sin pasar por ninguna pantalla, y porque el daño ya no
+    es corregible: el overhead se aplica UNA SOLA VEZ, al sembrar, y desde ahí vive
+    dentro del importe del renglón «Otros». Cuando multiplicaba en cada lectura,
+    corregir el campo corregía la cifra; hoy corregir el campo no mueve un peso y
+    hay que editar el presupuesto a mano — si alguien se entera.
 
     Un overhead ausente no se resuelve aquí: llega ya resuelto al default."""
-    return to_decimal(construction_overhead) or Decimal(1)
+    factor = to_decimal(construction_overhead)
+    if not factor:
+        return Decimal(1)
+    if factor < 1:
+        raise BudgetError(
+            f"El overhead de obra es un multiplicador de indirectos: 1.3 son 30% de "
+            f"sobrecosto, y {factor} achicaría la obra en vez de encarecerla. Para 50% "
+            "de indirectos captura 1.5; para ninguno, 0. Y conviene atinarle ahora: el "
+            "overhead se aplica una sola vez, al sembrar el presupuesto, así que "
+            "corregir el campo después ya no mueve esa cifra.")
+    return factor
 
 
 def calculator_estimate(sqm_construction, construction_cost_per_sqm,
@@ -76,7 +101,11 @@ def calculator_estimate(sqm_construction, construction_cost_per_sqm,
     CALCULADORA para llegar al primer número, no un campo que siga alimentando
     nada. Su resultado se guarda como el importe del renglón residual y desde
     ahí manda el presupuesto. Espeja al peso la aritmética de la migración 028,
-    incluido que un NULL resuelve al default y un 0 capturado es identidad."""
+    incluido que un NULL resuelve al default y un 0 capturado es identidad.
+
+    Lo único que la 028 no tuvo que decidir —un factor por debajo de 1— lo rechaza
+    `overhead_factor` antes de que el estimado exista: sembrar con él dejaría la
+    obra encogida dentro del renglón «Otros», donde ya no se corrige sola."""
     overhead = (CONSTRUCTION_OVERHEAD_DEFAULT if construction_overhead is None
                 else construction_overhead)
     return (to_decimal(sqm_construction) * to_decimal(construction_cost_per_sqm)
