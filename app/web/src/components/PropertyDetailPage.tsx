@@ -5,11 +5,14 @@ import {
   uploadPropertyImage, deletePropertyImage, updatePropertyImageType,
   fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage,
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
+  listRenderPrompts, listPropertyRenders, generatePropertyRender, createRenderPrompt,
+  deletePropertyRender,
 } from '../lib/api'
 import type {
   AssumptionField,
   Property, RawPropertyFields, ClearableField, Transition, ImageType,
   PropertyInvestor, Investor, ProfitWaterfall, ProcessInstance, TeamMember,
+  RenderPrompt, PropertyRender,
 } from '../lib/types'
 import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
 import {
@@ -36,6 +39,7 @@ import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
+import { RendersPanel } from './detail/RendersPanel'
 import { SectionDivider } from './detail/SectionDivider'
 import { ErrorBanner } from './detail/ErrorBanner'
 import { TransitionModal } from './detail/TransitionModal'
@@ -176,6 +180,9 @@ export function PropertyDetailPage() {
   const [instances, setInstances] = useState<ProcessInstance[]>([])
   const [team, setTeam] = useState<TeamMember[]>([])
 
+  const [renderPrompts, setRenderPrompts] = useState<RenderPrompt[]>([])
+  const [renders, setRenders] = useState<PropertyRender[]>([])
+
   const status = property?.status
 
   useEffect(() => {
@@ -189,6 +196,13 @@ export function PropertyDetailPage() {
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Error al cargar la propiedad'))
       .finally(() => setLoading(false))
+  }, [propertyId])
+
+  // La biblioteca y los renders van aparte de la ficha: si el proveedor de
+  // imágenes está caído o la biblioteca falla, la propiedad se sigue leyendo.
+  useEffect(() => {
+    listRenderPrompts().then(setRenderPrompts).catch(() => {})
+    listPropertyRenders(propertyId).then(setRenders).catch(() => {})
   }, [propertyId])
 
   // Lo que cada etapa trae consigo. Depende del status y no solo del id: al
@@ -843,6 +857,28 @@ export function PropertyDetailPage() {
               />
             </div>
           )}
+          renders={
+            <RendersPanel
+              images={p.images}
+              prompts={renderPrompts}
+              renders={renders}
+              base={BASE}
+              onGenerate={async req => {
+                const created = await generatePropertyRender(p.id, req)
+                setRenders(prev => [created, ...prev])
+                return created
+              }}
+              onSavePrompt={async ({ name, body }) => {
+                const created = await createRenderPrompt(name, body)
+                setRenderPrompts(prev => [...prev, created])
+                return created
+              }}
+              onDeleteRender={async renderId => {
+                await deletePropertyRender(p.id, renderId)
+                setRenders(prev => prev.filter(r => r.id !== renderId))
+              }}
+            />
+          }
         />
       </div>
 

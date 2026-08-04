@@ -29,6 +29,33 @@ export interface PropertyImage {
 // cuando hubo obra.
 export type ImageType = 'general' | 'antes' | 'despues'
 
+// Un render NO es un ImageType. Una foto es evidencia de lo que hay; un render
+// es una propuesta de lo que podría haber. Viven en tablas distintas justo para
+// que el prospecto nunca pueda imprimir una propuesta en la casilla de «después».
+export interface RenderPrompt {
+  id: number
+  name: string
+  body: string
+  /** Los sembrados son el piso de la biblioteca: se duplican, no se borran. */
+  isDefault: boolean
+  createdAt: string
+}
+
+export interface PropertyRender {
+  id: number
+  propertyId: number
+  /** null cuando la foto original se borró: el render sobrevive, pierde la liga. */
+  sourceImageId: number | null
+  filePath: string
+  contentType: string
+  promptId: number | null
+  /** Congelado al generar. El prompt de la biblioteca pudo cambiar después. */
+  promptText: string
+  provider: string
+  model: string
+  createdAt: string
+}
+
 export interface Issue {
   field: string
   message: string
