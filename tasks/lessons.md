@@ -50,6 +50,34 @@ comparten una propiedad sospechosa (aquí, ser los dos que llevan `[SEED]`).
 
 ---
 
+## Con varios agentes en un mismo checkout, el índice de git es estado compartido
+
+**2026-08-04 · el barrido de espejos que aterrizó en el commit ajeno**
+
+Un agente montó su commit quirúrgicamente: puso al índice solo sus hunks y dejó el
+resto del archivo en el árbol para no barrer el trabajo a medias de otro. Entre su
+`git add` y su `git commit` pasaron segundos — y en esa ventana **otro agente
+commiteó, y se llevó el índice**. Sus 141 líneas de pruebas de contrato viven hoy
+bajo un título que dice `docs(skills)`.
+
+La técnica era correcta en aislamiento y es exactamente la que no se debe usar aquí:
+`git add` sin commit inmediato deja estado global que cualquiera puede consumir.
+
+**Cómo aplicarlo**: con varios agentes sobre un checkout, `add` y `commit` van en la
+MISMA operación, sin ventana entre ellos. Para trabajo que de verdad se solapa en los
+mismos archivos, worktrees separados (`isolation: "worktree"`) — el repo ya tiene el
+patrón en `.worktrees/`.
+
+**Y no reescribas historia para arreglarlo.** Un commit mal titulado cuesta que
+alguien no encuentre una explicación; un rebase sobre un árbol con trabajo en vuelo
+cuesta el trabajo de otro. La asimetría es obvia una vez que se ve.
+
+Es la misma forma que [[patrio-espejos-escritos-a-mano]] y que los otros defectos de
+esta semana: **algo que funciona porque nadie más lo toca, y deja de funcionar en
+silencio cuando alguien más lo toca.**
+
+---
+
 ## Verde en local puede significar «contaminado», no «correcto»
 
 **2026-08-03 · el Chromium que le faltaba al API en CI**
