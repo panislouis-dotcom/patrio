@@ -74,6 +74,19 @@ export function fmtMonth(iso: string | null | undefined): string {
   return `${MESES[index]} ${year}`
 }
 
+/**
+ * Una cuenta con su sustantivo concordado: «1 renglón», «4 renglones».
+ *
+ * Vive aquí y no suelto en cada pantalla porque ya se había escrito tres veces
+ * y una de las tres se equivocaba — la cola de promoción concordaba OBRA/OBRAS
+ * correctamente y en la misma línea imprimía «2 RENGLONES» para uno solo. Una
+ * regla de idioma repetida a mano se aplica a medias, y en una app en español
+ * «1 RENGLONES» es lo primero que se lee de una plantilla.
+ */
+export function plural(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`
+}
+
 /** Pesos enteros con separadores: «$1,234,567». Cero es $0. */
 export function fmtMXN(n: number | null | undefined): string {
   if (n == null) return '—'

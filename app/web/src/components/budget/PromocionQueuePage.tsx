@@ -3,7 +3,7 @@ import type React from 'react'
 import { fetchPromotionQueue, fetchBudgetCatalog, promoteBudgetLine } from '../../lib/api'
 import type { BudgetCatalogChapter, BudgetPromotionGroup } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
-import { fmtMXN } from '../../lib/fmt'
+import { fmtMXN, plural } from '../../lib/fmt'
 
 /**
  * La cola de promoción: los renglones sueltos que ya se escribieron varias
@@ -200,8 +200,8 @@ export function PromocionQueuePage() {
                   {group.name} <span style={micro}>· {group.unit}</span>
                 </div>
                 <div style={{ ...micro, marginTop: '2px' }}>
-                  {group.properties} {group.properties === 1 ? 'OBRA' : 'OBRAS'}
-                  {` · ${group.usedInLines} RENGLONES`}
+                  {plural(group.properties, 'OBRA', 'OBRAS')}
+                  {` · ${plural(group.usedInLines, 'RENGLÓN', 'RENGLONES')}`}
                   {/* La pagada primero porque es la única que es historia. */}
                   {' · PAGADO '}{fmtMXN(group.medianPaidUnitPrice)}
                   {group.paidObservations > 0 && ` (${group.paidObservations})`}

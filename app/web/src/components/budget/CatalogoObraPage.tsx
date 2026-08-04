@@ -6,6 +6,7 @@ import {
 } from '../../lib/api'
 import type { BudgetCatalogChapter } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
+import { plural } from '../../lib/fmt'
 
 /**
  * El catálogo de obra: capítulos y partidas, para verlo y curarlo.
@@ -265,7 +266,7 @@ export function CatalogoObraPage() {
                   {/* La procedencia que un borrado físico destruiría, dicha en
                       número. Cero renglones no se imprime: no hay nada que decir. */}
                   {item.usedInLines > 0 && (
-                    <span style={micro}>EN {item.usedInLines} RENGLONES</span>
+                    <span style={micro}>EN {plural(item.usedInLines, 'RENGLÓN', 'RENGLONES')}</span>
                   )}
                   {!item.isActive && <span style={{ ...micro, color: colors.tertiary }}>DE BAJA</span>}
                   {bajaButton(

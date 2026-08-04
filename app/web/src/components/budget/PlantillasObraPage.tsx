@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchBudgetTemplates } from '../../lib/api'
 import type { BudgetTemplate } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
-import { fmtMXN } from '../../lib/fmt'
+import { fmtMXN, plural } from '../../lib/fmt'
 
 /**
  * Las plantillas de obra. **Una plantilla es un presupuesto sin propiedad**, así
@@ -79,7 +79,7 @@ export function PlantillasObraPage() {
               {t.name}
             </span>
             <span style={micro}>
-              {t.lineCount} RENGLONES · {fmtMXN(t.total)}
+              {plural(t.lineCount, 'RENGLÓN', 'RENGLONES')} · {fmtMXN(t.total)}
             </span>
           </div>
         ))}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtPct, fmtPctSigned, fmtMonth, fmtM, fmtMXN } from './fmt'
+import { fmtPct, fmtPctSigned, fmtMonth, fmtM, fmtMXN, plural } from './fmt'
 
 /**
  * Una sola regla, y es la que el backend defiende columna por columna: vacío es
@@ -100,5 +100,19 @@ describe('fmtMXN', () => {
 
   it('un monto negativo lleva el signo delante del peso', () => {
     expect(fmtMXN(-1_234_567)).toBe('-$1,234,567')
+  })
+})
+
+describe('plural', () => {
+  it('concuerda el sustantivo con la cuenta', () => {
+    // «1 RENGLONES» es lo primero que se leía de una plantilla, en una app en
+    // español. La regla estaba escrita a mano en tres pantallas y una de las
+    // tres la aplicaba a medias.
+    expect(plural(1, 'RENGLÓN', 'RENGLONES')).toBe('1 RENGLÓN')
+    expect(plural(4, 'RENGLÓN', 'RENGLONES')).toBe('4 RENGLONES')
+  })
+
+  it('cero es plural, como en español', () => {
+    expect(plural(0, 'OBRA', 'OBRAS')).toBe('0 OBRAS')
   })
 })
