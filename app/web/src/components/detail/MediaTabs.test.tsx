@@ -5,6 +5,7 @@ const panels = {
   mapa: <div>panel mapa</div>,
   fotos: <div>panel fotos</div>,
   plano: <div>panel plano</div>,
+  renders: <div>panel renders</div>,
 }
 
 describe('MediaTabs', () => {
@@ -19,5 +20,12 @@ describe('MediaTabs', () => {
     fireEvent.click(screen.getByText('PLANO'))
     expect(screen.getByText('panel plano')).not.toBeNull()
     expect(screen.queryByText('panel mapa')).toBeNull()
+  })
+
+  it('opens RENDERS as its own tab, next to the photos', () => {
+    render(<MediaTabs {...panels} />)
+    fireEvent.click(screen.getByText('RENDERS'))
+    expect(screen.getByText('panel renders')).not.toBeNull()
+    expect(screen.queryByText('panel fotos')).toBeNull()
   })
 })

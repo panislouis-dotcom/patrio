@@ -1,4 +1,4 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, PropertyRender } from './types'
 import type { FloorPlanModel } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -164,6 +164,53 @@ export async function updatePropertyImageType(id: number, imageId: number, image
 
 export async function deletePropertyImage(id: number, imageId: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/properties/${id}/images/${imageId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await detail(res))
+}
+
+// ─── Renders y su biblioteca de prompts ──────────────────────────────────────
+
+export async function listRenderPrompts(): Promise<RenderPrompt[]> {
+  const res = await authFetch(`${BASE}/api/render-prompts`)
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export async function createRenderPrompt(name: string, body: string): Promise<RenderPrompt> {
+  const res = await authFetch(`${BASE}/api/render-prompts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, body }),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export async function deleteRenderPrompt(promptId: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/render-prompts/${promptId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await detail(res))
+}
+
+export async function listPropertyRenders(id: number): Promise<PropertyRender[]> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/renders`)
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export async function generatePropertyRender(
+  id: number,
+  req: { sourceImageId: number; promptText: string; promptId: number | null },
+): Promise<PropertyRender> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/renders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export async function deletePropertyRender(id: number, renderId: number): Promise<void> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await detail(res))
 }
 
