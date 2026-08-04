@@ -496,6 +496,29 @@ describe('PropertyDetailPage', () => {
     expect(screen.queryByText('COSTOS ADQ.')).toBeNull()
   })
 
+  // ── La barra de pestañas del centro ───────────────────────────────────────
+
+  it('la barra del centro son cinco pestañas, en su orden', async () => {
+    // MediaTabs pinta la lista que le den y no sabe qué hay dentro, así que
+    // quién existe y en qué orden se decide AQUÍ. Sin esta prueba, absorber una
+    // pestaña ajena —o perderla en un merge— no pone nada en rojo.
+    await renderPage(BASE_PROPERTY)
+    const barra = screen.getByText('MAPA').parentElement!
+    expect(within(barra).getAllByRole('button').map(b => b.textContent))
+      .toEqual(['MAPA', 'FOTOS', 'PLANO', 'RENDERS', 'PRESUPUESTO'])
+  })
+
+  it('RENDERS abre lo suyo, y no la tira de FOTOS', async () => {
+    // Una foto es evidencia y un render es una propuesta. El día que RENDERS
+    // caiga dentro de FOTOS, una propuesta puede terminar citada como si fuera
+    // el estado real del inmueble, y eso no se ve: se ve una imagen más.
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    expect(await screen.findByLabelText(/preset/i)).not.toBeNull()
+    expect(screen.getByLabelText(/texto del prompt/i)).not.toBeNull()
+  })
+
   // ── El presupuesto de obra ────────────────────────────────────────────────
 
   it('un prospecto ya tiene pestaña PRESUPUESTO: no hay compuerta de etapa', async () => {
