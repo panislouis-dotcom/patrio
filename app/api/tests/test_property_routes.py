@@ -1,8 +1,23 @@
 """CRUD and images on /api/properties. The lifecycle lives in
 test_property_lifecycle, the numbers in test_property_metrics."""
+from api import properties_db
 from api.db import get_db
 
 from .conftest import _delete_property
+
+
+def test_nothing_clearable_is_unwritable():
+    """Vaciar solo tiene sentido sobre algo que se captura, así que lo vaciable
+    es un subconjunto de lo escribible. Un campo que se puede vaciar pero no
+    escribir es una fila de la ficha con un botón ✕ que solo puede producir un
+    422 — que es exactamente lo que quedó a medio camino cuando el costo de obra
+    pasó a ser la suma del presupuesto y sus dos insumos dejaron de capturarse.
+
+    La prueba vive aquí, sobre los frozensets, y no en el espejo del cliente:
+    esto es una invariante entre dos listas de Python y tiene que romperse en
+    pytest, no en otra suite y en otro lenguaje."""
+    assert properties_db.CLEARABLE_FIELDS <= properties_db.WRITABLE_FIELDS, (
+        sorted(properties_db.CLEARABLE_FIELDS - properties_db.WRITABLE_FIELDS))
 
 
 def test_list_returns_the_property(client, test_property):

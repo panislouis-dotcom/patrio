@@ -143,6 +143,15 @@ PROCESS_STATUSES = frozenset({"desarrollo", "en_renta", "vendida"})
 # it only ever moves through POST /transition, which validates the gate and
 # records the event.
 #
+# ESTOS DOS FROZENSETS SE LEEN COMO TEXTO DESDE FUERA. `app/web/src/lib/
+# contract.test.ts` los recorta de este archivo con `?raw` para probar que el
+# espejo del cliente no se desincronizó — se desincronizó dos veces el día que
+# el costo de obra pasó al presupuesto, y el síntoma es un botón ✕ que solo
+# produce un 422. El recorte busca la línea literal `NOMBRE = frozenset({` y
+# lee hasta el primer `})`, sacando todo lo que esté entre comillas dobles: si
+# renombras las listas, cambias esa forma o metes una palabra entrecomillada en
+# un comentario DENTRO de las llaves, esa prueba se rompe o miente.
+#
 # `constructionCostPerSqm` y `constructionOverhead` NO están: dejaron de ser
 # insumos. El costo de obra es la suma del presupuesto, así que se cambia
 # capturando partidas o ajustando el total del presupuesto — no tecleando un
