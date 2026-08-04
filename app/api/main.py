@@ -8,9 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pathlib import Path
 from api.config import ALLOWED_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD_HASH
-from api.routes import properties, sonar, team, processes, profit, investors, users, comparables, analyses, documents, proveedores
+from api.routes import properties, sonar, team, processes, profit, investors, users, comparables, analyses, documents, proveedores, budget
 from api.routes.auth import router as auth_router
 from api.db import get_db
+from api.budget_db import BudgetError, BudgetNotFound
 from api.properties_db import PropertyError, PropertyNotFound
 from api.process_db import sync_periodic_series
 from api import geo
@@ -135,6 +136,20 @@ async def _property_rejected(request: Request, exc: PropertyError) -> JSONRespon
     return _error(422, str(exc))
 
 
+# El presupuesto rechaza en su propio vocabulario y por las mismas dos razones:
+# no existe lo que se pidió, o la regla del residual no deja hacer lo que se
+# pidió. Sin estos dos, «el remanente se calcula solo» le llegaría al navegador
+# como un 500 disfrazado de error de CORS.
+@app.exception_handler(BudgetNotFound)
+async def _budget_not_found(request: Request, exc: BudgetNotFound) -> JSONResponse:
+    return _error(404, str(exc))
+
+
+@app.exception_handler(BudgetError)
+async def _budget_rejected(request: Request, exc: BudgetError) -> JSONResponse:
+    return _error(422, str(exc))
+
+
 @app.exception_handler(RequestValidationError)
 async def _validation_exc(request: Request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
@@ -146,6 +161,7 @@ async def _validation_exc(request: Request, exc: RequestValidationError) -> JSON
 from api import storage as _storage
 
 app.include_router(properties.router)
+app.include_router(budget.router)
 app.include_router(sonar.router)
 app.include_router(team.router)
 app.include_router(processes.router)
