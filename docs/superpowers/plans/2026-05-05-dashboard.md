@@ -1,5 +1,17 @@
 # Refigan Dashboard Implementation Plan
 
+> ## ⚠ Historical record — do not build from this
+>
+> This plan shipped in May 2026 and the system has moved past it twice since.
+> It describes SQLite (`data/refigan.db`), a `prospects` table and a
+> `prospect_metrics` view; today the data is PostgreSQL and there is one
+> `properties` table with a lifecycle. Its `constructionBase` /
+> `constructionTotal` / `constructionOverhead` fields and the
+> `m² × $/m² × overhead` cost of works no longer exist: the cost of works is the
+> sum of the property's budget. **For what is true now, read `docs/glosario.md`
+> and `app/.claude/skills/use-refigan.md`.** Kept because it records how the
+> dashboard was reasoned about, not because any of it is still the contract.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a FastAPI + React/Vite dashboard that reads `data/refigan.db`, ranks real estate prospects by a composite score, visualizes them on a map, and flags data quality issues.

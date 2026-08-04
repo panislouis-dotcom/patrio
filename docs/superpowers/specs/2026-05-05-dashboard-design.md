@@ -1,6 +1,15 @@
 # Refigan Dashboard — Design Spec
 _2026-05-05_
 
+> ## ⚠ Historical record — do not build from this
+>
+> Superseded. This spec describes SQLite (`data/refigan.db`) and a `prospects`
+> table; the data is PostgreSQL and there is one `properties` table with a
+> lifecycle. Its `construction_overhead` check is gone with the formula it
+> guarded — the cost of works is the sum of the property's budget, and the
+> overhead is applied once, at seeding, inside the amount. **For what is true
+> now, read `docs/glosario.md` and `app/.claude/skills/use-refigan.md`.**
+
 ## Context
 
 Internal tool for evaluating and comparing real estate prospects in Monterrey. Data lives in `data/refigan.db` (SQLite), exposed through the `prospect_metrics` view. The goal is a fast analytical interface that surfaces the best opportunities and flags data quality problems before they become decisions based on bad inputs.
