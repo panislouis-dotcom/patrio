@@ -331,7 +331,7 @@ tener y no se tiene— y conviene saberlos.
 **Decisión tomada (Ed puede tumbarla):** el overhead se aplica **una sola vez, al
 sembrar**, y queda dentro del número.
 
-Hoy la fórmula es `m² × $/m² × 1.3`; ese 30% de indirectos ya vive dentro de la
+La fórmula era `m² × $/m² × 1.3`; ese 30% de indirectos ya vivía dentro de la
 cifra. Cuando esa cifra se convierte en la fila «Otros, por detallar», el
 multiplicador ya cumplió su función y **no se vuelve a aplicar jamás**, porque desde
 ahí la suma del presupuesto es el costo.
