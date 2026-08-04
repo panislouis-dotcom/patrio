@@ -3,12 +3,18 @@ import type React from 'react'
 import {
   fetchBudget, createBudgetLine, updateBudgetLine, deleteBudgetLine, setBudgetTotal,
   renameBudgetChapter, deleteBudgetChapter, addBudgetPayment, deleteBudgetPayment, getProveedores,
+  fetchBudgetCatalog, fetchBudgetTemplates, applyBudgetSource, applyCatalogChapter,
+  createBudgetTemplate,
 } from '../../lib/api'
-import type { BudgetLine, BudgetLinePatch, BudgetWrite, Property, Proveedor } from '../../lib/types'
+import type {
+  Budget, BudgetCatalogChapter, BudgetItemSuggestion, BudgetLine, BudgetLinePatch,
+  BudgetTemplate, BudgetWrite, Property, Proveedor,
+} from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
 import { fmtMXN } from '../../lib/fmt'
 import { computeDepths } from '../../lib/treeUtils'
 import { NumericInput } from '../NumericInput'
+import { DedupeNameCell } from '../budget/DedupeNameCell'
 
 /**
  * El presupuesto de obra de una propiedad: capítulos y partidas, con las tres
@@ -169,6 +175,23 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   const [newTotal, setNewTotal] = useState<number | undefined>(undefined)
 
   /**
+   * El panel de catálogo y plantillas, y lo que necesita.
+   *
+   * Se pide al ABRIRLO y no al entrar a la pestaña: el catálogo y los
+   * presupuestos de los que se puede copiar no son de esta propiedad, y casi
+   * toda visita es a capturar un renglón, no a arrancar de cero. Traerlos
+   * siempre serían dos consultas más en la ficha para el caso raro.
+   */
+  const [sourcing, setSourcing] = useState(false)
+  const [catalog, setCatalog] = useState<BudgetCatalogChapter[]>([])
+  const [templates, setTemplates] = useState<BudgetTemplate[]>([])
+  const [pickedChapter, setPickedChapter] = useState<number | ''>('')
+  const [pickedSource, setPickedSource] = useState<number | ''>('')
+  const [templateName, setTemplateName] = useState('')
+  /** El id del PRESUPUESTO, que es lo que se copia al guardarlo como plantilla. */
+  const [budgetId, setBudgetId] = useState<number | null>(null)
+
+  /**
    * Lo que se cambió y todavía no se manda, por renglón. Las celdas de texto y
    * de dinero guardan al SOLTARSE y no a cada tecla —teclear «1500» serían
    * cuatro escrituras, y cada una recalcula el residuo— que es el mismo trato
@@ -184,15 +207,24 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
    */
   const served = useRef(new Map<number, BudgetLine>())
 
-  function receive(next: BudgetLine[]) {
-    served.current = new Map(next.map(l => [l.id, l]))
-    setLines(next)
+  /**
+   * El presupuesto que dice el servidor, entero. Toma el `Budget` y no sus
+   * renglones porque los tres estados que lo componen —lo servido, las filas y
+   * el orden de los capítulos— tienen que moverse juntos o no moverse: los tres
+   * vienen de la misma respuesta, y actualizarlos en tres llamadas es la forma
+   * de que un día falte una.
+   */
+  function receive(next: Budget) {
+    served.current = new Map(next.lines.map(l => [l.id, l]))
+    setLines(next.lines)
+    setChapters(next.chapters)
+    setBudgetId(next.id)
   }
 
   useEffect(() => {
     setLoading(true)
     Promise.all([fetchBudget(propertyId), getProveedores()])
-      .then(([b, ps]) => { receive(b.lines); setChapters(b.chapters); setProveedores(ps) })
+      .then(([b, ps]) => { receive(b); setProveedores(ps) })
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo cargar el presupuesto'))
       .finally(() => setLoading(false))
   }, [propertyId])
@@ -205,8 +237,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     setError(null)
     try {
       const { budget, property: updated, budgetIncrease } = await op()
-      receive(budget.lines)
-      setChapters(budget.chapters)
+      receive(budget)
       onPropertyChange(updated)
       // Detallar reparte un total que no se mueve. Cuando el detalle lo rebasa,
       // el residuo llega a 0 y la obra sí pasa a costar más — que ya no es
@@ -217,7 +248,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
         : null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar')
-      fetchBudget(propertyId).then(b => { receive(b.lines); setChapters(b.chapters) }).catch(() => {})
+      fetchBudget(propertyId).then(receive).catch(() => {})
     }
   }
 
@@ -237,6 +268,29 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   function editNow(line: BudgetLine, patch: BudgetLinePatch) {
     edit(line, patch)
     commit(line.id)
+  }
+
+  /**
+   * Adoptar la partida que el aviso de duplicado propuso.
+   *
+   * Copia el TEXTO —nombre y unidad— y la procedencia solo cuando la sugerencia
+   * viene del catálogo. Tres cosas que a propósito NO hace:
+   *
+   * - **No mueve el renglón de capítulo**, aunque la partida del catálogo viva
+   *   en otro. `chapterName` es una copia del renglón, no una referencia; y
+   *   reorganizar la tabla debajo de quien está capturando por haber contestado
+   *   una pregunta es exactamente el estorbo que hunde el módulo.
+   * - **No toca cantidad ni precio.** El catálogo no guarda precio a propósito,
+   *   y pisar el que alguien acaba de teclear sería inventarle uno.
+   * - **No liga nada cuando la sugerencia es un renglón suelto** — no hay a qué
+   *   ligarse todavía. Lo que consigue ahí es que los dos se escriban igual, que
+   *   es lo que hace que lleguen juntos a la cola de promoción.
+   */
+  function adopt(line: BudgetLine, s: BudgetItemSuggestion) {
+    editNow(line, {
+      name: s.name, unit: s.unit,
+      ...(s.itemId != null ? { itemId: s.itemId } : {}),
+    })
   }
 
   /**
@@ -295,6 +349,35 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
       next.has(name) ? next.delete(name) : next.add(name)
       return next
     })
+  }
+
+  function toggleSourcing() {
+    const opening = !sourcing
+    setSourcing(opening)
+    if (!opening) return
+    Promise.all([fetchBudgetCatalog(), fetchBudgetTemplates()])
+      .then(([c, t]) => { setCatalog(c); setTemplates(t) })
+      .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer el catálogo'))
+  }
+
+  /**
+   * Guardar esta obra como plantilla. Es el ÚNICO de los tres copiados que no
+   * pasa por `run`: no devuelve un presupuesto ni una propiedad porque no toca
+   * ninguno de los dos —lo que escribe es un presupuesto nuevo, sin propiedad, y
+   * la obra de la que salió queda exactamente igual.
+   */
+  async function saveTemplate() {
+    const name = templateName.trim()
+    if (!name || budgetId == null) return
+    setError(null)
+    try {
+      const created = await createBudgetTemplate({ name, fromBudgetId: budgetId })
+      setTemplates(prev => [...prev, created])
+      setTemplateName('')
+      setNotice(`Se guardó «${created.name}» como plantilla, con ${created.lines} renglones.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo guardar la plantilla')
+    }
   }
 
   function renameChapter(from: string, to: string) {
@@ -394,15 +477,125 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
         <span style={{ fontFamily: fonts.label, fontSize: '9px', color: colors.secondary, letterSpacing: '0.12em' }}>
           PRESUPUESTO DE OBRA
         </span>
-        <button
-          onClick={() => void run(() => createBudgetLine(propertyId, {
-            chapterName: freshChapterName(chapters), name: 'Partida nueva',
-          }))}
-          style={ghost}
-        >
-          + CAPÍTULO
-        </button>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button
+            onClick={() => void run(() => createBudgetLine(propertyId, {
+              chapterName: freshChapterName(chapters), name: 'Partida nueva',
+            }))}
+            style={ghost}
+          >
+            + CAPÍTULO
+          </button>
+          <button onClick={toggleSourcing} style={ghost}>
+            CATÁLOGO Y PLANTILLAS {sourcing ? '▾' : '▸'}
+          </button>
+        </div>
       </div>
+
+      {/* Las tres formas de no empezar en blanco, juntas porque las tres son la
+          MISMA operación —copiar— usada en tres direcciones. Una plantilla es un
+          presupuesto sin propiedad, así que arrancar desde una plantilla y
+          arrancar desde la obra de al lado no se distinguen ni aquí ni en el
+          servidor: son un renglón de este panel con dos grupos en su selector. */}
+      {sourcing && (
+        <div style={{
+          border: `1px solid ${colors.border}`, background: colors.surface,
+          padding: '10px 12px', marginBottom: '10px',
+          display: 'flex', flexDirection: 'column', gap: '10px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+            <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>
+              BAJAR UN CAPÍTULO
+            </span>
+            <select
+              value={pickedChapter}
+              aria-label="Capítulo del catálogo"
+              onChange={e => setPickedChapter(e.target.value ? Number(e.target.value) : '')}
+              style={{ ...cellInput, width: '220px' }}
+            >
+              <option value="">— Elegir capítulo del catálogo</option>
+              {catalog.map(c => (
+                <option key={c.id} value={c.id}>{c.name} ({c.items.length})</option>
+              ))}
+            </select>
+            <button
+              disabled={pickedChapter === ''}
+              onClick={() => {
+                if (pickedChapter === '') return
+                void run(() => applyCatalogChapter(propertyId, pickedChapter))
+                setPickedChapter('')
+              }}
+              style={{ ...ghost, cursor: pickedChapter === '' ? 'not-allowed' : 'pointer' }}
+            >
+              BAJAR
+            </button>
+            {/* Se dice aquí porque es lo que más sorprende: el esqueleto no
+                mueve un peso, y no es un defecto. */}
+            <span style={micro}>Nacen en cantidad 0 — el catálogo no guarda precio.</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+            {/* «Arrancar desde otra obra» es la MISMA llamada con el id del
+                presupuesto de al lado —el servidor no las distingue, y con razón:
+                una plantilla es un presupuesto sin propiedad. Hoy solo se pueden
+                elegir plantillas porque no hay endpoint que liste los
+                presupuestos de las demás obras; en cuanto lo haya, es un
+                `optgroup` más en este mismo selector. */}
+            <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>
+              ARRANCAR DESDE
+            </span>
+            <select
+              value={pickedSource}
+              aria-label="Presupuesto de origen"
+              onChange={e => setPickedSource(e.target.value ? Number(e.target.value) : '')}
+              style={{ ...cellInput, width: '220px' }}
+            >
+              <option value="">— Elegir plantilla</option>
+              {templates.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.name} · {t.lines} renglones · {fmtMXN(t.total)}
+                </option>
+              ))}
+            </select>
+            <button
+              disabled={pickedSource === ''}
+              onClick={() => {
+                if (pickedSource === '') return
+                void run(() => applyBudgetSource(propertyId, pickedSource))
+                setPickedSource('')
+              }}
+              style={{ ...ghost, cursor: pickedSource === '' ? 'not-allowed' : 'pointer' }}
+            >
+              COPIAR RENGLONES
+            </button>
+            <span style={micro}>Se suman a lo que ya hay; el residuo baja y el total no se mueve.</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+            <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>
+              GUARDAR COMO
+            </span>
+            <input
+              value={templateName}
+              placeholder="Nombre de la plantilla"
+              aria-label="Nombre de la plantilla"
+              onChange={e => setTemplateName(e.target.value)}
+              style={{ ...cellInput, width: '220px' }}
+            />
+            <button
+              disabled={!templateName.trim()}
+              onClick={() => void saveTemplate()}
+              style={{ ...ghost, cursor: templateName.trim() ? 'pointer' : 'not-allowed' }}
+            >
+              GUARDAR PLANTILLA
+            </button>
+            {/* El residuo no viaja: es lo que a ESTA obra le falta por detallar,
+                y en una plantilla sería una partida que le come el residuo a la
+                siguiente. */}
+            <span style={micro}>Copia las partidas detalladas, sin proveedores ni pagos.</span>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div style={{ color: '#c0392b', fontFamily: fonts.sans, fontSize: '11px', marginBottom: '8px' }}>
@@ -544,12 +737,18 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               return [
                 <tr key={line.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                   <td style={{ ...td, paddingLeft: `${6 + indent}px` }}>
-                    <input
+                    {/* La celda que evita que el catálogo se pudra. Sugiere
+                        mientras se escribe y no bloquea nada: el renglón se
+                        guarda al soltar la caja, conteste o no quien captura. */}
+                    <DedupeNameCell
                       value={line.name}
-                      aria-label={`Partida ${line.name}`}
-                      onChange={e => edit(line, { name: e.target.value })}
-                      onBlur={() => commitText(line.id, 'name')}
+                      ariaLabel={`Partida ${line.name}`}
                       style={cellInput}
+                      lineId={line.id}
+                      linked={line.itemId != null}
+                      onChange={name => edit(line, { name })}
+                      onBlur={() => commitText(line.id, 'name')}
+                      onAdopt={s => adopt(line, s)}
                     />
                   </td>
                   <td style={td}>

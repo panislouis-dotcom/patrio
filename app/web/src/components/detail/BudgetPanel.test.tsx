@@ -1,5 +1,8 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import type { Budget, BudgetLine, Property, Proveedor } from '../../lib/types'
+import type {
+  Budget, BudgetCatalogChapter, BudgetItemSuggestion, BudgetLine, BudgetTemplate, Property,
+  Proveedor,
+} from '../../lib/types'
 import { BudgetPanel } from './BudgetPanel'
 import * as api from '../../lib/api'
 
@@ -17,6 +20,15 @@ vi.mock('../../lib/api', async importOriginal => {
     deleteBudgetChapter: vi.fn(),
     addBudgetPayment: vi.fn(),
     deleteBudgetPayment: vi.fn(),
+    // Inerte por omisión: el aviso de duplicado no debe cambiar el resultado de
+    // ninguna prueba que no vaya sobre él. Que sea así ES la propiedad que se
+    // quiere —sugiere y no bloquea— y las pruebas la ejercen abajo.
+    suggestBudgetItems: vi.fn(async () => []),
+    fetchBudgetCatalog: vi.fn(async () => CATALOGO),
+    fetchBudgetTemplates: vi.fn(async () => PLANTILLAS),
+    applyCatalogChapter: vi.fn(),
+    applyBudgetSource: vi.fn(),
+    createBudgetTemplate: vi.fn(),
   }
 })
 
@@ -28,6 +40,23 @@ const proveedor = (over: Partial<Proveedor>): Proveedor => ({
 })
 
 const categoria = (name: string) => ({ id: 1, name, description: '', createdAt: '' })
+
+/** El catálogo, para el panel de CATÁLOGO Y PLANTILLAS. */
+const CATALOGO: BudgetCatalogChapter[] = [
+  {
+    id: 1, name: 'Acabados', sortOrder: 0, isActive: true,
+    items: [
+      { id: 11, chapterId: 1, name: 'Piso cerámico 60×60', unit: 'm²', sortOrder: 0, isActive: true, usedInLines: 4 },
+      { id: 12, chapterId: 1, name: 'Pintura vinílica', unit: 'm²', sortOrder: 1, isActive: true, usedInLines: 1 },
+    ],
+  },
+]
+
+/** Una plantilla es un presupuesto sin propiedad: su id es un id de presupuesto. */
+const PLANTILLAS: BudgetTemplate[] = [
+  { id: 500, name: 'Remodelación casa antigua', notes: '', lines: 18, total: 1_800_000, createdAt: '', updatedAt: '' },
+  { id: 501, name: 'Obra nueva', notes: '', lines: 22, total: 2_300_000, createdAt: '', updatedAt: '' },
+]
 
 const PROVEEDORES: Proveedor[] = [
   proveedor({ id: 11, name: 'Albañiles del Norte', categories: [categoria('Albañilería')] }),
@@ -452,5 +481,141 @@ describe('BudgetPanel', () => {
     await waitFor(() => expect(api.addBudgetPayment).toHaveBeenCalledWith(
       7, 1, { amount: 6_000, paidOn: '2026-06-15' },
     ))
+  })
+
+  // ── El catálogo que aprende ───────────────────────────────────────────────
+
+  it('adoptar la del catálogo copia el texto y la procedencia, y ningún importe', async () => {
+    // Reconocer una partida no puede reescribir lo que ya se capturó: el
+    // catálogo no guarda precio, y el que alguien acaba de teclear se queda.
+    const b = budget([
+      line({ id: 1, name: 'Piso ceramico', unit: 'm2', unitPrice: 1_200, quantity: 40 }),
+      residual(0),
+    ])
+    await renderPanel(b)
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+    vi.mocked(api.suggestBudgetItems).mockResolvedValue([{
+      source: 'catalog', itemId: 11, chapterId: 1, chapterName: 'Acabados',
+      name: 'Piso cerámico 60×60', unit: 'm²', similarity: 0.72, usedInLines: 4,
+    } satisfies BudgetItemSuggestion])
+    vi.mocked(api.updateBudgetLine).mockResolvedValue({
+      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
+    })
+
+    fireEvent.change(screen.getByLabelText('Partida Piso ceramico'), {
+      target: { value: 'Piso ceramico 60x60' },
+    })
+    fireEvent.click(await screen.findByText('USAR LA DEL CATÁLOGO'))
+
+    await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalled())
+    // El nombre, la unidad y la procedencia. Ni precio, ni cantidad, ni capítulo:
+    // mover el renglón a otro capítulo reorganizaría la tabla debajo de quien
+    // está capturando por haber contestado una pregunta.
+    expect(vi.mocked(api.updateBudgetLine).mock.calls[0][2]).toEqual({
+      name: 'Piso cerámico 60×60', unit: 'm²', itemId: 11,
+    })
+  })
+
+  it('un renglón que ya viene del catálogo no vuelve a preguntar', async () => {
+    await renderPanel(budget([
+      line({ id: 1, name: 'Piso cerámico 60×60', itemId: 11 }),
+      residual(0),
+    ]))
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+
+    fireEvent.change(screen.getByLabelText('Partida Piso cerámico 60×60'), {
+      target: { value: 'Piso cerámico 60×60 rectificado' },
+    })
+    await new Promise(r => setTimeout(r, 320))
+
+    expect(api.suggestBudgetItems).not.toHaveBeenCalled()
+  })
+
+  it('una partida dada de baja en el catálogo no rompe el renglón que la usó', async () => {
+    // La otra mitad de la baja lógica, y la razón de que el borrado físico no
+    // exista: apagar una partida la saca de la obra NUEVA, y los renglones que
+    // ya la citan siguen enteros y editables, con su importe intacto.
+    const b = budget([
+      line({
+        id: 1, name: 'Pintura vinílica', itemId: 12, unit: 'm²',
+        quantity: 80, unitPrice: 150, budgetedAmount: 12_000,
+      }),
+      residual(0),
+    ])
+    // El catálogo ya no la ofrece
+    vi.mocked(api.fetchBudgetCatalog).mockResolvedValue([
+      { ...CATALOGO[0], items: [CATALOGO[0].items[0]] },
+    ])
+    await renderPanel(b)
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+
+    const fila = screen.getByLabelText('Partida Pintura vinílica').closest('tr')!
+    expect(within(fila).getByText('$12,000')).not.toBeNull()
+
+    // Y se sigue capturando encima con toda normalidad
+    vi.mocked(api.updateBudgetLine).mockResolvedValue({
+      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
+    })
+    const caja = screen.getByLabelText('Precio unitario de Pintura vinílica')
+    fireEvent.change(caja, { target: { value: '175' } })
+    fireEvent.blur(caja)
+
+    await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalledWith(7, 1, { unitPrice: 175 }))
+  })
+
+  it('bajar un capítulo del catálogo trae el esqueleto, sin mover un peso', async () => {
+    const onChange = await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    await screen.findByLabelText('Capítulo del catálogo')
+    vi.mocked(api.applyCatalogChapter).mockResolvedValue({
+      line: null, budget: DETALLADO, property: propiedad() as Property, budgetIncrease: 0,
+    })
+
+    fireEvent.change(screen.getByLabelText('Capítulo del catálogo'), { target: { value: '1' } })
+    fireEvent.click(screen.getByText('BAJAR'))
+
+    await waitFor(() => expect(api.applyCatalogChapter).toHaveBeenCalledWith(7, 1))
+    await waitFor(() => expect(onChange).toHaveBeenCalled())
+    // Se dice en pantalla, porque es lo que más sorprende
+    expect(screen.getByText(/Nacen en cantidad 0 — el catálogo no guarda precio/)).not.toBeNull()
+  })
+
+  it('arrancar desde una plantilla copia sus renglones por su id de presupuesto', async () => {
+    // El id de una plantilla ES un id de presupuesto: el mismo campo por el que
+    // viajaría el de otra obra. El servidor no distingue las dos, y con razón.
+    await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    const selector = await screen.findByLabelText('Presupuesto de origen')
+    vi.mocked(api.applyBudgetSource).mockResolvedValue({
+      line: null, budget: DETALLADO, property: propiedad() as Property, budgetIncrease: 0,
+    })
+
+    fireEvent.change(selector, { target: { value: '500' } })
+    fireEvent.click(screen.getByText('COPIAR RENGLONES'))
+
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 500))
+    // Y se dice que reparten en vez de crecer, que es lo que hace el residuo
+    expect(screen.getByText(/el residuo baja y el total no se mueve/)).not.toBeNull()
+  })
+
+  it('guardar como plantilla copia ESTE presupuesto y no toca la obra', async () => {
+    const onChange = await renderPanel(DETALLADO)
+    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    await screen.findByLabelText('Nombre de la plantilla')
+    vi.mocked(api.createBudgetTemplate).mockResolvedValue({
+      id: 600, name: 'Obra nueva', notes: '', lines: 3, total: 100_000,
+      createdAt: '', updatedAt: '',
+    })
+
+    fireEvent.change(screen.getByLabelText('Nombre de la plantilla'), { target: { value: '  Obra nueva  ' } })
+    fireEvent.click(screen.getByText('GUARDAR PLANTILLA'))
+
+    // El id del PRESUPUESTO, que es lo que se copia
+    await waitFor(() => expect(api.createBudgetTemplate).toHaveBeenCalledWith({
+      name: 'Obra nueva', fromBudgetId: 9,
+    }))
+    expect(await screen.findByText(/Se guardó «Obra nueva» como plantilla/)).not.toBeNull()
+    // La obra de la que salió queda exactamente igual: nada que refrescar
+    expect(onChange).not.toHaveBeenCalled()
   })
 })
