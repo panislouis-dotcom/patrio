@@ -198,10 +198,11 @@ Sus tres entradas corrieron suertes distintas, y conviene saber cuál es cuál:
 | `constructionCostPerSqm` | **Pasó a derivarse**: presupuesto ÷ metraje. Dejó de capturarse. |
 | Overhead de obra | **Se aplica una sola vez, al sembrar**, y queda dentro del importe. Dejó de ser un supuesto publicado (§3). |
 
-Las tres se siguen tecleando en la pantalla de alta, y se pueden volver a correr
-después: el resultado entra por la operación que ajusta el total del presupuesto,
-que mueve el renglón residual. **Ninguna de las tres se guarda como insumo del
-costo de obra.**
+Las tres siguen entrando por la pantalla de alta —el overhead con su ×1.3 por
+omisión si nadie lo teclea— y la calculadora se puede volver a correr después: el
+resultado entra por la operación que ajusta el total del presupuesto, que mueve
+el renglón residual. **Ninguna de las tres se guarda como insumo del costo de
+obra**; solo el metraje se guarda, y se guarda por ser metraje.
 
 **Volver a aplicar el overhead es la trampa central de este subsistema.**
 Inflaría un 30% el costo de obra de cada propiedad sin un test rojo, sin un
