@@ -326,6 +326,34 @@ def deactivate_item(conn, item_id: int) -> dict:
     return update_item(conn, item_id, {"isActive": False})
 
 
+# ─── Qué cuenta como observación del mundo ────────────────────────────────────
+#
+# Un renglón que vive en un presupuesto SIN PROPIEDAD está en una plantilla, y una
+# plantilla no es evidencia de nada: es una COPIA que alguien guardó para reusar.
+# Contarla es contar dos veces el mismo acto de capturar — la cola llegó a decir
+# «1 OBRA · 2 RENGLONES» de una partida que existe en una sola obra, y el segundo
+# renglón era la copia que el sistema mismo hizo al guardar la plantilla.
+#
+# Es EL MISMO predicado que `budget_price_observations` (migración 028) aplica
+# para que el catálogo no aprenda de sí mismo, y está escrito aquí una sola vez
+# para que la regla se lea igual en los dos lados: una plantilla es una
+# intención, no una observación.
+#
+# DÓNDE NO APLICA, y la distinción vale la pena porque parece la misma:
+#
+#   · RELIGAR (`promote`) sí toca los renglones de plantilla. Ahí no se cuenta
+#     nada: se apunta. Un renglón de plantilla sin procedencia produce, en cada
+#     obra que arranque de esa plantilla, otro renglón suelto que vuelve a la
+#     cola — dejarlo fuera del religado sería fabricar el trabajo que la
+#     promoción existe para ahorrar.
+#   · `usedInLines` DEL CATÁLOGO (`get_catalog`, `_ITEM_SQL`) cuenta referencias,
+#     no observaciones: contesta «cuánta procedencia se perdería si esto se
+#     borrara», y una plantilla que cita la partida es procedencia real. Por eso
+#     ahí se cuenta todo, y en `suggest` —que mide qué tan capturado está algo en
+#     obra real— no.
+_REAL_WORK = "b.property_id IS NOT NULL"
+
+
 # ─── La deduplicación al escribir ─────────────────────────────────────────────
 
 _SUGGEST_SQL = f"""
@@ -336,7 +364,8 @@ _SUGGEST_SQL = f"""
            i.name                                           AS name,
            i.unit                                           AS unit,
            round(word_similarity(%(q)s, i.name)::numeric, 3) AS similarity,
-           (SELECT count(*) FROM budget_lines l WHERE l.item_id = i.id) AS used_in_lines
+           (SELECT count(*) FROM budget_lines l JOIN budgets b ON b.id = l.budget_id
+             WHERE l.item_id = i.id AND {_REAL_WORK})           AS used_in_lines
       FROM budget_items i
       JOIN budget_chapters c ON c.id = i.chapter_id
      WHERE i.is_active AND c.is_active
@@ -349,7 +378,8 @@ _SUGGEST_SQL = f"""
            round(max(word_similarity(%(q)s, l.name))::numeric, 3),
            count(*)
       FROM budget_lines l
-     WHERE l.item_id IS NULL AND NOT l.is_residual
+      JOIN budgets b ON b.id = l.budget_id
+     WHERE l.item_id IS NULL AND NOT l.is_residual AND {_REAL_WORK}
        AND %(q)s <%% l.name
        AND (%(exclude)s::bigint IS NULL OR l.id <> %(exclude)s::bigint)
      GROUP BY {_norm('l.name')}
@@ -373,7 +403,11 @@ def suggest(conn, name: str, limit: int = 5, exclude_line_id: int | None = None)
 
     Cada resultado dice de dónde salió (`source`) y en cuántos renglones aparece,
     para que la interfaz pueda decir «está en el catálogo» o «ya lo tecleaste en
-    3 obras» en vez de una lista de nombres sin peso."""
+    3 renglones» en vez de una lista de nombres sin peso.
+
+    Ese conteo mide OBRA REAL en las dos fuentes (ver `_REAL_WORK`): lo que vive
+    en una plantilla es una copia, y decir «ya lo tecleaste en 2 renglones» de
+    algo tecleado una vez es afirmar una evidencia que no existe."""
     name = (name or "").strip()
     if not name:
         return []
@@ -391,7 +425,7 @@ _QUEUE_SQL = f"""
                {_norm('l.name')} AS normalized
           FROM budget_lines l
           JOIN budgets b ON b.id = l.budget_id
-         WHERE l.item_id IS NULL AND NOT l.is_residual
+         WHERE l.item_id IS NULL AND NOT l.is_residual AND {_REAL_WORK}
     ),
     grupos AS (
         SELECT normalized,
@@ -437,9 +471,11 @@ def promotion_queue(conn, limit: int = 20) -> list[dict]:
     Ordena por NÚMERO DE OBRAS antes que por número de renglones: una partida
     escrita cinco veces en la misma obra son cinco renglones de un mismo criterio,
     mientras que la misma partida en tres obras son tres observaciones
-    independientes — que es lo que hace que el catálogo aprenda. Los renglones de
-    plantilla cuentan como renglones y no como obras, porque una plantilla es una
-    intención, no una observación.
+    independientes — que es lo que hace que el catálogo aprenda.
+
+    Los renglones de plantilla no cuentan para nada de esto: ni como renglón, ni
+    como obra, ni en la mediana (ver `_REAL_WORK`). Guardar una obra como
+    plantilla no es capturar la partida por segunda vez.
 
     LAS DOS MEDIANAS SE LLAMAN DISTINTO PORQUE SON DISTINTAS, y confundirlas es el
     defecto que este módulo tiene que no cometer:
@@ -643,7 +679,7 @@ _BY_SUPPLIER_SQL = """
 # de obra real que ya la citan. Es la mitad de la respuesta que sirve durante los
 # primeros meses —cuando no hay una sola observación de nada— y sin ella la
 # pantalla vacía no tendría cómo decir qué capturar para llenarse.
-_PENDING_SQL = """
+_PENDING_SQL = f"""
     SELECT count(*)                                      AS lines,
            count(*) FILTER (WHERE l.closed_at IS NULL)   AS open_lines,
            count(*) FILTER (WHERE l.closed_at IS NULL
@@ -655,7 +691,7 @@ _PENDING_SQL = """
       LEFT JOIN LATERAL (SELECT sum(p.amount) AS paid
                            FROM budget_line_payments p
                           WHERE p.line_id = l.id) pagos ON TRUE
-     WHERE l.item_id = %s AND b.property_id IS NOT NULL
+     WHERE l.item_id = %s AND {_REAL_WORK}
 """
 
 

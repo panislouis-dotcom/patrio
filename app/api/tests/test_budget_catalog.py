@@ -727,6 +727,91 @@ def test_the_queue_learns_its_paid_median_only_from_closed_paid_work(client, tes
     assert _dec(grupo["medianBudgetedUnitPrice"]) == Decimal("1200.00")
 
 
+def _save_as_template(client, property_id: int, name="[TEST] Obra nueva") -> dict:
+    r = client.post("/api/budget/templates", json={
+        "name": name, "fromBudgetId": _budget(client, property_id)["id"]})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_a_template_copy_is_not_a_second_observation(client, test_property):
+    """Guardar una obra como plantilla no es capturar la partida por segunda vez.
+
+    La cola llegó a decir «1 OBRA · 2 RENGLONES» de una partida que existe en una
+    sola obra: el segundo renglón era la copia que el sistema mismo hizo al
+    guardar la plantilla. Es el mismo defecto que la vista de precios ya evita con
+    `property_id IS NOT NULL` — una plantilla es una intención, no una
+    observación— y ahora los dos lo evitan con el mismo predicado."""
+    _add(client, test_property["id"], chapterName="[TEST] Acabados",
+         name="[TEST] Piso cerámico", unit="m2", quantity=40, unitPrice=1_200)
+    plantilla = _save_as_template(client, test_property["id"])
+    assert len(plantilla["lines"]) == 1, "la copia sí existe: por eso podía contarse"
+
+    grupo = next(g for g in _queue(client) if g["normalized"] == "[test] piso cerámico")
+    assert (grupo["usedInLines"], grupo["properties"]) == (1, 1)
+
+
+def test_a_stale_template_price_does_not_drag_the_median(client, test_property):
+    """Y no es solo el conteo: la copia se queda con el precio que tenía el día
+    que se guardó. Al subir el de la obra, la mediana de DOS sería 1,600 —un
+    número plausible que nadie capturó nunca— contra los 2,000 que es el único
+    precio que alguien puso."""
+    created = _add(client, test_property["id"], chapterName="[TEST] Acabados",
+                   name="[TEST] Piso cerámico", unit="m2", quantity=40, unitPrice=1_200)
+    _save_as_template(client, test_property["id"])
+    r = client.patch(
+        f"/api/properties/{test_property['id']}/budget/lines/{created['line']['id']}",
+        json={"unitPrice": 2_000})
+    assert r.status_code == 200, r.text
+
+    grupo = next(g for g in _queue(client) if g["normalized"] == "[test] piso cerámico")
+    assert _dec(grupo["medianBudgetedUnitPrice"]) == Decimal("2000.00")
+
+
+def test_the_suggestion_counts_real_work_not_template_copies(client, test_property):
+    """«Ya lo tecleaste en 2 renglones» sobre algo tecleado una vez es afirmar una
+    evidencia que no existe. El aviso sigue saliendo —el texto existe— pero el
+    número que lo respalda cuenta obra real."""
+    _add(client, test_property["id"], chapterName="[TEST] Acabados",
+         name="[TEST] Piso cerámico", unit="m2", quantity=40, unitPrice=1_200)
+    _save_as_template(client, test_property["id"])
+
+    sugerencias = _suggest(client, "[TEST] Piso ceramico")
+    assert len(sugerencias) == 1
+    assert sugerencias[0]["usedInLines"] == 1
+
+
+def test_a_partida_living_only_in_a_template_is_not_evidence(client, test_property):
+    """El caso límite del mismo principio: si lo único que existe es la copia, no
+    hay nada capturado que curar, y la cola no lo propone."""
+    created = _add(client, test_property["id"], chapterName="[TEST] Acabados",
+                   name="[TEST] Piso cerámico", unit="m2", quantity=40, unitPrice=1_200)
+    _save_as_template(client, test_property["id"])
+    assert client.delete(f"/api/properties/{test_property['id']}/budget/lines/"
+                         f"{created['line']['id']}").status_code == 200
+
+    assert all(g["normalized"] != "[test] piso cerámico" for g in _queue(client))
+    assert _suggest(client, "[TEST] Piso cerámico") == []
+
+
+def test_relinking_still_reaches_the_template(client, test_property):
+    """Donde la regla NO aplica, y la distinción parece la misma pero no lo es:
+    religar no cuenta, apunta. Un renglón de plantilla sin procedencia produce,
+    en cada obra que arranque de esa plantilla, otro renglón suelto que vuelve a
+    la cola — dejarlo fuera del religado fabricaría el trabajo que la promoción
+    existe para ahorrar."""
+    created = _add(client, test_property["id"], chapterName="[TEST] Acabados",
+                   name="[TEST] Piso cerámico", unit="m2", quantity=40, unitPrice=1_200)
+    plantilla = _save_as_template(client, test_property["id"])
+
+    r = client.post("/api/budget/catalog/promote",
+                    json={"lineId": created["line"]["id"]}).json()
+    assert r["relinked"] == 2, "la obra y la copia de la plantilla"
+
+    linea = client.get(f"/api/budget/templates/{plantilla['id']}").json()["lines"][0]
+    assert linea["itemId"] == r["item"]["id"]
+
+
 def test_the_residual_never_enters_the_queue(client, test_property):
     """Existe en todos los presupuestos: sin excluirlo encabezaría la cola para
     siempre, proponiendo curar el remanente."""
