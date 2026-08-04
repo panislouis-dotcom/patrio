@@ -15,7 +15,9 @@ def _row(**overrides) -> dict:
         "latitude": 25.68, "longitude": -100.33,
         "purchase_price": 3_000_000, "sqm_land": 100, "sqm_construction": 200,
         "acquisition_cost_pct": 0.06, "permits_cost": 0, "subdivision_cost": 0,
-        "construction_cost_per_sqm": 6_000, "construction_overhead": 1.3,
+        # El costo de obra ya no se arma de $/m² × overhead: llega entero desde
+        # el presupuesto, con los indirectos ya adentro (200 × 6,000 × 1.3).
+        "construction_budgeted": 1_560_000,
         "projected_sale": 8_000_000, "hold_months": 18, "rent_monthly_projected": 20_000,
         "total_units": None, "acquisition_date": None, "first_rent_date": None,
         "sale_date": None, "sale_price": None,
@@ -53,12 +55,16 @@ def test_a_negative_projection_is_an_error():
     assert "projectedRoi" in _fields(_row(projected_sale=1_000_000), "error")
 
 
-def test_an_overhead_below_one_is_an_error():
-    assert "constructionOverhead" in _fields(_row(construction_overhead=0.9), "error")
+def test_the_overhead_is_no_longer_judged_because_it_no_longer_multiplies():
+    """Se aplica una sola vez, al calcular el primer renglón del presupuesto, y
+    desde ahí vive dentro del importe. Una regla sobre un número que no mueve
+    dinero es una regla que nadie puede violar, y publicarla habría dejado en la
+    ficha una advertencia sobre una cifra que ya no hace nada."""
+    assert not [i for i in _issues(_row()) if i.field == "constructionOverhead"]
 
 
 def test_soft_pre_purchase_warnings():
-    assert "constructionCostPerSqm" in _fields(_row(construction_cost_per_sqm=0), "warning")
+    assert "constructionBudgeted" in _fields(_row(construction_budgeted=0), "warning")
     assert "rentMonthlyProjected" in _fields(_row(rent_monthly_projected=None), "warning")
     assert "acquisitionCostPct" in _fields(_row(acquisition_cost_pct=0.12), "warning")
     assert "projectedProfit" in _fields(_row(projected_sale=4_000_000), "warning")
@@ -135,7 +141,7 @@ def test_vendida_wants_the_record_closed():
     pila completa en cero."""
     sold = _row(status="vendida", sale_date=date(2026, 7, 1), sale_price=5_000_000,
                 acquisition_date=None, purchase_price=None,
-                sqm_construction=0, construction_cost_per_sqm=0)
+                sqm_construction=0, construction_budgeted=0)
     fields = {i.field for i in _issues(sold)}
     assert "acquisitionDate" in fields   # no hold, so no realized ROI
     assert "purchasePrice" in fields     # empty cost stack, so no realized gain
@@ -166,8 +172,8 @@ def test_nothing_is_reconciled_because_there_is_only_one_investment():
     desglose, así que no puede desacordar consigo misma y ninguna advertencia
     puede hablar de que «no cuadran».
 
-    El desglose del fixture suma 3,000,000×1.06 + 200×6,000×1.3 = 4,740,000, y
-    esa es la base sin importar quién más opine."""
+    El desglose del fixture suma 3,000,000×1.06 + 1,560,000 presupuestados de
+    obra = 4,740,000, y esa es la base sin importar quién más opine."""
     row = _bought()
     assert metrics(row)["totalInvestment"] == 4_740_000
     assert not [i for i in _issues(row) if "cuadra" in i.message or "suman más" in i.message]

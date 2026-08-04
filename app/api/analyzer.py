@@ -392,16 +392,16 @@ def analyze_property(
     #
     # Hay dos modelos de obra en el sistema y sumarlos sería contar dos veces el
     # mismo peso, que es justo el bug que la 025 mató en la captura:
-    #   · el de la PROPIEDAD (`construction_cost_per_sqm` × overhead), que es lo
-    #     que el operador presupuestó para este trato;
+    #   · el de la PROPIEDAD (la suma de su presupuesto de obra, `budget_lines`),
+    #     que es lo que el operador presupuestó para este trato;
     #   · el del ANALIZADOR (`remodel_costs` por zona y nivel de intervención),
     #     que es el precio de mercado de la obra en esa zona.
     #
     # El analizador corre su ESCENARIO PROPIO: toma su $/m² de la tabla de zona
     # y NO suma la obra presupuestada de la propiedad — de ahí que este módulo
-    # jamás lea `construction_cost_per_sqm` ni `construction_overhead`. Esa es
-    # la razón de ser de la herramienta: contrastar el presupuesto propio contra
-    # lo que la zona dice que cuesta. Si sumara ambos, no compararía nada.
+    # jamás lea el presupuesto. Esa es la razón de ser de la herramienta:
+    # contrastar el presupuesto propio contra lo que la zona dice que cuesta. Si
+    # sumara ambos, no compararía nada.
     #
     # Lo único que toma de la propiedad son los METROS: el área es un hecho
     # físico del inmueble, no un supuesto de costo, y por eso no duplica nada.

@@ -52,6 +52,7 @@ from decimal import Decimal
 from psycopg2 import IntegrityError
 from psycopg2.extras import Json
 
+from api import budget_db
 from api.checks import run_checks, stage_requirements
 from api.db import get_db, _camel_to_snake, _row_to_dict, _snake_to_camel
 from api.finance import underwriting
@@ -141,12 +142,19 @@ PROCESS_STATUSES = frozenset({"desarrollo", "en_renta", "vendida"})
 # Columns a client may write through POST/PATCH. `status` is absent on purpose:
 # it only ever moves through POST /transition, which validates the gate and
 # records the event.
+#
+# `constructionCostPerSqm` y `constructionOverhead` NO están: dejaron de ser
+# insumos. El costo de obra es la suma del presupuesto, así que se cambia
+# capturando partidas o ajustando el total del presupuesto — no tecleando un
+# precio unitario compuesto que un desglose por partidas justamente no tiene.
+# Los dos sobreviven como entradas de la CALCULADORA de POST /api/properties,
+# que produce el primer renglón y no guarda ninguno de los dos.
 WRITABLE_FIELDS = frozenset({
     "name", "address", "city", "url", "latitude", "longitude",
     "assetType", "strategyType",
     "sqmLand", "sqmConstruction", "purchasePrice", "acquisitionCostPct",
-    "permitsCost", "subdivisionCost", "constructionCostPerSqm",
-    "constructionOverhead", "projectedSale", "holdMonths",
+    "permitsCost", "subdivisionCost",
+    "projectedSale", "holdMonths",
     "rentMonthlyProjected", "rentMonthlyActual",
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
     "currentValuation", "valuationDate", "milestones",
@@ -164,8 +172,8 @@ WRITABLE_FIELDS = frozenset({
 CLEARABLE_FIELDS = frozenset({
     "assetType", "strategyType",
     "sqmLand", "sqmConstruction", "purchasePrice", "acquisitionCostPct",
-    "permitsCost", "subdivisionCost", "constructionCostPerSqm",
-    "constructionOverhead", "projectedSale", "holdMonths",
+    "permitsCost", "subdivisionCost",
+    "projectedSale", "holdMonths",
     "rentMonthlyProjected", "rentMonthlyActual",
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
     "currentValuation", "valuationDate",
@@ -343,8 +351,25 @@ def _reject_new_violations(status: str, before: dict, after: dict) -> None:
 # renta COBRADA en vez de la modelada. Viven junto a su par para que (capRate ↔
 # capRateActual) se lea como se lee todo pareado en este archivo: lo que dijimos,
 # al lado de lo que pasó — y para que ninguno de los dos se apague sin el otro.
+#
+# Las cifras de obra son cuatro y no una, y las cuatro viven aquí porque las
+# cuatro son función de lo capturado: `constructionBudgeted` es la barra del
+# desglose —el plan, lo único que alimenta la inversión total— y comprometida,
+# pagada y sus variaciones son el avance de la obra EN DINERO contra ese plan.
+# Ninguna de las tres de ejecución redefine la inversión: lo que la obra va a
+# costar y lo que ya se pagó de ella son dos preguntas distintas.
+#
+# `constructionBase` y `constructionTotal` desaparecieron con la fórmula que
+# nombraban. Eran el mismo gasto con y sin overhead; sin un overhead que
+# aplicar, «base» y «total» serían dos nombres para un número, que es justo lo
+# que el glosario prohíbe.
 _RECORD_KEYS = (
-    "acquisitionCosts", "acquisitionTotal", "constructionBase", "constructionTotal",
+    "acquisitionCosts", "acquisitionTotal",
+    "constructionBudgeted", "constructionCommitted", "constructionPaid",
+    "constructionCommittedVariance", "constructionPaidVariance",
+    # Derivada, no capturada: presupuesto ÷ metraje. Se publica para mostrarse y
+    # nada la vuelve a leer para calcular dinero.
+    "constructionCostPerSqm",
     "purchasePricePerSqm", "investmentPerSqm", "salePerSqm",
     "projectedProfit", "projectedRoi", "projectedRoiTotal",
     "capRate", "rentAnnual", "capRateActual", "rentAnnualActual",
@@ -446,11 +471,10 @@ def metrics(row: dict) -> dict:
     # proyectado ↔ realizado solo sirve si se puede leer completa.
     sale = row.get("projected_sale")
     rent_actual = row.get("rent_monthly_actual")
+    out.update(budget_db.metrics(row))
     out.update({
         "acquisitionCosts": stack["acquisition_costs"],
         "acquisitionTotal": stack["acquisition_total"],
-        "constructionBase": stack["construction_base"],
-        "constructionTotal": stack["construction_total"],
         "purchasePricePerSqm": stack["purchase_price_per_sqm"],
         "investmentPerSqm": _per_sqm(basis, row.get("sqm_land")),
         "salePerSqm": stack["sale_per_sqm"],
@@ -505,6 +529,24 @@ def score(prop: dict, peers: list[dict]) -> int | None:
 
 # ─── Read path ────────────────────────────────────────────────────────────────
 
+# Columnas RETIRADAS que la tabla todavía tiene y el contrato ya no publica.
+#
+# `construction_overhead` dejó de multiplicar nada: se aplica una sola vez al
+# calcular el primer renglón del presupuesto y desde ahí vive dentro del
+# importe. Publicarlo igual dejaría en la ficha un número que se puede leer,
+# comparar y hasta editar, y que no mueve un peso — que es el defecto «NO SE
+# USA» otra vez, con otro nombre.
+#
+# La columna sobrevive un rato más porque las SEMILLAS la usan para calcular el
+# presupuesto de una base recién sembrada, igual que los campos homónimos de
+# POST /api/properties. Su DROP va con la reescritura de db/seeds.
+#
+# `construction_cost_per_sqm` no necesita estar aquí: el cómputo lo pisa con el
+# cociente derivado, así que lo que se publica bajo ese nombre ya es el número
+# nuevo y no el de la columna.
+_RETIRED_COLUMNS = ("constructionOverhead",)
+
+
 def parse_property(row, images: list | None = None) -> dict:
     """Raw row → the unified camelCase contract: stored columns as they are, plus
     the stage-appropriate metrics, the stage's issues and its images. Issues are
@@ -518,6 +560,8 @@ def parse_property(row, images: list | None = None) -> dict:
     raw = dict(row)
     computed = metrics(raw)
     parsed = _row_to_dict(row)
+    for retired in _RETIRED_COLUMNS:
+        parsed.pop(retired, None)
     parsed.update(computed)
     parsed["issues"] = [asdict(i) for i in run_checks(raw, computed)]
     parsed["images"] = images if images is not None else []
@@ -539,10 +583,28 @@ def _images_by_property(conn, ids: list[int]) -> dict[int, list]:
     return grouped
 
 
+# La fila cruda más las tres cifras de su presupuesto, en un solo viaje.
+#
+# El LATERAL trae el costo de obra junto con el resto del desglose porque la
+# suma presupuestada YA ES uno de los costos: sacarla en una segunda consulta
+# abriría la puerta a leer una propiedad con la obra de otro instante, que es
+# como una fila puede publicar una inversión total que sus partes no explican.
+#
+# `LEFT JOIN` no hace falta: el subselect es un agregado sin GROUP BY, así que
+# devuelve exactamente una fila incluso cuando la propiedad no tiene
+# presupuesto —0 presupuestado, NULL comprometido, NULL pagado— y por eso no hay
+# ninguna rama «si existe presupuesto» en ningún lado.
+_FETCH_SQL = f"""
+    SELECT p.*, obra.*
+      FROM properties p
+      JOIN LATERAL ({budget_db.totals_sql('p.id')}) obra ON TRUE
+     {{where}}
+     ORDER BY p.id
+"""
+
+
 def _fetch(conn, where: str = "", params: tuple | list = ()) -> list[dict]:
-    rows = conn.execute(
-        f"SELECT * FROM properties {where} ORDER BY id", params
-    ).fetchall()
+    rows = conn.execute(_FETCH_SQL.format(where=where), params).fetchall()
     images = _images_by_property(conn, [r["id"] for r in rows])
     return [parse_property(r, images.get(r["id"], [])) for r in rows]
 
@@ -622,17 +684,34 @@ CAPTURE_DEFAULTS = {
     "purchase_price": 0.0,
     "permits_cost": 0.0,
     "subdivision_cost": 0.0,
-    "construction_cost_per_sqm": 0.0,
 }
+
+# Los tres insumos de la CALCULADORA con la que nace el presupuesto. No son
+# columnas: se reciben, producen el importe del primer renglón y se olvidan. El
+# resultado vive en el presupuesto y no en un campo paralelo que pudiera
+# contradecirlo — que es exactamente la diferencia entre una calculadora y una
+# segunda fuente de verdad.
+#
+# `sqmConstruction` aparece en los dos lados y no es contradicción: es metraje
+# FÍSICO, se guarda como tal, y aquí además sirve de factor. Los otros dos solo
+# pasan por aquí.
+_CALCULATOR_FIELDS = ("sqmConstruction", "constructionCostPerSqm", "constructionOverhead")
 
 
 def create_property(data: dict) -> dict:
     """A property is born a prospecto. Every other state is reached by living
-    through the one before it."""
+    through the one before it.
+
+    Nace también con su presupuesto de obra: una fila «Otros, por detallar» con
+    el estimado grueso que produce la calculadora. Esa fila YA es el costo de
+    obra de la propiedad, desde `prospecto` y sin compuerta de etapa, y por eso
+    nunca hay un momento en que la obra cambie de fuente."""
     columns = {**CAPTURE_DEFAULTS, **to_columns(data)}
     columns["status"] = INITIAL_STATUS
     names = ", ".join(columns)
     placeholders = ", ".join(["%s"] * len(columns))
+    estimate = budget_db.calculator_estimate(
+        *(data.get(field) for field in _CALCULATOR_FIELDS))
     with get_db() as conn:
         with _readable_rejection():
             new_id = conn.execute(
@@ -644,6 +723,9 @@ def create_property(data: dict) -> dict:
             " VALUES (%s, NULL, %s, %s)",
             (new_id, INITIAL_STATUS, "Alta de la propiedad."),
         )
+        # Misma transacción que la fila: una propiedad sin presupuesto sería la
+        # única que necesitaría una rama para contestar cuánto cuesta su obra.
+        budget_db.create_budget(conn, new_id, estimate)
     return get_property(new_id)
 
 
@@ -750,6 +832,13 @@ _DELETE_BLOCKERS = {
 
 def delete_property(property_id: int) -> None:
     with get_db() as conn:
+        # El presupuesto sembrado se va con la propiedad; el capturado la
+        # retiene. Desde que TODA propiedad nace con presupuesto, retener por su
+        # sola existencia habría dejado el borrado inservible: ninguna propiedad
+        # se podría borrar nunca, y el 422 dejaría de señalar trabajo real para
+        # señalar una fila que puso el sistema.
+        if not budget_db.holds_captured_work(conn, property_id):
+            budget_db.drop_budget(conn, property_id)
         try:
             deleted = conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
         except IntegrityError as exc:

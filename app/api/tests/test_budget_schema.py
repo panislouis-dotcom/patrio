@@ -74,6 +74,10 @@ def test_no_total_is_stored():
         "id", "budget_id", "item_id", "chapter_name", "name", "unit",
         "quantity", "unit_price", "supplier_id", "committed_amount", "committed_on",
         "actual_quantity", "closed_at", "sort_order", "notes", "created_at", "updated_at",
+        # `is_residual` NO es un total: es qué ES el renglón. Marca el que
+        # absorbe lo que falta por detallar, y sin él la regla del remanente
+        # dependería de que nadie renombre la cadena «Otros, por detallar».
+        "is_residual",
     }
     assert _columns("budget_line_payments") == {
         "id", "line_id", "amount", "paid_on", "notes", "created_at",

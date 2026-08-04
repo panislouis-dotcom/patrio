@@ -85,15 +85,17 @@ def make_property(client):
             "name": "[TEST] Otra Propiedad", "address": "Calle Dos 2", "city": "Monterrey",
             "purchasePrice": 1_000_000, "acquisitionCostPct": 0.0, "permitsCost": 0,
             "subdivisionCost": 0, "sqmLand": 300, "sqmConstruction": 0,
-            "constructionCostPerSqm": 0, "constructionOverhead": 1.0,
             "holdMonths": 12, "projectedSale": 2_000_000, **fields})
         assert r.status_code == 201, r.text
         created.append(r.json()["id"])
         return r.json()
 
     yield _make
+    # El presupuesto sembrado va primero: su FK a properties es RESTRICT, no
+    # CASCADE, porque es donde puede vivir captura manual.
     with get_db() as conn:
         for property_id in created:
+            conn.execute("DELETE FROM budgets WHERE property_id = %s", (property_id,))
             conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
 
 

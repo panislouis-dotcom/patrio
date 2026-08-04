@@ -90,23 +90,32 @@ def test_delete_blocked_by_a_reference_is_422_with_the_reason(client, test_prope
             conn.execute("DELETE FROM process_instances WHERE property_id = %s", (pid,))
 
 
-def test_delete_blocked_by_its_budget_is_422_with_the_reason(client, test_property):
+def test_delete_blocked_by_captured_budget_work_is_422_with_the_reason(client, test_property):
     """El presupuesto de obra está en la familia de RESTRICT, no en la de CASCADE:
     lleva captura manual —cantidades medidas, precios negociados, pagos— y perder
     eso en un borrado mudo es perder trabajo real. Se rechaza y se dice qué la
     retiene, que es lo que le permite a alguien decidir tirarlo a propósito."""
     pid = test_property["id"]
-    with get_db() as conn:
-        conn.execute("INSERT INTO budgets (property_id) VALUES (%s)", (pid,))
-    try:
-        r = client.delete(f"/api/properties/{pid}")
-        assert r.status_code == 422
-        assert r.json()["error"]["message"] == (
-            "No se puede eliminar la propiedad porque tiene un presupuesto de obra.")
-        assert client.get(f"/api/properties/{pid}").status_code == 200
-    finally:
-        with get_db() as conn:
-            conn.execute("DELETE FROM budgets WHERE property_id = %s", (pid,))
+    r = client.post(f"/api/properties/{pid}/budget/lines", json={
+        "chapterName": "Albañilería", "name": "Muros", "unit": "m2",
+        "quantity": 100, "unitPrice": 900})
+    assert r.status_code == 201, r.text
+    r = client.delete(f"/api/properties/{pid}")
+    assert r.status_code == 422
+    assert r.json()["error"]["message"] == (
+        "No se puede eliminar la propiedad porque tiene un presupuesto de obra.")
+    assert client.get(f"/api/properties/{pid}").status_code == 200
+
+
+def test_a_seeded_budget_does_not_block_the_delete(client, test_property):
+    """Desde que TODA propiedad nace con presupuesto, retener por su sola
+    existencia habría dejado el borrado inservible: ninguna propiedad se podría
+    borrar nunca. Lo que retiene es lo que alguien CAPTURÓ —una partida, un
+    proveedor, un compromiso, un pago—, no la fila que puso el sistema."""
+    pid = test_property["id"]
+    assert client.get(f"/api/properties/{pid}/budget").json()["lines"]
+    assert client.delete(f"/api/properties/{pid}").status_code == 204
+    assert client.get(f"/api/properties/{pid}").status_code == 404
 
 
 def test_quality_reports_issues_per_property(client, test_property):

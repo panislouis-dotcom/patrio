@@ -15,18 +15,26 @@ component is worth 0, so the sum is always defined, and a sum of 0 means nobody
 has captured anything yet (see `basis`).
 
 `purchase_price` is what you pay to take the building as it stands — a bare lot
-or a finished house, no special case per asset type. The construction terms are
-the work *you* will do afterwards (`sqm_construction` × `construction_cost_per_sqm`
-× overhead): a remodel, an extension, a ground-up build. Nothing already paid
-for inside the purchase price appears again in them, which is what stops a built
-house from being counted twice.
+or a finished house, no special case per asset type. `construction_budgeted` is
+the work *you* will do afterwards: a remodel, an extension, a ground-up build.
+Nothing already paid for inside the purchase price appears again in it, which is
+what stops a built house from being counted twice.
 
-Three of the inputs are ASSUMPTIONS, not costs: `acquisition_cost_pct`,
-`construction_overhead` and `hold_months`. They are never stored at capture
-time, so NULL means "nobody chose one — the model applies its default" and a
-stored value means "a person captured this". The defaults live here, in one
-place, and every reader gets them together with their provenance, because a
-number that moves money has to be visible to whoever reads the money.
+That construction term used to be a formula — `sqm_construction` ×
+`construction_cost_per_sqm` × overhead — and is now the SUM OF THE WORK BUDGET
+(`budget_lines`), in every stage and without a branch. The formula survives only
+as a calculator that produces the budget's first line at capture time, so the
+30% overhead is applied exactly ONCE, there, and lives inside the amount from
+then on. Applying it again here would inflate every construction cost by 30%
+with nothing looking broken — which is why this module no longer knows the word
+«overhead» and no longer takes a multiplier it could re-apply.
+
+Two of the inputs are ASSUMPTIONS, not costs: `acquisition_cost_pct` and
+`hold_months`. They are never stored at capture time, so NULL means "nobody
+chose one — the model applies its default" and a stored value means "a person
+captured this". The defaults live here, in one place, and every reader gets them
+together with their provenance, because a number that moves money has to be
+visible to whoever reads the money.
 
 Descends from the prospect_metrics view (migration 019) and still matches it
 formula-for-formula except for cap_rate: as of 2026-07 cap rate is *yield on
@@ -43,22 +51,28 @@ from decimal import Decimal
 from .quantize import money, money0, frac4, to_decimal
 from .analysis import roi_cagr
 
-# The five COSTS. Together they ARE the investment — there is no other way to
+# The four COSTS. Together they ARE the investment — there is no other way to
 # state it, and no total that can disagree with them. A missing one is worth 0,
 # so the sum is always defined and the stack is never "incomplete".
+#
+# They were five while the work was priced by a formula. Now the work arrives as
+# one figure —the budget's sum— so the term that used to need two columns and a
+# multiplier needs one number. Fewer inputs, same money.
 # Order matches investment_raw's cost parameters so `investment()` can splat them.
 COST_KEYS = (
-    "purchase_price", "permits_cost", "subdivision_cost",
-    "sqm_construction", "construction_cost_per_sqm",
+    "purchase_price", "permits_cost", "subdivision_cost", "construction_budgeted",
 )
 
-# The three ASSUMPTIONS and what the model applies when nobody chose. They are
+# The two ASSUMPTIONS and what the model applies when nobody chose. They are
 # deliberately absent from the capture defaults: writing 0.065 into the column
 # at birth makes "the system assumed it" indistinguishable from "somebody picked
-# it", and these three produce visible money and a visible deadline.
+# it", and both produce visible money or a visible deadline.
+#
+# `construction_overhead` was the third and is gone: it multiplies nothing here
+# any more. An assumption that moves no money is not an assumption, and leaving
+# it published would be a field the ficha shows and nothing reads.
 ASSUMPTION_DEFAULTS: dict[str, Decimal | int] = {
     "acquisition_cost_pct": Decimal("0.065"),
-    "construction_overhead": Decimal("1.3"),
     "hold_months": 12,
 }
 
@@ -66,6 +80,10 @@ ASSUMPTION_KEYS = tuple(ASSUMPTION_DEFAULTS)
 
 _INPUT_KEYS = COST_KEYS + ASSUMPTION_KEYS + (
     "projected_sale", "rent_monthly_projected", "rent_monthly_actual", "sqm_land",
+    # Metraje FÍSICO de la obra a ejecutar. Ya no pone precio a nada —lo pone el
+    # presupuesto— y sobrevive porque el analizador de mercado y el PDF lo leen,
+    # y porque es el divisor del costo por m² derivado.
+    "sqm_construction",
 )
 
 
@@ -87,27 +105,22 @@ def assumptions(inputs: dict) -> dict[str, dict]:
     return out
 
 
-def overhead_factor(construction_overhead) -> Decimal:
-    """Construction overhead is a *multiplier* (1.3 = +30% indirect costs), so a
-    captured zero means no surcharge — identity 1, never ×0, which would erase
-    the construction the user explicitly captured. Contrast acquisition_cost_pct,
-    an additive share whose identity is correctly 0. An *absent* overhead is not
-    handled here: it resolves to the default before it ever gets this far."""
-    return to_decimal(construction_overhead) or Decimal(1)
-
-
 def investment_raw(purchase_price, acquisition_cost_pct, permits_cost, subdivision_cost,
-                   sqm_construction, construction_cost_per_sqm, construction_overhead) -> Decimal:
+                   construction_budgeted) -> Decimal:
     """Unrounded COST expression — the single source every metric derives from.
-    Pure arithmetic: the assumptions arrive already resolved."""
+    Pure arithmetic: the assumptions arrive already resolved.
+
+    `construction_budgeted` enters already whole. No factor is applied to it
+    here, in any stage, for any property: the overhead was applied once when the
+    budget was seeded and multiplying again would silently add 30% to the cost
+    of work somebody already priced."""
     pp = to_decimal(purchase_price)
     acq = to_decimal(acquisition_cost_pct)
     return (
         pp * (Decimal(1) + acq)
         + to_decimal(permits_cost)
         + to_decimal(subdivision_cost)
-        + to_decimal(sqm_construction) * to_decimal(construction_cost_per_sqm)
-        * overhead_factor(construction_overhead)
+        + to_decimal(construction_budgeted)
     )
 
 
@@ -119,9 +132,7 @@ def investment(inputs: dict) -> Decimal:
         assumption(inputs, "acquisition_cost_pct")[0],
         inputs.get("permits_cost"),
         inputs.get("subdivision_cost"),
-        inputs.get("sqm_construction"),
-        inputs.get("construction_cost_per_sqm"),
-        assumption(inputs, "construction_overhead")[0],
+        inputs.get("construction_budgeted"),
     )
 
 
@@ -201,16 +212,13 @@ def metrics(inputs: dict) -> dict:
     figures here are the PROJECTED ones: this is the underwriting stack."""
     g = {k: inputs.get(k) for k in _INPUT_KEYS}
     acq = to_decimal(assumption(inputs, "acquisition_cost_pct")[0])
-    ovh = overhead_factor(assumption(inputs, "construction_overhead")[0])
     hold = assumption(inputs, "hold_months")[0]
 
     inv_raw = investment_raw(
         g["purchase_price"], acq, g["permits_cost"], g["subdivision_cost"],
-        g["sqm_construction"], g["construction_cost_per_sqm"], ovh,
+        g["construction_budgeted"],
     )
     pp = to_decimal(g["purchase_price"])
-    sqm_c = to_decimal(g["sqm_construction"])
-    cps = to_decimal(g["construction_cost_per_sqm"])
     ps = to_decimal(g["projected_sale"])
     sqm_land = to_decimal(g["sqm_land"])
 
@@ -219,8 +227,10 @@ def metrics(inputs: dict) -> dict:
     return {
         "acquisition_costs": money0(pp * acq),
         "acquisition_total": money0(pp * (Decimal(1) + acq)),
-        "construction_base": money0(sqm_c * cps),
-        "construction_total": money0(sqm_c * cps * ovh),
+        # La obra no se restaura aquí: llega entera y la publica el módulo del
+        # presupuesto, junto a lo comprometido y lo pagado contra ella. Dos
+        # lugares que dijeran el mismo peso serían dos lugares que pueden
+        # diferir.
         "total_investment": money0(inv_raw),
         "profit": gain(inv_raw, ps),
         "roi": frac4(roi) if roi is not None else None,
