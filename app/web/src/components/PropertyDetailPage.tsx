@@ -36,6 +36,7 @@ import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
+import { BudgetPanel } from './detail/BudgetPanel'
 import { SectionDivider } from './detail/SectionDivider'
 import { ErrorBanner } from './detail/ErrorBanner'
 import { TransitionModal } from './detail/TransitionModal'
@@ -422,7 +423,12 @@ export function PropertyDetailPage() {
     { label: 'Costos adq.', amount: p.acquisitionCosts ?? 0 },
     { label: 'Permisos', amount: p.permitsCost ?? 0 },
     { label: 'Subdivisión', amount: p.subdivisionCost ?? 0 },
-    { label: 'Obra a ejecutar', amount: p.constructionTotal ?? 0 },
+    // La obra ya no es una fórmula: es la SUMA DEL PRESUPUESTO, capturada
+    // renglón por renglón en la pestaña PRESUPUESTO. Antes era
+    // `m² × $/m² × overhead`, y con eso vivían dos respuestas a «cuánto va a
+    // costar la obra» en cuanto alguien empezara a detallarla. Ahora nunca hay
+    // dos —y no porque una gane, sino porque nunca hubo dos.
+    { label: 'Obra a ejecutar', amount: p.constructionBudgeted ?? 0 },
   ]
 
   /**
@@ -650,8 +656,16 @@ export function PropertyDetailPage() {
                   <SectionDivider label="DESGLOSE DE INVERSIÓN" />
                   {numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
                   {numRow('TERRENO (m²)', 'sqmLand', fmtNum, { clearable: 'sqmLand' })}
+                  {/* El metraje se queda: es FÍSICO, y lo leen el analizador de
+                      mercado y el PDF, a los que no les importa lo que cueste la
+                      obra. El costo por m² NO: desde que la obra es la suma del
+                      presupuesto, ese precio es un resultado —presupuesto ÷
+                      metraje— y no un insumo. Dejarlo capturable aquí daría un
+                      segundo lugar donde teclear el costo de obra, que es
+                      exactamente la contradicción que la pestaña PRESUPUESTO
+                      existe para cerrar. Se captura en la PESTAÑA, renglón por
+                      renglón. */}
                   {numRow('OBRA A EJECUTAR (m²)', 'sqmConstruction', fmtNum, { clearable: 'sqmConstruction' })}
-                  {numRow('COSTO OBRA/m²', 'constructionCostPerSqm', fmtMXN, { clearable: 'constructionCostPerSqm' })}
                   {numRow('PERMISOS', 'permitsCost', fmtMXN, { clearable: 'permitsCost' })}
                   {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN, { clearable: 'subdivisionCost' })}
                   {numRow('VENTA PROYECTADA', 'projectedSale', fmtMXN, { clearable: 'projectedSale' })}
@@ -667,6 +681,25 @@ export function PropertyDetailPage() {
                     ['INVERSIÓN/m²', p.investmentPerSqm, fmtMXN],
                     ['VENTA/m²', p.salePerSqm, fmtMXN],
                     ['COMPRA/m² TERRENO', p.purchasePricePerSqm, fmtMXN],
+                    // Vive con las demás derivadas y ya no arriba con lo que se
+                    // teclea: es presupuesto ÷ metraje, un RESULTADO de haber
+                    // presupuestado. Mientras fue campo capturable era la
+                    // segunda respuesta a cuánto cuesta la obra.
+                    ['OBRA/m²', p.constructionCostPerSqm, fmtMXN],
+                  ])}
+                  {/* El avance de obra EN DINERO. Son cifras NUEVAS, no otra
+                      versión de la inversión: lo que la obra va a costar y lo
+                      que ya se pagó de ella son dos preguntas distintas, y solo
+                      la primera es capital invertido. Lo presupuestado no está
+                      aquí porque ya es la barra «Obra a ejecutar» de arriba —
+                      cada cifra etiquetada vive en un solo lugar.
+                      La sección entera desaparece mientras nadie firme ni pague:
+                      cuatro guiones bajo un título no informan de nada. */}
+                  {statSection('AVANCE DE OBRA', [
+                    ['OBRA COMPROMETIDA', p.constructionCommitted, fmtMXN],
+                    ['OBRA PAGADA', p.constructionPaid, fmtMXN],
+                    ['COMPROMETIDO VS PRESUPUESTO', p.constructionCommittedVariance, fmtMXN],
+                    ['PAGADO VS PRESUPUESTO', p.constructionPaidVariance, fmtMXN],
                   ])}
                 </>
               )}
@@ -810,39 +843,62 @@ export function PropertyDetailPage() {
           )}
         </div>
 
-        {/* ── CENTRO: Mapa / Fotos / Plano ── */}
+        {/* ── CENTRO: Mapa / Fotos / Plano / Presupuesto ──
+            El presupuesto no lleva ventana de etapa, a diferencia de las
+            herramientas de la columna izquierda: acompaña a la propiedad desde
+            prospecto como el desglose de costos, porque hay que poder
+            presupuestar antes de ofertar. */}
         <MediaTabs
           style={fade(160)}
-          mapa={<MapPanel lat={p.latitude} lon={p.longitude} markerColor={PROPERTY_STATUS_COLOR[stage]} />}
-          fotos={
-            <PhotoGallery
-              images={p.images}
-              base={BASE}
-              onUpload={async (file, imageType) => {
-                const img = await uploadPropertyImage(p.id, file, imageType)
-                setProperty(prev => prev ? { ...prev, images: [...prev.images, img] } : prev)
-              }}
-              onDelete={async imageId => {
-                await deletePropertyImage(p.id, imageId)
-                setProperty(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
-              }}
-              onChangeType={async (imageId: number, next: ImageType) => {
-                const updated = await updatePropertyImageType(p.id, imageId, next)
-                setProperty(prev => prev ? { ...prev, images: prev.images.map(i => i.id === imageId ? updated : i) } : prev)
-              }}
-            />
-          }
-          plano={geometry !== null && (
-            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              <FloorPlanEditor
-                initial={geometry}
-                onSave={async m => setGeometry(await savePropertyGeometry(p.id, m))}
-                onUploadImage={file => uploadFloorplanImage(p.id, file)}
-                onReady={onPlanReady}
-                onDirtyChange={setPlanDirty}
-              />
-            </div>
-          )}
+          tabs={[
+            {
+              label: 'mapa',
+              panel: <MapPanel lat={p.latitude} lon={p.longitude} markerColor={PROPERTY_STATUS_COLOR[stage]} />,
+            },
+            {
+              label: 'fotos',
+              panel: (
+                <PhotoGallery
+                  images={p.images}
+                  base={BASE}
+                  onUpload={async (file, imageType) => {
+                    const img = await uploadPropertyImage(p.id, file, imageType)
+                    setProperty(prev => prev ? { ...prev, images: [...prev.images, img] } : prev)
+                  }}
+                  onDelete={async imageId => {
+                    await deletePropertyImage(p.id, imageId)
+                    setProperty(prev => prev ? { ...prev, images: prev.images.filter(i => i.id !== imageId) } : prev)
+                  }}
+                  onChangeType={async (imageId: number, next: ImageType) => {
+                    const updated = await updatePropertyImageType(p.id, imageId, next)
+                    setProperty(prev => prev ? { ...prev, images: prev.images.map(i => i.id === imageId ? updated : i) } : prev)
+                  }}
+                />
+              ),
+            },
+            {
+              label: 'plano',
+              panel: geometry !== null && (
+                <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+                  <FloorPlanEditor
+                    initial={geometry}
+                    onSave={async m => setGeometry(await savePropertyGeometry(p.id, m))}
+                    onUploadImage={file => uploadFloorplanImage(p.id, file)}
+                    onReady={onPlanReady}
+                    onDirtyChange={setPlanDirty}
+                  />
+                </div>
+              ),
+            },
+            {
+              // Cada escritura del presupuesto devuelve la propiedad
+              // recalculada: la suma presupuestada ES el costo de obra, así que
+              // tocar un renglón mueve la inversión, el ROI y el cap rate. Un
+              // solo setProperty y la ficha entera queda al día.
+              label: 'presupuesto',
+              panel: <BudgetPanel property={p} onPropertyChange={setProperty} />,
+            },
+          ]}
         />
       </div>
 

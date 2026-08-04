@@ -26,6 +26,10 @@ vi.mock('../lib/api', async importOriginal => {
     fetchInstances: vi.fn(async () => []),
     fetchTeam: vi.fn(async () => []),
     fetchAnalyses: vi.fn(async () => []),
+    // El presupuesto no tiene compuerta de etapa, pero su panel solo se monta
+    // cuando alguien abre la pestaña.
+    fetchBudget: vi.fn(async () => ({ id: 1, propertyId: 7, lines: [], chapters: [] })),
+    getProveedores: vi.fn(async () => []),
     // Fuera de su ventana el servidor responde 422; la ficha lo absorbe.
     fetchPropertyProfit: vi.fn(async () => { throw new Error('fuera de ventana') }),
   }
@@ -40,7 +44,8 @@ const BASE_PROPERTY: Property = {
   images: [], geometry: {}, milestones: {},
   sqmLand: 400, sqmConstruction: 250, purchasePrice: 3_000_000,
   acquisitionCostPct: 0.065, permitsCost: 150_000, subdivisionCost: 50_000,
-  constructionCostPerSqm: 12_000, constructionOverhead: 1.3,
+  // Derivada, no capturada: 3,900,000 presupuestados ÷ 250 m² de obra.
+  constructionCostPerSqm: 15_600, constructionOverhead: 1.3,
   projectedSale: 9_000_000, holdMonths: 12,
   rentMonthlyProjected: 30_000, rentMonthlyActual: null,
   assumptions: {
@@ -52,7 +57,11 @@ const BASE_PROPERTY: Property = {
   totalUnits: null, acquisitionDate: null, firstRentDate: null,
   valuationDate: null, currentValuation: null, saleDate: null, salePrice: null,
   acquisitionCosts: 195_000, acquisitionTotal: 3_195_000,
-  constructionBase: 3_000_000, constructionTotal: 3_900_000,
+  // La obra es la suma del presupuesto. Nadie ha firmado ni pagado nada todavía,
+  // y eso es null y no $0: un cero ahí se leería como un hecho.
+  constructionBudgeted: 3_900_000,
+  constructionCommitted: null, constructionPaid: null,
+  constructionCommittedVariance: null, constructionPaidVariance: null,
   purchasePricePerSqm: 7_500, salePerSqm: 36_000, investmentPerSqm: 29_180,
   projectedProfit: 1_705_000, projectedRoi: 0.23, projectedRoiTotal: 0.23,
   capRate: 0.049, rentAnnual: 360_000,
@@ -74,13 +83,15 @@ const RENTED: Property = {
   valuationDate: '2026-04-01', currentValuation: 6_200_000,
   purchasePrice: 3_730_000, acquisitionCostPct: 0,
   permitsCost: 0, subdivisionCost: 0,
-  sqmConstruction: 0, constructionCostPerSqm: 0,
+  // Sin metraje de obra no hay cociente que publicar: dividir entre cero no da
+  // «$0/m²», no da nada.
+  sqmConstruction: 0, constructionCostPerSqm: null,
   assumptions: {
     ...BASE_PROPERTY.assumptions,
     acquisitionCostPct: { value: 0, source: 'captured' },
   },
   acquisitionCosts: 0, acquisitionTotal: 3_730_000,
-  constructionBase: 0, constructionTotal: 0,
+  constructionBudgeted: 0,
   totalInvestment: 3_730_000,
   purchasePricePerSqm: 9_325, salePerSqm: null, investmentPerSqm: null,
   projectedProfit: 5_270_000, projectedRoi: 1.4129, projectedRoiTotal: 1.4129,
@@ -110,14 +121,14 @@ const ALL_IN: Property = {
   totalUnits: 1, acquisitionDate: '2025-01-01',
   purchasePrice: 10_000_000, acquisitionCostPct: 0,
   permitsCost: 0, subdivisionCost: 0,
-  sqmLand: null, sqmConstruction: 0, constructionCostPerSqm: 0,
+  sqmLand: null, sqmConstruction: 0, constructionCostPerSqm: null,
   assumptions: {
     ...BASE_PROPERTY.assumptions,
     acquisitionCostPct: { value: 0, source: 'captured' },
   },
   totalInvestment: 10_000_000,
   acquisitionCosts: 0, acquisitionTotal: 10_000_000,
-  constructionBase: 0, constructionTotal: 0,
+  constructionBudgeted: 0,
   projectedSale: null, projectedProfit: null, projectedRoi: null, projectedRoiTotal: null,
   salePerSqm: null, investmentPerSqm: null, purchasePricePerSqm: null,
   rentMonthlyProjected: null, capRate: null, rentAnnual: null,
@@ -480,6 +491,81 @@ describe('PropertyDetailPage', () => {
     expect(screen.queryByText('SUPUESTO POR OMISIÓN')).toBeNull()
     // Y el 0 tampoco se cuela como barra de $0 en el desglose.
     expect(screen.queryByText('COSTOS ADQ.')).toBeNull()
+  })
+
+  // ── El presupuesto de obra ────────────────────────────────────────────────
+
+  it('un prospecto ya tiene pestaña PRESUPUESTO: no hay compuerta de etapa', async () => {
+    // A diferencia de FINANZAS o TAREAS, el presupuesto acompaña a la propiedad
+    // como el desglose de costos: hay que poder presupuestar antes de ofertar, y
+    // naciendo con ella no hay ningún traspaso que diseñar.
+    await renderPage(BASE_PROPERTY)
+    expect(screen.getByText('PRESUPUESTO')).not.toBeNull()
+  })
+
+  it('una vendida también la conserva: nada se esconde al avanzar', async () => {
+    await renderPage(SOLD)
+    expect(screen.getByText('PRESUPUESTO')).not.toBeNull()
+  })
+
+  it('la pestaña abre la tabla del presupuesto', async () => {
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('PRESUPUESTO'))
+    expect(await screen.findByText('PRESUPUESTO DE OBRA')).not.toBeNull()
+    expect(screen.getByText('TOTAL · ES EL COSTO DE OBRA')).not.toBeNull()
+    // Y el total de la tabla es la misma cifra que la obra del desglose
+    expect(api.fetchBudget).toHaveBeenCalledWith(7)
+  })
+
+  it('el costo de obra por m² dejó de capturarse y pasó a derivarse', async () => {
+    // Mientras fue campo, era la segunda respuesta a «cuánto va a costar la
+    // obra»: se teclea en la pestaña, renglón por renglón, y aquí solo se lee el
+    // cociente presupuesto ÷ metraje.
+    await renderPage(BASE_PROPERTY)
+
+    // 3,900,000 presupuestados ÷ 250 m² de obra
+    expect(screen.getByText('OBRA/m²')).not.toBeNull()
+    expect(screen.getByText('$15,600')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('EDITAR'))
+    expect(screen.queryByLabelText('COSTO OBRA/m²')).toBeNull()
+    // El metraje sí se queda: es FÍSICO, y lo leen el analizador y el PDF.
+    expect(screen.getByLabelText('OBRA A EJECUTAR (m²)')).not.toBeNull()
+  })
+
+  it('la barra de obra del desglose es la suma del presupuesto', async () => {
+    await renderPage(BASE_PROPERTY)
+
+    expect(screen.getByText('OBRA A EJECUTAR')).not.toBeNull()
+    expect(screen.getByText('$3,900,000')).not.toBeNull()
+  })
+
+  it('el avance de obra no existe hasta que alguien firma o paga', async () => {
+    // Cuatro guiones bajo un título no informan de nada, y un $0 ahí diría que
+    // se firmó en cero — que es un hecho distinto de no haber firmado.
+    await renderPage(BASE_PROPERTY)
+    expect(screen.queryByText('AVANCE DE OBRA')).toBeNull()
+  })
+
+  it('en cuanto hay obra firmada o pagada, la brecha contra el plan se enseña', async () => {
+    await renderPage({
+      ...BASE_PROPERTY, status: 'desarrollo', score: null, totalUnits: 2,
+      acquisitionDate: '2025-01-01',
+      constructionCommitted: 3_700_000, constructionPaid: 4_100_000,
+      constructionCommittedVariance: -200_000, constructionPaidVariance: 200_000,
+    })
+
+    expect(screen.getByText('AVANCE DE OBRA')).not.toBeNull()
+    expect(screen.getByText('OBRA COMPROMETIDA')).not.toBeNull()
+    expect(screen.getByText('$4,100,000')).not.toBeNull()
+    // Lo pagado rebasó lo presupuestado y la brecha se enseña, no se esconde:
+    // el presupuesto era un plan, el pago es un hecho, y lo útil es la resta.
+    expect(screen.getByText('PAGADO VS PRESUPUESTO')).not.toBeNull()
+    expect(screen.getByText('$200,000')).not.toBeNull()
+    expect(screen.getByText('-$200,000')).not.toBeNull()
+    // Y ninguna de las tres redefine la inversión: sigue siendo la del plan.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
   })
 
   it('vaciar un campo pasa por clear-fields, con su propio botón', async () => {
