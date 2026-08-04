@@ -91,3 +91,15 @@ export function fmtMXN(n: number | null | undefined): string {
   const sign = n < 0 ? '-' : ''
   return `${sign}$${Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
 }
+
+/**
+ * Día exacto de un timestamp: «2 ago 2026». A diferencia de `fmtMonth`, que
+ * redondea al mes porque las fechas del ciclo de vida son hitos, aquí el día
+ * importa: distingue dos renders de la misma semana.
+ */
+export function fmtDia(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${d.getUTCDate()} ${MESES[d.getUTCMonth()]} ${d.getUTCFullYear()}`
+}

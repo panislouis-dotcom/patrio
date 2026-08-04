@@ -108,6 +108,31 @@ describe('RendersPanel', () => {
     expect(screen.getByText(/Mezquite y agaves\./)).not.toBeNull()
   })
 
+  it('el prompt va antes de la imagen, no sepultado debajo', () => {
+    // Debajo de un render de 520 px el prompt queda fuera de pantalla y el
+    // render pierde lo único que explica de dónde salió.
+    setup({ renders: [renderRow(1)] })
+    const prompt = screen.getByText(/Mezquite y agaves\./)
+    const img = screen.getByAltText('Render 1')
+    expect(prompt.compareDocumentPosition(img) & 4).toBeTruthy()
+  })
+
+  it('muestra la foto base junto al render — un render solo dice algo con su antes', () => {
+    setup({ renders: [renderRow(1)] })  // sourceImageId: 10 = fachada.jpg
+    expect(screen.getByAltText('Foto base del render 1')).not.toBeNull()
+  })
+
+  it('cuando la foto base se borró lo dice, en vez de fingir que no había', () => {
+    setup({ renders: [{ ...renderRow(1), sourceImageId: null }] })
+    expect(screen.getByText(/foto base borrada/i)).not.toBeNull()
+    expect(screen.queryByAltText('Foto base del render 1')).toBeNull()
+  })
+
+  it('fecha el render: una propuesta de hace seis meses no vale lo mismo', () => {
+    setup({ renders: [renderRow(1)] })
+    expect(screen.getByText(/2 ago 2026/i)).not.toBeNull()
+  })
+
   it('avisa cuando la propiedad no tiene fotos que renderizar', () => {
     setup({ images: [] })
     expect(screen.getByText(/sube una foto/i)).not.toBeNull()

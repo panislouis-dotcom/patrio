@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { colors, fonts, radius, spacing } from '../../lib/theme'
+import { fmtDia } from '../../lib/fmt'
 import type { PropertyImage, PropertyRender, RenderPrompt } from '../../lib/types'
 
 interface Props {
@@ -37,6 +38,9 @@ export function RendersPanel({
   const [error, setError] = useState<string | null>(null)
   const [naming, setNaming] = useState(false)
   const [newName, setNewName] = useState('')
+
+  // Índice para colgarle a cada render su foto base sin recorrer la lista por render.
+  const byId = useMemo(() => new Map(images.map(i => [i.id, i])), [images])
 
   const selectedPrompt = prompts.find(p => p.id === promptId) ?? null
   // Si el texto ya no es el del preset, el render no salió de ese preset.
@@ -164,42 +168,92 @@ export function RendersPanel({
         <div style={label}>Renders ({renders.length})</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, marginTop: spacing.sm }}>
           {renders.map(r => (
-            <figure key={r.id} style={{ border: `1px solid ${colors.border}`, borderRadius: radius.sm,
-                                        overflow: 'hidden', background: colors.surface,
-                                        position: 'relative' }}>
-              {/* La marca va ANTES de la imagen y superpuesta a propósito: debajo
-                  de un render de 1024 px quedaba fuera de pantalla, y un recorte
-                  de la imagen se la dejaba atrás. La garantía tiene que viajar
-                  pegada al pixel, no en un pie de foto que nadie alcanza. */}
-              <figcaption style={{ position: 'absolute', top: spacing.sm, left: spacing.sm, zIndex: 1 }}>
-                <span style={{ ...label, color: colors.dark, background: colors.accent1,
-                               padding: '4px 8px', borderRadius: radius.sm }}>
-                  Propuesta · no es una foto
-                </span>
-              </figcaption>
-              {/* `contain`, no `cover`: recortar un render para que quepa esconde
-                  justo lo que se está revisando. Se acota la altura para poder
-                  hojear varios, pero la propuesta se ve entera. */}
-              <img src={`${base}/files/${r.filePath}`} alt={`Render ${r.id}`}
-                   style={{ width: '100%', maxHeight: 520, objectFit: 'contain', display: 'block' }} />
-              <div style={{ padding: spacing.sm, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-                              gap: spacing.sm }}>
-                  <p style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, flex: 1 }}>
-                    {r.promptText}
-                  </p>
-                  <button onClick={() => onDeleteRender(r.id)} style={{ ...label, background: 'none',
-                          border: 'none', cursor: 'pointer', color: colors.secondary, flexShrink: 0 }}>
-                    Borrar
-                  </button>
-                </div>
-              </div>
-            </figure>
+            <RenderCard key={r.id} render={r} source={byId.get(r.sourceImageId ?? -1) ?? null}
+                        base={base} onDelete={() => onDeleteRender(r.id)}
+                        onReuse={() => { setPromptId(r.promptId); setText(r.promptText) }} />
           ))}
         </div>
       </div>
     </div>
   )
+}
+
+/**
+ * Un render con todo lo que hace falta para juzgarlo, en este orden: qué prompt
+ * lo produjo, cuándo, y contra qué foto.
+ *
+ * El orden no es estético. La versión anterior ponía el prompt DEBAJO de una
+ * imagen de 520 px —es decir, fuera de pantalla— y el render quedaba huérfano de
+ * lo único que explica de dónde salió. Y el par foto→propuesta es el argumento
+ * mismo: una propuesta sin su antes no dice nada.
+ */
+function RenderCard({ render, source, base, onDelete, onReuse }: {
+  render: PropertyRender
+  source: PropertyImage | null
+  base: string
+  onDelete: () => void
+  onReuse: () => void
+}) {
+  const huerfano = render.sourceImageId == null
+
+  return (
+    <figure style={{ border: `1px solid ${colors.border}`, borderRadius: radius.sm,
+                     overflow: 'hidden', background: colors.surface }}>
+      <figcaption style={{ padding: spacing.sm, display: 'flex', flexDirection: 'column',
+                           gap: '6px', borderBottom: `1px solid ${colors.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' }}>
+          <span style={{ ...label, color: colors.dark, background: colors.accent1,
+                         padding: '4px 8px', borderRadius: radius.sm }}>
+            Propuesta · no es una foto
+          </span>
+          <span style={{ ...label, letterSpacing: 0, textTransform: 'none' }}>
+            {fmtDia(render.createdAt)} · {render.model}
+          </span>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: spacing.sm }}>
+            <button onClick={onReuse} style={linkBtn}>Reusar prompt</button>
+            <button onClick={onDelete} style={linkBtn}>Borrar</button>
+          </span>
+        </div>
+        {/* El prompt, arriba y completo: es la receta del render. */}
+        <p style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+          {render.promptText}
+        </p>
+      </figcaption>
+
+      <div style={{ display: 'grid', gridTemplateColumns: huerfano ? '1fr' : '1fr 1fr' }}>
+        {huerfano ? null : (
+          <div style={{ position: 'relative', borderRight: `1px solid ${colors.border}` }}>
+            <span style={{ ...label, position: 'absolute', top: spacing.sm, left: spacing.sm,
+                           color: colors.dark, background: colors.secondary,
+                           padding: '3px 6px', borderRadius: radius.sm }}>
+              Foto base
+            </span>
+            <img src={`${base}/files/${source!.filePath}`}
+                 alt={`Foto base del render ${render.id}`}
+                 style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block' }} />
+          </div>
+        )}
+        {/* `contain`, no `cover`: recortar un render para que quepa esconde justo
+            lo que se está revisando. */}
+        <img src={`${base}/files/${render.filePath}`} alt={`Render ${render.id}`}
+             style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block' }} />
+      </div>
+
+      {huerfano && (
+        // El caso ON DELETE SET NULL, dicho en voz alta. Callarlo haría parecer
+        // que el render nació sin origen, que es distinto a haberlo perdido.
+        <p style={{ ...label, letterSpacing: 0, textTransform: 'none', padding: spacing.sm,
+                    borderTop: `1px solid ${colors.border}` }}>
+          Foto base borrada — el render se conserva, la liga no.
+        </p>
+      )}
+    </figure>
+  )
+}
+
+const linkBtn: React.CSSProperties = {
+  fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase',
+  background: 'none', border: 'none', cursor: 'pointer', color: colors.secondary, padding: 0,
 }
 
 function btn(primary: boolean): React.CSSProperties {
