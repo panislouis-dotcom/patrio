@@ -15,29 +15,47 @@ import propertiesDbSource from '../../../api/properties_db.py?raw'
  * 422 «Campos no vaciables», o deja de ofrecer uno que sí existe — y ninguna de
  * las dos cosas la nota nadie hasta que un usuario la pisa. Así que en vez de
  * recordar la lista, se lee de la fuente.
+ *
+ * Y esto es lo ÚNICO que se prueba desde aquí. La invariante «nada vaciable
+ * puede ser no escribible» es una relación entre dos frozensets de Python y vive
+ * donde le toca — `test_property_routes.py::test_nothing_clearable_is_unwritable`
+ * —, porque ahí rompe antes y en el idioma de quien la puede violar. Duplicarla
+ * aquí daría dos rojos por una sola causa. Lo que sí solo se puede ver desde
+ * este lado es que la lista esté copiada igual en los dos lenguajes.
  */
-function pythonSet(name: string): string[] {
-  const start = propertiesDbSource.indexOf(`${name} = frozenset({`)
+function pythonSet(source: string, name: string): string[] {
+  const start = source.indexOf(`${name} = frozenset({`)
   if (start < 0) throw new Error(`No encontré ${name} en properties_db.py`)
-  const end = propertiesDbSource.indexOf('})', start)
-  return [...propertiesDbSource.slice(start, end).matchAll(/"([a-zA-Z]+)"/g)].map(m => m[1])
+  const end = source.indexOf('})', start)
+  // Los comentarios se quitan ANTES de buscar lo entrecomillado. Sin esto, una
+  // palabra entre comillas dobles dentro de un `#` agrega un campo fantasma y la
+  // comparación pasa o falla por la razón equivocada — que es peor que no tener
+  // la prueba, porque una prueba que miente se cree.
+  const cuerpo = source.slice(start, end).replace(/#.*$/gm, '')
+  return [...cuerpo.matchAll(/"([a-zA-Z]+)"/g)].map(m => m[1])
 }
 
 describe('el espejo del contrato no se desincroniza en silencio', () => {
   it('CLEARABLE_FIELDS dice exactamente lo que properties_db permite vaciar', () => {
-    const servidor = pythonSet('CLEARABLE_FIELDS')
+    const servidor = pythonSet(propertiesDbSource, 'CLEARABLE_FIELDS')
 
     expect(servidor.length).toBeGreaterThan(10)  // si el recorte falla, esto avisa
     expect([...CLEARABLE_FIELDS].sort()).toEqual([...servidor].sort())
   })
 
-  it('nada que el servidor no acepte escribir se ofrece como vaciable', () => {
-    // Vaciar solo tiene sentido sobre algo que se captura. Cuando el costo de
-    // obra pasó a ser la suma del presupuesto, sus dos insumos dejaron de ser
-    // escribibles — y un campo vaciable que no es escribible es una fila de la
-    // ficha que solo puede producir un 422.
-    const escribibles = new Set(pythonSet('WRITABLE_FIELDS'))
+  it('un comentario dentro de las llaves no inventa un campo', () => {
+    // El modo de falla que hay que evitar no es que la prueba truene —eso está
+    // bien— sino que MIENTA. Se fija contra una fuente sintética porque el
+    // archivo real hoy no tiene comentarios ahí dentro, y la prueba tiene que
+    // seguir siendo cierta el día que alguien meta uno.
+    const fuente = [
+      'CLEARABLE_FIELDS = frozenset({',
+      '    "assetType",',
+      '    # ojo: "purchasePrice" se retiró en la 028',
+      '    "sqmLand",  # y "permitsCost" también',
+      '})',
+    ].join('\n')
 
-    expect([...CLEARABLE_FIELDS].filter(f => !escribibles.has(f))).toEqual([])
+    expect(pythonSet(fuente, 'CLEARABLE_FIELDS')).toEqual(['assetType', 'sqmLand'])
   })
 })
