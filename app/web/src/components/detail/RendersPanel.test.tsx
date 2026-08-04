@@ -166,4 +166,31 @@ describe('RendersPanel', () => {
     setup({ images: [] })
     expect(screen.getByText(/sube una foto/i)).not.toBeNull()
   })
+
+  it('enseña el motivo cuando el proveedor falla, no un error genérico', async () => {
+    // El día uno en QA, sin el secreto, la API contesta 502 con el motivo
+    // exacto. Si la pantalla se lo traga, el operador no sabe qué pedirle a
+    // infra y reporta «no funciona».
+    const props = setup({
+      onGenerate: vi.fn().mockRejectedValue(new Error('OPENAI_API_KEY no está configurada')),
+    })
+    fireEvent.click(screen.getByAltText('fachada.jpg'))
+    fireEvent.change(screen.getByLabelText(/texto del prompt/i), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+
+    expect(await screen.findByText(/OPENAI_API_KEY no está configurada/)).not.toBeNull()
+    expect(props.onGenerate).toHaveBeenCalled()
+  })
+
+  it('deja de mostrar «generando» cuando la generación falla', async () => {
+    // Si la tarjeta de progreso se queda pegada tras un error, parece que sigue
+    // trabajando para siempre.
+    setup({ onGenerate: vi.fn().mockRejectedValue(new Error('boom')) })
+    fireEvent.click(screen.getByAltText('fachada.jpg'))
+    fireEvent.change(screen.getByLabelText(/texto del prompt/i), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+
+    await screen.findByText(/boom/)
+    expect(screen.queryByText(/generando render/i)).toBeNull()
+  })
 })
