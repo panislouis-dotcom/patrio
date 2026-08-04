@@ -337,8 +337,16 @@ Use this verbatim copy every time. Do not paraphrase.
   names one API field; if two cards show the same field they use the same words,
   and if one label would fit two fields it is the wrong label. Banned outright:
   *Plusvalía*, *Valuación proyectada*, *Inversión desarrollo*, *Ganancia est.*,
-  *meses en cartera*, and *Cap rate* without its denominator (the formula is
+  *meses en cartera*, *Obra a ejecutar (base)* / *(total)* — the fields behind
+  those two are gone, and the cost of works is `constructionBudgeted`, «Obra
+  presupuestada» — and *Cap rate* without its denominator (the formula is
   yield on cost, and «cap rate» alone means NOI over market value).
+- **Construction figures are read, never rebuilt.** The cost of works is the sum
+  of the property's budget; `sqmConstruction` is physical footage and is printed
+  with a m² unit, never multiplied by a price. Do not reach for
+  `constructionCostPerSqm` (derived, display-only) or an overhead multiplier —
+  the ×1.3 is already inside the amount, and applying it again inflates every
+  works figure by 30% with nothing looking broken.
 - **Enums:** `assetType` and `strategyType` are translated, never printed raw and
   never de-underscored into fake Spanish
 - **Headings:** always single line — no `<br>` tags inside `<h2>` or `<h1>`
