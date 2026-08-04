@@ -10,9 +10,16 @@ interface Props {
   step?: number
   /** Names the box where the visible label is not tied to it, e.g. an in-place edit row. */
   ariaLabel?: string
+  /**
+   * Se avisa al soltar la caja. Lo usa la captura que guarda sola —una celda de
+   * dinero del presupuesto— para mandar UN cambio y no uno por tecla: `onChange`
+   * dispara con cada dígito, así que teclear «1500» serían cuatro escrituras.
+   * La ficha, que guarda con un botón, no lo pasa y no cambia en nada.
+   */
+  onBlur?: () => void
 }
 
-export function NumericInput({ value, onChange, style, placeholder, step, ariaLabel }: Props) {
+export function NumericInput({ value, onChange, style, placeholder, step, ariaLabel, onBlur }: Props) {
   const isDecimal = step != null && step < 1
 
   function fmt(n: number | undefined): string {
@@ -48,7 +55,7 @@ export function NumericInput({ value, onChange, style, placeholder, step, ariaLa
         setRaw(value != null ? String(value) : '')
         setTimeout(() => e.target.select(), 0)
       }}
-      onBlur={() => setFocused(false)}
+      onBlur={() => { setFocused(false); onBlur?.() }}
     />
   )
 }

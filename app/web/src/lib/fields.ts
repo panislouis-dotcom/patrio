@@ -39,6 +39,10 @@ export const FIELD_LABEL: Record<string, string> = {
   salePrice: 'Precio de venta',
 
   // Métricas
+  // La obra presupuestada es la SUMA del presupuesto, así que su advertencia no
+  // dice «captura este campo» sino «este presupuesto está en ceros»: se atiende
+  // en la pestaña PRESUPUESTO, renglón por renglón.
+  constructionBudgeted: 'Obra presupuestada',
   projectedRoi: 'ROI proy. anual',
   projectedProfit: 'Ganancia proyectada',
   capRateActual: 'Cap rate real sobre inversión',

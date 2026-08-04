@@ -84,6 +84,11 @@ export interface Property {
   sqmLand: number | null
   sqmConstruction: number | null
   purchasePrice: number | null
+  // DERIVADA, ya no capturada: presupuesto ÷ metraje de obra. Se publica para
+  // mostrarse y nada la vuelve a leer para calcular dinero. Sigue siendo una
+  // entrada de la CALCULADORA que produce el primer renglón al dar de alta una
+  // propiedad (`PropertyCreate`), que es otra cosa: ahí se usa una vez y el
+  // resultado vive en el presupuesto.
   constructionCostPerSqm: number | null
   permitsCost: number | null
   subdivisionCost: number | null
@@ -127,8 +132,22 @@ export interface Property {
   // el total en cualquier etapa.
   acquisitionCosts: number | null
   acquisitionTotal: number | null
-  constructionBase: number | null
-  constructionTotal: number | null
+  // Las cifras de obra son CUATRO y no una. `constructionBudgeted` es el plan
+  // —la barra del desglose, lo único que alimenta la inversión total— y es la
+  // suma del presupuesto, no una fórmula. Comprometida, pagada y sus variaciones
+  // son el avance de obra EN DINERO contra ese plan, y ninguna redefine la
+  // inversión: lo que la obra va a costar y lo que ya se pagó de ella son dos
+  // preguntas distintas. Las tres de ejecución son null mientras nadie firme ni
+  // pague — un 0 ahí se leería como un hecho.
+  //
+  // `constructionBase` y `constructionTotal` murieron con la fórmula que
+  // nombraban: eran el mismo gasto con y sin overhead, y sin un overhead que
+  // aplicar serían dos nombres para un número.
+  constructionBudgeted: number | null
+  constructionCommitted: number | null
+  constructionPaid: number | null
+  constructionCommittedVariance: number | null
+  constructionPaidVariance: number | null
   purchasePricePerSqm: number | null
   salePerSqm: number | null
   investmentPerSqm: number | null
@@ -169,11 +188,20 @@ export interface QualityEntry {
 
 // Lo que un PATCH puede escribir: nunca `status` (eso es una transición) y
 // nunca un null (vaciar es clear-fields).
+//
+// `constructionCostPerSqm` NO está: desde que el costo de obra es la suma del
+// presupuesto, ese precio por m² es un resultado —presupuesto ÷ metraje— y no
+// un insumo. Sigue siendo una entrada de la CALCULADORA que produce el primer
+// renglón al dar de alta una propiedad (`PropertyCreate`), que es otra cosa:
+// ahí se usa una vez y el resultado vive en el presupuesto. Dejarlo capturable
+// en la ficha daría un segundo lugar donde teclear el costo de obra, que es la
+// contradicción que este feature existe para cerrar. `sqmConstruction` sí se
+// queda: es metraje FÍSICO, y lo leen el analizador y el PDF.
 export type RawPropertyFields = Pick<Property,
   | 'name' | 'assetType' | 'strategyType' | 'address' | 'city' | 'url'
   | 'latitude' | 'longitude' | 'notes'
   | 'sqmLand' | 'sqmConstruction' | 'purchasePrice' | 'acquisitionCostPct'
-  | 'permitsCost' | 'subdivisionCost' | 'constructionCostPerSqm'
+  | 'permitsCost' | 'subdivisionCost'
   | 'constructionOverhead' | 'projectedSale' | 'holdMonths'
   | 'rentMonthlyProjected' | 'rentMonthlyActual'
   | 'totalUnits' | 'acquisitionDate' | 'firstRentDate' | 'valuationDate'
@@ -563,6 +591,153 @@ export interface PropertyInvestor {
   interestAmount: number
   expectedReturn: number
   returnPct: number
+}
+
+// ── Presupuesto de obra ───────────────────────────────────────────────────────
+
+/**
+ * Un pago de un renglón. Append-only, como property_status_events: un pago mal
+ * capturado se borra, no se reescribe — por eso no existe un PATCH de pago.
+ */
+export interface BudgetLinePayment {
+  id: number
+  amount: number
+  paidOn: string    // YYYY-MM-DD
+  notes: string
+  createdAt: string
+}
+
+/**
+ * Un renglón del presupuesto de obra.
+ *
+ * El capítulo va por NOMBRE y no por id porque es una COPIA, no una referencia
+ * (migración 028): editar el catálogo nunca puede reescribir lo que ya se
+ * capturó. Un capítulo, en la tabla, es lo que resulta de agrupar por este
+ * texto — no hay una entidad aparte que pueda quedar vacía ni desincronizarse.
+ *
+ * **Ninguna cifra total se guarda ni se recalcula aquí.** `budgetedAmount` es
+ * cantidad × precio unitario y `paidAmount` es la suma de los pagos, las dos
+ * derivadas en el servidor. Dos maneras de calcular un número son dos números
+ * (docs/glosario.md §4), y la de este vive del lado que además lo suma para
+ * `totalInvestment`.
+ */
+export interface BudgetLine {
+  id: number
+  budgetId: number
+  /** Procedencia hacia el catálogo, nunca dependencia. Null en un renglón suelto. */
+  itemId: number | null
+  chapterName: string
+  name: string
+  unit: string
+  quantity: number
+  unitPrice: number
+  /** cantidad × precio unitario, derivado por el servidor. */
+  budgetedAmount: number
+  supplierId: number | null
+  /** Lo que se firmó. Null es «no capturado»; un 0 capturado es un 0. */
+  committedAmount: number | null
+  committedOn: string | null
+  /** Lo firmado contra lo planeado; null mientras no se haya firmado nada. */
+  committedVariance: number | null
+  actualQuantity: number | null
+  /** SUM(pagos). Null —no 0— mientras no haya un solo pago: nadie pagó nada. */
+  paidAmount: number | null
+  /** Lo pagado contra lo planeado; null mientras no se haya pagado nada. */
+  paidVariance: number | null
+  payments: BudgetLinePayment[]
+  closedAt: string | null
+  sortOrder: number
+  notes: string
+  /**
+   * «Otros, por detallar»: el remanente del estimado grueso que todavía no se
+   * reparte. No se teclea — baja al detallar y sube al quitar detalle, y por eso
+   * el total no se mueve. Lo marca el SERVIDOR con una columna suya: reconocerlo
+   * por su nombre sería amarrar una regla de dinero a una cadena de texto.
+   */
+  isResidual: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * El presupuesto completo. `chapters` viene ya ordenado por el servidor: un
+ * capítulo es el `chapterName` que copian sus renglones, no una fila, así que
+ * deducir la lista en el cliente sería una segunda definición del mismo orden.
+ */
+export interface Budget {
+  id: number
+  propertyId: number
+  lines: BudgetLine[]
+  chapters: string[]
+}
+
+/**
+ * Lo que un PATCH de renglón puede escribir.
+ *
+ * A diferencia de `PropertyPatch`, aquí un `null` SÍ viaja y significa vaciar:
+ * la captura es celda por celda con autoguardado, y la regla «caja vacía = no
+ * la toques» no tiene sentido en una celda de dinero — borrar el comprometido
+ * de un renglón es justamente lo que se quiere decir al dejarla en blanco. Por
+ * eso el presupuesto no necesita el clear-fields que sí necesita la ficha.
+ */
+export interface BudgetLinePatch {
+  chapterName?: string
+  name?: string
+  unit?: string
+  quantity?: number
+  unitPrice?: number
+  supplierId?: number | null
+  committedAmount?: number | null
+  committedOn?: string | null
+  actualQuantity?: number | null
+  notes?: string
+}
+
+/**
+ * Un renglón nace con su capítulo y su nombre; la unidad, la cantidad y el
+ * precio se llenan celda por celda con autoguardado, así que exigir la fila
+ * completa de golpe convertiría un estado intermedio normal en un error.
+ */
+export interface BudgetLineCreate {
+  chapterName: string
+  name: string
+  unit?: string
+  quantity?: number
+  unitPrice?: number
+}
+
+export interface BudgetPaymentCreate {
+  amount: number
+  paidOn: string
+  notes?: string
+}
+
+/**
+ * Lo que devuelve TODA escritura del presupuesto.
+ *
+ * El presupuesto ENTERO y no solo el renglón tocado, porque casi toda escritura
+ * mueve DOS renglones: el que se editó y el residuo que lo absorbe. Con uno solo
+ * la tabla enseñaría la mitad cierta de un presupuesto cuadrado, y la mitad que
+ * falta es justo la que explica por qué el total no se movió.
+ *
+ * Y la propiedad, porque la suma presupuestada ES el costo de obra: tocar un
+ * renglón mueve la inversión total, la ganancia proyectada, el ROI y el cap
+ * rate. Llegan de la misma transacción, así que la suma de la tabla y
+ * `totalInvestment` no pueden discrepar.
+ */
+export interface BudgetWrite {
+  /** El renglón tocado. Null cuando la operación fue de capítulo. */
+  line: BudgetLine | null
+  budget: Budget
+  property: Property
+  /**
+   * Cuánto CRECIÓ el presupuesto con esta escritura. Es 0 en el caso normal
+   * —detallar reparte, no crea— y solo deja de serlo cuando el detalle rebasa
+   * el total: ahí el residuo llega a 0 y la obra sí pasa a costar más. Aumentar
+   * el presupuesto y detallarlo son dos operaciones distintas, y ésta es la
+   * cifra que permite decir cuál de las dos acaba de pasar.
+   */
+  budgetIncrease: number
 }
 
 export interface Zone {

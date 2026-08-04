@@ -1,4 +1,4 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite } from './types'
 import type { FloorPlanModel } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -924,4 +924,98 @@ export async function uploadFloorplanImage(id: number, file: File): Promise<{ im
   const res = await authFetch(`${BASE}/api/properties/${id}/floorplan-image`, { method: 'POST', body: fd })
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
+}
+
+// ── Presupuesto de obra ───────────────────────────────────────────────────────
+//
+// Anidado bajo la propiedad porque eso es: el presupuesto no existe sin ella y
+// no se comparte con ninguna otra. Y SIN VENTANA DE ETAPA — acompaña a la
+// propiedad desde prospecto, como el desglose de costos, no como una
+// herramienta que se abre en desarrollo. Hay que poder presupuestar antes de
+// ofertar.
+
+const budgetUrl = (propertyId: number, path = '') =>
+  `${BASE}/api/properties/${propertyId}/budget${path}`
+
+/**
+ * Toda escritura del presupuesto responde lo mismo, así que se lee en un solo
+ * lugar. Crear, editar, borrar, pagar, despagar, renombrar un capítulo y
+ * ajustar el total son la misma forma: un camino de código, no siete.
+ */
+async function budgetWrite(url: string, method: string, body?: unknown): Promise<BudgetWrite> {
+  const res = await authFetch(url, {
+    method,
+    ...(body !== undefined
+      ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+      : {}),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export async function fetchBudget(propertyId: number): Promise<Budget> {
+  const res = await authFetch(budgetUrl(propertyId))
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export function createBudgetLine(propertyId: number, data: BudgetLineCreate): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, '/lines'), 'POST', data)
+}
+
+/**
+ * A diferencia de `updateProperty`, aquí los `null` NO se filtran: van, y
+ * significan vaciar. La ficha se edita con un botón GUARDAR y ahí una caja en
+ * blanco quiere decir «no la toques»; una celda del presupuesto se guarda al
+ * soltarla, y ahí dejarla vacía es justo lo que se está pidiendo. Por eso el
+ * presupuesto no necesita el clear-fields que sí necesita la ficha.
+ */
+export function updateBudgetLine(
+  propertyId: number, lineId: number, data: BudgetLinePatch,
+): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`), 'PATCH', data)
+}
+
+export function deleteBudgetLine(propertyId: number, lineId: number): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`), 'DELETE')
+}
+
+/**
+ * La operación que SÍ mueve cuánto va a costar la obra, moviendo el residuo.
+ * Existe aparte de detallar precisamente para que las dos se distingan:
+ * detallar reparte un total que no cambia, esto cambia el total sin tocar una
+ * sola partida. Mezclarlas volvería imposible contestar si el presupuesto
+ * creció o solo se abrió.
+ */
+export function setBudgetTotal(propertyId: number, amount: number): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, '/total'), 'PUT', { amount })
+}
+
+/**
+ * Renombrar y borrar un capítulo son las dos únicas operaciones que tocan
+ * varios renglones a la vez; hacerlas renglón por renglón dejaría el
+ * presupuesto a medio renombrar si algo falla en medio.
+ */
+export function renameBudgetChapter(
+  propertyId: number, chapter: string, name: string,
+): Promise<BudgetWrite> {
+  return budgetWrite(
+    budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`), 'PATCH', { name },
+  )
+}
+
+export function deleteBudgetChapter(propertyId: number, chapter: string): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`), 'DELETE')
+}
+
+export function addBudgetPayment(
+  propertyId: number, lineId: number, data: BudgetPaymentCreate,
+): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments`), 'POST', data)
+}
+
+export function deleteBudgetPayment(
+  propertyId: number, lineId: number, paymentId: number,
+): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments/${paymentId}`), 'DELETE')
 }
