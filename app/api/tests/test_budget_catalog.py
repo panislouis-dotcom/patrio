@@ -442,8 +442,12 @@ def test_a_template_is_listed_deleted_and_leaves_nothing_behind(client, test_pro
     plantilla = client.post("/api/budget/templates", json={
         "name": "[TEST] Adecuación de local",
         "fromBudgetId": _budget(client, test_property["id"])["id"]}).json()
-    listadas = client.get("/api/budget/templates").json()
-    assert any(t["id"] == plantilla["id"] for t in listadas)
+    listada = next(t for t in client.get("/api/budget/templates").json()
+                   if t["id"] == plantilla["id"])
+    # En la lista el conteo se llama `lineCount`; `lines` es el arreglo de
+    # renglones del detalle. Un mismo nombre con dos tipos se paga en el cliente.
+    assert listada["lineCount"] == len(plantilla["lines"])
+    assert "lines" not in listada
 
     assert client.delete(f"/api/budget/templates/{plantilla['id']}").status_code == 200
     assert client.get(f"/api/budget/templates/{plantilla['id']}").status_code == 404

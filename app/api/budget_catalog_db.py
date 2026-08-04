@@ -539,12 +539,15 @@ def _chapter_by_name(conn, name: str) -> dict:
 # «Remodelación casa antigua», «Obra nueva» y «Adecuación de local» sin una línea
 # extra de esquema.
 
+# `line_count` y no `lines`: en `get_template` el mismo nombre carga el ARREGLO de
+# renglones, y un campo que es un número en la lista y una lista en el detalle es
+# la clase de trampa que se paga en el cliente, no aquí.
 _TEMPLATES_SQL = """
     SELECT b.id, b.name, b.notes, b.created_at, b.updated_at,
-           coalesce(t.lines, 0) AS lines, coalesce(t.total, 0) AS total
+           coalesce(t.line_count, 0) AS line_count, coalesce(t.total, 0) AS total
       FROM budgets b
       LEFT JOIN LATERAL (
-            SELECT count(*) AS lines, sum(l.quantity * l.unit_price) AS total
+            SELECT count(*) AS line_count, sum(l.quantity * l.unit_price) AS total
               FROM budget_lines l WHERE l.budget_id = b.id) t ON TRUE
      WHERE b.property_id IS NULL
      ORDER BY lower(b.name)
