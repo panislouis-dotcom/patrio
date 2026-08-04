@@ -51,7 +51,13 @@ export interface Assumption {
 // dinero no es un supuesto — publicarlo dejaría en la ficha un número que se
 // puede leer, comparar y editar sin que mueva un peso, que es el defecto «NO SE
 // USA» otra vez y con otro nombre.
-export type AssumptionField = 'acquisitionCostPct' | 'holdMonths'
+// Lista y no unión suelta: un tipo no se puede comparar contra nada en tiempo de
+// ejecución, y este espejo YA se desincronizó una vez —`constructionOverhead`
+// sobrevivió aquí después de que el servidor lo retirara, y la ficha se caía con
+// un `undefined.source` que ninguna prueba veía. Con la lista, `contract.test.ts`
+// la contrasta contra `ASSUMPTION_DEFAULTS` de underwriting.py.
+export const ASSUMPTION_FIELDS = ['acquisitionCostPct', 'holdMonths'] as const
+export type AssumptionField = typeof ASSUMPTION_FIELDS[number]
 
 export type Assumptions = Record<AssumptionField, Assumption>
 
@@ -205,16 +211,22 @@ export interface QualityEntry {
 // en la ficha daría un segundo lugar donde teclear el costo de obra, que es la
 // contradicción que este feature existe para cerrar. `sqmConstruction` sí se
 // queda: es metraje FÍSICO, y lo leen el analizador y el PDF.
-export type RawPropertyFields = Pick<Property,
-  | 'name' | 'assetType' | 'strategyType' | 'address' | 'city' | 'url'
-  | 'latitude' | 'longitude' | 'notes'
-  | 'sqmLand' | 'sqmConstruction' | 'purchasePrice' | 'acquisitionCostPct'
-  | 'permitsCost' | 'subdivisionCost'
-  | 'projectedSale' | 'holdMonths'
-  | 'rentMonthlyProjected' | 'rentMonthlyActual'
-  | 'totalUnits' | 'acquisitionDate' | 'firstRentDate' | 'valuationDate'
-  | 'currentValuation' | 'saleDate' | 'salePrice'
->
+// Lista y no unión suelta, por lo mismo que ASSUMPTION_FIELDS: así
+// `contract.test.ts` puede contrastarla contra `WRITABLE_FIELDS` del servidor.
+// Un campo que el servidor retira y aquí sobrevive es un PATCH que se ignora o
+// se rechaza sin que nada lo note.
+export const RAW_PROPERTY_FIELDS = [
+  'name', 'assetType', 'strategyType', 'address', 'city', 'url',
+  'latitude', 'longitude', 'notes',
+  'sqmLand', 'sqmConstruction', 'purchasePrice', 'acquisitionCostPct',
+  'permitsCost', 'subdivisionCost',
+  'projectedSale', 'holdMonths',
+  'rentMonthlyProjected', 'rentMonthlyActual',
+  'totalUnits', 'acquisitionDate', 'firstRentDate', 'valuationDate',
+  'currentValuation', 'saleDate', 'salePrice',
+] as const
+
+export type RawPropertyFields = Pick<Property, typeof RAW_PROPERTY_FIELDS[number]>
 
 // Lo que se le puede entregar a un PATCH. Los nulls que traiga se filtran en
 // updateProperty antes de salir: escribir un null nunca es una edición — es un
