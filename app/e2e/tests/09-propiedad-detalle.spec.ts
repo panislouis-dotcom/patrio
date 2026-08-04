@@ -205,26 +205,33 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     }
   })
 
-  test('DESGLOSE offers the cost inputs in edit mode instead of the bars', async ({ page }) => {
+  test('DESGLOSE offers what is captured, and never what is derived', async ({ page }) => {
     await gotoProperty(page, id)
     await enterEditMode(page)
 
-    // The five costs — what the money actually goes on. The assumptions moved
-    // out of here into SUPUESTOS, because a number the model invents does not
-    // belong in a list of things somebody paid for.
+    // The costs — what the money actually goes on. The assumptions moved out of
+    // here into SUPUESTOS, because a number the model invents does not belong in
+    // a list of things somebody paid for.
     await expect(fieldInput(page, 'PRECIO DE COMPRA')).toHaveValue('2,000,000')
     await expect(fieldInput(page, 'OBRA A EJECUTAR (m²)')).toBeVisible()
-    await expect(fieldInput(page, 'COSTO OBRA/m²')).toBeVisible()
     await expect(fieldInput(page, 'PERMISOS')).toBeVisible()
     await expect(fieldInput(page, 'SUBDIVISIÓN')).toBeVisible()
+
+    // But NOT the cost per m² of works. It stopped being an input when the cost
+    // of works became the budget's sum: today it is a RESULT —budget ÷ metres—
+    // and offering a box for it would be a second place to type the same money.
+    // The metres survive right above it: those are physical, and the analyzer
+    // and the PDF read them. This assertion is the line between what is typed
+    // and what is computed, which is the distinction the whole feature rests on.
+    await expect(fieldInput(page, 'COSTO OBRA/m²')).toHaveCount(0)
     await expect(page.getByText('MÉTRICAS')).toHaveCount(0)
   })
 
   test('SUPUESTOS is always on screen and says which numbers nobody chose', async ({ page }) => {
     await gotoProperty(page, id)
 
-    // Visible in view mode too: every figure on the page is computed from these
-    // three, so hiding them behind EDITAR meant reading money whose inputs were
+    // Visible in view mode too: money on this page is computed from these, so
+    // hiding them behind EDITAR meant reading figures whose inputs were
     // invisible.
     await expect(page.getByText('SUPUESTOS')).toBeVisible()
 
@@ -235,7 +242,14 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     // Never captured — the model applies its own and admits it
     await expect(detailRow(page, 'COSTOS ADQ. (%)')).toContainText('6.5%')
     await expect(detailRow(page, 'COSTOS ADQ. (%)')).toContainText('SUPUESTO POR OMISIÓN')
-    await expect(detailRow(page, 'OVERHEAD DE OBRA')).toContainText('SUPUESTO POR OMISIÓN')
+
+    // They are TWO. The works overhead was the third and left the contract with
+    // the formula it multiplied: it is applied once, when the calculator seeds
+    // the first budget line, and from there it lives inside the amount. An
+    // assumption that moves no money is not an assumption — showing it here
+    // would be a figure anyone can read, compare and edit without a peso ever
+    // changing, which is the «NO SE USA» defect under another name.
+    await expect(page.getByText('OVERHEAD DE OBRA')).toHaveCount(0)
   })
 
   test('an assumption nobody captured cannot be emptied — there is nothing to empty', async ({ page }) => {
@@ -386,6 +400,48 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await page.getByText('← PROPIEDADES').click()
 
     await expect(page).toHaveURL(/\/propiedades$/)
+  })
+
+  /**
+   * La cifra que cambió de fuente, vigilada de punta a punta.
+   *
+   * El costo de obra dejó de ser `m² × $/m² × overhead` y pasó a ser la SUMA DEL
+   * PRESUPUESTO. Ninguna prueba de navegador miraba esa costura, que es
+   * justamente donde vive el riesgo: la pestaña escribe un renglón, el servidor
+   * devuelve la propiedad recalculada en la MISMA respuesta, y la ficha —que
+   * está en la otra columna— tiene que enterarse sin recargar.
+   *
+   * Va al final del archivo a propósito: deja la propiedad con obra capturada, y
+   * las pruebas de arriba afirman sobre la que nace sin ella.
+   */
+  test('la obra del DESGLOSE es la suma del presupuesto, capturada en su pestaña', async ({ page }) => {
+    await gotoProperty(page, id)
+
+    // Nace sin obra: el presupuesto sembrado vale 0 —la fixture no da metros ni
+    // precio por m²— y una barra de $0 no se dibuja.
+    await expect(detailRow(page, 'INVERSIÓN')).toContainText(INVESTMENT)
+    await expect(page.getByText('OBRA A EJECUTAR', { exact: true })).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'PRESUPUESTO', exact: true }).click()
+    await expect(page.getByText('TOTAL · ES EL COSTO DE OBRA')).toBeVisible()
+    await page.getByRole('button', { name: '+ CAPÍTULO', exact: true }).click()
+    await page.getByRole('button', { name: /^Abrir Capítulo nuevo$/ }).click()
+
+    // Clic y DESPUÉS fill, nunca teclear en frío: `NumericInput` se reescribe al
+    // enfocar y agenda un `select()`, y el tecleo automatizado le gana la
+    // carrera. Es la misma razón por la que existe `setNumericField`.
+    const precio = page.getByLabel(/^Precio unitario de/)
+    await precio.click()
+    await precio.fill('500000')
+    const cantidad = page.getByLabel(/^Cantidad de/)
+    await cantidad.click()
+    await cantidad.fill('1')
+    await page.getByText('PRESUPUESTO DE OBRA').click()   // soltar la celda = guardar
+
+    // La barra aparece con lo capturado, y la inversión sube exactamente eso:
+    // 2,130,000 + 500,000. Una sola escritura movió las dos columnas.
+    await expect(page.getByText('OBRA A EJECUTAR', { exact: true })).toBeVisible()
+    await expect(detailRow(page, 'INVERSIÓN')).toContainText('$2,630,000')
   })
 
   test('/propiedades/nueva renders the full capture form, not the detail shell', async ({ page }) => {
