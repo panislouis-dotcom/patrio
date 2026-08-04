@@ -176,6 +176,10 @@ desaparecen con ellas.
 `obra presupuestada ÷ metros de obra a ejecutar`. Vacío sin metraje: dividir
 entre cero no da «$0/m²», no da nada.
 
+Donde el espacio manda se abrevia **«Obra/m²»**, junto a las otras cifras por
+metro. La abreviatura es la misma concesión que «s/ inversión» en el cap rate
+(§8): se acorta el nombre, no se cambia.
+
 **Ya NO se captura**, y no está entre los campos escribibles del API. Fue un
 insumo, y mientras lo fue era la segunda respuesta a cuánto cuesta la obra. Hoy
 es un **resultado** de haber presupuestado: se publica para mostrarse y nada lo
