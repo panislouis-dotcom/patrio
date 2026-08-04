@@ -93,6 +93,16 @@ describe('RendersPanel', () => {
     expect(screen.getByText(/propuesta/i)).not.toBeNull()
   })
 
+  it('la marca va encima de la imagen, no debajo', () => {
+    // Debajo de un render de 1024px la marca queda fuera de pantalla, y un
+    // recorte de la imagen no la lleva. La garantía tiene que viajar pegada.
+    setup({ renders: [renderRow(1)] })
+    const mark = screen.getByText(/propuesta/i)
+    const img = screen.getByAltText('Render 1')
+    // Node.DOCUMENT_POSITION_FOLLOWING = 4 → la imagen viene DESPUÉS de la marca.
+    expect(mark.compareDocumentPosition(img) & 4).toBeTruthy()
+  })
+
   it('muestra el prompt con el que se generó cada render', () => {
     setup({ renders: [renderRow(1)] })
     expect(screen.getByText(/Mezquite y agaves\./)).not.toBeNull()

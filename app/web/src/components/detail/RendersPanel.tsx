@@ -165,23 +165,35 @@ export function RendersPanel({
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, marginTop: spacing.sm }}>
           {renders.map(r => (
             <figure key={r.id} style={{ border: `1px solid ${colors.border}`, borderRadius: radius.sm,
-                                        overflow: 'hidden', background: colors.surface }}>
+                                        overflow: 'hidden', background: colors.surface,
+                                        position: 'relative' }}>
+              {/* La marca va ANTES de la imagen y superpuesta a propósito: debajo
+                  de un render de 1024 px quedaba fuera de pantalla, y un recorte
+                  de la imagen se la dejaba atrás. La garantía tiene que viajar
+                  pegada al pixel, no en un pie de foto que nadie alcanza. */}
+              <figcaption style={{ position: 'absolute', top: spacing.sm, left: spacing.sm, zIndex: 1 }}>
+                <span style={{ ...label, color: colors.dark, background: colors.accent1,
+                               padding: '4px 8px', borderRadius: radius.sm }}>
+                  Propuesta · no es una foto
+                </span>
+              </figcaption>
+              {/* `contain`, no `cover`: recortar un render para que quepa esconde
+                  justo lo que se está revisando. Se acota la altura para poder
+                  hojear varios, pero la propuesta se ve entera. */}
               <img src={`${base}/files/${r.filePath}`} alt={`Render ${r.id}`}
-                   style={{ width: '100%', display: 'block' }} />
-              <figcaption style={{ padding: spacing.sm, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  {/* La marca que impide confundir una propuesta con una foto. */}
-                  <span style={{ ...label, color: colors.accent1, border: `1px solid ${colors.accent1}`,
-                                 padding: '2px 6px', borderRadius: radius.sm }}>
-                    Propuesta · no es una foto
-                  </span>
+                   style={{ width: '100%', maxHeight: 520, objectFit: 'contain', display: 'block' }} />
+              <div style={{ padding: spacing.sm, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                              gap: spacing.sm }}>
+                  <p style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, flex: 1 }}>
+                    {r.promptText}
+                  </p>
                   <button onClick={() => onDeleteRender(r.id)} style={{ ...label, background: 'none',
-                          border: 'none', cursor: 'pointer', color: colors.secondary }}>
+                          border: 'none', cursor: 'pointer', color: colors.secondary, flexShrink: 0 }}>
                     Borrar
                   </button>
                 </div>
-                <p style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>{r.promptText}</p>
-              </figcaption>
+              </div>
             </figure>
           ))}
         </div>
