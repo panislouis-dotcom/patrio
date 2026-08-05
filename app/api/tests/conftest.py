@@ -71,7 +71,7 @@ def _run_dbmate(db_url: str) -> None:
 
 # ── Bootstrap: create refigan_test and run migrations (idempotent) ───────────
 def _bootstrap_test_db() -> None:
-    db_name = _TEST_URL.rsplit("/", 1)[1]
+    db_name = _TEST_URL.rsplit("/", 1)[1].split("?", 1)[0]
     _TEST_MARKERS = ("_test", "test_", "-test")
     if not any(m in db_name for m in _TEST_MARKERS):
         raise RuntimeError(
