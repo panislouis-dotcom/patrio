@@ -7,7 +7,7 @@ import {
 } from '../lib/floorplan/reducer'
 import { isEmpty, emptyModel, clone, genId, type FloorPlanModel, type FloorGraph } from '../lib/floorplan/types'
 import { viewTransform, type Camera } from '../lib/floorplan/viewTransform'
-import { roomAreas } from '../lib/floorplan/rooms'
+import { roomAreas, roomLabels } from '../lib/floorplan/rooms'
 import { cornerAngles } from '../lib/floorplan/dimensions'
 import { projectAt, pointAt } from '../lib/floorplan/geometry'
 import {
@@ -24,7 +24,9 @@ import { EmptyState, ReferenceControls } from './FloorPlanReference'
 import { btn } from './floorplanStyles'
 
 const W = 900, H = 560, MARGIN = 48
-const TOOLS: Tool[] = ['select', 'wall', 'door', 'window', 'delete']
+const TOOLS: Tool[] = ['select', 'wall', 'door', 'window', 'room', 'delete']
+// The toolbar shows tool ids verbatim; only this one needs a friendlier Spanish label.
+const TOOL_LABELS: Partial<Record<Tool, string>> = { room: 'nombrar' }
 const MIN_CAL_PX = 1e-6
 const ZOOM_STEP = 1.25
 const WHEEL_ZOOM_STEP = 1.08
@@ -170,10 +172,12 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     dispatch({ type: 'ZOOM_AT', anchor: { x: seed.centerX, y: seed.centerY }, factor: dir > 0 ? ZOOM_STEP : 1 / ZOOM_STEP, seed })
   }
   const rooms = useMemo(() => roomAreas(floor), [floor])
+  // Every drawn label = enclosed rooms (with area) + free named points on open spaces.
+  const labels = useMemo(() => roomLabels(floor), [floor])
   const angles = useMemo(() => cornerAngles(floor), [floor])
   const geoJson = useMemo(() => JSON.stringify(toGeometryJson(model), null, 1), [model])
   const editName = ui.editRoom
-    ? (rooms.find(r => Math.abs(r.cx - ui.editRoom!.cx) < 0.05 && Math.abs(r.cy - ui.editRoom!.cy) < 0.05)?.name ?? '')
+    ? (labels.find(r => Math.abs(r.cx - ui.editRoom!.cx) < 0.05 && Math.abs(r.cy - ui.editRoom!.cy) < 0.05)?.name ?? '')
     : ''
 
   function onToolClick(tool: Tool) {
@@ -251,6 +255,18 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       return
     }
 
+    // "Nombrar": click anywhere to name that spot — an existing label to rename it, or
+    // empty space (enclosed or not) to drop a new one. This is what frees naming from
+    // requiring a closed room.
+    if (ui.tool === 'room') {
+      e.preventDefault()
+      const at = elk === 'room'
+        ? { cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! }
+        : { cx: pt.x, cy: pt.y }
+      dispatch({ type: 'SET_EDIT_ROOM', editRoom: at })
+      return
+    }
+
     if (elk === 'room' && ui.tool === 'select') {
       e.preventDefault()
       dispatch({ type: 'SET_EDIT_ROOM', editRoom: { cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! } })
@@ -276,6 +292,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       if (elk === 'opening') delOpen(attr(target, 'data-edge')!, +attr(target, 'data-index')!)
       else if (elk === 'edge') delEdge(attr(target, 'data-id')!)
       else if (elk === 'vertex') delVertex(attr(target, 'data-id')!)
+      else if (elk === 'room') dispatch({ type: 'DELETE_ROOM', cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! })
       return
     }
 
@@ -454,7 +471,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: colors.dark, overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, display: 'flex', gap: '6px', alignItems: 'center', padding: '10px 16px', borderBottom: `1px solid ${colors.border}` }}>
         {TOOLS.map(tool => (
-          <button key={tool} onClick={() => onToolClick(tool)} style={btn(ui.tool === tool)}>{tool}</button>
+          <button key={tool} onClick={() => onToolClick(tool)} style={btn(ui.tool === tool)}>{TOOL_LABELS[tool] ?? tool}</button>
         ))}
         <div style={{ flex: 1 }} />
         <button onClick={() => dispatch({ type: 'UNDO' })} disabled={state.past.length === 0}
@@ -491,7 +508,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           <FloorPlanCanvas
-            ref={svgRef} model={model} floor={floor} t={t} rooms={rooms} angles={angles} ui={ui} editName={editName}
+            ref={svgRef} model={model} floor={floor} t={t} rooms={labels} angles={angles} ui={ui} editName={editName}
             imgNatural={imgNatural} calDraft={calDraft}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onMouseDown={onMouseDown}
             onRoomCommit={onRoomCommit} onRoomCancel={onRoomCancel}

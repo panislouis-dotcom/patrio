@@ -266,3 +266,36 @@ describe('pan via drag on empty canvas', () => {
     expect(after.getAttribute('r')).toBe('6') // selection preserved, NOT cleared by the drag
   })
 })
+
+describe('naming any space (the "nombrar" tool)', () => {
+  function placeLabel(svg: SVGSVGElement, container: HTMLElement, getByText: (t: string) => HTMLElement,
+                      floors: FloorGraph[], worldX: number, worldY: number, name: string) {
+    fireEvent.click(getByText('nombrar'))                              // activate the tool
+    fireEvent.pointerDown(svg, pointerAt(floors, worldX, worldY))      // click the spot
+    const input = container.querySelector('input.roomedit') as HTMLInputElement
+    expect(input).toBeTruthy()                                         // the rename input appears
+    fireEvent.change(input, { target: { value: name } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+  }
+
+  it('names an open spot outside the walls, and the name shows on the plan', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    placeLabel(svg, container, getByText, model.floors, 10, 2, 'Jardín')
+    expect(getByText('Jardín')).toBeTruthy()
+  })
+
+  it('the delete tool removes a placed label', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container, getByText, queryByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    placeLabel(svg, container, getByText, model.floors, 10, 2, 'Jardín')
+    expect(getByText('Jardín')).toBeTruthy()
+    fireEvent.click(getByText('delete'))
+    fireEvent.pointerDown(getByText('Jardín'))   // the placed label carries its own data-cx/cy
+    expect(queryByText('Jardín')).toBeNull()
+  })
+})

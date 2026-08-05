@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { emptyFloorGraph } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
-import { traceFaces, roomAreas, exteriorEdgeIds } from './rooms'
+import { traceFaces, roomAreas, roomLabels, exteriorEdgeIds } from './rooms'
 
 function rectangle(f: ReturnType<typeof emptyFloorGraph>, x0: number, y0: number, x1: number, y1: number) {
   const a = addVertex(f, x0, y0), b = addVertex(f, x1, y0), c = addVertex(f, x1, y1), d = addVertex(f, x0, y1)
@@ -54,6 +54,48 @@ describe('roomAreas', () => {
     const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3)
     addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15) // no closing edge back to a
     expect(roomAreas(f)).toHaveLength(0)
+  })
+})
+
+describe('roomLabels', () => {
+  it('an enclosed named room is one label carrying its net area', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
+    const labels = roomLabels(f)
+    expect(labels).toHaveLength(1)
+    expect(labels[0].name).toBe('Sala')
+    expect(labels[0].area).toBeCloseTo(12)
+  })
+
+  it('a named point on an open (un-enclosed) space is a name-only label, area null', () => {
+    const f = emptyFloorGraph('Test')
+    // an open L of walls: no closed face
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3)
+    addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15)
+    f.rooms.push({ name: 'Terraza', cx: 2, cy: 1.5 })
+    const labels = roomLabels(f)
+    expect(labels).toHaveLength(1)
+    expect(labels[0].name).toBe('Terraza')
+    expect(labels[0].area).toBeNull()
+  })
+
+  it('a name dropped outside a room does not bleed onto that enclosed room', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)                 // enclosed room, no name of its own
+    f.rooms.push({ name: 'Jardín', cx: 20, cy: 20 })  // far outside
+    const labels = roomLabels(f)
+    // the enclosed room stays un-named; the far point is its own free label
+    const enclosed = labels.find(l => l.area != null)!
+    expect(enclosed.name).toBe('')
+    expect(labels.some(l => l.name === 'Jardín' && l.area === null)).toBe(true)
+  })
+
+  it('does not draw a named enclosed room twice', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
+    expect(roomLabels(f).filter(l => l.name === 'Sala')).toHaveLength(1)
   })
 })
 
