@@ -14,6 +14,8 @@ from decimal import Decimal
 from api.db import get_db
 from api.finance import underwriting
 
+from .conftest import _delete_property
+
 # El expediente. Sin ventana: aparece cuando sus insumos están, en la etapa que sea.
 RECORD = ("acquisitionCosts", "acquisitionTotal", "constructionBudgeted",
           "constructionCostPerSqm",
@@ -331,11 +333,11 @@ def test_score_is_a_percentile_over_the_pre_purchase_cohort(client, test_propert
     """Alone in the cohort a property ties with itself on every weight, which is
     the 50th percentile — not 0 and not 100."""
     with get_db() as conn:
-        conn.execute("DELETE FROM property_status_events WHERE property_id IN"
-                     " (SELECT id FROM properties WHERE status IN ('prospecto','oferta')"
-                     "  AND id <> %s)", (test_property["id"],))
-        conn.execute("DELETE FROM properties WHERE status IN ('prospecto', 'oferta')"
-                     " AND id <> %s", (test_property["id"],))
+        stray_ids = [row["id"] for row in conn.execute(
+            "SELECT id FROM properties WHERE status IN ('prospecto', 'oferta')"
+            " AND id <> %s", (test_property["id"],)).fetchall()]
+    for stray_id in stray_ids:
+        _delete_property(stray_id)
     assert _get(client, test_property["id"])["score"] == 50
 
 
