@@ -161,6 +161,10 @@ export function PropertyDetailPage() {
 
   const [property, setProperty] = useState<Property | null>(null)
   const { edits, field, setField, hasEdits, clear } = useEdits<RawPropertyFields>(property)
+  // No vive en `edits`: no es una columna, es el insumo de la misma
+  // CALCULADORA que siembra el presupuesto al nacer — nunca hay un valor
+  // guardado que prellenar aquí, solo uno que, al guardarse, la vuelve a correr.
+  const [costPerSqm, setCostPerSqm] = useState<number | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -231,13 +235,17 @@ export function PropertyDetailPage() {
   const onPlanReady = useCallback((api: PlanApi) => { planApiRef.current = api }, [])
 
   async function save() {
-    if (!property || (!hasEdits && !planApiRef.current?.isDirty())) return
+    if (!property || (!hasEdits && costPerSqm == null && !planApiRef.current?.isDirty())) return
     setSaving(true)
     setSaveError(null)
     try {
-      if (hasEdits) {
-        setProperty(await updateProperty(propertyId, edits))
+      if (hasEdits || costPerSqm != null) {
+        setProperty(await updateProperty(propertyId, {
+          ...edits,
+          ...(costPerSqm != null ? { constructionCostPerSqm: costPerSqm } : {}),
+        }))
         clear()
+        setCostPerSqm(undefined)
       }
       if (planApiRef.current?.isDirty()) {
         setGeometry(await savePropertyGeometry(propertyId, planApiRef.current.getModel()))
@@ -460,12 +468,18 @@ export function PropertyDetailPage() {
   const statSection = (
     title: string,
     rows: Array<[string, number | null | undefined, (n: number | null | undefined) => string]>,
+    /** Filas capturables que van en la misma sección, antes de las derivadas —
+     * misma pantalla, edición y lectura son la misma fila. No pasan por el
+     * filtro de "solo si hay algo que decir": una capturable vacía en edición
+     * SÍ es información, es lo que falta teclear. */
+    captured?: React.ReactNode,
   ) => {
     const visible = rows.filter(([label, value]) => value != null && !promoted.has(label))
-    if (visible.length === 0) return null
+    if (visible.length === 0 && !captured) return null
     return (
       <>
         <SectionDivider label={title} />
+        {captured}
         {visible.map(([label, value, format]) => (
           <StatRow key={label} label={label} value={format(value)} />
         ))}
@@ -509,10 +523,10 @@ export function PropertyDetailPage() {
         statusColor={PROPERTY_STATUS_COLOR[stage]}
         editing={editing}
         onToggleEdit={() => setEditing(v => !v)}
-        hasChanges={hasEdits || planDirty}
+        hasChanges={hasEdits || costPerSqm != null || planDirty}
         saving={saving}
         onSave={save}
-        onCancel={() => { clear(); setEditing(false) }}
+        onCancel={() => { clear(); setCostPerSqm(undefined); setEditing(false) }}
         onDelete={handleDelete}
         onDeleteError={setSaveError}
         actions={
@@ -624,12 +638,11 @@ export function PropertyDetailPage() {
                 hint="SUMA DEL DESGLOSE"
               />
               {numRow('VALUACIÓN', 'currentValuation', fmtMXN, { clearable: 'currentValuation' })}
-              {/* Lo que se proyectó cobrar y lo que se cobra son dos columnas y
-                  dos filas: confirmar una nunca vuelve a borrar la otra. */}
-              {numRow('RENTA/MES ESTIMADA', 'rentMonthlyProjected', fmtMXN, { clearable: 'rentMonthlyProjected' })}
+              {/* La ESTIMADA se fue a SUPUESTOS: es una apuesta sobre el futuro,
+                  no un hecho. La COBRADA se queda — es lo que de verdad entró,
+                  un hecho tan real como la dirección o las unidades. */}
               {(editing || p.rentMonthlyActual != null) &&
                 numRow('RENTA/MES COBRADA', 'rentMonthlyActual', fmtMXN, { clearable: 'rentMonthlyActual' })}
-              <EditableRow label="CAP RATE PROY. S/ INVERSIÓN" editing={editing} value={fmtPct(p.capRate)} />
               {/* La renta anual cobrada vive aquí y no en PROYECCIÓN, que
                   contesta por lo estimado. Antes de partir la renta en dos, la
                   anual de una rentada salía —correctamente— de lo que cobraba;
@@ -697,66 +710,14 @@ export function PropertyDetailPage() {
                 </div>
               )}
 
-              {/* El desglose se captura en cualquier etapa: es el modelo que se
-                  compara contra la realidad, no un formulario de prospecto. */}
-              {editing ? (
-                <>
-                  <SectionDivider label="DESGLOSE DE INVERSIÓN" />
-                  {numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
-                  {numRow('TERRENO (m²)', 'sqmLand', fmtNum, { clearable: 'sqmLand' })}
-                  {/* El metraje se queda: es FÍSICO, y lo leen el analizador de
-                      mercado y el PDF, a los que no les importa lo que cueste la
-                      obra. El costo por m² NO: desde que la obra es la suma del
-                      presupuesto, ese precio es un resultado —presupuesto ÷
-                      metraje— y no un insumo. Dejarlo capturable aquí daría un
-                      segundo lugar donde teclear el costo de obra, que es
-                      exactamente la contradicción que la pestaña PRESUPUESTO
-                      existe para cerrar. Se captura en la PESTAÑA, renglón por
-                      renglón. */}
-                  {numRow('OBRA A EJECUTAR (m²)', 'sqmConstruction', fmtNum, { clearable: 'sqmConstruction' })}
-                  {numRow('PERMISOS', 'permitsCost', fmtMXN, { clearable: 'permitsCost' })}
-                  {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN, { clearable: 'subdivisionCost' })}
-                  {numRow('VENTA PROYECTADA', 'projectedSale', fmtMXN, { clearable: 'projectedSale' })}
-                </>
-              ) : (
-                <>
-                  <InvestmentBreakdown
-                    label="DESGLOSE DE INVERSIÓN"
-                    items={investmentItems}
-                    barsReady={barsReady}
-                  />
-                  {statSection('MÉTRICAS', [
-                    ['INVERSIÓN/m²', p.investmentPerSqm, fmtMXN],
-                    ['VENTA/m²', p.salePerSqm, fmtMXN],
-                    ['COMPRA/m² TERRENO', p.purchasePricePerSqm, fmtMXN],
-                    // Vive con las demás derivadas y ya no arriba con lo que se
-                    // teclea: es presupuesto ÷ metraje, un RESULTADO de haber
-                    // presupuestado. Mientras fue campo capturable era la
-                    // segunda respuesta a cuánto cuesta la obra.
-                    ['OBRA/m²', p.constructionCostPerSqm, fmtMXN],
-                  ])}
-                  {/* El avance de obra EN DINERO. Son cifras NUEVAS, no otra
-                      versión de la inversión: lo que la obra va a costar y lo
-                      que ya se pagó de ella son dos preguntas distintas, y solo
-                      la primera es capital invertido. Lo presupuestado no está
-                      aquí porque ya es la barra «Obra a ejecutar» de arriba —
-                      cada cifra etiquetada vive en un solo lugar.
-                      La sección entera desaparece mientras nadie firme ni pague:
-                      cuatro guiones bajo un título no informan de nada. */}
-                  {statSection('AVANCE DE OBRA', [
-                    ['OBRA COMPROMETIDA', p.constructionCommitted, fmtMXN],
-                    ['OBRA PAGADA', p.constructionPaid, fmtMXN],
-                    ['COMPROMETIDO VS PRESUPUESTO', p.constructionCommittedVariance, fmtMXN],
-                    ['PAGADO VS PRESUPUESTO', p.constructionPaidVariance, fmtMXN],
-                  ])}
-                </>
-              )}
-
-              {/* Los supuestos se ven SIEMPRE, no solo en edición: cada uno de
-                  los tres mueve dinero o mueve el reloj, y esconderlos era como
-                  el 6.5% y el 1.3 llegaron a costar sin que nadie los eligiera.
-                  Cada fila dice además si alguien los eligió o los puso el
-                  modelo — que es la diferencia entre una decisión y un supuesto. */}
+              {/* SUPUESTOS es todo número que alguien estima sobre el futuro,
+                  no solo los dos que el modelo puede rellenar por default: la
+                  renta esperada y la venta proyectada son apuestas igual de
+                  reales, solo que sin un default que las sostenga si nadie las
+                  captura. Se ven SIEMPRE, no solo en edición: esconderlos era
+                  como el 6.5% y el 1.3 llegaron a costar sin que nadie los
+                  eligiera. Van antes del desglose y de la proyección: son el
+                  insumo que los dos usan para convertirse en dinero. */}
               <SectionDivider label="SUPUESTOS" />
               <EditableRow
                 label="COSTOS ADQ. (%)"
@@ -785,23 +746,95 @@ export function PropertyDetailPage() {
                 clearable: isCaptured('holdMonths') ? 'holdMonths' : undefined,
                 hint: assumptionHint('holdMonths'),
               })}
+              {/* Sin CAPTURADO/SUPUESTO POR OMISIÓN: a diferencia de los dos de
+                  arriba, estos dos no tienen un default del modelo que los
+                  sostenga — vacíos, simplemente no hay nada que multiplicar. */}
+              {numRow('RENTA/MES ESTIMADA', 'rentMonthlyProjected', fmtMXN, { clearable: 'rentMonthlyProjected' })}
+              {numRow('VENTA PROYECTADA', 'projectedSale', fmtMXN, { clearable: 'projectedSale' })}
 
-              {/* La proyección sobrevive a la compra Y a la venta: es contra
-                  ella que se mide la realidad, y apagarla al vender la apagaba
-                  justo cuando se volvía comprobable. Sus dos ROI solo aparecen
-                  aquí cuando el héroe no los subió — es decir, en una propiedad
-                  que ya tiene una respuesta con más realidad detrás. */}
-              {/* El plazo NO está aquí: es un supuesto, no un resultado del
-                  modelo, y SUPUESTOS lo enseña tres filas arriba con su origen
-                  — que es más de lo que decía este renglón. Además era lo único
-                  que esta sección siempre tenía, así que una propiedad que nunca
-                  se modeló no podía dejar de anunciar una proyección vacía. */}
+              {/* La proyección va junto a sus supuestos, no junto al desglose:
+                  es lo que esos supuestos producen, y nada de esto se teclea —
+                  todo es resultado. Sobrevive a la compra Y a la venta —es
+                  contra ella que se mide la realidad, y apagarla al vender la
+                  apagaba justo cuando se volvía comprobable—. Los dos ROI solo
+                  aparecen aquí cuando el héroe no los subió, en una propiedad
+                  que ya tiene una respuesta con más realidad detrás.
+                  CAP RATE PROY. entra por `captured` y no por las filas: esas
+                  se ocultan solas si valen null, y este cap rate siempre se
+                  enseña, aunque sea en «—» — igual que su par REAL en DATOS. */}
               {statSection('PROYECCIÓN', [
-                ['VENTA PROYECTADA', p.projectedSale, fmtMXN],
                 ['GANANCIA PROYECTADA', p.projectedProfit, v => fmtGain(v, p.projectedRoiTotal)],
                 ['ROI PROY. ANUAL', p.projectedRoi, fmtPctSigned],
                 ['RENTA ANUAL ESTIMADA', p.rentAnnual, fmtMXN],
-              ])}
+              ], <EditableRow label="CAP RATE PROY. S/ INVERSIÓN" editing={editing} value={fmtPct(p.capRate)} />)}
+
+              {/* El desglose se captura en cualquier etapa: es el modelo que se
+                  compara contra la realidad, no un formulario de prospecto. */}
+              {editing ? (
+                <>
+                  <SectionDivider label="DESGLOSE DE INVERSIÓN" />
+                  {numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
+                  {numRow('M² DE TERRENO', 'sqmLand', fmtNum, { clearable: 'sqmLand' })}
+                  {/* El metraje se queda: es FÍSICO, y lo leen el analizador de
+                      mercado y el PDF, a los que no les importa lo que cueste la
+                      obra. */}
+                  {numRow('M² DE CONSTRUCCIÓN', 'sqmConstruction', fmtNum, { clearable: 'sqmConstruction' })}
+                  {/* No es un insumo guardado —«OBRA/m²» en lectura sigue siendo
+                      presupuesto ÷ metraje, nunca esta caja— es la CALCULADORA
+                      que siembra el presupuesto al nacer, disponible de nuevo
+                      aquí mientras nadie haya detallado una partida real: el
+                      servidor rechaza el intento si ya hay más detallado que lo
+                      que esta cuenta produciría.
+
+                      SIN overhead, a propósito y a diferencia del alta: aquí
+                      no se está proponiendo un estimado grueso para calificar
+                      después, se está editando un presupuesto real, y un
+                      multiplicador oculto dejaría el número tecleado sin
+                      relación directa con el número que se enseña — que fue
+                      justo la confusión que esto causó la primera vez.
+
+                      Prellenada con el cociente derivado: sin overhead que se
+                      aplique dos veces, guardar sin tocarla reproduce el mismo
+                      total, así que no hay razón para abrirla vacía. */}
+                  <EditableRow
+                    label="COSTO OBRA/m²"
+                    editing={editing}
+                    value={fmtMXN(p.constructionCostPerSqm)}
+                    input={
+                      <NumericInput
+                        value={costPerSqm ?? p.constructionCostPerSqm ?? undefined}
+                        onChange={setCostPerSqm}
+                        ariaLabel="COSTO OBRA/m²"
+                        style={fieldInput}
+                      />
+                    }
+                  />
+                  {numRow('PERMISOS', 'permitsCost', fmtMXN, { clearable: 'permitsCost' })}
+                  {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN, { clearable: 'subdivisionCost' })}
+                </>
+              ) : (
+                <>
+                  <InvestmentBreakdown
+                    label="DESGLOSE DE INVERSIÓN"
+                    items={investmentItems}
+                    barsReady={barsReady}
+                  />
+                  {/* El avance de obra EN DINERO. Son cifras NUEVAS, no otra
+                      versión de la inversión: lo que la obra va a costar y lo
+                      que ya se pagó de ella son dos preguntas distintas, y solo
+                      la primera es capital invertido. Lo presupuestado no está
+                      aquí porque ya es la barra «Obra a ejecutar» de arriba —
+                      cada cifra etiquetada vive en un solo lugar.
+                      La sección entera desaparece mientras nadie firme ni pague:
+                      cuatro guiones bajo un título no informan de nada. */}
+                  {statSection('AVANCE DE OBRA', [
+                    ['OBRA COMPROMETIDA', p.constructionCommitted, fmtMXN],
+                    ['OBRA PAGADA', p.constructionPaid, fmtMXN],
+                    ['COMPROMETIDO VS PRESUPUESTO', p.constructionCommittedVariance, fmtMXN],
+                    ['PAGADO VS PRESUPUESTO', p.constructionPaidVariance, fmtMXN],
+                  ])}
+                </>
+              )}
 
               {/* La marca y el resultado NO tienen sección propia, y es la misma
                   regla que gobierna todo lo de arriba: cada cifra etiquetada vive

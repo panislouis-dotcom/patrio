@@ -189,9 +189,10 @@ export interface Property {
   constructionPaid: number | null
   constructionCommittedVariance: number | null
   constructionPaidVariance: number | null
-  purchasePricePerSqm: number | null
-  salePerSqm: number | null
-  investmentPerSqm: number | null
+  // `purchasePricePerSqm`, `salePerSqm` e `investmentPerSqm` no están: la
+  // ficha era su único lector en este cliente y su sección MÉTRICAS se quitó.
+  // El servidor sigue mandando `investmentPerSqm` — lo lee el PDF del
+  // prospecto (prospectus_html.py), en Python, sin pasar por este tipo.
   projectedProfit: number | null
   projectedRoi: number | null
   projectedRoiTotal: number | null
@@ -261,6 +262,11 @@ export type RawPropertyFields = Pick<Property, typeof RAW_PROPERTY_FIELDS[number
 export type PropertyPatch = Partial<RawPropertyFields> & {
   isFavorite?: boolean
   milestones?: Record<string, string>
+  // No es una columna — igual que en PropertyCreate, es el insumo de la
+  // CALCULADORA que (re)siembra el presupuesto. `contract.test.ts` no lo
+  // cuenta contra WRITABLE_FIELDS a propósito: nunca hay un UPDATE de columna
+  // que espejar.
+  constructionCostPerSqm?: number
 }
 
 // Alta: la dirección y el nombre son lo mínimo para reconocer un inmueble; el

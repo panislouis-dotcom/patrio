@@ -62,7 +62,6 @@ const BASE_PROPERTY: Property = {
   constructionBudgeted: 3_900_000,
   constructionCommitted: null, constructionPaid: null,
   constructionCommittedVariance: null, constructionPaidVariance: null,
-  purchasePricePerSqm: 7_500, salePerSqm: 36_000, investmentPerSqm: 29_180,
   projectedProfit: 1_705_000, projectedRoi: 0.23, projectedRoiTotal: 0.23,
   capRate: 0.049, rentAnnual: 360_000,
   unrealizedGain: null, unrealizedGainPct: null, roi: null, holdMonthsActual: null,
@@ -93,7 +92,6 @@ const RENTED: Property = {
   acquisitionCosts: 0, acquisitionTotal: 3_730_000,
   constructionBudgeted: 0,
   totalInvestment: 3_730_000,
-  purchasePricePerSqm: 9_325, salePerSqm: null, investmentPerSqm: null,
   projectedProfit: 5_270_000, projectedRoi: 1.4129, projectedRoiTotal: 1.4129,
   capRate: 0.0965,
   rentMonthlyActual: 34_000, capRateActual: 0.1094, rentAnnualActual: 408_000,
@@ -130,7 +128,6 @@ const ALL_IN: Property = {
   acquisitionCosts: 0, acquisitionTotal: 10_000_000,
   constructionBudgeted: 0,
   projectedSale: null, projectedProfit: null, projectedRoi: null, projectedRoiTotal: null,
-  salePerSqm: null, investmentPerSqm: null, purchasePricePerSqm: null,
   rentMonthlyProjected: null, capRate: null, rentAnnual: null,
 }
 
@@ -284,6 +281,31 @@ describe('PropertyDetailPage', () => {
     expect(screen.queryByText('OVERHEAD DE OBRA')).toBeNull()
   })
 
+  it('SUPUESTOS agrupa toda apuesta sobre el futuro, no solo las que el modelo rellena por default', async () => {
+    // Renta estimada y venta proyectada son apuestas igual de reales que
+    // costos adq. % y plazo proyectado — la diferencia es solo que estas dos
+    // no tienen un default del modelo que las sostenga si nadie las captura.
+    await renderPage(BASE_PROPERTY)
+    const orden = document.body.textContent!
+    const supuestos = orden.indexOf('SUPUESTOS')
+    const proyeccion = orden.indexOf('PROYECCIÓN')
+    expect(supuestos).toBeGreaterThan(-1)
+    expect(proyeccion).toBeGreaterThan(supuestos)
+    for (const campo of ['COSTOS ADQ. (%)', 'PLAZO PROYECTADO (MESES)', 'RENTA/MES ESTIMADA', 'VENTA PROYECTADA']) {
+      const pos = orden.indexOf(campo)
+      expect(pos, campo).toBeGreaterThan(supuestos)
+      expect(pos, campo).toBeLessThan(proyeccion)
+    }
+  })
+
+  it('CAP RATE PROY. se mudó a PROYECCIÓN: es un resultado, no un dato de la ficha', async () => {
+    // Antes vivía en DATOS junto a hechos capturados; es 100% calculado, así
+    // que se muda con las demás cifras que produce el modelo.
+    await renderPage(BASE_PROPERTY)
+    const orden = document.body.textContent!
+    expect(orden.indexOf('CAP RATE PROY. S/ INVERSIÓN')).toBeGreaterThan(orden.indexOf('PROYECCIÓN'))
+  })
+
   it('la ficha nunca ofrece capturar un total: la inversión es el desglose', async () => {
     // Había una fila para teclearla que, con el desglose completo, se anunciaba
     // a sí misma como «NO SE USA: MANDA EL DESGLOSE» — un campo cuya razón de
@@ -409,6 +431,19 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('RENTA ANUAL ESTIMADA')).not.toBeNull()
   })
 
+  it('VENTA PROYECTADA es una sola fila: no se duplica al entrar a edición', async () => {
+    // Vivía dos veces: una caja en DESGLOSE DE INVERSIÓN (solo en edición) y un
+    // renglón de solo lectura en PROYECCIÓN (siempre) — cada uno con su propio
+    // momento de actualizarse, así que teclear en uno no movía al otro. Ahora
+    // es la misma fila en los dos lugares donde antes vivía por separado.
+    await renderPage(BASE_PROPERTY)
+    fireEvent.click(screen.getByText('EDITAR'))
+
+    expect(screen.getAllByText('VENTA PROYECTADA')).toHaveLength(1)
+    const input = screen.getByLabelText('VENTA PROYECTADA') as HTMLInputElement
+    expect(input.value).toBe('9,000,000')
+  })
+
   it('una vendida sigue enseñando el plan contra el que se mide', async () => {
     await renderPage(SOLD)
 
@@ -460,13 +495,17 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
   })
 
-  it('una sección derivada sin nada que decir no se dibuja', async () => {
-    // La política de vacío de InvestmentBreakdown, aplicada a las demás: tres
-    // guiones seguidos bajo un título no informan de nada.
+  it('PROYECCIÓN sí se dibuja con solo VENTA PROYECTADA: es capturable, no derivada', async () => {
+    // VENTA PROYECTADA vive en esta sección pero no es una de sus cifras
+    // derivadas — es la misma regla que DATOS y FECHAS: un guion en un campo
+    // capturable SÍ es información, señala qué falta teclear. Ocultar la
+    // sección entera porque las derivadas están vacías escondería el único
+    // dato que alguien sí podría capturar aquí.
     await renderPage(ALL_IN)
 
-    expect(screen.queryByText('MÉTRICAS')).toBeNull()
-    expect(screen.queryByText('PROYECCIÓN')).toBeNull()
+    expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
+    expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
+    expect(screen.queryByText('GANANCIA PROYECTADA')).toBeNull()
   })
 
   it('un total all-in se dice como precio de compra, y explica el capital entero', async () => {
@@ -544,20 +583,25 @@ describe('PropertyDetailPage', () => {
     expect(api.fetchBudget).toHaveBeenCalledWith(7)
   })
 
-  it('el costo de obra por m² dejó de capturarse y pasó a derivarse', async () => {
-    // Mientras fue campo, era la segunda respuesta a «cuánto va a costar la
-    // obra»: se teclea en la pestaña, renglón por renglón, y aquí solo se lee el
-    // cociente presupuesto ÷ metraje.
+  it('el costo de obra por m² se prellena con el cociente derivado al entrar a edición', async () => {
+    // Presupuesto ÷ metraje. Sin overhead escondido en esta ruta, ese mismo
+    // cociente es exactamente lo que se reproduciría si se guardara sin
+    // tocarlo, así que prellenarlo es seguro — no hay multiplicador que se
+    // aplique una segunda vez. 3,900,000 ÷ 250 m² de obra = 15,600.
     await renderPage(BASE_PROPERTY)
 
-    // 3,900,000 presupuestados ÷ 250 m² de obra
-    expect(screen.getByText('OBRA/m²')).not.toBeNull()
-    expect(screen.getByText('$15,600')).not.toBeNull()
-
     fireEvent.click(screen.getByText('EDITAR'))
-    expect(screen.queryByLabelText('COSTO OBRA/m²')).toBeNull()
     // El metraje sí se queda: es FÍSICO, y lo leen el analizador y el PDF.
-    expect(screen.getByLabelText('OBRA A EJECUTAR (m²)')).not.toBeNull()
+    expect(screen.getByLabelText('M² DE CONSTRUCCIÓN')).not.toBeNull()
+    const input = screen.getByLabelText('COSTO OBRA/m²') as HTMLInputElement
+    expect(input.value).toBe('15,600')
+
+    fireEvent.change(input, { target: { value: '9000' } })
+    fireEvent.click(screen.getByText('GUARDAR ▸'))
+
+    await waitFor(() => expect(api.updateProperty).toHaveBeenCalled())
+    const payload = vi.mocked(api.updateProperty).mock.calls[0][1] as Record<string, unknown>
+    expect(payload).toEqual({ constructionCostPerSqm: 9000 })
   })
 
   it('la barra de obra del desglose es la suma del presupuesto', async () => {
