@@ -127,16 +127,47 @@ def source_image(property_id: int, image_id: int) -> dict | None:
     return _row_to_dict(row) if row is not None else None
 
 
+def get_render(property_id: int, render_id: int) -> dict | None:
+    """El render de esta propiedad, o None. Se usa para editar ENCIMA de él: su
+    imagen es la fuente del siguiente paso."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM property_renders WHERE id = %s AND property_id = %s",
+            (render_id, property_id),
+        ).fetchone()
+    return _row_to_dict(row) if row is not None else None
+
+
+def chain_is_plan(property_id: int, render_id: int) -> bool:
+    """True si la raíz de la cadena de ediciones nació del PLANO (no de una foto).
+    Se camina parent_render_id hasta la raíz para elegir la cláusula correcta: un
+    plano editado sigue siendo un plano 2D, no se vuelve foto a mitad de camino."""
+    with get_db() as conn:
+        row = conn.execute(
+            "WITH RECURSIVE chain AS ("
+            "  SELECT id, parent_render_id, source_plan_path FROM property_renders"
+            "   WHERE id = %s AND property_id = %s"
+            "  UNION ALL"
+            "  SELECT r.id, r.parent_render_id, r.source_plan_path"
+            "   FROM property_renders r JOIN chain c ON r.id = c.parent_render_id"
+            ") SELECT source_plan_path FROM chain WHERE parent_render_id IS NULL LIMIT 1",
+            (render_id, property_id),
+        ).fetchone()
+    return bool(row and row["source_plan_path"])
+
+
 def add_render(property_id: int, source_image_id: int | None, file_path: str,
                content_type: str, prompt_id: int | None, prompt_text: str,
-               provider: str, model: str, source_plan_path: str | None = None) -> dict:
+               provider: str, model: str, source_plan_path: str | None = None,
+               parent_render_id: int | None = None) -> dict:
     with get_db() as conn:
         row = conn.execute(
             "INSERT INTO property_renders (property_id, source_image_id, file_path,"
-            " content_type, prompt_id, prompt_text, provider, model, source_plan_path)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            " content_type, prompt_id, prompt_text, provider, model, source_plan_path,"
+            " parent_render_id)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
             (property_id, source_image_id, file_path, content_type,
-             prompt_id, prompt_text, provider, model, source_plan_path),
+             prompt_id, prompt_text, provider, model, source_plan_path, parent_render_id),
         ).fetchone()
     return _row_to_dict(row)
 

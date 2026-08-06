@@ -83,6 +83,56 @@ def test_a_plan_render_does_not_land_in_the_photo_gallery(
     assert client.get(f"/api/properties/{test_property['id']}").json()["images"] == []
 
 
+def test_editing_a_render_builds_on_it_and_chains_to_it(
+    client, test_property, source_image, fake_openai,
+):
+    """Editar avanza sobre la MISMA imagen: la fuente es el render padre (no una
+    foto), y el hijo cuelga de él para poder caminar el historial."""
+    parent = client.post(
+        f"/api/properties/{test_property['id']}/renders",
+        json={"sourceImageId": source_image["id"], "promptText": "Jardín inicial."},
+    ).json()
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
+        json={"promptText": "Agrega una puerta al baño."},
+    )
+    assert r.status_code == 201, r.text
+    child = r.json()
+    assert child["parentRenderId"] == parent["id"]   # cuelga del padre
+    assert child["sourceImageId"] is None            # su fuente es el render, no una foto
+    # Editó ENCIMA de la imagen del padre: esos bytes fueron los que se mandaron.
+    assert fake_openai[-1]["image"] == b"RENDERED-BYTES"
+
+
+def test_editing_a_plan_render_keeps_the_plan_clause(
+    client, test_property, fake_openai,
+):
+    parent = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla."},
+    ).json()
+    client.post(
+        f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
+        json={"promptText": "Agrega puerta al baño."},
+    )
+    assert "vista de planta" in fake_openai[-1]["prompt"]   # cláusula de plano, no la de foto
+
+
+def test_editing_a_photo_render_keeps_the_photo_clause(
+    client, test_property, source_image, fake_openai,
+):
+    parent = client.post(
+        f"/api/properties/{test_property['id']}/renders",
+        json={"sourceImageId": source_image["id"], "promptText": "x"},
+    ).json()
+    client.post(
+        f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
+        json={"promptText": "y"},
+    )
+    assert "ángulo de cámara" in fake_openai[-1]["prompt"]   # cláusula de foto
+
+
 def test_input_fidelity_is_not_sent_by_default(monkeypatch):
     """gpt-image-2 rechaza `input_fidelity` con 400. No se manda a menos que
     alguien lo pida explícitamente para un modelo que sí lo acepta."""
