@@ -200,6 +200,9 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 /* La banda va a sangre como en .opp — el padding de página vive en el cuerpo,
    para que el título y el contenido caigan sobre el mismo margen. */
 .opp-detail-body { padding: 8mm var(--pad) 7mm; }
+/* Sin alto, un render cuadrado se dibuja tan alto como ancho — uno solo se
+   comería media página. Más generoso que la galería de .opp: aquí es el tema. */
+.opp-detail .strip img { height: 45mm; }
 .detail-section { margin-bottom: 8mm; }
 .detail-section:last-child { margin-bottom: 0; }
 .plano { display: flex; flex-wrap: wrap; gap: 6mm; }
