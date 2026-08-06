@@ -379,7 +379,11 @@ _RECORD_KEYS = (
     # Derivada, no capturada: presupuesto ÷ metraje. Se publica para mostrarse y
     # nada la vuelve a leer para calcular dinero.
     "constructionCostPerSqm",
-    "purchasePricePerSqm", "investmentPerSqm", "salePerSqm",
+    # `purchasePricePerSqm` y `salePerSqm` no sobrevivieron: la ficha era su
+    # único lector y dejó de mostrarlos. `investmentPerSqm` sí se queda —lo
+    # sigue leyendo el prospecto en PDF (prospectus_html.py)— aunque la ficha
+    # ya no lo enseñe.
+    "investmentPerSqm",
     "projectedProfit", "projectedRoi", "projectedRoiTotal",
     "capRate", "rentAnnual", "capRateActual", "rentAnnualActual",
 )
@@ -484,9 +488,7 @@ def metrics(row: dict) -> dict:
     out.update({
         "acquisitionCosts": stack["acquisition_costs"],
         "acquisitionTotal": stack["acquisition_total"],
-        "purchasePricePerSqm": stack["purchase_price_per_sqm"],
         "investmentPerSqm": _per_sqm(basis, row.get("sqm_land")),
-        "salePerSqm": stack["sale_per_sqm"],
         "projectedProfit": underwriting.gain(basis, sale),
         "projectedRoiTotal": underwriting.gain_pct(basis, sale),
         "projectedRoi": _cagr(basis, sale, underwriting.assumption(row, "hold_months")[0]),
@@ -740,7 +742,27 @@ def create_property(data: dict) -> dict:
 
 def update_property(property_id: int, data: dict) -> dict:
     """Partial update of the raw columns. Cannot move `status` (not writable) and
-    cannot empty anything (the caller strips None before it gets here)."""
+    cannot empty anything (the caller strips None before it gets here).
+
+    `constructionCostPerSqm` is not a column — it is the same one-shot
+    CALCULATOR that seeds a property's budget at birth (`_CALCULATOR_FIELDS`),
+    allowed to run again here because the property already has somewhere for
+    its answer to live. `sqmConstruction` comes from this same patch when it
+    arrives together, or from the row otherwise; without it there is nothing
+    to multiply, so nothing runs — the calculator needs both of its inputs,
+    same as at creation.
+
+    Overhead does NOT apply here, unlike at birth: a $/m² typed against a
+    property that already exists is a direct edit of a real budget, not a
+    rough estimate volunteering to be graded later — multiplying it by a
+    hidden 1.3 would make the number on screen disagree with the number
+    typed, for no reason anyone editing an existing property would expect.
+
+    A $/m² is not the only way to reach the calculator: raising `sqmConstruction`
+    on its own re-applies whatever rate is already in force —today's total ÷
+    today's metraje— against the new metraje. Otherwise editing the m² alone
+    would leave the total frozen, disagreeing with a rate that was already on
+    screen a moment before."""
     columns = to_columns(data)
     with get_db() as conn:
         before = _require_row(conn, property_id)
@@ -752,6 +774,14 @@ def update_property(property_id: int, data: dict) -> dict:
                     f"UPDATE properties SET {assignments} WHERE id = %s",
                     list(columns.values()) + [property_id],
                 )
+        cost_per_sqm = data.get("constructionCostPerSqm")
+        sqm = data.get("sqmConstruction", before["sqm_construction"])
+        if cost_per_sqm is None and "sqmConstruction" in data and before["sqm_construction"]:
+            current = budget_db.current_total(conn, property_id)
+            cost_per_sqm = current / to_decimal(before["sqm_construction"])
+        if cost_per_sqm and sqm:
+            estimate = budget_db.calculator_estimate(sqm, cost_per_sqm, construction_overhead=1)
+            budget_db.set_total(conn, property_id, estimate)
     return get_property(property_id)
 
 

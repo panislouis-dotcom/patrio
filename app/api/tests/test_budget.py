@@ -580,17 +580,92 @@ def test_without_metres_there_is_no_cost_per_sqm(client, test_property):
     assert _get(client, test_property["id"])["constructionCostPerSqm"] is None
 
 
-def test_the_cost_per_sqm_cannot_be_captured_any_more(client, test_property):
-    """Dejó de ser insumo: escribirlo no hace nada y vaciarlo se rechaza. Se
-    cambia el costo de obra por el presupuesto, que es donde vive."""
+def test_the_cost_per_sqm_cannot_be_captured_as_a_column_but_still_recomputes_the_budget(
+        client, test_property):
+    """No volvió a ser una columna —vaciarlo se sigue rechazando, como
+    cualquier campo que un PATCH no reconoce— pero escribirlo YA NO es un
+    no-op: mientras el presupuesto siga intacto, mover $/m² vuelve a correr la
+    misma calculadora que sembró el presupuesto al nacer, salvo que aquí NO
+    aplica overhead: es una edición directa, no un alta, y quien teclea $/m²
+    aquí ya está viendo un presupuesto real, no proponiendo un estimado
+    grueso. 200 m² × 99,000 = 19,800,000, sin multiplicador."""
     r = client.patch(f"/api/properties/{test_property['id']}",
                      json={"constructionCostPerSqm": 99_000})
-    assert r.status_code == 200
-    assert _dec(r.json()["constructionCostPerSqm"]) == Decimal("11700.00")
+    assert r.status_code == 200, r.text
+    assert _dec(r.json()["constructionBudgeted"]) == Decimal("19800000")
+    assert _dec(r.json()["constructionCostPerSqm"]) == Decimal("99000.00")
 
     r = client.post(f"/api/properties/{test_property['id']}/clear-fields",
                     json={"fields": ["constructionCostPerSqm"]})
     assert r.status_code == 422
+
+
+def test_the_cost_per_sqm_alone_recomputes_against_the_metres_already_on_file(
+        client, test_property):
+    """No hace falta reenviar el m² si ya está guardado: 200 (de la ficha) ×
+    15,000 = 3,000,000, sin overhead."""
+    r = client.patch(f"/api/properties/{test_property['id']}",
+                     json={"constructionCostPerSqm": 15_000})
+    assert r.status_code == 200, r.text
+    assert _dec(r.json()["constructionBudgeted"]) == Decimal("3000000")
+
+
+def test_the_metres_and_the_cost_per_sqm_can_arrive_in_the_same_patch(client, test_property):
+    """Los dos datos pueden llegar juntos, como en el alta: 300 × 10,000 =
+    3,000,000, y el m² nuevo también se guarda."""
+    r = client.patch(f"/api/properties/{test_property['id']}",
+                     json={"sqmConstruction": 300, "constructionCostPerSqm": 10_000})
+    assert r.status_code == 200, r.text
+    assert r.json()["sqmConstruction"] == 300
+    assert _dec(r.json()["constructionBudgeted"]) == Decimal("3000000")
+
+
+def test_the_metres_alone_recompute_the_budget_against_the_rate_already_in_force(
+        client, test_property):
+    """No hace falta reteclear $/m² para que el m² lo mueva: 200 m² ya
+    presupuestados en 2,340,000 dan una tasa de 11,700/m², y mandar solo
+    sqmConstruction=300 la vuelve a aplicar — 300 × 11,700 = 3,510,000. Es la
+    misma calculadora, del otro lado: antes «los 2 datos» exigía traer ambos
+    en el mismo PATCH; ahora basta con que uno de los dos ya esté vigente."""
+    r = client.patch(f"/api/properties/{test_property['id']}",
+                     json={"sqmConstruction": 300})
+    assert r.status_code == 200, r.text
+    assert r.json()["sqmConstruction"] == 300
+    assert _dec(r.json()["constructionBudgeted"]) == Decimal("3510000")
+
+
+def test_the_metres_alone_do_nothing_when_there_is_no_rate_yet(client, test_property):
+    """Sin presupuesto todavía (recién sembrado en 0), cambiar el m² no
+    inventa una tasa de la nada: 0 ÷ cualquier metraje sigue siendo 0."""
+    client.put(f"/api/properties/{test_property['id']}/budget/total", json={"amount": 0})
+    r = client.patch(f"/api/properties/{test_property['id']}",
+                     json={"sqmConstruction": 300})
+    assert r.status_code == 200, r.text
+    assert _dec(r.json()["constructionBudgeted"]) == Decimal("0")
+
+
+def test_the_cost_per_sqm_alone_computes_nothing_without_metres(client, test_property):
+    """«Se calcula solo cuando están los 2 datos»: sin m² capturado, mandar
+    $/m² no mueve el presupuesto — no hay «$0/m²» ni obra fantasma."""
+    client.post(f"/api/properties/{test_property['id']}/clear-fields",
+                json={"fields": ["sqmConstruction"]})
+    before = _dec(_get(client, test_property["id"])["constructionBudgeted"])
+    r = client.patch(f"/api/properties/{test_property['id']}",
+                     json={"constructionCostPerSqm": 99_000})
+    assert r.status_code == 200, r.text
+    assert _dec(r.json()["constructionBudgeted"]) == before
+
+
+def test_the_cost_per_sqm_refuses_to_shrink_a_budget_that_already_has_detail(
+        client, test_property):
+    """La misma regla de FIJAR TOTAL: no se vale que $/m² borre en silencio lo
+    que ya se detalló. 200 × 100 = 20,000, muy por debajo de los 500,000
+    ya detallados en Cocina."""
+    _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
+    r = client.patch(f"/api/properties/{test_property['id']}",
+                     json={"constructionCostPerSqm": 100})
+    assert r.status_code == 422
+    assert "detallados en partidas" in r.json()["error"]["message"]
 
 
 def test_the_overhead_is_not_part_of_the_contract_any_more(client, test_property):

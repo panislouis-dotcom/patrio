@@ -360,6 +360,13 @@ def _totals(conn, budget_id: int) -> tuple[Decimal, Decimal]:
     return money(row["total"]), money(row["detallado"])
 
 
+def current_total(conn, property_id: int) -> Decimal:
+    """El total presupuestado ahora mismo, sin pasar por la lectura completa
+    de la propiedad. Lo usa properties_db para saber contra qué tasa está
+    multiplicando cuando el m² cambia solo, sin $/m² nuevo en el mismo PATCH."""
+    return _totals(conn, _require_budget(conn, property_id))[0]
+
+
 def _settle_residual(conn, budget_id: int, total_objetivo: Decimal) -> Decimal:
     """Deja el residuo en `total_objetivo − detallado` y contesta cuánto CRECIÓ
     el presupuesto, que es lo único que esta operación no puede decidir sola.
