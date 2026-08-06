@@ -6,7 +6,7 @@ import {
   fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage,
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
   listRenderPrompts, listPropertyRenders, generatePropertyRender, generatePropertyRenderFromPlan,
-  createRenderPrompt, deletePropertyRender,
+  editPropertyRender, createRenderPrompt, deletePropertyRender,
 } from '../lib/api'
 import type {
   AssumptionField,
@@ -1001,6 +1001,11 @@ export function PropertyDetailPage() {
                     setRenders(prev => [created, ...prev])
                     return created
                   } : undefined}
+                  onEdit={async (renderId, promptText) => {
+                    const created = await editPropertyRender(p.id, renderId, { promptText })
+                    setRenders(prev => [created, ...prev])
+                    return created
+                  }}
                   onSavePrompt={async ({ name, body }) => {
                     const created = await createRenderPrompt(name, body)
                     setRenderPrompts(prev => [...prev, created])

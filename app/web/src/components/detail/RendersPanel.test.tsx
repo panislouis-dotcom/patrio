@@ -15,8 +15,8 @@ const prompts: RenderPrompt[] = [
 ]
 
 const renderRow = (id: number): PropertyRender => ({
-  id, propertyId: 7, sourceImageId: 10, sourcePlanPath: null, filePath: `r/${id}.png`,
-  contentType: 'image/png', promptId: 1, promptText: 'Mezquite y agaves.',
+  id, propertyId: 7, sourceImageId: 10, sourcePlanPath: null, parentRenderId: null,
+  filePath: `r/${id}.png`, contentType: 'image/png', promptId: 1, promptText: 'Mezquite y agaves.',
   provider: 'openai', model: 'gpt-image-2', createdAt: '2026-08-02T00:00:00Z',
 })
 
@@ -153,7 +153,7 @@ describe('RendersPanel', () => {
 
   it('cuando la foto base se borró lo dice, en vez de fingir que no había', () => {
     setup({ renders: [{ ...renderRow(1), sourceImageId: null }] })
-    expect(screen.getByText(/foto base borrada/i)).not.toBeNull()
+    expect(screen.getByText(/fuente base borrada/i)).not.toBeNull()
     expect(screen.queryByAltText('Foto base del render 1')).toBeNull()
   })
 
@@ -202,6 +202,25 @@ describe('RendersPanel', () => {
     setup({ renders: [{ ...renderRow(1), sourceImageId: null, sourcePlanPath: 'plan/1.png' }] })
     expect(screen.getByText('Plano base')).not.toBeNull()
     expect(screen.queryByText(/foto base borrada/i)).toBeNull()
+  })
+
+  it('«Trabajar sobre este» edita con una instrucción chica sobre el mismo render', async () => {
+    const onEdit = vi.fn().mockResolvedValue(renderRow(2))
+    setup({ renders: [renderRow(1)], onEdit })
+    fireEvent.click(screen.getByText(/trabajar sobre este/i))
+    fireEvent.change(screen.getByPlaceholderText(/solo el cambio/i),
+      { target: { value: 'agrega puerta al baño' } })
+    fireEvent.click(screen.getByRole('button', { name: /generar cambio/i }))
+    await waitFor(() => expect(onEdit).toHaveBeenCalledWith(1, 'agrega puerta al baño'))
+  })
+
+  it('la lista muestra solo la cabeza de la cadena; el paso previo va al historial', () => {
+    const raiz = renderRow(1)  // promptText: "Mezquite y agaves."
+    const cabeza = { ...renderRow(2), parentRenderId: 1, promptText: 'Agrega puerta.' }
+    setup({ renders: [cabeza, raiz] })  // el backend devuelve el más reciente primero
+    expect(screen.getByText('Agrega puerta.')).not.toBeNull()          // la cabeza se ve
+    expect(screen.queryByText('Mezquite y agaves.')).toBeNull()        // el paso previo, oculto
+    expect(screen.getByText(/historial/i)).not.toBeNull()              // pero hay historial
   })
 
   it('deja de mostrar «generando» cuando la generación falla', async () => {

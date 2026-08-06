@@ -48,6 +48,8 @@ export interface PropertyRender {
   sourceImageId: number | null
   /** Ruta del plano exportado cuando el render nació del PLANO, no de una foto. */
   sourcePlanPath: string | null
+  /** El render del que se editó ENCIMA, si es un paso de una cadena. */
+  parentRenderId: number | null
   filePath: string
   contentType: string
   promptId: number | null

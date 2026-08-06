@@ -222,6 +222,20 @@ export async function generatePropertyRenderFromPlan(
   return res.json()
 }
 
+export async function editPropertyRender(
+  id: number,
+  renderId: number,
+  req: { promptText: string },
+): Promise<PropertyRender> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
 export async function deletePropertyRender(id: number, renderId: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await detail(res))

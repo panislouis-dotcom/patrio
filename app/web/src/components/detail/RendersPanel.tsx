@@ -13,6 +13,8 @@ interface Props {
   onGenerate: (req: { sourceImageId: number; promptId: number | null; promptText: string })
     => Promise<PropertyRender>
   onGeneratePlan?: (req: { promptId: number | null; promptText: string }) => Promise<PropertyRender>
+  /** Editar ENCIMA de un render: instrucción chica sobre su misma imagen. */
+  onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
   onSavePrompt: (p: { name: string; body: string }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
 }
@@ -39,7 +41,7 @@ const label: React.CSSProperties = {
  * garantía se vuelve visible para quien la está mirando.
  */
 export function RendersPanel({
-  images, prompts, renders, base, plan, onGenerate, onGeneratePlan, onSavePrompt, onDeleteRender,
+  images, prompts, renders, base, plan, onGenerate, onGeneratePlan, onEdit, onSavePrompt, onDeleteRender,
 }: Props) {
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [usePlan, setUsePlan] = useState(false)
@@ -52,6 +54,20 @@ export function RendersPanel({
 
   // Índice para colgarle a cada render su foto base sin recorrer la lista por render.
   const byId = useMemo(() => new Map(images.map(i => [i.id, i])), [images])
+
+  // Cadenas de edición: la lista muestra solo las CABEZAS (los renders que nadie
+  // editó encima); el historial de cada una se camina hacia atrás por parentRenderId.
+  const renderById = useMemo(() => new Map(renders.map(r => [r.id, r])), [renders])
+  const heads = useMemo(() => {
+    const parents = new Set(renders.map(r => r.parentRenderId).filter((x): x is number => x != null))
+    return renders.filter(r => !parents.has(r.id))
+  }, [renders])
+  const ancestry = (r: PropertyRender): PropertyRender[] => {
+    const chain: PropertyRender[] = []
+    let cur = r.parentRenderId != null ? renderById.get(r.parentRenderId) : undefined
+    while (cur) { chain.push(cur); cur = cur.parentRenderId != null ? renderById.get(cur.parentRenderId) : undefined }
+    return chain  // el paso inmediato anterior primero
+  }
 
   const selectedPrompt = prompts.find(p => p.id === promptId) ?? null
   // Si el texto ya no es el del preset, el render no salió de ese preset.
@@ -208,7 +224,7 @@ export function RendersPanel({
 
       {/* ── Renders generados ── */}
       <div>
-        <div style={label}>Renders ({renders.length})</div>
+        <div style={label}>Renders ({heads.length})</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, marginTop: spacing.sm }}>
           {/* La señal va DONDE el usuario está mirando. Antes lo único que
               cambiaba era la etiqueta del botón, y la lista se quedaba idéntica
@@ -222,10 +238,14 @@ export function RendersPanel({
               </p>
             </div>
           )}
-          {renders.map(r => (
-            <RenderCard key={r.id} render={r} source={byId.get(r.sourceImageId ?? -1) ?? null}
-                        base={base} onDelete={() => onDeleteRender(r.id)}
-                        onReuse={() => { setPromptId(r.promptId); setText(r.promptText) }} />
+          {heads.map(h => (
+            <RenderCard key={h.id} render={h}
+                        parent={h.parentRenderId != null ? renderById.get(h.parentRenderId) ?? null : null}
+                        source={byId.get(h.sourceImageId ?? -1) ?? null}
+                        history={ancestry(h)}
+                        base={base} onDelete={() => onDeleteRender(h.id)}
+                        onReuse={() => { setPromptId(h.promptId); setText(h.promptText) }}
+                        onEdit={onEdit ? (promptText: string) => onEdit(h.id, promptText).then(() => {}) : undefined} />
           ))}
         </div>
       </div>
@@ -242,18 +262,43 @@ export function RendersPanel({
  * lo único que explica de dónde salió. Y el par foto→propuesta es el argumento
  * mismo: una propuesta sin su antes no dice nada.
  */
-function RenderCard({ render, source, base, onDelete, onReuse }: {
+function RenderCard({ render, source, parent, history, base, onDelete, onReuse, onEdit }: {
   render: PropertyRender
   source: PropertyImage | null
+  parent: PropertyRender | null
+  history: PropertyRender[]
   base: string
   onDelete: () => void
   onReuse: () => void
+  onEdit?: (promptText: string) => Promise<void>
 }) {
+  const [editing, setEditing] = useState(false)
+  const [editText, setEditText] = useState('')
+  const [editBusy, setEditBusy] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+
+  const edited = render.parentRenderId != null
   const plano = render.sourcePlanPath != null
-  // Huérfano = nació con foto y se borró. Un render del plano NO es huérfano:
-  // su fuente (el plano) sigue ahí, solo que no es una foto.
-  const huerfano = render.sourceImageId == null && !plano
-  const showBase = !huerfano
+  // La "base" que se muestra al lado: el paso anterior si es una edición; si no,
+  // el plano o la foto de la que nació.
+  const baseUrl = edited && parent ? `${base}/files/${parent.filePath}`
+    : plano ? `${base}/files/${render.sourcePlanPath}`
+    : source ? `${base}/files/${source.filePath}`
+    : null
+  const baseLabel = edited ? 'Paso anterior' : plano ? 'Plano base' : 'Foto base'
+  const showBase = baseUrl != null
+
+  async function runEdit() {
+    if (!onEdit || !editText.trim()) return
+    setEditBusy(true); setEditError(null)
+    try {
+      await onEdit(editText.trim())
+      setEditing(false); setEditText('')
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'No se pudo generar el cambio')
+    } finally { setEditBusy(false) }
+  }
 
   return (
     <figure style={{ border: `1px solid ${colors.border}`, borderRadius: radius.sm,
@@ -269,6 +314,9 @@ function RenderCard({ render, source, base, onDelete, onReuse }: {
             {fmtDia(render.createdAt)} · {render.model}
           </span>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: spacing.sm }}>
+            {onEdit && (
+              <button onClick={() => setEditing(v => !v)} style={linkBtn}>Trabajar sobre este</button>
+            )}
             <button onClick={onReuse} style={linkBtn}>Reusar prompt</button>
             <button onClick={onDelete} style={linkBtn}>Borrar</button>
           </span>
@@ -285,10 +333,9 @@ function RenderCard({ render, source, base, onDelete, onReuse }: {
             <span style={{ ...label, position: 'absolute', top: spacing.sm, left: spacing.sm,
                            color: colors.dark, background: colors.secondary,
                            padding: '3px 6px', borderRadius: radius.sm }}>
-              {plano ? 'Plano base' : 'Foto base'}
+              {baseLabel}
             </span>
-            <img src={`${base}/files/${plano ? render.sourcePlanPath : source!.filePath}`}
-                 alt={`${plano ? 'Plano' : 'Foto'} base del render ${render.id}`}
+            <img src={baseUrl!} alt={`${baseLabel} del render ${render.id}`}
                  style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block' }} />
           </div>
         )}
@@ -298,12 +345,57 @@ function RenderCard({ render, source, base, onDelete, onReuse }: {
              style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block' }} />
       </div>
 
-      {huerfano && (
-        // El caso ON DELETE SET NULL, dicho en voz alta. Callarlo haría parecer
-        // que el render nació sin origen, que es distinto a haberlo perdido.
+      {/* Trabajar sobre este: instrucción chica, sobre esta misma imagen. */}
+      {editing && onEdit && (
+        <div style={{ padding: spacing.sm, borderTop: `1px solid ${colors.border}`,
+                      display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={2}
+            placeholder="Solo el cambio: «el baño no tiene puerta, agrégale una»."
+            style={{ width: '100%', boxSizing: 'border-box', padding: '8px', resize: 'vertical',
+                     fontFamily: fonts.sans, fontSize: '13px', color: colors.neutral, lineHeight: 1.5,
+                     background: colors.dark, border: `1px solid ${colors.border}`, borderRadius: radius.sm }} />
+          {editError && <p style={{ color: colors.tertiary, fontSize: '12px' }}>{editError}</p>}
+          <div style={{ display: 'flex', gap: spacing.sm }}>
+            <button onClick={runEdit} disabled={editBusy || !editText.trim()} style={btn(true)}>
+              {editBusy ? 'GENERANDO…' : 'GENERAR CAMBIO'}
+            </button>
+            <button onClick={() => { setEditing(false); setEditText('') }} style={btn(false)}>Cancelar</button>
+          </div>
+          {editBusy && (
+            <p style={{ ...label, letterSpacing: 0, textTransform: 'none' }}>
+              Genera sobre esta imagen. Puede tardar cerca de un minuto.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Historial: los pasos previos de esta misma imagen, colapsados. */}
+      {history.length > 0 && (
+        <div style={{ borderTop: `1px solid ${colors.border}` }}>
+          <button onClick={() => setShowHistory(v => !v)} style={{ ...linkBtn, padding: spacing.sm }}>
+            {showHistory ? '▾' : '▸'} Historial ({history.length} {history.length === 1 ? 'paso' : 'pasos'})
+          </button>
+          {showHistory && (
+            <div style={{ padding: spacing.sm, paddingTop: 0, display: 'flex',
+                          flexDirection: 'column', gap: spacing.sm }}>
+              {history.map(h => (
+                <div key={h.id} style={{ display: 'flex', gap: spacing.sm, alignItems: 'center' }}>
+                  <img src={`${base}/files/${h.filePath}`} alt={`Paso ${h.id}`}
+                       style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: radius.sm, flexShrink: 0 }} />
+                  <p style={{ fontSize: '11px', color: colors.secondary, lineHeight: 1.4 }}>{h.promptText}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!showBase && (
+        // Nació de una foto que se borró: se dice en voz alta. Callarlo haría
+        // parecer que el render nació sin origen, que es distinto a haberlo perdido.
         <p style={{ ...label, letterSpacing: 0, textTransform: 'none', padding: spacing.sm,
                     borderTop: `1px solid ${colors.border}` }}>
-          Foto base borrada — el render se conserva, la liga no.
+          Fuente base borrada — el render se conserva, la liga no.
         </p>
       )}
     </figure>
