@@ -157,12 +157,14 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
   })
 
-  test('a prospecto offers GENERAL and ANÁLISIS — money comes with the offer', async ({ page }) => {
+  test('a prospecto has no tab switcher — money comes with the offer', async ({ page }) => {
     await gotoProperty(page, id)
 
-    await expect(page.getByRole('button', { name: 'GENERAL', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'ANÁLISIS', exact: true })).toBeVisible()
+    // With nothing to switch to yet, the GENERAL tab strip doesn't render at
+    // all — one option is not a choice, and the row was just wasted space.
+    await expect(page.getByRole('button', { name: 'GENERAL', exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'FINANZAS', exact: true })).toHaveCount(0)
+    await expect(page.getByText('DATOS', { exact: true })).toBeVisible()
     // Nor are there works to track on a building nobody owns
     await expect(page.getByText('TAREAS', { exact: true })).toHaveCount(0)
   })

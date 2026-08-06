@@ -587,19 +587,24 @@ export function PropertyDetailPage() {
           display: 'flex', flexDirection: 'column',
           overflow: narrow ? 'visible' : 'hidden',
         }}>
-          <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
-            {tabs.map(([tab, label]) => (
-              <button key={tab} onClick={() => setLeftTab(tab)} style={{
-                background: 'transparent', border: 'none',
-                borderBottom: leftTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
-                color: leftTab === tab ? colors.neutral : colors.secondary,
-                cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
-                letterSpacing: '0.12em', padding: '10px 16px 8px',
-              }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* Con una sola pestaña no hay nada que elegir, y la tira de tabs
+              solo restaba espacio a la columna: se pinta nada más cuando hay
+              algo entre qué cambiar. */}
+          {tabs.length > 1 && (
+            <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
+              {tabs.map(([tab, label]) => (
+                <button key={tab} onClick={() => setLeftTab(tab)} style={{
+                  background: 'transparent', border: 'none',
+                  borderBottom: leftTab === tab ? `2px solid ${colors.primary}` : '2px solid transparent',
+                  color: leftTab === tab ? colors.neutral : colors.secondary,
+                  cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
+                  letterSpacing: '0.12em', padding: '10px 16px 8px',
+                }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* ── GENERAL ── */}
           {leftTab === 'general' && (

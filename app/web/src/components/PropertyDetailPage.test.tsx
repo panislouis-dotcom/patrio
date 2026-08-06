@@ -158,6 +158,19 @@ describe('PropertyDetailPage', () => {
     expect(screen.queryByText('FINANZAS')).toBeNull()
   })
 
+  it('con una sola pestaña no hay tira de tabs que elegir — el contenido se pinta directo', async () => {
+    // Antes de la oferta GENERAL es la única opción, y una tira de tabs con un
+    // solo botón no deja elegir nada: solo le resta espacio a la columna. La
+    // tira aparece de nuevo en cuanto hay algo entre qué cambiar (FINANZAS).
+    await renderPage(BASE_PROPERTY)
+    expect(screen.queryByRole('button', { name: 'GENERAL' })).toBeNull()
+    expect(screen.getByText('DATOS')).not.toBeNull()
+
+    await renderPage(RENTED)
+    expect(screen.getByRole('button', { name: 'GENERAL' })).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'FINANZAS' })).not.toBeNull()
+  })
+
   it('una propiedad en renta muestra lo realizado sin esconder lo de antes', async () => {
     await renderPage(RENTED)
 
