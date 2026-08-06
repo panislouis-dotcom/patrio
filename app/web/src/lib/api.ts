@@ -1,4 +1,4 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, AnalysisSnapshot, AnalysisRequest, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetSource } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetSource } from './types'
 import type { FloorPlanModel } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -723,31 +723,6 @@ export async function updateComparable(id: number, data: Partial<Comparable>): P
 export async function deleteComparable(id: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/comparables/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await detail(res))
-}
-
-// ─── Analyses ────────────────────────────────────────────────────────────────
-
-export async function runAnalysis(data: AnalysisRequest): Promise<AnalysisSnapshot> {
-  const res = await authFetch(`${BASE}/api/analyses`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
-}
-
-export async function fetchAnalysis(id: number): Promise<AnalysisSnapshot> {
-  const res = await authFetch(`${BASE}/api/analyses/${id}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
-export async function fetchAnalyses(propertyId?: number): Promise<AnalysisSnapshot[]> {
-  const qs = propertyId != null ? `?property_id=${propertyId}` : ''
-  const res = await authFetch(`${BASE}/api/analyses${qs}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
 }
 
 // ─── Auth / Me ────────────────────────────────────────────────────────────────

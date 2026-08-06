@@ -189,9 +189,10 @@ export interface Property {
   constructionPaid: number | null
   constructionCommittedVariance: number | null
   constructionPaidVariance: number | null
-  purchasePricePerSqm: number | null
-  salePerSqm: number | null
-  investmentPerSqm: number | null
+  // `purchasePricePerSqm`, `salePerSqm` e `investmentPerSqm` no están: la
+  // ficha era su único lector en este cliente y su sección MÉTRICAS se quitó.
+  // El servidor sigue mandando `investmentPerSqm` — lo lee el PDF del
+  // prospecto (prospectus_html.py), en Python, sin pasar por este tipo.
   projectedProfit: number | null
   projectedRoi: number | null
   projectedRoiTotal: number | null
@@ -261,6 +262,11 @@ export type RawPropertyFields = Pick<Property, typeof RAW_PROPERTY_FIELDS[number
 export type PropertyPatch = Partial<RawPropertyFields> & {
   isFavorite?: boolean
   milestones?: Record<string, string>
+  // No es una columna — igual que en PropertyCreate, es el insumo de la
+  // CALCULADORA que (re)siembra el presupuesto. `contract.test.ts` no lo
+  // cuenta contra WRITABLE_FIELDS a propósito: nunca hay un UPDATE de columna
+  // que espejar.
+  constructionCostPerSqm?: number
 }
 
 // Alta: la dirección y el nombre son lo mínimo para reconocer un inmueble; el
@@ -1088,87 +1094,6 @@ export interface Comparable {
   notes: string
   createdAt: string
 }
-
-export interface AnalysisSnapshot {
-  id: number
-  propertyId: number
-  generatedAt: string
-  purchasePrice: number
-  remodelCostEstimate: number
-  remodelCostPerM2: number
-  interventionLevel: string
-  transactionCostPct: number | null
-  transactionCosts: number
-  financingCosts: number
-  listingHaircut: number | null
-  discountRate: number | null
-  totalCost: number
-  holdingPeriodMonths: number
-  exitPriceManual: number | null
-  exitPriceCalculatedLow: number | null
-  exitPriceCalculatedMid: number | null
-  exitPriceCalculatedHigh: number | null
-  exitPriceSource: 'manual' | 'calculated' | 'blended'
-  exitPriceUsed: number
-  manualVsMarketDeltaPct: number | null
-  arvManualOverride: number | null
-  comparableCount: number
-  comparableIds: number[]
-  avgCompDistanceKm: number | null
-  grossMargin: number | null
-  roiPct: number | null
-  irrPct: number | null
-  capRatePct: number | null
-  confidenceScore: number
-  confidenceNotes: string
-  dataQualityWarnings: string[]
-  rentaMensualEstimada: number | null
-  tasaInteresCredito: number | null
-  plazoCreditoMeses: number | null
-  financiamientoPct: number | null
-  gastosOperativosPct: number | null
-  noiAnual: number | null
-  debtServiceAnual: number | null
-  cashFlowAnual: number | null
-  cashOnCashYr1Pct: number | null
-  breakEvenMonths: number | null
-  // El serializador del servidor titula cada tramo entre guiones bajos, así que
-  // `npv_10yr` sale como `npv10Yr`. Escritos en minúscula, estos dos campos
-  // llegaban siempre undefined y la vista publicaba "—" pasara lo que pasara.
-  npv10Yr: number | null
-  irr10YrPct: number | null
-}
-
-export interface AnalysisRequest {
-  propertyId: number
-  interventionLevel?: string
-  holdingPeriodMonths?: number
-  transactionCostPct?: number
-  exitPriceSource?: 'manual' | 'calculated' | 'blended'
-  arvManualOverride?: number | null
-  listingHaircut?: number
-  discountRate?: number
-  rentaMensualEstimada?: number | null
-  financiamientoPct?: number
-  tasaInteresCredito?: number
-  plazoCreditoMeses?: number
-  gastosOperativosPct?: number
-}
-
-/**
- * Los supuestos con los que corre el analizador, en un solo lugar: el
- * formulario los prellena con esto y el snapshot guarda lo que se usó. Deben
- * coincidir con los DEFAULT_* de api/analyzer.py.
- */
-export const ANALYSIS_DEFAULTS = {
-  transactionCostPct: 0.08,
-  listingHaircut: 0.06,
-  discountRate: 0.10,
-  financiamientoPct: 0.60,
-  tasaInteresCredito: 0.13,
-  plazoCreditoMeses: 240,
-  gastosOperativosPct: 0.30,
-} as const
 
 // ── Proveedores ───────────────────────────────────────────────────────────────
 

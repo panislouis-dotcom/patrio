@@ -122,16 +122,22 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(detailRow(page, 'UNIDADES')).toContainText('—')
   })
 
-  test('UBICACIÓN, the breakdown bars and the derived per-m² figures', async ({ page }) => {
+  test('UBICACIÓN, the breakdown bars and the captured m² figures', async ({ page }) => {
     await gotoProperty(page, id)
 
     await expect(detailRow(page, 'DIRECCIÓN')).toContainText(PROSPECTO.address)
     await expect(detailRow(page, 'CIUDAD')).toContainText('Monterrey')
     await expect(page.getByRole('link', { name: 'VER FUENTE ↗' })).toBeVisible()
 
+    // MÉTRICAS (INVERSIÓN/m², etc.) is gone — unused derived stats, retired.
+    // What replaced it as the read-mode home for m² is these three rows, which
+    // are captured fields now and no longer editing-only: DESGLOSE offers what
+    // is captured, and never what is derived below is the edit-mode half of
+    // this same guarantee.
     await expect(page.getByText('DESGLOSE DE INVERSIÓN')).toBeVisible()
-    await expect(page.getByText('MÉTRICAS')).toBeVisible()
-    await expect(detailRow(page, 'INVERSIÓN/m²')).toContainText('$5,325')
+    await expect(page.getByText('MÉTRICAS')).toHaveCount(0)
+    await expect(detailRow(page, 'M² DE TERRENO')).toContainText(String(PROSPECTO.sqmLand))
+    await expect(detailRow(page, 'M² DE CONSTRUCCIÓN')).toBeVisible()
   })
 
   test('PROYECCIÓN spells out the bet the property is', async ({ page }) => {
@@ -157,12 +163,14 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
   })
 
-  test('a prospecto offers GENERAL and ANÁLISIS — money comes with the offer', async ({ page }) => {
+  test('a prospecto has no tab switcher — money comes with the offer', async ({ page }) => {
     await gotoProperty(page, id)
 
-    await expect(page.getByRole('button', { name: 'GENERAL', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'ANÁLISIS', exact: true })).toBeVisible()
+    // With nothing to switch to yet, the GENERAL tab strip doesn't render at
+    // all — one option is not a choice, and the row was just wasted space.
+    await expect(page.getByRole('button', { name: 'GENERAL', exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'FINANZAS', exact: true })).toHaveCount(0)
+    await expect(page.getByText('DATOS', { exact: true })).toBeVisible()
     // Nor are there works to track on a building nobody owns
     await expect(page.getByText('TAREAS', { exact: true })).toHaveCount(0)
   })
@@ -205,7 +213,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     }
   })
 
-  test('DESGLOSE offers what is captured, and never what is derived', async ({ page }) => {
+  test('DESGLOSE captures the costs, and COSTO OBRA/m² re-runs the calculator', async ({ page }) => {
     await gotoProperty(page, id)
     await enterEditMode(page)
 
@@ -213,17 +221,16 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     // here into SUPUESTOS, because a number the model invents does not belong in
     // a list of things somebody paid for.
     await expect(fieldInput(page, 'PRECIO DE COMPRA')).toHaveValue('2,000,000')
-    await expect(fieldInput(page, 'OBRA A EJECUTAR (m²)')).toBeVisible()
+    await expect(fieldInput(page, 'M² DE TERRENO')).toBeVisible()
+    await expect(fieldInput(page, 'M² DE CONSTRUCCIÓN')).toBeVisible()
     await expect(fieldInput(page, 'PERMISOS')).toBeVisible()
     await expect(fieldInput(page, 'SUBDIVISIÓN')).toBeVisible()
 
-    // But NOT the cost per m² of works. It stopped being an input when the cost
-    // of works became the budget's sum: today it is a RESULT —budget ÷ metres—
-    // and offering a box for it would be a second place to type the same money.
-    // The metres survive right above it: those are physical, and the analyzer
-    // and the PDF read them. This assertion is the line between what is typed
-    // and what is computed, which is the distinction the whole feature rests on.
-    await expect(fieldInput(page, 'COSTO OBRA/m²')).toHaveCount(0)
+    // COSTO OBRA/m² is captured again too — not a second place to type the
+    // work's cost, but the calculator that seeded the budget's first line,
+    // offered again here for as long as nobody has detailed a real partida.
+    // MÉTRICAS (the read-only home this used to have) is gone.
+    await expect(fieldInput(page, 'COSTO OBRA/m²')).toBeVisible()
     await expect(page.getByText('MÉTRICAS')).toHaveCount(0)
   })
 
@@ -329,24 +336,6 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await setNumericField(page, 'RENTA/MES ESTIMADA', '20000')
     await saveEdits(page)
     await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText(CAP_RATE)
-  })
-
-  // ── ANÁLISIS ────────────────────────────────────────────────────────────────
-
-  test('ANÁLISIS can still be run before the purchase', async ({ page }) => {
-    await gotoProperty(page, id)
-    const url = page.url()
-    await page.getByRole('button', { name: 'ANÁLISIS', exact: true }).click()
-
-    await expect(page.getByRole('button', { name: 'CORRER ANÁLISIS' })).toBeVisible()
-    await page.getByRole('button', { name: 'CORRER ANÁLISIS' }).click()
-    await expect(page.getByText('INTERVENCIÓN')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'EJECUTAR' })).toBeVisible()
-
-    // The tabs are panels, not pages
-    expect(page.url()).toBe(url)
-    await page.getByRole('button', { name: 'GENERAL', exact: true }).click()
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toBeVisible()
   })
 
   // ── Columna central ─────────────────────────────────────────────────────────
@@ -610,15 +599,6 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await expect(page.getByText('TAREAS', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'LIGAR EXISTENTE' })).toBeVisible()
     await expect(page.getByRole('button', { name: '+ NUEVA TAREA' })).toBeVisible()
-  })
-
-  test('the analyzer closes but its history stays consultable', async ({ page }) => {
-    await gotoProperty(page, id)
-    await page.getByRole('button', { name: 'ANÁLISIS', exact: true }).click()
-
-    // After the purchase the answer comes from the rent, not from a model
-    await expect(page.getByRole('button', { name: 'CORRER ANÁLISIS' })).toHaveCount(0)
-    await expect(page.getByText('Sin análisis previos')).toBeVisible()
   })
 })
 

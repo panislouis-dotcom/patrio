@@ -14,10 +14,11 @@ from decimal import Decimal
 from api.db import get_db
 from api.finance import underwriting
 
+from .conftest import _delete_property
+
 # El expediente. Sin ventana: aparece cuando sus insumos están, en la etapa que sea.
 RECORD = ("acquisitionCosts", "acquisitionTotal", "constructionBudgeted",
-          "constructionCostPerSqm",
-          "purchasePricePerSqm", "investmentPerSqm", "salePerSqm",
+          "constructionCostPerSqm", "investmentPerSqm",
           "projectedProfit", "projectedRoi", "projectedRoiTotal", "capRate", "rentAnnual")
 # El yield de la renta COBRADA. Va aparte porque su insumo aparece más tarde: una
 # propiedad en desarrollo tiene todo el resto del expediente y no tiene esto.
@@ -75,10 +76,18 @@ def test_projection_matches_the_underwriting_engine(client, test_property):
         ("totalInvestment", "total_investment"), ("acquisitionCosts", "acquisition_costs"),
         ("acquisitionTotal", "acquisition_total"), ("projectedProfit", "profit"),
         ("projectedRoi", "roi"), ("projectedRoiTotal", "roi_total"), ("capRate", "cap_rate"),
-        ("purchasePricePerSqm", "purchase_price_per_sqm"), ("salePerSqm", "sale_per_sqm"),
         ("investmentPerSqm", "investment_per_sqm"), ("rentAnnual", "rent_annual"),
     ]:
         assert Decimal(str(p[camel])) == expected[snake], camel
+
+
+def test_purchase_and_sale_per_sqm_are_gone_the_ficha_was_their_only_reader(client, test_property):
+    """`investmentPerSqm` se queda —lo sigue leyendo el PDF del prospecto—
+    pero estos dos no tenían más lector que la sección MÉTRICAS que se quitó."""
+    p = _get(client, test_property["id"])
+    assert "purchasePricePerSqm" not in p
+    assert "salePerSqm" not in p
+    assert "investmentPerSqm" in p
 
 
 def test_no_modeled_sale_means_no_projected_gain(client, test_property):
@@ -331,11 +340,11 @@ def test_score_is_a_percentile_over_the_pre_purchase_cohort(client, test_propert
     """Alone in the cohort a property ties with itself on every weight, which is
     the 50th percentile — not 0 and not 100."""
     with get_db() as conn:
-        conn.execute("DELETE FROM property_status_events WHERE property_id IN"
-                     " (SELECT id FROM properties WHERE status IN ('prospecto','oferta')"
-                     "  AND id <> %s)", (test_property["id"],))
-        conn.execute("DELETE FROM properties WHERE status IN ('prospecto', 'oferta')"
-                     " AND id <> %s", (test_property["id"],))
+        stray_ids = [row["id"] for row in conn.execute(
+            "SELECT id FROM properties WHERE status IN ('prospecto', 'oferta')"
+            " AND id <> %s", (test_property["id"],)).fetchall()]
+    for stray_id in stray_ids:
+        _delete_property(stray_id)
     assert _get(client, test_property["id"])["score"] == 50
 
 

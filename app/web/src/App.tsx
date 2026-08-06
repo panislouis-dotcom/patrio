@@ -27,7 +27,6 @@ import { PromocionQueuePage } from './components/budget/PromocionQueuePage'
 import { PlantillasObraPage } from './components/budget/PlantillasObraPage'
 import { ComparablesTab } from './components/ComparablesTab'
 import { ComparableForm } from './components/ComparableForm'
-import { AnalysisView } from './components/AnalysisView'
 import { globalStyles, colors } from './lib/theme'
 import { pageFill } from './lib/styles'
 
@@ -96,7 +95,6 @@ function AppShell() {
             <Route path="plantillas" element={<PlantillasObraPage />} />
           </Route>
           <Route path="/equipo" element={<ProtectedRoute><OrgTab /></ProtectedRoute>} />
-          <Route path="/analyses/:id" element={<ProtectedRoute><AnalysisView /></ProtectedRoute>} />
           {/* El comodín, al final. Sin él una URL mal tecleada pintaba la barra
               y nada más — una app en blanco, indistinguible de una rota. */}
           <Route path="*" element={<NotFound />} />

@@ -17,16 +17,20 @@ export interface BreakdownItem { label: string; amount: number }
  * de quien las arma — aquí solo no se puede prometer un total que no se enseña.
  */
 export function InvestmentBreakdown({ label, items, barsReady }: {
-  label: string; items: BreakdownItem[]; barsReady: boolean
+  /** Omitir cuando quien llama ya puso su propio SectionDivider con el mismo
+   * título: repetirlo aquí lo duplicaría en pantalla. */
+  label?: string; items: BreakdownItem[]; barsReady: boolean
 }) {
   const visible = items.filter(i => i.amount > 0)
   if (visible.length === 0) return null
   const total = visible.reduce((sum, i) => sum + i.amount, 0)
   return (
     <div style={{ marginTop: '20px' }}>
-      <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, padding: '12px 0 6px', borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '4px' }}>
-        {label}
-      </div>
+      {label && (
+        <div style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary, padding: '12px 0 6px', borderBottom: `1px solid ${colors.border}`, marginBottom: '8px', marginTop: '4px' }}>
+          {label}
+        </div>
+      )}
       <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>{fmtMXN(total)}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {visible.map(({ label: l, amount }, i) => {

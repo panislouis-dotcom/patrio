@@ -1,12 +1,11 @@
 \restrict dbmate
 
 -- Dumped from database version 16.14
--- Dumped by pg_dump version 18.4
+-- Dumped by pg_dump version 16.14
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -14,6 +13,20 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: public; Type: SCHEMA; Schema: -; Owner: -
+--
+
+-- *not* creating schema, since initdb creates it
+
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON SCHEMA public IS '';
+
 
 --
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
@@ -143,100 +156,6 @@ $$;
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
-
---
--- Name: analysis_snapshots; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.analysis_snapshots (
-    id bigint NOT NULL,
-    generated_at timestamp with time zone DEFAULT now() NOT NULL,
-    purchase_price numeric(14,2) NOT NULL,
-    remodel_cost_estimate numeric(14,2) NOT NULL,
-    remodel_cost_per_m2 numeric(14,2) NOT NULL,
-    intervention_level text NOT NULL,
-    transaction_costs numeric(14,2) NOT NULL,
-    financing_costs numeric(14,2) NOT NULL,
-    total_cost numeric(14,2) NOT NULL,
-    holding_period_months integer NOT NULL,
-    exit_price_manual numeric(14,2),
-    exit_price_calculated_low numeric(14,2),
-    exit_price_calculated_mid numeric(14,2),
-    exit_price_calculated_high numeric(14,2),
-    exit_price_source text DEFAULT 'manual'::text NOT NULL,
-    exit_price_used numeric(14,2) NOT NULL,
-    manual_vs_market_delta_pct real,
-    comparable_count integer DEFAULT 0 NOT NULL,
-    comparable_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
-    avg_comp_distance_km real,
-    gross_margin numeric(14,2),
-    roi_pct real,
-    irr_pct real,
-    cap_rate_pct real,
-    confidence_score integer DEFAULT 0 NOT NULL,
-    confidence_notes text DEFAULT ''::text NOT NULL,
-    data_quality_warnings jsonb DEFAULT '[]'::jsonb NOT NULL,
-    arv_manual_override numeric(14,2),
-    renta_mensual_estimada numeric(14,2),
-    tasa_interes_credito real,
-    plazo_credito_meses integer,
-    financiamiento_pct real,
-    gastos_operativos_pct real,
-    noi_anual numeric(14,2),
-    debt_service_anual numeric(14,2),
-    cash_flow_anual numeric(14,2),
-    cash_on_cash_yr1_pct real,
-    break_even_months integer,
-    npv_10yr numeric(14,2),
-    irr_10yr_pct real,
-    property_id bigint NOT NULL,
-    transaction_cost_pct real,
-    listing_haircut real,
-    discount_rate real,
-    CONSTRAINT analysis_snapshots_confidence_score_check CHECK (((confidence_score >= 0) AND (confidence_score <= 100))),
-    CONSTRAINT analysis_snapshots_exit_price_source_check CHECK ((exit_price_source = ANY (ARRAY['manual'::text, 'calculated'::text, 'blended'::text])))
-);
-
-
---
--- Name: COLUMN analysis_snapshots.transaction_cost_pct; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN public.analysis_snapshots.transaction_cost_pct IS 'Supuesto: costos de transacción como fracción del precio de compra.';
-
-
---
--- Name: COLUMN analysis_snapshots.listing_haircut; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN public.analysis_snapshots.listing_haircut IS 'Supuesto: castigo anuncio→venta aplicado al precio de cada comparable antes de estimar el precio de mercado.';
-
-
---
--- Name: COLUMN analysis_snapshots.discount_rate; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN public.analysis_snapshots.discount_rate IS 'Supuesto: tasa anual con la que se descuenta el NPV a 10 años.';
-
-
---
--- Name: analysis_snapshots_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.analysis_snapshots_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: analysis_snapshots_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.analysis_snapshots_id_seq OWNED BY public.analysis_snapshots.id;
-
 
 --
 -- Name: api_keys; Type: TABLE; Schema: public; Owner: -
@@ -1337,6 +1256,7 @@ CREATE TABLE public.property_renders (
     provider text NOT NULL,
     model text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    source_plan_path text,
     CONSTRAINT property_renders_file_path_check CHECK ((file_path <> ''::text)),
     CONSTRAINT property_renders_prompt_text_check CHECK ((prompt_text <> ''::text))
 );
@@ -1610,45 +1530,6 @@ CREATE SEQUENCE public.proveedores_id_seq
 --
 
 ALTER SEQUENCE public.proveedores_id_seq OWNED BY public.proveedores.id;
-
-
---
--- Name: remodel_costs; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.remodel_costs (
-    id bigint NOT NULL,
-    zone_id bigint NOT NULL,
-    intervention_level text NOT NULL,
-    cost_per_m2_mxn numeric(14,2) NOT NULL,
-    includes jsonb DEFAULT '[]'::jsonb NOT NULL,
-    valid_from date DEFAULT CURRENT_DATE NOT NULL,
-    valid_until date,
-    source text DEFAULT ''::text NOT NULL,
-    notes text DEFAULT ''::text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT remodel_costs_intervention_level_check CHECK ((intervention_level = ANY (ARRAY['cosmetica'::text, 'media'::text, 'total'::text, 'obra_nueva'::text])))
-);
-
-
---
--- Name: remodel_costs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.remodel_costs_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: remodel_costs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.remodel_costs_id_seq OWNED BY public.remodel_costs.id;
 
 
 --
@@ -1963,13 +1844,6 @@ ALTER SEQUENCE public.zones_id_seq OWNED BY public.zones.id;
 
 
 --
--- Name: analysis_snapshots id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.analysis_snapshots ALTER COLUMN id SET DEFAULT nextval('public.analysis_snapshots_id_seq'::regclass);
-
-
---
 -- Name: api_keys id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2173,13 +2047,6 @@ ALTER TABLE ONLY public.proveedores ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
--- Name: remodel_costs id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.remodel_costs ALTER COLUMN id SET DEFAULT nextval('public.remodel_costs_id_seq'::regclass);
-
-
---
 -- Name: render_prompts id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2233,22 +2100,6 @@ ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_
 --
 
 ALTER TABLE ONLY public.zones ALTER COLUMN id SET DEFAULT nextval('public.zones_id_seq'::regclass);
-
-
---
--- Name: analysis_snapshots analysis_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.analysis_snapshots
-    ADD CONSTRAINT analysis_snapshots_pkey PRIMARY KEY (id);
-
-
---
--- Name: analysis_snapshots analysis_snapshots_property_id_generated_at_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.analysis_snapshots
-    ADD CONSTRAINT analysis_snapshots_property_id_generated_at_key UNIQUE (property_id, generated_at);
 
 
 --
@@ -2529,22 +2380,6 @@ ALTER TABLE ONLY public.proveedor_photos
 
 ALTER TABLE ONLY public.proveedores
     ADD CONSTRAINT proveedores_pkey PRIMARY KEY (id);
-
-
---
--- Name: remodel_costs remodel_costs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.remodel_costs
-    ADD CONSTRAINT remodel_costs_pkey PRIMARY KEY (id);
-
-
---
--- Name: remodel_costs remodel_costs_zone_id_intervention_level_valid_from_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.remodel_costs
-    ADD CONSTRAINT remodel_costs_zone_id_intervention_level_valid_from_key UNIQUE (zone_id, intervention_level, valid_from);
 
 
 --
@@ -3003,13 +2838,6 @@ CREATE INDEX idx_signals_status ON public.signals USING btree (status);
 
 
 --
--- Name: idx_snapshots_property_date; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_snapshots_property_date ON public.analysis_snapshots USING btree (property_id, generated_at DESC);
-
-
---
 -- Name: idx_sonar_scan_signals; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3140,14 +2968,6 @@ CREATE TRIGGER trg_properties_touch BEFORE UPDATE ON public.properties FOR EACH 
 --
 
 CREATE TRIGGER trg_properties_transition BEFORE UPDATE OF status ON public.properties FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION public.properties_guard_transition();
-
-
---
--- Name: analysis_snapshots analysis_snapshots_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.analysis_snapshots
-    ADD CONSTRAINT analysis_snapshots_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id);
 
 
 --
@@ -3511,14 +3331,6 @@ ALTER TABLE ONLY public.proveedor_photos
 
 
 --
--- Name: remodel_costs remodel_costs_zone_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.remodel_costs
-    ADD CONSTRAINT remodel_costs_zone_id_fkey FOREIGN KEY (zone_id) REFERENCES public.zones(id);
-
-
---
 -- Name: signals signals_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3634,4 +3446,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('032'),
     ('033'),
     ('034'),
-    ('035');
+    ('035'),
+    ('036'),
+    ('037');

@@ -78,7 +78,9 @@ def test_a_plan_render_does_not_land_in_the_photo_gallery(
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
         data={"promptText": "Amuebla la planta."},
     )
-    assert client.get(f"/api/properties/{test_property['id']}/images").json() == []
+    # No hay endpoint propio para listar fotos: `images` vive embebido en la
+    # propiedad, igual que en cualquier otro lector (properties_db.parse_property).
+    assert client.get(f"/api/properties/{test_property['id']}").json()["images"] == []
 
 
 def test_input_fidelity_is_not_sent_by_default(monkeypatch):

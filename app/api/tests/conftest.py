@@ -71,7 +71,7 @@ def _run_dbmate(db_url: str) -> None:
 
 # ── Bootstrap: create refigan_test and run migrations (idempotent) ───────────
 def _bootstrap_test_db() -> None:
-    db_name = _TEST_URL.rsplit("/", 1)[1]
+    db_name = _TEST_URL.rsplit("/", 1)[1].split("?", 1)[0]
     _TEST_MARKERS = ("_test", "test_", "-test")
     if not any(m in db_name for m in _TEST_MARKERS):
         raise RuntimeError(
@@ -161,7 +161,6 @@ def client():
 def _delete_property(property_id: int) -> None:
     """Satellites first: their FKs to properties have no ON DELETE CASCADE."""
     with get_db() as conn:
-        conn.execute("DELETE FROM analysis_snapshots WHERE property_id = %s", (property_id,))
         conn.execute("DELETE FROM budgets WHERE property_id = %s", (property_id,))
         conn.execute("DELETE FROM profit_split_config WHERE property_id = %s", (property_id,))
         conn.execute("DELETE FROM process_instances WHERE property_id = %s", (property_id,))
