@@ -77,6 +77,18 @@ agrega un renglón de total que debe cuadrar con `constructionBudgeted`. Una
 propiedad recién nacida solo trae su renglón residual «Otros, por detallar» —
 una tabla de un renglón, no un error.
 
+## Layout: una página compañera, no la misma página
+
+`.opp` es una página fija de 297mm (hero + métricas + dos columnas + tira de
+fotos) ya probada y en producción. Meter plano + renders + presupuesto ahí
+arriesga desbordar ese layout en propiedades con muchas fotos, y toca CSS del
+que la tarjeta actual depende. En vez de eso, `_opportunity()` devuelve un
+segundo `<div class="page-block opp-detail">` inmediatamente después del
+existente — mismo patrón que ya separa páginas (`page-break-after`), cero
+riesgo para el layout que ya funciona. Una oportunidad sin plano, sin renders
+y sin renglones de presupuesto más allá del residual no genera esa segunda
+página — no hay nada que enseñar ahí que la tarjeta principal no diga ya.
+
 ## Datos: qué cambia en `documents.py`
 
 `generate_prospectus()` ya llama `_embed_images(favorites)` una vez, dentro de
