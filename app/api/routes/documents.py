@@ -8,12 +8,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
-from api.db import get_team_members
+from api.db import get_team_members, get_db
 from api.properties_db import get_properties, get_property
 from api.lib.prospectus_html import build_prospectus_html, render_to_pdf
 from api.lib.term_sheet_html import build_term_sheet_html
 from api.auth import get_current_user
-from api import storage
+from api import storage, renders_db, budget_db
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,21 @@ def _embed_image_list(images: list[dict]) -> None:
             img["dataUri"] = None
 
 
+def _embed_opportunity_extras(opportunities: list[dict]) -> None:
+    """Lo que la página compañera de una oportunidad necesita y la propiedad no
+    trae consigo: renders (con su imagen ya embebida) y presupuesto por
+    capítulo. El plano no está aquí porque `geometry` es una columna de la
+    propiedad y ya viene leída; releerla sería una segunda fuente del mismo
+    dato. Bloqueante (DB + storage): se llama junto con _embed_images, off the
+    event loop."""
+    with get_db() as conn:
+        for p in opportunities:
+            renders = renders_db.list_renders(p["id"])
+            _embed_image_list(renders)
+            p["renders"] = renders
+            p["budget"] = budget_db.get_budget(conn, p["id"])
+
+
 def _embed_images(items: list[dict]) -> None:
     """Enrich each item's `images` list in place. Blocking: call off the event loop."""
     for item in items:
@@ -76,6 +91,8 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
             detail="No favorites set. Mark at least one property as favorite.",
         )
     await asyncio.to_thread(_embed_images, favorites)
+    opportunities = _by_status(favorites, "oferta", "prospecto")
+    await asyncio.to_thread(_embed_opportunity_extras, opportunities)
     # Cómo lee el prospecto una propiedad, por etapa. El track record es lo que
     # la firma ya hizo, y llega en dos cubetas porque una vendida se presume con
     # su resultado realizado y una en renta con su marca: son dos tarjetas
@@ -88,7 +105,7 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
         _by_status(favorites, "vendida"),
         _by_status(favorites, "en_renta"),
         _by_status(favorites, "desarrollo"),
-        _by_status(favorites, "oferta", "prospecto"),
+        opportunities,
         get_team_members(),
     )
     try:

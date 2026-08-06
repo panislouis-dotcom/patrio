@@ -480,3 +480,100 @@ def test_embed_image_list_marks_failures_with_none_data_uri(monkeypatch):
     images = [{"filePath": "renders/missing.png"}]
     documents._embed_image_list(images)
     assert images[0]["dataUri"] is None
+
+
+# ── Página compañera de una oportunidad ──────────────────────────────────────
+
+def test_prospectus_shows_the_plano_for_an_opportunity_with_geometry(client, test_property):
+    from api.properties_db import set_geometry
+    geometry = {
+        "floors": [{
+            "name": "Planta Baja",
+            "vertices": {"v1": {"id": "v1", "x": 0, "y": 0},
+                        "v2": {"id": "v2", "x": 5, "y": 0}},
+            "edges": {"e1": {"id": "e1", "v1": "v1", "v2": "v2", "thickness": 0.15}},
+            "rooms": [{"name": "Sala", "cx": 2.5, "cy": 0.5}],
+        }],
+    }
+    set_geometry(test_property["id"], geometry)
+    p = get_property(test_property["id"])
+    # El plano viaja con la propiedad — `geometry` es una columna suya, no algo
+    # que el enriquecimiento tenga que ir a buscar. Esto es lo que sostiene que
+    # _embed_opportunity_extras NO la relea.
+    assert p["geometry"] == geometry
+
+    from api.routes.documents import _embed_opportunity_extras
+    _embed_opportunity_extras([p])
+    html = build_prospectus_html([], [], [], [p])
+    assert "<svg" in html
+    assert "Sala" in html
+
+
+def test_prospectus_shows_the_budget_chapters_for_an_opportunity(client, test_property):
+    client.post(f"/api/properties/{test_property['id']}/budget/lines", json={
+        "chapterName": "Albañilería", "name": "Cocina", "unit": "m2",
+        "quantity": 1, "unitPrice": 500_000,
+    })
+    p = get_property(test_property["id"])
+
+    from api.routes.documents import _embed_opportunity_extras
+    _embed_opportunity_extras([p])
+    html = build_prospectus_html([], [], [], [p])
+    assert "Albañilería" in html
+    assert "$500,000" in html  # la partida nueva
+    assert "Otros" in html     # el residual sigue ahí
+
+
+def test_prospectus_shows_the_renders_for_an_opportunity(client, test_property):
+    import io
+    from PIL import Image
+    from api import renders_db, storage
+    from api.routes.documents import _embed_opportunity_extras
+
+    buf = io.BytesIO()
+    Image.new("RGB", (2, 2), (120, 140, 160)).save(buf, format="PNG")
+    path = f"properties/{test_property['id']}/renders/[TEST]-render.png"
+    storage.upload(path, buf.getvalue(), "image/png")
+    try:
+        renders_db.add_render(
+            property_id=test_property["id"], source_image_id=None, file_path=path,
+            content_type="image/png", prompt_id=None, prompt_text="[TEST]",
+            provider="test", model="test")
+        p = get_property(test_property["id"])
+
+        _embed_opportunity_extras([p])
+        html = build_prospectus_html([], [], [], [p])
+        assert "Renders" in html
+        # JPEG, no PNG: _resize_for_pdf reencoda todo lo que entra al documento.
+        assert "data:image/jpeg;base64," in html
+    finally:
+        storage.delete(path)
+
+
+def test_prospectus_has_no_companion_page_without_plano_or_renders(client, test_property):
+    """El presupuesto SIEMPRE trae al menos el residual, así que la página
+    compañera SIEMPRE aparece para una propiedad recién nacida — es
+    información real (el estimado grueso), no un placeholder. Esta prueba
+    documenta esa expectativa en vez de asumir lo contrario."""
+    p = get_property(test_property["id"])
+    from api.routes.documents import _embed_opportunity_extras
+    _embed_opportunity_extras([p])
+    html = build_prospectus_html([], [], [], [p])
+    assert 'class="page-block opp-detail"' in html
+    assert "Otros" in html  # el residual, no un plano ni un render
+    assert "<svg" not in html
+    assert "Renders" not in html
+
+
+def test_prospectus_endpoint_enriches_the_opportunities_it_draws(client, test_property):
+    """El enriquecimiento corre DENTRO del endpoint, sobre la misma lista que se
+    dibuja. Llamar a _embed_opportunity_extras a mano no prueba eso: si el router
+    enriqueciera una lista y pasara otra, todo lo de arriba seguiría en verde."""
+    r = client.post(f"/api/properties/{test_property['id']}/budget/lines", json={
+        "chapterName": "Albañilería", "name": "Cocina", "unit": "m2",
+        "quantity": 1, "unitPrice": 500_000,
+    })
+    assert r.status_code in (200, 201), r.text
+    html = _capture_favorites(client, test_property)
+    assert 'class="page-block opp-detail"' in html
+    assert "Albañilería" in html
