@@ -1256,6 +1256,7 @@ CREATE TABLE public.property_renders (
     provider text NOT NULL,
     model text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    source_plan_path text,
     CONSTRAINT property_renders_file_path_check CHECK ((file_path <> ''::text)),
     CONSTRAINT property_renders_prompt_text_check CHECK ((prompt_text <> ''::text))
 );
@@ -3446,4 +3447,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('033'),
     ('034'),
     ('035'),
+    ('036'),
     ('037');
