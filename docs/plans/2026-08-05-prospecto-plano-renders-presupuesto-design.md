@@ -32,24 +32,39 @@ plano cambia después de generar ese render, el PNG guardado queda desactualizad
 silenciosamente — la misma clase de drift que el resto del dominio se niega a
 tolerar (`totalInvestment` no vive en dos lados, y el plano tampoco debería).
 
-`properties.geometry` es la fuente única. Su forma (`storeys[].{vertices, walls,
-rooms}`) es exactamente la que `toGeometryJson()` ya exporta en el frontend
-(`app/web/src/lib/floorplan/export.ts`), así que dibujarla en Python — líneas
-para los muros (con su grosor), polígonos rellenos para los cuartos, texto en
-cada centroide — no reinventa el modelo, solo lo proyecta a SVG en vez de a
-canvas. Corre dentro del mismo pipeline de Playwright que ya arma el PDF; no
-agrega dependencia.
+`properties.geometry` es la fuente única. **Corrección (verificado contra
+`test_property_geometry.py`, no contra memoria):** su forma NO es la que
+`toGeometryJson()` exporta — esa función solo alimenta un panel de JSON de
+depuración en el editor (`FloorPlanEditor.tsx`) y nunca se persiste ni se
+manda a ningún lado. Lo que de verdad vive en `properties.geometry` es el
+modelo crudo del editor: `{floors: [{name, height_m, extWall_m, intWall_m,
+vertices: {id: {id,x,y}}, edges: {id: {id,v1,v2,thickness,openings}}, rooms:
+[{name, cx, cy}]}]}`. Los cuartos ahí son un nombre y un punto de etiqueta —
+**no traen polígono ni área** — porque un cuarto puede nombrarse sin estar
+cerrado por muros (`3ba3c78`). Reconstruir el polígono de un cuarto exige el
+mismo algoritmo de trazado de caras (`traceFaces` → `roomAreas`,
+`app/web/src/lib/floorplan/rooms.ts`, ~114 líneas) que ya vive en TypeScript;
+portarlo a Python duplicaría lógica geométrica no trivial que ya ha cambiado
+una vez y puede volver a cambiar — el mismo tipo de drift silencioso que este
+diseño existe para evitar en primer lugar.
+
+Por eso el SVG del prospecto dibuja **solo lo que el modelo crudo garantiza**:
+los muros como líneas (con su grosor) y el nombre de cada cuarto como texto en
+su punto `(cx, cy)` — sin relleno, sin polígono. Es menos bonito que el editor
+interactivo, pero cada línea que dibuja viene de un campo que existe siempre,
+y no hay una segunda implementación de geometría que mantener sincronizada.
 
 ## Piezas nuevas
 
 **`_floorplan_svg(geometry: dict) -> str`** (`prospectus_html.py`)
-Por cada storey en `geometry.storeys`: bounding box de sus vértices, escala a
-un viewBox fijo, muros como `<line>` con `stroke-width` proporcional al grosor,
-cuartos como `<polygon>` con su nombre en el centroide. Los pisos se apilan
-verticalmente, cada uno con su nombre de storey como encabezado. `geometry`
-vacío o `None` → `""`, el bloque desaparece (mismo patrón que `_team_block`).
-Un muro que referencia un vértice inexistente se salta — un plano mal formado
-no debe tumbar el prospecto entero.
+Por cada floor en `geometry["floors"]`: bounding box de sus `vertices`, escala
+a un viewBox fijo, muros (`edges`) como `<line>` con `stroke-width`
+proporcional a `thickness`, cuartos (`rooms`) como `<text>` en `(cx, cy)` — sin
+polígono. Los pisos se apilan verticalmente, cada uno con su `name` como
+encabezado. `geometry` vacío, `None`, o sin `floors` → `""`, el bloque
+desaparece (mismo patrón que `_team_block`). Un `edge` que referencia un
+`v1`/`v2` ausente en `vertices` se salta — un plano mal formado no debe tumbar
+el prospecto entero.
 
 **Galería de renders** (dentro de `_opportunity()`)
 `renders_db.list_renders(property_id)` trae hasta 4 más recientes, con sus
