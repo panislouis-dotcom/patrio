@@ -15,6 +15,12 @@ _MESES = [
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ]
 
+# Lienzo del plano, en unidades del viewBox: el SVG se escala solo al ancho de
+# su columna, así que el número no es un tamaño impreso sino la resolución con
+# la que se dibujan los muros.
+_SVG_SIZE = 260.0
+_SVG_PAD = 14.0
+
 # Vocabulario de roles de team_members (espejo de ROLE_LABEL en
 # app/web/src/components/OrgTab.tsx); el orden es el de la jerarquía.
 _ROLE_LABEL = {
@@ -498,6 +504,89 @@ def _development_card(p: dict, kicker: str) -> str:
         _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy. s/ inversión"),
     ])
     return _card(p, kicker, _hold_tail(p), metrics)
+
+
+def _floorplan_svg(geometry: dict) -> str:
+    """El plano de una oportunidad, dibujado con lo único que el modelo crudo del
+    editor garantiza siempre: muros (con su grosor) y el nombre de cada cuarto en
+    su punto de etiqueta. Sin polígono relleno — un cuarto puede nombrarse sin
+    estar cerrado por muros, así que el modelo no trae ni su área ni su forma
+    (ver docs/plans/2026-08-05-prospecto-plano-renders-presupuesto-design.md).
+    Sin pisos → "", el bloque desaparece del mismo modo que _team_block."""
+    floors = (geometry or {}).get("floors") or []
+    blocks = []
+    for floor in floors:
+        vertices = floor.get("vertices") or {}
+        if not vertices:
+            continue
+        xs = [v["x"] for v in vertices.values()]
+        ys = [v["y"] for v in vertices.values()]
+        # El piso se encuadra en el lienzo por su lado más largo, para que las
+        # dos direcciones conserven la misma escala y el plano no salga estirado.
+        # El piso degenerado (un solo vértice) tiene extensión cero: el mínimo
+        # evita la división entre cero, no dibuja nada de más.
+        width = max(max(xs) - min(xs), 0.01)
+        height = max(max(ys) - min(ys), 0.01)
+        scale = _SVG_SIZE / max(width, height)
+        min_x, max_y = min(xs), max(ys)
+
+        def sx(x):
+            return (x - min_x) * scale + _SVG_PAD
+
+        # La y del modelo apunta hacia ARRIBA (viewTransform.ts la niega en sus
+        # dos cámaras, y userToWorld la vuelve a invertir); la del SVG apunta
+        # hacia abajo. Sin este volteo el plano se imprime espejeado de arriba
+        # a abajo respecto de lo que el usuario dibujó en el editor.
+        def sy(y):
+            return (max_y - y) * scale + _SVG_PAD
+
+        lines = []
+        for edge in (floor.get("edges") or {}).values():
+            v1 = vertices.get(edge.get("v1"))
+            v2 = vertices.get(edge.get("v2"))
+            if v1 is None or v2 is None:
+                continue
+            stroke = max(_num(edge.get("thickness")) * scale, 1)
+            lines.append(
+                f'<line x1="{sx(v1["x"]):.1f}" y1="{sy(v1["y"]):.1f}" '
+                f'x2="{sx(v2["x"]):.1f}" y2="{sy(v2["y"]):.1f}" '
+                f'stroke="#1A1A1A" stroke-width="{stroke:.1f}" stroke-linecap="square" />'
+            )
+
+        labels = []
+        for room in floor.get("rooms") or []:
+            cx, cy = room.get("cx"), room.get("cy")
+            if cx is None or cy is None:
+                continue
+            labels.append(
+                f'<text x="{sx(cx):.1f}" y="{sy(cy):.1f}" '
+                f'class="plano-room" text-anchor="middle">{_esc(room.get("name", ""))}</text>'
+            )
+
+        view = _SVG_SIZE + _SVG_PAD * 2
+        blocks.append(f"""<div class="plano-floor">
+  <div class="plano-floor-name">{_esc(floor.get("name", ""))}</div>
+  <svg viewBox="0 0 {view:.1f} {view:.1f}" class="plano-svg">{''.join(lines)}{''.join(labels)}</svg>
+</div>""")
+    if not blocks:
+        return ""
+    return f'<div class="plano">{"".join(blocks)}</div>'
+
+
+def _chapter_totals(lines: list[dict], chapters: list[str]) -> list[tuple[str, str]]:
+    """Subtotal presupuestado por capítulo, en el orden que `chapters` ya trae
+    (residuo al final, ver budget_db._chapters), más un renglón de Total. Sin
+    renglones → lista vacía, para que el llamador decida que no hay presupuesto
+    que enseñar."""
+    if not lines:
+        return []
+    by_chapter: dict[str, float] = {}
+    for line in lines:
+        name = line.get("chapterName") or ""
+        by_chapter[name] = by_chapter.get(name, 0.0) + _num(line.get("budgetedAmount"))
+    pairs = [(name, _fmt_mxn(by_chapter[name])) for name in chapters if name in by_chapter]
+    pairs.append(("Total", _fmt_mxn(sum(by_chapter.values()))))
+    return pairs
 
 
 def _team_block(team: list[dict] | None) -> str:
