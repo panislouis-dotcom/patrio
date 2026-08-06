@@ -209,6 +209,19 @@ export async function generatePropertyRender(
   return res.json()
 }
 
+export async function generatePropertyRenderFromPlan(
+  id: number,
+  req: { promptText: string; promptId: number | null; plan: Blob },
+): Promise<PropertyRender> {
+  const form = new FormData()
+  form.append('file', req.plan, 'plano.png')
+  form.append('promptText', req.promptText)
+  if (req.promptId != null) form.append('promptId', String(req.promptId))
+  const res = await authFetch(`${BASE}/api/properties/${id}/renders/from-plan`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
 export async function deletePropertyRender(id: number, renderId: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await detail(res))

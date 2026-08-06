@@ -15,9 +15,9 @@ const prompts: RenderPrompt[] = [
 ]
 
 const renderRow = (id: number): PropertyRender => ({
-  id, propertyId: 7, sourceImageId: 10, filePath: `r/${id}.png`, contentType: 'image/png',
-  promptId: 1, promptText: 'Mezquite y agaves.', provider: 'openai', model: 'gpt-image-2',
-  createdAt: '2026-08-02T00:00:00Z',
+  id, propertyId: 7, sourceImageId: 10, sourcePlanPath: null, filePath: `r/${id}.png`,
+  contentType: 'image/png', promptId: 1, promptText: 'Mezquite y agaves.',
+  provider: 'openai', model: 'gpt-image-2', createdAt: '2026-08-02T00:00:00Z',
 })
 
 function setup(over: Partial<Parameters<typeof RendersPanel>[0]> = {}) {
@@ -45,13 +45,13 @@ describe('RendersPanel', () => {
     // Un botón muerto sin explicación se lee como «no pasó nada»: elegir preset
     // es la acción obvia, pero la que habilita es elegir foto.
     setup()
-    expect(screen.getByText(/elige una foto base/i)).not.toBeNull()
+    expect(screen.getByText(/elige una fuente/i)).not.toBeNull()
   })
 
   it('deja de reclamar la foto en cuanto la eliges', () => {
     setup()
     fireEvent.click(screen.getByAltText('fachada.jpg'))
-    expect(screen.queryByText(/elige una foto base/i)).toBeNull()
+    expect(screen.queryByText(/elige una fuente/i)).toBeNull()
   })
 
   it('mientras genera, aparece una tarjeta en la lista — donde el usuario mira', async () => {
@@ -180,6 +180,28 @@ describe('RendersPanel', () => {
 
     expect(await screen.findByText(/OPENAI_API_KEY no está configurada/)).not.toBeNull()
     expect(props.onGenerate).toHaveBeenCalled()
+  })
+
+  it('ofrece el plano como fuente y siembra el prompt desde los cuartos', () => {
+    setup({ plan: { roomNames: ['Cocina', 'Recámara'] }, onGeneratePlan: vi.fn() })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    expect(ta.value).toMatch(/Cocina/)
+    expect(ta.value).toMatch(/Recámara/)
+  })
+
+  it('genera desde el plano cuando el plano es la fuente elegida', async () => {
+    const onGeneratePlan = vi.fn().mockResolvedValue(renderRow(2))
+    setup({ plan: { roomNames: ['Sala'] }, onGeneratePlan })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+    await waitFor(() => expect(onGeneratePlan).toHaveBeenCalled())
+  })
+
+  it('muestra «Plano base» cuando el render nació del plano, no «foto borrada»', () => {
+    setup({ renders: [{ ...renderRow(1), sourceImageId: null, sourcePlanPath: 'plan/1.png' }] })
+    expect(screen.getByText('Plano base')).not.toBeNull()
+    expect(screen.queryByText(/foto base borrada/i)).toBeNull()
   })
 
   it('deja de mostrar «generando» cuando la generación falla', async () => {

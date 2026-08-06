@@ -8,10 +8,20 @@ interface Props {
   prompts: RenderPrompt[]
   renders: PropertyRender[]
   base: string
+  /** El plano como fuente alterna (cuando hay geometría). roomNames siembra el prompt. */
+  plan?: { roomNames: string[] } | null
   onGenerate: (req: { sourceImageId: number; promptId: number | null; promptText: string })
     => Promise<PropertyRender>
+  onGeneratePlan?: (req: { promptId: number | null; promptText: string }) => Promise<PropertyRender>
   onSavePrompt: (p: { name: string; body: string }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
+}
+
+/** Prompt sembrado desde los cuartos nombrados: un punto de partida que el usuario ajusta. */
+function planSeed(roomNames: string[]): string {
+  const rooms = roomNames.filter(r => r && r.trim())
+  const lista = rooms.length ? ` Espacios: ${rooms.join(', ')}.` : ''
+  return `Amuebla y da acabados a esta planta manteniendo la distribución.${lista} Estilo cálido y contemporáneo.`
 }
 
 const label: React.CSSProperties = {
@@ -29,9 +39,10 @@ const label: React.CSSProperties = {
  * garantía se vuelve visible para quien la está mirando.
  */
 export function RendersPanel({
-  images, prompts, renders, base, onGenerate, onSavePrompt, onDeleteRender,
+  images, prompts, renders, base, plan, onGenerate, onGeneratePlan, onSavePrompt, onDeleteRender,
 }: Props) {
   const [sourceId, setSourceId] = useState<number | null>(null)
+  const [usePlan, setUsePlan] = useState(false)
   const [promptId, setPromptId] = useState<number | null>(null)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -54,11 +65,19 @@ export function RendersPanel({
     setText(p?.body ?? '')
   }
 
+  function selectPhoto(id: number) { setSourceId(id); setUsePlan(false) }
+  function selectPlan() {
+    setUsePlan(true); setSourceId(null)
+    if (!text.trim() && plan) setText(planSeed(plan.roomNames))
+  }
+
   async function generate() {
-    if (sourceId == null || !text.trim()) return
+    const viaPlan = usePlan && !!onGeneratePlan
+    if ((!viaPlan && sourceId == null) || !text.trim()) return
     setBusy(true); setError(null)
     try {
-      await onGenerate({ sourceImageId: sourceId, promptId: effectivePromptId, promptText: text.trim() })
+      if (viaPlan) await onGeneratePlan!({ promptId: effectivePromptId, promptText: text.trim() })
+      else await onGenerate({ sourceImageId: sourceId!, promptId: effectivePromptId, promptText: text.trim() })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo generar el render')
     } finally { setBusy(false) }
@@ -79,27 +98,41 @@ export function RendersPanel({
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: spacing.md,
                   display: 'flex', flexDirection: 'column', gap: spacing.md }}>
 
-      {/* ── Foto fuente ── */}
+      {/* ── Fuente: una foto o el plano ── */}
       <div>
-        <div style={label}>Foto base</div>
-        {images.length === 0 ? (
+        <div style={label}>Fuente</div>
+        <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', marginTop: spacing.sm }}>
+          {images.map(img => (
+            <button key={img.id} onClick={() => selectPhoto(img.id)} title={img.fileName}
+              style={{
+                padding: 0, background: 'none', cursor: 'pointer', flexShrink: 0,
+                border: `2px solid ${!usePlan && sourceId === img.id ? colors.primary : colors.border}`,
+                borderRadius: radius.sm, lineHeight: 0,
+              }}>
+              <img src={`${base}/files/${img.filePath}`} alt={img.fileName}
+                   style={{ width: 84, height: 64, objectFit: 'cover', borderRadius: radius.sm }} />
+            </button>
+          ))}
+          {plan && (
+            <button onClick={selectPlan} title="Usar el plano de la pestaña PLANO"
+              style={{
+                flexShrink: 0, width: 84, height: 64, cursor: 'pointer',
+                border: `2px solid ${usePlan ? colors.primary : colors.border}`,
+                borderRadius: radius.sm, background: colors.dark, color: colors.neutral,
+                fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '4px',
+              }}>
+              <span>El plano</span>
+              {plan.roomNames.length > 0 && (
+                <span style={{ color: colors.secondary, letterSpacing: 0 }}>{plan.roomNames.length} espacios</span>
+              )}
+            </button>
+          )}
+        </div>
+        {images.length === 0 && !plan && (
           <p style={{ color: colors.secondary, fontSize: '13px', marginTop: spacing.sm }}>
-            Sube una foto en la pestaña FOTOS para poder generar un render.
+            Sube una foto en la pestaña FOTOS (o dibuja el plano) para generar un render.
           </p>
-        ) : (
-          <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', marginTop: spacing.sm }}>
-            {images.map(img => (
-              <button key={img.id} onClick={() => setSourceId(img.id)} title={img.fileName}
-                style={{
-                  padding: 0, background: 'none', cursor: 'pointer', flexShrink: 0,
-                  border: `2px solid ${sourceId === img.id ? colors.primary : colors.border}`,
-                  borderRadius: radius.sm, lineHeight: 0,
-                }}>
-                <img src={`${base}/files/${img.filePath}`} alt={img.fileName}
-                     style={{ width: 84, height: 64, objectFit: 'cover', borderRadius: radius.sm }} />
-              </button>
-            ))}
-          </div>
         )}
       </div>
 
@@ -141,9 +174,9 @@ export function RendersPanel({
           preset es la acción obvia —es el control grande— pero la que habilita
           es elegir foto, y la tira de miniaturas no parece un paso obligatorio.
           Así que el botón dice qué le falta en vez de quedarse callado. */}
-      {sourceId == null && images.length > 0 && (
+      {!usePlan && sourceId == null && (images.length > 0 || plan) && (
         <p style={{ ...label, letterSpacing: 0, textTransform: 'none', color: colors.tertiary }}>
-          Elige una foto base arriba para generar.
+          Elige una fuente arriba (una foto o el plano) para generar.
         </p>
       )}
 
@@ -167,7 +200,7 @@ export function RendersPanel({
           <button onClick={() => setNaming(true)} disabled={!text.trim()} style={btn(false)}>
             Guardar como nuevo
           </button>
-          <button onClick={generate} disabled={busy || sourceId == null || !text.trim()} style={btn(true)}>
+          <button onClick={generate} disabled={busy || (!usePlan && sourceId == null) || !text.trim()} style={btn(true)}>
             {busy ? 'GENERANDO…' : 'GENERAR RENDER'}
           </button>
         </div>
@@ -216,7 +249,11 @@ function RenderCard({ render, source, base, onDelete, onReuse }: {
   onDelete: () => void
   onReuse: () => void
 }) {
-  const huerfano = render.sourceImageId == null
+  const plano = render.sourcePlanPath != null
+  // Huérfano = nació con foto y se borró. Un render del plano NO es huérfano:
+  // su fuente (el plano) sigue ahí, solo que no es una foto.
+  const huerfano = render.sourceImageId == null && !plano
+  const showBase = !huerfano
 
   return (
     <figure style={{ border: `1px solid ${colors.border}`, borderRadius: radius.sm,
@@ -242,16 +279,16 @@ function RenderCard({ render, source, base, onDelete, onReuse }: {
         </p>
       </figcaption>
 
-      <div style={{ display: 'grid', gridTemplateColumns: huerfano ? '1fr' : '1fr 1fr' }}>
-        {huerfano ? null : (
+      <div style={{ display: 'grid', gridTemplateColumns: showBase ? '1fr 1fr' : '1fr' }}>
+        {showBase && (
           <div style={{ position: 'relative', borderRight: `1px solid ${colors.border}` }}>
             <span style={{ ...label, position: 'absolute', top: spacing.sm, left: spacing.sm,
                            color: colors.dark, background: colors.secondary,
                            padding: '3px 6px', borderRadius: radius.sm }}>
-              Foto base
+              {plano ? 'Plano base' : 'Foto base'}
             </span>
-            <img src={`${base}/files/${source!.filePath}`}
-                 alt={`Foto base del render ${render.id}`}
+            <img src={`${base}/files/${plano ? render.sourcePlanPath : source!.filePath}`}
+                 alt={`${plano ? 'Plano' : 'Foto'} base del render ${render.id}`}
                  style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block' }} />
           </div>
         )}
