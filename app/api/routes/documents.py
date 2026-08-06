@@ -41,19 +41,24 @@ def _resize_for_pdf(content: bytes, content_type: str) -> tuple[bytes, str]:
     return buf.getvalue(), "image/jpeg"
 
 
-def _embed_images(items: list[dict]) -> None:
+def _embed_image_list(images: list[dict]) -> None:
     """Enrich each image dict with a base64 data URI for PDF embedding.
 
     Blocking (network fetch + Pillow resize): call it off the event loop."""
+    for img in images:
+        try:
+            content, content_type = storage.stream(img["filePath"])
+            content, content_type = _resize_for_pdf(content, content_type)
+            img["dataUri"] = f"data:{content_type};base64,{base64.b64encode(content).decode()}"
+        except Exception:
+            logger.warning("image embed failed: %s", img.get("filePath"), exc_info=True)
+            img["dataUri"] = None
+
+
+def _embed_images(items: list[dict]) -> None:
+    """Enrich each item's `images` list in place. Blocking: call off the event loop."""
     for item in items:
-        for img in item.get("images", []):
-            try:
-                content, content_type = storage.stream(img["filePath"])
-                content, content_type = _resize_for_pdf(content, content_type)
-                img["dataUri"] = f"data:{content_type};base64,{base64.b64encode(content).decode()}"
-            except Exception:
-                logger.warning("image embed failed: %s", img.get("filePath"), exc_info=True)
-                img["dataUri"] = None
+        _embed_image_list(item.get("images", []))
 
 
 def _by_status(favorites: list[dict], *statuses: str) -> list[dict]:

@@ -450,3 +450,33 @@ def test_team_is_ordered_by_hierarchy_not_by_id(client, desarrollo_property, tes
 def test_team_block_is_omitted_without_members(client, desarrollo_property):
     rented = _rented(client, desarrollo_property["id"], 30000, 6_000_000)
     assert '<div class="partners' not in build_prospectus_html([], [rented], [], [], team=[])
+
+
+# ── Empotrado de imágenes ────────────────────────────────────────────────────
+
+def test_embed_image_list_sets_data_uri_from_storage(monkeypatch):
+    from api.routes import documents
+
+    monkeypatch.setattr(
+        documents.storage, "stream",
+        lambda path: (b"\x89PNG-fake-bytes", "image/png"))
+    monkeypatch.setattr(
+        documents, "_resize_for_pdf",
+        lambda content, content_type: (content, content_type))
+
+    images = [{"filePath": "renders/x.png"}]
+    documents._embed_image_list(images)
+
+    assert images[0]["dataUri"].startswith("data:image/png;base64,")
+
+
+def test_embed_image_list_marks_failures_with_none_data_uri(monkeypatch):
+    from api.routes import documents
+
+    def _boom(path):
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(documents.storage, "stream", _boom)
+    images = [{"filePath": "renders/missing.png"}]
+    documents._embed_image_list(images)
+    assert images[0]["dataUri"] is None
