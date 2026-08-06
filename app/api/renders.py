@@ -40,6 +40,27 @@ def compose_prompt(body: str) -> str:
     return f"{body.strip()}\n\n{_STRUCTURAL_CLAUSE}"
 
 
+# ── La cláusula para un PLANO (no una foto) ──────────────────────────────────
+# Un plano es una vista cenital: la fidelidad que se le exige no es «no muevas la
+# cámara» sino «no muevas los muros». Y el resultado NO debe ser fotorrealista
+# —eso lo volvería un 3D— sino un plano amueblado 2D, legible.
+_PLAN_CLAUSE = (
+    "Es una vista de planta arquitectónica (cenital, desde arriba). Conserva "
+    "exactamente la distribución: mismos muros y divisiones, mismos vanos de "
+    "puertas y ventanas en las mismas posiciones, mismo contorno. No agregues, "
+    "quites ni muevas cuartos ni paredes. Amuebla cada espacio y agrega acabados "
+    "de piso y vegetación según la instrucción. Resultado en estilo de plano "
+    "amueblado 2D, limpio y legible, no una fotografía 3D. Sin texto ni marcas "
+    "de agua."
+)
+
+
+def compose_plan_prompt(body: str) -> str:
+    """Prompt de la biblioteca + la cláusula del plano: mantén la distribución,
+    amuebla, y entrega un plano 2D — no un 3D."""
+    return f"{body.strip()}\n\n{_PLAN_CLAUSE}"
+
+
 def edit_kwargs() -> dict:
     """Parámetros opcionales de `images.edit`.
 
