@@ -690,3 +690,22 @@ git commit -m "fix(prospecto): ajustes de la verificación visual del plano/rend
 ```
 
 (Omitir este paso si la verificación visual no requirió cambios.)
+
+---
+
+## Desviaciones del plan (verificadas en subagent-driven-development, no aplicadas retroactivamente a los bloques de código de arriba)
+
+Cada implementador siguió TDD contra el código exacto de este plan y, en
+varios puntos, ese código estaba mal — verificado contra la fuente real, no
+supuesto. Los bloques de código de las Tasks 1-4 arriba quedan como el plan
+ORIGINAL (así se pidió el trabajo); esto documenta dónde el resultado final
+difiere y por qué, para que nadie lea este archivo como el estado actual del
+código.
+
+- **Task 2 — `sy()` estaba invertido.** El plan tenía `(y - min_y) * scale + _SVG_PAD`. El eje y del modelo del editor apunta hacia arriba (verificado en `app/web/src/lib/floorplan/viewTransform.ts`, ambos modos de cámara); el de SVG apunta hacia abajo. El código enviado usa `(max_y - y) * scale + _SVG_PAD` — de lo contrario cada plano se imprimía espejeado verticalmente. Regresión cubierta por `test_the_plan_is_not_printed_upside_down`.
+- **Task 3 — CSS incompleto en dos puntos.** `.opp-detail { padding: var(--pad) }` insetaba la banda verde a doble padding (comparar contra `.opp-body`/`.proj-body`, que pad el cuerpo, no el contenedor con la banda) — se movió a `.opp-detail-body`. Y `.opp-detail .strip img` no tenía altura propia (`.opp .strip img`'s 32mm no aplica a esta clase) — sin la regla añadida, un render se imprimía a ~170mm, más de media página. Se agregó `.opp-detail .strip img { height: 45mm; }`.
+- **Task 3 — `_strip(renders, "Renders", 4)` duplicaba la etiqueta.** `_strip` ya imprime su propio `strip-label`, y `_opportunity_detail` también envuelve la sección en un `col-label` con el mismo texto — dos "RENDERS" apilados. Código enviado: `_strip(renders, "", 4)` (label vacío, `_strip` calla el suyo).
+- **Task 4 — se eliminó `p["geometry"] = get_geometry(p["id"]) or {}` (y el import de `get_geometry`).** `get_properties()`/`get_property()` ya traen `geometry` en cada dict (`properties_db._fetch` hace `SELECT p.*`, y `geometry` sobrevive el paso snake→camel) — confirmado contra 21 propiedades reales, las 21 ya la traían. La línea del plan era una segunda lectura que sobrescribía el campo consigo mismo — dos fuentes vivas para el mismo hecho, justo lo que este dominio evita en todos lados.
+- **Task 4 — la prueba de renders no podía pasar tal como estaba escrita.** El PNG hexadecimal del plan es un archivo corrupto (Pillow lo rechaza), y además `_resize_for_pdf` siempre reencoda a JPEG sin importar el formato de entrada — así que `data:image/png;base64,` nunca podía aparecer en el HTML. La prueba enviada genera un PNG real con Pillow y afirma `data:image/jpeg;base64,`.
+
+Ninguna desviación cambió el alcance de una task ni tocó código de otra — cada una se detectó, se verificó contra la fuente real (no se asumió), y se aprobó en el review de spec compliance correspondiente antes de continuar.

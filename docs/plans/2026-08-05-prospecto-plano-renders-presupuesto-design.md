@@ -66,16 +66,22 @@ desaparece (mismo patrón que `_team_block`). Un `edge` que referencia un
 `v1`/`v2` ausente en `vertices` se salta — un plano mal formado no debe tumbar
 el prospecto entero.
 
-**Galería de renders** (dentro de `_opportunity()`)
+**Galería de renders** (dentro de `_opportunity_detail()`, la página
+compañera — ver la siguiente sección; no dentro de `_opportunity()`, la
+tarjeta principal, que no cambia)
 `renders_db.list_renders(property_id)` trae hasta 4 más recientes, con sus
-imágenes ya embebidas por `_embed_images()`. Sin renders → sección ausente.
+imágenes ya embebidas reusando `_embed_image_list()` (Task 1 del plan de
+implementación extrae esa función de `_embed_images()` para este fin exacto).
+Sin renders → sección ausente.
 
-**`_budget_chapters_table(lines: list[dict]) -> str`** (`prospectus_html.py`)
+**`_chapter_totals(lines: list[dict], chapters: list[str]) -> list[tuple[str, str]]`** (`prospectus_html.py`)
 Agrupa `lines` (de `get_budget()`) por `chapterName` en el orden que
 `chapters` ya da (residuo al final), suma `budgetedAmount` por capítulo, y
 agrega un renglón de total que debe cuadrar con `constructionBudgeted`. Una
 propiedad recién nacida solo trae su renglón residual «Otros, por detallar» —
-una tabla de un renglón, no un error.
+una tabla de un renglón, no un error. Devuelve pares `(label, valor)` en vez
+de HTML propia — la tabla la arma la `_kv_rows()` que ya existe, no una
+función de tabla dedicada.
 
 ## Layout: una página compañera, no la misma página
 
