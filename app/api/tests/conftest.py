@@ -161,7 +161,6 @@ def client():
 def _delete_property(property_id: int) -> None:
     """Satellites first: their FKs to properties have no ON DELETE CASCADE."""
     with get_db() as conn:
-        conn.execute("DELETE FROM analysis_snapshots WHERE property_id = %s", (property_id,))
         conn.execute("DELETE FROM budgets WHERE property_id = %s", (property_id,))
         conn.execute("DELETE FROM profit_split_config WHERE property_id = %s", (property_id,))
         conn.execute("DELETE FROM process_instances WHERE property_id = %s", (property_id,))

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  ASSET_TYPES, ASSUMPTION_FIELDS, ANALYSIS_DEFAULTS,
+  ASSET_TYPES, ASSUMPTION_FIELDS,
   CLEARABLE_FIELDS, RAW_PROPERTY_FIELDS, STRATEGY_TYPES,
 } from './types'
 import { ALLOWED_TRANSITIONS } from './status'
@@ -9,7 +9,6 @@ import { ALLOWED_TRANSITIONS } from './status'
 // para una prueba.
 import propertiesDbSource from '../../../api/properties_db.py?raw'
 import underwritingSource from '../../../api/finance/underwriting.py?raw'
-import analyzerSource from '../../../api/analyzer.py?raw'
 import migration024 from '../../../../db/migrations/024_properties.sql?raw'
 import statusSource from './status.ts?raw'
 
@@ -19,7 +18,7 @@ import statusSource from './status.ts?raw'
  * El cliente lleva una decena de listas que dicen «espeja X del servidor»: qué
  * se puede escribir, qué se puede vaciar, qué supuestos existen, qué tipos de
  * activo admite la base, a qué etapas se puede avanzar, cuándo abre cada
- * herramienta, con qué supuestos corre el analizador. Cada una es una copia
+ * herramienta. Cada una es una copia
  * hecha a mano de algo que vive en Python o en SQL, y ninguna tenía forma de
  * enterarse cuando el original cambiaba.
  *
@@ -54,8 +53,7 @@ import statusSource from './status.ts?raw'
  *   ASSUMPTION_FIELDS      ← underwriting.ASSUMPTION_DEFAULTS
  *   ASSET/STRATEGY_TYPES   ← los CHECK de la migración 024
  *   ALLOWED_TRANSITIONS    ← el trigger de la migración 024
- *   las 4 ventanas de etapa ← los frozensets de properties_db
- *   ANALYSIS_DEFAULTS      ← los DEFAULT_* de analyzer.py
+ *   las 3 ventanas de etapa ← los frozensets de properties_db
  *
  * Lo que cuesta cada desincronización está dicho en cada `it`, porque no es el
  * mismo daño: un vaciable de más es un botón que solo puede dar 422; un
@@ -201,23 +199,10 @@ describe('el espejo del contrato no se desincroniza en silencio', () => {
     // Si divergen, una herramienta aparece en una etapa donde el servidor
     // responde 422, o se esconde donde sí se podía usar.
     for (const nombre of ['INVESTOR_STATUSES', 'PROFIT_STATUSES',
-                          'ANALYSIS_STATUSES', 'PROCESS_STATUSES'] as const) {
+                          'PROCESS_STATUSES'] as const) {
       const servidor = pythonSet(propertiesDbSource, nombre).sort()
       const cliente = [...statusList(nombre)].sort()
       expect({ [nombre]: cliente }).toEqual({ [nombre]: servidor })
-    }
-  })
-
-  it('los supuestos del analizador valen lo mismo de los dos lados', () => {
-    // El formulario los prellena y el servidor los aplica cuando no vienen. Si
-    // difieren, la pantalla promete correr un análisis con una tasa y el
-    // servidor lo corre con otra — y el snapshot guarda la del servidor.
-    for (const [clave, valor] of Object.entries(ANALYSIS_DEFAULTS)) {
-      const constante = `DEFAULT_${clave.replace(/([A-Z])/g, '_$1').toUpperCase()}`
-      const encontrado = analyzerSource.match(new RegExp(`^${constante} = ([\\d.]+)`, 'm'))
-      // Se comparan como NÚMEROS y no como texto: `0.10` y `0.1` son el mismo
-      // supuesto escrito de dos maneras, y el espejo es sobre el valor.
-      expect({ [constante]: encontrado && Number(encontrado[1]) }).toEqual({ [constante]: valor })
     }
   })
 })

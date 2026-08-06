@@ -133,7 +133,6 @@ SCORED_STATUSES = frozenset({"prospecto", "oferta"})
 # them; kept here so the lifecycle is described in exactly one file.
 INVESTOR_STATUSES = frozenset({"oferta", "desarrollo", "en_renta", "vendida"})
 PROFIT_STATUSES = frozenset({"desarrollo", "en_renta", "vendida"})
-ANALYSIS_STATUSES = frozenset({"prospecto", "oferta", "desarrollo"})
 PROCESS_STATUSES = frozenset({"desarrollo", "en_renta", "vendida"})
 
 
@@ -858,7 +857,6 @@ def _plain(columns: dict) -> dict:
 # la usa"). Son dos frases distintas porque llevan a dos acciones distintas —
 # corregir un campo, o desligar lo que apunta.
 _DELETE_BLOCKERS = {
-    "analysis_snapshots": "tiene análisis guardados",
     # El presupuesto de obra retiene, no cae en cascada: sus renglones llevan
     # cantidades medidas, precios negociados y pagos hechos, y eso es captura
     # manual que ningún borrado debe llevarse sin que alguien lo decida.

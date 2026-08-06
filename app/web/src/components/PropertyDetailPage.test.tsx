@@ -25,7 +25,6 @@ vi.mock('../lib/api', async importOriginal => {
     fetchInvestors: vi.fn(async () => []),
     fetchInstances: vi.fn(async () => []),
     fetchTeam: vi.fn(async () => []),
-    fetchAnalyses: vi.fn(async () => []),
     // El presupuesto no tiene compuerta de etapa, pero su panel solo se monta
     // cuando alguien abre la pestaña.
     fetchBudget: vi.fn(async () => ({ id: 1, propertyId: 7, lines: [], chapters: [] })),

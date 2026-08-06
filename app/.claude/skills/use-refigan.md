@@ -129,7 +129,7 @@ A property is **born `prospecto`** — `POST /api/properties` cannot set a statu
 
 `purchasePrice` is what it costs to **acquire the building as it stands** — a bare lot or a finished house, no special case per asset type. The work *you will execute* on top — a remodel, an extension, a ground-up build — is priced in the property's **work budget**, line by line (below), and nothing already paid for inside the purchase price appears there, which is what stops a built house being counted twice.
 
-`sqmConstruction` is that work's **physical footage and prices nothing.** It was half of a formula — `sqmConstruction × constructionCostPerSqm` — and survives that formula's retirement because the market analyzer and the PDF read it, and because it is the divisor of the derived cost per m².
+`sqmConstruction` is that work's **physical footage and prices nothing.** It was half of a formula — `sqmConstruction × constructionCostPerSqm` — and survives that formula's retirement because the PDF reads it, and because it is the divisor of the derived cost per m².
 
 **Assumptions** — `acquisitionCostPct` and `holdMonths` — are not inputs like the rest. They always have a value in force, and the payload publishes it under its own key *plus* its provenance in `assumptions`: `{"holdMonths": {"value": 12, "source": "default" | "captured"}}`. `default` means nobody chose and the model applied its own (6.5%, 12 months); `captured` means a person decided. Writing one captures it; clearing it hands it back to the model.
 
@@ -372,26 +372,7 @@ Key `operation_id`s:
 - `budget_catalog_promote` — `POST /api/budget/catalog/promote` — body `{lineId, chapterId?, itemId?}`; `itemId` merges into an existing item. Returns `{item, created, relinked}`
 - `budget_templates_list`, `budget_template_get`, `budget_template_create` (body `{name, fromBudgetId?}`), `budget_template_update`, `budget_template_delete`
 
-### 2. Analyses — financial model snapshots
-
-Run a financial analysis against a property to generate a snapshot stored in `analysis_snapshots`. Supports three exit strategies:
-
-- **Flip (build + sell):** revenue = projected sale price minus all costs.
-- **Build & Hold (rent):** revenue = monthly rent × months.
-- **Blended:** weighted average of calculated and manual ARV.
-
-Key request fields: `propertyId`, `interventionLevel` (`"baja"/"media"/"alta"`), `holdingPeriodMonths`, `exitPriceSource` (`"calculated"/"manual"/"blended"`), `arvManualOverride`.
-
-**Window: `prospecto`, `oferta`, `desarrollo`.** The analyzer values a purchase; after that the answer comes from the rent. Past snapshots stay readable at every later stage.
-
-Key `operation_id`s:
-- `analyses_create` — `POST /api/analyses` (runs analysis, saves snapshot, returns it)
-- `analyses_list` — `GET /api/analyses?property_id=<id>`
-- `analyses_get` — `GET /api/analyses/{snapshot_id}`
-
-Snapshots include `comparableIds` (list) and `dataQualityWarnings` (list).
-
-### 3. Sonar — real-time market scraper
+### 2. Sonar — real-time market scraper
 
 Scrapes six real-estate portals: Lamudi, Inmuebles24, Mercadolibre, Vivanuncios, Doorvel, Icasas. Results are geocoded via Nominatim. Runs as an SSE stream.
 
@@ -404,9 +385,9 @@ Key `operation_id`s:
 - `sonar_zone_medians` — `GET /api/sonar/zone-medians`
 - `sonar_re_geocode` — `POST /api/sonar/re-geocode` → re-run Nominatim on signals
 
-### 4. Comparables — market comp database
+### 3. Comparables — market comp database
 
-Curated price comps used in financial analyses. Fields: `address`, `zoneId`, `m2`, `price`, `listingUrl`, `sourcePortal`, `listedAt`, `neighborhood`, `city`, `lat`, `lng`, `bedrooms`, `bathrooms`, `parkingSpots`, `propertyType`, `condition`, `styleTags`.
+Curated price comps used to read what a zone is selling at. Fields: `address`, `zoneId`, `m2`, `price`, `listingUrl`, `sourcePortal`, `listedAt`, `neighborhood`, `city`, `lat`, `lng`, `bedrooms`, `bathrooms`, `parkingSpots`, `propertyType`, `condition`, `styleTags`.
 
 Key `operation_id`s:
 - `zones_list` — `GET /api/zones`
@@ -414,7 +395,7 @@ Key `operation_id`s:
 - `comparables_create` — `POST /api/comparables`
 - `comparables_get`, `comparables_update`, `comparables_delete`
 
-### 5. Processes / Templates / Tareas — workflow engine
+### 4. Processes / Templates / Tareas — workflow engine
 
 **Two-layer system:**
 
@@ -457,7 +438,7 @@ Key `operation_id`s:
 - `process_node_files_*`, `process_node_comments_*`, `process_instance_files_*`
 - `cotizaciones_list`, `cotizaciones_create` — on `instance-node-states/{state_id}/cotizaciones`
 
-### 6. Proveedores — vendor / supplier directory
+### 5. Proveedores — vendor / supplier directory
 
 Three-level: **categories** → **proveedores** (vendors) → **cotizaciones** (quotes).
 
@@ -473,7 +454,7 @@ Key `operation_id`s:
 - `proveedor_photos_upload`, `proveedor_photos_delete`
 - Cotizaciones live on the node state, not on the proveedor: `cotizaciones_list` / `cotizaciones_create` on `/api/instance-node-states/{state_id}/cotizaciones`, then `cotizaciones_update`, `cotizaciones_delete` and `cotizacion_select` on `/api/cotizaciones/{id}`
 
-### 7. Investors — investor CRM
+### 6. Investors — investor CRM
 
 Global investor registry (`/api/investors`) + per-property investment tracking (`/api/properties/{id}/investors`).
 
@@ -490,7 +471,7 @@ Key `operation_id`s:
 - `property_investment_update` — `PUT /api/properties/{id}/investors/{investment_id}`
 - `property_investment_delete` — `DELETE /api/properties/{id}/investors/{investment_id}`
 
-### 8. Profit — waterfall calculator
+### 7. Profit — waterfall calculator
 
 Computes exit profit distribution for a property across: investor return, finder fee, director cut, team roles (responsable, líder, maestros, ayudantes), and ISR.
 
@@ -504,7 +485,7 @@ Key `operation_id`s:
 
 Both GET endpoints return `{"config": {...}, "waterfall": {...}}` — the waterfall is always recomputed live.
 
-### 9. Documents — PDF generation
+### 8. Documents — PDF generation
 
 HTML → Playwright/Chromium → PDF. Returns `application/pdf` with a `Content-Disposition: attachment` header.
 
@@ -517,7 +498,7 @@ Key `operation_id`s:
   - If `property_id` is null, picks the highest projected-ROI property in **`oferta`** — a term sheet is raised against a deal the firm has committed to, not one it is still evaluating.
   - `400` when the property has no `holdMonths`: the term is the spine of the document and the three return scenarios are computed on it, so it is never invented.
 
-### 10. Team
+### 9. Team
 
 Internal team members. Used in process node assignment and profit waterfall.
 
@@ -525,7 +506,7 @@ Key `operation_id`s:
 - `team_list` — `GET /api/team`
 - `team_create`, `team_update`, `team_delete`
 
-### 11. Users & API Keys
+### 10. Users & API Keys
 
 User management (admin-only for cross-user operations). API key lifecycle.
 
@@ -535,7 +516,7 @@ Key `operation_id`s:
 - `api_keys_create` — `POST /api/auth/api-keys` → returns `{"token": "rfg_live_..."}` (shown once)
 - `api_keys_revoke` — `DELETE /api/auth/api-keys/{id}`
 
-### 12. Auth
+### 11. Auth
 
 - `auth_login` — `POST /api/auth/login` — JSON body `{"email", "password"}`
 - `auth_me` — `GET /api/auth/me` (returns `{"email": "..."}` for current token)
@@ -548,7 +529,7 @@ This is the most important judgment call you will make.
 
 ### Use the API when:
 
-- You are reading or mutating **existing data** — capture a property, correct a field, advance a stage, run an analysis, import sonar signals, update node state, add an investor.
+- You are reading or mutating **existing data** — capture a property, correct a field, advance a stage, import sonar signals, update node state, add an investor.
 - The desired outcome is achievable with **existing endpoints** — if the operation_id exists in the spec, use the API.
 - You are running an autonomous agent loop that interacts with real operational data.
 

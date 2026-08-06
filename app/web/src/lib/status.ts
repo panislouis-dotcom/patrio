@@ -64,15 +64,12 @@ export const hasScore = (status: PropertyStatus): boolean =>
 // mostrando siempre, en lectura: en pasos de después ves todo lo de antes.
 const INVESTOR_STATUSES: readonly PropertyStatus[] = ['oferta', 'desarrollo', 'en_renta', 'vendida']
 const PROFIT_STATUSES: readonly PropertyStatus[] = ['desarrollo', 'en_renta', 'vendida']
-const ANALYSIS_STATUSES: readonly PropertyStatus[] = ['prospecto', 'oferta', 'desarrollo']
 const PROCESS_STATUSES: readonly PropertyStatus[] = ['desarrollo', 'en_renta', 'vendida']
 
 /** Desde oferta se levanta capital: hay un trato real que fondear. */
 export const takesInvestors = (status: PropertyStatus): boolean => INVESTOR_STATUSES.includes(status)
 /** El reparto de utilidades abre cuando el dinero ya está comprometido. */
 export const hasProfitSplit = (status: PropertyStatus): boolean => PROFIT_STATUSES.includes(status)
-/** El analizador valora una compra; después la respuesta la da la renta. */
-export const runsAnalysis = (status: PropertyStatus): boolean => ANALYSIS_STATUSES.includes(status)
 /** Las tareas de obra viven desde que la propiedad es tuya. */
 export const takesTasks = (status: PropertyStatus): boolean => PROCESS_STATUSES.includes(status)
 

@@ -17,7 +17,7 @@ import type {
 import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
 import {
   ALLOWED_TRANSITIONS, PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL,
-  hasScore, runsAnalysis, takesInvestors, takesTasks, hasProfitSplit,
+  hasScore, takesInvestors, takesTasks, hasProfitSplit,
 } from '../lib/status'
 import type { PropertyStatus } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
@@ -32,7 +32,6 @@ import { LatLonPicker } from './LatLonPicker'
 import { NumericInput } from './NumericInput'
 import { StatRow } from './StatRow'
 import { PhotoGallery } from './PhotoGallery'
-import { PropertyAnalysisSection } from './PropertyAnalysisSection'
 import { PropertyProfitSection } from './PropertyProfitSection'
 import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
 import type { FloorPlanModel } from '../lib/floorplan/types'
@@ -53,7 +52,7 @@ import { TasksPanel } from './detail/TasksPanel'
  * Una sola ficha para todo el ciclo de vida. Las herramientas aparecen cuando su
  * etapa las abre, pero nada se esconde al avanzar: en pasos de después se ve
  * todo lo de antes, en lectura. Por eso PROYECCIÓN sigue ahí en una propiedad
- * rentada y el análisis pre-compra sigue consultable en una vendida.
+ * rentada.
  *
  * Escribir tiene tres puertas y solo tres, cada una con su significado:
  *   · PATCH sube o cambia un valor — una caja vacía significa "no lo toques".
@@ -172,7 +171,7 @@ export function PropertyDetailPage() {
   const [editing, setEditing] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [barsReady, setBarsReady] = useState(false)
-  const [leftTab, setLeftTab] = useState<'general' | 'finanzas' | 'analisis'>('general')
+  const [leftTab, setLeftTab] = useState<'general' | 'finanzas'>('general')
   const [transitionTo, setTransitionTo] = useState<Exclude<PropertyStatus, 'prospecto'> | null>(null)
   const [showAdvance, setShowAdvance] = useState(false)
 
@@ -487,10 +486,9 @@ export function PropertyDetailPage() {
     )
   }
 
-  const tabs: Array<['general' | 'finanzas' | 'analisis', string]> = [
+  const tabs: Array<['general' | 'finanzas', string]> = [
     ['general', 'GENERAL'],
     ...(takesInvestors(stage) ? [['finanzas', 'FINANZAS'] as ['finanzas', string]] : []),
-    ['analisis', 'ANÁLISIS'],
   ]
 
   return (
@@ -580,7 +578,7 @@ export function PropertyDetailPage() {
         overflow: narrow ? 'visible' : 'hidden',
       }}>
 
-        {/* ── IZQUIERDA: GENERAL / FINANZAS / ANÁLISIS ── */}
+        {/* ── IZQUIERDA: GENERAL / FINANZAS ── */}
         {/* Apilada, el borde que separaba las columnas pasa a ser el que las
             separa de arriba abajo. */}
         <div style={{
@@ -915,24 +913,6 @@ export function PropertyDetailPage() {
                   onWaterfallChange={setWaterfall}
                 />
               )}
-            </div>
-          )}
-
-          {/* ── ANÁLISIS ── */}
-          {leftTab === 'analisis' && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
-              {/* El historial se consulta siempre; correr uno nuevo solo mientras
-                  el analizador tenga sentido (hasta desarrollo). */}
-              {/* assetType y sqmConstruction dejan que el formulario PROPONGA obra
-                  nueva en un lote sin obra capturada — visible y cambiable, en vez
-                  de que el análisis lo infiera en silencio y cobre por ello. */}
-              <PropertyAnalysisSection
-                propertyId={propertyId}
-                canRun={runsAnalysis(stage)}
-                holdMonths={p.assumptions?.holdMonths}
-                assetType={p.assetType}
-                sqmConstruction={p.sqmConstruction}
-              />
             </div>
           )}
         </div>

@@ -220,8 +220,8 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     // But NOT the cost per m² of works. It stopped being an input when the cost
     // of works became the budget's sum: today it is a RESULT —budget ÷ metres—
     // and offering a box for it would be a second place to type the same money.
-    // The metres survive right above it: those are physical, and the analyzer
-    // and the PDF read them. This assertion is the line between what is typed
+    // The metres survive right above it: those are physical, and the PDF
+    // reads them. This assertion is the line between what is typed
     // and what is computed, which is the distinction the whole feature rests on.
     await expect(fieldInput(page, 'COSTO OBRA/m²')).toHaveCount(0)
     await expect(page.getByText('MÉTRICAS')).toHaveCount(0)
@@ -329,24 +329,6 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await setNumericField(page, 'RENTA/MES ESTIMADA', '20000')
     await saveEdits(page)
     await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText(CAP_RATE)
-  })
-
-  // ── ANÁLISIS ────────────────────────────────────────────────────────────────
-
-  test('ANÁLISIS can still be run before the purchase', async ({ page }) => {
-    await gotoProperty(page, id)
-    const url = page.url()
-    await page.getByRole('button', { name: 'ANÁLISIS', exact: true }).click()
-
-    await expect(page.getByRole('button', { name: 'CORRER ANÁLISIS' })).toBeVisible()
-    await page.getByRole('button', { name: 'CORRER ANÁLISIS' }).click()
-    await expect(page.getByText('INTERVENCIÓN')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'EJECUTAR' })).toBeVisible()
-
-    // The tabs are panels, not pages
-    expect(page.url()).toBe(url)
-    await page.getByRole('button', { name: 'GENERAL', exact: true }).click()
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toBeVisible()
   })
 
   // ── Columna central ─────────────────────────────────────────────────────────
@@ -610,15 +592,6 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await expect(page.getByText('TAREAS', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'LIGAR EXISTENTE' })).toBeVisible()
     await expect(page.getByRole('button', { name: '+ NUEVA TAREA' })).toBeVisible()
-  })
-
-  test('the analyzer closes but its history stays consultable', async ({ page }) => {
-    await gotoProperty(page, id)
-    await page.getByRole('button', { name: 'ANÁLISIS', exact: true }).click()
-
-    // After the purchase the answer comes from the rent, not from a model
-    await expect(page.getByRole('button', { name: 'CORRER ANÁLISIS' })).toHaveCount(0)
-    await expect(page.getByText('Sin análisis previos')).toBeVisible()
   })
 })
 
