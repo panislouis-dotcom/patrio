@@ -444,6 +444,28 @@ describe('PropertyDetailPage', () => {
     expect(input.value).toBe('9,000,000')
   })
 
+  it('M² DE TERRENO, M² DE CONSTRUCCIÓN y COSTO OBRA/m² no desaparecen al salir de EDITAR', async () => {
+    // Vivían solo dentro del `editing ? :` del desglose —la misma mitad que
+    // PRECIO DE COMPRA/PERMISOS/SUBDIVISIÓN—, pero a diferencia de esos tres no
+    // tenían ninguna representación de solo lectura a la que caer: al salir de
+    // edición los tres desaparecían enteros, aunque la propiedad sí tuviera los
+    // tres datos. Ahora son una fila más, como cualquier otra capturable.
+    await renderPage(BASE_PROPERTY)
+
+    expect(screen.getByText('M² DE TERRENO')).not.toBeNull()
+    expect(screen.getByText('M² DE CONSTRUCCIÓN')).not.toBeNull()
+    expect(screen.getByText('COSTO OBRA/m²')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('EDITAR'))
+
+    // Y no se duplican al entrar a edición, la misma regla que VENTA PROYECTADA.
+    expect(screen.getAllByText('M² DE TERRENO')).toHaveLength(1)
+    expect(screen.getAllByText('M² DE CONSTRUCCIÓN')).toHaveLength(1)
+    expect(screen.getAllByText('COSTO OBRA/m²')).toHaveLength(1)
+    const sqmLandInput = screen.getByLabelText('M² DE TERRENO') as HTMLInputElement
+    expect(sqmLandInput.value).toBe('400')
+  })
+
   it('una vendida sigue enseñando el plan contra el que se mide', async () => {
     await renderPage(SOLD)
 

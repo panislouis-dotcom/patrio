@@ -18,6 +18,14 @@ describe('InvestmentBreakdown', () => {
     expect(container.firstChild).toBeNull()
   })
 
+  it('sin label no dibuja encabezado propio: quien llama ya puso el suyo', () => {
+    // PropertyDetailPage hoisted its own always-visible SectionDivider for
+    // "DESGLOSE DE INVERSIÓN"; passing label here too would print it twice.
+    render(<InvestmentBreakdown barsReady items={[{ label: 'Precio de compra', amount: 1_000_000 }]} />)
+    expect(screen.queryByText('DESGLOSE DE INVERSIÓN')).toBeNull()
+    expect(screen.getAllByText('$1,000,000')).toHaveLength(2)
+  })
+
   it('el total es la suma de sus partidas y los porcentajes cierran en 100%', () => {
     // Recibiendo el total aparte, el componente anunciaba $10M y pintaba barras
     // de 70% y 30% de… $7M. Ahora la cifra grande ES lo que las barras explican.

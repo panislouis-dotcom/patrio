@@ -769,53 +769,64 @@ export function PropertyDetailPage() {
               ], <EditableRow label="CAP RATE PROY. S/ INVERSIÓN" editing={editing} value={fmtPct(p.capRate)} />)}
 
               {/* El desglose se captura en cualquier etapa: es el modelo que se
-                  compara contra la realidad, no un formulario de prospecto. */}
+                  compara contra la realidad, no un formulario de prospecto.
+
+                  M² DE TERRENO, M² DE CONSTRUCCIÓN y COSTO OBRA/m² van FUERA del
+                  `editing ? :` de abajo, a diferencia de PRECIO DE COMPRA /
+                  PERMISOS / SUBDIVISIÓN: esos tres sí tienen una representación
+                  de solo lectura genuina —las barras de InvestmentBreakdown— y
+                  por eso alternan de forma correcta. Estos tres no tienen ninguna
+                  otra forma en que mostrarse, así que van como cualquier otra fila
+                  capturable de la ficha: una sola vez, con `numRow`/`EditableRow`
+                  resolviendo edición/lectura por su cuenta. Vivir dentro del
+                  `editing ? :` era exactamente el bug que a VENTA PROYECTADA ya se
+                  le había corregido aquí mismo: una caja que solo existe editando
+                  desaparece del todo al salir de edición. */}
+              <SectionDivider label="DESGLOSE DE INVERSIÓN" />
+              {editing && numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
+              {numRow('M² DE TERRENO', 'sqmLand', fmtNum, { clearable: 'sqmLand' })}
+              {/* El metraje se queda: es FÍSICO, y lo leen el analizador de
+                  mercado y el PDF, a los que no les importa lo que cueste la
+                  obra. */}
+              {numRow('M² DE CONSTRUCCIÓN', 'sqmConstruction', fmtNum, { clearable: 'sqmConstruction' })}
+              {/* No es un insumo guardado —«OBRA/m²» en lectura sigue siendo
+                  presupuesto ÷ metraje, nunca esta caja— es la CALCULADORA
+                  que siembra el presupuesto al nacer, disponible de nuevo
+                  aquí mientras nadie haya detallado una partida real: el
+                  servidor rechaza el intento si ya hay más detallado que lo
+                  que esta cuenta produciría.
+
+                  SIN overhead, a propósito y a diferencia del alta: aquí
+                  no se está proponiendo un estimado grueso para calificar
+                  después, se está editando un presupuesto real, y un
+                  multiplicador oculto dejaría el número tecleado sin
+                  relación directa con el número que se enseña — que fue
+                  justo la confusión que esto causó la primera vez.
+
+                  Prellenada con el cociente derivado: sin overhead que se
+                  aplique dos veces, guardar sin tocarla reproduce el mismo
+                  total, así que no hay razón para abrirla vacía. */}
+              <EditableRow
+                label="COSTO OBRA/m²"
+                editing={editing}
+                value={fmtMXN(p.constructionCostPerSqm)}
+                input={
+                  <NumericInput
+                    value={costPerSqm ?? p.constructionCostPerSqm ?? undefined}
+                    onChange={setCostPerSqm}
+                    ariaLabel="COSTO OBRA/m²"
+                    style={fieldInput}
+                  />
+                }
+              />
               {editing ? (
                 <>
-                  <SectionDivider label="DESGLOSE DE INVERSIÓN" />
-                  {numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
-                  {numRow('M² DE TERRENO', 'sqmLand', fmtNum, { clearable: 'sqmLand' })}
-                  {/* El metraje se queda: es FÍSICO, y lo leen el analizador de
-                      mercado y el PDF, a los que no les importa lo que cueste la
-                      obra. */}
-                  {numRow('M² DE CONSTRUCCIÓN', 'sqmConstruction', fmtNum, { clearable: 'sqmConstruction' })}
-                  {/* No es un insumo guardado —«OBRA/m²» en lectura sigue siendo
-                      presupuesto ÷ metraje, nunca esta caja— es la CALCULADORA
-                      que siembra el presupuesto al nacer, disponible de nuevo
-                      aquí mientras nadie haya detallado una partida real: el
-                      servidor rechaza el intento si ya hay más detallado que lo
-                      que esta cuenta produciría.
-
-                      SIN overhead, a propósito y a diferencia del alta: aquí
-                      no se está proponiendo un estimado grueso para calificar
-                      después, se está editando un presupuesto real, y un
-                      multiplicador oculto dejaría el número tecleado sin
-                      relación directa con el número que se enseña — que fue
-                      justo la confusión que esto causó la primera vez.
-
-                      Prellenada con el cociente derivado: sin overhead que se
-                      aplique dos veces, guardar sin tocarla reproduce el mismo
-                      total, así que no hay razón para abrirla vacía. */}
-                  <EditableRow
-                    label="COSTO OBRA/m²"
-                    editing={editing}
-                    value={fmtMXN(p.constructionCostPerSqm)}
-                    input={
-                      <NumericInput
-                        value={costPerSqm ?? p.constructionCostPerSqm ?? undefined}
-                        onChange={setCostPerSqm}
-                        ariaLabel="COSTO OBRA/m²"
-                        style={fieldInput}
-                      />
-                    }
-                  />
                   {numRow('PERMISOS', 'permitsCost', fmtMXN, { clearable: 'permitsCost' })}
                   {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN, { clearable: 'subdivisionCost' })}
                 </>
               ) : (
                 <>
                   <InvestmentBreakdown
-                    label="DESGLOSE DE INVERSIÓN"
                     items={investmentItems}
                     barsReady={barsReady}
                   />
