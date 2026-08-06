@@ -770,7 +770,9 @@ def _opportunity_detail(p: dict) -> str:
     floorplan_html = _floorplan_svg(p.get("geometry") or {})
 
     renders = _imgs_by_type(p.get("renders") or [])
-    renders_html = _strip(renders, "Renders", 4) if renders else ""
+    # Sin etiqueta propia: el `col-label` de la sección ya la pone, y _strip
+    # apilaba una segunda idéntica justo debajo.
+    renders_html = _strip(renders, "", 4) if renders else ""
 
     budget = p.get("budget") or {}
     chapter_pairs = _chapter_totals(budget.get("lines", []), budget.get("chapters", []))

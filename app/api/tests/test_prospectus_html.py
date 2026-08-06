@@ -114,6 +114,7 @@ def test_opportunity_detail_shows_only_the_renders_section():
     html = _opportunity_detail(p)
     assert "Renders" in html
     assert "<svg" not in html
+    assert "Presupuesto" not in html
 
 
 def test_opportunity_detail_shows_only_the_budget_section():
