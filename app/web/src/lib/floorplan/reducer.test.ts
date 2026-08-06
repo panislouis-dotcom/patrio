@@ -12,6 +12,41 @@ function modelWithRectangle() {
   return { model: { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }, a, b, c, d }
 }
 
+describe('room naming', () => {
+  it('RENAME_ROOM creates a free named point where none is near, and marks dirty', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Patio' })
+    expect(s.model.floors[0].rooms).toContainEqual({ name: 'Patio', cx: 10, cy: 10 })
+    expect(s.dirty).toBe(true)
+  })
+
+  it('RENAME_ROOM updates the nearest existing point instead of adding a second', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Patio' })
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10.2, cy: 9.9, name: 'Terraza' })
+    expect(s.model.floors[0].rooms).toHaveLength(1)
+    expect(s.model.floors[0].rooms[0].name).toBe('Terraza')
+  })
+
+  it('DELETE_ROOM removes the nearest named point within range', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Patio' })
+    s = reducer(s, { type: 'DELETE_ROOM', cx: 10.1, cy: 9.9 })
+    expect(s.model.floors[0].rooms).toHaveLength(0)
+  })
+
+  it('DELETE_ROOM is a no-op returning the same state when nothing is near', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Patio' })
+    const before = s
+    expect(reducer(s, { type: 'DELETE_ROOM', cx: 0, cy: 0 })).toBe(before)
+  })
+})
+
 describe('SET_MODEL / UNDO / REDO', () => {
   it('pushes history on SET_MODEL and round-trips through undo/redo', () => {
     const { model } = modelWithRectangle()

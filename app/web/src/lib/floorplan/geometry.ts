@@ -32,6 +32,17 @@ export function polygonCentroid(poly: Pt[]): Pt {
   return [cx / (6 * A), cy / (6 * A)]
 }
 
+/** Ray-casting point-in-polygon test: true when (x, y) lies inside `poly`. */
+export function pointInPolygon(x: number, y: number, poly: Pt[]): boolean {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j]
+    const crosses = (yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
+    if (crosses) inside = !inside
+  }
+  return inside
+}
+
 /** Distance along segment p0->p1 nearest to pt, clamped to [0, L]. */
 export function projectAt(p0: Pt, p1: Pt, pt: { x: number; y: number }): number {
   const dx = p1[0] - p0[0], dy = p1[1] - p0[1], L = Math.hypot(dx, dy)

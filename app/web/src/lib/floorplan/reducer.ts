@@ -5,7 +5,7 @@ import { exteriorEdgeIds } from './rooms'
 import type { Guide } from './snapping'
 import type { Camera } from './viewTransform'
 
-export type Tool = 'select' | 'wall' | 'door' | 'window' | 'delete'
+export type Tool = 'select' | 'wall' | 'door' | 'window' | 'room' | 'delete'
 export type Sel =
   | { t: 'vertex'; id: VertexId }
   | { t: 'edge'; id: EdgeId }
@@ -71,6 +71,7 @@ export type Action =
   | { type: 'SET_FLOOR_PARAM'; key: 'extWall_m' | 'intWall_m'; value: number }
   | { type: 'SET_SLAB'; value: number }
   | { type: 'RENAME_ROOM'; cx: number; cy: number; name: string }
+  | { type: 'DELETE_ROOM'; cx: number; cy: number }
   | { type: 'SET_OPENING_FIELD'; edgeId: EdgeId; index: number; key: 'width'; value: number }
   | { type: 'SET_OPENING_FIELD'; edgeId: EdgeId; index: number; key: 'kind'; value: 'door' | 'window' }
   | { type: 'SET_EDGE_THICKNESS'; edgeId: EdgeId; value: number }
@@ -199,6 +200,14 @@ export function reducer(s: EditorState, a: Action): EditorState {
       f.rooms.forEach((r, i) => { const d = Math.hypot(r.cx - a.cx, r.cy - a.cy); if (d < bd) { bd = d; best = i } })
       if (best >= 0) { f.rooms[best].name = a.name; f.rooms[best].cx = a.cx; f.rooms[best].cy = a.cy }
       else f.rooms.push({ name: a.name, cx: a.cx, cy: a.cy })
+      return { ...modelChange(s, m), ui: { ...s.ui, editRoom: null } }
+    }
+    case 'DELETE_ROOM': {
+      const m = clone(s.model); const f = F(m)
+      let best = -1, bd = 0.9
+      f.rooms.forEach((r, i) => { const d = Math.hypot(r.cx - a.cx, r.cy - a.cy); if (d < bd) { bd = d; best = i } })
+      if (best < 0) return s
+      f.rooms.splice(best, 1)
       return { ...modelChange(s, m), ui: { ...s.ui, editRoom: null } }
     }
     case 'SET_OPENING_FIELD': {

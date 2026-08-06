@@ -1,8 +1,11 @@
 import type { FloorGraph, EdgeId } from './types'
-import { shoelaceSigned, shoelace, polygonCentroid, type Pt } from './geometry'
+import { shoelaceSigned, shoelace, polygonCentroid, pointInPolygon, type Pt } from './geometry'
 
 export interface TracedFace { vertexIds: string[]; edgeIds: EdgeId[]; area: number }
 export interface RoomArea { cx: number; cy: number; area: number; name: string }
+/** A label to draw on the plan: a traced (enclosed) room carries its net area; a
+ * free label the user dropped on an open space carries `area: null`. */
+export interface RoomLabel { cx: number; cy: number; name: string; area: number | null }
 
 /**
  * Trace every face of the planar graph via the standard "next edge in rotational
@@ -65,26 +68,45 @@ export function exteriorEdgeIds(f: FloorGraph): Set<EdgeId> {
   return new Set(outer.edgeIds)
 }
 
-/** Rooms = every traced face except the outer boundary. Named by nearest previously
- * user-assigned room centroid (same "sticky name across edits" behavior as the old
- * flood-fill model). */
-export function roomAreas(f: FloorGraph): RoomArea[] {
+/** The interior (non-outer) traced faces as polygons, one per enclosed room. */
+function interiorPolygons(f: FloorGraph): Pt[][] {
   const faces = traceFaces(f)
   if (faces.length < 2) return []
   const outer = faces.reduce((a, b) => (Math.abs(b.area) > Math.abs(a.area) ? b : a))
-  const out: RoomArea[] = []
-  for (const face of faces) {
-    if (face === outer) continue
-    const pts: Pt[] = face.vertexIds.map(id => [f.vertices[id].x, f.vertices[id].y])
-    const [cx, cy] = polygonCentroid(pts)
-    out.push({ cx, cy, area: shoelace(pts), name: nearestRoomName(f, cx, cy) })
-  }
-  return out
+  return faces
+    .filter(face => face !== outer)
+    .map(face => face.vertexIds.map(id => [f.vertices[id].x, f.vertices[id].y] as Pt))
 }
 
-function nearestRoomName(f: FloorGraph, cx: number, cy: number): string {
-  let name = '', bd = 1e9
+/** Rooms = every enclosed face. Named by the user-assigned point that lies INSIDE it
+ * (nearest to the centroid if several do); un-named otherwise. Resolving by containment,
+ * not by nearest-without-bound, keeps the name sticky across edits without letting a name
+ * dropped on an open space bleed onto an unrelated enclosed room. */
+export function roomAreas(f: FloorGraph): RoomArea[] {
+  return interiorPolygons(f).map(pts => {
+    const [cx, cy] = polygonCentroid(pts)
+    return { cx, cy, area: shoelace(pts), name: roomNameInside(f, pts) }
+  })
+}
+
+/** Every label to draw: the enclosed rooms (with net area), plus every user-named point
+ * that falls in no enclosed room (drawn name-only, `area: null`). This is what lets an
+ * open, un-enclosed space carry a name — the enabler for referencing it later. */
+export function roomLabels(f: FloorGraph): RoomLabel[] {
+  const enclosed = roomAreas(f).map(t => ({ cx: t.cx, cy: t.cy, name: t.name, area: t.area as number | null }))
+  const polys = interiorPolygons(f)
+  const free: RoomLabel[] = f.rooms
+    .filter(r => !polys.some(poly => pointInPolygon(r.cx, r.cy, poly)))
+    .map(r => ({ cx: r.cx, cy: r.cy, name: r.name, area: null }))
+  return [...enclosed, ...free]
+}
+
+/** Name of the user-assigned point that lies inside `poly`, nearest its centroid; '' if none. */
+function roomNameInside(f: FloorGraph, poly: Pt[]): string {
+  const [cx, cy] = polygonCentroid(poly)
+  let name = '', bd = Infinity
   for (const r of f.rooms) {
+    if (!pointInPolygon(r.cx, r.cy, poly)) continue
     const d = Math.hypot(r.cx - cx, r.cy - cy)
     if (d < bd) { bd = d; name = r.name }
   }

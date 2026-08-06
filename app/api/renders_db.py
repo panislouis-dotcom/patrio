@@ -129,14 +129,14 @@ def source_image(property_id: int, image_id: int) -> dict | None:
 
 def add_render(property_id: int, source_image_id: int | None, file_path: str,
                content_type: str, prompt_id: int | None, prompt_text: str,
-               provider: str, model: str) -> dict:
+               provider: str, model: str, source_plan_path: str | None = None) -> dict:
     with get_db() as conn:
         row = conn.execute(
             "INSERT INTO property_renders (property_id, source_image_id, file_path,"
-            " content_type, prompt_id, prompt_text, provider, model)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            " content_type, prompt_id, prompt_text, provider, model, source_plan_path)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
             (property_id, source_image_id, file_path, content_type,
-             prompt_id, prompt_text, provider, model),
+             prompt_id, prompt_text, provider, model, source_plan_path),
         ).fetchone()
     return _row_to_dict(row)
 

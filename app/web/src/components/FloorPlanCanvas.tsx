@@ -4,7 +4,7 @@ import type React from 'react'
 import { colors, fonts } from '../lib/theme'
 import type { FloorPlanModel, FloorGraph } from '../lib/floorplan/types'
 import type { ViewTransform } from '../lib/floorplan/viewTransform'
-import type { RoomArea } from '../lib/floorplan/rooms'
+import type { RoomLabel } from '../lib/floorplan/rooms'
 import type { CornerAngle } from '../lib/floorplan/dimensions'
 import { widthHeightChains } from '../lib/floorplan/dimensions'
 import type { UI } from '../lib/floorplan/reducer'
@@ -22,7 +22,7 @@ export interface CanvasProps {
   model: FloorPlanModel
   floor: FloorGraph
   t: ViewTransform
-  rooms: RoomArea[]
+  rooms: RoomLabel[]
   angles: CornerAngle[]
   ui: UI
   editName: string
@@ -131,33 +131,41 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
   })
 
   // ── room labels: clickable name (rename) + live net area ──
+  // The rename input, shared by an existing label being renamed and a brand-new label
+  // being placed on an open spot (no traced face, no stored room there yet).
+  const roomInput = (cx: number, cy: number, key: string) => {
+    const w = 156, h = 24
+    return (
+      <foreignObject key={key} x={px(cx) - w / 2} y={py(cy) - h + 2} width={w} height={h}>
+        <input
+          className="roomedit"
+          defaultValue={editName}
+          autoFocus
+          style={{
+            width: '100%', boxSizing: 'border-box', textAlign: 'center',
+            background: colors.surfaceAlt, border: `1px solid ${colors.primary}`, borderRadius: '2px',
+            color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', outline: 'none', padding: '2px 4px',
+          }}
+          onKeyDown={e => {
+            e.stopPropagation()
+            if (e.key === 'Enter') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCommit(cx, cy, (e.target as HTMLInputElement).value) }
+            else if (e.key === 'Escape') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCancel() }
+          }}
+          onBlur={e => {
+            if (roomEditHandledRef.current) { roomEditHandledRef.current = false; return }
+            onRoomCommit(cx, cy, e.target.value)
+          }}
+        />
+      </foreignObject>
+    )
+  }
+
+  let editingExisting = false
   rooms.forEach((rg, i) => {
     const editing = editRoom != null && Math.abs(rg.cx - editRoom.cx) < 0.05 && Math.abs(rg.cy - editRoom.cy) < 0.05
     if (editing) {
-      const w = 156, h = 24
-      gel.push(
-        <foreignObject key={`edit${i}`} x={px(rg.cx) - w / 2} y={py(rg.cy) - h + 2} width={w} height={h}>
-          <input
-            className="roomedit"
-            defaultValue={editName}
-            autoFocus
-            style={{
-              width: '100%', boxSizing: 'border-box', textAlign: 'center',
-              background: colors.surfaceAlt, border: `1px solid ${colors.primary}`, borderRadius: '2px',
-              color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', outline: 'none', padding: '2px 4px',
-            }}
-            onKeyDown={e => {
-              e.stopPropagation()
-              if (e.key === 'Enter') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCommit(rg.cx, rg.cy, (e.target as HTMLInputElement).value) }
-              else if (e.key === 'Escape') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCancel() }
-            }}
-            onBlur={e => {
-              if (roomEditHandledRef.current) { roomEditHandledRef.current = false; return }
-              onRoomCommit(rg.cx, rg.cy, e.target.value)
-            }}
-          />
-        </foreignObject>,
-      )
+      editingExisting = true
+      gel.push(roomInput(rg.cx, rg.cy, `edit${i}`))
     } else {
       const nm = rg.name
       const hw = Math.max(64, nm.length * 7 + 16)
@@ -167,9 +175,14 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
         fontFamily={fonts.sans} fontSize={12} fill={colors.neutral} data-el="room" data-cx={rg.cx} data-cy={rg.cy}
         style={{ cursor: 'text' }}>{nm}</text>)
     }
-    gel.push(<text key={`rarea${i}`} x={px(rg.cx)} y={py(rg.cy) + 10} textAnchor="middle"
-      fontFamily={fonts.serif} fontSize={11} fill={colors.secondary}>{f2(rg.area)} m²</text>)
+    // Open spaces carry a name only — no enclosed face, so no net area to show.
+    if (rg.area != null) {
+      gel.push(<text key={`rarea${i}`} x={px(rg.cx)} y={py(rg.cy) + 10} textAnchor="middle"
+        fontFamily={fonts.serif} fontSize={11} fill={colors.secondary}>{f2(rg.area)} m²</text>)
+    }
   })
+  // A new label being placed on an open spot: no existing label matched editRoom.
+  if (editRoom != null && !editingExisting) gel.push(roomInput(editRoom.cx, editRoom.cy, 'edit-new'))
 
   // ── vertex handles (unified — every vertex, whether a corner, a T-junction, or a plain wall end) ──
   vertices.forEach(v => {

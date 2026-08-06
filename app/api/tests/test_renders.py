@@ -41,6 +41,46 @@ def source_image(client, test_property):
 
 # ─── Parámetros que se le mandan al proveedor ─────────────────────────────────
 
+def test_generating_a_render_from_the_plan_keeps_the_plan_as_source(
+    client, test_property, fake_openai,
+):
+    """La fuente es el plano, no una foto: source_image_id queda NULL y la ruta
+    del plano vive en source_plan_path."""
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta: sala amplia, cocina integral."},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["sourceImageId"] is None
+    assert body["sourcePlanPath"]  # el plano se conservó como fuente
+
+
+def test_a_plan_render_uses_the_plan_clause_not_the_photo_clause(
+    client, test_property, fake_openai,
+):
+    client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta."},
+    )
+    prompt = fake_openai[-1]["prompt"]
+    assert "vista de planta" in prompt          # la cláusula del plano se añadió
+    assert "ángulo de cámara" not in prompt      # la de la foto, no
+
+
+def test_a_plan_render_does_not_land_in_the_photo_gallery(
+    client, test_property, fake_openai,
+):
+    client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta."},
+    )
+    assert client.get(f"/api/properties/{test_property['id']}/images").json() == []
+
+
 def test_input_fidelity_is_not_sent_by_default(monkeypatch):
     """gpt-image-2 rechaza `input_fidelity` con 400. No se manda a menos que
     alguien lo pida explícitamente para un modelo que sí lo acepta."""

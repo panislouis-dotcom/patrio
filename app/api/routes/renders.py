@@ -1,7 +1,7 @@
 """Endpoints de la biblioteca de prompts y de los renders de una propiedad."""
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from api import properties_db as properties
@@ -120,6 +120,62 @@ def create_property_render(property_id: int, body: RenderRequest,
         prompt_text=body.promptText.strip(),
         provider=renders.PROVIDER,
         model=renders.MODEL,
+    )
+
+
+@router.post("/api/properties/{property_id}/renders/from-plan", status_code=201,
+             operation_id="property_renders_from_plan")
+async def create_render_from_plan(
+    property_id: int,
+    file: UploadFile = File(...),
+    promptText: str = Form(...),
+    promptId: int | None = Form(None),
+    _: dict = Depends(get_current_user),
+):
+    """Genera un render a partir del PLANO exportado (no de una foto). El plano
+    se guarda como imagen-fuente; el render nace con source_image_id NULL y la
+    ruta del plano en source_plan_path."""
+    if not properties.exists(property_id):
+        raise HTTPException(status_code=404, detail="Propiedad no encontrada")
+    if not promptText.strip():
+        raise HTTPException(status_code=422, detail="El prompt no puede ir vacío")
+    plan_bytes = await file.read()
+    if not plan_bytes:
+        raise HTTPException(status_code=422, detail="El plano llegó vacío")
+
+    content_in = file.content_type or "image/png"
+    plan_path = f"properties/{property_id}/plan-sources/{uuid4().hex}.png"
+    try:
+        storage.upload(plan_path, plan_bytes, content_in)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="No se pudo guardar el plano") from exc
+
+    # Cláusula del plano, no la de la foto: mantén la distribución, amuebla, 2D.
+    prompt = renders.compose_plan_prompt(promptText)
+    try:
+        image_bytes, content_type = renders.generate_image(plan_bytes, content_in, prompt)
+    except renders.RenderUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"El proveedor de renders falló: {exc}") from exc
+
+    relative_path = f"properties/{property_id}/renders/{uuid4().hex}.png"
+    try:
+        storage.upload(relative_path, image_bytes, content_type)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="No se pudo guardar el render") from exc
+
+    return renders_db.add_render(
+        property_id=property_id,
+        source_image_id=None,
+        file_path=relative_path,
+        content_type=content_type,
+        prompt_id=promptId,
+        prompt_text=promptText.strip(),
+        provider=renders.PROVIDER,
+        model=renders.MODEL,
+        source_plan_path=plan_path,
     )
 
 
