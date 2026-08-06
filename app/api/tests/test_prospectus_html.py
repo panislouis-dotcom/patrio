@@ -3,7 +3,7 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-from api.lib.prospectus_html import _floorplan_svg, _chapter_totals
+from api.lib.prospectus_html import _floorplan_svg, _chapter_totals, _opportunity_detail
 
 ONE_FLOOR = {
     "floors": [{
@@ -36,6 +36,8 @@ DANGLING_EDGE = {
         "rooms": [],
     }],
 }
+
+BASE_PROPERTY = {"name": "[TEST] Casa Prueba"}
 
 
 def test_empty_geometry_renders_nothing():
@@ -92,3 +94,41 @@ def test_chapter_totals_sums_by_chapter_in_order_with_total():
         ("Otros", "$50,000"),
         ("Total", "$175,000"),
     ]
+
+
+def test_opportunity_detail_is_empty_without_plano_renders_or_budget():
+    assert _opportunity_detail(BASE_PROPERTY) == ""
+
+
+def test_opportunity_detail_shows_only_the_plano_section():
+    p = {**BASE_PROPERTY, "geometry": ONE_FLOOR}
+    html = _opportunity_detail(p)
+    assert "plano" in html.lower()
+    assert "<svg" in html
+    assert "Renders" not in html
+    assert "Presupuesto" not in html
+
+
+def test_opportunity_detail_shows_only_the_renders_section():
+    p = {**BASE_PROPERTY, "renders": [{"filePath": "x.png", "dataUri": "data:image/png;base64,AA=="}]}
+    html = _opportunity_detail(p)
+    assert "Renders" in html
+    assert "<svg" not in html
+
+
+def test_opportunity_detail_shows_only_the_budget_section():
+    p = {**BASE_PROPERTY, "budget": {
+        "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
+        "chapters": ["Otros"],
+    }}
+    html = _opportunity_detail(p)
+    assert "$156,000" in html
+    assert "Total" in html
+    assert "<svg" not in html
+    assert "Renders" not in html
+
+
+def test_opportunity_detail_page_breaks_after_itself():
+    p = {**BASE_PROPERTY, "geometry": ONE_FLOOR}
+    html = _opportunity_detail(p)
+    assert 'class="page-block opp-detail"' in html

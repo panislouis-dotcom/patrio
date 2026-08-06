@@ -197,6 +197,18 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .opp .strip { margin-top: 6mm; }
 .opp .strip img { height: 32mm; }
 
+/* La banda va a sangre como en .opp — el padding de página vive en el cuerpo,
+   para que el título y el contenido caigan sobre el mismo margen. */
+.opp-detail-body { padding: 8mm var(--pad) 7mm; }
+.detail-section { margin-bottom: 8mm; }
+.detail-section:last-child { margin-bottom: 0; }
+.plano { display: flex; flex-wrap: wrap; gap: 6mm; }
+.plano-floor { flex: 1; min-width: 70mm; }
+.plano-floor-name { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 600;
+  color: var(--sec); margin-bottom: 2mm; }
+.plano-svg { width: 100%; height: auto; border: 1px solid var(--border); background: var(--warm); }
+.plano-room { font-family: 'Inter', sans-serif; font-size: 7px; fill: var(--sec); }
+
 /* ══ CLOSING ═════════════════════════════════════════════════════════════ */
 .closing { height: 297mm; background: var(--green); color: #fff; padding: 30mm var(--pad);
            display: flex; flex-direction: column; justify-content: space-between; }
@@ -748,6 +760,39 @@ def _opportunity(p: dict) -> str:
 </div>"""
 
 
+def _opportunity_detail(p: dict) -> str:
+    """Página compañera de una oportunidad: plano, renders y desglose del
+    presupuesto de obra. "" si no hay ninguna de las tres — la tarjeta
+    principal (`_opportunity`) ya dijo todo lo que hay que decir."""
+    floorplan_html = _floorplan_svg(p.get("geometry") or {})
+
+    renders = _imgs_by_type(p.get("renders") or [])
+    renders_html = _strip(renders, "Renders", 4) if renders else ""
+
+    budget = p.get("budget") or {}
+    chapter_pairs = _chapter_totals(budget.get("lines", []), budget.get("chapters", []))
+    budget_html = _kv_rows(chapter_pairs) if chapter_pairs else ""
+
+    if not (floorplan_html or renders_html or budget_html):
+        return ""
+
+    sections = "".join([
+        f'<div class="detail-section"><div class="col-label">Plano</div>{floorplan_html}</div>'
+        if floorplan_html else "",
+        f'<div class="detail-section"><div class="col-label">Renders</div>{renders_html}</div>'
+        if renders_html else "",
+        f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
+        if budget_html else "",
+    ])
+    return f"""<div class="page-block opp-detail">
+  <div class="band">
+    <div class="kicker">Oportunidad Activa</div>
+    <h2>{_esc(p.get("name", ""))}</h2>
+  </div>
+  <div class="opp-detail-body">{sections}</div>
+</div>"""
+
+
 def _closing(month_year: str) -> str:
     return f"""<div class="page-block closing">
   <div>
@@ -807,6 +852,7 @@ def build_prospectus_html(sold: list[dict], rented: list[dict], development: lis
 
     for p in opportunity:
         parts.append(_opportunity(p))
+        parts.append(_opportunity_detail(p))
 
     parts.append(_closing(month_year))
 
