@@ -179,34 +179,40 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .summary .metrics-5 .metric .v { font-size: 16pt; }
 
 /* ══ OPPORTUNITY — full page ═════════════════════════════════════════════ */
-/* min-height, no max: una oportunidad corta llena igual la hoja completa
-   (el margin-top:auto de .opp-note la empuja al fondo de esos 297mm), pero
-   una con mucha galería/nota no se recorta contra ese piso — .page-block
-   hereda overflow:hidden, y con height fija cualquier contenido más alto
-   que la hoja se volvía invisible en vez de imprimirse en la página
-   siguiente. min-height dejar crecer la caja evita que overflow:hidden
-   tenga algo que esconder. */
-.opp { min-height: 297mm; display: flex; flex-direction: column; }
+/* Ni height ni min-height, y desde aquí .opp-detail (plano/renders/
+   presupuesto) ya no es su propia page-block: el salto de página real no
+   venía del alto de .opp ni de flex vs. bloque — venía de que .page-block
+   trae page-break-after:always, y .opp-detail ERA una page-block propia.
+   Cuando la nota se quedaba a la mitad de una hoja, plano/renders igual
+   brincaban a la siguiente por ese salto forzado, sin importar cuánta hoja
+   quedara libre debajo de la nota. Fusionar todo en una sola page-block dejó
+   que Chromium sólo pase de hoja cuando de veras se le acaba el espacio, así
+   que plano/renders/presupuesto ahora continúan donde la nota los deja. Cada
+   fragmento sigue midiendo lo que su contenido pide; .page-block sigue
+   heredando overflow:hidden, y sin height fija en .opp no hay nada que
+   esconder. */
 .opp .hero { width: 100%; height: 78mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
-.opp-body { flex: 1; min-height: 0; padding: 8mm var(--pad) 7mm; display: flex; flex-direction: column; }
+.opp-body { padding: 8mm var(--pad) 7mm; }
 .opp .metrics { margin-bottom: 7mm; break-inside: avoid; page-break-inside: avoid; }
 .opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
             break-inside: avoid; page-break-inside: avoid; }
+/* Sin break-inside:avoid a propósito: una nota es prosa, no una foto ni una
+   tabla — que envuelva y siga en la página siguiente como cualquier párrafo
+   de un libro es normal. Forzarla entera a la página siguiente era parte de
+   lo que la dejaba varada, sola, en una hoja casi en blanco. */
 .opp-note { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec);
             font-style: italic; line-height: 1.55; border-left: 2px solid var(--terra);
-            padding-left: 10px; margin-top: auto; break-inside: avoid; page-break-inside: avoid; }
+            padding-left: 10px; margin-top: 8mm; }
 .opp .strip { margin-top: 6mm; }
 /* Techo, no piso: aspect-ratio ya da la proporción correcta; este límite
    solo evita que UNA sola foto en la fila (poca galería) crezca tanto que
    se coma media página ella sola. */
 .opp .strip img { max-height: 60mm; }
 
-/* La banda va a sangre como en .opp — el padding de página vive en el cuerpo,
-   para que el título y el contenido caigan sobre el mismo margen. */
-.opp-detail-body { padding: 8mm var(--pad) 7mm; }
-/* Mismo techo que la galería, más generoso: aquí el render es el tema de la
-   página, no un acompañante, pero sigue sin poder desplazar al presupuesto
-   a una hoja casi vacía por sí solo. */
+.opp-detail { margin-top: 8mm; }
+/* Mismo techo que la galería, más generoso: el render sigue siendo la foto
+   más grande de la sección, pero sin poder desplazar al presupuesto a una
+   hoja casi vacía por sí solo. */
 .opp-detail .strip img { max-height: 85mm; }
 .detail-section { margin-bottom: 8mm; break-inside: avoid; page-break-inside: avoid; }
 .detail-section:last-child { margin-bottom: 0; }
@@ -723,6 +729,7 @@ def _opportunity(p: dict) -> str:
     strip = _strip(images[1:], "Galería", 4) if len(images) > 1 else ""
     notes = _esc(p.get("notes", ""))
     note_html = f'<div class="opp-note">{notes}</div>' if notes else ""
+    detail_html = _opportunity_detail(p)
 
     return f"""<div class="page-block opp">
   <div class="band">
@@ -739,21 +746,30 @@ def _opportunity(p: dict) -> str:
     </div>
     {strip}
     {note_html}
+    {detail_html}
   </div>
 </div>"""
 
 
 def _opportunity_detail(p: dict) -> str:
-    """Página compañera de una oportunidad: plano técnico, renders y desglose del
-    presupuesto de obra. "" si no hay ninguno de los tres.
+    """Plano técnico, renders y desglose del presupuesto de obra de una
+    oportunidad. "" si no hay ninguno de los tres.
 
-    Los renders (la cabeza de cada cadena de FOTO — la propuesta vigente de cada
-    idea, sin pasos intermedios, y sin planos-render) viven AQUÍ, no en la
-    tarjeta principal: allá, con el hero, las métricas y las dos columnas, la
-    tira quedaba de 32mm apretada y no se veía. Aquí hay medio A4 libre junto al
-    plano y salen grandes. Antes esta página traía `renders` sin deduplicar por
-    cadena —el mismo diseño dos veces, con borradores ya editados encima—; ahora
-    es `renderHeads`, una por línea."""
+    Vive en el mismo flujo que la tarjeta principal, justo después de la nota
+    — ya no en su propia page-block. Forzar un salto de página aquí, sin
+    importar cuánta hoja quedara libre tras la nota, era lo que dejaba una
+    cola de dos líneas sola arriba de una hoja casi en blanco: cuando la nota
+    terminaba a la mitad de una página, plano/renders/presupuesto de todos
+    modos brincaban a la siguiente por el page-break-after:always de su
+    propia page-block. Sin ese salto forzado, Chromium solo pasa de página
+    cuando de verdad se le acaba el espacio.
+
+    Los renders (la cabeza de cada cadena de FOTO — la propuesta vigente de
+    cada idea, sin pasos intermedios, y sin planos-render) viven aquí, no
+    junto al hero: allá la tira quedaba apretada y no se veía. Antes esta
+    sección traía `renders` sin deduplicar por cadena —el mismo diseño dos
+    veces, con borradores ya editados encima—; ahora es `renderHeads`, una
+    por línea."""
     floorplan_html = _floorplan_svg(p.get("geometry") or {})
 
     render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
@@ -774,13 +790,7 @@ def _opportunity_detail(p: dict) -> str:
         f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
         if budget_html else "",
     ])
-    return f"""<div class="page-block opp-detail">
-  <div class="band">
-    <div class="kicker">Oportunidad Activa</div>
-    <h2>{_esc(p.get("name", ""))}</h2>
-  </div>
-  <div class="opp-detail-body">{sections}</div>
-</div>"""
+    return f'<div class="opp-detail">{sections}</div>'
 
 
 def _closing(month_year: str) -> str:
@@ -842,7 +852,6 @@ def build_prospectus_html(sold: list[dict], rented: list[dict], development: lis
 
     for p in opportunity:
         parts.append(_opportunity(p))
-        parts.append(_opportunity_detail(p))
 
     parts.append(_closing(month_year))
 

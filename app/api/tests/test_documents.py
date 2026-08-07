@@ -290,7 +290,7 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
 
 
 def test_the_opportunity_detail_shows_render_heads_labeled_as_proposal(client, test_property):
-    """Los renders van en la página de detalle (junto al plano, con espacio),
+    """Los renders van en la sección de detalle (junto al plano, con espacio),
     rotulados como propuesta — nunca disfrazados de foto real."""
     p = get_property(test_property["id"])
     p["renderHeads"] = [{"filePath": "r/1.png", "dataUri": "data:image/jpeg;base64,AAAA"}]
@@ -494,19 +494,22 @@ def test_prospectus_shows_the_budget_chapters_for_an_opportunity(client, test_pr
     assert "Otros" in html     # el residual sigue ahí
 
 
-def test_prospectus_has_no_companion_page_without_plano_or_budget_beyond_residual(client, test_property):
-    """El presupuesto SIEMPRE trae al menos el residual, así que la página
+def test_prospectus_has_no_companion_section_without_plano_or_budget_beyond_residual(client, test_property):
+    """El presupuesto SIEMPRE trae al menos el residual, así que la sección
     compañera SIEMPRE aparece para una propiedad recién nacida — es
     información real (el estimado grueso), no un placeholder. Esta prueba
     documenta esa expectativa en vez de asumir lo contrario.
 
-    Los renders NO son parte de esta página — viven en `_opportunity`, vía
-    `renderHeads` (ver test_the_opportunity_card_shows_render_heads_labeled_as_proposal)."""
+    Ya no es una página propia (ver test_opportunity_detail_flows_right_after_the_note_not_a_new_page
+    en test_prospectus_html.py) — vive en el mismo flujo que `_opportunity`,
+    justo después de la nota. Los renders NO son parte de esta sección —
+    viven en `_opportunity`, vía `renderHeads`
+    (ver test_the_opportunity_detail_shows_render_heads_labeled_as_proposal)."""
     p = get_property(test_property["id"])
     from api.routes.documents import _embed_opportunity_extras
     _embed_opportunity_extras([p])
     html = build_prospectus_html([], [], [], [p])
-    assert 'class="page-block opp-detail"' in html
+    assert '<div class="opp-detail">' in html
     assert "Otros" in html  # el residual, no un plano
     assert "<svg" not in html
     assert "Renders" not in html
@@ -522,5 +525,5 @@ def test_prospectus_endpoint_enriches_the_opportunities_it_draws(client, test_pr
     })
     assert r.status_code in (200, 201), r.text
     html = _capture_favorites(client, test_property)
-    assert 'class="page-block opp-detail"' in html
+    assert '<div class="opp-detail">' in html
     assert "Albañilería" in html

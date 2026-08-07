@@ -3,7 +3,7 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-from api.lib.prospectus_html import _floorplan_svg, _chapter_totals, _opportunity_detail, _BODY_CSS
+from api.lib.prospectus_html import _floorplan_svg, _chapter_totals, _opportunity, _opportunity_detail, _BODY_CSS
 
 ONE_FLOOR = {
     "floors": [{
@@ -122,18 +122,35 @@ def test_opportunity_detail_shows_only_the_budget_section():
     assert "<svg" not in html
 
 
-def test_opportunity_detail_page_breaks_after_itself():
-    p = {**BASE_PROPERTY, "geometry": ONE_FLOOR}
-    html = _opportunity_detail(p)
-    assert 'class="page-block opp-detail"' in html
+def test_opportunity_detail_flows_right_after_the_note_not_a_new_page():
+    """Plano, renders y presupuesto solían vivir en su PROPIA page-block —
+    page-break-after:always forzaba un salto de hoja sin importar cuánta
+    quedara libre bajo la nota, dejando su cola sola arriba de una página
+    casi en blanco. Ahora comparten la page-block de _opportunity, después de
+    la nota: Chromium solo brinca de página cuando de veras se le acaba el
+    espacio."""
+    p = {**BASE_PROPERTY, "geometry": ONE_FLOOR, "notes": "Nota de prueba."}
+    html = _opportunity(p)
+    assert html.count("page-block") == 1
+    assert html.index('class="opp-note"') < html.index('class="opp-detail"')
 
 
 def test_the_opportunity_card_does_not_hard_clip_overflow():
-    """`.opp` combinaba una altura fija con el overflow:hidden que hereda de
-    .page-block: una oportunidad con suficientes fotos de galería o una nota
-    larga terminaba con esa cola invisible en vez de impresa en la página
-    siguiente. min-height conserva el aspecto de página completa cuando el
-    contenido es corto (el margin-top:auto de .opp-note sigue tocando fondo a
-    los 297mm) sin ponerle techo al crecimiento cuando no lo es."""
-    rule = re.search(r"\.opp \{[^}]*\}", _BODY_CSS).group()
-    assert "min-height: 297mm" in rule
+    """`.opp` con `height: 297mm` combinado con el overflow:hidden que hereda de
+    .page-block recortaba invisible cualquier cola que no cupiera en una hoja.
+    `min-height: 297mm` pareció el arreglo, pero un flex container que se
+    fragmenta entre páginas volvía a estirar CADA fragmento a 297mm — una nota
+    larga varada sola en una hoja casi en blanco. Sin flex, sin height ni
+    min-height, `.opp-body` mide lo que su contenido pide en cada fragmento."""
+    rule = re.search(r"\.opp-body \{[^}]*\}", _BODY_CSS).group()
+    assert "height" not in rule
+    assert "flex" not in rule
+
+
+def test_the_opportunity_note_is_prose_not_a_rigid_block():
+    """Un párrafo de nota puede envolver y seguir en la página siguiente como
+    cualquier texto de un libro — forzarlo entero a saltar de página (como sí
+    debe hacer una fila de fotos o una tabla) era lo que lo dejaba varado
+    solo en una hoja casi en blanco."""
+    rule = re.search(r"\.opp-note \{[^}]*\}", _BODY_CSS).group()
+    assert "break-inside" not in rule
