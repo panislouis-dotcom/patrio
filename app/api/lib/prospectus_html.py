@@ -900,8 +900,12 @@ def _opportunity(p: dict) -> str:
 
 
 def _opportunity_detail(p: dict) -> str:
-    """Plano técnico, renders y desglose del presupuesto de obra de una
-    oportunidad. "" si no hay ninguno de los tres.
+    """Renders (propuesta de diseño) y desglose del presupuesto de obra de una
+    oportunidad. "" si no hay ninguno de los dos.
+
+    El plano TÉCNICO (`_floorplan_svg`) NO va aquí — pedido de Louis: al cliente
+    no le interesan los planos técnicos; la distribución la comunica el render 2D
+    amueblado, que sí entra.
 
     Vive en el mismo flujo que la tarjeta principal, justo después de la nota
     — ya no en su propia page-block. Forzar un salto de página aquí, sin
@@ -912,26 +916,25 @@ def _opportunity_detail(p: dict) -> str:
     propia page-block. Sin ese salto forzado, Chromium solo pasa de página
     cuando de verdad se le acaba el espacio.
 
-    Los renders (la cabeza de cada cadena de FOTO — la propuesta vigente de
-    cada idea, sin pasos intermedios, y sin planos-render) viven aquí, no
-    junto al hero: allá la tira quedaba apretada y no se veía. Antes esta
-    sección traía `renders` sin deduplicar por cadena —el mismo diseño dos
-    veces, con borradores ya editados encima—; ahora es `renderHeads`, una
-    por línea."""
-    floorplan_html = _floorplan_svg(p.get("geometry") or {})
-
+    Los renders son la cabeza de cada cadena (`renderHeads`, una por línea, la
+    propuesta vigente de cada idea, sin pasos intermedios) — INCLUIDOS los
+    planos-render 2D amueblados, que son los que muestran la distribución. Viven
+    aquí, no junto al hero, donde la tira quedaba apretada y no se veía. Antes
+    esta sección traía `renders` sin deduplicar por cadena —el mismo diseño dos
+    veces, con borradores ya editados encima—; ahora es `renderHeads`."""
     render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
     renders_html = _strip(render_heads, "", 3) if render_heads else ""
 
     budget = p.get("budget") or {}
     budget_html = _budget_full(budget.get("lines", []), budget.get("chapters", []))
 
-    if not (floorplan_html or renders_html or budget_html):
+    if not (renders_html or budget_html):
         return ""
 
+    # El plano TÉCNICO (muros/nombres de cuarto, `_floorplan_svg`) NO se muestra:
+    # pedido explícito de Louis — al cliente no le interesa ver planos técnicos;
+    # lo que comunica la distribución es el render 2D amueblado, que sí entra abajo.
     sections = "".join([
-        f'<div class="detail-section"><div class="col-label">Plano</div>{floorplan_html}</div>'
-        if floorplan_html else "",
         f'<div class="detail-section"><div class="col-label">Renders · propuesta de diseño</div>{renders_html}</div>'
         if renders_html else "",
         # Pedido explícito: el presupuesto completo, renglón por renglón, es

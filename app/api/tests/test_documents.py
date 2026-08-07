@@ -454,7 +454,10 @@ def test_embed_image_list_marks_failures_with_none_data_uri(monkeypatch):
 
 # ── Página compañera de una oportunidad ──────────────────────────────────────
 
-def test_prospectus_shows_the_plano_for_an_opportunity_with_geometry(client, test_property):
+def test_the_prospectus_omits_the_technical_plano(client, test_property):
+    """El plano TÉCNICO (SVG de muros) NO va en el deck aunque la propiedad
+    tenga geometría: pedido de Louis — al cliente no le interesan los planos
+    técnicos; la distribución la comunica el render 2D amueblado, no este dibujo."""
     from api.properties_db import set_geometry
     geometry = {
         "floors": [{
@@ -467,16 +470,11 @@ def test_prospectus_shows_the_plano_for_an_opportunity_with_geometry(client, tes
     }
     set_geometry(test_property["id"], geometry)
     p = get_property(test_property["id"])
-    # El plano viaja con la propiedad — `geometry` es una columna suya, no algo
-    # que el enriquecimiento tenga que ir a buscar. Esto es lo que sostiene que
-    # _embed_opportunity_extras NO la relea.
-    assert p["geometry"] == geometry
-
     from api.routes.documents import _embed_opportunity_extras
     _embed_opportunity_extras([p])
     html = build_prospectus_html([], [], [], [p])
-    assert "<svg" in html
-    assert "Sala" in html
+    assert "<svg" not in html   # el plano técnico no se dibuja
+    assert "Sala" not in html   # ni sus nombres de cuarto
 
 
 def test_prospectus_shows_the_budget_chapters_for_an_opportunity(client, test_property):

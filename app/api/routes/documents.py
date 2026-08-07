@@ -104,12 +104,10 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
         )
     # La presentación muestra la cabeza de cada cadena de render: una por línea,
     # la más reciente. Los pasos intermedios de una edición se quedan fuera.
-    #
-    # Se excluyen los planos-render (los que nacieron del plano): se ven mal en el
-    # deck, y para eso ya está el plano TÉCNICO real (con medidas) en la página de
-    # detalle. Solo entran los renders de foto.
+    # Entran TODAS las cabezas —incluidos los planos-render 2D amueblados, que son
+    # los que mejor comunican la distribución propuesta—, no solo las de foto.
     for p in favorites:
-        p["renderHeads"] = renders_db.photo_render_heads(p["id"])
+        p["renderHeads"] = renders_db.list_render_heads(p["id"])
     await asyncio.to_thread(_embed_images, favorites)
     await asyncio.to_thread(_embed_renders, favorites)
     opportunities = _by_status(favorites, "oferta", "prospecto")

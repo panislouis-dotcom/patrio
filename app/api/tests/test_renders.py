@@ -154,23 +154,6 @@ def test_render_heads_are_the_latest_of_each_chain(
     assert a["id"] not in ids           # el paso intermedio queda fuera
 
 
-def test_photo_render_heads_exclude_plan_renders(
-    client, test_property, source_image, fake_openai,
-):
-    """En la presentación solo entran los renders de foto: el plano-render se ve
-    mal y para el plano ya está el técnico real (con medidas) en el detalle."""
-    from api import renders_db
-    pid = test_property["id"]
-    photo = client.post(f"/api/properties/{pid}/renders",
-                        json={"sourceImageId": source_image["id"], "promptText": "fachada"}).json()
-    plan = client.post(f"/api/properties/{pid}/renders/from-plan",
-                       files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-                       data={"promptText": "amuebla"}).json()
-    ids = {h["id"] for h in renders_db.photo_render_heads(pid)}
-    assert photo["id"] in ids
-    assert plan["id"] not in ids   # el plano-render se excluye del deck
-
-
 def test_input_fidelity_is_not_sent_by_default(monkeypatch):
     """gpt-image-2 rechaza `input_fidelity` con 400. No se manda a menos que
     alguien lo pida explícitamente para un modelo que sí lo acepta."""
