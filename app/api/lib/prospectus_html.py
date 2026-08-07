@@ -196,10 +196,18 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
             font-style: italic; line-height: 1.55; border-left: 2px solid var(--terra);
             padding-left: 10px; margin-top: auto; break-inside: avoid; page-break-inside: avoid; }
 .opp .strip { margin-top: 6mm; }
+/* Techo, no piso: aspect-ratio ya da la proporción correcta; este límite
+   solo evita que UNA sola foto en la fila (poca galería) crezca tanto que
+   se coma media página ella sola. */
+.opp .strip img { max-height: 60mm; }
 
 /* La banda va a sangre como en .opp — el padding de página vive en el cuerpo,
    para que el título y el contenido caigan sobre el mismo margen. */
 .opp-detail-body { padding: 8mm var(--pad) 7mm; }
+/* Mismo techo que la galería, más generoso: aquí el render es el tema de la
+   página, no un acompañante, pero sigue sin poder desplazar al presupuesto
+   a una hoja casi vacía por sí solo. */
+.opp-detail .strip img { max-height: 85mm; }
 .detail-section { margin-bottom: 8mm; break-inside: avoid; page-break-inside: avoid; }
 .detail-section:last-child { margin-bottom: 0; }
 .plano { display: flex; flex-wrap: wrap; gap: 6mm; }
