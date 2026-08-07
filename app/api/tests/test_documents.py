@@ -8,7 +8,7 @@ from unittest import mock
 
 import pytest
 
-from api.db import get_db, get_team_members
+from api.db import get_db
 from api.lib.prospectus_html import build_prospectus_html
 from api.properties_db import get_property
 
@@ -118,24 +118,6 @@ def rented_property(client, make_property):
         r = client.post(f"/api/properties/{prop['id']}/transition", json=body)
         assert r.status_code == 200, r.text
     return _rented(client, prop["id"], 10_000, 3_000_000)
-
-
-@pytest.fixture
-def test_team():
-    """Dos roles de liderazgo — insertados fuera de jerarquía, para que el orden
-    del documento no pueda salir del id — más un ayudante que no debe aparecer."""
-    members = [
-        ("[TEST] Yierba Cantú", "lider_proyecto", "Coordina la cuadrilla en obra."),
-        ("[TEST] Eduardo de la Garza", "director", "Cierra la obra a tiempo y en presupuesto."),
-        ("[TEST] Juan Ayudante", "ayudante", "Apoyo en campo."),
-    ]
-    with get_db() as conn:
-        ids = [conn.execute(
-            "INSERT INTO team_members (name, role, notes) VALUES (%s, %s, %s) RETURNING id",
-            m).fetchone()["id"] for m in members]
-    yield ids
-    with get_db() as conn:
-        conn.execute("DELETE FROM team_members WHERE id = ANY(%s)", (ids,))
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -431,35 +413,13 @@ def test_the_portfolio_summary_calls_a_sale_realized(client, sold_property):
 
 # ── Equipo ───────────────────────────────────────────────────────────────────
 
-def test_team_is_rendered_from_the_database(client, desarrollo_property, test_team):
-    _rented(client, desarrollo_property["id"], 30000, 6_000_000)
-    html = _capture_favorites(client, desarrollo_property)
-    assert "[TEST] Eduardo de la Garza" in html
-    assert "Cierra la obra a tiempo y en presupuesto." in html
-    assert '<div class="partner-role">Director</div>' in html
-
-
-def test_team_shows_only_leadership(client, desarrollo_property, test_team):
-    """El prospecto es un documento de inversionistas: van los responsables del
-    proyecto, no la cuadrilla."""
+def test_the_prospectus_never_shows_a_team_block(client, desarrollo_property):
+    """Pedido explícito: el prospecto de inversión no enseña quién trabaja en
+    la firma. No hay bloque de equipo/socios que llenar — ni el nombre de la
+    función ni el parámetro de team_members sobreviven en este archivo."""
     rented = _rented(client, desarrollo_property["id"], 30000, 6_000_000)
-    html = build_prospectus_html([], [rented], [], [], team=get_team_members())
-    assert "[TEST] Juan Ayudante" not in html
-    assert "Ayudante" not in html
-    assert "[TEST] Eduardo de la Garza" in html
-    assert "[TEST] Yierba Cantú" in html
-
-
-def test_team_is_ordered_by_hierarchy_not_by_id(client, desarrollo_property, test_team):
-    """El líder se insertó primero; el director va antes en el documento."""
-    rented = _rented(client, desarrollo_property["id"], 30000, 6_000_000)
-    html = build_prospectus_html([], [rented], [], [], team=get_team_members())
-    assert html.index("[TEST] Eduardo de la Garza") < html.index("[TEST] Yierba Cantú")
-
-
-def test_team_block_is_omitted_without_members(client, desarrollo_property):
-    rented = _rented(client, desarrollo_property["id"], 30000, 6_000_000)
-    assert '<div class="partners' not in build_prospectus_html([], [rented], [], [], team=[])
+    html = build_prospectus_html([], [rented], [], [])
+    assert '<div class="partners' not in html
 
 
 # ── Empotrado de imágenes ────────────────────────────────────────────────────
