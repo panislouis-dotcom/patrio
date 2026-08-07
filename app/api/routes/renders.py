@@ -27,6 +27,10 @@ class RenderRequest(BaseModel):
     promptId: int | None = None
 
 
+class RenderEditRequest(BaseModel):
+    promptText: str
+
+
 # ─── Biblioteca de prompts ────────────────────────────────────────────────────
 
 @router.get("/api/render-prompts", operation_id="render_prompts_list")
@@ -176,6 +180,58 @@ async def create_render_from_plan(
         provider=renders.PROVIDER,
         model=renders.MODEL,
         source_plan_path=plan_path,
+    )
+
+
+@router.post("/api/properties/{property_id}/renders/{render_id}/edit", status_code=201,
+             operation_id="property_renders_edit")
+def edit_property_render(property_id: int, render_id: int, body: RenderEditRequest,
+                         _: dict = Depends(get_current_user)):
+    """Genera el siguiente paso ENCIMA de un render existente: su imagen es la
+    fuente, y la instrucción chica se aplica sobre ella. El nuevo render cuelga
+    del anterior (parent_render_id), así se avanza sobre una sola imagen."""
+    if not properties.exists(property_id):
+        raise HTTPException(status_code=404, detail="Propiedad no encontrada")
+    if not body.promptText.strip():
+        raise HTTPException(status_code=422, detail="El prompt no puede ir vacío")
+    parent = renders_db.get_render(property_id, render_id)
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Render no encontrado en esta propiedad")
+    try:
+        content, ctype = storage.stream(parent["filePath"])
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=422, detail="La imagen del render ya no está almacenada") from exc
+
+    # La cláusula correcta según el ORIGEN de la cadena: un plano editado sigue
+    # siendo un plano 2D; una foto editada sigue siendo fotorrealista.
+    if renders_db.chain_is_plan(property_id, render_id):
+        prompt = renders.compose_plan_prompt(body.promptText)
+    else:
+        prompt = renders.compose_prompt(body.promptText)
+    try:
+        image_bytes, content_type = renders.generate_image(content, ctype, prompt)
+    except renders.RenderUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"El proveedor de renders falló: {exc}") from exc
+
+    relative_path = f"properties/{property_id}/renders/{uuid4().hex}.png"
+    try:
+        storage.upload(relative_path, image_bytes, content_type)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="No se pudo guardar el render") from exc
+
+    return renders_db.add_render(
+        property_id=property_id,
+        source_image_id=None,
+        file_path=relative_path,
+        content_type=content_type,
+        prompt_id=None,
+        prompt_text=body.promptText.strip(),
+        provider=renders.PROVIDER,
+        model=renders.MODEL,
+        parent_render_id=render_id,
     )
 
 

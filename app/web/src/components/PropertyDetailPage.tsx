@@ -5,8 +5,8 @@ import {
   uploadPropertyImage, deletePropertyImage, updatePropertyImageType,
   fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage,
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
-  listRenderPrompts, listPropertyRenders, generatePropertyRender, createRenderPrompt,
-  deletePropertyRender,
+  listRenderPrompts, listPropertyRenders, generatePropertyRender, generatePropertyRenderFromPlan,
+  editPropertyRender, createRenderPrompt, deletePropertyRender,
 } from '../lib/api'
 import type {
   AssumptionField,
@@ -35,6 +35,8 @@ import { PhotoGallery } from './PhotoGallery'
 import { PropertyProfitSection } from './PropertyProfitSection'
 import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
 import type { FloorPlanModel } from '../lib/floorplan/types'
+import { roomLabels } from '../lib/floorplan/rooms'
+import { floorToPngBlob } from '../lib/floorplan/planImage'
 import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
@@ -181,6 +183,10 @@ export function PropertyDetailPage() {
   const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
   const planApiRef = useRef<PlanApi | null>(null)
   const [planDirty, setPlanDirty] = useState(false)
+  // La planta activa del plano guardado, si la hay: fuente alterna para los renders.
+  const planFloor = geometry && 'floors' in geometry && geometry.floors.length
+    ? geometry.floors[geometry.activeFloor] ?? geometry.floors[0]
+    : null
 
   const [investors, setInvestors] = useState<PropertyInvestor[]>([])
   const [allInvestors, setAllInvestors] = useState<Investor[]>([])
@@ -983,8 +989,20 @@ export function PropertyDetailPage() {
                   prompts={renderPrompts}
                   renders={renders}
                   base={BASE}
+                  plan={planFloor ? { roomNames: roomLabels(planFloor).map(r => r.name).filter(Boolean) } : null}
                   onGenerate={async req => {
                     const created = await generatePropertyRender(p.id, req)
+                    setRenders(prev => [created, ...prev])
+                    return created
+                  }}
+                  onGeneratePlan={planFloor ? async req => {
+                    const plan = await floorToPngBlob(planFloor)
+                    const created = await generatePropertyRenderFromPlan(p.id, { ...req, plan })
+                    setRenders(prev => [created, ...prev])
+                    return created
+                  } : undefined}
+                  onEdit={async (renderId, promptText) => {
+                    const created = await editPropertyRender(p.id, renderId, { promptText })
                     setRenders(prev => [created, ...prev])
                     return created
                   }}

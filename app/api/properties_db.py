@@ -861,7 +861,6 @@ _DELETE_BLOCKERS = {
     # cantidades medidas, precios negociados y pagos hechos, y eso es captura
     # manual que ningún borrado debe llevarse sin que alguien lo decida.
     "budgets": "tiene un presupuesto de obra",
-    "process_instances": "tiene tareas ligadas",
     "profit_split_config": "tiene un reparto de utilidades configurado",
     "signals": "está ligada a una señal del sonar",
 }
@@ -876,6 +875,14 @@ def delete_property(property_id: int) -> None:
         # señalar una fila que puso el sistema.
         if not budget_db.holds_captured_work(conn, property_id):
             budget_db.drop_budget(conn, property_id)
+        # Los procesos ligados caen con la propiedad. Borrarla es una acción
+        # explícita, así que sus instancias de proceso —con estados de nodo,
+        # comentarios y archivos, que ya cascadean por FK— se van con ella. La
+        # FK process_instances.property_id no lleva ON DELETE CASCADE a propósito
+        # (para no borrar en silencio), y aquí se hace la baja explícita antes de
+        # la propiedad. El presupuesto capturado, el reparto y las señales
+        # siguen reteniendo: eso no cambia.
+        conn.execute("DELETE FROM process_instances WHERE property_id = %s", (property_id,))
         try:
             deleted = conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
         except IntegrityError as exc:
