@@ -355,8 +355,8 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await page.getByRole('button', { name: 'FOTOS' }).click()
 
     await expect(page.getByText('SIN FOTOS')).toBeVisible()
-    // general · antes · después — one gallery for the whole life of the property
-    await expect(page.locator('input[type="file"][accept="image/*"]')).toHaveCount(3)
+    // antes · después — one gallery for the whole life of the property
+    await expect(page.locator('input[type="file"][accept="image/*"]')).toHaveCount(2)
   })
 
   test('PLANO lands on the empty state and mounts the editor from it', async ({ page }) => {

@@ -1,11 +1,12 @@
 \restrict dbmate
 
 -- Dumped from database version 16.14
--- Dumped by pg_dump version 16.14
+-- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -13,20 +14,6 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-
---
--- Name: public; Type: SCHEMA; Schema: -; Owner: -
---
-
--- *not* creating schema, since initdb creates it
-
-
---
--- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON SCHEMA public IS '';
-
 
 --
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
@@ -1171,12 +1158,12 @@ CREATE TABLE public.property_images (
     file_name text NOT NULL,
     content_type text NOT NULL,
     sort_order integer DEFAULT 0 NOT NULL,
-    image_type text DEFAULT 'general'::text NOT NULL,
+    image_type text DEFAULT 'antes'::text NOT NULL,
     legacy_source text,
     legacy_image_id bigint,
     uploaded_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT property_images_file_path_check CHECK ((file_path <> ''::text)),
-    CONSTRAINT property_images_image_type_check CHECK ((image_type = ANY (ARRAY['general'::text, 'antes'::text, 'despues'::text]))),
+    CONSTRAINT property_images_image_type_check CHECK ((image_type = ANY (ARRAY['antes'::text, 'despues'::text]))),
     CONSTRAINT property_images_legacy_source_check CHECK ((legacy_source = ANY (ARRAY['prospect_images'::text, 'project_images'::text])))
 );
 
@@ -1257,6 +1244,7 @@ CREATE TABLE public.property_renders (
     model text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     source_plan_path text,
+    parent_render_id bigint,
     CONSTRAINT property_renders_file_path_check CHECK ((file_path <> ''::text)),
     CONSTRAINT property_renders_prompt_text_check CHECK ((prompt_text <> ''::text))
 );
@@ -2796,6 +2784,13 @@ CREATE INDEX idx_property_images_property ON public.property_images USING btree 
 
 
 --
+-- Name: idx_property_renders_parent; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_property_renders_parent ON public.property_renders USING btree (parent_render_id);
+
+
+--
 -- Name: idx_property_renders_property; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3259,6 +3254,14 @@ ALTER TABLE ONLY public.property_investors
 
 
 --
+-- Name: property_renders property_renders_parent_render_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_renders
+    ADD CONSTRAINT property_renders_parent_render_id_fkey FOREIGN KEY (parent_render_id) REFERENCES public.property_renders(id) ON DELETE SET NULL;
+
+
+--
 -- Name: property_renders property_renders_prompt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3448,4 +3451,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('034'),
     ('035'),
     ('036'),
-    ('037');
+    ('037'),
+    ('038'),
+    ('039');

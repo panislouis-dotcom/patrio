@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   BASE, fetchProperty, updateProperty, deleteProperty, clearPropertyFields, transitionProperty,
-  uploadPropertyImage, deletePropertyImage, updatePropertyImageType,
+  uploadPropertyImage, deletePropertyImage, updatePropertyImageType, reorderPropertyImages,
   fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage,
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
   listRenderPrompts, listPropertyRenders, generatePropertyRender, generatePropertyRenderFromPlan,
@@ -963,6 +963,10 @@ export function PropertyDetailPage() {
                   onChangeType={async (imageId: number, next: ImageType) => {
                     const updated = await updatePropertyImageType(p.id, imageId, next)
                     setProperty(prev => prev ? { ...prev, images: prev.images.map(i => i.id === imageId ? updated : i) } : prev)
+                  }}
+                  onReorder={async (imageIds: number[]) => {
+                    const images = await reorderPropertyImages(p.id, imageIds)
+                    setProperty(prev => prev ? { ...prev, images } : prev)
                   }}
                 />
               ),

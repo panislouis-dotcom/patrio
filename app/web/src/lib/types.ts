@@ -25,9 +25,10 @@ export interface PropertyImage {
   imageType: ImageType
 }
 
-// 'general' es la foto de cualquier etapa; antes/despues solo cobran sentido
-// cuando hubo obra.
-export type ImageType = 'general' | 'antes' | 'despues'
+// El eje de la obra: qué había antes de meter mano, qué quedó después. Toda
+// foto de property_images cae en uno de los dos — no hay una tercera opción
+// "sin clasificar" (migración 039).
+export type ImageType = 'antes' | 'despues'
 
 // Un render NO es un ImageType. Una foto es evidencia de lo que hay; un render
 // es una propuesta de lo que podría haber. Viven en tablas distintas justo para

@@ -104,13 +104,9 @@ export function ProveedorDetailPage({ proveedor, allCategories, base, onBack, on
     setLocalPhotos(prev => prev.filter(p => p.id !== photoId))
   }
 
-  // Un proveedor no tiene obra que contar: sus fotos son todas 'general' y la
-  // galería, sin onChangeType, se comporta como una tira simple.
-  const galleryImages = localPhotos.map(p => ({
-    id: p.id, filePath: p.filePath, fileName: p.fileName,
-    contentType: p.contentType, sortOrder: 0, uploadedAt: p.uploadedAt,
-    imageType: 'general' as const,
-  }))
+  // Un proveedor no tiene obra que contar: sus fotos no llevan tipo, y la
+  // galería —sin onChangeType— se comporta como una tira simple sin grupos.
+  const galleryImages = localPhotos.map(p => ({ id: p.id, filePath: p.filePath }))
 
   const TAB_LABELS: Record<string, string> = { info: 'INFO', editar: 'EDITAR', fotos: 'FOTOS' }
 

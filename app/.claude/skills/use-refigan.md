@@ -304,7 +304,7 @@ Key `operation_id`s:
 - `properties_clear_fields` — `POST /api/properties/{id}/clear-fields` — body `{"fields": ["rentMonthlyProjected", ...]}`
 - `properties_parse` — `POST /api/properties/parse` — AI capture from a URL, pasted text or a screenshot (multipart)
 - `properties_quality` — `GET /api/quality` — every property with what is wrong with it *at its own stage*
-- `property_images_upload` — `POST /api/properties/{id}/images` (form field `image_type`: `general`/`antes`/`despues`)
+- `property_images_upload` — `POST /api/properties/{id}/images` (form field `image_type`: `antes`/`despues`)
 - `property_images_delete` — `DELETE /api/properties/{id}/images/{image_id}`
 - `property_images_update_type` — `PATCH /api/properties/{id}/images/{image_id}`
 - `properties_get_geometry` / `properties_set_geometry` — `GET`/`PUT /api/properties/{id}/geometry`

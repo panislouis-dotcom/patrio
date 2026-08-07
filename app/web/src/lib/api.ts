@@ -143,7 +143,7 @@ export async function generateProspectus(): Promise<Blob> {
 
 // ─── Fotos de la propiedad ────────────────────────────────────────────────────
 
-export async function uploadPropertyImage(id: number, file: File, imageType: ImageType = 'general'): Promise<PropertyImage> {
+export async function uploadPropertyImage(id: number, file: File, imageType: ImageType = 'antes'): Promise<PropertyImage> {
   const form = new FormData()
   form.append('file', file, file.name)
   form.append('image_type', imageType)
@@ -157,6 +157,16 @@ export async function updatePropertyImageType(id: number, imageId: number, image
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image_type: imageType }),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export async function reorderPropertyImages(id: number, imageIds: number[]): Promise<PropertyImage[]> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/images/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_ids: imageIds }),
   })
   if (!res.ok) throw new Error(await detail(res))
   return res.json()

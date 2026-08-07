@@ -147,6 +147,10 @@ class ImageTypeUpdate(BaseModel):
     image_type: str
 
 
+class ImageReorderRequest(BaseModel):
+    image_ids: list[int]
+
+
 # ─── Collection ───────────────────────────────────────────────────────────────
 
 @router.get("/api/properties", operation_id="properties_list")
@@ -248,7 +252,7 @@ def clear_property_fields(property_id: int, body: ClearFieldsRequest,
 async def upload_property_image(
     property_id: int,
     file: UploadFile = File(...),
-    image_type: str = Form(default="general"),
+    image_type: str = Form(default="antes"),
     _: dict = Depends(get_current_user),
 ):
     if not properties.exists(property_id):
@@ -285,6 +289,13 @@ def update_property_image_type(property_id: int, image_id: int, body: ImageTypeU
         raise HTTPException(status_code=422,
                             detail=f"image_type debe ser uno de {', '.join(properties.IMAGE_TYPES)}")
     return properties.update_image_type(image_id, property_id, body.image_type)
+
+
+@router.put("/api/properties/{property_id}/images/reorder",
+            operation_id="property_images_reorder")
+def reorder_property_images(property_id: int, body: ImageReorderRequest,
+                            _: dict = Depends(get_current_user)):
+    return properties.reorder_images(property_id, body.image_ids)
 
 
 # ─── Floorplan geometry ───────────────────────────────────────────────────────
