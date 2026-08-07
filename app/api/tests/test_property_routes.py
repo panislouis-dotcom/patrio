@@ -183,3 +183,57 @@ def test_image_type_on_a_missing_image_is_404(client, test_property):
 def test_images_come_back_on_the_property(client, test_property, test_property_image):
     images = client.get(f"/api/properties/{test_property['id']}").json()["images"]
     assert [i["id"] for i in images] == [test_property_image["id"]]
+
+
+def _three_images(property_id: int) -> list[int]:
+    """Tres fotos «antes» de la misma propiedad. Se van solas con ella: la FK de
+    property_images a properties es ON DELETE CASCADE."""
+    return [properties_db.add_image(property_id, f"properties/{property_id}/{n}.jpg",
+                                    f"{n}.jpg", "image/jpeg")["id"]
+            for n in range(3)]
+
+
+def test_reorder_renumbers_sort_order_in_the_given_order(client, test_property):
+    a, b, c = _three_images(test_property["id"])
+    r = client.put(f"/api/properties/{test_property['id']}/images/reorder",
+                   json={"image_ids": [c, a, b]})
+    assert r.status_code == 200, r.text
+    assert [(i["id"], i["sortOrder"]) for i in r.json()] == [(c, 0), (a, 1), (b, 2)]
+
+
+def test_reorder_survives_the_round_trip(client, test_property):
+    """El orden nuevo tiene que salir igual de una lectura fresca, no solo de la
+    respuesta del PUT: es la prueba de que quedó en la base y no en memoria."""
+    a, b, c = _three_images(test_property["id"])
+    client.put(f"/api/properties/{test_property['id']}/images/reorder",
+               json={"image_ids": [b, c, a]})
+    images = client.get(f"/api/properties/{test_property['id']}").json()["images"]
+    assert [i["id"] for i in images] == [b, c, a]
+
+
+def test_reorder_missing_one_image_is_422(client, test_property):
+    a, b, _c = _three_images(test_property["id"])
+    r = client.put(f"/api/properties/{test_property['id']}/images/reorder",
+                   json={"image_ids": [b, a]})
+    assert r.status_code == 422
+
+
+def test_reorder_with_a_foreign_image_is_422(client, test_property):
+    a, b, _c = _three_images(test_property["id"])
+    r = client.put(f"/api/properties/{test_property['id']}/images/reorder",
+                   json={"image_ids": [a, b, 999999999]})
+    assert r.status_code == 422
+
+
+def test_reorder_repeating_an_image_is_422(client, test_property):
+    """El conjunto coincide pero la lista no es una permutación: repetir una foto
+    dejaría un sort_order sin dueño y a otra foto fuera del orden pedido."""
+    a, b, c = _three_images(test_property["id"])
+    r = client.put(f"/api/properties/{test_property['id']}/images/reorder",
+                   json={"image_ids": [a, a, b, c]})
+    assert r.status_code == 422
+
+
+def test_reorder_on_a_missing_property_is_404(client):
+    r = client.put("/api/properties/999999999/images/reorder", json={"image_ids": []})
+    assert r.status_code == 404

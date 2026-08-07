@@ -162,6 +162,16 @@ export async function updatePropertyImageType(id: number, imageId: number, image
   return res.json()
 }
 
+export async function reorderPropertyImages(id: number, imageIds: number[]): Promise<PropertyImage[]> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/images/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_ids: imageIds }),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
 export async function deletePropertyImage(id: number, imageId: number): Promise<void> {
   const res = await authFetch(`${BASE}/api/properties/${id}/images/${imageId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await detail(res))

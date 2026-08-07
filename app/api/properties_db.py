@@ -950,6 +950,24 @@ def update_image_type(image_id: int, property_id: int, image_type: str) -> dict:
     return _row_to_dict(row)
 
 
+def reorder_images(property_id: int, image_ids: list[int]) -> list[dict]:
+    """Vuelve a numerar sort_order 0..n-1 en el orden dado. `image_ids` tiene
+    que ser exactamente el conjunto de fotos de la propiedad -- ni de más ni
+    de menos -- porque un sort_order que se salta una foto la deja donde
+    estaba, silenciosamente fuera del reordenamiento que el usuario pidió."""
+    with get_db() as conn:
+        existing = {r["id"] for r in conn.execute(
+            "SELECT id FROM property_images WHERE property_id = %s", (property_id,)).fetchall()}
+        if not existing and not exists(property_id):
+            raise PropertyNotFound(f"Propiedad {property_id} no encontrada")
+        if len(image_ids) != len(existing) or set(image_ids) != existing:
+            raise PropertyError("El nuevo orden debe incluir exactamente las fotos de la propiedad, sin repetir ni faltar ninguna.")
+        for index, image_id in enumerate(image_ids):
+            conn.execute("UPDATE property_images SET sort_order = %s WHERE id = %s",
+                         (index, image_id))
+    return get_images(property_id)
+
+
 # ─── Geometry ─────────────────────────────────────────────────────────────────
 
 def get_geometry(property_id: int) -> dict | None:

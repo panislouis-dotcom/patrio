@@ -20,6 +20,8 @@ interface Props {
   onDelete: (imageId: number) => Promise<void>
   /** Ausente = la galería no clasifica (proveedores): una sola tira sin tipos. */
   onChangeType?: (imageId: number, next: ImageType) => Promise<void>
+  /** Recibe el orden nuevo de TODAS las fotos de la propiedad, no solo del grupo movido. */
+  onReorder?: (imageIds: number[]) => Promise<void>
 }
 
 const TYPES: readonly ImageType[] = ['antes', 'despues']
@@ -39,12 +41,21 @@ const TYPE_LABEL: Record<ImageType, string> = {
   antes: 'ANTES', despues: 'DESPUÉS',
 }
 
+// Las flechas de orden van abajo, una en cada esquina, para no pelearse con
+// borrar (×) y cambiar tipo (⇄), que ya ocupan la fila de arriba.
+const moveButtonStyle = (disabled: boolean): React.CSSProperties => ({
+  position: 'absolute', bottom: '5px', width: '16px', height: '16px',
+  background: 'rgba(0,0,0,0.7)', border: 'none', color: colors.secondary,
+  cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.3 : 1,
+  fontSize: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+})
+
 /**
  * Una sola galería para toda propiedad. El tipo de foto cuenta la historia de
  * la obra (antes → después); sin onChangeType la galería no clasifica y todas
  * las fotos caen en una tira sola, sin etiquetas ni filtro.
  */
-export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }: Props) {
+export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType, onReorder }: Props) {
   const classified = onChangeType != null
   const [filter, setFilter] = useState<'all' | ImageType>('all')
   const [selected, setSelected] = useState(0)
@@ -97,6 +108,25 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
     finally { setChanging(null) }
   }
 
+  /**
+   * Intercambia esta foto con su vecina DENTRO de su propio grupo (antes con
+   * antes, después con después) — nunca cruza a la otra sección, que es lo que
+   * el usuario ve como dos tiras separadas. El backend pide el orden completo,
+   * así que los otros grupos se mandan tal como están.
+   */
+  async function handleMove(img: GalleryImage, direction: -1 | 1) {
+    if (!onReorder) return
+    const type = img.imageType!
+    const group = byType(type)
+    const idx = group.findIndex(i => i.id === img.id)
+    const swapWith = idx + direction
+    if (swapWith < 0 || swapWith >= group.length) return
+    const reordered = [...group]
+    ;[reordered[idx], reordered[swapWith]] = [reordered[swapWith], reordered[idx]]
+    const fullOrder = TYPES.flatMap(t => t === type ? reordered : byType(t))
+    await onReorder(fullOrder.map(i => i.id))
+  }
+
   function handleLightboxKey(e: React.KeyboardEvent) {
     if (e.key === 'Escape') setLightbox(false)
     else if (e.key === 'ArrowLeft') prev()
@@ -104,6 +134,11 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
   }
 
   function renderThumb(img: GalleryImage, i: number) {
+    // Posición dentro de su propio grupo: es la que apaga las flechas en los bordes.
+    const group = classified ? byType(img.imageType!) : []
+    const idx = group.findIndex(g => g.id === img.id)
+    const isFirst = idx === 0
+    const isLast = idx === group.length - 1
     return (
       <div key={img.id} style={{ position: 'relative', flexShrink: 0 }}
         onMouseEnter={() => setHoveredThumb(img.id)} onMouseLeave={() => setHoveredThumb(null)}>
@@ -118,6 +153,14 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
             style={{ position: 'absolute', top: '2px', right: '20px', width: '16px', height: '16px', background: 'rgba(0,0,0,0.7)', border: 'none', color: colors.secondary, cursor: changing === img.id ? 'wait' : 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
             {changing === img.id ? '…' : '⇄'}
           </button>
+        )}
+        {classified && hoveredThumb === img.id && (
+          <>
+            <button onClick={() => handleMove(img, -1)} disabled={isFirst} title="Mover a la izquierda"
+              style={{ ...moveButtonStyle(isFirst), left: '2px' }}>&#9664;</button>
+            <button onClick={() => handleMove(img, 1)} disabled={isLast} title="Mover a la derecha"
+              style={{ ...moveButtonStyle(isLast), right: '2px' }}>&#9654;</button>
+          </>
         )}
       </div>
     )
