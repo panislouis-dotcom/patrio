@@ -101,6 +101,12 @@ body { font-family: 'Inter', sans-serif; background: #FFFFFF; color: var(--ink);
 .strip { display: flex; gap: 4px; }
 .strip img { flex: 1; min-width: 0; object-fit: cover; object-position: center;
              background: var(--warm); display: block; }
+/* Renders (propuesta de diseño, en la página de detalle): `contain`, no `cover`,
+   para que la imagen se vea COMPLETA — recortar una propuesta esconde justo lo
+   que se enseña. Y grandes: la página de detalle tiene el espacio. */
+.render-strip { display: flex; gap: 6mm; margin-top: 3mm; }
+.render-strip img { flex: 1; min-width: 0; height: 82mm; object-fit: contain;
+                    background: var(--warm); border: 1px solid var(--border); display: block; }
 
 /* ── Data tables ─────────────────────────────────────────────────────────── */
 table.kv { width: 100%; border-collapse: collapse; }
@@ -328,6 +334,17 @@ def _strip(images, label: str, limit: int) -> str:
     tags = "".join(f'<img src="{i["dataUri"]}" alt="">' for i in imgs)
     lab = f'<div class="strip-label">{_esc(label)}</div>' if label else ""
     return f'{lab}<div class="strip">{tags}</div>'
+
+
+def _render_strip(renders, limit: int) -> str:
+    """Los renders se muestran con `contain`, no `cover`: una propuesta se juzga
+    entera, y recortarla esconde justo lo que se está enseñando. Grandes, porque
+    la página de detalle tiene el espacio."""
+    imgs = renders[:limit]
+    if not imgs:
+        return ""
+    tags = "".join(f'<img src="{i["dataUri"]}" alt="">' for i in imgs)
+    return f'<div class="render-strip">{tags}</div>'
 
 
 def _kv_rows(pairs) -> str:
@@ -737,7 +754,7 @@ def _opportunity_detail(p: dict) -> str:
     floorplan_html = _floorplan_svg(p.get("geometry") or {})
 
     render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
-    renders_html = _strip(render_heads, "", 3) if render_heads else ""
+    renders_html = _render_strip(render_heads, 3) if render_heads else ""
 
     budget = p.get("budget") or {}
     chapter_pairs = _chapter_totals(budget.get("lines", []), budget.get("chapters", []))
