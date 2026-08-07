@@ -430,7 +430,13 @@ def _card(p: dict, kicker: str, tail: str, metrics: str) -> str:
     else:
         gallery = _imgs_by_type(images)
         imgs_html = f'<div>{_strip(gallery, "Proyecto", 4)}</div>' if gallery else ""
-    imgs_block = f'<div class="proj-imgs">{imgs_html}</div>' if imgs_html else ""
+    # Renders: la cabeza de cada línea, rotulada como propuesta — nunca disfrazada
+    # de foto real (por eso viven en otra tabla).
+    render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
+    renders_html = (f'<div>{_strip(render_heads, "Renders · propuesta de diseño", 3)}</div>'
+                    if render_heads else "")
+    imgs_block = (f'<div class="proj-imgs">{imgs_html}{renders_html}</div>'
+                  if (imgs_html or renders_html) else "")
 
     return f"""<div class="proj">
   <div class="band">
@@ -637,6 +643,9 @@ def _opportunity(p: dict) -> str:
     images = _imgs_by_type(p.get("images", []))
     hero = f'<img class="hero" src="{images[0]["dataUri"]}" alt="">' if images else ""
     strip = _strip(images[1:], "Galería", 4) if len(images) > 1 else ""
+    # Renders: la cabeza de cada línea (la más reciente), rotulada como propuesta.
+    render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
+    renders_strip = _strip(render_heads, "Renders · propuesta de diseño", 4) if render_heads else ""
     notes = _esc(p.get("notes", ""))
     note_html = f'<div class="opp-note">{notes}</div>' if notes else ""
 
@@ -654,6 +663,7 @@ def _opportunity(p: dict) -> str:
       <div><div class="col-label">Ubicación · Propiedad</div>{ubicacion}</div>
     </div>
     {strip}
+    {renders_strip}
     {note_html}
   </div>
 </div>"""

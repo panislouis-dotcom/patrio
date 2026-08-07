@@ -112,6 +112,21 @@ def list_renders(property_id: int) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
+def list_render_heads(property_id: int) -> list[dict]:
+    """Las CABEZAS de cada cadena: los renders que nadie editó encima — uno por
+    línea de trabajo, la versión más reciente. Es lo que la presentación muestra;
+    los pasos intermedios de una edición quedan fuera."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM property_renders pr WHERE pr.property_id = %s"
+            "  AND NOT EXISTS ("
+            "    SELECT 1 FROM property_renders c WHERE c.parent_render_id = pr.id)"
+            " ORDER BY created_at DESC, id DESC",
+            (property_id,),
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 def source_image(property_id: int, image_id: int) -> dict | None:
     """La foto fuente de esta propiedad, o None si no lo es.
 

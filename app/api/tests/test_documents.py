@@ -307,6 +307,16 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _metric("$3.5M", "Inversión total") in html
 
 
+def test_the_opportunity_card_shows_render_heads_labeled_as_proposal(client, test_property):
+    """Los renders van en su propia tira, rotulados como propuesta — nunca
+    disfrazados de foto real."""
+    p = get_property(test_property["id"])
+    p["renderHeads"] = [{"filePath": "r/1.png", "dataUri": "data:image/jpeg;base64,AAAA"}]
+    html = build_prospectus_html([], [], [], [p])
+    assert "Renders · propuesta de diseño" in html
+    assert "data:image/jpeg;base64,AAAA" in html
+
+
 def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, test_property):
     """Sin venta modelada no hay ganancia estimada — antes se imprimía un -100%
     inventado."""
