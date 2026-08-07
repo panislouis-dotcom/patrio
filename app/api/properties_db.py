@@ -191,7 +191,7 @@ _DATE_FIELDS = frozenset({"acquisitionDate", "firstRentDate", "saleDate", "valua
 _JSON_FIELDS = frozenset({"milestones"})
 _RENT_FIELDS = frozenset({"rentMonthlyProjected", "rentMonthlyActual"})
 
-IMAGE_TYPES = ("general", "antes", "despues")
+IMAGE_TYPES = ("antes", "despues")
 
 
 class PropertyError(Exception):
@@ -254,7 +254,7 @@ _CONSTRAINT_MESSAGES = {
     "property_images_unique_path": "Esa foto ya está cargada en la propiedad.",
     "property_images_file_path_check": "La foto no llegó con su archivo.",
     "property_images_image_type_check":
-        "Tipo de foto inválido: se espera general, antes o después.",
+        "Tipo de foto inválido: se espera antes o después.",
     "property_images_legacy_source_check":
         "Origen de foto heredada inválido: solo lo escribe la migración 024.",
     "property_status_events_moves": "Una transición tiene que cambiar de etapa.",
@@ -918,7 +918,7 @@ def get_images(property_id: int) -> list[dict]:
 
 
 def add_image(property_id: int, file_path: str, file_name: str,
-              content_type: str, image_type: str = "general") -> dict:
+              content_type: str, image_type: str = "antes") -> dict:
     with get_db() as conn:
         row = conn.execute(
             "INSERT INTO property_images (property_id, file_path, file_name, content_type, image_type)"

@@ -1,46 +1,65 @@
 import { useEffect, useRef, useState } from 'react'
 import { colors, fonts } from '../lib/theme'
-import type { PropertyImage, ImageType } from '../lib/types'
+import type { ImageType } from '../lib/types'
+
+/**
+ * Lo único que la galería lee de una foto — deliberadamente más chico que
+ * PropertyImage, porque un proveedor no tiene sortOrder/uploadedAt y sus fotos
+ * no llevan tipo: no hay obra que contar.
+ */
+export interface GalleryImage {
+  id: number
+  filePath: string
+  imageType?: ImageType
+}
 
 interface Props {
-  images: PropertyImage[]
+  images: GalleryImage[]
   base: string
   onUpload: (file: File, imageType: ImageType) => Promise<void>
   onDelete: (imageId: number) => Promise<void>
-  /** Ausente = la galería no clasifica (proveedores): todo es 'general'. */
+  /** Ausente = la galería no clasifica (proveedores): una sola tira sin tipos. */
   onChangeType?: (imageId: number, next: ImageType) => Promise<void>
 }
 
-const TYPES: readonly ImageType[] = ['general', 'antes', 'despues']
+const TYPES: readonly ImageType[] = ['antes', 'despues']
+
+/**
+ * Cubeta de la tira de miniaturas: un tipo real cuando hay obra que contar, y
+ * un único grupo anónimo cuando no. No es un ImageType — nada fuera de la
+ * galería debe poder guardar 'sin-clasificar' en una foto.
+ */
+type Group = ImageType | 'sin-clasificar'
 
 const TYPE_COLOR: Record<ImageType, string> = {
-  general: colors.secondary,
   antes: colors.tertiary,
   despues: colors.primary,
 }
 const TYPE_LABEL: Record<ImageType, string> = {
-  general: 'GENERAL', antes: 'ANTES', despues: 'DESPUÉS',
+  antes: 'ANTES', despues: 'DESPUÉS',
 }
 
 /**
  * Una sola galería para toda propiedad. El tipo de foto cuenta la historia de
- * la obra (antes → después) cuando la hubo, y se queda en 'general' cuando no:
- * una casa en prospecto y una remodelada se miran con el mismo componente.
+ * la obra (antes → después); sin onChangeType la galería no clasifica y todas
+ * las fotos caen en una tira sola, sin etiquetas ni filtro.
  */
 export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }: Props) {
   const classified = onChangeType != null
   const [filter, setFilter] = useState<'all' | ImageType>('all')
   const [selected, setSelected] = useState(0)
   const [lightbox, setLightbox] = useState(false)
-  const [uploading, setUploading] = useState<ImageType | null>(null)
+  const [uploading, setUploading] = useState<Group | null>(null)
   const [changing, setChanging] = useState<number | null>(null)
   const [hoveredThumb, setHoveredThumb] = useState<number | null>(null)
-  const fileRefs = useRef<Partial<Record<ImageType, HTMLInputElement | null>>>({})
+  const fileRefs = useRef<Partial<Record<Group, HTMLInputElement | null>>>({})
   const lightboxRef = useRef<HTMLDivElement>(null)
 
-  const byType = (type: ImageType) => images.filter(img => img.imageType === type)
-  // Orden antes → después para que la tira y las flechas cuenten la obra.
-  const ordered = TYPES.flatMap(byType)
+  const byType = (type: Group) =>
+    type === 'sin-clasificar' ? images : images.filter(img => img.imageType === type)
+  // Orden antes → después para que la tira y las flechas cuenten la obra; sin
+  // clasificar no hay orden que imponer, las fotos van como vienen.
+  const ordered = classified ? TYPES.flatMap(byType) : images
   const visible = filter === 'all' ? ordered : byType(filter)
   const total = visible.length
   const safeIdx = total > 0 ? Math.min(selected, total - 1) : 0
@@ -52,11 +71,14 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
   function prev() { setSelected(i => (i - 1 + total) % total) }
   function next() { setSelected(i => (i + 1) % total) }
 
-  async function handleUpload(type: ImageType, e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleUpload(type: Group, e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
     setUploading(type)
-    try { for (const f of files) await onUpload(f, type) }
+    // El grupo sin clasificar no tiene tipo que mandar: su único consumidor
+    // (proveedores) sube por otra ruta y descarta este argumento.
+    const imageType: ImageType = type === 'sin-clasificar' ? 'antes' : type
+    try { for (const f of files) await onUpload(f, imageType) }
     finally { setUploading(null); e.target.value = '' }
   }
 
@@ -65,11 +87,13 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
     setSelected(i => Math.max(0, i - 1))
   }
 
-  /** Rota general → antes → después → general: un clic, sin menú. */
-  async function handleCycleType(img: PropertyImage) {
+  /** Alterna antes ⇄ después: un clic, sin menú. */
+  async function handleCycleType(img: GalleryImage) {
     if (!onChangeType) return
     setChanging(img.id)
-    try { await onChangeType(img.id, TYPES[(TYPES.indexOf(img.imageType) + 1) % TYPES.length]) }
+    // Solo se llega aquí desde el botón que la galería clasificada dibuja, y
+    // ahí toda foto trae su tipo.
+    try { await onChangeType(img.id, TYPES[(TYPES.indexOf(img.imageType!) + 1) % TYPES.length]) }
     finally { setChanging(null) }
   }
 
@@ -79,14 +103,14 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
     else if (e.key === 'ArrowRight') next()
   }
 
-  function renderThumb(img: PropertyImage, i: number) {
+  function renderThumb(img: GalleryImage, i: number) {
     return (
       <div key={img.id} style={{ position: 'relative', flexShrink: 0 }}
         onMouseEnter={() => setHoveredThumb(img.id)} onMouseLeave={() => setHoveredThumb(null)}>
         <img src={`${base}/files/${img.filePath}`} alt="" onClick={() => setSelected(i)}
           style={{ width: '52px', height: '52px', objectFit: 'cover', cursor: 'pointer', display: 'block',
             outline: i === safeIdx ? `2px solid ${colors.primary}` : 'none', outlineOffset: '-2px',
-            borderBottom: classified ? `3px solid ${TYPE_COLOR[img.imageType]}` : 'none', boxSizing: 'border-box' }} />
+            borderBottom: img.imageType ? `3px solid ${TYPE_COLOR[img.imageType]}` : 'none', boxSizing: 'border-box' }} />
         <button onClick={() => handleDelete(img.id)}
           style={{ position: 'absolute', top: '2px', right: '2px', width: '16px', height: '16px', background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>&times;</button>
         {classified && hoveredThumb === img.id && (
@@ -99,8 +123,8 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
     )
   }
 
-  function uploadButton(type: ImageType) {
-    const color = classified ? TYPE_COLOR[type] : colors.neutral
+  function uploadButton(type: Group) {
+    const color = type === 'sin-clasificar' ? colors.neutral : TYPE_COLOR[type]
     return (
       <button onClick={() => fileRefs.current[type]?.click()} disabled={uploading !== null}
         style={{ flexShrink: 0, width: '52px', height: '52px', background: 'transparent', border: `1px dashed ${classified ? `${color}55` : colors.border}`, color: uploading === type ? colors.secondary : color, cursor: uploading !== null ? 'wait' : 'pointer', fontFamily: fonts.label, fontSize: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', letterSpacing: '0.06em' }}>
@@ -112,11 +136,11 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
 
   // Un grupo etiquetado con su conteo, sus miniaturas y su botón de subida.
   // startIndex mapea cada miniatura a su posición en `visible`.
-  function thumbGroup(type: ImageType, startIndex: number) {
+  function thumbGroup(type: Group, startIndex: number) {
     const thumbs = byType(type)
     return (
       <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-        {classified && (
+        {type !== 'sin-clasificar' && (
           <span style={{ flexShrink: 0, alignSelf: 'center', fontFamily: fonts.label, fontSize: '8px', fontWeight: 600, letterSpacing: '0.12em', color: TYPE_COLOR[type], padding: '0 4px', whiteSpace: 'nowrap' }}>
             {TYPE_LABEL[type]}<span style={{ opacity: 0.5, marginLeft: '3px' }}>{thumbs.length}</span>
           </span>
@@ -127,7 +151,7 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
     )
   }
 
-  const allGroups: readonly ImageType[] = classified ? TYPES : ['general']
+  const allGroups: readonly Group[] = classified ? TYPES : ['sin-clasificar']
   const groups = filter === 'all' ? allGroups : [filter]
   let cursor = 0
 
@@ -157,7 +181,7 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
           <>
             <img src={`${base}/files/${current.filePath}`} alt="" onClick={() => setLightbox(true)}
               style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', cursor: 'zoom-in', display: 'block' }} />
-            {classified && (
+            {current.imageType && (
               <div style={{ position: 'absolute', top: '10px', left: '10px', fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', padding: '2px 7px', background: `${TYPE_COLOR[current.imageType]}22`, color: TYPE_COLOR[current.imageType], border: `1px solid ${TYPE_COLOR[current.imageType]}55` }}>
                 {TYPE_LABEL[current.imageType]}
               </div>
@@ -189,7 +213,7 @@ export function PhotoGallery({ images, base, onUpload, onDelete, onChangeType }:
             </div>
           )
         })}
-        {TYPES.map(type => (
+        {allGroups.map(type => (
           <input key={type} ref={el => { fileRefs.current[type] = el }} type="file" accept="image/*" multiple
             style={{ display: 'none' }} onChange={e => handleUpload(type, e)} />
         ))}

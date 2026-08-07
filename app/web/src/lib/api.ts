@@ -143,7 +143,7 @@ export async function generateProspectus(): Promise<Blob> {
 
 // ─── Fotos de la propiedad ────────────────────────────────────────────────────
 
-export async function uploadPropertyImage(id: number, file: File, imageType: ImageType = 'general'): Promise<PropertyImage> {
+export async function uploadPropertyImage(id: number, file: File, imageType: ImageType = 'antes'): Promise<PropertyImage> {
   const form = new FormData()
   form.append('file', file, file.name)
   form.append('image_type', imageType)

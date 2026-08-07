@@ -248,7 +248,7 @@ def clear_property_fields(property_id: int, body: ClearFieldsRequest,
 async def upload_property_image(
     property_id: int,
     file: UploadFile = File(...),
-    image_type: str = Form(default="general"),
+    image_type: str = Form(default="antes"),
     _: dict = Depends(get_current_user),
 ):
     if not properties.exists(property_id):

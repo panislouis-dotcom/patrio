@@ -23,7 +23,7 @@ Una foto es **evidencia de lo que hay**. Un render es **una propuesta de lo que
 podría haber**. Por eso el render no entra a `property_images` como un
 `image_type` más:
 
-`image_type` (`general | antes | despues`) es el eje de **la obra**. Meter
+`image_type` (`antes | despues`) es el eje de **la obra**. Meter
 `'render'` ahí cruza un segundo eje —real contra generado— dentro del primero,
 y el modo de falla es caro y concreto: **un render impreso en el prospecto en la
 casilla de «después» es una tergiversación de la propiedad frente a un

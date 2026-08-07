@@ -144,15 +144,15 @@ def test_requires_auth(client, anonymous):
 
 # ── Images ───────────────────────────────────────────────────────────────────
 
-def test_image_type_defaults_to_general(client, test_property_image):
+def test_image_type_defaults_to_antes(client, test_property_image):
     with get_db() as conn:
         row = conn.execute("SELECT image_type FROM property_images WHERE id = %s",
                            (test_property_image["id"],)).fetchone()
-    assert row["image_type"] == "general"
+    assert row["image_type"] == "antes"
 
 
 def test_image_type_can_be_changed(client, test_property, test_property_image):
-    for kind in ("despues", "antes", "general"):
+    for kind in ("despues", "antes"):
         r = client.patch(
             f"/api/properties/{test_property['id']}/images/{test_property_image['id']}",
             json={"image_type": kind})
@@ -164,6 +164,13 @@ def test_unknown_image_type_is_422(client, test_property, test_property_image):
     r = client.patch(
         f"/api/properties/{test_property['id']}/images/{test_property_image['id']}",
         json={"image_type": "unknown"})
+    assert r.status_code == 422
+
+
+def test_general_image_type_is_422(client, test_property, test_property_image):
+    r = client.patch(
+        f"/api/properties/{test_property['id']}/images/{test_property_image['id']}",
+        json={"image_type": "general"})
     assert r.status_code == 422
 
 
