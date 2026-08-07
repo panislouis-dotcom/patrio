@@ -127,14 +127,6 @@ def list_render_heads(property_id: int) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
-def photo_render_heads(property_id: int) -> list[dict]:
-    """Las cabezas que NO son planos-render: para la presentación, solo los
-    renders de foto. Los planos-render se ven mal en el deck y para el plano
-    ya está el técnico real (con medidas) en la página de detalle."""
-    return [h for h in list_render_heads(property_id)
-            if not chain_is_plan(property_id, h["id"])]
-
-
 def source_image(property_id: int, image_id: int) -> dict | None:
     """La foto fuente de esta propiedad, o None si no lo es.
 
