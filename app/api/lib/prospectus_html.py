@@ -98,18 +98,49 @@ body { font-family: 'Inter', sans-serif; background: #FFFFFF; color: var(--ink);
 /* ── Image strips ────────────────────────────────────────────────────────── */
 .strip-label { font-family: 'Inter', sans-serif; font-size: 6pt; font-weight: 600;
                letter-spacing: 0.18em; text-transform: uppercase; color: var(--sec); margin-bottom: 5px; }
-.strip { display: flex; gap: 4px; }
-.strip img { flex: 1; min-width: 0; object-fit: cover; object-position: center;
+/* break-inside:avoid en .strip: sin esto, una fila de fotos que no cabe
+   entera en lo que queda de hoja se parte a la mitad — la mitad de una foto
+   en una página, el resto invisible, y un hueco en blanco donde debió seguir
+   imprimiéndose. Con esto la fila entera brinca junta a la página siguiente
+   en vez de cortarse. aspect-ratio reemplaza al alto fijo que tenían .opp y
+   .opp-detail: con una sola foto en la fila (el caso típico de un render),
+   un alto fijo angosto forzaba un recorte panorámico exagerado en vez de una
+   proporción fotográfica real. justify-content:center no cambia nada cuando
+   la fila está llena (las fotos ya ocupan el 100% del ancho), pero centra la
+   única foto cuando :only-child le pone un tope de ancho en vez de alto. */
+.strip { display: flex; gap: 4px; justify-content: center;
+         break-inside: avoid; page-break-inside: avoid; }
+.strip img { flex: 1; min-width: 0; aspect-ratio: 4 / 3; object-fit: cover; object-position: center;
              background: var(--warm); display: block; }
 
 /* ── Data tables ─────────────────────────────────────────────────────────── */
 table.kv { width: 100%; border-collapse: collapse; }
+/* break-inside:avoid vive en la FILA, no en la tabla: un presupuesto de obra
+   real trae diez o más capítulos y es una tabla larga, no una foto — quiere
+   partirse entre páginas como cualquier tabla de un libro. Lo único que debe
+   viajar entero es cada renglón (evita cortar un renglón a la mitad, mitad
+   de "Cimentación $1,030,000" en una hoja, mitad en la siguiente). */
+table.kv tr { break-inside: avoid; page-break-inside: avoid; }
 table.kv td { font-family: 'Inter', sans-serif; font-size: 8.5pt; padding: 4.5px 0;
               border-bottom: 1px solid var(--border); }
 table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
+/* Sin esto un encabezado como "PRESUPUESTO DE OBRA" puede quedar solo al pie
+   de una página con toda su tabla en la siguiente. */
 .col-label { font-family: 'Inter', sans-serif; font-size: 6.5pt; font-weight: 600;
              letter-spacing: 0.16em; text-transform: uppercase; color: var(--green-dark);
-             margin-bottom: 9px; }
+             margin-bottom: 9px; break-after: avoid; page-break-after: avoid; }
+
+/* ── Presupuesto, renglón por renglón ────────────────────────────────────── */
+.budget-chapter { margin-bottom: 5mm; }
+.budget-chapter:last-of-type { margin-bottom: 0; }
+.budget-chapter-name { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 600;
+                        color: var(--sec); margin-bottom: 2mm;
+                        break-after: avoid; page-break-after: avoid; }
+.budget-qty { font-size: 7.5pt; color: var(--sec); font-weight: 400; }
+.budget-subtotal td { font-weight: 600; border-top: 1px solid var(--ink); }
+.budget-grand-total { margin-top: 3mm; }
+.budget-grand-total td { font-size: 10pt; font-weight: 600; padding-top: 6px;
+                          border-top: 2px solid var(--ink); border-bottom: none; }
 
 /* ══ COVER ═══════════════════════════════════════════════════════════════ */
 .cover { height: 297mm; padding: 24mm var(--pad) 20mm; display: flex; flex-direction: column; }
@@ -171,30 +202,109 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .summary .metrics-5 .metric .v { font-size: 16pt; }
 
 /* ══ OPPORTUNITY — full page ═════════════════════════════════════════════ */
-.opp { height: 297mm; display: flex; flex-direction: column; }
+/* Ni height ni min-height, y desde aquí .opp-detail (plano/renders/
+   presupuesto) ya no es su propia page-block: el salto de página real no
+   venía del alto de .opp ni de flex vs. bloque — venía de que .page-block
+   trae page-break-after:always, y .opp-detail ERA una page-block propia.
+   Cuando la nota se quedaba a la mitad de una hoja, plano/renders igual
+   brincaban a la siguiente por ese salto forzado, sin importar cuánta hoja
+   quedara libre debajo de la nota. Fusionar todo en una sola page-block dejó
+   que Chromium sólo pase de hoja cuando de veras se le acaba el espacio, así
+   que plano/renders/presupuesto ahora continúan donde la nota los deja. Cada
+   fragmento sigue midiendo lo que su contenido pide; .page-block sigue
+   heredando overflow:hidden, y sin height fija en .opp no hay nada que
+   esconder. */
 .opp .hero { width: 100%; height: 78mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
-.opp-body { flex: 1; min-height: 0; padding: 8mm var(--pad) 7mm; display: flex; flex-direction: column; }
-.opp .metrics { margin-bottom: 7mm; }
-.opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm; }
+/* box-decoration-break:clone — sin esto, el padding de .opp-body (lo único
+   que separa su contenido del borde de la hoja, porque @page no tiene
+   margen) solo se aplica al PRIMER fragmento cuando el contenido pide una
+   segunda página. La continuación arrancaba a ~4mm del borde físico —
+   comprobado con una sonda propia: sin clone, el marcador de prueba
+   aterrizaba a 3.8mm del borde; con clone, a ~19mm, igual que si esa hoja
+   tuviera su propio padding completo. Es el mismo bug de contenido pegado
+   al filo que .opp arregló para las fotos y la nota, aquí aplicado al
+   padding de página que las envuelve a todas. */
+.opp-body { padding: 8mm var(--pad) 7mm;
+            -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.opp .metrics { margin-bottom: 7mm; break-inside: avoid; page-break-inside: avoid; }
+/* Mismo ajuste que .summary ya hacía para su propia fila de 5: la celda del
+   .metric base (padding 5mm, valor a 20pt) está pensada para una fila de 4 —
+   en una de 5 el texto no cabe y CADA etiqueta envuelve a dos líneas, y el
+   valor con porcentaje ("$1.9M 51.7%") se parte en dos renglones cuando en
+   la fila de 4 el mismo patrón cabe en uno. */
+.opp .metrics-5 .metric { padding: 3.6mm 3mm; }
+.opp .metrics-5 .metric .v { font-size: 16pt; }
+.opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
+            break-inside: avoid; page-break-inside: avoid; }
+/* Sin break-inside:avoid a propósito: una nota es prosa, no una foto ni una
+   tabla — que envuelva y siga en la página siguiente como cualquier párrafo
+   de un libro es normal. Forzarla entera a la página siguiente era parte de
+   lo que la dejaba varada, sola, en una hoja casi en blanco.
+   white-space:pre-line respeta los saltos de párrafo que quien escribió la
+   nota de verdad tecleó — por default el HTML los colapsa a un solo espacio
+   y una nota de tres párrafos se imprime como un solo bloque de texto.
+   overflow-wrap:anywhere evita que una URL o un token sin espacios se salga
+   del ancho de la nota (y de la hoja): sin esto no hay dónde partir la
+   palabra y .page-block la recorta en silencio contra el borde. */
 .opp-note { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec);
             font-style: italic; line-height: 1.55; border-left: 2px solid var(--terra);
-            padding-left: 10px; margin-top: auto; }
+            padding-left: 10px; margin-top: 8mm;
+            white-space: pre-line; overflow-wrap: anywhere; }
 .opp .strip { margin-top: 6mm; }
-.opp .strip img { height: 32mm; }
+/* Techo, no piso: con dos o más fotos aspect-ratio ya las deja bajo este
+   alto sin ayuda (170mm entre 2 ya da ~63mm) — este límite solo cubre filas
+   más angostas. Con UNA sola foto no se usa: ver :only-child abajo, que le
+   pone techo al ANCHO en vez de al alto. Ponerle techo al alto a una foto
+   que ya ocupa el 100% del ancho es exactamente el recorte panorámico
+   exagerado que aspect-ratio existe para evitar (ver comentario arriba) —
+   con max-height a secas eso volvía a pasar en el caso de una sola foto. */
+.opp .strip img { max-height: 60mm; }
+.opp .strip img:only-child { flex: none; width: 62%; max-height: none; }
 
-/* La banda va a sangre como en .opp — el padding de página vive en el cuerpo,
-   para que el título y el contenido caigan sobre el mismo margen. */
-.opp-detail-body { padding: 8mm var(--pad) 7mm; }
-/* Sin alto, un render cuadrado se dibuja tan alto como ancho — uno solo se
-   comería media página. Más generoso que la galería de .opp: aquí es el tema. */
-.opp-detail .strip img { height: 45mm; }
+.opp-detail { margin-top: 8mm; }
+/* Mismo techo que la galería, más generoso: el render sigue siendo la foto
+   más grande de la sección, pero sin poder desplazar al presupuesto a una
+   hoja casi vacía por sí solo. Mismo :only-child que la galería, también más
+   generoso — un solo render es el caso más común y el que más se beneficia
+   de verse grande, con su proporción real en vez de recortado a panorama. */
+.opp-detail .strip img { max-height: 85mm; }
+.opp-detail .strip img:only-child { flex: none; width: 74%; max-height: none; }
+/* Sin break-inside:avoid aquí a propósito: un presupuesto de diez capítulos
+   es más alto que una página y DEBE poder partirse — forzarlo entero era el
+   mismo bug que se acaba de arreglar arriba, con otro disfraz. Lo atómico
+   vive donde de verdad hace falta: cada fila de la tabla (arriba) y cada
+   plano (abajo), que sí son unidades visuales que no deben cortarse. */
 .detail-section { margin-bottom: 8mm; }
 .detail-section:last-child { margin-bottom: 0; }
+/* Pedido explícito: el presupuesto completo (renglón por renglón, no solo el
+   agregado por capítulo) es demasiado largo para compartir hoja con el plano
+   y los renders sin sentirse apretado — arranca siempre en una hoja nueva,
+   a diferencia de plano/renders, que siguen fluyendo con la tarjeta de
+   arriba. No es el mismo bug que se arregló para .opp/.opp-detail: aquél
+   era un salto forzado A MITAD de una unidad continua (nota → detalle)
+   que dejaba una cola varada; éste es un salto deliberado ANTES de una
+   sección que el usuario pidió ver siempre completa y de corrido. */
+.detail-section-budget { break-before: page; page-break-before: always; }
 .plano { display: flex; flex-wrap: wrap; gap: 6mm; }
-.plano-floor { flex: 1; min-width: 70mm; }
+/* max-width limita a la mitad de la columna: sin esto, un piso solo (o un
+   número impar que deja uno solo en la última fila) hereda todo el ancho de
+   flex:1 y, como el viewBox del SVG ahora respeta la proporción real del
+   piso en vez de forzar un cuadrado, un piso angosto podía crecer alto sin
+   límite — la misma familia de bug que una página casi en blanco. */
+.plano-floor { flex: 1; min-width: 70mm; max-width: calc(50% - 3mm);
+               break-inside: avoid; page-break-inside: avoid; }
 .plano-floor-name { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 600;
   color: var(--sec); margin-bottom: 2mm; }
-.plano-svg { width: 100%; height: auto; border: 1px solid var(--border); background: var(--warm); }
+/* max-height es el otro lado de la misma pinza que max-width en .plano-floor:
+   un lote angosto y PROFUNDO (más alto que ancho) sigue siendo respetado en
+   su proporción real por el viewBox, así que topar solo el ancho no basta —
+   comprobado con datos reales: un piso así medía ~130mm de alto ya topado en
+   ancho, y esos ~130mm de más bastaban para correr el presupuesto (dos
+   renglones) a una tercera página casi en blanco. Con max-height, el SVG se
+   encoge dentro de su caja preservando su proporción (preserveAspectRatio por
+   default no distorsiona) en vez de estirar la página. */
+.plano-svg { width: 100%; height: auto; max-height: 100mm;
+             border: 1px solid var(--border); background: var(--warm); }
 .plano-room { font-family: 'Inter', sans-serif; font-size: 7px; fill: var(--sec); }
 
 /* ══ CLOSING ═════════════════════════════════════════════════════════════ */
@@ -511,32 +621,61 @@ def _floorplan_svg(geometry: dict) -> str:
     su punto de etiqueta. Sin polígono relleno — un cuarto puede nombrarse sin
     estar cerrado por muros, así que el modelo no trae ni su área ni su forma
     (ver docs/plans/2026-08-05-prospecto-plano-renders-presupuesto-design.md).
-    Sin pisos → "", el bloque desaparece del mismo modo que un `_strip` vacío."""
+    Sin pisos → "", el bloque desaparece del mismo modo que un `_strip` vacío.
+
+    Una sola escala para TODOS los pisos del edificio, no una por piso: dos
+    plantas de la MISMA construcción tienen que leerse a un tamaño comparable
+    — un muro de 15cm es el mismo grosor de línea en planta baja y en planta
+    alta. Escalar cada piso por separado (como hacía antes) dibuja edificios
+    distintos a "el mismo tamaño de página" en vez de a la misma escala, que
+    es precisamente lo que un plano técnico no puede hacer.
+
+    El viewBox de cada piso ya no es un cuadrado fijo: mide el ancho y el alto
+    reales de ESE piso a la escala compartida. Antes el cuadrado forzaba
+    `.plano-svg { width:100%; height:auto }` a un 1:1 sin importar la forma
+    real del piso — un lote angosto y profundo se dibujaba con casi la mitad
+    del lienzo vacía, y un piso solo (o uno impar sobrante en la fila) podía
+    estirarse a 170mm de alto por pura coincidencia geométrica, no por su
+    contenido. Con el viewBox real, el alto que ocupa en la página es el alto
+    que el piso de verdad necesita."""
     floors = (geometry or {}).get("floors") or []
-    blocks = []
+    extents = []
     for floor in floors:
         vertices = floor.get("vertices") or {}
         if not vertices:
+            extents.append(None)
             continue
         xs = [v["x"] for v in vertices.values()]
         ys = [v["y"] for v in vertices.values()]
-        # El piso se encuadra en el lienzo por su lado más largo, para que las
-        # dos direcciones conserven la misma escala y el plano no salga estirado.
         # El piso degenerado (un solo vértice) tiene extensión cero: el mínimo
         # evita la división entre cero, no dibuja nada de más.
         width = max(max(xs) - min(xs), 0.01)
         height = max(max(ys) - min(ys), 0.01)
-        scale = _SVG_SIZE / max(width, height)
-        min_x, max_y = min(xs), max(ys)
+        extents.append((width, height, min(xs), max(ys)))
 
-        def sx(x):
+    real = [e for e in extents if e is not None]
+    if not real:
+        return ""
+    # La escala compartida se fija por el piso MÁS GRANDE del edificio, para
+    # que ningún piso se salga de su columna de 82mm — el mismo criterio que
+    # ya se usaba por piso, ahora aplicado al edificio completo.
+    scale = _SVG_SIZE / max(max(w, h) for w, h, _, _ in real)
+
+    blocks = []
+    for floor, extent in zip(floors, extents):
+        if extent is None:
+            continue
+        width, height, min_x, max_y = extent
+        vertices = floor.get("vertices") or {}
+
+        def sx(x, min_x=min_x):
             return (x - min_x) * scale + _SVG_PAD
 
         # La y del modelo apunta hacia ARRIBA (viewTransform.ts la niega en sus
         # dos cámaras, y userToWorld la vuelve a invertir); la del SVG apunta
         # hacia abajo. Sin este volteo el plano se imprime espejeado de arriba
         # a abajo respecto de lo que el usuario dibujó en el editor.
-        def sy(y):
+        def sy(y, max_y=max_y):
             return (max_y - y) * scale + _SVG_PAD
 
         lines = []
@@ -562,30 +701,63 @@ def _floorplan_svg(geometry: dict) -> str:
                 f'class="plano-room" text-anchor="middle">{_esc(room.get("name", ""))}</text>'
             )
 
-        view = _SVG_SIZE + _SVG_PAD * 2
+        view_w = width * scale + _SVG_PAD * 2
+        view_h = height * scale + _SVG_PAD * 2
         blocks.append(f"""<div class="plano-floor">
   <div class="plano-floor-name">{_esc(floor.get("name", ""))}</div>
-  <svg viewBox="0 0 {view:.1f} {view:.1f}" class="plano-svg">{''.join(lines)}{''.join(labels)}</svg>
+  <svg viewBox="0 0 {view_w:.1f} {view_h:.1f}" class="plano-svg">{''.join(lines)}{''.join(labels)}</svg>
 </div>""")
     if not blocks:
         return ""
     return f'<div class="plano">{"".join(blocks)}</div>'
 
 
-def _chapter_totals(lines: list[dict], chapters: list[str]) -> list[tuple[str, str]]:
-    """Subtotal presupuestado por capítulo, en el orden que `chapters` ya trae
-    (residuo al final, ver budget_db._chapters), más un renglón de Total. Sin
-    renglones → lista vacía, para que el llamador decida que no hay presupuesto
-    que enseñar."""
+def _budget_full(lines: list[dict], chapters: list[str]) -> str:
+    """El presupuesto renglón por renglón, agrupado por capítulo (en el orden
+    que `chapters` ya trae — residuo al final, ver budget_db._chapters), con
+    un subtotal por capítulo y un Total general. Pedido explícito: un solo
+    agregado por capítulo escondía la granularidad real del presupuesto —
+    esto es cada partida, su cantidad y su monto. Sin renglones → "", el
+    bloque desaparece del mismo modo que un `_strip` vacío.
+
+    Sin subtotal cuando un capítulo trae un solo renglón: repetir la misma
+    cifra dos veces (la partida y "Subtotal" idénticos) no añade información,
+    solo la impresión de que el presupuesto no está costeado a detalle."""
     if not lines:
-        return []
-    by_chapter: dict[str, float] = {}
+        return ""
+    by_chapter: dict[str, list[dict]] = {}
     for line in lines:
-        name = line.get("chapterName") or ""
-        by_chapter[name] = by_chapter.get(name, 0.0) + _num(line.get("budgetedAmount"))
-    pairs = [(name, _fmt_mxn(by_chapter[name])) for name in chapters if name in by_chapter]
-    pairs.append(("Total", _fmt_mxn(sum(by_chapter.values()))))
-    return pairs
+        by_chapter.setdefault(line.get("chapterName") or "", []).append(line)
+
+    sections = []
+    grand_total = 0.0
+    for chapter in chapters:
+        chapter_lines = by_chapter.get(chapter)
+        if not chapter_lines:
+            continue
+        rows, subtotal = [], 0.0
+        for line in chapter_lines:
+            amount = _num(line.get("budgetedAmount"))
+            subtotal += amount
+            qty = _num(line.get("quantity"))
+            unit = line.get("unit") or ""
+            qty_label = f"{qty:g} {unit}".strip()
+            rows.append(
+                f'<tr><td>{_esc(line.get("name", ""))}'
+                f'<span class="budget-qty"> · {_esc(qty_label)}</span></td>'
+                f'<td class="n">{_fmt_mxn(amount)}</td></tr>'
+            )
+        if len(chapter_lines) > 1:
+            rows.append(f'<tr class="budget-subtotal"><td>Subtotal</td><td class="n">{_fmt_mxn(subtotal)}</td></tr>')
+        grand_total += subtotal
+        sections.append(
+            f'<div class="budget-chapter"><div class="budget-chapter-name">{_esc(chapter)}</div>'
+            f'<table class="kv">{"".join(rows)}</table></div>'
+        )
+    sections.append(
+        f'<table class="kv budget-grand-total"><tr><td>Total</td><td class="n">{_fmt_mxn(grand_total)}</td></tr></table>'
+    )
+    return "".join(sections)
 
 
 def _summary_card(sold: list[dict], rented: list[dict]) -> str:
@@ -667,7 +839,7 @@ def _opportunity(p: dict) -> str:
     dev_investment = _num(total_inv) - _num(p.get("acquisitionTotal"))
 
     metrics = "".join([
-        _metric(f"{hold}m" if hold else "—", "Plazo proyectado"),
+        _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
         _metric(_fmt_mxn_compact_or_dash(total_inv), "Inversión total"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
@@ -687,9 +859,11 @@ def _opportunity(p: dict) -> str:
         ("Renta anual estimada", _fmt_mxn(rent_a) if _num(rent_a) else None),
         ("Inversión / m²", _fmt_mxn(inv_ppsqm) if _num(inv_ppsqm) else None),
     ])
+    # Sin Dirección ni Ciudad aquí: la banda verde de arriba ya las imprime
+    # ({address} · {city}), palabra por palabra — repetirlas en la tabla no
+    # añadía información, solo un renglón más para desalinear contra la
+    # columna de Financieros.
     ubicacion = _kv_rows([
-        ("Dirección", address or None),
-        ("Ciudad", city or None),
         ("Tipo de activo", asset or None),
         ("Estrategia", strategy or None),
         ("Terreno", f"{int(sqm_land):,} m²" if sqm_land else None),
@@ -703,6 +877,7 @@ def _opportunity(p: dict) -> str:
     strip = _strip(images[1:], "Galería", 4) if len(images) > 1 else ""
     notes = _esc(p.get("notes", ""))
     note_html = f'<div class="opp-note">{notes}</div>' if notes else ""
+    detail_html = _opportunity_detail(p)
 
     return f"""<div class="page-block opp">
   <div class="band">
@@ -715,33 +890,41 @@ def _opportunity(p: dict) -> str:
     <div class="metrics metrics-5">{metrics}</div>
     <div class="opp-cols">
       <div><div class="col-label">Financieros</div>{financieros}</div>
-      <div><div class="col-label">Ubicación · Propiedad</div>{ubicacion}</div>
+      <div><div class="col-label">Propiedad</div>{ubicacion}</div>
     </div>
     {strip}
     {note_html}
+    {detail_html}
   </div>
 </div>"""
 
 
 def _opportunity_detail(p: dict) -> str:
-    """Página compañera de una oportunidad: plano técnico, renders y desglose del
-    presupuesto de obra. "" si no hay ninguno de los tres.
+    """Plano técnico, renders y desglose del presupuesto de obra de una
+    oportunidad. "" si no hay ninguno de los tres.
 
-    Los renders (la cabeza de cada cadena de FOTO — la propuesta vigente de cada
-    idea, sin pasos intermedios, y sin planos-render) viven AQUÍ, no en la
-    tarjeta principal: allá, con el hero, las métricas y las dos columnas, la
-    tira quedaba de 32mm apretada y no se veía. Aquí hay medio A4 libre junto al
-    plano y salen grandes. Antes esta página traía `renders` sin deduplicar por
-    cadena —el mismo diseño dos veces, con borradores ya editados encima—; ahora
-    es `renderHeads`, una por línea."""
+    Vive en el mismo flujo que la tarjeta principal, justo después de la nota
+    — ya no en su propia page-block. Forzar un salto de página aquí, sin
+    importar cuánta hoja quedara libre tras la nota, era lo que dejaba una
+    cola de dos líneas sola arriba de una hoja casi en blanco: cuando la nota
+    terminaba a la mitad de una página, plano/renders/presupuesto de todos
+    modos brincaban a la siguiente por el page-break-after:always de su
+    propia page-block. Sin ese salto forzado, Chromium solo pasa de página
+    cuando de verdad se le acaba el espacio.
+
+    Los renders (la cabeza de cada cadena de FOTO — la propuesta vigente de
+    cada idea, sin pasos intermedios, y sin planos-render) viven aquí, no
+    junto al hero: allá la tira quedaba apretada y no se veía. Antes esta
+    sección traía `renders` sin deduplicar por cadena —el mismo diseño dos
+    veces, con borradores ya editados encima—; ahora es `renderHeads`, una
+    por línea."""
     floorplan_html = _floorplan_svg(p.get("geometry") or {})
 
     render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
     renders_html = _strip(render_heads, "", 3) if render_heads else ""
 
     budget = p.get("budget") or {}
-    chapter_pairs = _chapter_totals(budget.get("lines", []), budget.get("chapters", []))
-    budget_html = _kv_rows(chapter_pairs) if chapter_pairs else ""
+    budget_html = _budget_full(budget.get("lines", []), budget.get("chapters", []))
 
     if not (floorplan_html or renders_html or budget_html):
         return ""
@@ -751,16 +934,15 @@ def _opportunity_detail(p: dict) -> str:
         if floorplan_html else "",
         f'<div class="detail-section"><div class="col-label">Renders · propuesta de diseño</div>{renders_html}</div>'
         if renders_html else "",
-        f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
+        # Pedido explícito: el presupuesto completo, renglón por renglón, es
+        # demasiado largo para compartir hoja con el plano y los renders sin
+        # sentirse apretado — detail-section-budget fuerza un salto de página
+        # antes de empezar (ver .detail-section-budget en _BODY_CSS), a
+        # diferencia de plano/renders que siguen fluyendo con lo de arriba.
+        f'<div class="detail-section detail-section-budget"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
         if budget_html else "",
     ])
-    return f"""<div class="page-block opp-detail">
-  <div class="band">
-    <div class="kicker">Oportunidad Activa</div>
-    <h2>{_esc(p.get("name", ""))}</h2>
-  </div>
-  <div class="opp-detail-body">{sections}</div>
-</div>"""
+    return f'<div class="opp-detail">{sections}</div>'
 
 
 def _closing(month_year: str) -> str:
@@ -822,7 +1004,6 @@ def build_prospectus_html(sold: list[dict], rented: list[dict], development: lis
 
     for p in opportunity:
         parts.append(_opportunity(p))
-        parts.append(_opportunity_detail(p))
 
     parts.append(_closing(month_year))
 
