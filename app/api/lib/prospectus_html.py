@@ -98,8 +98,16 @@ body { font-family: 'Inter', sans-serif; background: #FFFFFF; color: var(--ink);
 /* ── Image strips ────────────────────────────────────────────────────────── */
 .strip-label { font-family: 'Inter', sans-serif; font-size: 6pt; font-weight: 600;
                letter-spacing: 0.18em; text-transform: uppercase; color: var(--sec); margin-bottom: 5px; }
-.strip { display: flex; gap: 4px; }
-.strip img { flex: 1; min-width: 0; object-fit: cover; object-position: center;
+/* break-inside:avoid en .strip: sin esto, una fila de fotos que no cabe
+   entera en lo que queda de hoja se parte a la mitad — la mitad de una foto
+   en una página, el resto invisible, y un hueco en blanco donde debió seguir
+   imprimiéndose. Con esto la fila entera brinca junta a la página siguiente
+   en vez de cortarse. aspect-ratio reemplaza al alto fijo que tenían .opp y
+   .opp-detail: con una sola foto en la fila (el caso típico de un render),
+   un alto fijo angosto forzaba un recorte panorámico exagerado en vez de una
+   proporción fotográfica real. */
+.strip { display: flex; gap: 4px; break-inside: avoid; page-break-inside: avoid; }
+.strip img { flex: 1; min-width: 0; aspect-ratio: 4 / 3; object-fit: cover; object-position: center;
              background: var(--warm); display: block; }
 
 /* ── Data tables ─────────────────────────────────────────────────────────── */
@@ -181,24 +189,21 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .opp { min-height: 297mm; display: flex; flex-direction: column; }
 .opp .hero { width: 100%; height: 78mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
 .opp-body { flex: 1; min-height: 0; padding: 8mm var(--pad) 7mm; display: flex; flex-direction: column; }
-.opp .metrics { margin-bottom: 7mm; }
-.opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm; }
+.opp .metrics { margin-bottom: 7mm; break-inside: avoid; page-break-inside: avoid; }
+.opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
+            break-inside: avoid; page-break-inside: avoid; }
 .opp-note { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec);
             font-style: italic; line-height: 1.55; border-left: 2px solid var(--terra);
-            padding-left: 10px; margin-top: auto; }
+            padding-left: 10px; margin-top: auto; break-inside: avoid; page-break-inside: avoid; }
 .opp .strip { margin-top: 6mm; }
-.opp .strip img { height: 32mm; }
 
 /* La banda va a sangre como en .opp — el padding de página vive en el cuerpo,
    para que el título y el contenido caigan sobre el mismo margen. */
 .opp-detail-body { padding: 8mm var(--pad) 7mm; }
-/* Sin alto, un render cuadrado se dibuja tan alto como ancho — uno solo se
-   comería media página. Más generoso que la galería de .opp: aquí es el tema. */
-.opp-detail .strip img { height: 45mm; }
-.detail-section { margin-bottom: 8mm; }
+.detail-section { margin-bottom: 8mm; break-inside: avoid; page-break-inside: avoid; }
 .detail-section:last-child { margin-bottom: 0; }
 .plano { display: flex; flex-wrap: wrap; gap: 6mm; }
-.plano-floor { flex: 1; min-width: 70mm; }
+.plano-floor { flex: 1; min-width: 70mm; break-inside: avoid; page-break-inside: avoid; }
 .plano-floor-name { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 600;
   color: var(--sec); margin-bottom: 2mm; }
 .plano-svg { width: 100%; height: auto; border: 1px solid var(--border); background: var(--warm); }
