@@ -3,7 +3,7 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-from api.lib.prospectus_html import _floorplan_svg, _chapter_totals, _opportunity_detail
+from api.lib.prospectus_html import _floorplan_svg, _chapter_totals, _opportunity_detail, _BODY_CSS
 
 ONE_FLOOR = {
     "floors": [{
@@ -126,3 +126,14 @@ def test_opportunity_detail_page_breaks_after_itself():
     p = {**BASE_PROPERTY, "geometry": ONE_FLOOR}
     html = _opportunity_detail(p)
     assert 'class="page-block opp-detail"' in html
+
+
+def test_the_opportunity_card_does_not_hard_clip_overflow():
+    """`.opp` combinaba una altura fija con el overflow:hidden que hereda de
+    .page-block: una oportunidad con suficientes fotos de galería o una nota
+    larga terminaba con esa cola invisible en vez de impresa en la página
+    siguiente. min-height conserva el aspecto de página completa cuando el
+    contenido es corto (el margin-top:auto de .opp-note sigue tocando fondo a
+    los 297mm) sin ponerle techo al crecimiento cuando no lo es."""
+    rule = re.search(r"\.opp \{[^}]*\}", _BODY_CSS).group()
+    assert "min-height: 297mm" in rule

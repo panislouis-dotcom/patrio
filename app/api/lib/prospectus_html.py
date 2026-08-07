@@ -171,7 +171,14 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .summary .metrics-5 .metric .v { font-size: 16pt; }
 
 /* ══ OPPORTUNITY — full page ═════════════════════════════════════════════ */
-.opp { height: 297mm; display: flex; flex-direction: column; }
+/* min-height, no max: una oportunidad corta llena igual la hoja completa
+   (el margin-top:auto de .opp-note la empuja al fondo de esos 297mm), pero
+   una con mucha galería/nota no se recorta contra ese piso — .page-block
+   hereda overflow:hidden, y con height fija cualquier contenido más alto
+   que la hoja se volvía invisible en vez de imprimirse en la página
+   siguiente. min-height dejar crecer la caja evita que overflow:hidden
+   tenga algo que esconder. */
+.opp { min-height: 297mm; display: flex; flex-direction: column; }
 .opp .hero { width: 100%; height: 78mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
 .opp-body { flex: 1; min-height: 0; padding: 8mm var(--pad) 7mm; display: flex; flex-direction: column; }
 .opp .metrics { margin-bottom: 7mm; }
