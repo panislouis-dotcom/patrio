@@ -120,15 +120,17 @@ def test_opportunity_detail_is_empty_without_plano_or_budget():
     assert _opportunity_detail(BASE_PROPERTY) == ""
 
 
-def test_opportunity_detail_shows_only_the_plano_section():
-    """Sin renders aquí: `_opportunity` ya enseña la cabeza de cada cadena
-    (`renderHeads`) junto a las fotos — repetirlos aquí, sin deduplicar por
-    cadena, mostraría el mismo diseño dos veces, una con peor curación."""
-    p = {**BASE_PROPERTY, "geometry": ONE_FLOOR}
+def test_opportunity_detail_omits_the_technical_plano():
+    """El plano TÉCNICO (SVG de muros) ya no se dibuja aunque la propiedad tenga
+    geometría: pedido de Louis — al cliente no le interesan los planos técnicos;
+    la distribución la comunica el render 2D amueblado, no este dibujo."""
+    p = {**BASE_PROPERTY, "geometry": ONE_FLOOR, "budget": {
+        "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
+        "chapters": ["Otros"],
+    }}
     html = _opportunity_detail(p)
-    assert "plano" in html.lower()
-    assert "<svg" in html
-    assert "Presupuesto" not in html
+    assert "<svg" not in html   # el plano técnico no se dibuja...
+    assert "$156,000" in html   # ...aunque el presupuesto sí (la sección no está vacía)
 
 
 def test_opportunity_detail_shows_only_the_budget_section():
@@ -163,7 +165,12 @@ def test_opportunity_detail_flows_right_after_the_note_not_a_new_page():
     casi en blanco. Ahora comparten la page-block de _opportunity, después de
     la nota: Chromium solo brinca de página cuando de veras se le acaba el
     espacio."""
-    p = {**BASE_PROPERTY, "geometry": ONE_FLOOR, "notes": "Nota de prueba."}
+    # El detalle ahora se dispara con presupuesto (o renders), no con el plano
+    # técnico, que ya no se dibuja.
+    p = {**BASE_PROPERTY, "budget": {
+        "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
+        "chapters": ["Otros"],
+    }, "notes": "Nota de prueba."}
     html = _opportunity(p)
     assert html.count("page-block") == 1
     assert html.index('class="opp-note"') < html.index('class="opp-detail"')
