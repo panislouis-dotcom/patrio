@@ -96,24 +96,18 @@ def test_chapter_totals_sums_by_chapter_in_order_with_total():
     ]
 
 
-def test_opportunity_detail_is_empty_without_plano_renders_or_budget():
+def test_opportunity_detail_is_empty_without_plano_or_budget():
     assert _opportunity_detail(BASE_PROPERTY) == ""
 
 
 def test_opportunity_detail_shows_only_the_plano_section():
+    """Sin renders aquí: `_opportunity` ya enseña la cabeza de cada cadena
+    (`renderHeads`) junto a las fotos — repetirlos aquí, sin deduplicar por
+    cadena, mostraría el mismo diseño dos veces, una con peor curación."""
     p = {**BASE_PROPERTY, "geometry": ONE_FLOOR}
     html = _opportunity_detail(p)
     assert "plano" in html.lower()
     assert "<svg" in html
-    assert "Renders" not in html
-    assert "Presupuesto" not in html
-
-
-def test_opportunity_detail_shows_only_the_renders_section():
-    p = {**BASE_PROPERTY, "renders": [{"filePath": "x.png", "dataUri": "data:image/png;base64,AA=="}]}
-    html = _opportunity_detail(p)
-    assert "Renders" in html
-    assert "<svg" not in html
     assert "Presupuesto" not in html
 
 
@@ -126,7 +120,6 @@ def test_opportunity_detail_shows_only_the_budget_section():
     assert "$156,000" in html
     assert "Total" in html
     assert "<svg" not in html
-    assert "Renders" not in html
 
 
 def test_opportunity_detail_page_breaks_after_itself():

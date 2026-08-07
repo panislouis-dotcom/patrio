@@ -451,7 +451,13 @@ def _card(p: dict, kicker: str, tail: str, metrics: str) -> str:
     else:
         gallery = _imgs_by_type(images)
         imgs_html = f'<div>{_strip(gallery, "Proyecto", 4)}</div>' if gallery else ""
-    imgs_block = f'<div class="proj-imgs">{imgs_html}</div>' if imgs_html else ""
+    # Renders: la cabeza de cada línea, rotulada como propuesta — nunca disfrazada
+    # de foto real (por eso viven en otra tabla).
+    render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
+    renders_html = (f'<div>{_strip(render_heads, "Renders · propuesta de diseño", 3)}</div>'
+                    if render_heads else "")
+    imgs_block = (f'<div class="proj-imgs">{imgs_html}{renders_html}</div>'
+                  if (imgs_html or renders_html) else "")
 
     return f"""<div class="proj">
   <div class="band">
@@ -741,6 +747,9 @@ def _opportunity(p: dict) -> str:
     images = _imgs_by_type(p.get("images", []))
     hero = f'<img class="hero" src="{images[0]["dataUri"]}" alt="">' if images else ""
     strip = _strip(images[1:], "Galería", 4) if len(images) > 1 else ""
+    # Renders: la cabeza de cada línea (la más reciente), rotulada como propuesta.
+    render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
+    renders_strip = _strip(render_heads, "Renders · propuesta de diseño", 4) if render_heads else ""
     notes = _esc(p.get("notes", ""))
     note_html = f'<div class="opp-note">{notes}</div>' if notes else ""
 
@@ -758,34 +767,35 @@ def _opportunity(p: dict) -> str:
       <div><div class="col-label">Ubicación · Propiedad</div>{ubicacion}</div>
     </div>
     {strip}
+    {renders_strip}
     {note_html}
   </div>
 </div>"""
 
 
 def _opportunity_detail(p: dict) -> str:
-    """Página compañera de una oportunidad: plano, renders y desglose del
-    presupuesto de obra. "" si no hay ninguna de las tres — la tarjeta
-    principal (`_opportunity`) ya dijo todo lo que hay que decir."""
-    floorplan_html = _floorplan_svg(p.get("geometry") or {})
+    """Página compañera de una oportunidad: plano y desglose del presupuesto
+    de obra. "" si no hay ninguno de los dos — la tarjeta principal
+    (`_opportunity`) ya dijo todo lo que hay que decir.
 
-    renders = _imgs_by_type(p.get("renders") or [])
-    # Sin etiqueta propia: el `col-label` de la sección ya la pone, y _strip
-    # apilaba una segunda idéntica justo debajo.
-    renders_html = _strip(renders, "", 4) if renders else ""
+    Los renders NO viven aquí: `_opportunity` ya enseña la cabeza de cada
+    cadena (`renderHeads`, la propuesta vigente de cada idea, sin pasos
+    intermedios) junto a las fotos. Esta página traía además `renders` —
+    todos los renders sin deduplicar por cadena — y eso repetía imágenes
+    con peor curación un renglón más abajo: el mismo diseño dos veces, una
+    de ellas mostrando borradores que ya se editaron encima."""
+    floorplan_html = _floorplan_svg(p.get("geometry") or {})
 
     budget = p.get("budget") or {}
     chapter_pairs = _chapter_totals(budget.get("lines", []), budget.get("chapters", []))
     budget_html = _kv_rows(chapter_pairs) if chapter_pairs else ""
 
-    if not (floorplan_html or renders_html or budget_html):
+    if not (floorplan_html or budget_html):
         return ""
 
     sections = "".join([
         f'<div class="detail-section"><div class="col-label">Plano</div>{floorplan_html}</div>'
         if floorplan_html else "",
-        f'<div class="detail-section"><div class="col-label">Renders</div>{renders_html}</div>'
-        if renders_html else "",
         f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
         if budget_html else "",
     ])

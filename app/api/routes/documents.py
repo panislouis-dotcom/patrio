@@ -57,16 +57,14 @@ def _embed_image_list(images: list[dict]) -> None:
 
 def _embed_opportunity_extras(opportunities: list[dict]) -> None:
     """Lo que la página compañera de una oportunidad necesita y la propiedad no
-    trae consigo: renders (con su imagen ya embebida) y presupuesto por
-    capítulo. El plano no está aquí porque `geometry` es una columna de la
-    propiedad y ya viene leída; releerla sería una segunda fuente del mismo
-    dato. Bloqueante (DB + storage): se llama junto con _embed_images, off the
-    event loop."""
+    trae consigo: presupuesto por capítulo. El plano no está aquí porque
+    `geometry` es una columna de la propiedad y ya viene leída; releerla
+    sería una segunda fuente del mismo dato. Los renders tampoco — ya los
+    trae `_embed_renders` sobre `renderHeads`, y una segunda lectura sin
+    deduplicar por cadena repetiría el mismo diseño con peor curación.
+    Bloqueante (DB): se llama junto con _embed_images, off the event loop."""
     with get_db() as conn:
         for p in opportunities:
-            renders = renders_db.list_renders(p["id"])
-            _embed_image_list(renders)
-            p["renders"] = renders
             p["budget"] = budget_db.get_budget(conn, p["id"])
 
 
@@ -74,6 +72,20 @@ def _embed_images(items: list[dict]) -> None:
     """Enrich each item's `images` list in place. Blocking: call off the event loop."""
     for item in items:
         _embed_image_list(item.get("images", []))
+
+
+def _embed_renders(items: list[dict]) -> None:
+    """Igual que _embed_images, pero para las cabezas de render de cada propiedad
+    (una por cadena, la más reciente). Bloqueante: fuera del event loop."""
+    for item in items:
+        for r in item.get("renderHeads", []):
+            try:
+                content, content_type = storage.stream(r["filePath"])
+                content, content_type = _resize_for_pdf(content, content_type)
+                r["dataUri"] = f"data:{content_type};base64,{base64.b64encode(content).decode()}"
+            except Exception:
+                logger.warning("render embed failed: %s", r.get("filePath"), exc_info=True)
+                r["dataUri"] = None
 
 
 def _by_status(favorites: list[dict], *statuses: str) -> list[dict]:
@@ -90,7 +102,12 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
             status_code=400,
             detail="No favorites set. Mark at least one property as favorite.",
         )
+    # La presentación muestra la cabeza de cada cadena de render: una por línea,
+    # la más reciente. Los pasos intermedios de una edición se quedan fuera.
+    for p in favorites:
+        p["renderHeads"] = renders_db.list_render_heads(p["id"])
     await asyncio.to_thread(_embed_images, favorites)
+    await asyncio.to_thread(_embed_renders, favorites)
     opportunities = _by_status(favorites, "oferta", "prospecto")
     await asyncio.to_thread(_embed_opportunity_extras, opportunities)
     # Cómo lee el prospecto una propiedad, por etapa. El track record es lo que

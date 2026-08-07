@@ -307,6 +307,16 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _metric("$3.5M", "Inversión total") in html
 
 
+def test_the_opportunity_card_shows_render_heads_labeled_as_proposal(client, test_property):
+    """Los renders van en su propia tira, rotulados como propuesta — nunca
+    disfrazados de foto real."""
+    p = get_property(test_property["id"])
+    p["renderHeads"] = [{"filePath": "r/1.png", "dataUri": "data:image/jpeg;base64,AAAA"}]
+    html = build_prospectus_html([], [], [], [p])
+    assert "Renders · propuesta de diseño" in html
+    assert "data:image/jpeg;base64,AAAA" in html
+
+
 def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, test_property):
     """Sin venta modelada no hay ganancia estimada — antes se imprimía un -100%
     inventado."""
@@ -524,43 +534,20 @@ def test_prospectus_shows_the_budget_chapters_for_an_opportunity(client, test_pr
     assert "Otros" in html     # el residual sigue ahí
 
 
-def test_prospectus_shows_the_renders_for_an_opportunity(client, test_property):
-    import io
-    from PIL import Image
-    from api import renders_db, storage
-    from api.routes.documents import _embed_opportunity_extras
-
-    buf = io.BytesIO()
-    Image.new("RGB", (2, 2), (120, 140, 160)).save(buf, format="PNG")
-    path = f"properties/{test_property['id']}/renders/[TEST]-render.png"
-    storage.upload(path, buf.getvalue(), "image/png")
-    try:
-        renders_db.add_render(
-            property_id=test_property["id"], source_image_id=None, file_path=path,
-            content_type="image/png", prompt_id=None, prompt_text="[TEST]",
-            provider="test", model="test")
-        p = get_property(test_property["id"])
-
-        _embed_opportunity_extras([p])
-        html = build_prospectus_html([], [], [], [p])
-        assert "Renders" in html
-        # JPEG, no PNG: _resize_for_pdf reencoda todo lo que entra al documento.
-        assert "data:image/jpeg;base64," in html
-    finally:
-        storage.delete(path)
-
-
-def test_prospectus_has_no_companion_page_without_plano_or_renders(client, test_property):
+def test_prospectus_has_no_companion_page_without_plano_or_budget_beyond_residual(client, test_property):
     """El presupuesto SIEMPRE trae al menos el residual, así que la página
     compañera SIEMPRE aparece para una propiedad recién nacida — es
     información real (el estimado grueso), no un placeholder. Esta prueba
-    documenta esa expectativa en vez de asumir lo contrario."""
+    documenta esa expectativa en vez de asumir lo contrario.
+
+    Los renders NO son parte de esta página — viven en `_opportunity`, vía
+    `renderHeads` (ver test_the_opportunity_card_shows_render_heads_labeled_as_proposal)."""
     p = get_property(test_property["id"])
     from api.routes.documents import _embed_opportunity_extras
     _embed_opportunity_extras([p])
     html = build_prospectus_html([], [], [], [p])
     assert 'class="page-block opp-detail"' in html
-    assert "Otros" in html  # el residual, no un plano ni un render
+    assert "Otros" in html  # el residual, no un plano
     assert "<svg" not in html
     assert "Renders" not in html
 

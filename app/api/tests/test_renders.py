@@ -133,6 +133,27 @@ def test_editing_a_photo_render_keeps_the_photo_clause(
     assert "ángulo de cámara" in fake_openai[-1]["prompt"]   # cláusula de foto
 
 
+def test_render_heads_are_the_latest_of_each_chain(
+    client, test_property, source_image, fake_openai,
+):
+    """La presentación toma una render por línea: la cabeza (la más reciente).
+    Los pasos intermedios de una edición quedan fuera."""
+    from api import renders_db
+    pid = test_property["id"]
+    # Línea A: foto -> editada una vez (cadena de 2)
+    a = client.post(f"/api/properties/{pid}/renders",
+                    json={"sourceImageId": source_image["id"], "promptText": "A0"}).json()
+    a2 = client.post(f"/api/properties/{pid}/renders/{a['id']}/edit",
+                     json={"promptText": "A1"}).json()
+    # Línea B: desde el plano (cadena de 1)
+    b = client.post(f"/api/properties/{pid}/renders/from-plan",
+                    files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+                    data={"promptText": "B0"}).json()
+    ids = {h["id"] for h in renders_db.list_render_heads(pid)}
+    assert ids == {a2["id"], b["id"]}   # las cabezas: la última de A y la de B
+    assert a["id"] not in ids           # el paso intermedio queda fuera
+
+
 def test_input_fidelity_is_not_sent_by_default(monkeypatch):
     """gpt-image-2 rechaza `input_fidelity` con 400. No se manda a menos que
     alguien lo pida explícitamente para un modelo que sí lo acepta."""
