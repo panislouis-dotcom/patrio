@@ -701,9 +701,6 @@ def _opportunity(p: dict) -> str:
     images = _imgs_by_type(p.get("images", []))
     hero = f'<img class="hero" src="{images[0]["dataUri"]}" alt="">' if images else ""
     strip = _strip(images[1:], "Galería", 4) if len(images) > 1 else ""
-    # Renders: la cabeza de cada línea (la más reciente), rotulada como propuesta.
-    render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
-    renders_strip = _strip(render_heads, "Renders · propuesta de diseño", 4) if render_heads else ""
     notes = _esc(p.get("notes", ""))
     note_html = f'<div class="opp-note">{notes}</div>' if notes else ""
 
@@ -721,35 +718,39 @@ def _opportunity(p: dict) -> str:
       <div><div class="col-label">Ubicación · Propiedad</div>{ubicacion}</div>
     </div>
     {strip}
-    {renders_strip}
     {note_html}
   </div>
 </div>"""
 
 
 def _opportunity_detail(p: dict) -> str:
-    """Página compañera de una oportunidad: plano y desglose del presupuesto
-    de obra. "" si no hay ninguno de los dos — la tarjeta principal
-    (`_opportunity`) ya dijo todo lo que hay que decir.
+    """Página compañera de una oportunidad: plano técnico, renders y desglose del
+    presupuesto de obra. "" si no hay ninguno de los tres.
 
-    Los renders NO viven aquí: `_opportunity` ya enseña la cabeza de cada
-    cadena (`renderHeads`, la propuesta vigente de cada idea, sin pasos
-    intermedios) junto a las fotos. Esta página traía además `renders` —
-    todos los renders sin deduplicar por cadena — y eso repetía imágenes
-    con peor curación un renglón más abajo: el mismo diseño dos veces, una
-    de ellas mostrando borradores que ya se editaron encima."""
+    Los renders (la cabeza de cada cadena de FOTO — la propuesta vigente de cada
+    idea, sin pasos intermedios, y sin planos-render) viven AQUÍ, no en la
+    tarjeta principal: allá, con el hero, las métricas y las dos columnas, la
+    tira quedaba de 32mm apretada y no se veía. Aquí hay medio A4 libre junto al
+    plano y salen grandes. Antes esta página traía `renders` sin deduplicar por
+    cadena —el mismo diseño dos veces, con borradores ya editados encima—; ahora
+    es `renderHeads`, una por línea."""
     floorplan_html = _floorplan_svg(p.get("geometry") or {})
+
+    render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
+    renders_html = _strip(render_heads, "", 3) if render_heads else ""
 
     budget = p.get("budget") or {}
     chapter_pairs = _chapter_totals(budget.get("lines", []), budget.get("chapters", []))
     budget_html = _kv_rows(chapter_pairs) if chapter_pairs else ""
 
-    if not (floorplan_html or budget_html):
+    if not (floorplan_html or renders_html or budget_html):
         return ""
 
     sections = "".join([
         f'<div class="detail-section"><div class="col-label">Plano</div>{floorplan_html}</div>'
         if floorplan_html else "",
+        f'<div class="detail-section"><div class="col-label">Renders · propuesta de diseño</div>{renders_html}</div>'
+        if renders_html else "",
         f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
         if budget_html else "",
     ])

@@ -289,9 +289,9 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _metric("$3.5M", "Inversión total") in html
 
 
-def test_the_opportunity_card_shows_render_heads_labeled_as_proposal(client, test_property):
-    """Los renders van en su propia tira, rotulados como propuesta — nunca
-    disfrazados de foto real."""
+def test_the_opportunity_detail_shows_render_heads_labeled_as_proposal(client, test_property):
+    """Los renders van en la página de detalle (junto al plano, con espacio),
+    rotulados como propuesta — nunca disfrazados de foto real."""
     p = get_property(test_property["id"])
     p["renderHeads"] = [{"filePath": "r/1.png", "dataUri": "data:image/jpeg;base64,AAAA"}]
     html = build_prospectus_html([], [], [], [p])
