@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
-from api.db import get_team_members, get_db
+from api.db import get_db
 from api.properties_db import get_properties, get_property
 from api.lib.prospectus_html import build_prospectus_html, render_to_pdf
 from api.lib.term_sheet_html import build_term_sheet_html
@@ -123,7 +123,6 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
         _by_status(favorites, "en_renta"),
         _by_status(favorites, "desarrollo"),
         opportunities,
-        get_team_members(),
     )
     try:
         pdf = await asyncio.wait_for(render_to_pdf(html), timeout=_RENDER_TIMEOUT_S)

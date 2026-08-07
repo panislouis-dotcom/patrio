@@ -21,21 +21,6 @@ _MESES = [
 _SVG_SIZE = 260.0
 _SVG_PAD = 14.0
 
-# Vocabulario de roles de team_members (espejo de ROLE_LABEL en
-# app/web/src/components/OrgTab.tsx); el orden es el de la jerarquía.
-_ROLE_LABEL = {
-    "director": "Director",
-    "responsable_proyecto": "Responsable de Proyecto",
-    "lider_proyecto": "Líder de Proyecto",
-    "maestro": "Maestro",
-    "ayudante": "Ayudante",
-    "finder": "Finder",
-}
-# Roles que aparecen en el prospecto, en orden de jerarquía: solo liderazgo en
-# el documento de inversionistas — ajustar aquí si cambia el criterio.
-_DOC_ROLES = ("director", "responsable_proyecto", "lider_proyecto")
-
-
 def _font_b64(name: str) -> str:
     path = (_FONTS_DIR / name).resolve()
     if not path.is_relative_to(_FONTS_DIR):
@@ -224,16 +209,9 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .closing-disc { font-family: 'Inter', sans-serif; font-size: 6.5pt; letter-spacing: 0.05em;
                 color: rgba(255,255,255,0.6); line-height: 1.6; }
 
-/* ══ Portfolio footnote + partner bios (summary card) ════════════════════ */
+/* ══ Portfolio footnote (summary card) ════════════════════════════════════ */
 .valuation-note { font-family: 'Inter', sans-serif; font-size: 7pt; font-style: italic;
                   color: var(--sec); line-height: 1.45; margin-top: 7mm; }
-.partners { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-top: 8mm;
-            padding-top: 7mm; border-top: 1px solid rgba(90,122,78,0.25); }
-.partners-3 { grid-template-columns: repeat(3, 1fr); gap: 7mm; }
-.partner-name { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 13pt; color: var(--ink); }
-.partner-role { font-family: 'Inter', sans-serif; font-size: 6.5pt; font-weight: 600;
-                letter-spacing: 0.14em; text-transform: uppercase; color: var(--green-dark); margin: 4px 0 5px; }
-.partner-bio  { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec); line-height: 1.5; }
 """
 
 
@@ -533,7 +511,7 @@ def _floorplan_svg(geometry: dict) -> str:
     su punto de etiqueta. Sin polígono relleno — un cuarto puede nombrarse sin
     estar cerrado por muros, así que el modelo no trae ni su área ni su forma
     (ver docs/plans/2026-08-05-prospecto-plano-renders-presupuesto-design.md).
-    Sin pisos → "", el bloque desaparece del mismo modo que _team_block."""
+    Sin pisos → "", el bloque desaparece del mismo modo que un `_strip` vacío."""
     floors = (geometry or {}).get("floors") or []
     blocks = []
     for floor in floors:
@@ -610,30 +588,7 @@ def _chapter_totals(lines: list[dict], chapters: list[str]) -> list[tuple[str, s
     return pairs
 
 
-def _team_block(team: list[dict] | None) -> str:
-    """Equipo tal como está en la base — nombre completo, rol y su nota/bio.
-    Sin equipo capturado no se inventa ninguno: la sección desaparece."""
-    members = sorted(
-        (m for m in (team or []) if str(m.get("role")) in _DOC_ROLES),
-        key=lambda m: (_DOC_ROLES.index(str(m.get("role"))), _num(m.get("id"))),
-    )
-    if not members:
-        return ""
-    blocks = []
-    for m in members:
-        role = _ROLE_LABEL[str(m.get("role"))]
-        bio = str(m.get("notes") or "").strip()
-        blocks.append(
-            f'<div><div class="partner-name">{_esc(m.get("name", ""))}</div>'
-            f'<div class="partner-role">{_esc(role)}</div>'
-            + (f'<div class="partner-bio">{_esc(bio)}</div>' if bio else "")
-            + "</div>"
-        )
-    cols = " partners-3" if len(blocks) > 2 else ""
-    return f'<div class="partners{cols}">{"".join(blocks)}</div>'
-
-
-def _summary_card(sold: list[dict], rented: list[dict], team: list[dict] | None = None) -> str:
+def _summary_card(sold: list[dict], rented: list[dict]) -> str:
     """El portafolio que el track record ya produjo: capital desplegado contra lo
     que ese capital vale hoy. Las vendidas cuentan — son el resultado más fuerte
     de la firma y dejarlas fuera subvaluaría el historial — pero entran por su
@@ -673,7 +628,6 @@ def _summary_card(sold: list[dict], rented: list[dict], team: list[dict] | None 
   <div class="kicker">Portafolio · {_esc(scope)}</div>
   <h3>Propiedades reales. Resultados reales.</h3>
   <div class="metrics metrics-{len(cells)}">{metrics}</div>
-  {_team_block(team)}
   <div class="valuation-note">{_esc(" ".join(notes))}</div>
 </div>"""
 
@@ -832,7 +786,7 @@ def _closing(month_year: str) -> str:
 # ---------------------------------------------------------------------------
 
 def build_prospectus_html(sold: list[dict], rented: list[dict], development: list[dict],
-                          opportunity: list[dict], team: list[dict] | None = None) -> str:
+                          opportunity: list[dict]) -> str:
     """The four buckets arrive already partitioned — the caller owns the status
     vocabulary, this file owns the presentation.
 
@@ -858,10 +812,10 @@ def build_prospectus_html(sold: list[dict], rented: list[dict], development: lis
         cards = [build(p, f"Track Record · {i:02d}") for i, (build, p) in enumerate(track, 1)]
         cards += [_development_card(p, f"En Desarrollo · {j:02d}")
                   for j, p in enumerate(development, 1)]
-        # Portfolio summary carries the valuation footnote and the team block,
-        # and fills the trailing half-sheet.
+        # Portfolio summary carries the valuation footnote and fills the
+        # trailing half-sheet.
         if track:
-            cards.append(_summary_card(sold, rented, team))
+            cards.append(_summary_card(sold, rented))
         for pair in _chunk(cards, 2):
             parts.append(f'<div class="page-block sheet">{"".join(pair)}</div>')
 
