@@ -262,13 +262,14 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .opp .strip img:only-child { flex: none; width: 62%; max-height: none; }
 
 .opp-detail { margin-top: 8mm; }
-/* Mismo techo que la galería, más generoso: el render sigue siendo la foto
-   más grande de la sección, pero sin poder desplazar al presupuesto a una
-   hoja casi vacía por sí solo. Mismo :only-child que la galería, también más
-   generoso — un solo render es el caso más común y el que más se beneficia
-   de verse grande, con su proporción real en vez de recortado a panorama. */
-.opp-detail .strip img { max-height: 85mm; }
-.opp-detail .strip img:only-child { flex: none; width: 74%; max-height: none; }
+/* Los renders del detalle usan `contain`, no `cover`: aquí caben planos-render
+   2D VERTICALES (un lote angosto y alto, p.ej. 5.5 x 13.7 m), y recortarlos a
+   4/3 —lo que hace la galería de fotos— cortaba la mitad del plano. `contain`
+   los muestra ENTEROS; la altura generosa aprovecha que el detalle tiene hoja
+   de sobra. `aspect-ratio: auto` suelta el 4/3 de la base. El :only-child (un
+   solo render, el caso común) va a su proporción real, sin recorte. */
+.opp-detail .strip img { aspect-ratio: auto; object-fit: contain; height: 118mm; }
+.opp-detail .strip img:only-child { flex: none; width: 74%; height: auto; max-height: 165mm; }
 /* Sin break-inside:avoid aquí a propósito: un presupuesto de diez capítulos
    es más alto que una página y DEBE poder partirse — forzarlo entero era el
    mismo bug que se acaba de arreglar arriba, con otro disfraz. Lo atómico
