@@ -277,15 +277,12 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    plano (abajo), que sí son unidades visuales que no deben cortarse. */
 .detail-section { margin-bottom: 8mm; }
 .detail-section:last-child { margin-bottom: 0; }
-/* Pedido explícito: el presupuesto completo (renglón por renglón, no solo el
-   agregado por capítulo) es demasiado largo para compartir hoja con el plano
-   y los renders sin sentirse apretado — arranca siempre en una hoja nueva,
-   a diferencia de plano/renders, que siguen fluyendo con la tarjeta de
-   arriba. No es el mismo bug que se arregló para .opp/.opp-detail: aquél
-   era un salto forzado A MITAD de una unidad continua (nota → detalle)
-   que dejaba una cola varada; éste es un salto deliberado ANTES de una
-   sección que el usuario pidió ver siempre completa y de corrido. */
-.detail-section-budget { break-before: page; page-break-before: always; }
+/* El presupuesto YA NO fuerza su propia hoja (pedido de Louis): sin el plano
+   técnico y con los renders arriba, la hoja de detalle queda ~70% libre y un
+   presupuesto de obra típico (corto) cabe de sobra ahí — mandarlo a una hoja
+   nueva dejaba media hoja en blanco. Ahora fluye después de los renders como
+   cualquier otra sección; si algún día uno muy largo no cupiera, Chromium
+   brinca solo, sin partir renglones (break-inside:avoid en table.kv tr). */
 .plano { display: flex; flex-wrap: wrap; gap: 6mm; }
 /* max-width limita a la mitad de la columna: sin esto, un piso solo (o un
    número impar que deja uno solo en la última fila) hereda todo el ancho de
@@ -938,12 +935,10 @@ def _opportunity_detail(p: dict) -> str:
     sections = "".join([
         f'<div class="detail-section"><div class="col-label">Renders · propuesta de diseño</div>{renders_html}</div>'
         if renders_html else "",
-        # Pedido explícito: el presupuesto completo, renglón por renglón, es
-        # demasiado largo para compartir hoja con el plano y los renders sin
-        # sentirse apretado — detail-section-budget fuerza un salto de página
-        # antes de empezar (ver .detail-section-budget en _BODY_CSS), a
-        # diferencia de plano/renders que siguen fluyendo con lo de arriba.
-        f'<div class="detail-section detail-section-budget"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
+        # El presupuesto fluye después de los renders, en la misma hoja (pedido
+        # de Louis): un presupuesto de obra típico es corto y cabe en el ~70% de
+        # hoja que dejan los renders. Ya no fuerza su propia página.
+        f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
         if budget_html else "",
     ])
     return f'<div class="opp-detail">{sections}</div>'

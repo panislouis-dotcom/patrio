@@ -144,18 +144,19 @@ def test_opportunity_detail_shows_only_the_budget_section():
     assert "<svg" not in html
 
 
-def test_the_budget_section_always_starts_on_its_own_page():
-    """Pedido explícito: el presupuesto completo es demasiado largo para
-    compartir hoja con el plano y los renders sin sentirse apretado — a
-    diferencia de esos dos, arranca siempre en una hoja nueva."""
-    p = {**BASE_PROPERTY, "geometry": ONE_FLOOR, "budget": {
+def test_the_budget_flows_with_the_renders_not_its_own_page():
+    """Pedido de Louis: sin el plano técnico y con los renders arriba, la hoja de
+    detalle queda ~70% libre y un presupuesto de obra típico (corto) cabe ahí.
+    Ya NO se fuerza a su propia página — fluye como cualquier otra sección; si
+    uno muy largo no cupiera, Chromium brinca solo (sin partir renglones)."""
+    p = {**BASE_PROPERTY, "budget": {
         "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
         "chapters": ["Otros"],
     }}
     html = _opportunity_detail(p)
-    assert 'class="detail-section detail-section-budget"' in html
-    rule = re.search(r"\.detail-section-budget \{[^}]*\}", _BODY_CSS).group()
-    assert "break-before: page" in rule
+    assert "Presupuesto de obra" in html
+    assert "detail-section-budget" not in html     # sin salto de página forzado
+    assert ".detail-section-budget" not in _BODY_CSS  # la regla que lo forzaba se retiró
 
 
 def test_opportunity_detail_flows_right_after_the_note_not_a_new_page():
