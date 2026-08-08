@@ -2,6 +2,9 @@
 import io
 
 import pytest
+from PIL import Image
+
+from api import storage
 
 
 def _png_bytes():
@@ -81,6 +84,34 @@ def test_a_plan_render_does_not_land_in_the_photo_gallery(
     # No hay endpoint propio para listar fotos: `images` vive embebido en la
     # propiedad, igual que en cualquier otro lector (properties_db.parse_property).
     assert client.get(f"/api/properties/{test_property['id']}").json()["images"] == []
+
+
+def test_a_rotated_plan_is_straightened_for_both_of_its_uses(
+    client, test_property, fake_openai,
+):
+    """El plano se normaliza UNA vez, antes de sus dos lecturas. Enderezar sólo
+    la copia que se guarda dejaría lo almacenado bien y el render generándose
+    igual de un plano de lado: el error se vería en la imagen final, lejos de
+    aquí. Por eso las dos mitades se afirman juntas."""
+    exif = Image.Exif()
+    exif[0x0112] = 6  # rotación de 90°: el alto y el ancho salen intercambiados
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 40), (30, 30, 200)).save(buf, format="PNG", exif=exif)
+
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(buf.getvalue()), "image/png")},
+        data={"promptText": "Amuebla la planta."},
+    )
+    assert r.status_code == 201, r.text
+
+    stored = Image.open(io.BytesIO(storage.stream(r.json()["sourcePlanPath"])[0]))
+    assert stored.size == (40, 20)
+    assert stored.getexif().get(0x0112, 1) == 1
+
+    sent = Image.open(io.BytesIO(fake_openai[-1]["image"]))
+    assert sent.size == (40, 20)
+    assert sent.getexif().get(0x0112, 1) == 1
 
 
 def test_editing_a_render_builds_on_it_and_chains_to_it(
