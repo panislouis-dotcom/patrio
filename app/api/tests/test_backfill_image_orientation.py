@@ -76,6 +76,21 @@ def torcidas(test_property):
     db_proveedores.delete_proveedor(proveedor["id"])
 
 
+@pytest.fixture
+def otra_propiedad():
+    """Otra propiedad con su propia foto torcida, para que acotar tenga qué dejar
+    fuera: sin ella, un filtro roto que devuelve todo pasaría igual."""
+    prop = properties_db.create_property({
+        "name": "[TEST] Backfill vecina", "address": "Calle Vecina 2", "city": "Monterrey",
+        "latitude": 25.6866, "longitude": -100.3161})
+    photo = properties_db.add_image(
+        prop["id"], f"properties/{prop['id']}/backfill-vecina.jpg", "vecina.jpg", "image/jpeg")
+    storage.upload(photo["filePath"], _torcida(), "image/jpeg")
+    yield {"id": prop["id"], "key": photo["filePath"]}
+    storage.delete(photo["filePath"])
+    properties_db.delete_property(prop["id"])
+
+
 def test_el_recorrido_encuentra_las_cinco_procedencias(torcidas):
     encontradas = {key: source for source, key in backfill.collect_keys()}
     assert [encontradas.get(key) for key in torcidas.values()] == list(torcidas)
@@ -104,3 +119,34 @@ def test_un_key_sin_archivo_se_salta_sin_tumbar_el_recorrido(test_property, torc
     resumen = backfill.backfill(apply=False)
     assert resumen["missing"][backfill.PROPERTY_PHOTO] >= 1
     assert resumen["fixed"][backfill.PROPERTY_PHOTO] >= 1
+
+
+def test_property_id_deja_fuera_lo_que_no_es_de_esa_propiedad(torcidas, otra_propiedad):
+    completo = {key for _, key in backfill.collect_keys()}
+    acotado = {key for _, key in backfill.collect_keys(property_id=otra_propiedad["id"])}
+
+    assert acotado == {otra_propiedad["key"]}
+    assert set(torcidas.values()) <= completo  # sin acotar sí salen todas
+    assert not acotado & set(torcidas.values())
+
+    resumen = backfill.backfill(apply=False, property_id=otra_propiedad["id"])
+    assert resumen["fixed"][backfill.PROPERTY_PHOTO] == 1
+    assert resumen["fixed"][backfill.PROVEEDOR_PHOTO] == 0
+
+
+def test_property_id_de_una_propiedad_que_no_existe_se_queja(torcidas):
+    with pytest.raises(properties_db.PropertyNotFound):
+        backfill.collect_keys(property_id=999_999_999)
+
+
+def test_una_escritura_que_falla_no_se_lleva_el_recorrido(torcidas, monkeypatch):
+    def _revienta(key, content, content_type):
+        raise RuntimeError("storage no disponible")
+
+    monkeypatch.setattr(backfill.storage, "upload", _revienta)
+    resumen = backfill.backfill(apply=True)
+
+    assert sum(resumen["failed"].values()) == len(torcidas)  # las intentó todas
+    assert sum(resumen["fixed"].values()) == 0
+    for key in torcidas.values():
+        assert _stored(key).getexif().get(_ORIENTATION, 1) == 6

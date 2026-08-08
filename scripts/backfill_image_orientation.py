@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hornea la rotación EXIF en las imágenes que YA estaban guardadas.
 
-`api.lib.images.normalize_orientation` corrige toda foto que entra desde que se
+`api.lib.images.normalize_orientation` endereza toda foto que entra desde que se
 enganchó en la ingestión, pero no toca lo que se subió antes: esos bytes siguen
 en storage con los píxeles acostados y la bandera EXIF puesta, y el PDF los
 sigue sacando de lado. Este script recorre cada imagen que la base referencia
@@ -10,15 +10,20 @@ con su plano fuente, y las fotos de proveedores—, las pasa por el mismo
 normalizador y reescribe SOBRE EL MISMO key. No hay nada que actualizar en la
 base: la ruta relativa no cambia.
 
+Reescribir encima no deja copia de lo anterior y la base no guarda rastro de
+que pasó, así que `--apply` primero simula, enseña la cuenta y la pide
+confirmada. `--property-id` limita el recorrido a una sola propiedad, para
+probarlo contra la que se reportó rota antes de soltarlo sobre todas.
+
 Correrlo dos veces no reescribe nada la segunda vez: el normalizador devuelve
 los bytes intactos cuando ya no hay rotación pendiente.
 
-Lee el entorno de la API (`.env` vía `api.config`), así que apunta a la base y
-al storage que ese entorno configure — el `--apply` reescribe donde el API de
-ese entorno guardó las fotos.
+Lee el entorno de la API (`.env` vía `api.config`), así que trabaja sobre la
+base y el storage que ese entorno configure.
 
-    python scripts/backfill_image_orientation.py            # simulación
-    python scripts/backfill_image_orientation.py --apply    # reescribe
+    python scripts/backfill_image_orientation.py                     # simulación
+    python scripts/backfill_image_orientation.py --property-id 42    # sólo esa
+    python scripts/backfill_image_orientation.py --apply             # reescribe
 """
 import argparse
 from collections import Counter
@@ -39,6 +44,8 @@ PROVEEDOR_PHOTO = "foto de proveedor"
 
 SOURCES = (PROPERTY_PHOTO, FLOORPLAN_REFERENCE, RENDER, RENDER_PLAN, PROVEEDOR_PHOTO)
 
+_YES = {"y", "yes", "s", "si", "sí"}
+
 
 def _reference_keys(geometry: dict):
     """Las imágenes de referencia del modelo de plano.
@@ -52,27 +59,38 @@ def _reference_keys(geometry: dict):
             yield key
 
 
-def collect_keys() -> list[tuple[str, str]]:
+def collect_keys(property_id: int | None = None) -> list[tuple[str, str]]:
     """(origen, key) de cada imagen guardada, sin repetir keys.
 
+    Con `property_id` sólo se recorre esa propiedad; las fotos de proveedores
+    quedan fuera del recorrido porque no cuelgan de ninguna.
+
     Un key repetido se procesaría dos veces sin daño —el segundo paso ya no
-    encuentra nada que corregir—, pero contaría doble, y el conteo es lo único
-    que la simulación entrega.
+    encuentra nada que corregir—, pero contaría doble, y el conteo es lo que se
+    confirma antes de escribir.
     """
+    if property_id is None:
+        properties = properties_db.get_properties(include_archived=True)
+    else:
+        prop = properties_db.get_property(property_id)
+        if prop is None:
+            raise properties_db.PropertyNotFound(f"Propiedad {property_id} no encontrada")
+        properties = [prop]
+
     found: list[tuple[str, str]] = []
-    for prop in properties_db.get_properties(include_archived=True):
-        property_id = prop["id"]
+    for prop in properties:
         for image in prop["images"]:
             found.append((PROPERTY_PHOTO, image["filePath"]))
-        for key in _reference_keys(properties_db.get_geometry(property_id) or {}):
+        for key in _reference_keys(properties_db.get_geometry(prop["id"]) or {}):
             found.append((FLOORPLAN_REFERENCE, key))
-        for render in renders_db.list_renders(property_id):
+        for render in renders_db.list_renders(prop["id"]):
             found.append((RENDER, render["filePath"]))
             if render["sourcePlanPath"]:
                 found.append((RENDER_PLAN, render["sourcePlanPath"]))
-    for proveedor in db_proveedores.get_proveedores():
-        for photo in proveedor["photos"]:
-            found.append((PROVEEDOR_PHOTO, photo["filePath"]))
+    if property_id is None:
+        for proveedor in db_proveedores.get_proveedores():
+            for photo in proveedor["photos"]:
+                found.append((PROVEEDOR_PHOTO, photo["filePath"]))
 
     seen: set[str] = set()
     unique = []
@@ -83,13 +101,12 @@ def collect_keys() -> list[tuple[str, str]]:
     return unique
 
 
-def backfill(apply: bool) -> dict[str, Counter]:
-    keys = collect_keys()
-    verb = "Corrigiendo" if apply else "Simulando"
-    print(f"{verb} sobre {len(keys)} imágenes guardadas"
-          f"{'' if apply else ' (nada se escribe; usa --apply para reescribir)'}\n")
+def backfill(apply: bool, property_id: int | None = None) -> dict[str, Counter]:
+    keys = collect_keys(property_id)
+    print(f"{'Reescribiendo' if apply else 'Revisando'} {len(keys)} imágenes guardadas"
+          f"{'' if apply else ' — nada se escribe todavía'}\n")
 
-    checked, fixed, missing = Counter(), Counter(), Counter()
+    checked, fixed, failed, missing = Counter(), Counter(), Counter(), Counter()
     for source, key in keys:
         checked[source] += 1
         try:
@@ -97,41 +114,77 @@ def backfill(apply: bool) -> dict[str, Counter]:
         except FileNotFoundError:
             # La base puede referenciar un archivo que ya no está. Es un dato
             # roto de antes, no algo que este backfill deba arreglar ni motivo
-            # para dejar sin corregir todo lo que falta por revisar.
+            # para dejar sin revisar todo lo que falta.
             missing[source] += 1
             print(f"  ! sin archivo en storage: {key} — {source}")
             continue
         normalized = normalize_orientation(content)
         if normalized == content:
             continue
+        if apply:
+            try:
+                storage.upload(key, normalized, content_type)
+            except Exception as exc:
+                # Una escritura que falla a media corrida —red, permisos— no se
+                # puede llevar el recorrido entero: sin resumen nadie sabe qué
+                # alcanzó a corregirse. Se anota cuál falló y se sigue.
+                failed[source] += 1
+                print(f"  ! no se pudo reescribir: {key} — {source}: {exc}")
+                continue
         fixed[source] += 1
         print(f"  [{sum(fixed.values())}] {key} — {source}")
-        if apply:
-            storage.upload(key, normalized, content_type)
 
-    _print_summary(checked, fixed, missing, apply)
-    return {"checked": checked, "fixed": fixed, "missing": missing}
+    _print_summary(checked, fixed, failed, missing, apply)
+    return {"checked": checked, "fixed": fixed, "failed": failed, "missing": missing}
 
 
-def _print_summary(checked: Counter, fixed: Counter, missing: Counter, apply: bool) -> None:
+def _print_summary(checked: Counter, fixed: Counter, failed: Counter,
+                   missing: Counter, apply: bool) -> None:
     label = "corregidas" if apply else "por corregir"
+    rows = [(source, checked[source], fixed[source], failed[source], missing[source])
+            for source in SOURCES]
+    rows.append(("TOTAL", *(sum(c.values()) for c in (checked, fixed, failed, missing))))
     print("\nResumen")
-    for source in SOURCES:
-        print(f"  {source:<24} {checked[source]:>5} revisadas"
-              f"   {fixed[source]:>4} {label}"
-              f"   {missing[source]:>4} sin archivo")
-    print(f"  {'TOTAL':<24} {sum(checked.values()):>5} revisadas"
-          f"   {sum(fixed.values()):>4} {label}"
-          f"   {sum(missing.values()):>4} sin archivo")
-    if not apply and sum(fixed.values()):
-        print("\nNada se escribió. Vuelve a correr con --apply para reescribirlas.")
+    for name, revisadas, corregidas, sin_escribir, sin_archivo in rows:
+        print(f"  {name:<24} {revisadas:>5} revisadas   {corregidas:>4} {label}"
+              f"   {sin_escribir:>4} sin escribir   {sin_archivo:>4} sin archivo")
+
+
+def _confirmed(pending: int) -> bool:
+    answer = input(f"\nSe van a reescribir {pending} imágenes sobre su propio key, sin dejar "
+                   "copia de lo anterior. ¿Continuar? [y/N]: ")
+    return answer.strip().lower() in _YES
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--apply", action="store_true",
                         help="reescribe las imágenes; sin esta bandera sólo las lista")
-    backfill(apply=parser.parse_args(argv).apply)
+    parser.add_argument("--property-id", type=int,
+                        help="limita el recorrido a una propiedad "
+                             "(deja fuera las fotos de proveedores)")
+    args = parser.parse_args(argv)
+
+    # La simulación corre siempre. Con --apply es la cuenta que se confirma
+    # antes de tocar storage: cuesta una lectura de más por imagen y es lo único
+    # que puede decir cuántas se van a reescribir antes de reescribirlas.
+    try:
+        summary = backfill(apply=False, property_id=args.property_id)
+    except properties_db.PropertyNotFound as exc:
+        print(exc, file=sys.stderr)
+        return 1
+
+    pending = sum(summary["fixed"].values())
+    if not args.apply:
+        if pending:
+            print("\nNada se escribió. Vuelve a correr con --apply para reescribirlas.")
+        return 0
+    if not pending:
+        return 0
+    if not _confirmed(pending):
+        print("Cancelado: no se escribió nada.")
+        return 0
+    backfill(apply=True, property_id=args.property_id)
     return 0
 
 
