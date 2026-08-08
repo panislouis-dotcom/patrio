@@ -1,6 +1,8 @@
+import asyncio
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from api.auth import get_current_user
+from api.lib import images
 from pydantic import BaseModel
 from api.process_db import (
     get_templates, get_template, create_template, update_template, delete_template,
@@ -255,6 +257,7 @@ async def upload_node_file(
 ):
     file_type = 'evidence' if instance_id is not None else 'reference'
     content = await file.read()
+    content = await asyncio.to_thread(images.normalize_orientation, content)
     return create_node_file(
         template_node_id=nid,
         instance_id=instance_id,
@@ -281,6 +284,7 @@ async def upload_instance_file_route(
     _: dict = Depends(get_current_user),
 ):
     content = await file.read()
+    content = await asyncio.to_thread(images.normalize_orientation, content)
     return create_instance_file(
         instance_id=iid,
         file_name=file.filename or "upload",
