@@ -1,6 +1,10 @@
 """CRUD and images on /api/properties. The lifecycle lives in
 test_property_lifecycle, the numbers in test_property_metrics."""
-from api import properties_db
+import io
+
+from PIL import Image
+
+from api import properties_db, storage
 from api.db import get_db
 
 from .conftest import _delete_property
@@ -178,6 +182,27 @@ def test_image_type_on_a_missing_image_is_404(client, test_property):
     r = client.patch(f"/api/properties/{test_property['id']}/images/999999999",
                      json={"image_type": "antes"})
     assert r.status_code == 404
+
+
+def test_upload_bakes_the_exif_rotation_into_the_stored_pixels(client, test_property):
+    """Lo que queda guardado ya está derecho. La foto de un teléfono llega con
+    los píxeles de lado y la rotación sólo en el tag EXIF; si se guarda así, el
+    primer redimensionado río abajo la pierde y ya nadie puede enderezarla."""
+    exif = Image.Exif()
+    exif[0x0112] = 6  # rotación de 90°: el alto y el ancho salen intercambiados
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 40), (200, 30, 30)).save(buf, format="JPEG", exif=exif)
+
+    pid = test_property["id"]
+    r = client.post(f"/api/properties/{pid}/images",
+                    files={"file": ("phone.jpg", io.BytesIO(buf.getvalue()), "image/jpeg")})
+    assert r.status_code == 201, r.text
+    try:
+        stored = Image.open(io.BytesIO(storage.stream(r.json()["filePath"])[0]))
+        assert stored.size == (40, 20)
+        assert stored.getexif().get(0x0112, 1) == 1
+    finally:
+        client.delete(f"/api/properties/{pid}/images/{r.json()['id']}")
 
 
 def test_images_come_back_on_the_property(client, test_property, test_property_image):
