@@ -26,22 +26,25 @@ def normalize_orientation(content: bytes) -> bytes:
         img = Image.open(io.BytesIO(content))
         if img.getexif().get(_ORIENTATION_TAG, 1) == 1:
             return content
-        # Un exif_transpose de un solo frame aplastaría los demás frames. Pasa
-        # con WEBP animado, que sí lleva orientación; ninguna cámara los produce.
+        # Un exif_transpose de un solo frame aplastaría los demás. Pasa con WEBP
+        # animado, que sí lleva orientación; ninguna cámara los produce. Excepción
+        # conocida: el MPO (HDR/retrato de algunos teléfonos) sí trae orientación
+        # real y se cuela sin rotar — colapsarlo a un frame es otro diseño.
         if getattr(img, "n_frames", 1) > 1:
             return content
         fmt = img.format  # exif_transpose devuelve una imagen sin `format`
         transposed = ImageOps.exif_transpose(img)
+        # exif_transpose ya borró el tag de `info["exif"]`; reescribirlo conserva
+        # el resto de los metadatos sin arriesgar una segunda rotación río abajo.
+        save_kwargs = {"exif": transposed.info["exif"]} if "exif" in transposed.info else {}
+        if fmt in _LOSSY_FORMATS:
+            save_kwargs["quality"] = _QUALITY
+        buf = io.BytesIO()
+        transposed.save(buf, format=fmt, **save_kwargs)
+        return buf.getvalue()
     except Exception:
-        # El content type lo declara el cliente: aquí llegan bytes que no son
-        # imagen. Esto normaliza orientación; validar la subida es de las rutas.
+        # Esta función no puede tumbar una subida. El content type lo declara el
+        # cliente, así que llegan bytes que no son imagen y formatos que Pillow
+        # lee pero no escribe: devolver el original degrada a "sin rotar", que es
+        # el estado de hoy. Validar la subida es de las rutas, no de aquí.
         return content
-
-    # exif_transpose ya borró el tag de `info["exif"]`; reescribirlo conserva el
-    # resto de los metadatos sin arriesgar una segunda rotación río abajo.
-    save_kwargs = {"exif": transposed.info["exif"]} if "exif" in transposed.info else {}
-    if fmt in _LOSSY_FORMATS:
-        save_kwargs["quality"] = _QUALITY
-    buf = io.BytesIO()
-    transposed.save(buf, format=fmt, **save_kwargs)
-    return buf.getvalue()

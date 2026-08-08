@@ -156,6 +156,22 @@ def test_animated_gif_is_returned_byte_for_byte():
     assert normalize_orientation(content) == content
 
 
+def test_save_failure_falls_back_to_the_original_bytes(monkeypatch):
+    """Pillow reads 16 formats it cannot write (PSD, PCD, FITS…), and content type
+    is client-declared, so a re-save can fail on an image that opened fine. This
+    helper must degrade to "unrotated" — today's state — never 500 an upload.
+    Mocked because those formats are unwritable by definition, so no synthetic
+    fixture can reach the path."""
+    content = _encode(_quadrants(), "JPEG", orientation=6, quality=95)
+
+    def boom(*args, **kwargs):
+        raise OSError("cannot write mode P as PCD")
+
+    monkeypatch.setattr(Image.Image, "save", boom)
+
+    assert normalize_orientation(content) == content
+
+
 def test_undecodable_bytes_are_returned_byte_for_byte():
     """Content type is client-declared, so junk reaches this helper. It normalizes
     orientation; deciding what is a valid upload belongs to the routes."""
