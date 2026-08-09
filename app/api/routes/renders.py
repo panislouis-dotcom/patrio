@@ -1,4 +1,5 @@
 """Endpoints de la biblioteca de prompts y de los renders de una propiedad."""
+import asyncio
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 from api import properties_db as properties
 from api import renders, renders_db, storage
 from api.auth import get_current_user
+from api.lib import images
 
 router = APIRouter()
 
@@ -146,6 +148,9 @@ async def create_render_from_plan(
     plan_bytes = await file.read()
     if not plan_bytes:
         raise HTTPException(status_code=422, detail="El plano llegó vacío")
+    # Antes de las dos lecturas: lo que se guarda y lo que ve el generador tienen
+    # que ser los mismos píxeles, o el render sale de un plano de lado.
+    plan_bytes = await asyncio.to_thread(images.normalize_orientation, plan_bytes)
 
     content_in = file.content_type or "image/png"
     plan_path = f"properties/{property_id}/plan-sources/{uuid4().hex}.png"

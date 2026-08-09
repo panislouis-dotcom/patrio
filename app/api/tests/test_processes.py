@@ -1,5 +1,10 @@
 """Integration tests for /api/process/templates and nodes routes."""
+import io
+
 import pytest
+from PIL import Image
+
+from api import storage
 from api.db import get_db
 
 
@@ -24,6 +29,28 @@ def test_process_node(client, test_process_template):
     yield node
     with get_db() as conn:
         conn.execute("DELETE FROM template_nodes WHERE id = %s", (node["id"],))
+
+
+@pytest.fixture
+def test_process_instance(client, test_process_template):
+    r = client.post("/api/process/instances", json={
+        "name": "[TEST] Instance", "startDate": "2026-01-01",
+        "templateId": test_process_template["id"],
+    })
+    assert r.status_code == 201
+    instance = r.json()
+    yield instance
+    with get_db() as conn:
+        conn.execute("DELETE FROM process_instances WHERE id = %s", (instance["id"],))
+
+
+def _rotated_jpeg() -> bytes:
+    """Lo que sale de un teléfono: los píxeles de lado y la rotación sólo en EXIF."""
+    exif = Image.Exif()
+    exif[0x0112] = 6  # rotación de 90°: el alto y el ancho salen intercambiados
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 40), (200, 30, 30)).save(buf, format="JPEG", exif=exif)
+    return buf.getvalue()
 
 
 def test_list_templates_empty(client):
@@ -86,6 +113,45 @@ def test_delete_node(client, test_process_node):
 def test_requires_auth(client, anonymous):
     r = client.get("/api/process/templates")
     assert r.status_code == 401
+
+
+def test_node_file_upload_bakes_the_exif_rotation(client, test_process_node):
+    """La evidencia de un paso suele ser la foto del trabajo hecho, tomada con el
+    teléfono: si se guarda con la rotación sólo en el tag, sale de lado."""
+    r = client.post(f"/api/process/nodes/{test_process_node['id']}/files",
+                    files={"file": ("phone.jpg", io.BytesIO(_rotated_jpeg()), "image/jpeg")})
+    assert r.status_code == 201, r.text
+    try:
+        stored = Image.open(io.BytesIO(storage.stream(r.json()["filePath"])[0]))
+        assert stored.size == (40, 20)
+        assert stored.getexif().get(0x0112, 1) == 1
+    finally:
+        client.delete(f"/api/process/files/{r.json()['id']}")
+
+
+def test_instance_file_upload_bakes_the_exif_rotation(client, test_process_instance):
+    r = client.post(f"/api/process/instances/{test_process_instance['id']}/files",
+                    files={"file": ("phone.jpg", io.BytesIO(_rotated_jpeg()), "image/jpeg")})
+    assert r.status_code == 201, r.text
+    try:
+        stored = Image.open(io.BytesIO(storage.stream(r.json()["filePath"])[0]))
+        assert stored.size == (40, 20)
+        assert stored.getexif().get(0x0112, 1) == 1
+    finally:
+        client.delete(f"/api/process/instance-files/{r.json()['id']}")
+
+
+def test_non_image_evidence_is_stored_byte_for_byte(client, test_process_node):
+    """Estas rutas aceptan cualquier archivo — una factura pagada, un PDF. Pasar
+    por el normalizador no puede tocarles un byte."""
+    content = b"%PDF-1.4\nfake invoice\n%%EOF\n"
+    r = client.post(f"/api/process/nodes/{test_process_node['id']}/files",
+                    files={"file": ("factura.pdf", io.BytesIO(content), "application/pdf")})
+    assert r.status_code == 201, r.text
+    try:
+        assert storage.stream(r.json()["filePath"])[0] == content
+    finally:
+        client.delete(f"/api/process/files/{r.json()['id']}")
 
 
 def test_cycle_detection(client):

@@ -26,6 +26,7 @@ from bs4 import BeautifulSoup
 from PIL import Image
 
 from api import geo
+from api.lib import images
 from scraper.base import parse_sqm
 from scraper.pw_base import parse_price
 from scraper.zones import cve_to_name, detect_cve, resolve_cve_from_nominatim
@@ -188,6 +189,9 @@ _MAX_DIMENSION  = 1568        # Claude's recommended max side length
 
 def _compress_for_claude(image_bytes: bytes) -> tuple[bytes, str]:
     """Resize and JPEG-compress image to fit Anthropic's 5 MB base64 limit."""
+    # Estos bytes no se guardan en ningún lado, así que nadie más los va a
+    # enderezar: si llega de lado, Claude lo lee de lado.
+    image_bytes = images.normalize_orientation(image_bytes)
     img = Image.open(io.BytesIO(image_bytes))
     img = img.convert("RGB")
 

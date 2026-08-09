@@ -386,6 +386,26 @@ def get_node_files(template_node_id: int, instance_id: int | None = None) -> lis
     return [_row_to_dict(r) for r in rows]
 
 
+def get_all_node_files(property_id: int | None = None) -> list[dict]:
+    """Todos los archivos de nodo de la base, para recorridos administrativos.
+
+    Acotado a una propiedad salen sólo los que son evidencia de una instancia
+    suya: los de referencia no llevan `instance_id` porque cuelgan del nodo de
+    la plantilla, que es de todas las propiedades que la corren y de ninguna en
+    particular. El JOIN los deja fuera por sí solo.
+    """
+    query = "SELECT nf.* FROM node_files nf"
+    params: list = []
+    if property_id is not None:
+        query += (" JOIN process_instances pi ON pi.id = nf.instance_id"
+                  " WHERE pi.property_id = %s")
+        params.append(property_id)
+    query += " ORDER BY nf.id"
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 def delete_node_file(fid: int) -> None:
     record = get_node_file(fid)
     if record:
@@ -402,6 +422,24 @@ def get_instance_files(instance_id: int) -> list:
             "SELECT * FROM instance_files WHERE instance_id = %s ORDER BY uploaded_at",
             (instance_id,),
         ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_all_instance_files(property_id: int | None = None) -> list[dict]:
+    """Todos los archivos de instancia de la base, para recorridos administrativos.
+
+    Acotado a una propiedad salen los de sus instancias; una tarea suelta
+    —periódica o de una vez— no cuelga de ninguna propiedad y queda fuera.
+    """
+    query = "SELECT f.* FROM instance_files f"
+    params: list = []
+    if property_id is not None:
+        query += (" JOIN process_instances pi ON pi.id = f.instance_id"
+                  " WHERE pi.property_id = %s")
+        params.append(property_id)
+    query += " ORDER BY f.id"
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
     return [_row_to_dict(r) for r in rows]
 
 

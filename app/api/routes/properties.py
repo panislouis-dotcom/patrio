@@ -2,6 +2,7 @@
 to be a convert button: a status only moves through /transition (gated, and
 recorded), and a field is only emptied through /clear-fields (allowlisted).
 PATCH can do neither, which is why nothing it sends can be a null."""
+import asyncio
 from pathlib import Path
 from typing import Annotated, Literal, Optional, Union
 from uuid import uuid4
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 from api import properties_db as properties
 from api import storage
 from api.auth import get_current_user
+from api.lib import images
 
 router = APIRouter()
 
@@ -265,6 +267,7 @@ async def upload_property_image(
     content = await file.read(_MAX_IMAGE_SIZE + 1)
     if len(content) > _MAX_IMAGE_SIZE:
         raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    content = await asyncio.to_thread(images.normalize_orientation, content)
     ext = Path(file.filename).suffix if file.filename else ""
     relative_path = f"properties/{property_id}/{uuid4().hex}{ext}"
     try:
@@ -328,6 +331,7 @@ async def upload_floorplan_image(property_id: int, file: UploadFile = File(...),
     content = await file.read(_MAX_IMAGE_SIZE + 1)
     if len(content) > _MAX_IMAGE_SIZE:
         raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    content = await asyncio.to_thread(images.normalize_orientation, content)
     key = f"properties/{property_id}/floorplan/{uuid4().hex}{_FLOORPLAN_EXT[file.content_type]}"
     storage.upload(key, content, file.content_type)
     return {"imageKey": key}

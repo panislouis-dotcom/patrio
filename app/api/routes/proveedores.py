@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -18,6 +19,7 @@ from api.db_proveedores import (
     get_cotizaciones, create_cotizacion, update_cotizacion, select_cotizacion, delete_cotizacion,
 )
 from api import storage
+from api.lib import images
 
 router = APIRouter()
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
@@ -188,6 +190,7 @@ async def upload_photo(
     content = await file.read(_MAX_IMAGE_SIZE + 1)
     if len(content) > _MAX_IMAGE_SIZE:
         raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    content = await asyncio.to_thread(images.normalize_orientation, content)
     ext = Path(file.filename).suffix if file.filename else ""
     if ext.lower() not in _ALLOWED_EXT:
         ext = ""  # Don't trust client-supplied extension if not in allowed set
