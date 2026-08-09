@@ -30,6 +30,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY app/api/ ./api/
 COPY app/scraper/ ./scraper/
 
+# One-off admin scripts (e.g. scripts/backfill_image_orientation.py), meant to
+# be run with `kubectl exec` against a live pod. Locally scripts/ and app/ are
+# siblings under the repo root and each script inserts `<repo_root>/app` onto
+# sys.path itself; here that root collapses (api/ sits straight under /app), so
+# PYTHONPATH takes over that job instead — uvicorn doesn't need it, it resolves
+# api.main:app off the cwd on its own.
+COPY scripts/ ./scripts/
+ENV PYTHONPATH=/app
+
 # DB schema + migrations (used by dbmate)
 COPY db/ /app/db/
 
