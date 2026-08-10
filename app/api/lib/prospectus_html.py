@@ -500,10 +500,11 @@ def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
 
 
 def _hold_tail(p: dict) -> str:
-    """El plazo real: meses desde la adquisición, congelados en la venta por el
-    API. Se nombra "plazo real" y no "meses en cartera" ni "meses de obra" porque
-    es el mismo `holdMonthsActual` que la ficha y la tabla ya llaman así — y
-    porque se cuenta desde que la propiedad es tuya, se haga obra o no."""
+    """El plazo real: meses desde la adquisición, congelados por el API en la
+    primera renta —o en la venta si nunca rentó—, es decir en el momento en que
+    la propiedad se volvió productiva. Se nombra "plazo real" y no "meses en
+    cartera" ni "meses de obra" porque es el mismo `holdMonthsActual` que la
+    ficha y la tabla ya llaman así."""
     hold = int(_num(p.get("holdMonthsActual")))
     return f"Plazo real {hold} meses" if hold else ""
 

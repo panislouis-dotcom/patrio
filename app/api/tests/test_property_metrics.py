@@ -232,6 +232,27 @@ def test_en_renta_keeps_projecting_and_marking(client, desarrollo_property):
     assert Decimal(str(p["capRateActual"])) == Decimal("0.069")  # 240,000 / 3,480,000
 
 
+def test_the_hold_freezes_at_the_first_rent(client, desarrollo_property):
+    """acquisition 2025-01 → first rent 2026-03 is 14 months, and stays 14 for a
+    property that is still `en_renta`: the clock measures how long it took to
+    become productive, not how long ago that was. Sin venta de por medio — es
+    justo el caso en que antes seguía corriendo a hoy y subía solo cada mes."""
+    p = _advance(client, desarrollo_property["id"], to="en_renta",
+                 firstRentDate="2026-03", rentMonthlyActual=20000, currentValuation=4_200_000)
+    assert p["holdMonthsActual"] == 14
+
+
+def test_the_first_rent_beats_the_sale_when_both_are_there(client, desarrollo_property):
+    """Prioridad explícita, porque es la parte más fácil de invertir por error:
+    rentada en 2026-03 (14 meses) y vendida en 2026-07 (18), el plazo real es 14.
+    La venta solo contesta cuando no hubo renta — el flip que nunca rentó."""
+    _advance(client, desarrollo_property["id"], to="en_renta",
+             firstRentDate="2026-03", rentMonthlyActual=20000)
+    p = _advance(client, desarrollo_property["id"], to="vendida",
+                 saleDate="2026-07", salePrice=5_000_000)
+    assert p["holdMonthsActual"] == 14
+
+
 # ── Exit ─────────────────────────────────────────────────────────────────────
 
 def test_vendida_reports_its_exit_and_stops_marking(client, desarrollo_property):
@@ -281,7 +302,9 @@ def test_the_breakdown_of_a_sold_property_adds_up_to_its_own_total(client, desar
 
 def test_the_exit_hold_stops_at_the_sale(client, desarrollo_property):
     """acquisition 2025-01 → sale 2026-07 is 18 months, and stays 18 months
-    however long ago that was: a closed deal's clock does not keep running."""
+    however long ago that was: a closed deal's clock does not keep running. La
+    venta contesta porque este flip nunca rentó; si hubiera rentado ganaría la
+    renta (arriba)."""
     p = _advance(client, desarrollo_property["id"], to="vendida",
                  saleDate="2026-07", salePrice=5_000_000)
     assert p["holdMonthsActual"] == 18

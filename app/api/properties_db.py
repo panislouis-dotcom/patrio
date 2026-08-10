@@ -415,12 +415,18 @@ def _per_sqm(amount, sqm_land) -> Decimal | None:
 
 
 def hold_months_actual(row: dict) -> int | None:
-    """Months held: acquisition → sale for a closed deal, acquisition → today
-    while it is still owned. None before the purchase — nothing is being held."""
+    """Months held: acquisition → first rent (when the property became
+    productive), or → sale for a flip that never rented, or → today while it is
+    still in development. None before the purchase — nothing is being held.
+
+    Freezes at whichever milestone came first, not the later one: a property
+    that rented and then sold reports how long it took to become productive,
+    not how long it took to exit."""
     acquisition = row.get("acquisition_date")
     if acquisition is None:
         return None
-    return months_between(acquisition, row.get("sale_date") or date.today())
+    end = row.get("first_rent_date") or row.get("sale_date") or date.today()
+    return months_between(acquisition, end)
 
 
 def mark_months(row: dict) -> int | None:

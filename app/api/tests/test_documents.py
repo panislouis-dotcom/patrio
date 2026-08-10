@@ -344,9 +344,13 @@ def test_the_card_subtitle_names_the_stretch_it_measures(client, rented_property
     """`holdMonthsActual` se llama plazo real en la ficha y en la tabla; el
     documento no puede llamarlo «meses en cartera», que además sugiere que se
     cuentan desde otra cosa. (La tarjeta de una vendida usa el mes de la venta
-    como coleta, y su plazo real va como métrica.)"""
+    como coleta, y su plazo real va como métrica.)
+
+    El número va literal y no leído del propio dict: adquirida en 2025-01 y
+    rentada en 2026-03 son 14 meses, y así se queda. Contra la propia respuesta
+    de la API la aserción pasaba dijera lo que dijera."""
     html = build_prospectus_html([], [rented_property], [], [])
-    assert f"Plazo real {rented_property['holdMonthsActual']} meses" in html
+    assert "Plazo real 14 meses" in html
     assert "en cartera" not in html
 
 
