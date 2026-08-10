@@ -285,7 +285,9 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
     await expect(page.getByText('GANANCIA %', { exact: true })).toHaveCount(0)
     await expect(detailRow(page, 'PRECIO DE VENTA')).toContainText('$7,000,000')
-    await expect(detailRow(page, 'PLAZO REAL')).toContainText('24 meses')
+    // PLAZO REAL congela en la primera renta (jun 2025), no en la venta (jun
+    // 2026): doce meses, no los veinticuatro que ROI REAL ANUAL sí anualiza.
+    await expect(detailRow(page, 'PLAZO REAL')).toContainText('12 meses')
     await expect(page.getByText('ROI REAL ANUAL')).toHaveCount(1)
     await expect(page.getByText('GANANCIA REALIZADA')).toHaveCount(1)
     await expect(page.getByText('PLAZO REAL')).toHaveCount(1)

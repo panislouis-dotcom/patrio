@@ -15,9 +15,10 @@ import {
  * porque ya no hay otra manera de llegar a ella.
  *
  * Every derived figure asserted below was confirmed against the API for exactly
- * these inputs. PLAZO REAL sí se mueve con el calendario mientras la propiedad
- * se tenga, así que solo se afirma su presencia; ROI ANUAL ya no: cierra su
- * reloj en la fecha de la valuación que lo alimenta.
+ * these inputs. PLAZO REAL se congela en la primera renta (o en la venta, si
+ * nunca rentó) — no en hoy — así que aquí solo se afirma su presencia y no un
+ * valor puntual, para no acoplar este archivo a las fechas de otro; ROI ANUAL
+ * tampoco: cierra su reloj en la fecha de la valuación que lo alimenta.
  */
 
 /**
