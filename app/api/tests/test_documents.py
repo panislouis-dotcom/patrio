@@ -235,6 +235,17 @@ def test_a_property_under_construction_shows_only_its_projection(client, desarro
     assert "Valuación" not in html
 
 
+def test_a_property_under_construction_shows_the_projected_hold_not_the_real_one(
+        client, desarrollo_property):
+    """Sin primera renta ni venta, holdMonthsActual cae a adquisición → hoy, que
+    no dice nada del proyecto — solo cuánto hace que se compró. La coleta usa el
+    plazo proyectado del underwriting en su lugar, como las demás cifras de esta
+    tarjeta."""
+    html = build_prospectus_html([], [], [get_property(desarrollo_property["id"])], [])
+    assert "Plazo proyectado 18 meses" in html
+    assert "Plazo real" not in html
+
+
 def test_a_sold_property_reports_its_realized_result(client, sold_property):
     """Un activo vendido no se presume con la última marca: se presume con lo
     que se vendió, con la ganancia que dejó y con el plazo que tomó."""
