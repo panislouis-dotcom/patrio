@@ -1,10 +1,17 @@
+from datetime import date
 from decimal import Decimal
+
+from api.finance.analysis import months_between
 from api.finance.waterfall import compute_waterfall
+from api.properties_db import hold_months_actual
 
 
 def _base():
+    # Sin `holdMonthsActual`: el reparto no lo lee, y ponerlo sin una fecha de
+    # compra al lado describía una propiedad que no puede existir — el plazo
+    # real es None mientras no haya adquisición.
     prop = {"totalInvestment": 5_000_000, "currentValuation": 7_000_000,
-            "holdMonthsActual": 12, "firstRentDate": "2026-06"}
+            "firstRentDate": "2026-06"}
     config = {"isrRate": 0.30, "investorRateAnnual": 0.12, "finderFeePct": 0.0,
               "directorPct": 0.0, "responsablePct": 0.0, "liderPct": 0.0,
               "maestroPct": 0.0, "ayudantePct": 0.0}
@@ -32,7 +39,9 @@ def test_waterfall_runs_on_decimal_inputs():
         {"status": "fondeado", "investorId": 1, "investorName": "A",
          "fundedAmount": Decimal("1000000.00"), "interestRateAnnual": 0.12},
     ])
-    assert w["investorCuota"] == Decimal("120000.00")  # 1M*0.12*12/12
+    # 1M*0.12*12/12, sobre los 12 meses del supuesto de la casa: el fixture no
+    # trae fecha de compra, así que no hay plazo medido que lo desplace.
+    assert w["investorCuota"] == Decimal("120000.00")
 
 
 def test_a_real_sale_beats_the_last_valuation():
@@ -126,15 +135,18 @@ def test_an_incomplete_split_pays_nobody_a_number():
 
 
 def test_the_months_say_where_they_came_from():
+    """La escalera completa, de la peor evidencia a la mejor."""
     prop, config = _base()
-    assert compute_waterfall(prop, config, [])["monthsSource"] == "real"
-    prop.pop("holdMonthsActual")
-    prop["holdMonths"] = 18
-    w = compute_waterfall(prop, config, [])
-    assert (w["months"], w["monthsSource"]) == (18, "proyectado")
-    prop.pop("holdMonths")
+    # Sin fecha de compra no hay capital desplegado que medir.
     w = compute_waterfall(prop, config, [])
     assert (w["months"], w["monthsSource"]) == (12, "supuesto")
+    prop["holdMonths"] = 30
+    w = compute_waterfall(prop, config, [])
+    assert (w["months"], w["monthsSource"]) == (30, "proyectado")
+    # Comprada y vendida: el plazo se mide en vez de suponerse.
+    prop["acquisitionDate"], prop["saleDate"] = "2025-01", "2026-07"
+    w = compute_waterfall(prop, config, [])
+    assert (w["months"], w["monthsSource"]) == (18, "real")
     config["investorMonths"] = 24
     w = compute_waterfall(prop, config, [])
     assert (w["months"], w["monthsSource"]) == (24, "capturado")
@@ -160,6 +172,36 @@ def test_the_investor_fee_runs_to_the_sale_not_to_the_first_rent():
     assert (w["months"], w["monthsSource"]) == (18, "real")
     assert w["investorCuota"] == Decimal("180000.00")
     assert w["investorBreakdown"][0]["totalReturn"] == Decimal("1180000.00")
+
+
+def test_the_fee_of_a_property_still_renting_runs_to_today():
+    """El caso que sí está vivo hoy: comprada, rentando, todavía sin vender. El
+    capital lleva adentro desde la compra y sigue adentro — el plazo corre a hoy.
+
+    El plazo real congela a los 6 meses (compra 2023-01, primera renta 2023-07)
+    y aquí se pasa a propósito, para probar que el reparto NO lo lee: a
+    1,000,000 al 12% son 10,000 de cuota por mes, así que cobrarlo habría pagado
+    60,000 en vez de los años que el dinero de verdad lleva trabajando.
+
+    El plazo esperado se calcula contra `date.today()` en vez de escribirse a
+    mano: es un número que crece cada mes, y una literal quedaría vencida el mes
+    que entra."""
+    acquisition, first_rent = date(2023, 1, 1), date(2023, 7, 1)
+    frozen = hold_months_actual({"acquisition_date": acquisition,
+                                 "first_rent_date": first_rent})
+    assert frozen == 6, "el plazo real congela en la primera renta"
+
+    prop, config = _base()
+    prop.update({"acquisitionDate": acquisition, "firstRentDate": first_rent,
+                 "holdMonthsActual": frozen})
+    w = compute_waterfall(prop, config, team=[], property_investors=[
+        {"status": "fondeado", "investorId": 1, "investorName": "A",
+         "fundedAmount": Decimal("1000000.00"), "interestRateAnnual": 0.12},
+    ])
+    deployed = months_between(acquisition, date.today())
+    assert (w["months"], w["monthsSource"]) == (deployed, "real")
+    assert w["months"] > frozen
+    assert w["investorCuota"] == Decimal(deployed) * Decimal("10000.00")
 
 
 # ── El bono por entregar a tiempo ────────────────────────────────────────────

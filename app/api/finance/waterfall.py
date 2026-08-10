@@ -6,7 +6,7 @@ inventado. Cada insumo llega acompañado de su procedencia (`*Source`) y, cuando
 no existe, el renglón vale `None` y el insumo se nombra en `missingInputs` —
 en lugar de un cero que se lee como un hecho.
 """
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from .analysis import months_between, parse_date
@@ -147,13 +147,18 @@ def _resolve_exit_price(prop: dict, config: dict) -> tuple[Decimal | None, str |
     return None, None
 
 
-def _months_to_sale(prop: dict) -> int | None:
-    """De la adquisición a la venta. None mientras no haya vendido."""
+def _months_deployed(prop: dict) -> int | None:
+    """Los meses que el capital lleva trabajando: de la adquisición a la venta,
+    o a hoy si todavía no se vende. Sin compra no hay capital desplegado.
+
+    No es `holdMonthsActual` y no puede serlo: ese congela en la primera renta
+    porque mide en cuánto la propiedad se volvió productiva, que es una pregunta
+    de pantalla. El dinero del inversionista no se detiene ahí — sigue adentro
+    mientras la propiedad esté rentada y hasta que se venda."""
     acquisition = parse_date(prop.get("acquisitionDate"))
-    sale = parse_date(prop.get("saleDate"))
-    if acquisition is None or sale is None:
+    if acquisition is None:
         return None
-    return months_between(acquisition, sale)
+    return months_between(acquisition, parse_date(prop.get("saleDate")) or date.today())
 
 
 def _resolve_months(prop: dict, config: dict) -> tuple[int, str]:
@@ -161,20 +166,17 @@ def _resolve_months(prop: dict, config: dict) -> tuple[int, str]:
     real si la propiedad ya lo tiene, el proyectado si no, y solo entonces el
     supuesto de la casa.
 
-    «El real» de una propiedad vendida se cuenta hasta la venta, y por eso no
-    puede ser `holdMonthsActual`: ese congela en la primera renta —mide en
-    cuánto se volvió productiva— mientras que el dinero del inversionista siguió
-    trabajando hasta que se vendió. Cobrar la cuota sobre el plazo congelado le
-    paga de menos por los meses que estuvo rentada, y el faltante se le queda al
-    operador sin que ningún renglón lo diga. Mientras no haya venta sí es la
-    mejor medida de lo que la propiedad lleva puesto."""
+    «El real» aquí es el plazo del CAPITAL, y por eso se calcula en vez de leer
+    `holdMonthsActual`. Cuando ambos medían lo mismo daba igual cuál se leyera;
+    desde que el plazo real congela en la primera renta, leerlo le cobraría al
+    inversionista una fracción de los meses que su dinero estuvo adentro —
+    de la primera renta en adelante saldrían gratis— y el faltante se le queda
+    al operador sin que ningún renglón del estado lo diga."""
     if config.get("investorMonths"):
         return int(config["investorMonths"]), "capturado"
-    to_sale = _months_to_sale(prop)
-    if to_sale:
-        return to_sale, "real"
-    if prop.get("holdMonthsActual"):
-        return int(prop["holdMonthsActual"]), "real"
+    deployed = _months_deployed(prop)
+    if deployed:
+        return deployed, "real"
     if prop.get("holdMonths"):
         return int(prop["holdMonths"]), "proyectado"
     return DEFAULT_MONTHS, "supuesto"
