@@ -140,6 +140,28 @@ def test_the_months_say_where_they_came_from():
     assert (w["months"], w["monthsSource"]) == (24, "capturado")
 
 
+def test_the_investor_fee_runs_to_the_sale_not_to_the_first_rent():
+    """El plazo real congela en la primera renta; el dinero del inversionista no.
+    Adquirida 2025-01, rentada 2026-03 y vendida 2026-07: la cuota corre sobre
+    los 18 meses hasta la venta, no sobre los 14 que dice `holdMonthsActual`.
+
+    Con 1,000,000 fondeado al 12% son 180,000 a 18 meses y 140,000 a 14. Cobrar
+    el plazo congelado le paga 40,000 de menos al inversionista y esos 40,000 se
+    le quedan al operador —entran a `operatorGross`— sin que ningún renglón del
+    estado diga que salieron de ahí."""
+    prop, config = _base()
+    prop.update({"acquisitionDate": "2025-01", "firstRentDate": "2026-03",
+                 "saleDate": "2026-07", "salePrice": Decimal("8000000.00"),
+                 "holdMonthsActual": 14})
+    w = compute_waterfall(prop, config, team=[], property_investors=[
+        {"status": "fondeado", "investorId": 1, "investorName": "A",
+         "fundedAmount": Decimal("1000000.00"), "interestRateAnnual": 0.12},
+    ])
+    assert (w["months"], w["monthsSource"]) == (18, "real")
+    assert w["investorCuota"] == Decimal("180000.00")
+    assert w["investorBreakdown"][0]["totalReturn"] == Decimal("1180000.00")
+
+
 # ── El bono por entregar a tiempo ────────────────────────────────────────────
 
 def test_the_bonus_can_actually_switch_on():

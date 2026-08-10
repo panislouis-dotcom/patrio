@@ -9,7 +9,7 @@ en lugar de un cero que se lee como un hecho.
 from datetime import timedelta
 from decimal import Decimal
 
-from .analysis import parse_date
+from .analysis import months_between, parse_date
 from .quantize import to_decimal
 from .investor import cuota
 
@@ -147,12 +147,32 @@ def _resolve_exit_price(prop: dict, config: dict) -> tuple[Decimal | None, str |
     return None, None
 
 
+def _months_to_sale(prop: dict) -> int | None:
+    """De la adquisición a la venta. None mientras no haya vendido."""
+    acquisition = parse_date(prop.get("acquisitionDate"))
+    sale = parse_date(prop.get("saleDate"))
+    if acquisition is None or sale is None:
+        return None
+    return months_between(acquisition, sale)
+
+
 def _resolve_months(prop: dict, config: dict) -> tuple[int, str]:
     """El plazo sobre el que corre la cuota del inversionista: el capturado, el
     real si la propiedad ya lo tiene, el proyectado si no, y solo entonces el
-    supuesto de la casa."""
+    supuesto de la casa.
+
+    «El real» de una propiedad vendida se cuenta hasta la venta, y por eso no
+    puede ser `holdMonthsActual`: ese congela en la primera renta —mide en
+    cuánto se volvió productiva— mientras que el dinero del inversionista siguió
+    trabajando hasta que se vendió. Cobrar la cuota sobre el plazo congelado le
+    paga de menos por los meses que estuvo rentada, y el faltante se le queda al
+    operador sin que ningún renglón lo diga. Mientras no haya venta sí es la
+    mejor medida de lo que la propiedad lleva puesto."""
     if config.get("investorMonths"):
         return int(config["investorMonths"]), "capturado"
+    to_sale = _months_to_sale(prop)
+    if to_sale:
+        return to_sale, "real"
     if prop.get("holdMonthsActual"):
         return int(prop["holdMonthsActual"]), "real"
     if prop.get("holdMonths"):
