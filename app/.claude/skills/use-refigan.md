@@ -241,15 +241,23 @@ is a wish, not a measurement. `archivada` keeps it: archiving sells nothing, so
 an archived property is still owned and its last mark is still its last mark.
 
 **The exit — `vendida` only.** `realizedGain` / `realizedGainPct` (**Ganancia
-realizada** / **Ganancia realizada %**) and `realizedRoi` (**ROI real anual**), off `salePrice` with the
-hold stopped at `saleDate`. A sale price on a property that has not sold is not a
-realized anything.
+realizada** / **Ganancia realizada %**) and `realizedRoi` (**ROI real anual**), off `salePrice` with its
+own clock stopped at `saleDate`. A sale price on a property that has not sold is
+not a realized anything.
 
-Two clocks, and they are different on purpose: `holdMonthsActual` (**Plazo real**)
-runs `acquisitionDate` → today and freezes at the sale, while the mark annualizes
-over `acquisitionDate` → `valuationDate`. An annualized figure whose numerator is
-months older than its denominator falls every month without a single input
-changing — it reports the calendar, not the asset.
+Three clocks, and they are different on purpose. Each annualized return closes on
+the date of its own numerator: the exit runs `acquisitionDate` → `saleDate`, the
+mark runs `acquisitionDate` → `valuationDate`. An annualized figure whose
+numerator is months older than its denominator falls every month without a single
+input changing — it reports the calendar, not the asset.
+
+The third is `holdMonthsActual` (**Plazo real**), and it is not a divisor at all:
+it runs `acquisitionDate` → the **first rent**, freezing at the moment the
+property became productive (→ `saleDate` for a flip that never rented, → today
+only while still in development). Never annualize anything over it. A property
+that rented and later sold has a Plazo real shorter than the stretch its ROI real
+anual divides by, on purpose — the two are answering different questions and are
+not meant to reconcile against each other.
 
 `capRate`/`rentAnnual` answer for the **estimated** rent and
 `capRateActual`/`rentAnnualActual` for the **collected** one: same formula, two
