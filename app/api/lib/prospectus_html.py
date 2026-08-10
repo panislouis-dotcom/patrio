@@ -500,12 +500,24 @@ def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
 
 
 def _hold_tail(p: dict) -> str:
-    """El plazo real: meses desde la adquisición, congelados en la venta por el
-    API. Se nombra "plazo real" y no "meses en cartera" ni "meses de obra" porque
-    es el mismo `holdMonthsActual` que la ficha y la tabla ya llaman así — y
-    porque se cuenta desde que la propiedad es tuya, se haga obra o no."""
+    """El plazo real: meses desde la adquisición, congelados por el API en la
+    primera renta —o en la venta si nunca rentó—, es decir en el momento en que
+    la propiedad se volvió productiva. Se nombra "plazo real" y no "meses en
+    cartera" ni "meses de obra" porque es el mismo `holdMonthsActual` que la
+    ficha y la tabla ya llaman así."""
     hold = int(_num(p.get("holdMonthsActual")))
     return f"Plazo real {hold} meses" if hold else ""
+
+
+def _projected_hold_tail(p: dict) -> str:
+    """En desarrollo nada es real todavía — ni siquiera el plazo: sin primera
+    renta ni venta, `holdMonthsActual` no tiene hito del cual congelar y cae a
+    adquisición → hoy, que no mide nada del proyecto, solo cuánto hace que se
+    compró. Esta coleta usa `holdMonths`, el supuesto de underwriting en
+    vigor — la misma cifra que ya alimenta `projectedRoi` — etiquetada como
+    lo que es, igual que las demás métricas de esta tarjeta."""
+    hold = int(_num(p.get("holdMonths")))
+    return f"Plazo proyectado {hold} meses" if hold else ""
 
 
 def _card(p: dict, kicker: str, tail: str, metrics: str) -> str:
@@ -610,7 +622,7 @@ def _development_card(p: dict, kicker: str) -> str:
         _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Ganancia proyectada %"),
         _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy. s/ inversión"),
     ])
-    return _card(p, kicker, _hold_tail(p), metrics)
+    return _card(p, kicker, _projected_hold_tail(p), metrics)
 
 
 def _floorplan_svg(geometry: dict) -> str:

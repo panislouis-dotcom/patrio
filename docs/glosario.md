@@ -352,8 +352,9 @@ sobre los meses correspondientes). Sin excepción, en ninguna superficie.
 
 Cada ROI cierra su reloj el día de su propio numerador. Un rendimiento
 anualizado cuyo numerador es meses más viejo que su denominador baja solo cada
-mes sin que cambie ni un dato: reporta el calendario, no el activo. Por eso el
-ROI anual **no** divide entre el plazo real.
+mes sin que cambie ni un dato: reporta el calendario, no el activo. Por eso
+**ningún** ROI divide entre el plazo real — ese congela en la primera renta y no
+es el reloj de ninguna salida.
 
 La palabra «anual» es redundante si ROI ya significa anualizado, y se conserva
 igual: previene una confusión que ya ocurrió, y eso vale su espacio.
@@ -397,7 +398,7 @@ analizador, que sí modela NOI.
 | Nombre canónico | Campo | Qué es | Qué NO es |
 |---|---|---|---|
 | Plazo proyectado | `holdMonths` | Supuesto: meses de compra a salida. | No es un plazo medido. |
-| Plazo real | `holdMonthsActual` | Meses de la adquisición a hoy; congelado en la fecha de venta. | No son «meses en cartera» ni «meses de obra» — se cuentan desde la adquisición, se haga obra o no. |
+| Plazo real | `holdMonthsActual` | Meses de la adquisición a la **primera renta**: cuánto tardó la propiedad en volverse productiva. Cae a la fecha de venta si nunca rentó, y solo sigue corriendo a hoy mientras sigue en desarrollo. | No son «meses en cartera» ni «meses de obra». Tampoco es el divisor de ningún ROI: cada uno corre a la fecha de su propio numerador. |
 
 ---
 

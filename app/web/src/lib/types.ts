@@ -214,7 +214,9 @@ export interface Property {
   // No usa holdMonthsActual: un numerador de hace meses sobre un reloj que corre
   // hasta hoy baja solo cada mes sin que cambie ningún dato.
   roi: number | null
-  holdMonthsActual: number | null   // el plazo real, corriendo; congelado al vender
+  // El plazo real: adquisición → primera renta (o → venta si nunca rentó).
+  // Congela ahí; solo sigue corriendo a hoy mientras está en desarrollo.
+  holdMonthsActual: number | null
 
   // --- Resultado final (solo vendida) ---
   realizedGain: number | null

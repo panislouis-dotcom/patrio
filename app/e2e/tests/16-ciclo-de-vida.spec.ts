@@ -20,8 +20,9 @@ import {
  * venta que reportar. Y cada paso exige su propia evidencia antes de permitirse.
  *
  * The figures were confirmed against the API for exactly these inputs. PLAZO
- * REAL se mueve con el calendario mientras la propiedad se tenga, así que solo
- * se afirma después de que la venta lo congela. ROI ANUAL ya no se mueve: cierra
+ * REAL se congela en la primera renta, no en la venta ni en hoy — este archivo
+ * solo lo afirma una vez vendida, pero el valor (doce meses) ya viene fijo
+ * desde que rentó, no de cuándo se vendió. ROI ANUAL tampoco se mueve: cierra
  * su reloj en la fecha de la valuación que lo alimenta.
  */
 
@@ -285,7 +286,9 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
     await expect(page.getByText('GANANCIA %', { exact: true })).toHaveCount(0)
     await expect(detailRow(page, 'PRECIO DE VENTA')).toContainText('$7,000,000')
-    await expect(detailRow(page, 'PLAZO REAL')).toContainText('24 meses')
+    // PLAZO REAL congela en la primera renta (jun 2025), no en la venta (jun
+    // 2026): doce meses, no los veinticuatro que ROI REAL ANUAL sí anualiza.
+    await expect(detailRow(page, 'PLAZO REAL')).toContainText('12 meses')
     await expect(page.getByText('ROI REAL ANUAL')).toHaveCount(1)
     await expect(page.getByText('GANANCIA REALIZADA')).toHaveCount(1)
     await expect(page.getByText('PLAZO REAL')).toHaveCount(1)
@@ -311,7 +314,8 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(sold).toContainText('$7.0M')
     await expect(sold).toContainText('$3.0M')
     await expect(sold).toContainText('32.3%')
-    await expect(sold).toContainText('24m')
+    // Congelado en la primera renta (jun 2025), no en la venta (jun 2026)
+    await expect(sold).toContainText('12m')
   })
 })
 
