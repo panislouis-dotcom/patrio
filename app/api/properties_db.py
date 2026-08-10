@@ -19,8 +19,9 @@ from the data instead of from a table of statuses.
     is not a measurement, it is a wish. Archiving does not sell anything, so an
     archived property is still owned and its last mark is still its last mark.
   · The exit  — realizedGain / realizedRoi, only in vendida, computed off
-    sale_price with the hold stopped at sale_date. A sale price on a property
-    that has not sold is not a realized anything.
+    sale_price with its own clock stopped at sale_date (`exit_months`, not
+    `holdMonthsActual`, which freezes at the first rent). A sale price on a
+    property that has not sold is not a realized anything.
 
 Two rules keep the contract honest:
   · Raw columns are always returned as stored. Only *derived* figures are gated
@@ -421,7 +422,7 @@ def hold_months_actual(row: dict) -> int | None:
 
     Freezes at whichever milestone came first, not the later one: a property
     that rented and then sold reports how long it took to become productive,
-    not how long it took to exit."""
+    not how long it took to exit — ese plazo lo cuenta `exit_months`."""
     acquisition = row.get("acquisition_date")
     if acquisition is None:
         return None
@@ -446,6 +447,24 @@ def mark_months(row: dict) -> int | None:
     if acquisition is None:
         return None
     return months_between(acquisition, row.get("valuation_date") or date.today())
+
+
+def exit_months(row: dict) -> int | None:
+    """Los meses que el ROI REALIZADO anualiza: de la compra a la FECHA DE VENTA.
+
+    No es `hold_months_actual`: ese congela en la primera renta, y una propiedad
+    que rentó dos años antes de venderse anualizaría su salida sobre el tramo en
+    que todavía no vendía nada — el resultado sale inflado por el pedazo del
+    plazo que se le quitó al divisor. Cada retorno anualizado cierra contra su
+    propio numerador: el realizado contra el precio de venta, el no realizado
+    contra la valuación (`mark_months`).
+
+    Sin venta no hay salida que anualizar."""
+    acquisition = row.get("acquisition_date")
+    if acquisition is None:
+        return None
+    sale = row.get("sale_date")
+    return months_between(acquisition, sale) if sale else None
 
 
 def conclusion_date(row: dict) -> date | None:
@@ -519,7 +538,8 @@ def metrics(row: dict) -> dict:
         out.update({
             "realizedGain": underwriting.gain(basis, sale_price),
             "realizedGainPct": underwriting.gain_pct(basis, sale_price),
-            "realizedRoi": _cagr(basis, sale_price, held),
+            # exit_months, no held: el realizado se anualiza contra su venta.
+            "realizedRoi": _cagr(basis, sale_price, exit_months(row)),
         })
 
     return out

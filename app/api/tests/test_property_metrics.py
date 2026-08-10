@@ -312,6 +312,23 @@ def test_the_exit_hold_stops_at_the_sale(client, desarrollo_property):
     assert Decimal(str(p["realizedGainPct"])) == expected
 
 
+def test_the_realized_roi_annualizes_against_its_own_sale(client, desarrollo_property):
+    """El plazo real congela en la primera renta, el ROI realizado no: cierra
+    contra su propio numerador, igual que el no realizado cierra contra la fecha
+    de su valuación. Rentada en 2026-03 y vendida en 2026-07, el plazo real son
+    14 meses y la salida se anualiza sobre 18 — de la compra a la venta.
+
+    5,000,000 sobre 3,480,000 son +43.68%, que a 18 meses dan 27.33% anual. Sobre
+    los 14 del plazo real darían 36.43%: los cuatro meses que se le quitan al
+    divisor no los ganó nadie, y son los cuatro meses en que ya rentaba."""
+    _advance(client, desarrollo_property["id"], to="en_renta",
+             firstRentDate="2026-03", rentMonthlyActual=20000)
+    p = _advance(client, desarrollo_property["id"], to="vendida",
+                 saleDate="2026-07", salePrice=5_000_000)
+    assert p["holdMonthsActual"] == 14
+    assert Decimal(str(p["realizedRoi"])) == Decimal("0.2733")
+
+
 def test_the_capital_base_survives_the_sale(client, desarrollo_property):
     """It is the denominator of every realized figure — blanking it with the
     projection would leave realizedRoi unexplainable."""
