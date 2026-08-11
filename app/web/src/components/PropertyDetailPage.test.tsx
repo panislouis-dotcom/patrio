@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import type { Property } from '../lib/types'
+import type { Property, PropertyRender } from '../lib/types'
 import { emptyFloorGraph, type FloorPlanModel } from '../lib/floorplan/types'
 import { PropertyDetailPage } from './PropertyDetailPage'
 import * as api from '../lib/api'
@@ -10,6 +10,14 @@ vi.mock('react-leaflet', () => ({
   TileLayer: () => null,
   CircleMarker: () => null,
   useMapEvents: () => null,
+}))
+
+// `floorToPngBlob` rasteriza vía <canvas>, que jsdom no implementa (no hay
+// paquete `canvas` en este repo — ver planImage.test.ts). Se mockea para poder
+// montar el árbol REAL de LevantamientoPanel → RendersPanel sin pelear con un
+// canvas que no existe en este entorno.
+vi.mock('../lib/floorplan/planImage', () => ({
+  floorToPngBlob: vi.fn(async () => new Blob(['plano'], { type: 'image/png' })),
 }))
 
 vi.mock('../lib/api', async importOriginal => {
@@ -33,6 +41,10 @@ vi.mock('../lib/api', async importOriginal => {
     getProveedores: vi.fn(async () => []),
     // Fuera de su ventana el servidor responde 422; la ficha lo absorbe.
     fetchPropertyProfit: vi.fn(async () => { throw new Error('fuera de ventana') }),
+    // El seam de la Tarea 17: generar desde el plano de un levantamiento. Sin
+    // mockearlo aquí, el test de integración de más abajo pegaría de verdad al
+    // backend en vez de probar el wiring `{...req, variant}` de la ficha.
+    generatePropertyRenderFromPlan: vi.fn(),
   }
 })
 
@@ -169,7 +181,15 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('DATOS')).not.toBeNull()
 
     await renderPage(RENTED)
-    expect(screen.getByRole('button', { name: 'GENERAL' })).not.toBeNull()
+    // `renderPage` sincroniza con `findByText('DATOS')`, pero esa sección la
+    // pintan las DOS propiedades — la de BASE_PROPERTY (arriba, nunca
+    // desmontada: este test monta dos árboles a propósito) YA la tenía en el
+    // documento. `findByText` la encuentra de inmediato y NO garantiza que el
+    // árbol de RENTED ya haya terminado de re-renderizar. `getByRole` sin
+    // esperar corría una carrera real contra ese segundo render — intermitente
+    // bajo carga, no un bug de este cambio pero sí uno que se hizo visible con
+    // más peso en el archivo. `findByRole` espera al árbol de verdad.
+    expect(await screen.findByRole('button', { name: 'GENERAL' })).not.toBeNull()
     expect(screen.getByRole('button', { name: 'FINANZAS' })).not.toBeNull()
   })
 
@@ -734,6 +754,75 @@ describe('PropertyDetailPage', () => {
     expect(envelope.variants.original).toEqual(v3.variants.original)
     expect(Object.keys(envelope.variants.planned!.floors[0].edges)).toHaveLength(1)
     expect(api.updateProperty).not.toHaveBeenCalled()
+  })
+
+  // ── Generar un render desde el plano de un levantamiento (Tarea 17) ──────
+  // `LevantamientoPanel.test.tsx` prueba que el panel llama a `onGenerateRender`
+  // con la variante correcta; `RendersPanel.test.tsx` prueba que RendersPanel
+  // llama a `onGeneratePlan`. Ninguno de los dos ejercita el CUERPO real de
+  // `onGenerateRender` en esta página — el spread `{...req, variant}` hacia
+  // `generatePropertyRenderFromPlan(propertyId, …)`. Un typo ahí (variant mal
+  // amarrada, `req` sin spread, el id equivocado) pasaría los dos tests de
+  // arriba y solo se vería en producción — justo el seam que esta tarea existe
+  // para conectar, y justo el camino que satisface la compuerta de merge de la
+  // Fase 5 (main auto-despliega a qa y prod sin promoción manual).
+  const renderFromPlan = (variant: 'original' | 'planned'): PropertyRender => ({
+    id: 99, propertyId: 7, sourceImageId: null, sourcePlanPath: 'plan/99.png', sourceVariant: variant,
+    parentRenderId: null, filePath: 'r/99.png', contentType: 'image/png', promptId: null,
+    promptText: 'Estilo minimalista.', provider: 'openai', model: 'gpt-image-2',
+    createdAt: '2026-08-01T00:00:00Z',
+  })
+
+  it('generar RENDERS desde el PLANEADO llama a generatePropertyRenderFromPlan con variant: "planned"', async () => {
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.generatePropertyRenderFromPlan).mockResolvedValueOnce(renderFromPlan('planned'))
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    expect(await screen.findByText('Planta Planeada')).not.toBeNull()
+
+    // A través del árbol real: LevantamientoPanel → su sub-nav → RendersPanel.
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(await screen.findByText(/^el plano$/i))
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+
+    await waitFor(() => expect(api.generatePropertyRenderFromPlan).toHaveBeenCalled())
+    const [id, req] = vi.mocked(api.generatePropertyRenderFromPlan).mock.calls[0]
+    expect(id).toBe(7)
+    expect(req.variant).toBe('planned')
+    expect(req.plan).toBeInstanceOf(Blob)
+  })
+
+  it('generar RENDERS desde el ORIGINAL llama a generatePropertyRenderFromPlan con variant: "original"', async () => {
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: null,
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.generatePropertyRenderFromPlan).mockResolvedValueOnce(renderFromPlan('original'))
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
+    expect(await screen.findByText('Planta Original')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(await screen.findByText(/^el plano$/i))
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+
+    await waitFor(() => expect(api.generatePropertyRenderFromPlan).toHaveBeenCalled())
+    const [id, req] = vi.mocked(api.generatePropertyRenderFromPlan).mock.calls[0]
+    expect(id).toBe(7)
+    expect(req.variant).toBe('original')
   })
 
   // ── El presupuesto de obra ────────────────────────────────────────────────
