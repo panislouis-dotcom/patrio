@@ -2,7 +2,7 @@
 import { forwardRef, useRef } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
-import type { FloorPlanModel, FloorGraph } from '../lib/floorplan/types'
+import type { FloorSet, FloorGraph } from '../lib/floorplan/types'
 import type { ViewTransform } from '../lib/floorplan/viewTransform'
 import type { RoomLabel } from '../lib/floorplan/rooms'
 import type { CornerAngle } from '../lib/floorplan/dimensions'
@@ -19,7 +19,7 @@ function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }) {
 }
 
 export interface CanvasProps {
-  model: FloorPlanModel
+  model: FloorSet
   floor: FloorGraph
   t: ViewTransform
   rooms: RoomLabel[]

@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, screen } from '@testing-library/react'
 import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
-import { emptyFloorGraph, type FloorPlanModel } from '../lib/floorplan/types'
+import { emptyFloorGraph, type FloorSet } from '../lib/floorplan/types'
 import { viewTransform } from '../lib/floorplan/viewTransform'
 
 // Same jsdom PointerEvent gap as FloorPlanEditor.interaction.test.tsx: jsdom ships no
@@ -25,15 +25,15 @@ const EDITOR_W = 900, EDITOR_H = 560, EDITOR_MARGIN = 48
 // See FloorPlanEditor.interaction.test.tsx's pointerAt for the full rationale: this
 // forward-transforms a MODEL-space point through the same viewTransform the component
 // derives from `floors`, landing pointerToWorld's fallback path exactly on that point.
-function pointerAt(floors: FloorPlanModel['floors'], worldX: number, worldY: number) {
+function pointerAt(floors: FloorSet['floors'], worldX: number, worldY: number) {
   const t = viewTransform(floors, { width: EDITOR_W, height: EDITOR_H, margin: EDITOR_MARGIN })
   return { clientX: t.px(worldX), clientY: t.py(worldY) }
 }
 
-function modelWithReference(): FloorPlanModel {
+function modelWithReference(): FloorSet {
   const f = emptyFloorGraph('Test')
   f.reference = { imageKey: 'ref-abc123', scale_m_per_px: 0.01, origin_px: [0, 0], opacity: 0.5 }
-  return { schemaVersion: 2, slab_m: 0.15, activeFloor: 0, floors: [f] }
+  return { slab_m: 0.15, activeFloor: 0, floors: [f] }
 }
 
 describe('reference underlay controls', () => {

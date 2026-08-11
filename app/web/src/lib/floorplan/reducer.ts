@@ -1,4 +1,4 @@
-import type { FloorPlanModel, FloorGraph, VertexId, EdgeId } from './types'
+import type { FloorSet, FloorGraph, VertexId, EdgeId } from './types'
 import { clone, genId } from './types'
 import { deleteVertex, deleteEdge, splitEdgeAtVertex } from './graph'
 import { exteriorEdgeIds } from './rooms'
@@ -36,15 +36,15 @@ export interface UI {
 }
 
 export interface EditorState {
-  model: FloorPlanModel
+  model: FloorSet
   ui: UI
   dirty: boolean
-  past: FloorPlanModel[]
-  future: FloorPlanModel[]
+  past: FloorSet[]
+  future: FloorSet[]
   // Pre-gesture snapshot: set by the first DRAG_MODEL frame of a drag, consumed by the
   // committing SET_MODEL so history gets exactly one entry — the state before the whole
   // gesture, not the intermediate frames ("one push per gesture").
-  dragBase: FloorPlanModel | null
+  dragBase: FloorSet | null
 }
 
 const MAX_HISTORY = 50
@@ -52,7 +52,7 @@ const MIN_SCALE = 8
 const MAX_SCALE = 4000
 const clampScale = (v: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, v))
 
-export function initialState(model: FloorPlanModel): EditorState {
+export function initialState(model: FloorSet): EditorState {
   return {
     model,
     ui: { tool: 'select', sel: null, drag: null, editRoom: null, snapGuides: [], showDims: true, calibrating: false, camera: null },
@@ -77,8 +77,8 @@ export type Action =
   | { type: 'SET_EDGE_THICKNESS'; edgeId: EdgeId; value: number }
   | { type: 'SET_VERTEX_POINT'; id: VertexId; x: number; y: number }
   | { type: 'SPLIT_EDGE_AT_POINT'; edgeId: EdgeId; x: number; y: number }
-  | { type: 'SET_MODEL'; model: FloorPlanModel }
-  | { type: 'DRAG_MODEL'; model: FloorPlanModel }
+  | { type: 'SET_MODEL'; model: FloorSet }
+  | { type: 'DRAG_MODEL'; model: FloorSet }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'SET_DRAG'; drag: DragState | null }
@@ -93,7 +93,7 @@ export type Action =
   | { type: 'MARK_SAVED' }
 
 const uiChange = (s: EditorState, ui: Partial<UI>): EditorState => ({ ...s, ui: { ...s.ui, ...ui } })
-const modelChange = (s: EditorState, model: FloorPlanModel): EditorState =>
+const modelChange = (s: EditorState, model: FloorSet): EditorState =>
   ({ ...s, model, dirty: true, past: [...s.past, s.dragBase ?? s.model].slice(-MAX_HISTORY), future: [], dragBase: null })
 
 // ── element removal (shared by the delete tool and the keyboard DELETE_SEL path) ──
@@ -108,7 +108,7 @@ export function removeOpeningFromFloor(f: FloorGraph, edgeId: EdgeId, index: num
 }
 
 export function reducer(s: EditorState, a: Action): EditorState {
-  const F = (m: FloorPlanModel): FloorGraph => m.floors[m.activeFloor]
+  const F = (m: FloorSet): FloorGraph => m.floors[m.activeFloor]
   switch (a.type) {
     case 'SET_TOOL': return uiChange(s, { tool: a.tool, sel: null })
     case 'SET_SEL': return uiChange(s, { sel: a.sel })

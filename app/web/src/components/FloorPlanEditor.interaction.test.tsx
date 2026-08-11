@@ -31,7 +31,7 @@ function modelWithRectangleAndDivider() {
   const f = emptyFloorGraph('Test')
   const a = addVertex(f, 0, 0), b = addVertex(f, 6, 0), c = addVertex(f, 6, 4), d = addVertex(f, 0, 4)
   addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
-  return { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
+  return { slab_m: 0.15, activeFloor: 0, floors: [f] }
 }
 
 // In jsdom, getScreenCTM() is undefined and getBoundingClientRect() is all-zero, so
@@ -100,7 +100,7 @@ describe('wall-body drag does not force-straighten a diagonal wall', () => {
     const f = emptyFloorGraph('Test')
     const v1 = addVertex(f, 1, 1), v2 = addVertex(f, 4, 3)
     addEdge(f, v1, v2, 0.10)
-    const model = { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
+    const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
     const onSave = vi.fn()
     const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={onSave} />)
     const svg = container.querySelector('svg')!
@@ -155,7 +155,7 @@ describe('T-junction creation via drag-near-edge', () => {
     // a free-floating divider wall, its far end not yet touching anything
     const dividerTop = addVertex(f, 3, 2), dividerFree = addVertex(f, 3, 3.9)
     addEdge(f, dividerTop, dividerFree, 0.10)
-    const model = { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
+    const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
     const onSave = vi.fn()
     const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={onSave} />)
     const svg = container.querySelector('svg')!

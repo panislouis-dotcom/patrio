@@ -5,7 +5,7 @@ import { colors, fonts } from '../lib/theme'
 import {
   reducer, initialState, removeEdgeFromFloor, removeOpeningFromFloor, removeVertexFromFloor, type Tool,
 } from '../lib/floorplan/reducer'
-import { isEmpty, emptyModel, clone, genId, type FloorPlanModel, type FloorGraph } from '../lib/floorplan/types'
+import { emptyFloorSet, clone, genId, type FloorSet, type FloorGraph } from '../lib/floorplan/types'
 import { viewTransform, type Camera } from '../lib/floorplan/viewTransform'
 import { roomAreas, roomLabels } from '../lib/floorplan/rooms'
 import { cornerAngles } from '../lib/floorplan/dimensions'
@@ -50,20 +50,22 @@ function nearestEdgeIgnoringEndpointGuard(f: FloorGraph, pt: { x: number; y: num
 /** Imperative handle the host page uses to persist a dirty plan via its own GUARDAR. */
 export interface PlanApi {
   isDirty(): boolean
-  getModel(): FloorPlanModel
+  getModel(): FloorSet
   markSaved(): void
 }
 
 interface Props {
-  initial: FloorPlanModel | Record<string, never>
-  onSave: (m: FloorPlanModel) => void | Promise<void>
+  // El editor trabaja sobre UNA variante ya migrada (el host resuelve el envelope v3);
+  // null = sin plano dibujado, y arranca en la pantalla de inicio (subir imagen / en blanco).
+  initial: FloorSet | null
+  onSave: (fs: FloorSet) => void | Promise<void>
   onUploadImage: (file: File) => Promise<{ imageKey: string }>
   onReady?: (api: PlanApi) => void
   onDirtyChange?: (dirty: boolean) => void
 }
 
 export default function FloorPlanEditor({ initial, onSave, onUploadImage, onReady, onDirtyChange }: Props) {
-  const [entered, setEntered] = useState(!isEmpty(initial as FloorPlanModel))
+  const [entered, setEntered] = useState(initial != null)
   const [uploading, setUploading] = useState(false)
   const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null)
   const [calDraft, setCalDraft] = useState<{ p0: [number, number]; p1: [number, number] } | null>(null)
@@ -75,7 +77,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   const panRef = useRef<{ startUx: number; startUy: number; camera: Camera } | null>(null)
   const panMovedRef = useRef(false)
   const [state, dispatch] = useReducer(reducer, undefined, () =>
-    initialState(isEmpty(initial as FloorPlanModel) ? emptyModel() : (initial as FloorPlanModel)))
+    initialState(initial ?? emptyFloorSet()))
   const svgRef = useRef<SVGSVGElement>(null)
   const { model, ui } = state
   const floor = model.floors[model.activeFloor]
@@ -127,7 +129,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     setUploading(true)
     try {
       const { imageKey } = await onUploadImage(file)
-      const m = emptyModel()
+      const m = emptyFloorSet()
       m.floors[0].reference = { imageKey, scale_m_per_px: 0.01, origin_px: [0, 0], opacity: 0.5 }
       dispatch({ type: 'SET_MODEL', model: m })
       dispatch({ type: 'SET_CALIBRATING', on: true })

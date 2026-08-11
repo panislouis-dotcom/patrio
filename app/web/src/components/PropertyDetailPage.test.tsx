@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { Property } from '../lib/types'
+import { emptyFloorGraph, type FloorPlanModel } from '../lib/floorplan/types'
 import { PropertyDetailPage } from './PropertyDetailPage'
 import * as api from '../lib/api'
 
@@ -21,6 +22,7 @@ vi.mock('../lib/api', async importOriginal => {
     clearPropertyFields: vi.fn(),
     transitionProperty: vi.fn(),
     fetchPropertyGeometry: vi.fn(async () => ({})),
+    savePropertyGeometry: vi.fn(),
     fetchPropertyInvestors: vi.fn(async () => []),
     fetchInvestors: vi.fn(async () => []),
     fetchInstances: vi.fn(async () => []),
@@ -590,6 +592,65 @@ describe('PropertyDetailPage', () => {
     fireEvent.click(screen.getByText('RENDERS'))
     expect(await screen.findByLabelText(/preset/i)).not.toBeNull()
     expect(screen.getByLabelText(/texto del prompt/i)).not.toBeNull()
+  })
+
+  // ── El plano y su envelope v3 ─────────────────────────────────────────────
+
+  it('un blob v2 del editor anterior entra migrado: PLANO abre con sus plantas y guarda en v3', async () => {
+    // El backend es un blob store sin esquema: lo guardado antes del envelope sigue
+    // siendo UN plano en la raíz. La página lo migra al cargar y lo persiste en v3
+    // en su primer guardado — sin migración SQL de por medio.
+    const v2 = { schemaVersion: 2, slab_m: 0.2, activeFloor: 0, floors: [emptyFloorGraph('Planta Migrada')] }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v2)
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('PLANO'))
+    // El editor entra directo con la planta migrada, no a la pantalla de inicio.
+    expect(await screen.findByText('Planta Migrada')).not.toBeNull()
+    expect(screen.queryByText('Start blank')).toBeNull()
+
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
+    const [id, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
+    expect(id).toBe(7)
+    expect(envelope).toEqual({
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.2, activeFloor: 0, floors: v2.floors },
+        planned: null,
+      },
+    })
+  })
+
+  it('el editor edita el original, y guardar preserva el planeado que ya había', async () => {
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('PLANO'))
+    // La pestaña trabaja sobre el levantamiento original; el planeado no se asoma aquí.
+    expect(await screen.findByText('Planta Original')).not.toBeNull()
+    expect(screen.queryByText('Planta Planeada')).toBeNull()
+
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
+    const [, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
+    expect(envelope.variants.planned).toEqual(v3.variants.planned)
+  })
+
+  it('sin geometría reconocible, PLANO abre en la pantalla de inicio', async () => {
+    // El mock por defecto responde {}: una propiedad que nunca dibujó su plano.
+    await renderPage(BASE_PROPERTY)
+    fireEvent.click(screen.getByText('PLANO'))
+    expect(await screen.findByText('Start blank')).not.toBeNull()
   })
 
   // ── El presupuesto de obra ────────────────────────────────────────────────

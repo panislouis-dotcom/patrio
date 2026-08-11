@@ -961,7 +961,9 @@ export async function deleteCotizacion(id: number): Promise<void> {
 
 // ── Floor-plan geometry ──
 
-export async function fetchPropertyGeometry(id: number): Promise<FloorPlanModel | Record<string, never>> {
+// El backend es un blob store sin esquema: lo que regresa puede ser v3, v2 viejo o {},
+// así que el caller lo pasa por migrateGeometry en vez de confiar en un tipo aquí.
+export async function fetchPropertyGeometry(id: number): Promise<unknown> {
   const res = await authFetch(`${BASE}/api/properties/${id}/geometry`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()

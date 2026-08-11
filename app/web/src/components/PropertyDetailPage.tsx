@@ -34,7 +34,7 @@ import { StatRow } from './StatRow'
 import { PhotoGallery } from './PhotoGallery'
 import { PropertyProfitSection } from './PropertyProfitSection'
 import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
-import type { FloorPlanModel } from '../lib/floorplan/types'
+import { migrateGeometry, isEmpty, type FloorPlanModel, type FloorSet } from '../lib/floorplan/types'
 import { roomLabels } from '../lib/floorplan/rooms'
 import { floorToPngBlob } from '../lib/floorplan/planImage'
 import { DetailHeader } from './detail/DetailHeader'
@@ -180,12 +180,17 @@ export function PropertyDetailPage() {
   /** Debajo de 900px las dos columnas se apilan. Es el único breakpoint del repo. */
   const narrow = useNarrowViewport()
 
-  const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
+  // El envelope v3 ya migrado, o null si la propiedad no tiene geometría reconocible
+  // (nunca dibujó, o el blob es del editor viejo). Null no significa «cargando»: mientras
+  // la ficha carga, la página entera hace early-return antes de pintar las pestañas.
+  const [geometry, setGeometry] = useState<FloorPlanModel | null>(null)
   const planApiRef = useRef<PlanApi | null>(null)
   const [planDirty, setPlanDirty] = useState(false)
-  // La planta activa del plano guardado, si la hay: fuente alterna para los renders.
-  const planFloor = geometry && 'floors' in geometry && geometry.floors.length
-    ? geometry.floors[geometry.activeFloor] ?? geometry.floors[0]
+  // La planta activa del levantamiento original guardado, si la hay: fuente alterna
+  // para los renders.
+  const originalSet = geometry?.variants.original ?? null
+  const planFloor = originalSet && originalSet.floors.length
+    ? originalSet.floors[originalSet.activeFloor] ?? originalSet.floors[0]
     : null
 
   const [investors, setInvestors] = useState<PropertyInvestor[]>([])
@@ -204,7 +209,7 @@ export function PropertyDetailPage() {
     Promise.all([fetchProperty(propertyId), fetchPropertyGeometry(propertyId)])
       .then(([p, geo]) => {
         setProperty(p)
-        setGeometry(geo)
+        setGeometry(migrateGeometry(geo))
         setTimeout(() => setMounted(true), 40)
         setTimeout(() => setBarsReady(true), 420)
       })
@@ -239,6 +244,18 @@ export function PropertyDetailPage() {
 
   const onPlanReady = useCallback((api: PlanApi) => { planApiRef.current = api }, [])
 
+  /**
+   * El editor edita SOLO la variante original (el planeado se conecta en sus propias
+   * pestañas): guardar compone el envelope v3 completo, preservando el planeado que ya
+   * hubiera. Un blob v2 viejo queda persistido en v3 en su primer guardado.
+   */
+  async function saveFloorSet(fs: FloorSet): Promise<void> {
+    setGeometry(await savePropertyGeometry(propertyId, {
+      schemaVersion: 3,
+      variants: { original: fs, planned: geometry?.variants.planned ?? null },
+    }))
+  }
+
   async function save() {
     if (!property || (!hasEdits && costPerSqm == null && !planApiRef.current?.isDirty())) return
     setSaving(true)
@@ -253,7 +270,7 @@ export function PropertyDetailPage() {
         setCostPerSqm(undefined)
       }
       if (planApiRef.current?.isDirty()) {
-        setGeometry(await savePropertyGeometry(propertyId, planApiRef.current.getModel()))
+        await saveFloorSet(planApiRef.current.getModel())
         planApiRef.current.markSaved()
         setPlanDirty(false)
       }
@@ -973,11 +990,11 @@ export function PropertyDetailPage() {
             },
             {
               label: 'plano',
-              panel: geometry !== null && (
+              panel: (
                 <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
                   <FloorPlanEditor
-                    initial={geometry}
-                    onSave={async m => setGeometry(await savePropertyGeometry(p.id, m))}
+                    initial={geometry && !isEmpty(geometry) ? geometry.variants.original : null}
+                    onSave={saveFloorSet}
                     onUploadImage={file => uploadFloorplanImage(p.id, file)}
                     onReady={onPlanReady}
                     onDirtyChange={setPlanDirty}

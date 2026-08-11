@@ -37,11 +37,21 @@ export interface FloorGraph {
   reference?: Reference
 }
 
-export interface FloorPlanModel {
-  schemaVersion: 2
+// El editor trabaja sobre UNA variante (un plano completo, multi-piso); el envelope
+// persistido guarda dos: el levantamiento ORIGINAL (cómo está la propiedad) y el
+// PLANEADO (cómo va a quedar), null hasta que el usuario lo crea. FloorSet es el shape
+// v2 sin schemaVersion: la migración v2→v3 es anidarlo como `original`.
+export interface FloorSet {
   slab_m: number
   activeFloor: number
   floors: FloorGraph[]
+}
+
+export type VariantKey = 'original' | 'planned'
+
+export interface FloorPlanModel {
+  schemaVersion: 3
+  variants: { original: FloorSet; planned: FloorSet | null }
 }
 
 export function genId(): string {
@@ -55,26 +65,42 @@ export function emptyFloorGraph(name: string): FloorGraph {
   }
 }
 
-export function emptyModel(): FloorPlanModel {
-  return {
-    schemaVersion: 2,
-    slab_m: 0.15,
-    activeFloor: 0,
-    floors: [emptyFloorGraph('Planta Baja')],
-  }
+export function emptyFloorSet(): FloorSet {
+  return { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Baja')] }
 }
 
-export function isEmpty(m: FloorPlanModel | Record<string, never>): boolean {
-  // Also treat anything that isn't a recognized schemaVersion-2 model as "empty" (falls back
-  // to the blank-start landing screen) rather than trusting its shape -- e.g. leftover
-  // schemaVersion-1 geometry saved by the old, discarded wall-list editor. This is a
-  // deliberate greenfield boundary, not a migration: old data is left untouched in storage
-  // (nothing writes until the user saves again) but is never read as if it were a v2 model.
-  return !m || !('schemaVersion' in m) || m.schemaVersion !== 2 ||
-    !('floors' in m) || !Array.isArray(m.floors) || m.floors.length === 0
+export function emptyModel(): FloorPlanModel {
+  return { schemaVersion: 3, variants: { original: emptyFloorSet(), planned: null } }
+}
+
+const isFloorSet = (v: unknown): v is FloorSet =>
+  !!v && typeof v === 'object' && Array.isArray((v as FloorSet).floors)
+
+/**
+ * Único punto de entrada para leer un blob de geometría persistido: v3 pasa tal cual,
+ * v2 (un plano en la raíz) se anida como variante `original` con `planned: null`.
+ * Cualquier otra cosa —schemaVersion 1 del viejo editor de listas de muros, `{}`,
+ * basura— regresa null. Es una frontera greenfield deliberada, no una migración de v1:
+ * el blob viejo queda intacto en storage (nada escribe hasta que el usuario vuelve a
+ * guardar) pero jamás se lee como si fuera un modelo válido.
+ */
+export function migrateGeometry(raw: unknown): FloorPlanModel | null {
+  if (!raw || typeof raw !== 'object') return null
+  const m = raw as { schemaVersion?: unknown; variants?: { original?: unknown; planned?: unknown } }
+  if (m.schemaVersion === 3 && isFloorSet(m.variants?.original)) return raw as FloorPlanModel
+  if (m.schemaVersion === 2 && isFloorSet(m)) {
+    const { slab_m, activeFloor, floors } = m as unknown as FloorSet
+    return { schemaVersion: 3, variants: { original: { slab_m, activeFloor, floors }, planned: null } }
+  }
+  return null
+}
+
+export function isEmpty(raw: unknown): boolean {
+  const m = migrateGeometry(raw)
+  return !m || m.variants.original.floors.length === 0
 }
 
 export const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o))
 
-export const floorElev = (m: FloorPlanModel, i: number): number =>
-  m.floors.slice(0, i).reduce((e, f) => e + f.height_m, 0)
+export const floorElev = (fs: FloorSet, i: number): number =>
+  fs.floors.slice(0, i).reduce((e, f) => e + f.height_m, 0)

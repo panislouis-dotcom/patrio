@@ -2,7 +2,7 @@
 import type { Dispatch } from 'react'
 import { colors, fonts } from '../lib/theme'
 import type { Action, Sel, UI } from '../lib/floorplan/reducer'
-import type { FloorGraph, FloorPlanModel } from '../lib/floorplan/types'
+import type { FloorGraph, FloorSet } from '../lib/floorplan/types'
 import type { RoomArea } from '../lib/floorplan/rooms'
 import { traceFaces } from '../lib/floorplan/rooms'
 import { shoelace } from '../lib/floorplan/geometry'
@@ -79,7 +79,7 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
 }
 
 interface Props {
-  model: FloorPlanModel
+  model: FloorSet
   floor: FloorGraph
   rooms: RoomArea[]
   geoJson: string

@@ -9,7 +9,7 @@ function modelWithRectangle() {
   const f = emptyFloorGraph('Test')
   const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
   addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
-  return { model: { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }, a, b, c, d }
+  return { model: { slab_m: 0.15, activeFloor: 0, floors: [f] }, a, b, c, d }
 }
 
 describe('room naming', () => {

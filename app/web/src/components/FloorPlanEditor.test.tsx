@@ -15,7 +15,7 @@ const ACTIVE_BG = hexToRgb(colors.primary)
 describe('empty-state landing screen', () => {
   it('shows the start-blank affordance for an empty initial model, then enters the editor on click', () => {
     const onSave = vi.fn()
-    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={{}} onSave={onSave} />)
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={null} onSave={onSave} />)
     expect(container.querySelector('svg')).toBeNull()
     const startBlank = screen.getByText('Start blank')
     expect(startBlank).toBeTruthy()
@@ -28,7 +28,7 @@ describe('tool selection', () => {
   it('clicking a tool button makes it active and deactivates the previous one', () => {
     const onSave = vi.fn()
     const { container } = render(
-      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={{}} onSave={onSave} />,
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={null} onSave={onSave} />,
     )
     fireEvent.click(screen.getByText('Start blank'))
 
@@ -61,7 +61,7 @@ describe('undo/redo buttons', () => {
   it('are disabled when there is no history yet', () => {
     const onSave = vi.fn()
     const { container } = render(
-      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={{}} onSave={onSave} />,
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={null} onSave={onSave} />,
     )
     fireEvent.click(screen.getByText('Start blank'))
     const buttons = Array.from(container.querySelectorAll('button'))

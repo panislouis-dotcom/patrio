@@ -16,7 +16,7 @@ function setup(makeSel?: (f: ReturnType<typeof emptyFloorGraph>, ids: { a: strin
   const f = emptyFloorGraph('Planta baja')
   const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
   addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
-  const model = { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
+  const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
   let state = initialState(model)
   if (makeSel) state = reducer(state, { type: 'SET_SEL', sel: makeSel(f, { a, b, c, d }) })
   const dispatch = vi.fn()
@@ -72,7 +72,7 @@ describe('FloorPlanPanel', () => {
 
   it('shows the empty-rooms message when no rooms are detected', () => {
     const f = emptyFloorGraph('Planta baja')
-    const model = { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
+    const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
     const state = initialState(model)
     render(<FloorPlanPanel model={state.model} floor={f} rooms={[]} geoJson="{}" ui={state.ui} dispatch={vi.fn()} />)
     expect(screen.getByText('Sin cuartos detectados')).toBeTruthy()
@@ -114,7 +114,7 @@ describe('FloorPlanPanel', () => {
   it('renders the BIM export section only when showDims is enabled', () => {
     // initialState defaults ui.showDims to true, so the section is present out of the box.
     const f = emptyFloorGraph('Planta baja')
-    const model = { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
+    const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
     let state = initialState(model)
     const { rerender } = render(
       <FloorPlanPanel model={state.model} floor={f} rooms={[]} geoJson='{"foo":1}' ui={state.ui} dispatch={vi.fn()} />

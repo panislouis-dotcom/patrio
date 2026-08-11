@@ -1,4 +1,4 @@
-import type { FloorPlanModel } from './types'
+import type { FloorSet } from './types'
 import { floorElev } from './types'
 import { dist } from './geometry'
 import { roomAreas, exteriorEdgeIds } from './rooms'
@@ -22,7 +22,7 @@ export interface GeometryJson {
   }>
 }
 
-export function toGeometryJson(model: FloorPlanModel): GeometryJson {
+export function toGeometryJson(model: FloorSet): GeometryJson {
   return {
     slab_thickness_m: model.slab_m,
     storeys: model.floors.map((f, i) => {

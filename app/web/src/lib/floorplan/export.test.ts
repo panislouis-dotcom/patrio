@@ -11,7 +11,7 @@ describe('toGeometryJson', () => {
     addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
     f.edges[e1].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
 
-    const model = { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }
+    const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
     const json = toGeometryJson(model)
 
     expect(json.slab_thickness_m).toBeCloseTo(0.15)
@@ -31,7 +31,7 @@ describe('toGeometryJson', () => {
   it('stacks storey elevation from prior floors\' heights', () => {
     const f0 = emptyFloorGraph('PB'); f0.height_m = 3
     const f1 = emptyFloorGraph('PA'); f1.height_m = 2.6
-    const model = { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f0, f1] }
+    const model = { slab_m: 0.15, activeFloor: 0, floors: [f0, f1] }
     const json = toGeometryJson(model)
     expect(json.storeys[0].elevation_m).toBe(0)
     expect(json.storeys[1].elevation_m).toBeCloseTo(3)
