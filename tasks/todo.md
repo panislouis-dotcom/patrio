@@ -96,3 +96,31 @@ demo borrada al terminar.
 **Conclusión:** las tres capas de verificación están en verde con evidencia local fresca.
 La rama queda lista para que Eduardo decida push/PR — no se hizo por instrucción explícita
 de la tarea.
+
+---
+
+## Revisión final (Task 18, spec ✅ + calidad ✅)
+
+- Los 3 scripts manuales estaban rotos de verdad (no solo el que Task 16 marcó), confirmado
+  contra su estado previo. Los 3 asserts nuevos de e2e trazados contra el código real
+  (locators estables, sin timeouts fijos ni clicks por coordenada).
+- Hueco de cobertura evaluado a fondo: la Tarea 7 del plan ya designaba `rooms.test.ts` como
+  "LA prueba de la feature" — un e2e compuesto nunca fue parte del Definition of Done. El
+  pipeline de render (rooms→labels) es genérico y agnóstico del tipo de arista, así que lo
+  único que un e2e añadiría es probar el `.forEach` genérico para N=2 — no lógica específica
+  de fantasmas. **Veredicto explícito: no bloquea.** Sugerencia de seguimiento de baja
+  prioridad (no urgente): un test a nivel de componente en
+  `FloorPlanEditor.interaction.test.tsx` con los extremos de la división ya tocando los
+  muros, para cerrar el hueco sin pelear contra coordenadas de Playwright.
+- Verificación independiente: 469/469 frontend, 576/576 backend (ambos re-corridos y
+  contra-chequeados con grep estático — no son números viejos), `origin/main...feat/levantamientos`
+  en 0/28 (rama al día, sin riesgo de rebase), cero `console.log`/`debugger`/TODO sueltos en
+  todo el diff de la rama, el pendiente de Task 16 (unión discriminada en RendersPanel.Props)
+  confirmado resuelto en Task 17.
+- Un detalle cosmético sin bloquear: falta `waitForResponse` en el click de PARTIR DEL
+  ORIGINAL (line ~706 de 09-propiedad-detalle.spec.ts) — funciona hoy por el auto-retry de
+  Playwright, pero es inconsistente con el patrón `geometrySaved` que el mismo test usa tres
+  líneas arriba.
+
+**LAS 18 TAREAS DE LAS 6 FASES ESTÁN CERRADAS, CADA UNA CON REVISIÓN DE SPEC Y DE CALIDAD.
+Rama lista para que Eduardo decida push/PR.**
