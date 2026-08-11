@@ -341,12 +341,16 @@ test.describe('Ficha de propiedad — un prospecto', () => {
 
   // ── Columna central ─────────────────────────────────────────────────────────
 
-  test('the centre column offers MAPA / FOTOS / PLANO', async ({ page }) => {
+  test('the centre column offers MAPA / FOTOS / the two LEVANTAMIENTOS', async ({ page }) => {
     await gotoProperty(page, id)
 
     await expect(page.getByRole('button', { name: 'MAPA' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'FOTOS' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'PLANO' })).toBeVisible()
+    // PLANO se partió en dos: la medición de cómo está (ORIGINAL) y la
+    // propuesta de cómo va a quedar (PLANEADO). Los dos se ofrecen siempre,
+    // sin compuerta de etapa.
+    await expect(page.getByRole('button', { name: 'LEVANTAMIENTO ORIGINAL' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'LEVANTAMIENTO PLANEADO' })).toBeVisible()
     // MAPA is the default panel — the fixture carries coordinates
     await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 10_000 })
   })
@@ -360,14 +364,27 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(page.locator('input[type="file"][accept="image/*"]')).toHaveCount(2)
   })
 
-  test('PLANO lands on the empty state and mounts the editor from it', async ({ page }) => {
+  test('LEVANTAMIENTO ORIGINAL lands on the empty state and mounts the editor from it', async ({ page }) => {
     await gotoProperty(page, id)
-    await page.getByRole('button', { name: 'PLANO' }).click()
+    await page.getByRole('button', { name: 'LEVANTAMIENTO ORIGINAL' }).click()
 
     await expect(page.getByText('Trace over a reference image or start from a blank footprint.')).toBeVisible()
     await page.getByRole('button', { name: /start blank/i }).click()
 
     await expect(page.getByRole('button', { name: 'Fit to screen' })).toBeVisible()
+  })
+
+  test('LEVANTAMIENTO PLANEADO lands on its own empty state', async ({ page }) => {
+    await gotoProperty(page, id)
+    await page.getByRole('button', { name: 'LEVANTAMIENTO PLANEADO' }).click()
+
+    await expect(page.getByText('SIN LEVANTAMIENTO PLANEADO')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'EMPEZAR EN BLANCO' })).toBeVisible()
+    // La fixture no tiene original dibujado, así que clonarlo no se ofrece —
+    // PARTIR DEL ORIGINAL solo existe cuando hay pisos que clonar. Y a propósito
+    // NO se hace clic en EMPEZAR EN BLANCO: persistiría un planeado en la BD y
+    // mutaría la fixture que las demás pruebas de este archivo comparten.
+    await expect(page.getByRole('button', { name: 'PARTIR DEL ORIGINAL' })).toHaveCount(0)
   })
 
   // ── Borrado y navegación ────────────────────────────────────────────────────
