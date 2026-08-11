@@ -304,6 +304,12 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .plano-svg { width: 100%; height: auto; max-height: 100mm;
              border: 1px solid var(--border); background: var(--warm); }
 .plano-room { font-family: 'Inter', sans-serif; font-size: 7px; fill: var(--sec); }
+/* Muebles: rect tenue, SIN label. planImage.ts sí nombra cada mueble ("cama queen") porque
+   ahí el lector es un modelo de render que necesita saber qué está viendo; aquí el lector
+   es un inversionista viendo un plano técnico en miniatura dentro de un pitch deck — lo que
+   importa es la masa (dónde va cada pieza y qué tan grande es), no el nombre impreso en un
+   rect de unos milímetros. Menos ruido visual, mismo dato geométrico. */
+.plano-fixture { fill: var(--border); stroke: var(--sec); stroke-width: 0.4; opacity: 0.6; }
 
 /* ══ CLOSING ═════════════════════════════════════════════════════════════ */
 .closing { height: 297mm; background: var(--green); color: #fff; padding: 30mm var(--pad);
@@ -728,6 +734,26 @@ def _floorplan_svg(geometry: dict) -> str:
                 f'stroke="#1A1A1A" stroke-width="{stroke:.1f}" stroke-linecap="square" />'
             )
 
+        # Muebles (Task 12): rect tenue por mueble, sin label (ver .plano-fixture arriba).
+        # `?? []` en TS es `or []` aquí — ningún blob previo a Task 10 trae esta clave, y
+        # no puede tratarse como error: es "sin muebles", no un plano roto.
+        fixtures = []
+        for fx in floor.get("fixtures") or []:
+            fx_x, fx_y = fx.get("x"), fx.get("y")
+            if fx_x is None or fx_y is None:
+                continue
+            fcx, fcy = sx(fx_x), sy(fx_y)
+            fw, fh = _num(fx.get("w_m")) * scale, _num(fx.get("h_m")) * scale
+            # Mismo signo que planImage.ts y FloorPlanCanvas.tsx: rot es CCW en coordenadas
+            # de MUNDO (y hacia arriba); sy() niega el eje Y igual que py() allá, así que la
+            # rotación se niega aquí también — si no, un mueble rotado saldría al revés.
+            frot = -_num(fx.get("rot"))
+            fixtures.append(
+                f'<rect class="plano-fixture" x="{-fw / 2:.1f}" y="{-fh / 2:.1f}" '
+                f'width="{fw:.1f}" height="{fh:.1f}" '
+                f'transform="translate({fcx:.1f} {fcy:.1f}) rotate({frot:.1f})" />'
+            )
+
         labels = []
         for room in floor.get("rooms") or []:
             cx, cy = room.get("cx"), room.get("cy")
@@ -742,7 +768,7 @@ def _floorplan_svg(geometry: dict) -> str:
         view_h = height * scale + _SVG_PAD * 2
         blocks.append(f"""<div class="plano-floor">
   <div class="plano-floor-name">{_esc(floor.get("name", ""))}</div>
-  <svg viewBox="0 0 {view_w:.1f} {view_h:.1f}" class="plano-svg">{''.join(lines)}{''.join(labels)}</svg>
+  <svg viewBox="0 0 {view_w:.1f} {view_h:.1f}" class="plano-svg">{''.join(lines)}{''.join(fixtures)}{''.join(labels)}</svg>
 </div>""")
     if not blocks:
         return ""

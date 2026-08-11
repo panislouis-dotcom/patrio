@@ -3,7 +3,9 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-from api.lib.prospectus_html import _floorplan_svg, _budget_full, _opportunity, _opportunity_detail, _BODY_CSS
+import pytest
+
+from api.lib.prospectus_html import _floorplan_svg, _budget_full, _opportunity, _opportunity_detail, _BODY_CSS, _SVG_SIZE
 
 ONE_FLOOR = {
     "floors": [{
@@ -61,6 +63,17 @@ BLANK_SET = {
     "slab_m": 0.15,
     "activeFloor": 0,
     "floors": [{"name": "Planta en Blanco", "vertices": {}, "edges": {}, "rooms": []}],
+}
+
+# Un piso amueblado (Task 12): un mueble con medidas reales (`kind`, `x`, `y`, `rot`,
+# `w_m`, `h_m` — types.ts `Fixture`). `_floorplan_svg` lo dibuja como rect tenue.
+FURNISHED_FLOOR = {
+    "floors": [{
+        **ONE_FLOOR["floors"][0],
+        "fixtures": [
+            {"id": "fx1", "kind": "cama_queen", "x": 2, "y": 1, "rot": 0, "w_m": 1.6, "h_m": 2.0},
+        ],
+    }],
 }
 
 # Un piso con una arista 'ghost' (división manual de cuarto): divide para nombres/áreas
@@ -167,6 +180,38 @@ def test_ghost_edges_are_not_drawn_as_walls():
     svg = _floorplan_svg(GHOST_EDGE_FLOOR)
     assert svg.count("<line") == 2   # los 2 muros reales (e1, e2); e3 (ghost) no se dibuja
     assert "Sala" in svg             # el cuarto sigue nombrado
+
+
+def test_furnished_floor_draws_a_muted_rect_for_the_fixture():
+    """`class="plano-fixture"` (no un <rect> a secas: el fondo del SVG también es un rect)
+    identifica el elemento; sin label — a diferencia de planImage.ts (que sí nombra cada
+    mueble para el modelo de render), aquí el lector es un inversionista viendo un plano
+    técnico en miniatura: importa la masa, no que diga "cama queen" en 7px."""
+    svg = _floorplan_svg(FURNISHED_FLOOR)
+    assert 'class="plano-fixture"' in svg
+    m = re.search(r'class="plano-fixture" x="(-?[\d.]+)" y="(-?[\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg)
+    assert m is not None
+    x, y, w, h = (float(g) for g in m.groups())
+    scale = _SVG_SIZE / 5  # ONE_FLOOR mide 5x4, el lado mayor (5) fija la escala compartida
+    assert w == pytest.approx(1.6 * scale, abs=0.5)
+    assert h == pytest.approx(2.0 * scale, abs=0.5)
+    assert x == pytest.approx(-w / 2, abs=0.5)   # rect centrado, se traslada con transform
+    assert y == pytest.approx(-h / 2, abs=0.5)
+    assert "cama_queen" not in svg
+
+
+def test_floor_without_fixtures_key_does_not_crash():
+    """Backward compat: ningún blob anterior a Task 10 trae la clave `fixtures`."""
+    svg = _floorplan_svg(ONE_FLOOR)
+    assert 'class="plano-fixture"' not in svg
+    assert "<svg" in svg
+
+
+def test_floor_with_empty_fixtures_list_does_not_crash():
+    floor = {**ONE_FLOOR["floors"][0], "fixtures": []}
+    svg = _floorplan_svg({"floors": [floor]})
+    assert 'class="plano-fixture"' not in svg
+    assert "<svg" in svg
 
 
 def test_the_plan_is_not_printed_upside_down():
