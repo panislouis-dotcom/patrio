@@ -65,7 +65,11 @@ interface Props {
 }
 
 export default function FloorPlanEditor({ initial, onSave, onUploadImage, onReady, onDirtyChange }: Props) {
-  const [entered, setEntered] = useState(initial != null)
+  // La precondición vive AQUÍ, no en los hosts: su contrato es solo null-o-no. Un
+  // FloorSet sin pisos es posible en un blob v3 legítimo y `floors[activeFloor]`
+  // no existiría — se trata igual que null: pantalla de inicio y arranque en blanco.
+  const hasFloors = initial != null && initial.floors.length > 0
+  const [entered, setEntered] = useState(hasFloors)
   const [uploading, setUploading] = useState(false)
   const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null)
   const [calDraft, setCalDraft] = useState<{ p0: [number, number]; p1: [number, number] } | null>(null)
@@ -77,7 +81,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   const panRef = useRef<{ startUx: number; startUy: number; camera: Camera } | null>(null)
   const panMovedRef = useRef(false)
   const [state, dispatch] = useReducer(reducer, undefined, () =>
-    initialState(initial ?? emptyFloorSet()))
+    initialState(initial != null && initial.floors.length > 0 ? initial : emptyFloorSet()))
   const svgRef = useRef<SVGSVGElement>(null)
   const { model, ui } = state
   const floor = model.floors[model.activeFloor]

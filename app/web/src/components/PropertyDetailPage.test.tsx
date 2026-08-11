@@ -573,14 +573,16 @@ describe('PropertyDetailPage', () => {
 
   // ── La barra de pestañas del centro ───────────────────────────────────────
 
-  it('la barra del centro son cinco pestañas, en su orden', async () => {
+  it('la barra del centro son seis pestañas, en su orden', async () => {
     // MediaTabs pinta la lista que le den y no sabe qué hay dentro, así que
     // quién existe y en qué orden se decide AQUÍ. Sin esta prueba, absorber una
     // pestaña ajena —o perderla en un merge— no pone nada en rojo.
+    // PLANO se partió en los dos levantamientos; RENDERS sigue aquí hasta que
+    // sus renders se repartan por fuente (Fase 5).
     await renderPage(BASE_PROPERTY)
     const barra = screen.getByText('MAPA').parentElement!
     expect(within(barra).getAllByRole('button').map(b => b.textContent))
-      .toEqual(['MAPA', 'FOTOS', 'PLANO', 'RENDERS', 'PRESUPUESTO'])
+      .toEqual(['MAPA', 'FOTOS', 'LEVANTAMIENTO ORIGINAL', 'LEVANTAMIENTO PLANEADO', 'RENDERS', 'PRESUPUESTO'])
   })
 
   it('RENDERS abre lo suyo, y no la tira de FOTOS', async () => {
@@ -596,7 +598,7 @@ describe('PropertyDetailPage', () => {
 
   // ── El plano y su envelope v3 ─────────────────────────────────────────────
 
-  it('un blob v2 del editor anterior entra migrado: PLANO abre con sus plantas y guarda en v3', async () => {
+  it('un blob v2 del editor anterior entra migrado: el ORIGINAL abre con sus plantas y guarda en v3', async () => {
     // El backend es un blob store sin esquema: lo guardado antes del envelope sigue
     // siendo UN plano en la raíz. La página lo migra al cargar y lo persiste en v3
     // en su primer guardado — sin migración SQL de por medio.
@@ -605,7 +607,7 @@ describe('PropertyDetailPage', () => {
     vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
     await renderPage(BASE_PROPERTY)
 
-    fireEvent.click(screen.getByText('PLANO'))
+    fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
     // El editor entra directo con la planta migrada, no a la pantalla de inicio.
     expect(await screen.findByText('Planta Migrada')).not.toBeNull()
     expect(screen.queryByText('Start blank')).toBeNull()
@@ -635,7 +637,7 @@ describe('PropertyDetailPage', () => {
     vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
     await renderPage(BASE_PROPERTY)
 
-    fireEvent.click(screen.getByText('PLANO'))
+    fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
     // La pestaña trabaja sobre el levantamiento original; el planeado no se asoma aquí.
     expect(await screen.findByText('Planta Original')).not.toBeNull()
     expect(screen.queryByText('Planta Planeada')).toBeNull()
@@ -646,11 +648,56 @@ describe('PropertyDetailPage', () => {
     expect(envelope.variants.planned).toEqual(v3.variants.planned)
   })
 
-  it('sin geometría reconocible, PLANO abre en la pantalla de inicio', async () => {
+  it('sin geometría reconocible, el ORIGINAL abre en la pantalla de inicio', async () => {
     // El mock por defecto responde {}: una propiedad que nunca dibujó su plano.
     await renderPage(BASE_PROPERTY)
-    fireEvent.click(screen.getByText('PLANO'))
+    fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
     expect(await screen.findByText('Start blank')).not.toBeNull()
+  })
+
+  it('el PLANEADO sin datos aterriza en su empty state con las dos maneras de nacer', async () => {
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: null,
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    expect(await screen.findByText('PARTIR DEL ORIGINAL')).not.toBeNull()
+    expect(screen.getByText('EMPEZAR EN BLANCO')).not.toBeNull()
+  })
+
+  it('el GUARDAR de la página guarda el planeado sin pisar el original', async () => {
+    // Los dos editores comparten el GUARDAR del encabezado vía la misma PlanApi;
+    // sin registrar de QUÉ variante es el editor vivo, este flujo escribiría el
+    // planeado encima del original.
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    expect(await screen.findByText('Planta Planeada')).not.toBeNull()
+
+    // Dibujar un muro ensucia el editor del planeado; GUARDAR ▸ persiste por él.
+    fireEvent.click(screen.getByText('wall'))
+    fireEvent.click(await screen.findByText('GUARDAR ▸'))
+
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
+    const [, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
+    expect(envelope.variants.original).toEqual(v3.variants.original)
+    expect(Object.keys(envelope.variants.planned!.floors[0].edges)).toHaveLength(1)
+    expect(api.updateProperty).not.toHaveBeenCalled()
   })
 
   // ── El presupuesto de obra ────────────────────────────────────────────────

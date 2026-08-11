@@ -33,8 +33,9 @@ import { NumericInput } from './NumericInput'
 import { StatRow } from './StatRow'
 import { PhotoGallery } from './PhotoGallery'
 import { PropertyProfitSection } from './PropertyProfitSection'
-import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
-import { migrateGeometry, isEmpty, type FloorPlanModel, type FloorSet } from '../lib/floorplan/types'
+import { type PlanApi } from './FloorPlanEditor'
+import { LevantamientoPanel } from './LevantamientoPanel'
+import { migrateGeometry, withVariant, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
 import { roomLabels } from '../lib/floorplan/rooms'
 import { floorToPngBlob } from '../lib/floorplan/planImage'
 import { DetailHeader } from './detail/DetailHeader'
@@ -185,6 +186,10 @@ export function PropertyDetailPage() {
   // la ficha carga, la página entera hace early-return antes de pintar las pestañas.
   const [geometry, setGeometry] = useState<FloorPlanModel | null>(null)
   const planApiRef = useRef<PlanApi | null>(null)
+  // De QUÉ variante es el editor vivo detrás de planApiRef: los dos levantamientos
+  // comparten el GUARDAR del encabezado, y sin esto un guardado desde el planeado
+  // escribiría encima del original.
+  const planVariantRef = useRef<VariantKey>('original')
   const [planDirty, setPlanDirty] = useState(false)
   // La planta activa del levantamiento original guardado, si la hay: fuente alterna
   // para los renders.
@@ -242,18 +247,18 @@ export function PropertyDetailPage() {
     }
   }, [propertyId, status])
 
-  const onPlanReady = useCallback((api: PlanApi) => { planApiRef.current = api }, [])
+  const onPlanReady = useCallback((variant: VariantKey, api: PlanApi) => {
+    planApiRef.current = api
+    planVariantRef.current = variant
+  }, [])
 
   /**
-   * El editor edita SOLO la variante original (el planeado se conecta en sus propias
-   * pestañas): guardar compone el envelope v3 completo, preservando el planeado que ya
-   * hubiera. Un blob v2 viejo queda persistido en v3 en su primer guardado.
+   * Guardar UNA variante compone el envelope v3 completo con `withVariant`, que
+   * preserva la otra tal cual: un guardado del planeado jamás pisa el original y
+   * viceversa. Un blob v2 viejo queda persistido en v3 en su primer guardado.
    */
-  async function saveFloorSet(fs: FloorSet): Promise<void> {
-    setGeometry(await savePropertyGeometry(propertyId, {
-      schemaVersion: 3,
-      variants: { original: fs, planned: geometry?.variants.planned ?? null },
-    }))
+  async function saveFloorSet(variant: VariantKey, fs: FloorSet): Promise<void> {
+    setGeometry(await savePropertyGeometry(propertyId, withVariant(geometry, variant, fs)))
   }
 
   async function save() {
@@ -270,7 +275,7 @@ export function PropertyDetailPage() {
         setCostPerSqm(undefined)
       }
       if (planApiRef.current?.isDirty()) {
-        await saveFloorSet(planApiRef.current.getModel())
+        await saveFloorSet(planVariantRef.current, planApiRef.current.getModel())
         planApiRef.current.markSaved()
         setPlanDirty(false)
       }
@@ -989,17 +994,36 @@ export function PropertyDetailPage() {
               ),
             },
             {
-              label: 'plano',
+              label: 'levantamiento original',
+              // Los dos paneles son el MISMO componente en el mismo hueco de
+              // MediaTabs: sin `key`, React reusaría el montaje al cambiar de
+              // pestaña y el reducer del editor se quedaría con el plano de la
+              // otra variante. El key fuerza el remontaje — con lo que un cambio
+              // de pestaña pierde lo no guardado, igual que ya pasaba en PLANO.
               panel: (
-                <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-                  <FloorPlanEditor
-                    initial={geometry && !isEmpty(geometry) ? geometry.variants.original : null}
-                    onSave={saveFloorSet}
-                    onUploadImage={file => uploadFloorplanImage(p.id, file)}
-                    onReady={onPlanReady}
-                    onDirtyChange={setPlanDirty}
-                  />
-                </div>
+                <LevantamientoPanel
+                  key="levantamiento-original"
+                  variant="original"
+                  geometry={geometry}
+                  onSave={saveFloorSet}
+                  onUploadImage={file => uploadFloorplanImage(p.id, file)}
+                  onReady={onPlanReady}
+                  onDirtyChange={setPlanDirty}
+                />
+              ),
+            },
+            {
+              label: 'levantamiento planeado',
+              panel: (
+                <LevantamientoPanel
+                  key="levantamiento-planeado"
+                  variant="planned"
+                  geometry={geometry}
+                  onSave={saveFloorSet}
+                  onUploadImage={file => uploadFloorplanImage(p.id, file)}
+                  onReady={onPlanReady}
+                  onDirtyChange={setPlanDirty}
+                />
               ),
             },
             {

@@ -130,7 +130,7 @@ export function RendersPanel({
             </button>
           ))}
           {plan && (
-            <button onClick={selectPlan} title="Usar el plano de la pestaña PLANO"
+            <button onClick={selectPlan} title="Usar el plano de la pestaña LEVANTAMIENTO ORIGINAL"
               style={{
                 flexShrink: 0, width: 84, height: 64, cursor: 'pointer',
                 border: `2px solid ${usePlan ? colors.primary : colors.border}`,

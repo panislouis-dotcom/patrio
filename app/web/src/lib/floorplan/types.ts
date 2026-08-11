@@ -69,8 +69,20 @@ export function emptyFloorSet(): FloorSet {
   return { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Baja')] }
 }
 
-export function emptyModel(): FloorPlanModel {
-  return { schemaVersion: 3, variants: { original: emptyFloorSet(), planned: null } }
+/**
+ * El único constructor del envelope v3: escribe UNA variante y preserva la otra tal
+ * cual venga en `model` (o su default si no hay modelo: el original nace en blanco,
+ * el planeado nace inexistente). Todo literal `{ schemaVersion: 3, variants: … }`
+ * vive aquí — quien guarda una variante no puede, ni por accidente, pisar la otra.
+ */
+export function withVariant(model: FloorPlanModel | null, key: VariantKey, fs: FloorSet): FloorPlanModel {
+  return {
+    schemaVersion: 3,
+    variants: {
+      original: key === 'original' ? fs : model?.variants.original ?? emptyFloorSet(),
+      planned: key === 'planned' ? fs : model?.variants.planned ?? null,
+    },
+  }
 }
 
 const isFloorSet = (v: unknown): v is FloorSet =>
@@ -87,17 +99,23 @@ const isFloorSet = (v: unknown): v is FloorSet =>
 export function migrateGeometry(raw: unknown): FloorPlanModel | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as { schemaVersion?: unknown; variants?: { original?: unknown; planned?: unknown } }
-  if (m.schemaVersion === 3 && isFloorSet(m.variants?.original)) return raw as FloorPlanModel
+  if (m.schemaVersion === 3) {
+    const original = m.variants?.original
+    const planned = m.variants?.planned
+    if (!isFloorSet(original)) return null
+    // Un planned presente pero malformado invalida el blob ENTERO: si miente en una
+    // variante puede mentir en la otra, y leerlo a medias es peor que no leerlo.
+    if (planned != null && !isFloorSet(planned)) return null
+    // Ausente (clave sin escribir) se normaliza a null para que el tipo no mienta;
+    // un v3 ya bien formado conserva su identidad, sin copia.
+    if (planned === undefined) return { schemaVersion: 3, variants: { original, planned: null } }
+    return raw as FloorPlanModel
+  }
   if (m.schemaVersion === 2 && isFloorSet(m)) {
-    const { slab_m, activeFloor, floors } = m as unknown as FloorSet
-    return { schemaVersion: 3, variants: { original: { slab_m, activeFloor, floors }, planned: null } }
+    const { slab_m, activeFloor, floors } = m
+    return withVariant(null, 'original', { slab_m, activeFloor, floors })
   }
   return null
-}
-
-export function isEmpty(raw: unknown): boolean {
-  const m = migrateGeometry(raw)
-  return !m || m.variants.original.floors.length === 0
 }
 
 export const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o))

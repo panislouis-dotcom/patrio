@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  emptyModel, emptyFloorSet, isEmpty, clone, floorElev, migrateGeometry,
-  type FloorPlanModel,
+  withVariant, emptyFloorSet, clone, floorElev, migrateGeometry,
 } from './types'
 
 // Real shape seen in production: the old wall-list editor's blob has no `activeFloor` at all
@@ -22,9 +21,9 @@ function v2Blob() {
   return { schemaVersion: 2 as const, slab_m: fs.slab_m, activeFloor: fs.activeFloor, floors: fs.floors }
 }
 
-describe('emptyModel', () => {
-  it('creates a v3 envelope whose original variant has one blank floor and no planned variant', () => {
-    const m = emptyModel()
+describe('withVariant', () => {
+  it('builds a fresh v3 envelope from null: the written variant lands, the other defaults', () => {
+    const m = withVariant(null, 'original', emptyFloorSet())
     expect(m.schemaVersion).toBe(3)
     expect(m.variants.planned).toBeNull()
     const fs = m.variants.original
@@ -35,6 +34,30 @@ describe('emptyModel', () => {
     expect(Object.keys(fs.floors[0].edges)).toHaveLength(0)
     expect(fs.floors[0].extWall_m).toBeCloseTo(0.15)
     expect(fs.floors[0].intWall_m).toBeCloseTo(0.10)
+  })
+
+  it('from null with the planned variant, original still exists: it can never be null', () => {
+    const planned = emptyFloorSet()
+    const m = withVariant(null, 'planned', planned)
+    expect(m.variants.planned).toBe(planned)
+    expect(m.variants.original.floors).toHaveLength(1)
+  })
+
+  it('writing one variant preserves the other untouched, in both directions', () => {
+    const planned = emptyFloorSet()
+    planned.floors[0].name = 'Planta Planeada'
+    const base = withVariant(withVariant(null, 'original', emptyFloorSet()), 'planned', planned)
+
+    const newOriginal = emptyFloorSet()
+    newOriginal.floors[0].name = 'Planta Nueva'
+    const afterOriginal = withVariant(base, 'original', newOriginal)
+    expect(afterOriginal.variants.original).toBe(newOriginal)
+    expect(afterOriginal.variants.planned).toBe(planned)
+
+    const newPlanned = emptyFloorSet()
+    const afterPlanned = withVariant(base, 'planned', newPlanned)
+    expect(afterPlanned.variants.planned).toBe(newPlanned)
+    expect(afterPlanned.variants.original).toBe(base.variants.original)
   })
 })
 
@@ -50,9 +73,35 @@ describe('migrateGeometry', () => {
     expect(m.variants.original.floors.map(f => f.name)).toEqual(['Planta Original', 'Planta Alta'])
   })
 
-  it('returns a v3 envelope as-is, without copying', () => {
-    const v3 = emptyModel()
+  it('returns a well-formed v3 envelope as-is, without copying', () => {
+    const v3 = withVariant(null, 'original', emptyFloorSet())
     expect(migrateGeometry(v3)).toBe(v3)
+  })
+
+  it('returns a v3 envelope with a drawn planned variant as-is too', () => {
+    const v3 = withVariant(withVariant(null, 'original', emptyFloorSet()), 'planned', emptyFloorSet())
+    expect(migrateGeometry(v3)).toBe(v3)
+  })
+
+  it('normalizes a v3 blob without a planned key to planned: null', () => {
+    // Un blob v3 escrito por una versión que aún no conocía `planned` no debe
+    // colarse con `planned: undefined`: el tipo promete FloorSet | null.
+    const sinPlanned = { schemaVersion: 3, variants: { original: emptyFloorSet() } }
+    const m = migrateGeometry(sinPlanned)!
+    expect(m).not.toBeNull()
+    expect(m.variants.planned).toBeNull()
+    expect(m.variants.original).toBe(sinPlanned.variants.original)
+  })
+
+  it('rejects the whole blob when planned exists but is not a FloorSet', () => {
+    // Un planned malformado no se repara en silencio: si el blob miente en una
+    // variante puede mentir en la otra, y leerlo a medias es peor que no leerlo.
+    const malformado = {
+      schemaVersion: 3,
+      variants: { original: emptyFloorSet(), planned: { floors: 'no soy un arreglo' } },
+    }
+    expect(migrateGeometry(malformado)).toBeNull()
+    expect(migrateGeometry({ schemaVersion: 3, variants: { original: emptyFloorSet(), planned: 42 } })).toBeNull()
   })
 
   it('returns null for {}: a property that never drew a plan has no model to migrate', () => {
@@ -68,28 +117,6 @@ describe('migrateGeometry', () => {
     expect(migrateGeometry(undefined)).toBeNull()
     expect(migrateGeometry('geometría')).toBeNull()
     expect(migrateGeometry(42)).toBeNull()
-  })
-})
-
-describe('isEmpty', () => {
-  it('treats {} as empty', () => {
-    expect(isEmpty({})).toBe(true)
-  })
-  it('treats a v3 envelope with a drawn-on original as non-empty', () => {
-    expect(isEmpty(emptyModel())).toBe(false)
-  })
-  it('treats a v3 envelope whose original has no floors as empty', () => {
-    const m: FloorPlanModel = {
-      schemaVersion: 3,
-      variants: { original: { slab_m: 0.15, activeFloor: 0, floors: [] }, planned: null },
-    }
-    expect(isEmpty(m)).toBe(true)
-  })
-  it('accepts a raw v2 blob without crashing: migration runs before the emptiness check', () => {
-    expect(isEmpty(v2Blob())).toBe(false)
-  })
-  it('treats leftover schemaVersion-1 geometry from the old wall-list editor as empty', () => {
-    expect(isEmpty(LEGACY_V1)).toBe(true)
   })
 })
 
