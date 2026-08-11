@@ -185,11 +185,12 @@ export function PropertyDetailPage() {
   // (nunca dibujó, o el blob es del editor viejo). Null no significa «cargando»: mientras
   // la ficha carga, la página entera hace early-return antes de pintar las pestañas.
   const [geometry, setGeometry] = useState<FloorPlanModel | null>(null)
-  const planApiRef = useRef<PlanApi | null>(null)
-  // De QUÉ variante es el editor vivo detrás de planApiRef: los dos levantamientos
-  // comparten el GUARDAR del encabezado, y sin esto un guardado desde el planeado
-  // escribiría encima del original.
-  const planVariantRef = useRef<VariantKey>('original')
+  // El editor vivo Y de qué variante es, en UN solo ref: los dos levantamientos
+  // comparten el GUARDAR del encabezado, y con el par amarrado estructuralmente
+  // no existe el estado donde el api de un editor se guarda con la etiqueta del
+  // otro. No se limpia al desmontar a propósito: conserva el rescate de guardar
+  // lo dibujado aunque el usuario ya haya cambiado de pestaña.
+  const planEditorRef = useRef<{ variant: VariantKey; api: PlanApi } | null>(null)
   const [planDirty, setPlanDirty] = useState(false)
   // La planta activa del levantamiento original guardado, si la hay: fuente alterna
   // para los renders.
@@ -248,8 +249,7 @@ export function PropertyDetailPage() {
   }, [propertyId, status])
 
   const onPlanReady = useCallback((variant: VariantKey, api: PlanApi) => {
-    planApiRef.current = api
-    planVariantRef.current = variant
+    planEditorRef.current = { variant, api }
   }, [])
 
   /**
@@ -262,7 +262,7 @@ export function PropertyDetailPage() {
   }
 
   async function save() {
-    if (!property || (!hasEdits && costPerSqm == null && !planApiRef.current?.isDirty())) return
+    if (!property || (!hasEdits && costPerSqm == null && !planEditorRef.current?.api.isDirty())) return
     setSaving(true)
     setSaveError(null)
     try {
@@ -274,9 +274,10 @@ export function PropertyDetailPage() {
         clear()
         setCostPerSqm(undefined)
       }
-      if (planApiRef.current?.isDirty()) {
-        await saveFloorSet(planVariantRef.current, planApiRef.current.getModel())
-        planApiRef.current.markSaved()
+      const planEditor = planEditorRef.current
+      if (planEditor?.api.isDirty()) {
+        await saveFloorSet(planEditor.variant, planEditor.api.getModel())
+        planEditor.api.markSaved()
         setPlanDirty(false)
       }
       setEditing(false)

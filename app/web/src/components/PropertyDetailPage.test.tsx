@@ -671,6 +671,35 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('EMPEZAR EN BLANCO')).not.toBeNull()
   })
 
+  it('re-partir remonta el editor con el clon: lo que se ve es lo que quedó guardado', async () => {
+    // El reducer del editor captura su `initial` al montar y lo ignora después.
+    // Sin el remontaje (el key de generación en LevantamientoPanel), confirmar
+    // RE-PARTIR persistiría el clon en el servidor mientras el editor montado
+    // sigue con el planeado viejo — y un dibujo + GUARDAR posterior desde ese
+    // editor viejo escribiría encima del clon recién hecho.
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    expect(await screen.findByText('Planta Planeada')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
+    fireEvent.click(screen.getByText('¿CONFIRMAR RE-PARTIR?'))
+
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
+    // El editor del planeado ahora enseña la planta clonada, no la vieja.
+    expect(await screen.findByText('Planta Original')).not.toBeNull()
+    expect(screen.queryByText('Planta Planeada')).toBeNull()
+  })
+
   it('el GUARDAR de la página guarda el planeado sin pisar el original', async () => {
     // Los dos editores comparten el GUARDAR del encabezado vía la misma PlanApi;
     // sin registrar de QUÉ variante es el editor vivo, este flujo escribiría el

@@ -39,9 +39,13 @@ interface Props {
  * memoria haría que "descarta el planeado actual" fuera mentira hasta un guardado
  * que nada garantiza.
  */
+/** CUÁL escritura del planeado corre: con un booleano compartido, el "CLONANDO…"
+ * de una acción aterrizaba en el botón de la vecina. */
+type PendingWrite = 'partir' | 'blanco' | 'repartir'
+
 export function LevantamientoPanel({ variant, geometry, onSave, onUploadImage, onReady, onDirtyChange }: Props) {
   const [confirmReclone, setConfirmReclone] = useState(false)
-  const [cloning, setCloning] = useState(false)
+  const [pending, setPending] = useState<PendingWrite | null>(null)
   const [error, setError] = useState<string | null>(null)
   // El reducer del editor captura `initial` al montar y lo ignora después: cada
   // clonación bumpea esta generación para remontarlo con el planeado recién escrito.
@@ -57,8 +61,8 @@ export function LevantamientoPanel({ variant, geometry, onSave, onUploadImage, o
 
   // Escribe el planeado ENTERO de un golpe: un clon del original o una planta en
   // blanco. Es la única escritura que no pasa por el editor.
-  async function writePlanned(source: FloorSet) {
-    setCloning(true)
+  async function writePlanned(source: FloorSet, action: PendingWrite) {
+    setPending(action)
     setError(null)
     try {
       await onSave('planned', clone(source))
@@ -67,9 +71,10 @@ export function LevantamientoPanel({ variant, geometry, onSave, onUploadImage, o
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo escribir el planeado')
     } finally {
-      setCloning(false)
+      setPending(null)
     }
   }
+  const busy = pending != null
 
   if (variant === 'planned' && fs == null) {
     return (
@@ -82,12 +87,12 @@ export function LevantamientoPanel({ variant, geometry, onSave, onUploadImage, o
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {originalHasFloors && (
-            <button onClick={() => writePlanned(original!)} disabled={cloning} style={{ ...outlinedPrimary, opacity: cloning ? 0.6 : 1 }}>
-              {cloning ? 'CLONANDO…' : 'PARTIR DEL ORIGINAL'}
+            <button onClick={() => writePlanned(original!, 'partir')} disabled={busy} style={{ ...outlinedPrimary, opacity: busy ? 0.6 : 1 }}>
+              {pending === 'partir' ? 'CLONANDO…' : 'PARTIR DEL ORIGINAL'}
             </button>
           )}
-          <button onClick={() => writePlanned(emptyFloorSet())} disabled={cloning} style={outlined}>
-            EMPEZAR EN BLANCO
+          <button onClick={() => writePlanned(emptyFloorSet(), 'blanco')} disabled={busy} style={{ ...outlined, opacity: busy ? 0.6 : 1 }}>
+            {pending === 'blanco' ? 'CREANDO…' : 'EMPEZAR EN BLANCO'}
           </button>
         </div>
         {error && <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.tertiary }}>{error}</div>}
@@ -120,10 +125,16 @@ export function LevantamientoPanel({ variant, geometry, onSave, onUploadImage, o
         {originalHasFloors && (confirmReclone ? (
           <>
             <span style={label}>SE DESCARTA EL PLANEADO ACTUAL</span>
-            <button onClick={() => setConfirmReclone(false)} style={outlined}>CANCELAR</button>
-            <button onClick={() => writePlanned(original!)} disabled={cloning}
-              style={{ ...danger, cursor: cloning ? 'not-allowed' : 'pointer', opacity: cloning ? 0.7 : 1 }}>
-              {cloning ? 'CLONANDO…' : '¿CONFIRMAR RE-PARTIR?'}
+            {/* Desactivado en vuelo: la escritura ya se despachó y no se puede
+                detener — un CANCELAR clicable escondería la confirmación
+                mientras el planeado igual se reemplaza. */}
+            <button onClick={() => setConfirmReclone(false)} disabled={busy}
+              style={{ ...outlined, opacity: busy ? 0.6 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}>
+              CANCELAR
+            </button>
+            <button onClick={() => writePlanned(original!, 'repartir')} disabled={busy}
+              style={{ ...danger, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.7 : 1 }}>
+              {pending === 'repartir' ? 'CLONANDO…' : '¿CONFIRMAR RE-PARTIR?'}
             </button>
           </>
         ) : (

@@ -24,8 +24,12 @@ function plannedFloorSet(): FloorSet {
   return fs
 }
 
-function renderPanel(variant: VariantKey, geometry: FloorPlanModel | null) {
-  const onSave = vi.fn(async (_variant: VariantKey, _fs: FloorSet) => {})
+function renderPanel(
+  variant: VariantKey,
+  geometry: FloorPlanModel | null,
+  // Un onSave que nunca resuelve deja el estado "en vuelo" a la vista del test.
+  onSave = vi.fn(async (_variant: VariantKey, _fs: FloorSet) => {}),
+) {
   const onReady = vi.fn()
   render(
     <LevantamientoPanel
@@ -84,6 +88,21 @@ describe('LevantamientoPanel · PLANEADO sin datos', () => {
     expect(fs.floors[0].edges.e1.id).toBe('e1')
   })
 
+  it('cada acción marca su propio estado en vuelo: el ocupado no se cuelga del botón vecino', () => {
+    // Con un booleano compartido, EMPEZAR EN BLANCO ponía "CLONANDO…" en el
+    // botón de PARTIR DEL ORIGINAL — el estado explícito dice CUÁL acción corre.
+    const colgado = vi.fn((_v: VariantKey, _fs: FloorSet) => new Promise<void>(() => {}))
+    renderPanel('planned', withVariant(null, 'original', originalConMuro()), colgado)
+
+    fireEvent.click(screen.getByText('EMPEZAR EN BLANCO'))
+
+    expect(screen.getByText('CREANDO…')).toBeTruthy()
+    const partir = screen.getByText('PARTIR DEL ORIGINAL') as HTMLButtonElement
+    expect(partir.textContent).toBe('PARTIR DEL ORIGINAL')
+    // Vecino sin su etiqueta de ocupado, pero igual desactivado: solo UNA escritura a la vez.
+    expect(partir.disabled).toBe(true)
+  })
+
   it('EMPEZAR EN BLANCO guarda un planeado con una planta en blanco', async () => {
     const { onSave } = renderPanel('planned', withVariant(null, 'original', originalConMuro()))
 
@@ -129,6 +148,19 @@ describe('LevantamientoPanel · PLANEADO existente', () => {
     const [variant, fs] = onSave.mock.calls[0]
     expect(variant).toBe('planned')
     expect(fs).toEqual(originalConMuro())
+  })
+
+  it('CANCELAR se desactiva mientras el re-partir está en vuelo: ya no hay nada que cancelar', () => {
+    // La escritura no se puede detener una vez despachada; un CANCELAR clicable
+    // escondería la confirmación mientras el planeado igual se reemplaza.
+    const colgado = vi.fn((_v: VariantKey, _fs: FloorSet) => new Promise<void>(() => {}))
+    renderPanel('planned', geometry(), colgado)
+
+    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
+    fireEvent.click(screen.getByText('¿CONFIRMAR RE-PARTIR?'))
+
+    expect(screen.getByText('CLONANDO…')).toBeTruthy()
+    expect((screen.getByText('CANCELAR') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('editar y guardar el planeado no toca el original', async () => {
