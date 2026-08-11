@@ -364,9 +364,28 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(page.locator('input[type="file"][accept="image/*"]')).toHaveCount(2)
   })
 
+  test('FOTOS ofrece la sub-navegación GALERÍA | RENDERS, GALERÍA por defecto', async ({ page }) => {
+    await gotoProperty(page, id)
+    await page.getByRole('button', { name: 'FOTOS' }).click()
+
+    // Propuestas nacidas de una foto real (Tarea 16): viven DENTRO de FOTOS, no
+    // en una pestaña de nivel superior propia.
+    await expect(page.getByRole('button', { name: 'GALERÍA', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'RENDERS', exact: true })).toBeVisible()
+    // GALERÍA es la sub-pestaña activa al entrar: la evidencia antes que la propuesta.
+    await expect(page.getByText('SIN FOTOS')).toBeVisible()
+  })
+
   test('LEVANTAMIENTO ORIGINAL lands on the empty state and mounts the editor from it', async ({ page }) => {
     await gotoProperty(page, id)
     await page.getByRole('button', { name: 'LEVANTAMIENTO ORIGINAL' }).click()
+
+    // El original siempre tiene un FloorSet (aunque sin pisos dibujados todavía), así
+    // que su sub-navegación PLANO | RENDERS ya está montada antes de dibujar nada —
+    // a diferencia del planeado sin datos, que cae en su propio empty state (abajo)
+    // sin esta barra.
+    await expect(page.getByRole('button', { name: 'PLANO', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'RENDERS', exact: true })).toBeVisible()
 
     await expect(page.getByText('Trace over a reference image or start from a blank footprint.')).toBeVisible()
     await page.getByRole('button', { name: /start blank/i }).click()
@@ -617,6 +636,94 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await expect(page.getByText('TAREAS', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'LIGAR EXISTENTE' })).toBeVisible()
     await expect(page.getByRole('button', { name: '+ NUEVA TAREA' })).toBeVisible()
+  })
+})
+
+/**
+ * El camino dorado del levantamiento planeado: nace clonando el original (o en
+ * blanco) y desde ahí gana dos herramientas que el original no necesitaba:
+ * DIVISIÓN (una arista fantasma que reparte cuartos abiertos sin ser muro) y
+ * MUEBLE (un fixture con dimensiones reales del catálogo). Ambas colocan su
+ * plantilla con UN clic — no hay gesto de arrastre que dibujar — así que están
+ * al alcance de un e2e real sin construir a mano un rectángulo cerrado.
+ *
+ * Lo que SÍ queda fuera a propósito: que una división separe un cuarto abierto
+ * en dos con nombre y área propios. Probarlo de punta a punta exige un
+ * rectángulo ya cerrado (varios muros con vértices arrastrados hasta
+ * encimarse) — reproducible en un navegador real con feedback visual, pero
+ * desproporcionadamente frágil de escribir a ciegas contra coordenadas de
+ * pantalla en Playwright. Esa semántica exacta ya está cubierta a nivel
+ * unitario (`rooms.test.ts`: "a ghost que divide un rectángulo → 2 cuartos con
+ * 2 nombres y áreas", Tarea 7) y se demuestra a mano en el recorrido visual de
+ * este cierre de fase.
+ */
+test.describe('Levantamiento planeado: clonar, y sus herramientas nuevas', () => {
+  const CON_LEVANTAMIENTO = {
+    name: '[TEST] Propiedad Levantamiento',
+    address: 'Av. Levantamiento 10',
+    city: 'Monterrey',
+    assetType: 'casa',
+    purchasePrice: 1_000_000,
+    projectedSale: 2_000_000,
+    latitude: 25.6866,
+    longitude: -100.3161,
+  }
+
+  let token: string
+  let id: number
+
+  test.beforeAll(async ({ request }) => {
+    token = await getToken(request)
+    await deletePropertyByName(request, CON_LEVANTAMIENTO.name, token)
+    id = (await createProperty(request, CON_LEVANTAMIENTO, token)).id
+  })
+
+  test.afterAll(async ({ request }) => {
+    await deleteProperty(request, id, token)
+  })
+
+  test('PARTIR DEL ORIGINAL clona el levantamiento, y DIVISIÓN/MUEBLE quedan disponibles en el planeado', async ({ page }) => {
+    await gotoProperty(page, id)
+
+    // El original nace sin pisos: no hay nada que clonar todavía, así que la
+    // acción ni se ofrece — es la misma guarda que prueba el empty state de arriba.
+    await page.getByRole('button', { name: 'LEVANTAMIENTO PLANEADO' }).click()
+    await expect(page.getByRole('button', { name: 'PARTIR DEL ORIGINAL' })).toHaveCount(0)
+
+    // Basta con entrar en blanco y guardar (sin dibujar nada) para que el original
+    // tenga un piso — lo único que PARTIR DEL ORIGINAL necesita para ofrecerse.
+    await page.getByRole('button', { name: 'LEVANTAMIENTO ORIGINAL' }).click()
+    await page.getByRole('button', { name: /start blank/i }).click()
+    await expect(page.getByRole('button', { name: 'Fit to screen' })).toBeVisible()
+    const geometrySaved = page.waitForResponse(res =>
+      res.url().includes('/geometry') && res.request().method() === 'PUT')
+    await page.getByRole('button', { name: /^save$/i }).click()
+    await geometrySaved
+
+    // Con el original guardado, el planeado ya puede partir de él.
+    await page.getByRole('button', { name: 'LEVANTAMIENTO PLANEADO' }).click()
+    await expect(page.getByRole('button', { name: 'PARTIR DEL ORIGINAL' })).toBeVisible()
+    await page.getByRole('button', { name: 'PARTIR DEL ORIGINAL' }).click()
+    await expect(page.getByRole('button', { name: 'Fit to screen' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'PLANO', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'RENDERS', exact: true })).toBeVisible()
+
+    // DIVISIÓN: coloca una plantilla vertical con UN clic, seleccionada de inmediato —
+    // el inspector confirma que el motor la conoce como fantasma, no como muro.
+    await page.getByRole('button', { name: /^divisi.n$/i }).click()
+    await expect(page.getByText('División seleccionada')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'CONVERTIR EN MURO' })).toBeVisible()
+
+    // MUEBLE: la paleta lista el catálogo por nombre; elegir uno lo coloca con sus
+    // dimensiones reales por defecto y lo deja seleccionado.
+    await page.getByRole('button', { name: /^mueble$/i }).click()
+    await page.getByRole('button', { name: 'Cama individual', exact: true }).click()
+    await expect(page.locator('[data-el="fixture"]')).toHaveCount(1)
+    // El inspector abre en el fixture recién colocado — dimensiones reales del
+    // catálogo (1.00 × 1.90 m), no un icono decorativo.
+    await expect(page.getByText('Cama individual', { exact: true }).last()).toBeVisible()
+    await expect(page.getByLabel('Ancho (m)')).toHaveValue('1')
+    await expect(page.getByLabel('Largo (m)')).toHaveValue('1.9')
   })
 })
 
