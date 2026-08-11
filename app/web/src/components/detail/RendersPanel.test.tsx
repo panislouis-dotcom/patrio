@@ -35,7 +35,13 @@ const planRenderRow = (id: number, variant: 'original' | 'planned' = 'original')
   ...renderRow(id), sourceImageId: null, sourcePlanPath: `plan/${id}.png`, sourceVariant: variant,
 })
 
-function setup(over: Partial<Parameters<typeof RendersPanel>[0]> = {}) {
+// Los tests mezclan campos de las dos ramas de la unión discriminada a propósito
+// (p.ej. pasar `plan` con `source: 'photos'` para probar que el modo fotos lo
+// ignora) — exactamente lo que la unión ahora bloquea en tiempo de compilación
+// para quien llama de verdad (`LevantamientoPanel`, `FotosPanel`). Por eso `over`
+// se queda flexible aquí y el cast al render es intencional: este archivo prueba
+// la defensa en TIEMPO DE EJECUCIÓN, no el tipo.
+function setup(over: Record<string, unknown> = {}) {
   const props = {
     source: 'photos' as const,
     images: [photo(10, 'fachada.jpg'), photo(11, 'jardin.jpg')],
@@ -47,7 +53,7 @@ function setup(over: Partial<Parameters<typeof RendersPanel>[0]> = {}) {
     onDeleteRender: vi.fn().mockResolvedValue(undefined),
     ...over,
   }
-  render(<RendersPanel {...props} />)
+  render(<RendersPanel {...(props as unknown as Parameters<typeof RendersPanel>[0])} />)
   return props
 }
 
@@ -244,6 +250,20 @@ describe('RendersPanel', () => {
       renders: [planRenderRow(1, 'original'), planRenderRow(2, 'planned')],
     })
     expect(screen.getByAltText('Render 1')).not.toBeNull()
+    expect(screen.queryByAltText('Render 2')).toBeNull()
+  })
+
+  it('modo plano: variante equivocada deja la lista vacía, no truena', () => {
+    // Defensa en profundidad: aunque el tipo ahora obliga a mandar `variant`, el
+    // filtro (`scoped`) sigue siendo el único que decide qué se lista. Si TODOS
+    // los renders son de la otra variante, la lista debe quedar en cero, no
+    // reventar ni mostrar algo de la variante ajena.
+    setup({
+      source: 'plan', variant: 'original',
+      renders: [planRenderRow(1, 'planned'), planRenderRow(2, 'planned')],
+    })
+    expect(screen.getByText('Renders (0)')).not.toBeNull()
+    expect(screen.queryByAltText('Render 1')).toBeNull()
     expect(screen.queryByAltText('Render 2')).toBeNull()
   })
 

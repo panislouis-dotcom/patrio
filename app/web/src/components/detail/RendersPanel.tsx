@@ -6,31 +6,47 @@ import type { FloorGraph, VariantKey } from '../../lib/floorplan/types'
 import { roomLabels } from '../../lib/floorplan/rooms'
 import { planFacts } from '../../lib/floorplan/planFacts'
 
-interface Props {
-  /** De dónde nace todo render que este panel puede generar o listar. 'photos':
-   * vive dentro de FOTOS, la fuente es una foto real (Tarea 16). 'plan': vive
-   * dentro de un levantamiento, la fuente es SU plano (Tarea 17). Un mismo
-   * componente, dos fuentes que nunca se mezclan — igual que en la base de
-   * datos, `sourceVariant` NULL es foto y con valor es plano. */
-  source: 'photos' | 'plan'
-  images: PropertyImage[]
+interface CommonProps {
   prompts: RenderPrompt[]
   renders: PropertyRender[]
   base: string
-  /** El plano de ESTA variante (piso activo ya resuelto por quien llama). Solo se
-   * usa cuando `source === 'plan'`. */
-  plan?: FloorGraph | null
-  /** De qué levantamiento es este panel. Solo se usa cuando `source === 'plan'`:
-   * filtra la lista a las cadenas que nacieron de ESTA variante, no de la otra. */
-  variant?: VariantKey
-  onGenerate: (req: { sourceImageId: number; promptId: number | null; promptText: string })
-    => Promise<PropertyRender>
-  onGeneratePlan?: (req: { promptId: number | null; promptText: string }) => Promise<PropertyRender>
   /** Editar ENCIMA de un render: instrucción chica sobre su misma imagen. */
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
   onSavePrompt: (p: { name: string; body: string }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
 }
+
+/** FOTOS (Tarea 16): la fuente es una foto real de la propiedad — flujo actual. */
+interface PhotosProps extends CommonProps {
+  source: 'photos'
+  images: PropertyImage[]
+  onGenerate: (req: { sourceImageId: number; promptId: number | null; promptText: string })
+    => Promise<PropertyRender>
+  plan?: never
+  variant?: never
+  onGeneratePlan?: never
+}
+
+/** Cada levantamiento (Tarea 17): la fuente es SU plano, nunca el ajeno. `variant`
+ * y `plan` son OBLIGATORIOS aquí — antes los dos eran opcionales y un caller podía
+ * mandar `source: 'plan'` sin `variant`; `scoped` (más abajo) filtraba entonces
+ * contra `undefined`, la lista salía silenciosamente vacía y nada avisaba del
+ * error. Ahora ese caso ni compila. */
+interface PlanProps extends CommonProps {
+  source: 'plan'
+  variant: VariantKey
+  plan: FloorGraph | null
+  onGeneratePlan: (req: { promptId: number | null; promptText: string }) => Promise<PropertyRender>
+  images?: never
+  onGenerate?: never
+}
+
+/** De dónde nace todo render que este panel puede generar o listar. 'photos':
+ * vive dentro de FOTOS, la fuente es una foto real (Tarea 16). 'plan': vive
+ * dentro de un levantamiento, la fuente es SU plano (Tarea 17). Un mismo
+ * componente, dos fuentes que nunca se mezclan — igual que en la base de datos,
+ * `sourceVariant` NULL es foto y con valor es plano. */
+type Props = PhotosProps | PlanProps
 
 const label: React.CSSProperties = {
   fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em',
@@ -49,10 +65,18 @@ const label: React.CSSProperties = {
  * para que nadie confunda evidencia con proyecto, y esta pantalla es donde esa
  * garantía se vuelve visible para quien la está mirando.
  */
-export function RendersPanel({
-  source, images, prompts, renders, base, plan, variant,
-  onGenerate, onGeneratePlan, onEdit, onSavePrompt, onDeleteRender,
-}: Props) {
+export function RendersPanel(props: Props) {
+  const { source, prompts, renders, base, onEdit, onSavePrompt, onDeleteRender } = props
+  // Narrowed a mano y no por destructuring directo: una vez que `plan`/`variant`/
+  // `onGenerate*` salen del objeto `props` pierden la liga con `source` — el
+  // discriminante — y TS ya no puede probar que están presentes en su rama. Leerlos
+  // vía `props.source === …` conserva esa liga; el resto de la función no cambia.
+  const images = props.source === 'photos' ? props.images : []
+  const plan = props.source === 'plan' ? props.plan : null
+  const variant = props.source === 'plan' ? props.variant : undefined
+  const onGenerate = props.source === 'photos' ? props.onGenerate : undefined
+  const onGeneratePlan = props.source === 'plan' ? props.onGeneratePlan : undefined
+
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [usePlan, setUsePlan] = useState(false)
   const [promptId, setPromptId] = useState<number | null>(null)
@@ -118,7 +142,7 @@ export function RendersPanel({
     setBusy(true); setError(null)
     try {
       if (viaPlan) await onGeneratePlan!({ promptId: effectivePromptId, promptText: text.trim() })
-      else await onGenerate({ sourceImageId: sourceId!, promptId: effectivePromptId, promptText: text.trim() })
+      else await onGenerate!({ sourceImageId: sourceId!, promptId: effectivePromptId, promptText: text.trim() })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo generar el render')
     } finally { setBusy(false) }

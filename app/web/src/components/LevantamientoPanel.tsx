@@ -2,7 +2,10 @@ import { useCallback, useState } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
 import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
+import { RendersPanel } from './detail/RendersPanel'
+import { floorToPngBlob } from '../lib/floorplan/planImage'
 import { clone, emptyFloorSet, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
+import type { PropertyRender, RenderPrompt } from '../lib/types'
 
 const btnBase: React.CSSProperties = {
   cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
@@ -23,7 +26,27 @@ interface Props {
    * necesita saber a cuál de los dos levantamientos pertenece. */
   onReady?: (variant: VariantKey, api: PlanApi) => void
   onDirtyChange?: (dirty: boolean) => void
+  /** Para resolver rutas de archivo (`${base}/files/...`) en RENDERS — igual que
+   * en FotosPanel. */
+  base: string
+  prompts: RenderPrompt[]
+  /** La lista COMPLETA, sin filtrar: `RendersPanel` la recorta a la variante de
+   * ESTE panel por dentro (`sourceVariant === variant`), igual que FOTOS la
+   * recorta a `sourceVariant == null`. Un solo filtro, un solo lugar. */
+  renders: PropertyRender[]
+  /** Generar desde el plano de ESTA variante. Este panel resuelve el piso activo →
+   * PNG (`floorToPngBlob`) y manda la variante; quien llama (la ficha) conoce el
+   * id de la propiedad y hace la llamada real a `generatePropertyRenderFromPlan` —
+   * la misma separación de responsabilidades que ya tiene `onSave`. */
+  onGenerateRender: (variant: VariantKey, req: { promptId: number | null; promptText: string; plan: Blob })
+    => Promise<PropertyRender>
+  onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
+  onSavePrompt: (p: { name: string; body: string }) => Promise<RenderPrompt>
+  onDeleteRender: (renderId: number) => Promise<void>
 }
+
+type SubTab = 'plano' | 'renders'
+const SUB_TABS: readonly [SubTab, string][] = [['plano', 'PLANO'], ['renders', 'RENDERS']]
 
 /**
  * El contenedor de UN levantamiento. El ORIGINAL es solo el editor: es la medición
@@ -43,21 +66,38 @@ interface Props {
  * de una acción aterrizaba en el botón de la vecina. */
 type PendingWrite = 'partir' | 'blanco' | 'repartir'
 
-export function LevantamientoPanel({ variant, geometry, onSave, onUploadImage, onReady, onDirtyChange }: Props) {
+export function LevantamientoPanel({
+  variant, geometry, onSave, onUploadImage, onReady, onDirtyChange,
+  base, prompts, renders, onGenerateRender, onEdit, onSavePrompt, onDeleteRender,
+}: Props) {
   const [confirmReclone, setConfirmReclone] = useState(false)
   const [pending, setPending] = useState<PendingWrite | null>(null)
   const [error, setError] = useState<string | null>(null)
   // El reducer del editor captura `initial` al montar y lo ignora después: cada
   // clonación bumpea esta generación para remontarlo con el planeado recién escrito.
   const [generation, setGeneration] = useState(0)
+  const [tab, setTab] = useState<SubTab>('plano')
 
   const original = geometry?.variants.original ?? null
   const fs = variant === 'original' ? original : geometry?.variants.planned ?? null
   // Clonar un original sin pisos no produce nada editable: la acción ni se ofrece.
   const originalHasFloors = original != null && original.floors.length > 0
+  // El piso activo de ESTE FloorSet: lo que RENDERS siembra y exporta a PNG. `fs`
+  // es null en el empty-state del planeado (RENDERS ni se ofrece, ver abajo) y en
+  // un original que nunca se guardó — en ese caso `activeFloor` sale null y
+  // `RendersPanel` ya sabe decir "dibuja el plano primero" en vez de tronar.
+  const activeFloor = fs?.floors[fs.activeFloor] ?? null
 
   const handleReady = useCallback((api: PlanApi) => onReady?.(variant, api), [onReady, variant])
   const handleSave = useCallback((set: FloorSet) => onSave(variant, set), [onSave, variant])
+  // La exportación a PNG (`floorToPngBlob`, solo corre en el navegador) vive aquí
+  // porque este panel es quien sabe cuál es el piso activo de SU variante; la
+  // llamada real a `generatePropertyRenderFromPlan` vive en la ficha, que es
+  // quien conoce el id de la propiedad — misma separación que ya tiene `onSave`.
+  const handleGeneratePlan = useCallback(async (req: { promptId: number | null; promptText: string }) => {
+    const blob = await floorToPngBlob(activeFloor!)
+    return onGenerateRender(variant, { ...req, plan: blob })
+  }, [activeFloor, variant, onGenerateRender])
 
   // Escribe el planeado ENTERO de un golpe: un clon del original o una planta en
   // blanco. Es la única escritura que no pasa por el editor.
@@ -113,9 +153,10 @@ export function LevantamientoPanel({ variant, geometry, onSave, onUploadImage, o
     </div>
   )
 
-  if (variant === 'original') return editor
-
-  return (
+  // PLANO: el contenido de siempre para esta variante — íntegro, sin cambios.
+  // Para el planeado eso INCLUYE la barra de re-partir; para el original es
+  // solo el editor, como ya era antes de esta sub-navegación.
+  const planoContent = variant === 'original' ? editor : (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ flexShrink: 0, display: 'flex', gap: '8px', alignItems: 'center',
         padding: '6px 16px', borderBottom: `1px solid ${colors.border}` }}>
@@ -142,6 +183,37 @@ export function LevantamientoPanel({ variant, geometry, onSave, onUploadImage, o
         ))}
       </div>
       {editor}
+    </div>
+  )
+
+  // RENDERS: propuestas nacidas del plano de ESTA variante, nunca del ajeno —
+  // `RendersPanel` filtra por `variant` internamente (`sourceVariant === variant`).
+  const rendersContent = (
+    <RendersPanel source="plan" variant={variant} plan={activeFloor} base={base}
+      prompts={prompts} renders={renders} onGeneratePlan={handleGeneratePlan}
+      onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender} />
+  )
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {/* Mismo convenio visual que GALERÍA | RENDERS en FotosPanel (Tarea 16):
+          misma tira de botones, mismo tono — es el mismo gesto, elegir qué ver
+          DENTRO de esta sección, no saltar a otra pestaña de nivel superior. */}
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                    padding: '4px 8px', borderBottom: `1px solid ${colors.border}` }}>
+        {SUB_TABS.map(([key, text], idx) => (
+          <button key={key} onClick={() => setTab(key)} style={{
+            fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.1em',
+            padding: '3px 9px',
+            border: `1px solid ${colors.border}`, marginLeft: idx === 0 ? 0 : '-1px',
+            background: tab === key ? colors.surfaceAlt : 'transparent',
+            color: tab === key ? colors.neutral : colors.secondary, cursor: 'pointer',
+          }}>
+            {text}
+          </button>
+        ))}
+      </div>
+      {tab === 'plano' ? planoContent : rendersContent}
     </div>
   )
 }

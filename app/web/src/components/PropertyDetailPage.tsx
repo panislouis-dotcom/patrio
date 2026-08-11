@@ -5,7 +5,7 @@ import {
   uploadPropertyImage, deletePropertyImage, updatePropertyImageType, reorderPropertyImages,
   fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage,
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
-  listRenderPrompts, listPropertyRenders, generatePropertyRender,
+  listRenderPrompts, listPropertyRenders, generatePropertyRender, generatePropertyRenderFromPlan,
   editPropertyRender, createRenderPrompt, deletePropertyRender,
 } from '../lib/api'
 import type {
@@ -250,6 +250,40 @@ export function PropertyDetailPage() {
    */
   async function saveFloorSet(variant: VariantKey, fs: FloorSet): Promise<void> {
     setGeometry(await savePropertyGeometry(propertyId, withVariant(geometry, variant, fs)))
+  }
+
+  // ─── Renders: edición, biblioteca y borrado son iguales sin importar la fuente
+  // (una foto en FOTOS, el plano de cada levantamiento) — una sola definición para
+  // las tres monturas de RendersPanel (FotosPanel y los dos LevantamientoPanel), en
+  // vez de copiar el mismo cierre tres veces.
+  async function onEditRender(renderId: number, promptText: string): Promise<PropertyRender> {
+    const created = await editPropertyRender(propertyId, renderId, { promptText })
+    setRenders(prev => [created, ...prev])
+    return created
+  }
+  async function onSaveRenderPrompt({ name, body }: { name: string; body: string }): Promise<RenderPrompt> {
+    const created = await createRenderPrompt(name, body)
+    setRenderPrompts(prev => [...prev, created])
+    return created
+  }
+  async function onDeleteRenderItem(renderId: number): Promise<void> {
+    await deletePropertyRender(propertyId, renderId)
+    setRenders(prev => prev.filter(r => r.id !== renderId))
+  }
+
+  /**
+   * Generar desde el plano de UN levantamiento. `LevantamientoPanel` ya resolvió
+   * el piso activo → PNG (`floorToPngBlob`, solo corre en el navegador); aquí se
+   * manda con la variante que lo pidió — la pieza que le faltaba al endpoint
+   * desde la Tarea 14 (`variant` obligatorio en `renders/from-plan`).
+   */
+  async function onGenerateRender(
+    variant: VariantKey,
+    req: { promptId: number | null; promptText: string; plan: Blob },
+  ): Promise<PropertyRender> {
+    const created = await generatePropertyRenderFromPlan(propertyId, { ...req, variant })
+    setRenders(prev => [created, ...prev])
+    return created
   }
 
   async function save() {
@@ -990,20 +1024,9 @@ export function PropertyDetailPage() {
                     setRenders(prev => [created, ...prev])
                     return created
                   }}
-                  onEdit={async (renderId, promptText) => {
-                    const created = await editPropertyRender(p.id, renderId, { promptText })
-                    setRenders(prev => [created, ...prev])
-                    return created
-                  }}
-                  onSavePrompt={async ({ name, body }) => {
-                    const created = await createRenderPrompt(name, body)
-                    setRenderPrompts(prev => [...prev, created])
-                    return created
-                  }}
-                  onDeleteRender={async renderId => {
-                    await deletePropertyRender(p.id, renderId)
-                    setRenders(prev => prev.filter(r => r.id !== renderId))
-                  }}
+                  onEdit={onEditRender}
+                  onSavePrompt={onSaveRenderPrompt}
+                  onDeleteRender={onDeleteRenderItem}
                 />
               ),
             },
@@ -1023,6 +1046,13 @@ export function PropertyDetailPage() {
                   onUploadImage={file => uploadFloorplanImage(p.id, file)}
                   onReady={onPlanReady}
                   onDirtyChange={setPlanDirty}
+                  base={BASE}
+                  prompts={renderPrompts}
+                  renders={renders}
+                  onGenerateRender={onGenerateRender}
+                  onEdit={onEditRender}
+                  onSavePrompt={onSaveRenderPrompt}
+                  onDeleteRender={onDeleteRenderItem}
                 />
               ),
             },
@@ -1037,6 +1067,13 @@ export function PropertyDetailPage() {
                   onUploadImage={file => uploadFloorplanImage(p.id, file)}
                   onReady={onPlanReady}
                   onDirtyChange={setPlanDirty}
+                  base={BASE}
+                  prompts={renderPrompts}
+                  renders={renders}
+                  onGenerateRender={onGenerateRender}
+                  onEdit={onEditRender}
+                  onSavePrompt={onSaveRenderPrompt}
+                  onDeleteRender={onDeleteRenderItem}
                 />
               ),
             },
