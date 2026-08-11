@@ -1,4 +1,4 @@
-import type { FloorSet, FloorGraph, VertexId, EdgeId, EdgeKind, Opening, FixtureKind, Fixture } from './types'
+import type { FloorSet, FloorGraph, VertexId, EdgeId, EdgeKind, Opening, FixtureKind, Fixture, FixtureId } from './types'
 import { clone, genId, isGhost, GHOST_THICKNESS_M, FIXTURE_CATALOG } from './types'
 import { deleteVertex, deleteEdge, splitEdgeAtVertex } from './graph'
 import { exteriorEdgeIds } from './rooms'
@@ -10,16 +10,18 @@ export type Sel =
   | { t: 'vertex'; id: VertexId }
   | { t: 'edge'; id: EdgeId }
   | { t: 'opening'; edgeId: EdgeId; index: number }
-  | { t: 'fixture'; id: string }
+  | { t: 'fixture'; id: FixtureId }
   | null
 
 export interface DragState {
   kind: 'vertex' | 'edgeBody' | 'opening' | 'fixture'
-  id?: VertexId | EdgeId       // vertex id for 'vertex', edge id for 'edgeBody'/'opening', fixture id for 'fixture'
+  id?: VertexId | EdgeId | FixtureId   // vertex id for 'vertex', edge id for 'edgeBody'/'opening', fixture id for 'fixture'
   openingIndex?: number
   // Wall-body drag: drag-start endpoint positions + pointer position, so the wall can be
   // translated by the pointer delta. No axis-lock, no diagonal special-case — see graph.ts's
   // translateEdgeBody for why this alone fixes the old force-straightening bug.
+  // Un drag de 'fixture' reusa startV1 como el centro (x,y) del mueble al iniciar el
+  // gesto (startV2 queda sin usar) — mismo patrón de "posición inicial + delta del puntero".
   startV1?: { x: number; y: number }
   startV2?: { x: number; y: number }
   startPt?: { x: number; y: number }
@@ -81,8 +83,8 @@ export type Action =
   | { type: 'SET_VERTEX_POINT'; id: VertexId; x: number; y: number }
   | { type: 'SPLIT_EDGE_AT_POINT'; edgeId: EdgeId; x: number; y: number }
   | { type: 'ADD_FIXTURE'; kind: FixtureKind; x: number; y: number }
-  | { type: 'MOVE_FIXTURE'; id: string; x: number; y: number }
-  | { type: 'SET_FIXTURE_PARAM'; id: string; patch: Partial<Pick<Fixture, 'w_m' | 'h_m' | 'rot'>> }
+  | { type: 'MOVE_FIXTURE'; id: FixtureId; x: number; y: number }
+  | { type: 'SET_FIXTURE_PARAM'; id: FixtureId; patch: Partial<Pick<Fixture, 'w_m' | 'h_m' | 'rot'>> }
   | { type: 'SET_MODEL'; model: FloorSet }
   | { type: 'DRAG_MODEL'; model: FloorSet }
   | { type: 'UNDO' }
@@ -112,7 +114,7 @@ export function removeVertexFromFloor(f: FloorGraph, id: VertexId): void {
 export function removeOpeningFromFloor(f: FloorGraph, edgeId: EdgeId, index: number): void {
   f.edges[edgeId].openings.splice(index, 1)
 }
-export function removeFixtureFromFloor(f: FloorGraph, id: string): void {
+export function removeFixtureFromFloor(f: FloorGraph, id: FixtureId): void {
   // Defensivo contra un floor sin la clave `fixtures` (blob pre-feature): nunca truena.
   const fixtures = f.fixtures ?? []
   const idx = fixtures.findIndex(fx => fx.id === id)

@@ -3,9 +3,13 @@ import { useReducer, useMemo, useRef, useState, useEffect } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
 import {
-  reducer, initialState, removeEdgeFromFloor, removeOpeningFromFloor, removeVertexFromFloor, type Tool,
+  reducer, initialState, removeEdgeFromFloor, removeOpeningFromFloor, removeVertexFromFloor,
+  removeFixtureFromFloor, type Tool,
 } from '../lib/floorplan/reducer'
-import { emptyFloorSet, clone, genId, isGhost, GHOST_THICKNESS_M, type FloorSet, type FloorGraph } from '../lib/floorplan/types'
+import {
+  emptyFloorSet, clone, genId, isGhost, GHOST_THICKNESS_M, FIXTURE_CATALOG,
+  type FloorSet, type FloorGraph, type FixtureKind,
+} from '../lib/floorplan/types'
 import { viewTransform, type Camera } from '../lib/floorplan/viewTransform'
 import { roomAreas, roomLabels } from '../lib/floorplan/rooms'
 import { cornerAngles } from '../lib/floorplan/dimensions'
@@ -79,6 +83,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null)
   const [calDraft, setCalDraft] = useState<{ p0: [number, number]; p1: [number, number] } | null>(null)
   const [calLen, setCalLen] = useState<number | undefined>(undefined)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const calDragRef = useRef(false)
   // One history-creating SET_MODEL per drag gesture; every subsequent pointermove frame in
   // the same gesture uses DRAG_MODEL (no push). Reset once at the top of onPointerDown.
@@ -181,6 +186,16 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   function onZoomButton(dir: 1 | -1) {
     const seed = seedCamera()
     dispatch({ type: 'ZOOM_AT', anchor: { x: seed.centerX, y: seed.centerY }, factor: dir > 0 ? ZOOM_STEP : 1 / ZOOM_STEP, seed })
+  }
+  /** Colocar un mueble desde la paleta: aparece al centro del viewport actual (mismo cálculo
+   * que seedCamera() usa para ZOOM_AT, no el centro del modelo) y cambia a select para que el
+   * usuario pueda arrastrarlo de inmediato. SET_TOOL primero (limpia sel), ADD_FIXTURE
+   * después — el reducer selecciona el mueble recién creado, igual que ADD_OPENING con vanos. */
+  function onFixturePick(kind: FixtureKind) {
+    const seed = seedCamera()
+    dispatch({ type: 'SET_TOOL', tool: 'select' })
+    dispatch({ type: 'ADD_FIXTURE', kind, x: seed.centerX, y: seed.centerY })
+    setPaletteOpen(false)
   }
   const rooms = useMemo(() => roomAreas(floor), [floor])
   // Every drawn label = enclosed rooms (with area) + free named points on open spaces.
@@ -290,6 +305,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     if (elk === 'opening') delOpen(attr(target, 'data-edge')!, +attr(target, 'data-index')!)
     else if (elk === 'edge') delEdge(attr(target, 'data-id')!)
     else if (elk === 'vertex') delVertex(attr(target, 'data-id')!)
+    else if (elk === 'fixture') delFixture(attr(target, 'data-id')!)
     else if (elk === 'room') dispatch({ type: 'DELETE_ROOM', cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! })
   }
 
@@ -342,6 +358,14 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       const edgeId = attr(target, 'data-edge')!, index = +attr(target, 'data-index')!
       dispatch({ type: 'SET_SEL', sel: { t: 'opening', edgeId, index } })
       dispatch({ type: 'SET_DRAG', drag: { kind: 'opening', id: edgeId, openingIndex: index } })
+    } else if (elk === 'fixture') {
+      const id = attr(target, 'data-id')!
+      const fx = floor.fixtures!.find(x => x.id === id)!
+      dispatch({ type: 'SET_SEL', sel: { t: 'fixture', id } })
+      dispatch({
+        type: 'SET_DRAG',
+        drag: { kind: 'fixture', id, startV1: { x: fx.x, y: fx.y }, startPt: { x: pt.x, y: pt.y } },
+      })
     } else {
       const { ux, uy } = pointerToUser(e)
       panRef.current = { startUx: ux, startUy: uy, camera: seedCamera() }
@@ -421,6 +445,13 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
       const atM = gridSnap(projectAt([p1.x, p1.y], [p2.x, p2.y], pt))
       edge.openings[drag.openingIndex!].offset = atM / L
+    } else if (drag.kind === 'fixture') {
+      // Mismo patrón de traslación que edgeBody: delta del puntero desde el inicio del
+      // gesto, sumado a la posición inicial — sin snapping (un mueble no vive en la grilla
+      // de vértices).
+      const fx = f.fixtures!.find(x => x.id === drag.id)!
+      const dx = pt.x - drag.startPt!.x, dy = pt.y - drag.startPt!.y
+      fx.x = drag.startV1!.x + dx; fx.y = drag.startV1!.y + dy
     }
     // Every frame of a gesture — including the first — dispatches DRAG_MODEL, never
     // SET_MODEL: per reducer.ts's own contract, dragBase is captured by the FIRST
@@ -484,6 +515,10 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     const m = clone(model); removeVertexFromFloor(m.floors[m.activeFloor], id)
     dispatch({ type: 'SET_MODEL', model: m }); dispatch({ type: 'SET_SEL', sel: null })
   }
+  const delFixture = (id: string) => {
+    const m = clone(model); removeFixtureFromFloor(m.floors[m.activeFloor], id)
+    dispatch({ type: 'SET_MODEL', model: m }); dispatch({ type: 'SET_SEL', sel: null })
+  }
 
   const onRoomCommit = (cx: number, cy: number, name: string) => {
     const nm = name.trim()
@@ -500,6 +535,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
         {TOOLS.map(tool => (
           <button key={tool} onClick={() => onToolClick(tool)} style={btn(ui.tool === tool)}>{TOOL_LABELS[tool] ?? tool}</button>
         ))}
+        <button onClick={() => setPaletteOpen(o => !o)} style={btn(paletteOpen)}>MUEBLE</button>
         <div style={{ flex: 1 }} />
         <button onClick={() => dispatch({ type: 'UNDO' })} disabled={state.past.length === 0}
           style={btnDisabled(state.past.length === 0)}>UNDO</button>
@@ -508,6 +544,17 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
         <button onClick={() => dispatch({ type: 'TOGGLE_DIMS' })} style={btn(ui.showDims)}>Dims</button>
         <button onClick={doSave} style={btn(state.dirty)}>Save</button>
       </div>
+
+      {paletteOpen && (
+        <div style={{ flexShrink: 0, display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap', padding: '6px 16px', borderBottom: `1px solid ${colors.border}` }}>
+          {Object.entries(FIXTURE_CATALOG).map(([kind, meta]) => (
+            <button key={kind} onClick={() => onFixturePick(kind as FixtureKind)}
+              style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }}>
+              {meta.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{ flexShrink: 0, display: 'flex', gap: '4px', alignItems: 'center', padding: '6px 16px', borderBottom: `1px solid ${colors.border}` }}>
         {model.floors.map((f, i) => (

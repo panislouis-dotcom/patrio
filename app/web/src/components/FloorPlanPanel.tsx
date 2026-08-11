@@ -2,7 +2,7 @@
 import type { Dispatch } from 'react'
 import { colors, fonts } from '../lib/theme'
 import type { Action, Sel, UI } from '../lib/floorplan/reducer'
-import { isGhost, type FloorGraph, type FloorSet } from '../lib/floorplan/types'
+import { isGhost, FIXTURE_CATALOG, type FloorGraph, type FloorSet } from '../lib/floorplan/types'
 import type { RoomArea } from '../lib/floorplan/rooms'
 import { traceFaces } from '../lib/floorplan/rooms'
 import { shoelace } from '../lib/floorplan/geometry'
@@ -96,7 +96,29 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
       </Section>
     )
   }
-  // 'fixture': su inspector llega en la tarea de UI de muebles (Task 11) — por ahora no renderiza nada.
+  if (sel.t === 'fixture') {
+    const fx = (floor.fixtures ?? []).find(x => x.id === sel.id)
+    if (!fx) return null
+    // El título ES el label del catálogo: mismo patrón que "Puerta seleccionada"/"Ventana
+    // seleccionada", donde el tipo (de solo lectura) vive en el encabezado, no en un campo.
+    return (
+      <Section title={FIXTURE_CATALOG[fx.kind].label} key={fx.id}>
+        <Field label="Ancho (m)" value={fx.w_m} step={0.05}
+          onCommit={value => dispatch({ type: 'SET_FIXTURE_PARAM', id: fx.id, patch: { w_m: value } })} />
+        <Field label="Largo (m)" value={fx.h_m} step={0.05}
+          onCommit={value => dispatch({ type: 'SET_FIXTURE_PARAM', id: fx.id, patch: { h_m: value } })} />
+        <Field label="Rotación (°)" value={fx.rot} step={1}
+          onCommit={value => dispatch({ type: 'SET_FIXTURE_PARAM', id: fx.id, patch: { rot: value } })} />
+        <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+          <button style={btn(false)}
+            onClick={() => dispatch({ type: 'SET_FIXTURE_PARAM', id: fx.id, patch: { rot: (fx.rot + 90) % 360 } })}>
+            90°
+          </button>
+          <button style={btn(false)} onClick={() => dispatch({ type: 'DELETE_SEL' })}>ELIMINAR</button>
+        </div>
+      </Section>
+    )
+  }
   if (sel.t !== 'opening') return null
   const e = floor.edges[sel.edgeId]
   const o = e?.openings[sel.index]

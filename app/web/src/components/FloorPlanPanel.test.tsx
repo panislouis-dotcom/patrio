@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, screen } from '@testing-library/react'
 import FloorPlanPanel from './FloorPlanPanel'
-import { emptyFloorGraph, GHOST_THICKNESS_M } from '../lib/floorplan/types'
+import { emptyFloorGraph, GHOST_THICKNESS_M, FIXTURE_CATALOG, type Fixture } from '../lib/floorplan/types'
 import { addVertex, addEdge } from '../lib/floorplan/graph'
 import { roomAreas } from '../lib/floorplan/rooms'
 import { initialState, reducer } from '../lib/floorplan/reducer'
@@ -150,6 +150,58 @@ describe('FloorPlanPanel', () => {
     expect(convertBtn.getAttribute('aria-describedby')).toBe(reason.id)
     fireEvent.click(convertBtn)
     expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  describe('inspector de mueble seleccionado', () => {
+    function setupWithFixture(overrides: Partial<Fixture> = {}) {
+      const base: Fixture = { id: 'fx1', kind: 'silla', x: 1, y: 1, rot: 0, w_m: FIXTURE_CATALOG.silla.w_m, h_m: FIXTURE_CATALOG.silla.h_m }
+      const fx: Fixture = { ...base, ...overrides }
+      return setup(f => { f.fixtures = [fx]; return { t: 'fixture', id: fx.id } })
+    }
+
+    it('muestra el label del catálogo (kind de solo lectura)', () => {
+      setupWithFixture({ kind: 'cama_matrimonial' })
+      expect(screen.getByText(FIXTURE_CATALOG.cama_matrimonial.label)).toBeTruthy()
+    })
+
+    it('dispatches SET_FIXTURE_PARAM al editar ancho (w_m)', () => {
+      const { dispatch } = setupWithFixture({ w_m: 1.4 })
+      const wInput = screen.getByLabelText(/ancho/i) as HTMLInputElement
+      fireEvent.change(wInput, { target: { value: '1.6' } })
+      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FIXTURE_PARAM', id: 'fx1', patch: { w_m: 1.6 } })
+    })
+
+    it('dispatches SET_FIXTURE_PARAM al editar largo (h_m)', () => {
+      const { dispatch } = setupWithFixture({ h_m: 1.9 })
+      const hInput = screen.getByLabelText(/largo/i) as HTMLInputElement
+      fireEvent.change(hInput, { target: { value: '2.0' } })
+      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FIXTURE_PARAM', id: 'fx1', patch: { h_m: 2.0 } })
+    })
+
+    it('dispatches SET_FIXTURE_PARAM al editar la rotación numéricamente', () => {
+      const { dispatch } = setupWithFixture({ rot: 0 })
+      const rotInput = screen.getByLabelText(/rotaci/i) as HTMLInputElement
+      fireEvent.change(rotInput, { target: { value: '45' } })
+      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FIXTURE_PARAM', id: 'fx1', patch: { rot: 45 } })
+    })
+
+    it('el botón 90° suma 90 grados', () => {
+      const { dispatch } = setupWithFixture({ rot: 0 })
+      fireEvent.click(screen.getByText('90°'))
+      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FIXTURE_PARAM', id: 'fx1', patch: { rot: 90 } })
+    })
+
+    it('el botón 90° hace wraparound de 270 a 0 (módulo 360)', () => {
+      const { dispatch } = setupWithFixture({ rot: 270 })
+      fireEvent.click(screen.getByText('90°'))
+      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FIXTURE_PARAM', id: 'fx1', patch: { rot: 0 } })
+    })
+
+    it('muestra un botón de borrar que dispatcha DELETE_SEL', () => {
+      const { dispatch } = setupWithFixture()
+      fireEvent.click(screen.getByText('ELIMINAR'))
+      expect(dispatch).toHaveBeenCalledWith({ type: 'DELETE_SEL' })
+    })
   })
 
   it('renders the BIM export section only when showDims is enabled', () => {

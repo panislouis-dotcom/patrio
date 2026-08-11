@@ -2,7 +2,7 @@
 import { forwardRef, useRef } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
-import { isGhost, type FloorSet, type FloorGraph } from '../lib/floorplan/types'
+import { isGhost, FIXTURE_CATALOG, type FloorSet, type FloorGraph, type FixtureKind } from '../lib/floorplan/types'
 import type { ViewTransform } from '../lib/floorplan/viewTransform'
 import type { RoomLabel } from '../lib/floorplan/rooms'
 import type { CornerAngle } from '../lib/floorplan/dimensions'
@@ -20,6 +20,68 @@ function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }) {
   const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
   const ux = (p2.x - p1.x) / L, uy = (p2.y - p1.y) / L
   return { L, ux, uy, nx: -uy, ny: ux }
+}
+
+// Debajo de esta escala (px por metro) el nombre del mueble ya no cabe legible — se oculta
+// en vez de amontonar texto ilegible, igual que un plano de CAD real oculta anotaciones
+// finas al alejar el zoom.
+const FIXTURE_LABEL_MIN_SCALE = 45
+
+// Familia visual mínima por tipo: UN acento sobrio (línea o círculo), nunca un ícono
+// detallado — esto es un plano técnico, no un moodboard. El catálogo (types.ts) es dato de
+// dimensiones; esta tabla es puramente de dibujo y vive aquí, no ahí.
+type FixtureFamily = 'bed' | 'seat' | 'plain' | 'toilet' | 'sink' | 'shower' | 'tub' | 'laundry' | 'stove' | 'fridge'
+const FIXTURE_FAMILY: Record<FixtureKind, FixtureFamily> = {
+  cama_individual: 'bed', cama_matrimonial: 'bed', cama_queen: 'bed', cama_king: 'bed',
+  silla: 'seat', sillon: 'seat',
+  mesa: 'plain', escritorio: 'plain',
+  inodoro: 'toilet', lavabo: 'sink', regadera: 'shower', tina: 'tub',
+  lavadora: 'laundry', estufa: 'stove', refrigerador: 'fridge',
+}
+
+/** Acentos internos del glyph, en coordenadas LOCALES ya en px (origen = centro del mueble,
+ * ANTES de rotar): viven como hijos del mismo <g rotate(...)> que el rect base, así que
+ * heredan su rotación sin matemática propia. pointerEvents 'none' en todos: el único blanco
+ * de hit-testing es el rect base (data-el="fixture"), para que un clic en cualquier punto
+ * del glyph siempre resuelva al mismo elemento seleccionable/arrastrable. */
+function fixtureAccents(family: FixtureFamily, wPx: number, hPx: number, key: string): React.ReactNode[] {
+  const common = { stroke: colors.secondary, fill: 'none' as const, strokeWidth: 1, style: { pointerEvents: 'none' as const } }
+  const minWH = Math.min(wPx, hPx)
+  switch (family) {
+    case 'bed': {
+      // Almohada: un rect angosto pegado al borde "de la cabecera".
+      const pw = wPx * 0.7, ph = hPx * 0.22
+      const py0 = -hPx / 2 + hPx * 0.08
+      return [<rect key={`${key}-pillow`} x={-pw / 2} y={py0} width={pw} height={ph} rx={2} {...common} />]
+    }
+    case 'seat': {
+      // Respaldo: una línea cerca del borde superior.
+      const y = -hPx / 2 + hPx * 0.2
+      return [<line key={`${key}-back`} x1={-wPx * 0.4} y1={y} x2={wPx * 0.4} y2={y} {...common} />]
+    }
+    case 'toilet':
+      return [<circle key={`${key}-bowl`} cx={0} cy={hPx * 0.12} r={minWH * 0.28} {...common} />]
+    case 'sink':
+      return [<circle key={`${key}-basin`} cx={0} cy={0} r={minWH * 0.28} {...common} />]
+    case 'shower':
+      return [<circle key={`${key}-drain`} cx={0} cy={0} r={Math.max(2, minWH * 0.08)} {...common} />]
+    case 'tub': {
+      const y = -hPx / 2 + hPx * 0.1
+      return [<line key={`${key}-faucet`} x1={-wPx * 0.3} y1={y} x2={wPx * 0.3} y2={y} {...common} />]
+    }
+    case 'laundry':
+      return [<circle key={`${key}-drum`} cx={0} cy={0} r={minWH * 0.3} {...common} />]
+    case 'stove':
+      return [
+        <circle key={`${key}-b1`} cx={-wPx * 0.2} cy={-hPx * 0.15} r={minWH * 0.1} {...common} />,
+        <circle key={`${key}-b2`} cx={wPx * 0.2} cy={-hPx * 0.15} r={minWH * 0.1} {...common} />,
+      ]
+    case 'fridge':
+      return [<line key={`${key}-split`} x1={0} y1={-hPx * 0.35} x2={0} y2={hPx * 0.35} {...common} />]
+    case 'plain':
+    default:
+      return []
+  }
 }
 
 export interface CanvasProps {
@@ -138,6 +200,31 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
       }
       if (on) gel.push(<circle key={`ophandle${e.id}-${i}`} cx={px(cx)} cy={py(cy)} r={6} fill="none" stroke={colors.primary} strokeWidth={1.5} />)
     })
+  })
+
+  // ── fixtures (mobiliario): rect rotado a escala + glyph sobrio + label si el zoom alcanza ──
+  // fx.rot es CCW en coordenadas de MUNDO (y-arriba). El mapeo mundo→pantalla invierte el
+  // eje Y (py decrece cuando y crece), así que una rotación CCW de mundo se VE en pantalla
+  // como una rotación CW — y SVG rotate() con ángulo positivo YA es CW en pantalla. Sin
+  // invertir el signo, un mueble rotado 90° quedaría mostrando la rotación contraria.
+  const fixtures = floor.fixtures ?? []
+  fixtures.forEach(fx => {
+    const meta = FIXTURE_CATALOG[fx.kind]
+    const on = sel?.t === 'fixture' && sel.id === fx.id
+    const wPx = fx.w_m * scale, hPx = fx.h_m * scale
+    const cx = px(fx.x), cy = py(fx.y)
+    gel.push(
+      <g key={`fx${fx.id}`} transform={`translate(${cx} ${cy}) rotate(${-fx.rot})`}>
+        <rect x={-wPx / 2} y={-hPx / 2} width={wPx} height={hPx}
+          fill={colors.surfaceAlt} stroke={on ? colors.primary : colors.secondary} strokeWidth={on ? 2 : 1.2}
+          data-el="fixture" data-id={fx.id} style={{ cursor: 'move' }} />
+        {fixtureAccents(FIXTURE_FAMILY[fx.kind], wPx, hPx, fx.id)}
+      </g>,
+    )
+    if (scale >= FIXTURE_LABEL_MIN_SCALE) {
+      gel.push(<text key={`fxlabel${fx.id}`} x={cx} y={cy + 3} textAnchor="middle"
+        fontFamily={fonts.sans} fontSize={9} fill={colors.secondary} style={{ pointerEvents: 'none' }}>{meta.label}</text>)
+    }
   })
 
   // ── room labels: clickable name (rename) + live net area ──

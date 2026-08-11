@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  withVariant, emptyFloorSet, clone, floorElev, migrateGeometry,
+  withVariant, emptyFloorSet, clone, floorElev, migrateGeometry, FIXTURE_CATALOG,
 } from './types'
 
 // Real shape seen in production: the old wall-list editor's blob has no `activeFloor` at all
@@ -136,5 +136,42 @@ describe('floorElev', () => {
     fs.floors[0].height_m = 3.0
     expect(floorElev(fs, 0)).toBe(0)
     expect(floorElev(fs, 1)).toBe(3.0)
+  })
+})
+
+// Cobertura del catálogo en sí, no solo de que ADD_FIXTURE copie lo que sea que tenga
+// adentro (eso ya lo cubre reducer.test.ts, pero circularmente): esta tabla es el spec
+// literal del plan (docs/plans/2026-08-10-levantamientos-plan.md, Task 10) transcrito a
+// assertions, así que un typo en una medida real (p. ej. la cama king a 1.93×2.03) revienta
+// aquí en vez de colarse silenciosamente a los renders y al prospecto.
+describe('FIXTURE_CATALOG', () => {
+  const SPEC: Record<string, { label: string; w_m: number; h_m: number }> = {
+    cama_individual:  { label: 'Cama individual',  w_m: 1.00, h_m: 1.90 },
+    cama_matrimonial: { label: 'Cama matrimonial', w_m: 1.40, h_m: 1.90 },
+    cama_queen:       { label: 'Cama queen',       w_m: 1.60, h_m: 2.00 },
+    cama_king:        { label: 'Cama king',        w_m: 1.93, h_m: 2.03 },
+    silla:            { label: 'Silla',            w_m: 0.45, h_m: 0.45 },
+    mesa:             { label: 'Mesa',             w_m: 1.60, h_m: 0.90 },
+    escritorio:       { label: 'Escritorio',       w_m: 1.20, h_m: 0.60 },
+    sillon:           { label: 'Sillón',           w_m: 2.00, h_m: 0.90 },
+    inodoro:          { label: 'Inodoro',          w_m: 0.40, h_m: 0.65 },
+    lavabo:           { label: 'Lavabo',           w_m: 0.55, h_m: 0.45 },
+    regadera:         { label: 'Regadera',         w_m: 0.90, h_m: 0.90 },
+    tina:             { label: 'Tina',             w_m: 0.80, h_m: 1.70 },
+    lavadora:         { label: 'Lavadora',         w_m: 0.60, h_m: 0.60 },
+    estufa:           { label: 'Estufa',           w_m: 0.76, h_m: 0.66 },
+    refrigerador:     { label: 'Refrigerador',     w_m: 0.90, h_m: 0.80 },
+  }
+
+  it('tiene exactamente las 15 entradas del spec, ni de más ni de menos', () => {
+    expect(Object.keys(FIXTURE_CATALOG).sort()).toEqual(Object.keys(SPEC).sort())
+  })
+
+  it.each(Object.keys(SPEC))('%s coincide en label, w_m y h_m con el spec', kind => {
+    const entry = FIXTURE_CATALOG[kind as keyof typeof FIXTURE_CATALOG]
+    const spec = SPEC[kind]
+    expect(entry.label).toBe(spec.label)
+    expect(entry.w_m).toBeCloseTo(spec.w_m)
+    expect(entry.h_m).toBeCloseTo(spec.h_m)
   })
 })

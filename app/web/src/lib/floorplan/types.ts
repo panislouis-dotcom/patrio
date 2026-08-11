@@ -1,5 +1,6 @@
 export type VertexId = string
 export type EdgeId = string
+export type FixtureId = string
 
 export interface Vertex { id: VertexId; x: number; y: number }
 
@@ -48,7 +49,7 @@ export type FixtureKind =
   | 'lavadora' | 'estufa' | 'refrigerador'
 
 export interface Fixture {
-  id: string
+  id: FixtureId
   kind: FixtureKind
   x: number; y: number   // centro, metros (mismo sistema que vértices)
   rot: number            // grados, CCW

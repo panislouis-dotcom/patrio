@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import FloorPlanEditor from './FloorPlanEditor'
-import { emptyFloorGraph, GHOST_THICKNESS_M, type FloorGraph } from '../lib/floorplan/types'
+import { emptyFloorGraph, GHOST_THICKNESS_M, FIXTURE_CATALOG, type FloorGraph, type Fixture } from '../lib/floorplan/types'
 import { addVertex, addEdge } from '../lib/floorplan/graph'
 import { viewTransform } from '../lib/floorplan/viewTransform'
 
@@ -358,6 +358,120 @@ describe('herramienta DIVISIÓN (paredes fantasma)', () => {
     // Un solo Ctrl+Z lo revierte completo — la acción ADD_OPENING empuja exactamente una entrada.
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     expect(svg.querySelectorAll('[data-el="opening"]').length).toBe(0)
+  })
+})
+
+// Rectángulo 6x4 con un mueble ya colocado en su centro geométrico (3,2), para probar
+// arrastre/borrado sin pasar primero por la paleta.
+function modelWithFixture(kind: Fixture['kind'] = 'mesa', x = 3, y = 2) {
+  const f = emptyFloorGraph('Test')
+  const a = addVertex(f, 0, 0), b = addVertex(f, 6, 0), c = addVertex(f, 6, 4), d = addVertex(f, 0, 4)
+  addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+  const dims = FIXTURE_CATALOG[kind]
+  const fixture: Fixture = { id: 'fx-test', kind, x, y, rot: 0, w_m: dims.w_m, h_m: dims.h_m }
+  f.fixtures = [fixture]
+  return { slab_m: 0.15, activeFloor: 0, floors: [f] }
+}
+
+// El rect de un mueble vive dentro de un <g transform="translate(cx cy) rotate(...)">; leer
+// su centro en pantalla exige parsear ese transform en vez de leer x/y directo del rect
+// (que están expresados relativos al centro del propio grupo, no al SVG).
+function fixtureCenter(rect: Element): { x: number; y: number } {
+  const g = rect.parentElement!
+  const m = /translate\(([-\d.]+)[ ,]+([-\d.]+)\)/.exec(g.getAttribute('transform') || '')
+  if (!m) throw new Error('fixture <g> sin transform translate()')
+  return { x: Number(m[1]), y: Number(m[2]) }
+}
+
+describe('mobiliario: paleta, arrastre, borrado', () => {
+  it('el botón MUEBLE abre una paleta; elegir un tipo lo coloca al centro del viewport con las dimensiones del catálogo', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    expect(svg.querySelectorAll('[data-el="fixture"]').length).toBe(0)
+    fireEvent.click(getByText('MUEBLE'))
+    fireEvent.click(getByText(FIXTURE_CATALOG.cama_matrimonial.label))
+    const rects = svg.querySelectorAll('[data-el="fixture"]')
+    expect(rects.length).toBe(1)
+    const rect = rects[0]
+    // Dimensiones del catálogo: la proporción ancho/alto del rect (independiente de la
+    // escala del viewTransform) debe coincidir con w_m/h_m de cama_matrimonial (1.40×1.90).
+    const ratio = Number(rect.getAttribute('width')) / Number(rect.getAttribute('height'))
+    expect(ratio).toBeCloseTo(FIXTURE_CATALOG.cama_matrimonial.w_m / FIXTURE_CATALOG.cama_matrimonial.h_m)
+    // Centro del viewport = (EDITOR_W/2, EDITOR_H/2), igual que seedCamera() en ZOOM_AT.
+    const center = fixtureCenter(rect)
+    expect(center.x).toBeCloseTo(EDITOR_W / 2)
+    expect(center.y).toBeCloseTo(EDITOR_H / 2)
+  })
+
+  it('colocar dos muebles de tipos distintos produce dimensiones distintas (no un tamaño fijo)', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    fireEvent.click(getByText('MUEBLE'))
+    fireEvent.click(getByText(FIXTURE_CATALOG.silla.label))
+    fireEvent.click(getByText('MUEBLE'))
+    fireEvent.click(getByText(FIXTURE_CATALOG.sillon.label))
+    const rects = svg.querySelectorAll('[data-el="fixture"]')
+    expect(rects.length).toBe(2)
+    const [silla, sillon] = Array.from(rects)
+    // La silla es cuadrada (0.45×0.45) y el sillón no (2.00×0.90): sus proporciones deben diferir.
+    const sillaRatio = Number(silla.getAttribute('width')) / Number(silla.getAttribute('height'))
+    const sillonRatio = Number(sillon.getAttribute('width')) / Number(sillon.getAttribute('height'))
+    expect(sillaRatio).toBeCloseTo(1)
+    expect(sillonRatio).toBeCloseTo(FIXTURE_CATALOG.sillon.w_m / FIXTURE_CATALOG.sillon.h_m)
+    expect(sillonRatio).not.toBeCloseTo(sillaRatio, 1)
+  })
+
+  it('seleccionar un mueble en el canvas fija sel={t:"fixture",id} y arrastrarlo cambia su posición en UN solo paso de historia', () => {
+    const model = modelWithFixture('mesa', 3, 2)
+    const { container } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const fixtureRect = svg.querySelector('[data-el="fixture"]')!
+    const before = fixtureCenter(fixtureRect)
+    // Gesto multi-frame, igual que el test de undo/redo de vértice: cada frame despacha
+    // DRAG_MODEL (sin empujar historia) y solo el pointerUp final hace el único SET_MODEL.
+    fireEvent.pointerDown(fixtureRect, pointerAt(model.floors, 3, 2))
+    fireEvent.pointerMove(svg, pointerAt(model.floors, 3.5, 2.3))
+    fireEvent.pointerMove(svg, pointerAt(model.floors, 4, 2.6))
+    fireEvent.pointerUp(svg)
+    const moved = fixtureCenter(svg.querySelector('[data-el="fixture"]')!)
+    expect(moved.x).not.toBeCloseTo(before.x)
+    expect(moved.y).not.toBeCloseTo(before.y)
+    // Un solo Ctrl+Z revierte TODO el gesto de una vez, no un frame intermedio.
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    const reverted = fixtureCenter(svg.querySelector('[data-el="fixture"]')!)
+    expect(reverted.x).toBeCloseTo(before.x)
+    expect(reverted.y).toBeCloseTo(before.y)
+  })
+
+  it('la herramienta delete borra el mueble seleccionado', () => {
+    const model = modelWithFixture('lavabo', 3, 2)
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    expect(svg.querySelectorAll('[data-el="fixture"]').length).toBe(1)
+    fireEvent.click(getByText('delete'))
+    fireEvent.pointerDown(svg.querySelector('[data-el="fixture"]')!, pointerAt(model.floors, 3, 2))
+    expect(svg.querySelectorAll('[data-el="fixture"]').length).toBe(0)
+  })
+
+  it('la rotación del modelo (CCW en mundo) se dibuja con el signo invertido en el <g> de pantalla', () => {
+    // fx.rot es CCW en coordenadas de mundo (y-arriba); el mapeo mundo→pantalla invierte el
+    // eje Y, así que el <g> debe rotar con -rot para que la orientación visual coincida con
+    // el modelo. Este test fija ese signo como regresión — ver el comentario homónimo en
+    // FloorPlanCanvas.tsx.
+    const model = modelWithFixture('escritorio', 3, 2)
+    model.floors[0].fixtures![0].rot = 90
+    const { container } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const rect = svg.querySelector('[data-el="fixture"]')!
+    const transform = rect.parentElement!.getAttribute('transform') || ''
+    expect(transform).toContain('rotate(-90')
   })
 })
 
