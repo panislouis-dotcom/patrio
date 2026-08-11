@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph } from './types'
-import { addVertex, addEdge } from './graph'
+import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
+import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import {
   reducer, initialState, removeVertexFromFloor, removeEdgeFromFloor, removeOpeningFromFloor,
 } from './reducer'
@@ -163,6 +163,105 @@ describe('SET_EDGE_THICKNESS', () => {
     s = reducer(s, { type: 'SET_EDGE_THICKNESS', edgeId, value: 0.25 })
     expect(s.model.floors[0].edges[edgeId].thickness).toBeCloseTo(0.25)
     expect(s.model.floors[0].edges[otherId].thickness).toBeCloseTo(otherBefore)
+  })
+})
+
+/** Rectángulo 6x4 con una división fantasma vertical en x=3 (dos cuartos de 3x4). */
+function modelWithGhostDivider() {
+  const f = emptyFloorGraph('Test')
+  const a = addVertex(f, 0, 0), b = addVertex(f, 6, 0), c = addVertex(f, 6, 4), d = addVertex(f, 0, 4)
+  const eBottom = addEdge(f, a, b, 0.15)
+  addEdge(f, b, c, 0.15)
+  const eTop = addEdge(f, c, d, 0.15)
+  addEdge(f, d, a, 0.15)
+  const botMid = addVertex(f, 3, 0)
+  const topMid = addVertex(f, 3, 4)
+  splitEdgeAtVertex(f, eBottom, botMid)
+  splitEdgeAtVertex(f, eTop, topMid)
+  const ghostId = addEdge(f, botMid, topMid, GHOST_THICKNESS_M, 'ghost')
+  return { model: { slab_m: 0.15, activeFloor: 0, floors: [f] }, ghostId }
+}
+
+describe('aristas fantasma en el reducer', () => {
+  it("SET_TOOL acepta la herramienta 'ghost'", () => {
+    const { model } = modelWithGhostDivider()
+    const s = reducer(initialState(model), { type: 'SET_TOOL', tool: 'ghost' })
+    expect(s.ui.tool).toBe('ghost')
+  })
+
+  it('la vía de inserción (addEdge con kind + SET_MODEL) persiste la división', () => {
+    const { model } = modelWithGhostDivider()
+    const s = reducer(initialState(model), { type: 'SET_MODEL', model })
+    const ghosts = Object.values(s.model.floors[0].edges).filter(e => e.kind === 'ghost')
+    expect(ghosts).toHaveLength(1)
+  })
+
+  it('SET_FLOOR_PARAM no toca el espesor de las fantasmas (ni intWall_m ni extWall_m)', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_FLOOR_PARAM', key: 'intWall_m', value: 0.12 })
+    s = reducer(s, { type: 'SET_FLOOR_PARAM', key: 'extWall_m', value: 0.20 })
+    expect(s.model.floors[0].edges[ghostId].thickness).toBeCloseTo(GHOST_THICKNESS_M)
+  })
+
+  it('ADD_OPENING sobre un muro agrega la abertura, la selecciona y empuja historia', () => {
+    const { model } = modelWithGhostDivider()
+    let s = initialState(model)
+    const wallId = Object.values(s.model.floors[0].edges).find(e => e.kind !== 'ghost')!.id
+    s = reducer(s, { type: 'ADD_OPENING', edgeId: wallId, opening: { kind: 'door', offset: 0.5, width: 0.9 } })
+    expect(s.model.floors[0].edges[wallId].openings).toHaveLength(1)
+    expect(s.ui.sel).toEqual({ t: 'opening', edgeId: wallId, index: 0 })
+    expect(s.past).toHaveLength(1)
+  })
+
+  it('ADD_OPENING sobre una fantasma es no-op: una división no es muro para nada más', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'ADD_OPENING', edgeId: ghostId, opening: { kind: 'door', offset: 0.5, width: 0.9 } })).toBe(s)
+  })
+
+  it('SET_EDGE_KIND muro→fantasma fija el espesor nominal de fantasma', () => {
+    const { model } = modelWithGhostDivider()
+    let s = initialState(model)
+    const wallId = Object.values(s.model.floors[0].edges).find(e => e.kind !== 'ghost')!.id
+    s = reducer(s, { type: 'SET_EDGE_KIND', edgeId: wallId, kind: 'ghost' })
+    expect(s.model.floors[0].edges[wallId].kind).toBe('ghost')
+    expect(s.model.floors[0].edges[wallId].thickness).toBeCloseTo(GHOST_THICKNESS_M)
+  })
+
+  it('SET_EDGE_KIND muro→fantasma con aberturas se rechaza (no-op)', () => {
+    const { model } = modelWithGhostDivider()
+    const wallId = Object.values(model.floors[0].edges).find(e => e.kind !== 'ghost')!.id
+    model.floors[0].edges[wallId].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
+    const s = initialState(model)
+    expect(reducer(s, { type: 'SET_EDGE_KIND', edgeId: wallId, kind: 'ghost' })).toBe(s)
+  })
+
+  it('SET_EDGE_KIND fantasma→muro interior restaura el espesor interior', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_EDGE_KIND', edgeId: ghostId, kind: 'wall' })
+    const e = s.model.floors[0].edges[ghostId]
+    expect(e.kind).toBeUndefined()
+    expect(e.thickness).toBeCloseTo(model.floors[0].intWall_m)
+  })
+
+  it('SET_EDGE_KIND fantasma→muro en el contorno restaura el espesor exterior', () => {
+    const f = emptyFloorGraph('Test')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+    const ghostSide = addEdge(f, a, b, GHOST_THICKNESS_M, 'ghost')
+    addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+    let s = initialState({ slab_m: 0.15, activeFloor: 0, floors: [f] })
+    s = reducer(s, { type: 'SET_EDGE_KIND', edgeId: ghostSide, kind: 'wall' })
+    expect(s.model.floors[0].edges[ghostSide].thickness).toBeCloseTo(f.extWall_m)
+  })
+
+  it('SET_EDGE_KIND al kind que ya tiene es no-op (sin entrada de historia basura)', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'SET_EDGE_KIND', edgeId: ghostId, kind: 'ghost' })).toBe(s)
+    const wallId = Object.values(model.floors[0].edges).find(e => e.kind !== 'ghost')!.id
+    expect(reducer(s, { type: 'SET_EDGE_KIND', edgeId: wallId, kind: 'wall' })).toBe(s)
   })
 })
 

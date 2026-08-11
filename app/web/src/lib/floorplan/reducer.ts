@@ -1,11 +1,11 @@
-import type { FloorSet, FloorGraph, VertexId, EdgeId } from './types'
-import { clone, genId } from './types'
+import type { FloorSet, FloorGraph, VertexId, EdgeId, EdgeKind, Opening } from './types'
+import { clone, genId, isGhost, GHOST_THICKNESS_M } from './types'
 import { deleteVertex, deleteEdge, splitEdgeAtVertex } from './graph'
 import { exteriorEdgeIds } from './rooms'
 import type { Guide } from './snapping'
 import type { Camera } from './viewTransform'
 
-export type Tool = 'select' | 'wall' | 'door' | 'window' | 'room' | 'delete'
+export type Tool = 'select' | 'wall' | 'ghost' | 'door' | 'window' | 'room' | 'delete'
 export type Sel =
   | { t: 'vertex'; id: VertexId }
   | { t: 'edge'; id: EdgeId }
@@ -75,6 +75,8 @@ export type Action =
   | { type: 'SET_OPENING_FIELD'; edgeId: EdgeId; index: number; key: 'width'; value: number }
   | { type: 'SET_OPENING_FIELD'; edgeId: EdgeId; index: number; key: 'kind'; value: 'door' | 'window' }
   | { type: 'SET_EDGE_THICKNESS'; edgeId: EdgeId; value: number }
+  | { type: 'SET_EDGE_KIND'; edgeId: EdgeId; kind: EdgeKind }
+  | { type: 'ADD_OPENING'; edgeId: EdgeId; opening: Opening }
   | { type: 'SET_VERTEX_POINT'; id: VertexId; x: number; y: number }
   | { type: 'SPLIT_EDGE_AT_POINT'; edgeId: EdgeId; x: number; y: number }
   | { type: 'SET_MODEL'; model: FloorSet }
@@ -185,6 +187,7 @@ export function reducer(s: EditorState, a: Action): EditorState {
       const ext = exteriorEdgeIds(f)
       f[a.key] = a.value
       for (const e of Object.values(f.edges)) {
+        if (isGhost(e)) continue // una fantasma no es muro: su espesor nominal no se bulk-actualiza
         const isExterior = ext.has(e.id)
         if ((a.key === 'extWall_m' && isExterior) || (a.key === 'intWall_m' && !isExterior)) e.thickness = a.value
       }
@@ -216,6 +219,32 @@ export function reducer(s: EditorState, a: Action): EditorState {
       if (!o) return s
       if (a.key === 'width') o.width = a.value
       else o.kind = a.value
+      return modelChange(s, m)
+    }
+    case 'ADD_OPENING': {
+      const m = clone(s.model); const f = F(m)
+      const e = f.edges[a.edgeId]
+      // Una fantasma no puede tener puertas ni ventanas: no es muro en nada más que dividir.
+      if (!e || isGhost(e)) return s
+      e.openings.push(a.opening)
+      return { ...modelChange(s, m), ui: { ...s.ui, sel: { t: 'opening', edgeId: a.edgeId, index: e.openings.length - 1 } } }
+    }
+    case 'SET_EDGE_KIND': {
+      const m = clone(s.model); const f = F(m)
+      const e = f.edges[a.edgeId]
+      if (!e || (e.kind ?? 'wall') === a.kind) return s
+      // Muro con aberturas → fantasma se RECHAZA en vez de borrarlas en silencio: que el
+      // usuario quite sus puertas/ventanas primero — perder trabajo sin avisar es peor.
+      if (a.kind === 'ghost' && e.openings.length > 0) return s
+      if (a.kind === 'ghost') {
+        e.kind = 'ghost'
+        e.thickness = GHOST_THICKNESS_M
+      } else {
+        delete e.kind // ausente = muro: el blob queda como si siempre hubiera sido muro
+        // Promovida a muro real, recupera el espesor que SET_FLOOR_PARAM le daría según
+        // dónde quedó: contorno exterior → extWall_m, interior → intWall_m.
+        e.thickness = exteriorEdgeIds(f).has(e.id) ? f.extWall_m : f.intWall_m
+      }
       return modelChange(s, m)
     }
     case 'SET_EDGE_THICKNESS': {

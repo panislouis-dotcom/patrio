@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph } from './types'
+import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import { traceFaces, roomAreas, roomLabels, exteriorEdgeIds } from './rooms'
 
@@ -96,6 +96,39 @@ describe('roomLabels', () => {
     rectangle(f, 0, 0, 4, 3)
     f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
     expect(roomLabels(f).filter(l => l.name === 'Sala')).toHaveLength(1)
+  })
+})
+
+describe('aristas fantasma (kind ghost)', () => {
+  it('una división fantasma parte el rectángulo en dos cuartos con nombre y área propios', () => {
+    // Espejo del test del muro divisor: la fantasma divide igual porque traceFaces es
+    // genérico sobre aristas — ESTE es el feature test de cocina-sala sin puerta.
+    const f = emptyFloorGraph('Test')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 6, 0), c = addVertex(f, 6, 4), d = addVertex(f, 0, 4)
+    const eBottom = addEdge(f, a, b, 0.15)
+    addEdge(f, b, c, 0.15)
+    const eTop = addEdge(f, c, d, 0.15)
+    addEdge(f, d, a, 0.15)
+    const botMid = addVertex(f, 3, 0)
+    const topMid = addVertex(f, 3, 4)
+    splitEdgeAtVertex(f, eBottom, botMid)
+    splitEdgeAtVertex(f, eTop, topMid)
+    addEdge(f, botMid, topMid, GHOST_THICKNESS_M, 'ghost')
+    f.rooms.push({ name: 'Cocina', cx: 1.5, cy: 2 }, { name: 'Sala', cx: 4.5, cy: 2 })
+    const rooms = roomAreas(f)
+    expect(rooms).toHaveLength(2)
+    expect(rooms.map(r => r.name).sort()).toEqual(['Cocina', 'Sala'])
+    rooms.forEach(r => expect(r.area).toBeCloseTo(12))
+  })
+
+  it('exteriorEdgeIds nunca incluye una fantasma, ni cuando cae en el contorno exterior', () => {
+    const f = emptyFloorGraph('Test')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+    const ghostSide = addEdge(f, a, b, GHOST_THICKNESS_M, 'ghost')
+    addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+    const ext = exteriorEdgeIds(f)
+    expect(ext.has(ghostSide)).toBe(false)
+    expect(ext.size).toBe(3)
   })
 })
 

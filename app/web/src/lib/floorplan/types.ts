@@ -9,13 +9,28 @@ export interface Opening {
   width: number    // metres
 }
 
+// Una 'ghost' es una división manual de un cuarto abierto (cocina-sala sin puerta): divide
+// caras para nombres y áreas — traceFaces es genérico sobre aristas — pero NO es muro en
+// nada más: sin espesores bulk, sin aberturas, fuera de exteriorEdgeIds/cotas/exports.
+export type EdgeKind = 'wall' | 'ghost'
+
 export interface Edge {
   id: EdgeId
   v1: VertexId
   v2: VertexId
   thickness: number   // metres; bulk-updated from extWall_m/intWall_m — see reducer.ts
   openings: Opening[]
+  // Ausente = 'wall': así todo blob persistido y todo fixture previo sigue parseando sin
+  // migración. Solo se escribe cuando es 'ghost' — un muro no cambia ni un byte.
+  kind?: EdgeKind
 }
+
+// Espesor nominal de una fantasma: existe solo para que el trazo y el hit-testing del
+// canvas (strokeWidth/hit ∝ thickness) tengan un número chico y clickeable. Nunca lo
+// tocan los updates bulk de SET_FLOOR_PARAM — no es un espesor de muro real.
+export const GHOST_THICKNESS_M = 0.05
+
+export const isGhost = (e: Edge): boolean => e.kind === 'ghost'
 
 export interface Reference {
   imageKey: string

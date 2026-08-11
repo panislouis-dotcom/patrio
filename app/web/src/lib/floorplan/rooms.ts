@@ -1,4 +1,5 @@
 import type { FloorGraph, EdgeId } from './types'
+import { isGhost } from './types'
 import { shoelaceSigned, shoelace, polygonCentroid, pointInPolygon, type Pt } from './geometry'
 
 export interface TracedFace { vertexIds: string[]; edgeIds: EdgeId[]; area: number }
@@ -60,12 +61,14 @@ export function traceFaces(f: FloorGraph): TracedFace[] {
   return faces
 }
 
-/** Edges belonging to the largest-absolute-area traced face (the outer/exterior boundary). */
+/** Edges belonging to the largest-absolute-area traced face (the outer/exterior boundary).
+ * Una fantasma jamás califica: aunque caiga en el contorno trazado, no es muro exterior —
+ * ni para espesores bulk (reducer) ni para cotas/exports que consumen este set. */
 export function exteriorEdgeIds(f: FloorGraph): Set<EdgeId> {
   const faces = traceFaces(f)
   if (faces.length === 0) return new Set()
   const outer = faces.reduce((a, b) => (Math.abs(b.area) > Math.abs(a.area) ? b : a))
-  return new Set(outer.edgeIds)
+  return new Set(outer.edgeIds.filter(id => !isGhost(f.edges[id])))
 }
 
 /** The interior (non-outer) traced faces as polygons, one per enclosed room. */
