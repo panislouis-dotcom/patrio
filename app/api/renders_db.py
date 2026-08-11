@@ -1,6 +1,11 @@
 """Persistencia de la biblioteca de prompts y de los renders generados."""
 from api.db import get_db, _row_to_dict
 
+# De qué levantamiento nació un render de plano. Mismo patrón que
+# `properties_db.IMAGE_TYPES`: tupla explícita que la ruta valida antes de
+# tocar la base de datos.
+SOURCE_VARIANTS = ("original", "planned")
+
 
 class PromptError(RuntimeError):
     """Regla de la biblioteca rota (nombre repetido, borrar un sembrado)."""

@@ -52,7 +52,8 @@ def test_generating_a_render_from_the_plan_keeps_the_plan_as_source(
     r = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-        data={"promptText": "Amuebla la planta: sala amplia, cocina integral."},
+        data={"promptText": "Amuebla la planta: sala amplia, cocina integral.",
+              "variant": "original"},
     )
     assert r.status_code == 201, r.text
     body = r.json()
@@ -66,7 +67,7 @@ def test_a_plan_render_uses_the_plan_clause_not_the_photo_clause(
     client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-        data={"promptText": "Amuebla la planta."},
+        data={"promptText": "Amuebla la planta.", "variant": "original"},
     )
     prompt = fake_openai[-1]["prompt"]
     assert "vista de planta" in prompt          # la cláusula del plano se añadió
@@ -79,7 +80,7 @@ def test_a_plan_render_does_not_land_in_the_photo_gallery(
     client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-        data={"promptText": "Amuebla la planta."},
+        data={"promptText": "Amuebla la planta.", "variant": "original"},
     )
     # No hay endpoint propio para listar fotos: `images` vive embebido en la
     # propiedad, igual que en cualquier otro lector (properties_db.parse_property).
@@ -101,7 +102,7 @@ def test_a_rotated_plan_is_straightened_for_both_of_its_uses(
     r = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(buf.getvalue()), "image/png")},
-        data={"promptText": "Amuebla la planta."},
+        data={"promptText": "Amuebla la planta.", "variant": "original"},
     )
     assert r.status_code == 201, r.text
 
@@ -141,7 +142,7 @@ def test_editing_a_plan_render_keeps_the_plan_clause(
     parent = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-        data={"promptText": "Amuebla."},
+        data={"promptText": "Amuebla.", "variant": "original"},
     ).json()
     client.post(
         f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
@@ -179,7 +180,7 @@ def test_render_heads_are_the_latest_of_each_chain(
     # Línea B: desde el plano (cadena de 1)
     b = client.post(f"/api/properties/{pid}/renders/from-plan",
                     files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-                    data={"promptText": "B0"}).json()
+                    data={"promptText": "B0", "variant": "original"}).json()
     ids = {h["id"] for h in renders_db.list_render_heads(pid)}
     assert ids == {a2["id"], b["id"]}   # las cabezas: la última de A y la de B
     assert a["id"] not in ids           # el paso intermedio queda fuera
@@ -340,12 +341,67 @@ def test_deleting_a_render_removes_it(client, test_property, source_image, fake_
     assert client.get(f"/api/properties/{test_property['id']}/renders").json() == []
 
 
+# ─── variant: campo requerido en from-plan (Tarea 14) ─────────────────────────
+
+def test_from_plan_without_variant_is_rejected(client, test_property, fake_openai):
+    """`variant` es obligatorio: sin él no sabemos de qué levantamiento nació
+    el render, y esa clasificación es la que separa ORIGINAL de PLANEADO."""
+    before = client.get(f"/api/properties/{test_property['id']}/renders").json()
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta."},
+    )
+    assert r.status_code == 422
+    after = client.get(f"/api/properties/{test_property['id']}/renders").json()
+    assert after == before   # no se creó ningún render a medio validar
+
+
+def test_from_plan_with_an_invalid_variant_is_rejected(client, test_property, fake_openai):
+    before = client.get(f"/api/properties/{test_property['id']}/renders").json()
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": "remodelado"},
+    )
+    assert r.status_code == 422
+    after = client.get(f"/api/properties/{test_property['id']}/renders").json()
+    assert after == before
+
+
+@pytest.mark.parametrize("variant", ["original", "planned"])
+def test_from_plan_persists_the_variant_it_was_given(
+        client, test_property, fake_openai, variant):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": variant},
+    )
+    assert r.status_code == 201, r.text
+    created = r.json()
+    assert created["sourceVariant"] == variant
+    # Redondea completo: lo que se guardó es lo que se lee de vuelta.
+    fetched = client.get(f"/api/properties/{test_property['id']}/renders").json()
+    assert next(x for x in fetched if x["id"] == created["id"])["sourceVariant"] == variant
+
+
+def test_create_render_from_plan_is_not_a_coroutine():
+    """El fix del event loop (Tarea 14): `async def` aquí bloqueaba el servidor
+    ENTERO ~60s por render, porque la llamada a OpenAI y a storage corrían sin
+    `asyncio.to_thread`. Debe ser sync para que FastAPI la corra en su
+    threadpool, igual que los otros dos endpoints de generación
+    (`create_property_render`, `edit_property_render`)."""
+    import inspect
+    from api.routes.renders import create_render_from_plan
+    assert not inspect.iscoroutinefunction(create_render_from_plan)
+
+
 # ─── source_variant: de qué levantamiento nació ───────────────────────────────
 #
-# El endpoint from-plan todavía no manda `variant` (eso es la Tarea 14), así
-# que aquí se ejercita `renders_db.add_render` directo para los casos que
-# necesitan un valor explícito. Lo que SÍ pasa por HTTP hoy es la herencia al
-# editar, porque esa lógica vive en el endpoint de edición.
+# El endpoint from-plan ya exige y persiste `variant` (arriba). Aquí se sigue
+# usando `renders_db.add_render` directo para fijar un padre con un valor
+# explícito sin pasar por el flujo completo de generación — por ejemplo, para
+# probar la herencia de variante al editar.
 
 def test_a_render_from_a_photo_has_no_source_variant(
         client, test_property, source_image, fake_openai):

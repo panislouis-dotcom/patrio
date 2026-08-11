@@ -1,5 +1,4 @@
 """Endpoints de la biblioteca de prompts y de los renders de una propiedad."""
-import asyncio
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -131,26 +130,38 @@ def create_property_render(property_id: int, body: RenderRequest,
 
 @router.post("/api/properties/{property_id}/renders/from-plan", status_code=201,
              operation_id="property_renders_from_plan")
-async def create_render_from_plan(
+def create_render_from_plan(
     property_id: int,
     file: UploadFile = File(...),
     promptText: str = Form(...),
+    variant: str = Form(...),
     promptId: int | None = Form(None),
     _: dict = Depends(get_current_user),
 ):
     """Genera un render a partir del PLANO exportado (no de una foto). El plano
     se guarda como imagen-fuente; el render nace con source_image_id NULL y la
-    ruta del plano en source_plan_path."""
+    ruta del plano en source_plan_path.
+
+    Sync a propósito (no `async def`): llama a OpenAI y a storage, ~60s por
+    render. Async con esas llamadas sin `asyncio.to_thread` bloqueaba el event
+    loop entero — el servidor dejaba de atender cualquier otra petición
+    mientras tanto. Igual que `create_property_render` y `edit_property_render`,
+    una función sync la corre FastAPI en su threadpool, sin tocar el loop."""
     if not properties.exists(property_id):
         raise HTTPException(status_code=404, detail="Propiedad no encontrada")
     if not promptText.strip():
         raise HTTPException(status_code=422, detail="El prompt no puede ir vacío")
-    plan_bytes = await file.read()
+    if variant not in renders_db.SOURCE_VARIANTS:
+        raise HTTPException(status_code=422,
+                            detail=f"variant debe ser uno de {', '.join(renders_db.SOURCE_VARIANTS)}")
+    plan_bytes = file.file.read()
     if not plan_bytes:
         raise HTTPException(status_code=422, detail="El plano llegó vacío")
     # Antes de las dos lecturas: lo que se guarda y lo que ve el generador tienen
-    # que ser los mismos píxeles, o el render sale de un plano de lado.
-    plan_bytes = await asyncio.to_thread(images.normalize_orientation, plan_bytes)
+    # que ser los mismos píxeles, o el render sale de un plano de lado. Llamada
+    # directa (no `to_thread`): todo el endpoint ya corre en el threadpool de
+    # FastAPI, así que envolverla de nuevo sería un hilo dentro de otro hilo.
+    plan_bytes = images.normalize_orientation(plan_bytes)
 
     content_in = file.content_type or "image/png"
     plan_path = f"properties/{property_id}/plan-sources/{uuid4().hex}.png"
@@ -185,6 +196,7 @@ async def create_render_from_plan(
         provider=renders.PROVIDER,
         model=renders.MODEL,
         source_plan_path=plan_path,
+        source_variant=variant,
     )
 
 
