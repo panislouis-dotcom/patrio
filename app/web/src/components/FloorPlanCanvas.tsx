@@ -22,11 +22,6 @@ function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }) {
   return { L, ux, uy, nx: -uy, ny: ux }
 }
 
-// Debajo de esta escala (px por metro) el nombre del mueble ya no cabe legible — se oculta
-// en vez de amontonar texto ilegible, igual que un plano de CAD real oculta anotaciones
-// finas al alejar el zoom.
-const FIXTURE_LABEL_MIN_SCALE = 45
-
 // Familia visual mínima por tipo: UN acento sobrio (línea o círculo), nunca un ícono
 // detallado — esto es un plano técnico, no un moodboard. El catálogo (types.ts) es dato de
 // dimensiones; esta tabla es puramente de dibujo y vive aquí, no ahí.
@@ -202,11 +197,15 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
     })
   })
 
-  // ── fixtures (mobiliario): rect rotado a escala + glyph sobrio + label si el zoom alcanza ──
+  // ── fixtures (mobiliario): rect rotado a escala + glyph sobrio + label con el nombre ──
   // fx.rot es CCW en coordenadas de MUNDO (y-arriba). El mapeo mundo→pantalla invierte el
   // eje Y (py decrece cuando y crece), así que una rotación CCW de mundo se VE en pantalla
   // como una rotación CW — y SVG rotate() con ángulo positivo YA es CW en pantalla. Sin
   // invertir el signo, un mueble rotado 90° quedaría mostrando la rotación contraria.
+  // El label se dibuja siempre, sin gating por zoom: igual que los labels de cuarto más
+  // abajo, que también se muestran incondicionalmente — no hay ningún otro lugar en este
+  // canvas que oculte texto según la escala, así que inventar un umbral aquí sería una
+  // regla de UX no verificada.
   const fixtures = floor.fixtures ?? []
   fixtures.forEach(fx => {
     const meta = FIXTURE_CATALOG[fx.kind]
@@ -221,10 +220,8 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
         {fixtureAccents(FIXTURE_FAMILY[fx.kind], wPx, hPx, fx.id)}
       </g>,
     )
-    if (scale >= FIXTURE_LABEL_MIN_SCALE) {
-      gel.push(<text key={`fxlabel${fx.id}`} x={cx} y={cy + 3} textAnchor="middle"
-        fontFamily={fonts.sans} fontSize={9} fill={colors.secondary} style={{ pointerEvents: 'none' }}>{meta.label}</text>)
-    }
+    gel.push(<text key={`fxlabel${fx.id}`} x={cx} y={cy + 3} textAnchor="middle"
+      fontFamily={fonts.sans} fontSize={9} fill={colors.secondary} style={{ pointerEvents: 'none' }}>{meta.label}</text>)
   })
 
   // ── room labels: clickable name (rename) + live net area ──

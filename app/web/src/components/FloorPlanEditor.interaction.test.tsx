@@ -473,6 +473,25 @@ describe('mobiliario: paleta, arrastre, borrado', () => {
     const transform = rect.parentElement!.getAttribute('transform') || ''
     expect(transform).toContain('rotate(-90')
   })
+
+  it('el acento del glyph (p. ej. la almohada de una cama) nunca roba el click del rect base', () => {
+    // FloorPlanEditor lee data-el directo de e.target, sin closest(): un clic exacto sobre
+    // un acento sin pointerEvents:none resolvería en un elemento sin data-el y el fixture no
+    // se seleccionaría/arrastraría. jsdom no simula hit-testing real (no hay layout engine),
+    // así que la única forma honesta de fijar este invariante es asertar el estilo inline
+    // directamente, no un click-through.
+    const model = modelWithFixture('cama_matrimonial', 3, 2)
+    const { container } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const rect = svg.querySelector('[data-el="fixture"]')!
+    const g = rect.parentElement!
+    const accents = Array.from(g.children).filter(el => el !== rect)
+    expect(accents.length).toBeGreaterThan(0) // una cama sí trae un acento (la almohada)
+    accents.forEach(accent => {
+      expect((accent as SVGElement).style.pointerEvents).toBe('none')
+    })
+  })
 })
 
 describe('naming any space (the "nombrar" tool)', () => {
