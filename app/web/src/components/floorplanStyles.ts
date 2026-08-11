@@ -11,3 +11,8 @@ export function btn(active: boolean): React.CSSProperties {
     fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', padding: '6px 12px', textTransform: 'uppercase',
   }
 }
+
+/** btn(false) con el atenuado estándar cuando está deshabilitado (UNDO/REDO, convertir, …). */
+export function btnDisabled(disabled: boolean): React.CSSProperties {
+  return { ...btn(false), opacity: disabled ? 0.4 : 1, cursor: disabled ? 'default' : 'pointer' }
+}

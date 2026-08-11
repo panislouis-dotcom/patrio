@@ -6,7 +6,7 @@ import { isGhost, type FloorGraph, type FloorSet } from '../lib/floorplan/types'
 import type { RoomArea } from '../lib/floorplan/rooms'
 import { traceFaces } from '../lib/floorplan/rooms'
 import { shoelace } from '../lib/floorplan/geometry'
-import { btn } from './floorplanStyles'
+import { btn, btnDisabled } from './floorplanStyles'
 
 const PANEL_W = 280
 
@@ -78,17 +78,18 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
     // Con vanos, el convertir se deshabilita Y se explica: el reducer también lo rechaza,
     // pero ese no-op es silencioso — la UI debe comunicar el porqué, no depender de él.
     const blocked = e.openings.length > 0
+    const blockedReasonId = 'convertir-division-bloqueado'
     return (
       <Section title="Muro seleccionado" key={sel.id}>
         <Field label="Espesor (m)" value={e.thickness} step={0.01}
           onCommit={value => dispatch({ type: 'SET_EDGE_THICKNESS', edgeId: sel.id, value })} />
-        <button disabled={blocked}
-          style={{ ...btn(false), opacity: blocked ? 0.4 : 1, cursor: blocked ? 'default' : 'pointer' }}
+        <button disabled={blocked} style={btnDisabled(blocked)}
+          aria-describedby={blocked ? blockedReasonId : undefined}
           onClick={() => dispatch({ type: 'SET_EDGE_KIND', edgeId: sel.id, kind: 'ghost' })}>
           CONVERTIR EN DIVISIÓN
         </button>
         {blocked && (
-          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '6px' }}>
+          <div id={blockedReasonId} style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '6px' }}>
             Quita sus puertas y ventanas antes de convertirlo en división.
           </div>
         )}

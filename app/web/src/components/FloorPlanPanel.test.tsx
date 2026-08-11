@@ -144,8 +144,10 @@ describe('FloorPlanPanel', () => {
     })
     const convertBtn = screen.getByText('CONVERTIR EN DIVISIÓN') as HTMLButtonElement
     expect(convertBtn.disabled).toBe(true)
-    // La UI comunica el porqué; no delega en el no-op silencioso del reducer.
-    expect(screen.getByText(/quita sus puertas y ventanas/i)).toBeTruthy()
+    // La UI comunica el porqué; no delega en el no-op silencioso del reducer. Y la razón
+    // queda asociada al botón para lectores de pantalla, no solo visualmente cerca.
+    const reason = screen.getByText(/quita sus puertas y ventanas/i)
+    expect(convertBtn.getAttribute('aria-describedby')).toBe(reason.id)
     fireEvent.click(convertBtn)
     expect(dispatch).not.toHaveBeenCalled()
   })

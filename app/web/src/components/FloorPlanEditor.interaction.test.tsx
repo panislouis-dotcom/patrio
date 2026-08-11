@@ -329,6 +329,23 @@ describe('herramienta DIVISIÓN (paredes fantasma)', () => {
     expect(svg.querySelectorAll('[data-el="opening"]').length).toBe(0)
   })
 
+  it('la búsqueda del muro más cercano para vanos ignora divisiones', () => {
+    const model = modelWithGhostDivision()
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    fireEvent.click(getByText('door'))
+    // Clic en canvas vacío a 0.2m de la división (x=3) y 0.55m del muro inferior (y=0),
+    // ambos dentro del radio de 0.6m: si la búsqueda no salta fantasmas, la división
+    // gana "más cercana" y el clic muere en el no-op de ADD_OPENING — sin vano y sin aviso.
+    fireEvent.pointerDown(svg, pointerAt(model.floors, 2.8, 0.55))
+    const openings = svg.querySelectorAll('[data-el="opening"]')
+    expect(openings.length).toBeGreaterThan(0)
+    // …y el vano cayó en un MURO (arista sin punteado), no en la división.
+    const edgeId = openings[0].getAttribute('data-edge')!
+    expect(svg.querySelector(`[data-el="edge"][data-id="${edgeId}"]`)!.hasAttribute('stroke-dasharray')).toBe(false)
+  })
+
   it('la herramienta puerta sobre un muro sigue agregando el vano, en UNA sola entrada de historia', () => {
     const model = modelWithGhostDivision()
     const { container, getByText } = render(

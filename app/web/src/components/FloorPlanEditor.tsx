@@ -5,7 +5,7 @@ import { colors, fonts } from '../lib/theme'
 import {
   reducer, initialState, removeEdgeFromFloor, removeOpeningFromFloor, removeVertexFromFloor, type Tool,
 } from '../lib/floorplan/reducer'
-import { emptyFloorSet, clone, genId, GHOST_THICKNESS_M, type FloorSet, type FloorGraph } from '../lib/floorplan/types'
+import { emptyFloorSet, clone, genId, isGhost, GHOST_THICKNESS_M, type FloorSet, type FloorGraph } from '../lib/floorplan/types'
 import { viewTransform, type Camera } from '../lib/floorplan/viewTransform'
 import { roomAreas, roomLabels } from '../lib/floorplan/rooms'
 import { cornerAngles } from '../lib/floorplan/dimensions'
@@ -21,7 +21,7 @@ import { BASE } from '../lib/api'
 import FloorPlanCanvas from './FloorPlanCanvas'
 import FloorPlanPanel from './FloorPlanPanel'
 import { EmptyState, ReferenceControls } from './FloorPlanReference'
-import { btn } from './floorplanStyles'
+import { btn, btnDisabled } from './floorplanStyles'
 
 const W = 900, H = 560, MARGIN = 48
 const TOOLS: Tool[] = ['select', 'wall', 'ghost', 'door', 'window', 'room', 'delete']
@@ -40,6 +40,9 @@ type WorldPt = { x: number; y: number }
 function nearestEdgeIgnoringEndpointGuard(f: FloorGraph, pt: WorldPt): string | null {
   let best: string | null = null, bd = 0.6
   for (const e of Object.values(f.edges)) {
+    // Esta búsqueda solo sirve para colocar vanos y una división jamás los acepta: si no
+    // se salta, una fantasma cercana "gana" y el clic muere en el no-op de ADD_OPENING.
+    if (isGhost(e)) continue
     const p1 = f.vertices[e.v1], p2 = f.vertices[e.v2]
     const atM = projectAt([p1.x, p1.y], [p2.x, p2.y], pt)
     const [px, py] = pointAt([p1.x, p1.y], [p2.x, p2.y], atM)
@@ -499,9 +502,9 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
         ))}
         <div style={{ flex: 1 }} />
         <button onClick={() => dispatch({ type: 'UNDO' })} disabled={state.past.length === 0}
-          style={{ ...btn(false), opacity: state.past.length === 0 ? 0.4 : 1, cursor: state.past.length === 0 ? 'default' : 'pointer' }}>UNDO</button>
+          style={btnDisabled(state.past.length === 0)}>UNDO</button>
         <button onClick={() => dispatch({ type: 'REDO' })} disabled={state.future.length === 0}
-          style={{ ...btn(false), opacity: state.future.length === 0 ? 0.4 : 1, cursor: state.future.length === 0 ? 'default' : 'pointer' }}>REDO</button>
+          style={btnDisabled(state.future.length === 0)}>REDO</button>
         <button onClick={() => dispatch({ type: 'TOGGLE_DIMS' })} style={btn(ui.showDims)}>Dims</button>
         <button onClick={doSave} style={btn(state.dirty)}>Save</button>
       </div>

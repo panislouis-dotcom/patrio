@@ -12,6 +12,10 @@ import { BASE } from '../lib/api'
 
 const f2 = (v: number) => (Math.round(v * 100) / 100).toFixed(2)
 
+// Punteado de una división (ghost). Local al canvas a propósito: los demás renderers
+// (PNG de renders, SVG del prospecto, export BIM) EXCLUYEN las fantasmas, no las puntean.
+const GHOST_DASH = '6 4'
+
 function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }) {
   const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
   const ux = (p2.x - p1.x) / L, uy = (p2.y - p1.y) / L
@@ -97,7 +101,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
     const ghost = isGhost(e)
     gel.push(<line key={`edge${e.id}`} x1={px(p1.x)} y1={py(p1.y)} x2={px(p2.x)} y2={py(p2.y)}
       stroke={on ? colors.primary : ghost ? colors.secondary : colors.neutral}
-      strokeDasharray={ghost ? '6 4' : undefined}
+      strokeDasharray={ghost ? GHOST_DASH : undefined}
       strokeWidth={Math.max(3, e.thickness * scale)}
       data-el="edge" data-id={e.id} style={{ cursor: 'pointer' }} />)
   })
