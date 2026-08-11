@@ -573,23 +573,30 @@ describe('PropertyDetailPage', () => {
 
   // ── La barra de pestañas del centro ───────────────────────────────────────
 
-  it('la barra del centro son seis pestañas, en su orden', async () => {
+  it('la barra del centro son cinco pestañas, en su orden', async () => {
     // MediaTabs pinta la lista que le den y no sabe qué hay dentro, así que
     // quién existe y en qué orden se decide AQUÍ. Sin esta prueba, absorber una
     // pestaña ajena —o perderla en un merge— no pone nada en rojo.
-    // PLANO se partió en los dos levantamientos; RENDERS sigue aquí hasta que
-    // sus renders se repartan por fuente (Fase 5).
+    // RENDERS ya no es pestaña propia (Tarea 16): sus renders de foto viven
+    // dentro de FOTOS, y los de plano vivirán dentro de cada levantamiento
+    // (Tarea 17).
     await renderPage(BASE_PROPERTY)
     const barra = screen.getByText('MAPA').parentElement!
     expect(within(barra).getAllByRole('button').map(b => b.textContent))
-      .toEqual(['MAPA', 'FOTOS', 'LEVANTAMIENTO ORIGINAL', 'LEVANTAMIENTO PLANEADO', 'RENDERS', 'PRESUPUESTO'])
+      .toEqual(['MAPA', 'FOTOS', 'LEVANTAMIENTO ORIGINAL', 'LEVANTAMIENTO PLANEADO', 'PRESUPUESTO'])
   })
 
-  it('RENDERS abre lo suyo, y no la tira de FOTOS', async () => {
+  it('FOTOS ofrece GALERÍA y RENDERS, y RENDERS no es la tira de fotos', async () => {
     // Una foto es evidencia y un render es una propuesta. El día que RENDERS
-    // caiga dentro de FOTOS, una propuesta puede terminar citada como si fuera
-    // el estado real del inmueble, y eso no se ve: se ve una imagen más.
+    // se confunda con la tira de fotos, una propuesta puede terminar citada
+    // como si fuera el estado real del inmueble, y eso no se ve: se ve una
+    // imagen más. Por eso siguen siendo dos vistas separadas, aunque ahora
+    // ambas cuelguen de la misma pestaña FOTOS.
     await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('FOTOS'))
+    expect(screen.getByText('GALERÍA')).not.toBeNull()
+    expect(screen.getByText('RENDERS')).not.toBeNull()
 
     fireEvent.click(screen.getByText('RENDERS'))
     expect(await screen.findByLabelText(/preset/i)).not.toBeNull()

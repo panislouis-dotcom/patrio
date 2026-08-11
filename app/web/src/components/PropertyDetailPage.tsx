@@ -5,7 +5,7 @@ import {
   uploadPropertyImage, deletePropertyImage, updatePropertyImageType, reorderPropertyImages,
   fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage,
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
-  listRenderPrompts, listPropertyRenders, generatePropertyRender, generatePropertyRenderFromPlan,
+  listRenderPrompts, listPropertyRenders, generatePropertyRender,
   editPropertyRender, createRenderPrompt, deletePropertyRender,
 } from '../lib/api'
 import type {
@@ -31,17 +31,15 @@ import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { LatLonPicker } from './LatLonPicker'
 import { NumericInput } from './NumericInput'
 import { StatRow } from './StatRow'
-import { PhotoGallery } from './PhotoGallery'
 import { PropertyProfitSection } from './PropertyProfitSection'
 import { type PlanApi } from './FloorPlanEditor'
 import { LevantamientoPanel } from './LevantamientoPanel'
 import { migrateGeometry, withVariant, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
-import { floorToPngBlob } from '../lib/floorplan/planImage'
 import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
-import { RendersPanel } from './detail/RendersPanel'
+import { FotosPanel } from './detail/FotosPanel'
 import { BudgetPanel } from './detail/BudgetPanel'
 import { SectionDivider } from './detail/SectionDivider'
 import { ErrorBanner } from './detail/ErrorBanner'
@@ -191,12 +189,6 @@ export function PropertyDetailPage() {
   // lo dibujado aunque el usuario ya haya cambiado de pestaña.
   const planEditorRef = useRef<{ variant: VariantKey; api: PlanApi } | null>(null)
   const [planDirty, setPlanDirty] = useState(false)
-  // La planta activa del levantamiento original guardado, si la hay: fuente alterna
-  // para los renders.
-  const originalSet = geometry?.variants.original ?? null
-  const planFloor = originalSet && originalSet.floors.length
-    ? originalSet.floors[originalSet.activeFloor] ?? originalSet.floors[0]
-    : null
 
   const [investors, setInvestors] = useState<PropertyInvestor[]>([])
   const [allInvestors, setAllInvestors] = useState<Investor[]>([])
@@ -950,17 +942,18 @@ export function PropertyDetailPage() {
           )}
         </div>
 
-        {/* ── CENTRO: Mapa / Fotos / Plano / Renders / Presupuesto ──
+        {/* ── CENTRO: Mapa / Fotos / Plano / Presupuesto ──
             El presupuesto no lleva ventana de etapa, a diferencia de las
             herramientas de la columna izquierda: acompaña a la propiedad desde
             prospecto como el desglose de costos, porque hay que poder
             presupuestar antes de ofertar.
 
-            RENDERS va aquí como pestaña propia y no como una vista de FOTOS a
-            propósito: una foto es evidencia y un render es una propuesta.
-            Mezclarlos en la misma tira es cómo una propuesta termina citada como
-            si fuera el estado real del inmueble. La barra no sabe de esto —
-            recibe la lista tal cual va— así que la separación se sostiene aquí. */}
+            RENDERS ya no es pestaña propia: vive DENTRO de FOTOS (sub-navegación
+            GALERÍA | RENDERS, Tarea 16) para las propuestas nacidas de una foto, y
+            DENTRO de cada levantamiento (sub-navegación PLANO | RENDERS, Tarea 17)
+            para las nacidas de SU plano. La separación foto≠render no se relajó —
+            sigue siendo dos tablas y un badge que RendersPanel nunca deja de pintar
+            — solo cambió dónde vive cada una en la barra. */}
         <MediaTabs
           style={fade(160)}
           tabs={[
@@ -971,7 +964,7 @@ export function PropertyDetailPage() {
             {
               label: 'fotos',
               panel: (
-                <PhotoGallery
+                <FotosPanel
                   images={p.images}
                   base={BASE}
                   onUpload={async (file, imageType) => {
@@ -989,6 +982,27 @@ export function PropertyDetailPage() {
                   onReorder={async (imageIds: number[]) => {
                     const images = await reorderPropertyImages(p.id, imageIds)
                     setProperty(prev => prev ? { ...prev, images } : prev)
+                  }}
+                  prompts={renderPrompts}
+                  renders={renders}
+                  onGenerate={async req => {
+                    const created = await generatePropertyRender(p.id, req)
+                    setRenders(prev => [created, ...prev])
+                    return created
+                  }}
+                  onEdit={async (renderId, promptText) => {
+                    const created = await editPropertyRender(p.id, renderId, { promptText })
+                    setRenders(prev => [created, ...prev])
+                    return created
+                  }}
+                  onSavePrompt={async ({ name, body }) => {
+                    const created = await createRenderPrompt(name, body)
+                    setRenderPrompts(prev => [...prev, created])
+                    return created
+                  }}
+                  onDeleteRender={async renderId => {
+                    await deletePropertyRender(p.id, renderId)
+                    setRenders(prev => prev.filter(r => r.id !== renderId))
                   }}
                 />
               ),
@@ -1023,46 +1037,6 @@ export function PropertyDetailPage() {
                   onUploadImage={file => uploadFloorplanImage(p.id, file)}
                   onReady={onPlanReady}
                   onDirtyChange={setPlanDirty}
-                />
-              ),
-            },
-            {
-              label: 'renders',
-              panel: (
-                <RendersPanel
-                  images={p.images}
-                  prompts={renderPrompts}
-                  renders={renders}
-                  base={BASE}
-                  plan={planFloor}
-                  onGenerate={async req => {
-                    const created = await generatePropertyRender(p.id, req)
-                    setRenders(prev => [created, ...prev])
-                    return created
-                  }}
-                  onGeneratePlan={planFloor ? async req => {
-                    const plan = await floorToPngBlob(planFloor)
-                    // `planFloor` sale de `originalSet` (arriba): esta fuente SIEMPRE es el
-                    // levantamiento ORIGINAL hasta la Tarea 17, que le da a RendersPanel su
-                    // propia variante activa y borra este supuesto.
-                    const created = await generatePropertyRenderFromPlan(p.id, { ...req, plan, variant: 'original' })
-                    setRenders(prev => [created, ...prev])
-                    return created
-                  } : undefined}
-                  onEdit={async (renderId, promptText) => {
-                    const created = await editPropertyRender(p.id, renderId, { promptText })
-                    setRenders(prev => [created, ...prev])
-                    return created
-                  }}
-                  onSavePrompt={async ({ name, body }) => {
-                    const created = await createRenderPrompt(name, body)
-                    setRenderPrompts(prev => [...prev, created])
-                    return created
-                  }}
-                  onDeleteRender={async renderId => {
-                    await deletePropertyRender(p.id, renderId)
-                    setRenders(prev => prev.filter(r => r.id !== renderId))
-                  }}
                 />
               ),
             },

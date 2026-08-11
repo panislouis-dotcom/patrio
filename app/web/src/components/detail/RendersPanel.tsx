@@ -2,17 +2,27 @@ import { useMemo, useState } from 'react'
 import { colors, fonts, radius, spacing } from '../../lib/theme'
 import { fmtDia } from '../../lib/fmt'
 import type { PropertyImage, PropertyRender, RenderPrompt } from '../../lib/types'
-import type { FloorGraph } from '../../lib/floorplan/types'
+import type { FloorGraph, VariantKey } from '../../lib/floorplan/types'
 import { roomLabels } from '../../lib/floorplan/rooms'
 import { planFacts } from '../../lib/floorplan/planFacts'
 
 interface Props {
+  /** De dónde nace todo render que este panel puede generar o listar. 'photos':
+   * vive dentro de FOTOS, la fuente es una foto real (Tarea 16). 'plan': vive
+   * dentro de un levantamiento, la fuente es SU plano (Tarea 17). Un mismo
+   * componente, dos fuentes que nunca se mezclan — igual que en la base de
+   * datos, `sourceVariant` NULL es foto y con valor es plano. */
+  source: 'photos' | 'plan'
   images: PropertyImage[]
   prompts: RenderPrompt[]
   renders: PropertyRender[]
   base: string
-  /** El plano como fuente alterna (cuando hay geometría), el piso activo tal cual. */
+  /** El plano de ESTA variante (piso activo ya resuelto por quien llama). Solo se
+   * usa cuando `source === 'plan'`. */
   plan?: FloorGraph | null
+  /** De qué levantamiento es este panel. Solo se usa cuando `source === 'plan'`:
+   * filtra la lista a las cadenas que nacieron de ESTA variante, no de la otra. */
+  variant?: VariantKey
   onGenerate: (req: { sourceImageId: number; promptId: number | null; promptText: string })
     => Promise<PropertyRender>
   onGeneratePlan?: (req: { promptId: number | null; promptText: string }) => Promise<PropertyRender>
@@ -28,8 +38,11 @@ const label: React.CSSProperties = {
 }
 
 /**
- * La pestaña RENDERS: eliges una foto, eliges (o escribes) un prompt, y sale
- * una propuesta.
+ * RENDERS: eliges una fuente, eliges (o escribes) un prompt, y sale una
+ * propuesta. La fuente depende de `source` — una foto (dentro de FOTOS) o el
+ * plano de un levantamiento (dentro de ESE levantamiento) — y nunca las dos:
+ * mezclarlas en una sola lista es cómo una propuesta de plano termina listada
+ * como si fuera evidencia fotográfica, o viceversa.
  *
  * Todo render que se muestre lleva encima la palabra PROPUESTA y el prompt con
  * el que se hizo. No es decoración: el modelo de datos separa foto de render
@@ -37,7 +50,8 @@ const label: React.CSSProperties = {
  * garantía se vuelve visible para quien la está mirando.
  */
 export function RendersPanel({
-  images, prompts, renders, base, plan, onGenerate, onGeneratePlan, onEdit, onSavePrompt, onDeleteRender,
+  source, images, prompts, renders, base, plan, variant,
+  onGenerate, onGeneratePlan, onEdit, onSavePrompt, onDeleteRender,
 }: Props) {
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [usePlan, setUsePlan] = useState(false)
@@ -57,13 +71,22 @@ export function RendersPanel({
     [plan],
   )
 
+  // El equivalente en el frontend de `chain_is_plan` (backend): una edición hereda
+  // `sourceVariant` de su padre inmediato, así que TODO nodo de una cadena (raíz y
+  // ediciones) trae la misma marca — filtrar por nodo basta, no hace falta caminar
+  // la cadena hasta la raíz. Fotos: NULL. Plano: la variante que lo generó.
+  const scoped = useMemo(
+    () => renders.filter(r => (source === 'photos' ? r.sourceVariant == null : r.sourceVariant === variant)),
+    [renders, source, variant],
+  )
+
   // Cadenas de edición: la lista muestra solo las CABEZAS (los renders que nadie
   // editó encima); el historial de cada una se camina hacia atrás por parentRenderId.
-  const renderById = useMemo(() => new Map(renders.map(r => [r.id, r])), [renders])
+  const renderById = useMemo(() => new Map(scoped.map(r => [r.id, r])), [scoped])
   const heads = useMemo(() => {
-    const parents = new Set(renders.map(r => r.parentRenderId).filter((x): x is number => x != null))
-    return renders.filter(r => !parents.has(r.id))
-  }, [renders])
+    const parents = new Set(scoped.map(r => r.parentRenderId).filter((x): x is number => x != null))
+    return scoped.filter(r => !parents.has(r.id))
+  }, [scoped])
   const ancestry = (r: PropertyRender): PropertyRender[] => {
     const chain: PropertyRender[] = []
     let cur = r.parentRenderId != null ? renderById.get(r.parentRenderId) : undefined
@@ -116,11 +139,15 @@ export function RendersPanel({
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: spacing.md,
                   display: 'flex', flexDirection: 'column', gap: spacing.md }}>
 
-      {/* ── Fuente: una foto o el plano ── */}
+      {/* ── Fuente: una foto (modo fotos) o el plano de esta variante (modo plano) ──
+          Nunca las dos a la vez: en 'photos' no existe el botón "El plano" —esa
+          fuente se mudó al RendersPanel de cada levantamiento (Tarea 17)— y en
+          'plan' no hay tira de fotos, porque un levantamiento no es dueño de
+          ninguna. */}
       <div>
         <div style={label}>Fuente</div>
         <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', marginTop: spacing.sm }}>
-          {images.map(img => (
+          {source === 'photos' && images.map(img => (
             <button key={img.id} onClick={() => selectPhoto(img.id)} title={img.fileName}
               style={{
                 padding: 0, background: 'none', cursor: 'pointer', flexShrink: 0,
@@ -131,8 +158,8 @@ export function RendersPanel({
                    style={{ width: 84, height: 64, objectFit: 'cover', borderRadius: radius.sm }} />
             </button>
           ))}
-          {plan && (
-            <button onClick={selectPlan} title="Usar el plano de la pestaña LEVANTAMIENTO ORIGINAL"
+          {source === 'plan' && plan && (
+            <button onClick={selectPlan} title="Usar el plano de este levantamiento"
               style={{
                 flexShrink: 0, width: 84, height: 64, cursor: 'pointer',
                 border: `2px solid ${usePlan ? colors.primary : colors.border}`,
@@ -147,9 +174,14 @@ export function RendersPanel({
             </button>
           )}
         </div>
-        {images.length === 0 && !plan && (
+        {source === 'photos' && images.length === 0 && (
           <p style={{ color: colors.secondary, fontSize: '13px', marginTop: spacing.sm }}>
-            Sube una foto en la pestaña FOTOS (o dibuja el plano) para generar un render.
+            Sube una foto en GALERÍA para generar un render.
+          </p>
+        )}
+        {source === 'plan' && !plan && (
+          <p style={{ color: colors.secondary, fontSize: '13px', marginTop: spacing.sm }}>
+            Dibuja el plano en PLANO para generar un render.
           </p>
         )}
       </div>
@@ -194,7 +226,7 @@ export function RendersPanel({
           Así que el botón dice qué le falta en vez de quedarse callado. */}
       {!usePlan && sourceId == null && (images.length > 0 || plan) && (
         <p style={{ ...label, letterSpacing: 0, textTransform: 'none', color: colors.tertiary }}>
-          Elige una fuente arriba (una foto o el plano) para generar.
+          Elige una fuente arriba para generar.
         </p>
       )}
 

@@ -22,11 +22,11 @@ interface Props {
  * tocar este archivo aunque no cambie nada de lo que hace. Sigue sin saber qué
  * hay dentro de cada panel: es una barra y un hueco.
  *
- * Por eso tampoco es este archivo el que decide que RENDERS sea su propia
- * pestaña y no una vista de FOTOS, aunque la razón se sostenga igual: una foto
- * es evidencia y un render es una propuesta. Mezclarlos en la misma tira es cómo
- * una propuesta termina citada como si fuera el estado real del inmueble. Esa
- * separación la sostiene quien arma la lista, no la barra.
+ * RENDERS ya no es una de estas pestañas: cada panel (`FotosPanel`, y cada
+ * `LevantamientoPanel`) resuelve su propia sub-navegación por dentro, porque la
+ * separación que le importa —una foto es evidencia, un render es una
+ * propuesta— es sobre la FUENTE del render, no sobre el nivel de la barra.
+ * `MediaTabs` sigue sin saber nada de eso; solo tiene un hueco menos que pintar.
  */
 export function MediaTabs({ tabs, style }: Props) {
   const [active, setActive] = useState(0)

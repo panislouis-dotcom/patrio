@@ -9,7 +9,6 @@ const TABS = [
   { label: 'fotos', panel: <div>panel fotos</div> },
   { label: 'levantamiento original', panel: <div>panel levantamiento original</div> },
   { label: 'levantamiento planeado', panel: <div>panel levantamiento planeado</div> },
-  { label: 'renders', panel: <div>panel renders</div> },
   { label: 'presupuesto', panel: <div>panel presupuesto</div> },
 ]
 
@@ -32,16 +31,17 @@ describe('MediaTabs', () => {
     // una constante escondida en el componente.
     render(<MediaTabs tabs={TABS} />)
     const labels = screen.getAllByRole('button').map(b => b.textContent)
-    expect(labels).toEqual(['MAPA', 'FOTOS', 'LEVANTAMIENTO ORIGINAL', 'LEVANTAMIENTO PLANEADO', 'RENDERS', 'PRESUPUESTO'])
+    expect(labels).toEqual(['MAPA', 'FOTOS', 'LEVANTAMIENTO ORIGINAL', 'LEVANTAMIENTO PLANEADO', 'PRESUPUESTO'])
 
     fireEvent.click(screen.getByText('PRESUPUESTO'))
     expect(screen.getByText('panel presupuesto')).not.toBeNull()
   })
 
-  it('opens RENDERS as its own tab, next to the photos', () => {
+  it('switches between two non-default tabs, not just away from the first one', () => {
     render(<MediaTabs tabs={TABS} />)
-    fireEvent.click(screen.getByText('RENDERS'))
-    expect(screen.getByText('panel renders')).not.toBeNull()
+    fireEvent.click(screen.getByText('FOTOS'))
+    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    expect(screen.getByText('panel levantamiento planeado')).not.toBeNull()
     expect(screen.queryByText('panel fotos')).toBeNull()
   })
 })

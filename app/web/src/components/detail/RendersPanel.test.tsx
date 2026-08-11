@@ -23,14 +23,21 @@ const prompts: RenderPrompt[] = [
     createdAt: '2026-08-01T00:00:00Z' },
 ]
 
+/** Render nacido de una FOTO: `sourceVariant` NULL, como lo manda la migración 040. */
 const renderRow = (id: number): PropertyRender => ({
-  id, propertyId: 7, sourceImageId: 10, sourcePlanPath: null, parentRenderId: null,
+  id, propertyId: 7, sourceImageId: 10, sourcePlanPath: null, sourceVariant: null, parentRenderId: null,
   filePath: `r/${id}.png`, contentType: 'image/png', promptId: 1, promptText: 'Mezquite y agaves.',
   provider: 'openai', model: 'gpt-image-2', createdAt: '2026-08-02T00:00:00Z',
 })
 
+/** Render nacido del PLANO: sin foto, con `sourcePlanPath` y `sourceVariant` puestos. */
+const planRenderRow = (id: number, variant: 'original' | 'planned' = 'original'): PropertyRender => ({
+  ...renderRow(id), sourceImageId: null, sourcePlanPath: `plan/${id}.png`, sourceVariant: variant,
+})
+
 function setup(over: Partial<Parameters<typeof RendersPanel>[0]> = {}) {
   const props = {
+    source: 'photos' as const,
     images: [photo(10, 'fachada.jpg'), photo(11, 'jardin.jpg')],
     prompts,
     renders: [] as PropertyRender[],
@@ -191,26 +198,53 @@ describe('RendersPanel', () => {
     expect(props.onGenerate).toHaveBeenCalled()
   })
 
-  it('ofrece el plano como fuente y siembra el prompt desde los cuartos', () => {
-    setup({ plan: planWithRooms(['Cocina', 'Recámara']), onGeneratePlan: vi.fn() })
+  it('ofrece el plano como fuente y siembra el prompt desde los cuartos (modo plano)', () => {
+    setup({ source: 'plan', variant: 'original', plan: planWithRooms(['Cocina', 'Recámara']), onGeneratePlan: vi.fn() })
     fireEvent.click(screen.getByText(/^el plano$/i))
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     expect(ta.value).toMatch(/Cocina/)
     expect(ta.value).toMatch(/Recámara/)
   })
 
-  it('genera desde el plano cuando el plano es la fuente elegida', async () => {
-    const onGeneratePlan = vi.fn().mockResolvedValue(renderRow(2))
-    setup({ plan: planWithRooms(['Sala']), onGeneratePlan })
+  it('genera desde el plano cuando el plano es la fuente elegida (modo plano)', async () => {
+    const onGeneratePlan = vi.fn().mockResolvedValue(planRenderRow(2))
+    setup({ source: 'plan', variant: 'original', plan: planWithRooms(['Sala']), onGeneratePlan })
     fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
     await waitFor(() => expect(onGeneratePlan).toHaveBeenCalled())
   })
 
-  it('muestra «Plano base» cuando el render nació del plano, no «foto borrada»', () => {
-    setup({ renders: [{ ...renderRow(1), sourceImageId: null, sourcePlanPath: 'plan/1.png' }] })
+  it('muestra «Plano base» cuando el render nació del plano, no «foto borrada» (modo plano)', () => {
+    setup({ source: 'plan', variant: 'original', renders: [planRenderRow(1)] })
     expect(screen.getByText('Plano base')).not.toBeNull()
     expect(screen.queryByText(/foto base borrada/i)).toBeNull()
+  })
+
+  it('modo fotos: no ofrece "El plano" como fuente aunque haya plano', () => {
+    // La fuente plano vive en el RendersPanel de cada levantamiento (Tarea 17),
+    // no en el de FOTOS — mezclarlas confundiría cuál render nació de dónde.
+    setup({ plan: planWithRooms(['Cocina']), onGeneratePlan: vi.fn() })
+    expect(screen.queryByText(/^el plano$/i)).toBeNull()
+  })
+
+  it('modo fotos: solo lista cadenas nacidas de una foto, no las del plano', () => {
+    setup({ renders: [renderRow(1), planRenderRow(2)] })
+    expect(screen.getByAltText('Render 1')).not.toBeNull()
+    expect(screen.queryByAltText('Render 2')).toBeNull()
+  })
+
+  it('modo plano: no ofrece tira de fotos aunque se le pasen', () => {
+    setup({ source: 'plan', variant: 'original', images: [photo(10, 'fachada.jpg')], plan: planWithRooms(['Sala']) })
+    expect(screen.queryByAltText('fachada.jpg')).toBeNull()
+  })
+
+  it('modo plano: solo lista cadenas de SU variante, no las de la otra', () => {
+    setup({
+      source: 'plan', variant: 'original',
+      renders: [planRenderRow(1, 'original'), planRenderRow(2, 'planned')],
+    })
+    expect(screen.getByAltText('Render 1')).not.toBeNull()
+    expect(screen.queryByAltText('Render 2')).toBeNull()
   })
 
   it('«Trabajar sobre este» edita con una instrucción chica sobre el mismo render', async () => {
