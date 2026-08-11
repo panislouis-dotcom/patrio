@@ -96,6 +96,8 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
       </Section>
     )
   }
+  // 'fixture': su inspector llega en la tarea de UI de muebles (Task 11) — por ahora no renderiza nada.
+  if (sel.t !== 'opening') return null
   const e = floor.edges[sel.edgeId]
   const o = e?.openings[sel.index]
   if (!o) return null

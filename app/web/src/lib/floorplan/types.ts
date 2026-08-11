@@ -41,6 +41,40 @@ export interface Reference {
 
 export interface Room { name: string; cx: number; cy: number }
 
+export type FixtureKind =
+  | 'cama_individual' | 'cama_matrimonial' | 'cama_queen' | 'cama_king'
+  | 'silla' | 'mesa' | 'escritorio' | 'sillon'
+  | 'inodoro' | 'lavabo' | 'regadera' | 'tina'
+  | 'lavadora' | 'estufa' | 'refrigerador'
+
+export interface Fixture {
+  id: string
+  kind: FixtureKind
+  x: number; y: number   // centro, metros (mismo sistema que vértices)
+  rot: number            // grados, CCW
+  w_m: number; h_m: number  // editables; el catálogo solo da el default
+}
+
+// Dimensiones reales por defecto (metros). El catálogo es dato, no lógica: agregar un
+// mueble nuevo es agregar una entrada, sin tocar el reducer ni el canvas.
+export const FIXTURE_CATALOG: Record<FixtureKind, { label: string; w_m: number; h_m: number }> = {
+  cama_individual:  { label: 'Cama individual',  w_m: 1.00, h_m: 1.90 },
+  cama_matrimonial: { label: 'Cama matrimonial', w_m: 1.40, h_m: 1.90 },
+  cama_queen:       { label: 'Cama queen',       w_m: 1.60, h_m: 2.00 },
+  cama_king:        { label: 'Cama king',        w_m: 1.93, h_m: 2.03 },
+  silla:            { label: 'Silla',            w_m: 0.45, h_m: 0.45 },
+  mesa:             { label: 'Mesa',             w_m: 1.60, h_m: 0.90 },
+  escritorio:       { label: 'Escritorio',       w_m: 1.20, h_m: 0.60 },
+  sillon:           { label: 'Sillón',           w_m: 2.00, h_m: 0.90 },
+  inodoro:          { label: 'Inodoro',          w_m: 0.40, h_m: 0.65 },
+  lavabo:           { label: 'Lavabo',           w_m: 0.55, h_m: 0.45 },
+  regadera:         { label: 'Regadera',         w_m: 0.90, h_m: 0.90 },
+  tina:             { label: 'Tina',             w_m: 0.80, h_m: 1.70 },
+  lavadora:         { label: 'Lavadora',         w_m: 0.60, h_m: 0.60 },
+  estufa:           { label: 'Estufa',           w_m: 0.76, h_m: 0.66 },
+  refrigerador:     { label: 'Refrigerador',     w_m: 0.90, h_m: 0.80 },
+}
+
 export interface FloorGraph {
   name: string
   height_m: number
@@ -50,6 +84,9 @@ export interface FloorGraph {
   edges: Record<EdgeId, Edge>
   rooms: Room[]          // user-assigned names, matched to traced faces by nearest centroid
   reference?: Reference
+  // Ausente = []: mismo patrón que Edge.kind — un blob persistido antes de esta feature
+  // no tiene esta clave y debe leerse como "sin muebles", nunca como un crash.
+  fixtures?: Fixture[]
 }
 
 // El editor trabaja sobre UNA variante (un plano completo, multi-piso); el envelope
@@ -76,7 +113,7 @@ export function genId(): string {
 export function emptyFloorGraph(name: string): FloorGraph {
   return {
     name, height_m: 2.60, extWall_m: 0.15, intWall_m: 0.10,
-    vertices: {}, edges: {}, rooms: [],
+    vertices: {}, edges: {}, rooms: [], fixtures: [],
   }
 }
 

@@ -1,5 +1,5 @@
-import type { FloorSet, FloorGraph, VertexId, EdgeId, EdgeKind, Opening } from './types'
-import { clone, genId, isGhost, GHOST_THICKNESS_M } from './types'
+import type { FloorSet, FloorGraph, VertexId, EdgeId, EdgeKind, Opening, FixtureKind, Fixture } from './types'
+import { clone, genId, isGhost, GHOST_THICKNESS_M, FIXTURE_CATALOG } from './types'
 import { deleteVertex, deleteEdge, splitEdgeAtVertex } from './graph'
 import { exteriorEdgeIds } from './rooms'
 import type { Guide } from './snapping'
@@ -10,11 +10,12 @@ export type Sel =
   | { t: 'vertex'; id: VertexId }
   | { t: 'edge'; id: EdgeId }
   | { t: 'opening'; edgeId: EdgeId; index: number }
+  | { t: 'fixture'; id: string }
   | null
 
 export interface DragState {
-  kind: 'vertex' | 'edgeBody' | 'opening'
-  id?: VertexId | EdgeId       // vertex id for 'vertex', edge id for 'edgeBody'/'opening'
+  kind: 'vertex' | 'edgeBody' | 'opening' | 'fixture'
+  id?: VertexId | EdgeId       // vertex id for 'vertex', edge id for 'edgeBody'/'opening', fixture id for 'fixture'
   openingIndex?: number
   // Wall-body drag: drag-start endpoint positions + pointer position, so the wall can be
   // translated by the pointer delta. No axis-lock, no diagonal special-case — see graph.ts's
@@ -79,6 +80,9 @@ export type Action =
   | { type: 'ADD_OPENING'; edgeId: EdgeId; opening: Opening }
   | { type: 'SET_VERTEX_POINT'; id: VertexId; x: number; y: number }
   | { type: 'SPLIT_EDGE_AT_POINT'; edgeId: EdgeId; x: number; y: number }
+  | { type: 'ADD_FIXTURE'; kind: FixtureKind; x: number; y: number }
+  | { type: 'MOVE_FIXTURE'; id: string; x: number; y: number }
+  | { type: 'SET_FIXTURE_PARAM'; id: string; patch: Partial<Pick<Fixture, 'w_m' | 'h_m' | 'rot'>> }
   | { type: 'SET_MODEL'; model: FloorSet }
   | { type: 'DRAG_MODEL'; model: FloorSet }
   | { type: 'UNDO' }
@@ -107,6 +111,13 @@ export function removeVertexFromFloor(f: FloorGraph, id: VertexId): void {
 }
 export function removeOpeningFromFloor(f: FloorGraph, edgeId: EdgeId, index: number): void {
   f.edges[edgeId].openings.splice(index, 1)
+}
+export function removeFixtureFromFloor(f: FloorGraph, id: string): void {
+  // Defensivo contra un floor sin la clave `fixtures` (blob pre-feature): nunca truena.
+  const fixtures = f.fixtures ?? []
+  const idx = fixtures.findIndex(fx => fx.id === id)
+  if (idx >= 0) fixtures.splice(idx, 1)
+  f.fixtures = fixtures
 }
 
 export function reducer(s: EditorState, a: Action): EditorState {
@@ -269,6 +280,28 @@ export function reducer(s: EditorState, a: Action): EditorState {
       splitEdgeAtVertex(f, a.edgeId, newVertexId)
       return { ...modelChange(s, m), ui: { ...s.ui, sel: { t: 'vertex', id: newVertexId } } }
     }
+    case 'ADD_FIXTURE': {
+      const m = clone(s.model); const f = F(m)
+      const dims = FIXTURE_CATALOG[a.kind]
+      const id = genId()
+      const fixture: Fixture = { id, kind: a.kind, x: a.x, y: a.y, rot: 0, w_m: dims.w_m, h_m: dims.h_m }
+      f.fixtures = [...(f.fixtures ?? []), fixture]
+      return { ...modelChange(s, m), ui: { ...s.ui, sel: { t: 'fixture', id } } }
+    }
+    case 'MOVE_FIXTURE': {
+      const m = clone(s.model); const f = F(m)
+      const fx = (f.fixtures ?? []).find(x => x.id === a.id)
+      if (!fx) return s
+      fx.x = a.x; fx.y = a.y
+      return modelChange(s, m)
+    }
+    case 'SET_FIXTURE_PARAM': {
+      const m = clone(s.model); const f = F(m)
+      const fx = (f.fixtures ?? []).find(x => x.id === a.id)
+      if (!fx) return s
+      Object.assign(fx, a.patch)
+      return modelChange(s, m)
+    }
     case 'DELETE_SEL': {
       const sel = s.ui.sel
       if (!sel) return s
@@ -276,6 +309,7 @@ export function reducer(s: EditorState, a: Action): EditorState {
       if (sel.t === 'edge') { if (!f.edges[sel.id]) return s; removeEdgeFromFloor(f, sel.id) }
       else if (sel.t === 'opening') { if (!f.edges[sel.edgeId]) return s; removeOpeningFromFloor(f, sel.edgeId, sel.index) }
       else if (sel.t === 'vertex') { if (!f.vertices[sel.id]) return s; removeVertexFromFloor(f, sel.id) }
+      else if (sel.t === 'fixture') { if (!(f.fixtures ?? []).some(fx => fx.id === sel.id)) return s; removeFixtureFromFloor(f, sel.id) }
       return { ...modelChange(s, m), ui: { ...s.ui, sel: null } }
     }
     case 'SET_REFERENCE_FIELD': {

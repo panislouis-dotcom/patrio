@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
+import { emptyFloorGraph, GHOST_THICKNESS_M, FIXTURE_CATALOG, clone } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import {
   reducer, initialState, removeVertexFromFloor, removeEdgeFromFloor, removeOpeningFromFloor,
+  removeFixtureFromFloor,
 } from './reducer'
 
 function modelWithRectangle() {
@@ -307,6 +308,127 @@ describe('removeVertexFromFloor / removeEdgeFromFloor / removeOpeningFromFloor',
     f.edges[e].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
     removeOpeningFromFloor(f, e, 0)
     expect(f.edges[e].openings).toHaveLength(0)
+  })
+  it('removeFixtureFromFloor drops the fixture with the given id', () => {
+    const f = emptyFloorGraph('T')
+    f.fixtures = [{ id: 'fx1', kind: 'silla', x: 0, y: 0, rot: 0, w_m: 0.45, h_m: 0.45 }]
+    removeFixtureFromFloor(f, 'fx1')
+    expect(f.fixtures).toHaveLength(0)
+  })
+  it('removeFixtureFromFloor no truena en un floor sin la clave fixtures', () => {
+    const f = emptyFloorGraph('T')
+    delete f.fixtures
+    expect(() => removeFixtureFromFloor(f, 'nope')).not.toThrow()
+    expect(f.fixtures).toEqual([])
+  })
+})
+
+describe('fixtures en el reducer', () => {
+  it('ADD_FIXTURE coloca un mueble con las dimensiones default del catálogo, lo selecciona y empuja historia', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'cama_matrimonial', x: 1, y: 1.5 })
+    const fixtures = s.model.floors[0].fixtures ?? []
+    expect(fixtures).toHaveLength(1)
+    const fx = fixtures[0]
+    expect(fx.kind).toBe('cama_matrimonial')
+    expect(fx.x).toBe(1)
+    expect(fx.y).toBe(1.5)
+    expect(fx.rot).toBe(0)
+    expect(fx.w_m).toBeCloseTo(FIXTURE_CATALOG.cama_matrimonial.w_m)
+    expect(fx.h_m).toBeCloseTo(FIXTURE_CATALOG.cama_matrimonial.h_m)
+    expect(s.ui.sel).toEqual({ t: 'fixture', id: fx.id })
+    expect(s.past).toHaveLength(1)
+  })
+
+  it('MOVE_FIXTURE actualiza x/y del mueble', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'silla', x: 0, y: 0 })
+    const id = (s.ui.sel as { t: 'fixture'; id: string }).id
+    s = reducer(s, { type: 'MOVE_FIXTURE', id, x: 2.5, y: 1.5 })
+    const fx = s.model.floors[0].fixtures!.find(x => x.id === id)!
+    expect(fx.x).toBe(2.5)
+    expect(fx.y).toBe(1.5)
+  })
+
+  it('MOVE_FIXTURE sobre un id inexistente es no-op', () => {
+    const { model } = modelWithRectangle()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'MOVE_FIXTURE', id: 'no-existe', x: 1, y: 1 })).toBe(s)
+  })
+
+  it('SET_FIXTURE_PARAM actualiza w_m/h_m/rot de forma independiente (updates parciales)', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'mesa', x: 0, y: 0 })
+    const id = (s.ui.sel as { t: 'fixture'; id: string }).id
+
+    s = reducer(s, { type: 'SET_FIXTURE_PARAM', id, patch: { rot: 90 } })
+    let fx = s.model.floors[0].fixtures!.find(x => x.id === id)!
+    expect(fx.rot).toBe(90)
+    expect(fx.w_m).toBeCloseTo(FIXTURE_CATALOG.mesa.w_m) // sin tocar por el update parcial
+
+    s = reducer(s, { type: 'SET_FIXTURE_PARAM', id, patch: { w_m: 2.0, h_m: 1.1 } })
+    fx = s.model.floors[0].fixtures!.find(x => x.id === id)!
+    expect(fx.w_m).toBeCloseTo(2.0)
+    expect(fx.h_m).toBeCloseTo(1.1)
+    expect(fx.rot).toBe(90) // preservado del update anterior, no pisado
+  })
+
+  it('SET_FIXTURE_PARAM sobre un id inexistente es no-op', () => {
+    const { model } = modelWithRectangle()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'SET_FIXTURE_PARAM', id: 'no-existe', patch: { rot: 45 } })).toBe(s)
+  })
+
+  it('DELETE_SEL borra un mueble seleccionado y limpia la selección', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'sillon', x: 0, y: 0 })
+    s = reducer(s, { type: 'DELETE_SEL' })
+    expect(s.model.floors[0].fixtures).toHaveLength(0)
+    expect(s.ui.sel).toBeNull()
+  })
+
+  it('un gesto completo de arrastre (DRAG_MODEL × N + MOVE_FIXTURE) deshace como un solo paso de historia', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'lavabo', x: 0, y: 0 })
+    const id = (s.ui.sel as { t: 'fixture'; id: string }).id
+    expect(s.past).toHaveLength(1) // past[0] = el modelo antes de agregar el mueble
+
+    const withFixtureAt = (x: number, y: number) => {
+      const m = clone(s.model)
+      m.floors[0].fixtures = m.floors[0].fixtures!.map(fx => fx.id === id ? { ...fx, x, y } : fx)
+      return m
+    }
+    s = reducer(s, { type: 'DRAG_MODEL', model: withFixtureAt(1, 1) })
+    s = reducer(s, { type: 'DRAG_MODEL', model: withFixtureAt(2, 2) })
+    s = reducer(s, { type: 'MOVE_FIXTURE', id, x: 3, y: 3 })
+
+    expect(s.model.floors[0].fixtures!.find(fx => fx.id === id)!.x).toBe(3)
+    expect(s.past).toHaveLength(2) // una sola entrada nueva por todo el gesto, no una por frame de drag
+
+    s = reducer(s, { type: 'UNDO' })
+    const fx = s.model.floors[0].fixtures!.find(f => f.id === id)!
+    expect(fx.x).toBe(0) // vuelve a la posición pre-gesto, no a un frame intermedio del drag
+    expect(fx.y).toBe(0)
+  })
+
+  it('un floor cargado sin la clave fixtures (blob previo a esta feature) no truena', () => {
+    const { model } = modelWithRectangle()
+    delete model.floors[0].fixtures
+    let s = initialState(model)
+    expect(reducer(s, { type: 'MOVE_FIXTURE', id: 'x', x: 1, y: 1 })).toBe(s)
+    expect(reducer(s, { type: 'SET_FIXTURE_PARAM', id: 'x', patch: { rot: 10 } })).toBe(s)
+
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'estufa', x: 0, y: 0 })
+    expect(s.model.floors[0].fixtures).toHaveLength(1)
+
+    s = reducer(s, { type: 'SET_SEL', sel: { t: 'fixture', id: s.model.floors[0].fixtures![0].id } })
+    s = reducer(s, { type: 'DELETE_SEL' })
+    expect(s.model.floors[0].fixtures).toHaveLength(0)
   })
 })
 
