@@ -51,6 +51,9 @@ export interface PropertyRender {
   sourcePlanPath: string | null
   /** El render del que se editó ENCIMA, si es un paso de una cadena. */
   parentRenderId: number | null
+  /** De qué levantamiento nació un render de plano ('original' | 'planned'); null cuando
+   * nació de una foto (migración 040). Una edición hereda la variante de su padre. */
+  sourceVariant?: 'original' | 'planned' | null
   filePath: string
   contentType: string
   promptId: number | null

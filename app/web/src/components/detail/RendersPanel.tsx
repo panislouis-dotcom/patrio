@@ -2,14 +2,17 @@ import { useMemo, useState } from 'react'
 import { colors, fonts, radius, spacing } from '../../lib/theme'
 import { fmtDia } from '../../lib/fmt'
 import type { PropertyImage, PropertyRender, RenderPrompt } from '../../lib/types'
+import type { FloorGraph } from '../../lib/floorplan/types'
+import { roomLabels } from '../../lib/floorplan/rooms'
+import { planFacts } from '../../lib/floorplan/planFacts'
 
 interface Props {
   images: PropertyImage[]
   prompts: RenderPrompt[]
   renders: PropertyRender[]
   base: string
-  /** El plano como fuente alterna (cuando hay geometría). roomNames siembra el prompt. */
-  plan?: { roomNames: string[] } | null
+  /** El plano como fuente alterna (cuando hay geometría), el piso activo tal cual. */
+  plan?: FloorGraph | null
   onGenerate: (req: { sourceImageId: number; promptId: number | null; promptText: string })
     => Promise<PropertyRender>
   onGeneratePlan?: (req: { promptId: number | null; promptText: string }) => Promise<PropertyRender>
@@ -17,13 +20,6 @@ interface Props {
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
   onSavePrompt: (p: { name: string; body: string }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
-}
-
-/** Prompt sembrado desde los cuartos nombrados: un punto de partida que el usuario ajusta. */
-function planSeed(roomNames: string[]): string {
-  const rooms = roomNames.filter(r => r && r.trim())
-  const lista = rooms.length ? ` Espacios: ${rooms.join(', ')}.` : ''
-  return `Amuebla y da acabados a esta planta manteniendo la distribución.${lista} Estilo cálido y contemporáneo.`
 }
 
 const label: React.CSSProperties = {
@@ -55,6 +51,12 @@ export function RendersPanel({
   // Índice para colgarle a cada render su foto base sin recorrer la lista por render.
   const byId = useMemo(() => new Map(images.map(i => [i.id, i])), [images])
 
+  // Nombres de cuarto del plano, solo para el badge "N espacios" del botón de fuente.
+  const planRoomNames = useMemo(
+    () => (plan ? roomLabels(plan).map(r => r.name).filter(Boolean) : []),
+    [plan],
+  )
+
   // Cadenas de edición: la lista muestra solo las CABEZAS (los renders que nadie
   // editó encima); el historial de cada una se camina hacia atrás por parentRenderId.
   const renderById = useMemo(() => new Map(renders.map(r => [r.id, r])), [renders])
@@ -84,7 +86,7 @@ export function RendersPanel({
   function selectPhoto(id: number) { setSourceId(id); setUsePlan(false) }
   function selectPlan() {
     setUsePlan(true); setSourceId(null)
-    if (!text.trim() && plan) setText(planSeed(plan.roomNames))
+    if (!text.trim() && plan) setText(planFacts(plan))
   }
 
   async function generate() {
@@ -139,8 +141,8 @@ export function RendersPanel({
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '4px',
               }}>
               <span>El plano</span>
-              {plan.roomNames.length > 0 && (
-                <span style={{ color: colors.secondary, letterSpacing: 0 }}>{plan.roomNames.length} espacios</span>
+              {planRoomNames.length > 0 && (
+                <span style={{ color: colors.secondary, letterSpacing: 0 }}>{planRoomNames.length} espacios</span>
               )}
             </button>
           )}

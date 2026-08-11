@@ -1,5 +1,5 @@
 import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetSource } from './types'
-import type { FloorPlanModel } from './floorplan/types'
+import type { FloorPlanModel, VariantKey } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -221,11 +221,15 @@ export async function generatePropertyRender(
 
 export async function generatePropertyRenderFromPlan(
   id: number,
-  req: { promptText: string; promptId: number | null; plan: Blob },
+  req: { promptText: string; promptId: number | null; plan: Blob; variant: VariantKey },
 ): Promise<PropertyRender> {
   const form = new FormData()
   form.append('file', req.plan, 'plano.png')
   form.append('promptText', req.promptText)
+  // Obligatorio desde la Tarea 14 (`routes/renders.py`, `variant: str = Form(...)`): sin
+  // él el servidor contesta 422. De qué levantamiento nació el render, no una preferencia
+  // de estilo — así una edición encima puede heredarlo (renders_db.add_render).
+  form.append('variant', req.variant)
   if (req.promptId != null) form.append('promptId', String(req.promptId))
   const res = await authFetch(`${BASE}/api/properties/${id}/renders/from-plan`, { method: 'POST', body: form })
   if (!res.ok) throw new Error(await detail(res))

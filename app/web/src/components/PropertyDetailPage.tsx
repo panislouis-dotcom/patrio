@@ -36,7 +36,6 @@ import { PropertyProfitSection } from './PropertyProfitSection'
 import { type PlanApi } from './FloorPlanEditor'
 import { LevantamientoPanel } from './LevantamientoPanel'
 import { migrateGeometry, withVariant, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
-import { roomLabels } from '../lib/floorplan/rooms'
 import { floorToPngBlob } from '../lib/floorplan/planImage'
 import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
@@ -1035,7 +1034,7 @@ export function PropertyDetailPage() {
                   prompts={renderPrompts}
                   renders={renders}
                   base={BASE}
-                  plan={planFloor ? { roomNames: roomLabels(planFloor).map(r => r.name).filter(Boolean) } : null}
+                  plan={planFloor}
                   onGenerate={async req => {
                     const created = await generatePropertyRender(p.id, req)
                     setRenders(prev => [created, ...prev])
@@ -1043,7 +1042,10 @@ export function PropertyDetailPage() {
                   }}
                   onGeneratePlan={planFloor ? async req => {
                     const plan = await floorToPngBlob(planFloor)
-                    const created = await generatePropertyRenderFromPlan(p.id, { ...req, plan })
+                    // `planFloor` sale de `originalSet` (arriba): esta fuente SIEMPRE es el
+                    // levantamiento ORIGINAL hasta la Tarea 17, que le da a RendersPanel su
+                    // propia variante activa y borra este supuesto.
+                    const created = await generatePropertyRenderFromPlan(p.id, { ...req, plan, variant: 'original' })
                     setRenders(prev => [created, ...prev])
                     return created
                   } : undefined}

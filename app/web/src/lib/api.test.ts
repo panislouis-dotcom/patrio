@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { updateProperty, clearPropertyFields } from './api'
+import { updateProperty, clearPropertyFields, generatePropertyRenderFromPlan } from './api'
 
 // La sesión no es lo que se está probando: aquí importa qué sale por el cable.
 vi.mock('./auth', () => ({ getToken: () => 'test-token', clearToken: () => {} }))
@@ -46,5 +46,17 @@ describe('clearPropertyFields', () => {
 
     expect(fetchMock.mock.calls[0][0]).toContain('/api/properties/1/clear-fields')
     expect(bodyOf(fetchMock)).toEqual({ fields: ['rentMonthlyProjected', 'currentValuation'] })
+  })
+})
+
+describe('generatePropertyRenderFromPlan', () => {
+  it('manda `variant` en el FormData — el servidor la exige (Tarea 14) y sin ella contesta 422', async () => {
+    const fetchMock = stubFetch()
+    const plan = new Blob(['x'], { type: 'image/png' })
+    await generatePropertyRenderFromPlan(1, { promptText: 'Amuebla', promptId: null, plan, variant: 'planned' })
+
+    const form = fetchMock.mock.calls[0][1]!.body as FormData
+    expect(form.get('variant')).toBe('planned')
+    expect(form.get('promptText')).toBe('Amuebla')
   })
 })

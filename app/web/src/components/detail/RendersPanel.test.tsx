@@ -1,6 +1,15 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { RendersPanel } from './RendersPanel'
 import type { PropertyImage, RenderPrompt, PropertyRender } from '../../lib/types'
+import { emptyFloorGraph, type FloorGraph } from '../../lib/floorplan/types'
+
+/** Un piso con solo nombres de cuarto sueltos (sin polígono cerrado) — basta para que
+ * `roomLabels`/`planFacts` los reporten; a estos tests no les importa el área. */
+function planWithRooms(names: string[]): FloorGraph {
+  const f = emptyFloorGraph('Test')
+  f.rooms = names.map((name, i) => ({ name, cx: i, cy: 0 }))
+  return f
+}
 
 const photo = (id: number, name: string): PropertyImage => ({
   id, filePath: `p/${id}.png`, fileName: name, contentType: 'image/png',
@@ -183,7 +192,7 @@ describe('RendersPanel', () => {
   })
 
   it('ofrece el plano como fuente y siembra el prompt desde los cuartos', () => {
-    setup({ plan: { roomNames: ['Cocina', 'Recámara'] }, onGeneratePlan: vi.fn() })
+    setup({ plan: planWithRooms(['Cocina', 'Recámara']), onGeneratePlan: vi.fn() })
     fireEvent.click(screen.getByText(/^el plano$/i))
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     expect(ta.value).toMatch(/Cocina/)
@@ -192,7 +201,7 @@ describe('RendersPanel', () => {
 
   it('genera desde el plano cuando el plano es la fuente elegida', async () => {
     const onGeneratePlan = vi.fn().mockResolvedValue(renderRow(2))
-    setup({ plan: { roomNames: ['Sala'] }, onGeneratePlan })
+    setup({ plan: planWithRooms(['Sala']), onGeneratePlan })
     fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
     await waitFor(() => expect(onGeneratePlan).toHaveBeenCalled())
