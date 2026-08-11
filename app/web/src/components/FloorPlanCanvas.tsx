@@ -6,7 +6,7 @@ import { isGhost, type FloorSet, type FloorGraph } from '../lib/floorplan/types'
 import type { ViewTransform } from '../lib/floorplan/viewTransform'
 import type { RoomLabel } from '../lib/floorplan/rooms'
 import type { CornerAngle } from '../lib/floorplan/dimensions'
-import { widthHeightChains } from '../lib/floorplan/dimensions'
+import { widthHeightChains, cotaEdges } from '../lib/floorplan/dimensions'
 import type { UI } from '../lib/floorplan/reducer'
 import { BASE } from '../lib/api'
 
@@ -224,8 +224,8 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
     }
     heightMarks.slice(1, -1).forEach(sy => gel.push(<line key={`dimhtick${sy}`} x1={px(x1) + 36} y1={py(sy)} x2={px(x1) + 44} y2={py(sy)} stroke={colors.border} strokeWidth={0.6} />))
 
-    // per-edge length labels
-    edges.forEach(e => {
+    // per-edge length labels — una fantasma no es muro, no lleva su propia cota (dimensions.ts)
+    cotaEdges(floor).forEach(e => {
       const p1 = floor.vertices[e.v1], p2 = floor.vertices[e.v2]
       const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2, L = Math.hypot(p2.x - p1.x, p2.y - p1.y)
       dim(px(mx) + 11, py(my), f2(L))

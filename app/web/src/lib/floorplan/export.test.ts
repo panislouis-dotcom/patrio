@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph } from './types'
+import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
 import { addVertex, addEdge } from './graph'
 import { toGeometryJson } from './export'
 
@@ -35,5 +35,18 @@ describe('toGeometryJson', () => {
     const json = toGeometryJson(model)
     expect(json.storeys[0].elevation_m).toBe(0)
     expect(json.storeys[1].elevation_m).toBeCloseTo(3)
+  })
+
+  it('excludes ghosts from walls — they are annotations, not building elements', () => {
+    const f = emptyFloorGraph('Planta Baja')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+    addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+    const ghost = addEdge(f, a, c, GHOST_THICKNESS_M, 'ghost')
+
+    const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
+    const json = toGeometryJson(model)
+
+    expect(json.storeys[0].walls).toHaveLength(4)
+    expect(json.storeys[0].walls.map(w => w.id)).not.toContain(ghost)
   })
 })

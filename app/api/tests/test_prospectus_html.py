@@ -54,11 +54,32 @@ PLANNED_SET = {
     }],
 }
 
-# Lo que persiste "EMPEZAR EN BLANCO": un planned con un piso sin un solo vértice.
+# Lo que persiste "EMPEZAR EN BLANCO": un planned con un piso sin un solo vértice. Nombrado
+# distinto a ORIGINAL_SET ("Planta Baja") a propósito: si el nombre fuera el mismo, el
+# assert de "no se esconde el original dibujado" pasaría aunque el blanco se colara.
 BLANK_SET = {
     "slab_m": 0.15,
     "activeFloor": 0,
-    "floors": [{"name": "Planta Baja", "vertices": {}, "edges": {}, "rooms": []}],
+    "floors": [{"name": "Planta en Blanco", "vertices": {}, "edges": {}, "rooms": []}],
+}
+
+# Un piso con una arista 'ghost' (división manual de cuarto): divide para nombres/áreas
+# pero no es muro — _floorplan_svg no debe dibujarle línea alguna.
+GHOST_EDGE_FLOOR = {
+    "floors": [{
+        "name": "Planta Baja",
+        "vertices": {
+            "v1": {"id": "v1", "x": 0, "y": 0},
+            "v2": {"id": "v2", "x": 5, "y": 0},
+            "v3": {"id": "v3", "x": 5, "y": 4},
+        },
+        "edges": {
+            "e1": {"id": "e1", "v1": "v1", "v2": "v2", "thickness": 0.15},
+            "e2": {"id": "e2", "v1": "v2", "v2": "v3", "thickness": 0.15},
+            "e3": {"id": "e3", "v1": "v1", "v2": "v3", "thickness": 0.05, "kind": "ghost"},
+        },
+        "rooms": [{"name": "Sala", "cx": 2.5, "cy": 2.0}],
+    }],
 }
 
 
@@ -110,6 +131,11 @@ def test_v3_blank_planned_does_not_hide_a_drawn_original():
     svg = _floorplan_svg(_v3(ORIGINAL_SET, BLANK_SET))
     assert "Sala" in svg
     assert "Planta Baja" in svg
+    assert "Planta en Blanco" not in svg
+
+    # Mismo caso con un planned sin ni un piso (en vez del piso vacío que persiste el
+    # botón "EMPEZAR EN BLANCO"): el original dibujado sigue ganando igual.
+    assert "Sala" in _floorplan_svg(_v3(ORIGINAL_SET, {"floors": []}))
 
 
 def test_v3_planned_wins_if_any_of_its_floors_has_vertices():
@@ -133,6 +159,14 @@ def test_a_wall_with_a_missing_vertex_is_skipped_not_fatal():
     svg = _floorplan_svg(DANGLING_EDGE)
     assert "<line" not in svg
     assert "<svg" in svg  # el piso se dibuja igual, solo sin ese muro
+
+
+def test_ghost_edges_are_not_drawn_as_walls():
+    """Una fantasma (división manual de cuarto, `kind: 'ghost'`) divide para nombres/áreas
+    pero NO es muro: si se dibujara aquí, el modelo de render vería un muro que no existe."""
+    svg = _floorplan_svg(GHOST_EDGE_FLOOR)
+    assert svg.count("<line") == 2   # los 2 muros reales (e1, e2); e3 (ghost) no se dibuja
+    assert "Sala" in svg             # el cuarto sigue nombrado
 
 
 def test_the_plan_is_not_printed_upside_down():

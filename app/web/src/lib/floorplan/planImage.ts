@@ -4,6 +4,7 @@
 // de cuarto — en estilo cenital limpio) y se prueba sin navegador; floorToPngBlob
 // la rasteriza vía canvas y solo corre en el browser.
 import type { FloorGraph } from './types'
+import { isGhost } from './types'
 import { roomLabels } from './rooms'
 
 function escapeXml(s: string): string {
@@ -26,6 +27,10 @@ export function floorToSvgString(floor: FloorGraph, opts: { pad?: number; scale?
 
   const parts: string[] = [`<rect x="0" y="0" width="${W}" height="${H}" fill="#ffffff"/>`]
   for (const e of Object.values(floor.edges)) {
+    // Una fantasma es una anotación (divide cuartos para nombres/áreas), no un muro: si se
+    // dibujara aquí, el modelo de render vería un muro donde el usuario solo puso una línea
+    // de referencia — exactamente el caso de falla que este export existe para evitar.
+    if (isGhost(e)) continue
     const p1 = floor.vertices[e.v1], p2 = floor.vertices[e.v2]
     const w = Math.max(4, e.thickness * scale)
     parts.push(`<line x1="${px(p1.x)}" y1="${py(p1.y)}" x2="${px(p2.x)}" y2="${py(p2.y)}" stroke="#111111" stroke-width="${w}" stroke-linecap="round"/>`)

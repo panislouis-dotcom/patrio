@@ -712,6 +712,11 @@ def _floorplan_svg(geometry: dict) -> str:
 
         lines = []
         for edge in (floor.get("edges") or {}).values():
+            # Una fantasma (kind 'ghost') es una división manual de cuarto, no un muro: no
+            # puede traer aberturas (motor lo impide), así que basta este skip temprano —
+            # sin él el prospecto dibujaría un muro donde el usuario solo puso una división.
+            if edge.get("kind") == "ghost":
+                continue
             v1 = vertices.get(edge.get("v1"))
             v2 = vertices.get(edge.get("v2"))
             if v1 is None or v2 is None:

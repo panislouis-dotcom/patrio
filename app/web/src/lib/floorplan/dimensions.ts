@@ -1,10 +1,18 @@
-import type { FloorGraph } from './types'
+import type { Edge, FloorGraph } from './types'
+import { isGhost } from './types'
 import { exteriorEdgeIds, traceFaces } from './rooms'
 
 export interface CornerAngle { vertexId: string; deg: number; x: number; y: number; isRight: boolean }
 
 const SPAN_TOL = 0.9   // an interior wall covering at least this fraction of the perpendicular span fully divides the room
 const SPLIT_EPS = 0.02 // dedup near-duplicate/near-boundary split marks
+
+/** Edges that count as walls for cotas: every edge except a ghost. A ghost is a manual
+ * room divider, not a measured wall — it never splits a dimension chain (widthHeightChains
+ * below) and never gets its own per-edge length label, in the editor or anywhere else. */
+export function cotaEdges(f: FloorGraph): Edge[] {
+  return Object.values(f.edges).filter(e => !isGhost(e))
+}
 
 function dedupSplits(vals: number[], lo: number, hi: number): number[] {
   const out: number[] = []
@@ -26,7 +34,7 @@ export function widthHeightChains(f: FloorGraph): { widthMarks: number[]; height
   const x0 = Math.min(...allX, 0), x1 = Math.max(...allX, 1)
   const y0 = Math.min(...allY, 0), y1 = Math.max(...allY, 1)
 
-  const interiorEdges = Object.values(f.edges).filter(e => !ext.has(e.id))
+  const interiorEdges = cotaEdges(f).filter(e => !ext.has(e.id))
 
   const widthSplits = dedupSplits(
     interiorEdges
