@@ -174,15 +174,22 @@ def chain_is_plan(property_id: int, render_id: int) -> bool:
 def add_render(property_id: int, source_image_id: int | None, file_path: str,
                content_type: str, prompt_id: int | None, prompt_text: str,
                provider: str, model: str, source_plan_path: str | None = None,
-               parent_render_id: int | None = None) -> dict:
+               parent_render_id: int | None = None,
+               source_variant: str | None = None) -> dict:
+    """`source_variant` dice de qué levantamiento nació un render de plano
+    ('original' | 'planned'); NULL para uno nacido de una foto. Al editar, el
+    llamador (el endpoint de edición) lo resuelve del padre y lo pasa aquí
+    explícito — no se recalcula caminando la cadena, porque cada edición ya
+    copia la variante de su padre inmediato y eso basta por inducción."""
     with get_db() as conn:
         row = conn.execute(
             "INSERT INTO property_renders (property_id, source_image_id, file_path,"
             " content_type, prompt_id, prompt_text, provider, model, source_plan_path,"
-            " parent_render_id)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            " parent_render_id, source_variant)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
             (property_id, source_image_id, file_path, content_type,
-             prompt_id, prompt_text, provider, model, source_plan_path, parent_render_id),
+             prompt_id, prompt_text, provider, model, source_plan_path, parent_render_id,
+             source_variant),
         ).fetchone()
     return _row_to_dict(row)
 

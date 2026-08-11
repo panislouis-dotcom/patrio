@@ -237,6 +237,9 @@ def edit_property_render(property_id: int, render_id: int, body: RenderEditReque
         provider=renders.PROVIDER,
         model=renders.MODEL,
         parent_render_id=render_id,
+        # El hijo hereda la variante del padre inmediato, no la recalcula: un
+        # plano editado sigue perteneciendo al mismo levantamiento.
+        source_variant=parent["sourceVariant"],
     )
 
 

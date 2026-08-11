@@ -338,3 +338,93 @@ def test_deleting_a_render_removes_it(client, test_property, source_image, fake_
     assert client.delete(
         f"/api/properties/{test_property['id']}/renders/{render['id']}").status_code == 204
     assert client.get(f"/api/properties/{test_property['id']}/renders").json() == []
+
+
+# ─── source_variant: de qué levantamiento nació ───────────────────────────────
+#
+# El endpoint from-plan todavía no manda `variant` (eso es la Tarea 14), así
+# que aquí se ejercita `renders_db.add_render` directo para los casos que
+# necesitan un valor explícito. Lo que SÍ pasa por HTTP hoy es la herencia al
+# editar, porque esa lógica vive en el endpoint de edición.
+
+def test_a_render_from_a_photo_has_no_source_variant(
+        client, test_property, source_image, fake_openai):
+    """Vive en FOTOS: no tiene levantamiento del que haber nacido."""
+    body = client.post(f"/api/properties/{test_property['id']}/renders",
+                       json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    assert body["sourceVariant"] is None
+
+
+def test_add_render_persists_an_explicit_source_variant(client, test_property):
+    from api import renders_db
+    created = renders_db.add_render(
+        property_id=test_property["id"], source_image_id=None,
+        file_path=f"properties/{test_property['id']}/renders/planned.png",
+        content_type="image/png", prompt_id=None, prompt_text="x",
+        provider="openai", model="gpt-image-2",
+        source_plan_path=f"properties/{test_property['id']}/plan-sources/planned.png",
+        source_variant="planned",
+    )
+    assert created["sourceVariant"] == "planned"
+    fetched = renders_db.get_render(test_property["id"], created["id"])
+    assert fetched["sourceVariant"] == "planned"
+
+
+def test_editing_a_photo_render_keeps_source_variant_null(
+        client, test_property, source_image, fake_openai):
+    parent = client.post(
+        f"/api/properties/{test_property['id']}/renders",
+        json={"sourceImageId": source_image["id"], "promptText": "x"},
+    ).json()
+    child = client.post(
+        f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
+        json={"promptText": "y"},
+    ).json()
+    assert child["sourceVariant"] is None
+
+
+def test_editing_a_plan_render_inherits_its_source_variant(
+        client, test_property, fake_openai):
+    """El plano editado sigue perteneciendo al mismo levantamiento (Original o
+    Planeado), igual que sigue respetando la cláusula del plano."""
+    from api import renders_db
+    parent = renders_db.add_render(
+        property_id=test_property["id"], source_image_id=None,
+        file_path=f"properties/{test_property['id']}/renders/parent.png",
+        content_type="image/png", prompt_id=None, prompt_text="Amuebla.",
+        provider="openai", model="gpt-image-2",
+        source_plan_path=f"properties/{test_property['id']}/plan-sources/parent.png",
+        source_variant="planned",
+    )
+    from api import storage
+    storage.upload(parent["filePath"], b"FAKE-PARENT-IMAGE", "image/png")
+
+    child = client.post(
+        f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
+        json={"promptText": "Agrega puerta al baño."},
+    ).json()
+    assert child["sourceVariant"] == "planned"
+
+
+def test_render_heads_and_list_surface_source_variant(client, test_property, fake_openai):
+    from api import renders_db
+    created = renders_db.add_render(
+        property_id=test_property["id"], source_image_id=None,
+        file_path=f"properties/{test_property['id']}/renders/original.png",
+        content_type="image/png", prompt_id=None, prompt_text="x",
+        provider="openai", model="gpt-image-2",
+        source_plan_path=f"properties/{test_property['id']}/plan-sources/original.png",
+        source_variant="original",
+    )
+
+    listed = next(r for r in renders_db.list_renders(test_property["id"])
+                  if r["id"] == created["id"])
+    assert listed["sourceVariant"] == "original"
+
+    heads = next(r for r in renders_db.list_render_heads(test_property["id"])
+                 if r["id"] == created["id"])
+    assert heads["sourceVariant"] == "original"
+
+    via_http = next(r for r in client.get(f"/api/properties/{test_property['id']}/renders").json()
+                    if r["id"] == created["id"])
+    assert via_http["sourceVariant"] == "original"
