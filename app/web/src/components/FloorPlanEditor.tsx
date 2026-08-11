@@ -240,62 +240,46 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     if (attr(e.target as Element, 'data-el') === 'room') e.preventDefault()
   }
 
-  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    const target = e.target as Element
-    if (target.tagName === 'INPUT') return
-    const elk = attr(target, 'data-el')
-    const pt = pointerToWorld(e)
-    dragMovedRef.current = false
+  const capturePointer = (e: React.PointerEvent<SVGSVGElement>) => {
+    const svg = svgRef.current
+    if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId) } catch { /* jsdom */ } }
+  }
 
-    if (ui.calibrating) {
-      setCalDraft({ p0: [pt.x, pt.y], p1: [pt.x, pt.y] })
-      calDragRef.current = true
-      const svg = svgRef.current
-      if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId) } catch { /* jsdom */ } }
-      return
-    }
+  // "Nombrar": click anywhere to name that spot — an existing label to rename it, or
+  // empty space (enclosed or not) to drop a new one. This is what frees naming from
+  // requiring a closed room.
+  const handleRoomTool = (e: React.PointerEvent<SVGSVGElement>, target: Element, elk: string | null, pt: { x: number; y: number }) => {
+    e.preventDefault()
+    const at = elk === 'room'
+      ? { cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! }
+      : { cx: pt.x, cy: pt.y }
+    dispatch({ type: 'SET_EDIT_ROOM', editRoom: at })
+  }
 
-    // "Nombrar": click anywhere to name that spot — an existing label to rename it, or
-    // empty space (enclosed or not) to drop a new one. This is what frees naming from
-    // requiring a closed room.
-    if (ui.tool === 'room') {
-      e.preventDefault()
-      const at = elk === 'room'
-        ? { cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! }
-        : { cx: pt.x, cy: pt.y }
-      dispatch({ type: 'SET_EDIT_ROOM', editRoom: at })
-      return
-    }
+  const handleOpeningTool = (kind: 'door' | 'window', target: Element, elk: string | null, pt: { x: number; y: number }) => {
+    const edgeId = elk === 'edge' ? attr(target, 'data-id')! : nearestEdgeIgnoringEndpointGuard(floor, pt)
+    if (!edgeId) return
+    const edge = floor.edges[edgeId]
+    const p1 = floor.vertices[edge.v1], p2 = floor.vertices[edge.v2]
+    const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
+    const atM = gridSnap(projectAt([p1.x, p1.y], [p2.x, p2.y], pt))
+    const m = clone(model); const f = m.floors[m.activeFloor]
+    f.edges[edgeId].openings.push({ kind, offset: atM / L, width: 0.9 })
+    dispatch({ type: 'SET_MODEL', model: m })
+    dispatch({ type: 'SET_TOOL', tool: 'select' })
+    dispatch({ type: 'SET_SEL', sel: { t: 'opening', edgeId, index: f.edges[edgeId].openings.length - 1 } })
+  }
 
-    if (elk === 'room' && ui.tool === 'select') {
-      e.preventDefault()
-      dispatch({ type: 'SET_EDIT_ROOM', editRoom: { cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! } })
-      return
-    }
+  const handleDeleteTool = (target: Element, elk: string | null) => {
+    if (elk === 'opening') delOpen(attr(target, 'data-edge')!, +attr(target, 'data-index')!)
+    else if (elk === 'edge') delEdge(attr(target, 'data-id')!)
+    else if (elk === 'vertex') delVertex(attr(target, 'data-id')!)
+    else if (elk === 'room') dispatch({ type: 'DELETE_ROOM', cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! })
+  }
 
-    if (ui.tool === 'door' || ui.tool === 'window') {
-      const edgeId = elk === 'edge' ? attr(target, 'data-id')! : nearestEdgeIgnoringEndpointGuard(floor, pt)
-      if (!edgeId) return
-      const edge = floor.edges[edgeId]
-      const p1 = floor.vertices[edge.v1], p2 = floor.vertices[edge.v2]
-      const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
-      const atM = gridSnap(projectAt([p1.x, p1.y], [p2.x, p2.y], pt))
-      const m = clone(model); const f = m.floors[m.activeFloor]
-      f.edges[edgeId].openings.push({ kind: ui.tool, offset: atM / L, width: 0.9 })
-      dispatch({ type: 'SET_MODEL', model: m })
-      dispatch({ type: 'SET_TOOL', tool: 'select' })
-      dispatch({ type: 'SET_SEL', sel: { t: 'opening', edgeId, index: f.edges[edgeId].openings.length - 1 } })
-      return
-    }
-
-    if (ui.tool === 'delete') {
-      if (elk === 'opening') delOpen(attr(target, 'data-edge')!, +attr(target, 'data-index')!)
-      else if (elk === 'edge') delEdge(attr(target, 'data-id')!)
-      else if (elk === 'vertex') delVertex(attr(target, 'data-id')!)
-      else if (elk === 'room') dispatch({ type: 'DELETE_ROOM', cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! })
-      return
-    }
-
+  // Select es también el fall-through de cualquier herramienta sin rama propia: arranca
+  // selección/arrastre sobre un elemento, o un paneo sobre el fondo.
+  const handleSelectTool = (e: React.PointerEvent<SVGSVGElement>, target: Element, elk: string | null, pt: { x: number; y: number }) => {
     if (ui.tool === 'select' && elk === 'edgeMid') {
       const edgeId = attr(target, 'data-id')!
       const edge = floor.edges[edgeId]
@@ -315,8 +299,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       dispatch({ type: 'SET_MODEL', model: m })
       dispatch({ type: 'SET_SEL', sel: { t: 'vertex', id: newVertexId } })
       dispatch({ type: 'SET_DRAG', drag: { kind: 'vertex', id: newVertexId } })
-      const svg = svgRef.current
-      if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId) } catch { /* jsdom */ } }
+      capturePointer(e)
       return
     }
 
@@ -346,8 +329,34 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       panRef.current = { startUx: ux, startUy: uy, camera: seedCamera() }
       panMovedRef.current = false
     }
-    const svg = svgRef.current
-    if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId) } catch { /* jsdom */ } }
+    capturePointer(e)
+  }
+
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    const target = e.target as Element
+    if (target.tagName === 'INPUT') return
+    const elk = attr(target, 'data-el')
+    const pt = pointerToWorld(e)
+    dragMovedRef.current = false
+
+    // La calibración es un MODO, no una herramienta: mientras está activa secuestra el
+    // puntero completo, así que se resuelve antes de despachar por herramienta.
+    if (ui.calibrating) {
+      setCalDraft({ p0: [pt.x, pt.y], p1: [pt.x, pt.y] })
+      calDragRef.current = true
+      capturePointer(e)
+      return
+    }
+
+    // Despacho por herramienta: cada rama resuelve el gesto completo y termina (return).
+    // Una herramienta nueva agrega aquí su condición y arriba su handler. El orden importa:
+    // clic sobre una etiqueta de cuarto con select renombra (misma acción que "nombrar")
+    // antes de que cualquier otra rama pueda reclamar el evento.
+    if (ui.tool === 'room') { handleRoomTool(e, target, elk, pt); return }
+    if (elk === 'room' && ui.tool === 'select') { handleRoomTool(e, target, elk, pt); return }
+    if (ui.tool === 'door' || ui.tool === 'window') { handleOpeningTool(ui.tool, target, elk, pt); return }
+    if (ui.tool === 'delete') { handleDeleteTool(target, elk); return }
+    handleSelectTool(e, target, elk, pt)
   }
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
