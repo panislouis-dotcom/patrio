@@ -37,6 +37,34 @@ DANGLING_EDGE = {
     }],
 }
 
+# Variantes v3 (envelope del frontend, types.ts): cada una es un FloorSet completo.
+ORIGINAL_SET = {"slab_m": 0.15, "activeFloor": 0, "floors": ONE_FLOOR["floors"]}
+
+PLANNED_SET = {
+    "slab_m": 0.15,
+    "activeFloor": 0,
+    "floors": [{
+        "name": "Planta Planeada",
+        "vertices": {
+            "v1": {"id": "v1", "x": 0, "y": 0},
+            "v2": {"id": "v2", "x": 8, "y": 0},
+        },
+        "edges": {"e1": {"id": "e1", "v1": "v1", "v2": "v2", "thickness": 0.15}},
+        "rooms": [{"name": "Recámara Nueva", "cx": 4.0, "cy": 0.5}],
+    }],
+}
+
+# Lo que persiste "EMPEZAR EN BLANCO": un planned con un piso sin un solo vértice.
+BLANK_SET = {
+    "slab_m": 0.15,
+    "activeFloor": 0,
+    "floors": [{"name": "Planta Baja", "vertices": {}, "edges": {}, "rooms": []}],
+}
+
+
+def _v3(original, planned):
+    return {"schemaVersion": 3, "variants": {"original": original, "planned": planned}}
+
 BASE_PROPERTY = {"name": "[TEST] Casa Prueba"}
 
 
@@ -59,6 +87,46 @@ def test_two_floors_stack_both_with_their_names():
     assert "Planta Baja" in svg
     assert "Planta Alta" in svg
     assert svg.count("<svg") == 2
+
+
+def test_v3_with_only_original_renders_the_original():
+    svg = _floorplan_svg(_v3(ORIGINAL_SET, None))
+    assert "<svg" in svg
+    assert "Sala" in svg
+    assert "Planta Baja" in svg
+
+
+def test_v3_with_a_drawn_planned_renders_the_planned_not_the_original():
+    """El prospecto es el pitch al inversionista: muestra la propuesta."""
+    svg = _floorplan_svg(_v3(ORIGINAL_SET, PLANNED_SET))
+    assert "Recámara Nueva" in svg
+    assert "Planta Planeada" in svg
+    assert "Sala" not in svg
+
+
+def test_v3_blank_planned_does_not_hide_a_drawn_original():
+    """"EMPEZAR EN BLANCO" persiste un planned con un piso sin vértices: eso
+    no es una propuesta todavía — el original dibujado sigue mandando."""
+    svg = _floorplan_svg(_v3(ORIGINAL_SET, BLANK_SET))
+    assert "Sala" in svg
+    assert "Planta Baja" in svg
+
+
+def test_v3_planned_wins_if_any_of_its_floors_has_vertices():
+    """"Tiene geometría dibujada" es CUALQUIER piso con al menos un vértice,
+    no "la lista de pisos no está vacía"."""
+    planned = {**PLANNED_SET,
+               "floors": BLANK_SET["floors"] + PLANNED_SET["floors"]}
+    svg = _floorplan_svg(_v3(ORIGINAL_SET, planned))
+    assert "Recámara Nueva" in svg
+    assert "Sala" not in svg
+
+
+def test_v3_with_garbage_variants_renders_nothing():
+    assert _floorplan_svg({"schemaVersion": 3}) == ""
+    assert _floorplan_svg({"schemaVersion": 3, "variants": {}}) == ""
+    assert _floorplan_svg(_v3(None, None)) == ""
+    assert _floorplan_svg(_v3({"floors": []}, None)) == ""
 
 
 def test_a_wall_with_a_missing_vertex_is_skipped_not_fatal():

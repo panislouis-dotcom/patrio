@@ -625,6 +625,28 @@ def _development_card(p: dict, kicker: str) -> str:
     return _card(p, kicker, _projected_hold_tail(p), metrics)
 
 
+def _pick_floors(geometry: dict) -> list:
+    """Los pisos que el prospecto debe dibujar, aceptando los dos shapes que
+    persiste el editor (types.ts): v2 trae `floors` en la raíz; v3 los anida
+    en `variants.original` / `variants.planned`. El prospecto es el pitch al
+    inversionista: muestra la PROPUESTA (el levantamiento planeado) cuando
+    existe, y el original queda como el registro de respaldo.
+
+    "Existe" exige geometría dibujada — CUALQUIER piso del planeado con al
+    menos un vértice — porque "EMPEZAR EN BLANCO" persiste un planeado con un
+    piso vacío, y ese lienzo en blanco no es propuesta todavía: no le gana a
+    un original dibujado. Cualquier otro shape (v1, basura, vacío) regresa []
+    y el bloque desaparece, igual que siempre."""
+    geometry = geometry or {}
+    if geometry.get("schemaVersion") != 3:
+        return geometry.get("floors") or []
+    variants = geometry.get("variants") or {}
+    planned = (variants.get("planned") or {}).get("floors") or []
+    if any(floor.get("vertices") for floor in planned):
+        return planned
+    return (variants.get("original") or {}).get("floors") or []
+
+
 def _floorplan_svg(geometry: dict) -> str:
     """El plano de una oportunidad, dibujado con lo único que el modelo crudo del
     editor garantiza siempre: muros (con su grosor) y el nombre de cada cuarto en
@@ -648,7 +670,7 @@ def _floorplan_svg(geometry: dict) -> str:
     estirarse a 170mm de alto por pura coincidencia geométrica, no por su
     contenido. Con el viewBox real, el alto que ocupa en la página es el alto
     que el piso de verdad necesita."""
-    floors = (geometry or {}).get("floors") or []
+    floors = _pick_floors(geometry)
     extents = []
     for floor in floors:
         vertices = floor.get("vertices") or {}
