@@ -1245,8 +1245,10 @@ CREATE TABLE public.property_renders (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     source_plan_path text,
     parent_render_id bigint,
+    source_variant text,
     CONSTRAINT property_renders_file_path_check CHECK ((file_path <> ''::text)),
-    CONSTRAINT property_renders_prompt_text_check CHECK ((prompt_text <> ''::text))
+    CONSTRAINT property_renders_prompt_text_check CHECK ((prompt_text <> ''::text)),
+    CONSTRAINT property_renders_source_variant_check CHECK ((source_variant = ANY (ARRAY['original'::text, 'planned'::text])))
 );
 
 
@@ -3453,4 +3455,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('036'),
     ('037'),
     ('038'),
-    ('039');
+    ('039'),
+    ('040');
