@@ -5,7 +5,7 @@ Diseño: `docs/plans/2026-08-10-levantamientos-design.md`
 Rama: `feat/levantamientos`
 
 ## Fase 1 — Refactor puro del editor
-- [ ] Task 1: extraer despacho de herramientas de FloorPlanEditor
+- [x] Task 1: extraer despacho de herramientas de FloorPlanEditor (88adf08; spec ✅, calidad ✅)
 
 ## Fase 2 — Schema v3 + tabs
 - [ ] Task 2: FloorSet + envelope v3 + migrador (types.ts)
