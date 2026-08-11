@@ -108,7 +108,7 @@ export function migrateGeometry(raw: unknown): FloorPlanModel | null {
     if (planned != null && !isFloorSet(planned)) return null
     // Ausente (clave sin escribir) se normaliza a null para que el tipo no mienta;
     // un v3 ya bien formado conserva su identidad, sin copia.
-    if (planned === undefined) return { schemaVersion: 3, variants: { original, planned: null } }
+    if (planned === undefined) return withVariant(null, 'original', original)
     return raw as FloorPlanModel
   }
   if (m.schemaVersion === 2 && isFloorSet(m)) {
