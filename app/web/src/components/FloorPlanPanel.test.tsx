@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, screen } from '@testing-library/react'
 import FloorPlanPanel from './FloorPlanPanel'
-import { emptyFloorGraph } from '../lib/floorplan/types'
+import { emptyFloorGraph, GHOST_THICKNESS_M } from '../lib/floorplan/types'
 import { addVertex, addEdge } from '../lib/floorplan/graph'
 import { roomAreas } from '../lib/floorplan/rooms'
 import { initialState, reducer } from '../lib/floorplan/reducer'
@@ -109,6 +109,45 @@ describe('FloorPlanPanel', () => {
       return { t: 'opening', edgeId, index: 0 }
     })
     expect(screen.getByText('Ventana seleccionada')).toBeTruthy()
+  })
+
+  it('una división seleccionada: sin campo de espesor, con CONVERTIR EN MURO', () => {
+    const { dispatch, f } = setup((f, vids) => {
+      const ghostId = addEdge(f, vids.a, vids.c, GHOST_THICKNESS_M, 'ghost')
+      return { t: 'edge', id: ghostId }
+    })
+    expect(screen.getByText('División seleccionada')).toBeTruthy()
+    // Una división no es muro: ni espesor editable ni nada de vanos en su inspector.
+    expect(screen.queryByLabelText(/espesor/i)).toBeNull()
+    const ghostId = Object.values(f.edges).find(e => e.kind === 'ghost')!.id
+    fireEvent.click(screen.getByText('CONVERTIR EN MURO'))
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_EDGE_KIND', edgeId: ghostId, kind: 'wall' })
+  })
+
+  it('un muro sin vanos ofrece CONVERTIR EN DIVISIÓN habilitado', () => {
+    const { dispatch, f, ids } = setup((f, vids) => {
+      const edgeId = Object.values(f.edges).find(e => e.v1 === vids.a && e.v2 === vids.b)!.id
+      return { t: 'edge', id: edgeId }
+    })
+    const edgeId = Object.values(f.edges).find(e => e.v1 === ids.a && e.v2 === ids.b)!.id
+    const convertBtn = screen.getByText('CONVERTIR EN DIVISIÓN') as HTMLButtonElement
+    expect(convertBtn.disabled).toBe(false)
+    fireEvent.click(convertBtn)
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_EDGE_KIND', edgeId, kind: 'ghost' })
+  })
+
+  it('un muro con vanos deshabilita CONVERTIR EN DIVISIÓN y explica por qué', () => {
+    const { dispatch } = setup((f, vids) => {
+      const edgeId = Object.values(f.edges).find(e => e.v1 === vids.a && e.v2 === vids.b)!.id
+      f.edges[edgeId].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
+      return { t: 'edge', id: edgeId }
+    })
+    const convertBtn = screen.getByText('CONVERTIR EN DIVISIÓN') as HTMLButtonElement
+    expect(convertBtn.disabled).toBe(true)
+    // La UI comunica el porqué; no delega en el no-op silencioso del reducer.
+    expect(screen.getByText(/quita sus puertas y ventanas/i)).toBeTruthy()
+    fireEvent.click(convertBtn)
+    expect(dispatch).not.toHaveBeenCalled()
   })
 
   it('renders the BIM export section only when showDims is enabled', () => {

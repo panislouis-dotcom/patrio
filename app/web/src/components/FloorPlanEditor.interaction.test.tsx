@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import FloorPlanEditor from './FloorPlanEditor'
-import { emptyFloorGraph, type FloorGraph } from '../lib/floorplan/types'
+import { emptyFloorGraph, GHOST_THICKNESS_M, type FloorGraph } from '../lib/floorplan/types'
 import { addVertex, addEdge } from '../lib/floorplan/graph'
 import { viewTransform } from '../lib/floorplan/viewTransform'
 
@@ -264,6 +264,83 @@ describe('pan via drag on empty canvas', () => {
     const after = svg.querySelectorAll('[data-el="vertex"]')[0]
     expect(Number(after.getAttribute('cx'))).not.toBe(beforeCx) // the view panned
     expect(after.getAttribute('r')).toBe('6') // selection preserved, NOT cleared by the drag
+  })
+})
+
+// Rectángulo 6x4 más una división fantasma vertical suelta en x=3 (de (3,0.5) a (3,3.5)).
+function modelWithGhostDivision() {
+  const f = emptyFloorGraph('Test')
+  const a = addVertex(f, 0, 0), b = addVertex(f, 6, 0), c = addVertex(f, 6, 4), d = addVertex(f, 0, 4)
+  addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+  const g1 = addVertex(f, 3, 0.5), g2 = addVertex(f, 3, 3.5)
+  addEdge(f, g1, g2, GHOST_THICKNESS_M, 'ghost')
+  return { slab_m: 0.15, activeFloor: 0, floors: [f] }
+}
+
+// El selector distingue divisiones de muros por el atributo que las dibuja punteadas:
+// mismo data-el="edge" (mismo hit-testing) pero con stroke-dasharray presente.
+const dashedEdges = (svg: SVGSVGElement) => svg.querySelectorAll('[data-el="edge"][stroke-dasharray]')
+
+describe('herramienta DIVISIÓN (paredes fantasma)', () => {
+  it('el botón división inserta una arista punteada seleccionada, con su inspector de división', () => {
+    const model = modelWithRectangleAndDivider()
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    expect(dashedEdges(svg).length).toBe(0)
+    fireEvent.click(getByText('división'))
+    expect(dashedEdges(svg).length).toBe(1)
+    // El inspector de la arista recién seleccionada es el de división, no el de muro:
+    // prueba que el kind 'ghost' llegó al modelo, no solo al estilo del trazo.
+    expect(getByText('CONVERTIR EN MURO')).toBeTruthy()
+  })
+
+  it('una división se arrastra como cualquier arista', () => {
+    const model = modelWithGhostDivision()
+    const { container } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const ghostLine = dashedEdges(svg)[0]
+    const beforeX1 = ghostLine.getAttribute('x1')
+    fireEvent.pointerDown(ghostLine, pointerAt(model.floors, 3, 2))
+    fireEvent.pointerMove(svg, pointerAt(model.floors, 3.5, 2))
+    fireEvent.pointerUp(svg)
+    expect(dashedEdges(svg)[0].getAttribute('x1')).not.toBe(beforeX1)
+  })
+
+  it('la herramienta delete elimina una división y deja los muros intactos', () => {
+    const model = modelWithGhostDivision()
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    fireEvent.click(getByText('delete'))
+    fireEvent.pointerDown(dashedEdges(svg)[0], pointerAt(model.floors, 3, 2))
+    expect(dashedEdges(svg).length).toBe(0)
+    expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(4)
+  })
+
+  it('la herramienta puerta sobre una división no crea vano (la guarda ADD_OPENING del engine aplica)', () => {
+    const model = modelWithGhostDivision()
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    fireEvent.click(getByText('door'))
+    fireEvent.pointerDown(dashedEdges(svg)[0], pointerAt(model.floors, 3, 2))
+    expect(svg.querySelectorAll('[data-el="opening"]').length).toBe(0)
+  })
+
+  it('la herramienta puerta sobre un muro sigue agregando el vano, en UNA sola entrada de historia', () => {
+    const model = modelWithGhostDivision()
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    fireEvent.click(getByText('door'))
+    const wallLine = svg.querySelector('[data-el="edge"]:not([stroke-dasharray])')!
+    fireEvent.pointerDown(wallLine, pointerAt(model.floors, 1.5, 0))
+    expect(svg.querySelectorAll('[data-el="opening"]').length).toBeGreaterThan(0)
+    // Un solo Ctrl+Z lo revierte completo — la acción ADD_OPENING empuja exactamente una entrada.
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(svg.querySelectorAll('[data-el="opening"]').length).toBe(0)
   })
 })
 

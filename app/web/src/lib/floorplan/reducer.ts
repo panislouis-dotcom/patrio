@@ -249,7 +249,9 @@ export function reducer(s: EditorState, a: Action): EditorState {
     }
     case 'SET_EDGE_THICKNESS': {
       const m = clone(s.model); const f = F(m)
-      const e = f.edges[a.edgeId]; if (!e) return s
+      const e = f.edges[a.edgeId]
+      // El espesor de una fantasma es nominal (trazo/hit-testing), no un espesor de muro: no se edita.
+      if (!e || isGhost(e)) return s
       e.thickness = a.value
       return modelChange(s, m)
     }

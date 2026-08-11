@@ -130,7 +130,7 @@ describe('kind fantasma en operaciones de grafo', () => {
     expect(f.edges[newEdgeId].kind).toBe('ghost')
   })
 
-  it('mergeVertexInto conserva el kind y nunca fusiona un muro con una fantasma', () => {
+  it('mergeVertexInto conserva el kind de cada arista superviviente', () => {
     const f = emptyFloorGraph('Test')
     const keep = addVertex(f, 0, 0)
     const remove = addVertex(f, 0.001, 0.001) // "mismo lugar" por arrastre

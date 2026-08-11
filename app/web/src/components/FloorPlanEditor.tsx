@@ -5,7 +5,7 @@ import { colors, fonts } from '../lib/theme'
 import {
   reducer, initialState, removeEdgeFromFloor, removeOpeningFromFloor, removeVertexFromFloor, type Tool,
 } from '../lib/floorplan/reducer'
-import { emptyFloorSet, clone, genId, type FloorSet, type FloorGraph } from '../lib/floorplan/types'
+import { emptyFloorSet, clone, genId, GHOST_THICKNESS_M, type FloorSet, type FloorGraph } from '../lib/floorplan/types'
 import { viewTransform, type Camera } from '../lib/floorplan/viewTransform'
 import { roomAreas, roomLabels } from '../lib/floorplan/rooms'
 import { cornerAngles } from '../lib/floorplan/dimensions'
@@ -24,18 +24,20 @@ import { EmptyState, ReferenceControls } from './FloorPlanReference'
 import { btn } from './floorplanStyles'
 
 const W = 900, H = 560, MARGIN = 48
-const TOOLS: Tool[] = ['select', 'wall', 'door', 'window', 'room', 'delete']
-// The toolbar shows tool ids verbatim; only this one needs a friendlier Spanish label.
-const TOOL_LABELS: Partial<Record<Tool, string>> = { room: 'nombrar' }
+const TOOLS: Tool[] = ['select', 'wall', 'ghost', 'door', 'window', 'room', 'delete']
+// The toolbar shows tool ids verbatim; only these need a friendlier Spanish label.
+const TOOL_LABELS: Partial<Record<Tool, string>> = { ghost: 'división', room: 'nombrar' }
 const MIN_CAL_PX = 1e-6
 const ZOOM_STEP = 1.25
 const WHEEL_ZOOM_STEP = 1.08
 const PAN_DRAG_THRESHOLD = 4 // SVG user-space px before a background press counts as a pan, not a click
 
+type WorldPt = { x: number; y: number }
+
 /** Nearest edge to a point, WITHOUT the T-junction endpoint-guard — used only for
  * placing a door/window opening on whatever wall the user clicks near, matching the old
  * model's click-anywhere-near-a-wall placement affordance. */
-function nearestEdgeIgnoringEndpointGuard(f: FloorGraph, pt: { x: number; y: number }): string | null {
+function nearestEdgeIgnoringEndpointGuard(f: FloorGraph, pt: WorldPt): string | null {
   let best: string | null = null, bd = 0.6
   for (const e of Object.values(f.edges)) {
     const p1 = f.vertices[e.v1], p2 = f.vertices[e.v2]
@@ -187,13 +189,18 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     : ''
 
   function onToolClick(tool: Tool) {
-    if (tool === 'wall') {
+    // 'wall' y 'ghost' no son modos: el clic inserta de inmediato la misma plantilla
+    // vertical y vuelve a select para ajustarla. Este es el ÚNICO call site que aparea
+    // kind 'ghost' con GHOST_THICKNESS_M — el pairing es disciplina del caller de addEdge.
+    if (tool === 'wall' || tool === 'ghost') {
       const xs = Object.values(floor.vertices).map(v => v.x), ys = Object.values(floor.vertices).map(v => v.y)
       const cx = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 3
       const y0 = ys.length ? Math.min(...ys) : 0, y1 = ys.length ? Math.max(...ys) : 4
       const m = clone(model); const f = m.floors[m.activeFloor]
       const v1 = graphAddVertex(f, cx, y0 + 0.5), v2 = graphAddVertex(f, cx, y1 - 0.5)
-      const newEdgeId = graphAddEdge(f, v1, v2, f.intWall_m)
+      const newEdgeId = tool === 'ghost'
+        ? graphAddEdge(f, v1, v2, GHOST_THICKNESS_M, 'ghost')
+        : graphAddEdge(f, v1, v2, f.intWall_m)
       dispatch({ type: 'SET_MODEL', model: m })
       dispatch({ type: 'SET_TOOL', tool: 'select' })
       dispatch({ type: 'SET_SEL', sel: { t: 'edge', id: newEdgeId } })
@@ -221,7 +228,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     return { ux: sx, uy: sy }
   }
 
-  const pointerToWorld = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
+  const pointerToWorld = (e: { clientX: number; clientY: number }): WorldPt => {
     const { ux, uy } = pointerToUser(e)
     return t.userToWorld(ux, uy)
   }
@@ -254,7 +261,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   // "Nombrar": click anywhere to name that spot — an existing label to rename it, or
   // empty space (enclosed or not) to drop a new one. This is what frees naming from
   // requiring a closed room.
-  const handleRoomTool = (e: React.PointerEvent<SVGSVGElement>, target: Element, elk: string | null, pt: { x: number; y: number }) => {
+  const handleRoomTool = (e: React.PointerEvent<SVGSVGElement>, target: Element, elk: string | null, pt: WorldPt) => {
     e.preventDefault()
     const at = elk === 'room'
       ? { cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! }
@@ -262,18 +269,18 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     dispatch({ type: 'SET_EDIT_ROOM', editRoom: at })
   }
 
-  const handleOpeningTool = (kind: 'door' | 'window', target: Element, elk: string | null, pt: { x: number; y: number }) => {
+  const handleOpeningTool = (kind: 'door' | 'window', target: Element, elk: string | null, pt: WorldPt) => {
     const edgeId = elk === 'edge' ? attr(target, 'data-id')! : nearestEdgeIgnoringEndpointGuard(floor, pt)
     if (!edgeId) return
     const edge = floor.edges[edgeId]
     const p1 = floor.vertices[edge.v1], p2 = floor.vertices[edge.v2]
     const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
     const atM = gridSnap(projectAt([p1.x, p1.y], [p2.x, p2.y], pt))
-    const m = clone(model); const f = m.floors[m.activeFloor]
-    f.edges[edgeId].openings.push({ kind, offset: atM / L, width: 0.9 })
-    dispatch({ type: 'SET_MODEL', model: m })
+    // SET_TOOL primero (limpia sel), ADD_OPENING después: la acción del engine es quien
+    // agrega, selecciona el vano nuevo y empuja UNA entrada de historia — y quien rechaza
+    // fantasmas, para que la guarda viva en el reducer y no en esta UI.
     dispatch({ type: 'SET_TOOL', tool: 'select' })
-    dispatch({ type: 'SET_SEL', sel: { t: 'opening', edgeId, index: f.edges[edgeId].openings.length - 1 } })
+    dispatch({ type: 'ADD_OPENING', edgeId, opening: { kind, offset: atM / L, width: 0.9 } })
   }
 
   const handleDeleteTool = (target: Element, elk: string | null) => {
@@ -285,7 +292,9 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
 
   // Select es también el fall-through de cualquier herramienta sin rama propia: arranca
   // selección/arrastre sobre un elemento, o un paneo sobre el fondo.
-  const handleSelectTool = (e: React.PointerEvent<SVGSVGElement>, target: Element, elk: string | null, pt: { x: number; y: number }) => {
+  const handleSelectTool = (e: React.PointerEvent<SVGSVGElement>, target: Element, elk: string | null, pt: WorldPt) => {
+    // El guard `ui.tool === 'select'` NO es código muerto: esta función es el fall-through
+    // de herramientas sin rama propia, y el split de midpoint es exclusivo de select.
     if (ui.tool === 'select' && elk === 'edgeMid') {
       const edgeId = attr(target, 'data-id')!
       const edge = floor.edges[edgeId]

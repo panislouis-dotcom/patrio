@@ -256,6 +256,12 @@ describe('aristas fantasma en el reducer', () => {
     expect(s.model.floors[0].edges[ghostSide].thickness).toBeCloseTo(f.extWall_m)
   })
 
+  it('SET_EDGE_THICKNESS sobre una fantasma es no-op: su espesor nominal no se edita', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'SET_EDGE_THICKNESS', edgeId: ghostId, value: 0.25 })).toBe(s)
+  })
+
   it('SET_EDGE_KIND al kind que ya tiene es no-op (sin entrada de historia basura)', () => {
     const { model, ghostId } = modelWithGhostDivider()
     const s = initialState(model)

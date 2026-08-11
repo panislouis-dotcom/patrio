@@ -2,10 +2,11 @@
 import type { Dispatch } from 'react'
 import { colors, fonts } from '../lib/theme'
 import type { Action, Sel, UI } from '../lib/floorplan/reducer'
-import type { FloorGraph, FloorSet } from '../lib/floorplan/types'
+import { isGhost, type FloorGraph, type FloorSet } from '../lib/floorplan/types'
 import type { RoomArea } from '../lib/floorplan/rooms'
 import { traceFaces } from '../lib/floorplan/rooms'
 import { shoelace } from '../lib/floorplan/geometry'
+import { btn } from './floorplanStyles'
 
 const PANEL_W = 280
 
@@ -60,10 +61,37 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
   if (sel.t === 'edge') {
     const e = floor.edges[sel.id]
     if (!e) return null
+    // Una división no es muro: sin espesor editable y sin nada de vanos en su inspector —
+    // solo la promoción de vuelta a muro (SET_EDGE_KIND recalcula el espesor según dónde quedó).
+    if (isGhost(e)) {
+      return (
+        <Section title="División seleccionada" key={sel.id}>
+          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginBottom: '8px' }}>
+            Separa espacios para nombres y áreas; no es un muro en renders ni exports.
+          </div>
+          <button style={btn(false)} onClick={() => dispatch({ type: 'SET_EDGE_KIND', edgeId: sel.id, kind: 'wall' })}>
+            CONVERTIR EN MURO
+          </button>
+        </Section>
+      )
+    }
+    // Con vanos, el convertir se deshabilita Y se explica: el reducer también lo rechaza,
+    // pero ese no-op es silencioso — la UI debe comunicar el porqué, no depender de él.
+    const blocked = e.openings.length > 0
     return (
       <Section title="Muro seleccionado" key={sel.id}>
         <Field label="Espesor (m)" value={e.thickness} step={0.01}
           onCommit={value => dispatch({ type: 'SET_EDGE_THICKNESS', edgeId: sel.id, value })} />
+        <button disabled={blocked}
+          style={{ ...btn(false), opacity: blocked ? 0.4 : 1, cursor: blocked ? 'default' : 'pointer' }}
+          onClick={() => dispatch({ type: 'SET_EDGE_KIND', edgeId: sel.id, kind: 'ghost' })}>
+          CONVERTIR EN DIVISIÓN
+        </button>
+        {blocked && (
+          <div style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '6px' }}>
+            Quita sus puertas y ventanas antes de convertirlo en división.
+          </div>
+        )}
       </Section>
     )
   }

@@ -2,7 +2,7 @@
 import { forwardRef, useRef } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
-import type { FloorSet, FloorGraph } from '../lib/floorplan/types'
+import { isGhost, type FloorSet, type FloorGraph } from '../lib/floorplan/types'
 import type { ViewTransform } from '../lib/floorplan/viewTransform'
 import type { RoomLabel } from '../lib/floorplan/rooms'
 import type { CornerAngle } from '../lib/floorplan/dimensions'
@@ -91,8 +91,14 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
   edges.forEach(e => {
     const p1 = floor.vertices[e.v1], p2 = floor.vertices[e.v2]
     const on = sel?.t === 'edge' && sel.id === e.id
+    // Una división (ghost) se dibuja punteada y tenue — no es muro — pero con el MISMO
+    // data-el="edge": seleccionar, arrastrar y borrar la tratan como cualquier arista.
+    // Ya es delgada por sí sola: strokeWidth ∝ thickness y la suya es la nominal chica.
+    const ghost = isGhost(e)
     gel.push(<line key={`edge${e.id}`} x1={px(p1.x)} y1={py(p1.y)} x2={px(p2.x)} y2={py(p2.y)}
-      stroke={on ? colors.primary : colors.neutral} strokeWidth={Math.max(3, e.thickness * scale)}
+      stroke={on ? colors.primary : ghost ? colors.secondary : colors.neutral}
+      strokeDasharray={ghost ? '6 4' : undefined}
+      strokeWidth={Math.max(3, e.thickness * scale)}
       data-el="edge" data-id={e.id} style={{ cursor: 'pointer' }} />)
   })
 
