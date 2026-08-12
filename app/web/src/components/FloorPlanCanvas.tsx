@@ -9,18 +9,13 @@ import type { CornerAngle } from '../lib/floorplan/dimensions'
 import { widthHeightChains, cotaEdges } from '../lib/floorplan/dimensions'
 import type { UI } from '../lib/floorplan/reducer'
 import { BASE } from '../lib/api'
+import { edgeAxis } from '../lib/floorplan/geometry'
 
 const f2 = (v: number) => (Math.round(v * 100) / 100).toFixed(2)
 
 // Punteado de una división (ghost). Local al canvas a propósito: los demás renderers
 // (PNG de renders, SVG del prospecto, export BIM) EXCLUYEN las fantasmas, no las puntean.
 const GHOST_DASH = '6 4'
-
-function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }) {
-  const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
-  const ux = (p2.x - p1.x) / L, uy = (p2.y - p1.y) / L
-  return { L, ux, uy, nx: -uy, ny: ux }
-}
 
 // Familia visual mínima por tipo: UN acento sobrio (línea o círculo), nunca un ícono
 // detallado — esto es un plano técnico, no un moodboard. El catálogo (types.ts) es dato de
