@@ -115,3 +115,72 @@ function roomNameInside(f: FloorGraph, poly: Pt[]): string {
   }
   return name
 }
+
+/** La cara de mayor |área| — el mismo criterio que interiorPolygons/exteriorEdgeIds usan
+ * inline para descartar "la exterior"; no se extrajo de esas dos (Task 20 solo AGREGA a
+ * este archivo, no las restructura) pero replica el criterio idéntico a propósito, no uno
+ * inventado — para que roomConnections coincida siempre con qué cara es "exterior" ahí. */
+function outerFace(faces: TracedFace[]): TracedFace | undefined {
+  if (faces.length === 0) return undefined
+  return faces.reduce((a, b) => (Math.abs(b.area) > Math.abs(a.area) ? b : a))
+}
+
+/** Nombre de cuarto de una cara trazada: `'exterior'` literal si es la cara exterior,
+ * si no la MISMA búsqueda por contención que roomNameInside ya usa para las caras
+ * interiores (roomAreas/roomLabels) — ninguna lógica de punto-en-polígono nueva. */
+function faceRoomName(f: FloorGraph, face: TracedFace, outer: TracedFace | undefined): string | 'exterior' {
+  if (face === outer) return 'exterior'
+  const poly: Pt[] = face.vertexIds.map(id => [f.vertices[id].x, f.vertices[id].y])
+  return roomNameInside(f, poly)
+}
+
+export interface Connection {
+  edgeId: EdgeId
+  openingIndex: number
+  kind: 'door' | 'window'
+  roomA: string | 'exterior'
+  roomB: string | 'exterior'
+}
+
+/**
+ * Qué cuarto(s) conecta cada puerta/ventana. Reusa traceFaces (no reimplementa trazo de
+ * caras ni punto-en-polígono): en un grafo plano bien formado toda arista tiene exactamente
+ * 2 darts (uno por sentido) y cada dart pertenece a exactamente una cara trazada — así que
+ * las 2 caras que bordean una arista son las dueñas de sus 2 darts.
+ *
+ * Orden de roomA/roomB: NO es "izquierda/derecha" visual ni depende del orden de iteración
+ * de Object.values(f.edges) (que sería incidental y podría cambiar si el grafo se
+ * reconstruye). Es determinista por la identidad propia de la arista: roomA es siempre el
+ * lado de la cara cuyo dart ARRANCA en e.v1; roomB, el de la cara cuyo dart arranca en e.v2.
+ * Mover un vértice no cambia v1/v2 de una arista, así que el orden es estable ante edición.
+ */
+export function roomConnections(f: FloorGraph): Connection[] {
+  const faces = traceFaces(f)
+  const outer = outerFace(faces)
+
+  // Mismo formato de llave que traceFaces usa internamente para `visited` (`${fromVertex}|${edgeId}`)
+  // — un dart identifica de forma única la cara que lo contiene.
+  const faceByDart = new Map<string, TracedFace>()
+  for (const face of faces) {
+    face.edgeIds.forEach((edgeId, i) => faceByDart.set(`${face.vertexIds[i]}|${edgeId}`, face))
+  }
+
+  const connections: Connection[] = []
+  for (const e of Object.values(f.edges)) {
+    if (e.openings.length === 0) continue
+    const faceA = faceByDart.get(`${e.v1}|${e.id}`)
+    const faceB = faceByDart.get(`${e.v2}|${e.id}`)
+    // Una arista bien formada siempre tiene sus 2 darts, cada uno en su cara. Si falta
+    // alguno (grafo roto/no cerrado) no hay conectividad que resolver — se omite en vez de
+    // tronar. Esto también cubre, de forma defensiva, el caso imposible de una fantasma con
+    // opening (Task 7 ya lo rechaza en el reducer: una fantasma nunca debería llegar aquí
+    // con e.openings.length > 0).
+    if (!faceA || !faceB) continue
+    const roomA = faceRoomName(f, faceA, outer)
+    const roomB = faceRoomName(f, faceB, outer)
+    e.openings.forEach((op, openingIndex) => {
+      connections.push({ edgeId: e.id, openingIndex, kind: op.kind, roomA, roomB })
+    })
+  }
+  return connections
+}
