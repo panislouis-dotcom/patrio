@@ -122,6 +122,48 @@ describe('planFacts', () => {
     expect(text).toContain('Cocina tiene ventana hacia el exterior.')
   })
 
+  it('states a room with a door to the exterior — the most common door in any home (front/patio door)', () => {
+    const f = emptyFloorGraph('Test')
+    const { eBottomLeft } = dividedRooms(f, 'Cocina', 'Sala')
+    f.edges[eBottomLeft].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
+
+    const text = planFacts(f)
+
+    expect(text).toContain('Cocina tiene puerta hacia el exterior.')
+    // Nunca la frase al revés/rota: 'exterior' no es un cuarto que "conecte por puerta"
+    // con otro — ese texto sale de tratar la puerta exterior como la plantilla genérica.
+    expect(text).not.toContain('exterior conecta por puerta')
+    expect(text).not.toContain('conecta por puerta con exterior')
+  })
+
+  it('normalizes an exterior door the same way regardless of which side (roomA/roomB) resolves to \'exterior\'', () => {
+    // Misma geometría que el test "door AND window" de rooms.test.ts: la arista v1=d cae
+    // del lado cuyo dart resuelve a la cara EXTERIOR en roomA (no roomB, al revés del test
+    // de arriba) — el reporte original del bug ("exterior conecta por puerta con Sala")
+    // viene exactamente de este ordenamiento.
+    const f = emptyFloorGraph('Test')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+    addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15)
+    const eLeft = addEdge(f, d, a, 0.15)
+    f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
+    f.edges[eLeft].openings.push({ kind: 'door', offset: 0.7, width: 0.9 })
+
+    const text = planFacts(f)
+
+    expect(text).toContain('Sala tiene puerta hacia el exterior.')
+    expect(text).not.toContain('exterior conecta por puerta')
+  })
+
+  it('states two named interior rooms sharing an interior window (no wall-type restriction on window placement)', () => {
+    const f = emptyFloorGraph('Test')
+    const { divider } = dividedRooms(f, 'Cocina', 'Sala')
+    f.edges[divider].openings.push({ kind: 'window', offset: 0.5, width: 1.0 })
+
+    const text = planFacts(f)
+
+    expect(text).toContain('Cocina y Sala comparten una ventana interior.')
+  })
+
   it('falls back gracefully when a door connects a named room to a closed but UNLABELED room', () => {
     const f = emptyFloorGraph('Test')
     // El cuarto izquierdo se queda sin punto de nombre en f.rooms — cerrado, pero sin

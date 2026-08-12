@@ -63,18 +63,24 @@ const boundingBoxText = (vertices: { x: number; y: number }[]): string => {
   return `${fmt(width)} m × ${fmt(depth)} m`
 }
 
-/** Una oración por conexión: puerta siempre nombra ambos lados; ventana hacia el
- * exterior nombra solo el cuarto interior. El tercer caso —ventana entre dos cuartos
- * interiores— es alcanzable (`Connection.roomA`/`roomB` no restringen `kind: 'window'`
- * a un muro exterior; nada en `roomConnections` lo impide), así que también se frasea
- * en vez de asumir que nunca pasa. */
+/** Una oración por conexión. El chequeo de exterior va PRIMERO y cubre puerta Y ventana
+ * por igual: 'exterior' no es un cuarto, así que "conecta por puerta con exterior"
+ * (o, peor, "exterior conecta por puerta con Sala" cuando roomA es el lado exterior) es
+ * gramaticalmente roto — la puerta de entrada/patio es la más común de cualquier casa, no
+ * un caso raro que se pueda dejar caer en la plantilla genérica. Solo cuando NINGÚN lado es
+ * exterior (dos cuartos interiores con puerta, o con ventana — ambos alcanzables, ver abajo)
+ * se nombra a ambos por separado. */
 const connectionSentence = (c: Connection): string => {
   const a = roomDisplay(c.roomA), b = roomDisplay(c.roomB)
-  if (c.kind === 'door') return `${a} conecta por puerta con ${b}.`
   if (c.roomA === 'exterior' || c.roomB === 'exterior') {
     const interior = c.roomA === 'exterior' ? b : a
-    return `${interior} tiene ventana hacia el exterior.`
+    const label = c.kind === 'door' ? 'puerta' : 'ventana'
+    return `${interior} tiene ${label} hacia el exterior.`
   }
+  if (c.kind === 'door') return `${a} conecta por puerta con ${b}.`
+  // Ventana entre dos cuartos interiores: alcanzable (`Connection.roomA`/`roomB` no
+  // restringen `kind: 'window'` a un muro exterior; nada en `roomConnections` ni en el
+  // reducer/editor lo impide), así que también se frasea en vez de asumir que nunca pasa.
   return `${a} y ${b} comparten una ventana interior.`
 }
 
