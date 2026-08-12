@@ -168,5 +168,9 @@ nombres duplicados) — cada uno con evidencia de mutación verificada.**
     independientemente por el revisor, byte-idéntico
   - Bug real cazado y corregido: kind sin validar truena 500 mudo (CheckViolation sin capturar) →
     Literal["photo","plan"] en Pydantic, 422 limpio
-- [ ] Task 23: frontend filtra presets por kind
+- [x] Task 23: frontend filtra presets por kind (cb1fd01; spec ✅, calidad ✅ sin fixes)
+  - Unión discriminada de Task 16/17 confirmada intacta; fetch único + filtro cliente
+
+**TASKS 19-23 COMPLETAS: el código del addendum de renders más precisos está cerrado.
+Falta solo Task 24 (verificación final).**
 - [ ] Task 24: verificación integral (+ render real de prueba si el tiempo alcanza)
