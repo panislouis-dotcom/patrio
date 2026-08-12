@@ -146,9 +146,8 @@ por eso las cadenas históricas de renders necesitaron 6+ rondas de edición man
 - [~] Task 21 (dividido en 3 tras 2 colgados): 21a conectividad, 21b tipo de cuarto, 21c dimensiones
   - 21a (d15ada1+9286f9d): spec ✅, calidad ✅ tras fix (9286f9d) — puerta al exterior corregida
     y verificada por reproducción del bug exacto; hueco de ventana interior cerrado con test
-  - 21b (50dba61+0f969c1): spec ✅, calidad con fix — bug real: "bano" (sin acento) hacía
-    match como substring de "urbano" ("PATIO URBANO" salía tipo:baño). Fix: tokenizer en
-    vez de substring. Re-revisión en curso.
+  - 21b (50dba61+0f969c1): spec ✅, calidad ✅ tras fix (tokenizer en vez de substring;
+    "PATIO URBANO" ahora infiere patio, no baño; cobertura completa de las 7 categorías)
   - 21c (988c481+109d2d7): spec ✅, calidad con fix — bug real confirmado: nombres duplicados
     mezclaban área de un cuarto con dimensiones de otro (dato falso a una llamada de IA
     pagada). Fix: correlación posicional en vez de Map por nombre, + DRY del bbox de piso.
