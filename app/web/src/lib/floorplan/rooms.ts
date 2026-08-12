@@ -104,6 +104,22 @@ export function roomLabels(f: FloorGraph): RoomLabel[] {
   return [...enclosed, ...free]
 }
 
+/** Un cuarto cerrado con su lista de vértices (en vez del área/centroide que ya da
+ * `roomAreas`). Task 21c la agrega porque `planFacts.ts` necesita el bounding box (ancho ×
+ * fondo) de cada cuarto medible, y esa cuenta necesita los vértices crudos — no los da
+ * `RoomArea` a propósito (mantenerlo liviano para quien solo quiere área/centroide). Reusa
+ * `interiorPolygons`/`roomNameInside` (el mismo trazo de caras que `roomAreas` ya hace, en
+ * el mismo orden) en vez de volver a trazar caras: es literalmente `roomAreas` sin colapsar
+ * `pts` a área+centroide. */
+export interface RoomPolygon { name: string; vertices: { x: number; y: number }[] }
+
+export function roomPolygons(f: FloorGraph): RoomPolygon[] {
+  return interiorPolygons(f).map(pts => ({
+    name: roomNameInside(f, pts),
+    vertices: pts.map(([x, y]) => ({ x, y })),
+  }))
+}
+
 /** Name of the user-assigned point that lies inside `poly`, nearest its centroid; '' if none. */
 function roomNameInside(f: FloorGraph, poly: Pt[]): string {
   const [cx, cy] = polygonCentroid(poly)

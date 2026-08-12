@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
-import { traceFaces, roomAreas, roomLabels, exteriorEdgeIds, roomConnections } from './rooms'
+import { traceFaces, roomAreas, roomLabels, exteriorEdgeIds, roomConnections, roomPolygons } from './rooms'
 
 /** Rectángulo de 6x4 dividido a la mitad (x=3) por un muro interior, con Cocina a la
  * izquierda y Sala a la derecha — la misma forma que 'reports two rooms...' de roomAreas,
@@ -250,5 +250,43 @@ describe('roomConnections', () => {
     addEdge(f, b, c, 0.15) // sin arista de cierre de vuelta a "a"
     f.edges[e1].openings.push({ kind: 'window', offset: 0.5, width: 1.0 })
     expect(() => roomConnections(f)).not.toThrow()
+  })
+})
+
+describe('roomPolygons', () => {
+  it('returns the closed vertex list of a plain rectangular room, matching its known bounding box', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
+    const polys = roomPolygons(f)
+    expect(polys).toHaveLength(1)
+    expect(polys[0].name).toBe('Sala')
+    expect(polys[0].vertices).toHaveLength(4)
+    const xs = polys[0].vertices.map(v => v.x), ys = polys[0].vertices.map(v => v.y)
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(4)
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(3)
+  })
+
+  it('returns more than 4 vertices for an L-shaped room (not reducible to a simple bounding box)', () => {
+    const f = emptyFloorGraph('Test')
+    // L: un rectángulo de 4x3 con la esquina superior derecha (2x1) recortada.
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 2)
+    const d = addVertex(f, 2, 2), e = addVertex(f, 2, 3), g = addVertex(f, 0, 3)
+    addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15)
+    addEdge(f, d, e, 0.15); addEdge(f, e, g, 0.15); addEdge(f, g, a, 0.15)
+    f.rooms.push({ name: 'Sala en L', cx: 1, cy: 1 })
+    const polys = roomPolygons(f)
+    expect(polys).toHaveLength(1)
+    expect(polys[0].name).toBe('Sala en L')
+    expect(polys[0].vertices.length).toBeGreaterThan(4)
+  })
+
+  it('a name dropped outside any enclosed room yields no polygon entry for it (mirrors roomAreas/roomLabels)', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    f.rooms.push({ name: 'Jardín', cx: 20, cy: 20 })
+    const polys = roomPolygons(f)
+    expect(polys).toHaveLength(1)
+    expect(polys[0].name).toBe('')
   })
 })

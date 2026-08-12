@@ -6,7 +6,7 @@
 // NADA sobre el tamaño real del espacio.
 import type { FloorGraph } from './types'
 import { FIXTURE_CATALOG } from './types'
-import { roomLabels, roomConnections, type Connection } from './rooms'
+import { roomLabels, roomConnections, roomPolygons, type Connection } from './rooms'
 
 const fmt = (n: number): string => n.toFixed(2)
 
@@ -47,6 +47,22 @@ const roomType = (name: string): string | null => {
 const roomDisplay = (name: string | 'exterior'): string =>
   name === 'exterior' ? 'exterior' : name.trim() ? name : 'un cuarto sin nombre'
 
+/** Bounding box (ancho × fondo) de un cuarto a partir de sus vértices — el rectángulo
+ * mínimo que lo envuelve, NO su silueta exacta. Para un cuarto rectangular (el caso típico
+ * de un levantamiento) el bounding box ES la medida real; para uno en L u otra forma
+ * irregular, la SOBRESTIMA — un cuarto en L de 4×3 con una esquina de 2×1 recortada sigue
+ * reportando "4.00 m × 3.00 m", no su silueta real más chica. Describir la silueta exacta de
+ * un polígono irregular queda fuera de alcance de Task 21c (docs/plans/2026-08-11-renders-
+ * de-plano-mas-precisos.md): el bounding box es el nivel de detalle acordado, suficiente
+ * para orientar al modelo de imagen sobre el tamaño aproximado del espacio sin la
+ * complejidad de describir formas no rectangulares. */
+const boundingBoxText = (vertices: { x: number; y: number }[]): string => {
+  const xs = vertices.map(v => v.x), ys = vertices.map(v => v.y)
+  const width = Math.max(...xs) - Math.min(...xs)
+  const depth = Math.max(...ys) - Math.min(...ys)
+  return `${fmt(width)} m × ${fmt(depth)} m`
+}
+
 /** Una oración por conexión: puerta siempre nombra ambos lados; ventana hacia el
  * exterior nombra solo el cuarto interior. El tercer caso —ventana entre dos cuartos
  * interiores— es alcanzable (`Connection.roomA`/`roomB` no restringen `kind: 'window'`
@@ -84,12 +100,19 @@ export function planFacts(floor: FloorGraph): string {
   // de eso el párrafo dice que el área no se pudo medir, que es la verdad del dato.
   const rooms = roomLabels(floor).filter(r => r.name.trim())
   if (rooms.length > 0) {
+    // Vértices por nombre, solo para los cuartos CERRADOS (roomPolygons, igual que
+    // roomAreas, únicamente trae caras trazadas — un cuarto libre como "Terraza" de
+    // roomLabels, área null, sencillamente no tiene entrada aquí y se omiten sus
+    // dimensiones en vez de fabricar un bounding box de un polígono que no existe).
+    const verticesByName = new Map(roomPolygons(floor).filter(p => p.name.trim()).map(p => [p.name, p.vertices]))
     const roomTexts = rooms.map(r => {
       const measure = r.area != null ? `${fmt(r.area)} m²` : 'área sin medir'
+      const verts = r.area != null ? verticesByName.get(r.name) : undefined
+      const dims = verts ? `, ${boundingBoxText(verts)}` : ''
       const type = roomType(r.name)
-      // Sin tipo inferido, el paréntesis se queda solo con la medida — nunca
+      // Sin tipo inferido, el paréntesis se queda solo con medida+dimensiones — nunca
       // "(tipo: )" ni "tipo: null" colgando cuando el nombre no cae en el catálogo.
-      const detail = type != null ? `${measure}, tipo: ${type}` : measure
+      const detail = type != null ? `${measure}${dims}, tipo: ${type}` : `${measure}${dims}`
       return `${r.name} (${detail})`
     })
     parts.push(`Cuartos: ${roomTexts.join(', ')}.`)

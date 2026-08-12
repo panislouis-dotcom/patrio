@@ -201,4 +201,61 @@ describe('planFacts', () => {
       expect(textUpper).toContain('tipo: cocina')
     })
   })
+
+  // Task 21c — dimensiones aproximadas (bounding box) por cuarto, además del área.
+  describe('per-room dimensions', () => {
+    it('reports the bounding box (width x depth) of a known rectangular room, alongside its area', () => {
+      const f = emptyFloorGraph('Test')
+      // Dos cuartos de 4x3 uno junto al otro: el bounding box del PISO completo es 8x3,
+      // distinto del bounding box de CADA cuarto (4x3) — así la aserción solo puede pasar
+      // vía dimensiones por cuarto reales, no por una coincidencia con la línea de
+      // "Dimensiones generales del piso" (que este mismo archivo ya cubre aparte).
+      rectangle(f, 0, 0, 4, 3)
+      const a2 = addVertex(f, 4, 0), b2 = addVertex(f, 8, 0), c2 = addVertex(f, 8, 3), d2 = addVertex(f, 4, 3)
+      addEdge(f, a2, b2, 0.15); addEdge(f, b2, c2, 0.15); addEdge(f, c2, d2, 0.15); addEdge(f, d2, a2, 0.15)
+      f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
+
+      const text = planFacts(f)
+
+      expect(text).toContain('Sala')
+      expect(text).toContain('12.00 m²')
+      expect(text).toContain('4.00 m × 3.00 m')
+      const idx = text.indexOf('Sala')
+      const roomDetail = text.slice(idx, text.indexOf(')', idx))
+      expect(roomDetail).toContain('4.00 m × 3.00 m')
+    })
+
+    it('a free-floating labeled room with no closed polygon reports no dimensions and does not crash', () => {
+      const f = emptyFloorGraph('Test')
+      const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3)
+      addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15)
+      f.rooms.push({ name: 'Terraza', cx: 2, cy: 1.5 })
+
+      const text = planFacts(f)
+
+      expect(text).toContain('Terraza')
+      // El detalle de ESTE cuarto (entre su nombre y el cierre del paréntesis) no trae
+      // dimensiones — solo "área sin medir". No se busca "×" en todo el texto porque la
+      // línea de "Dimensiones generales del piso" (bounding box del PISO, no del cuarto)
+      // sí usa "×" y siempre está presente cuando hay vértices.
+      const idx = text.indexOf('Terraza')
+      const roomDetail = text.slice(idx, text.indexOf(')', idx))
+      expect(roomDetail).toContain('área sin medir')
+      expect(roomDetail).not.toMatch(/×/)
+      expect(text).not.toMatch(/nan/i)
+      expect(text).not.toMatch(/undefined/i)
+      expect(text).not.toMatch(/null/i)
+    })
+
+    it('an unlabeled closed room (no name) does not crash planFacts and leaves no dimension artifact', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3) // cerrado, pero sin punto de nombre en f.rooms
+
+      expect(() => planFacts(f)).not.toThrow()
+      const text = planFacts(f)
+      expect(text).not.toMatch(/nan/i)
+      expect(text).not.toMatch(/undefined/i)
+      expect(text).not.toMatch(/null/i)
+    })
+  })
 })
