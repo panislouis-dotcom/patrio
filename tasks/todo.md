@@ -146,8 +146,10 @@ por eso las cadenas históricas de renders necesitaron 6+ rondas de edición man
 - [~] Task 21 (dividido en 3 tras 2 colgados): 21a conectividad, 21b tipo de cuarto, 21c dimensiones
   - 21a (d15ada1+9286f9d): spec ✅, calidad ✅ tras fix (9286f9d) — puerta al exterior corregida
     y verificada por reproducción del bug exacto; hueco de ventana interior cerrado con test
-  - 21b (50dba61): implementado, revisión pendiente
-  - 21c (988c481): implementado (roomPolygons additivo, matching por nombre), spec en revisión
+  - 21b (50dba61): implementado, spec en revisión (ojo con "baño" y la ñ)
+  - 21c (988c481): spec ✅ (test-trap real verificado, matching por nombre correcto),
+    calidad en revisión — nota: nombres duplicados podrían mezclar área/dimensiones
+    de dos cuartos distintos (caso raro, fuera de alcance pero sin documentar)
   - Nota: 2 agentes se colgaron en Task 21 antes de dividirla; un 3er colgado en el spec
     review de 21a (intentó worktree innecesario) — limpiado sin tocar nada del usuario
 - [ ] Task 22: render_prompts.kind + migración 041 + presets de estilo
