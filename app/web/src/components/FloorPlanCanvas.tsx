@@ -6,12 +6,10 @@ import { isGhost, FIXTURE_CATALOG, type FloorSet, type FloorGraph, type FixtureK
 import type { ViewTransform } from '../lib/floorplan/viewTransform'
 import type { RoomLabel } from '../lib/floorplan/rooms'
 import type { CornerAngle } from '../lib/floorplan/dimensions'
-import { widthHeightChains, cotaEdges } from '../lib/floorplan/dimensions'
+import { widthHeightChains, cotaEdges, f2 } from '../lib/floorplan/dimensions'
 import type { UI } from '../lib/floorplan/reducer'
 import { BASE } from '../lib/api'
 import { edgeAxis } from '../lib/floorplan/geometry'
-
-const f2 = (v: number) => (Math.round(v * 100) / 100).toFixed(2)
 
 // Punteado de una división (ghost). Local al canvas a propósito: los demás renderers
 // (PNG de renders, SVG del prospecto, export BIM) EXCLUYEN las fantasmas, no las puntean.

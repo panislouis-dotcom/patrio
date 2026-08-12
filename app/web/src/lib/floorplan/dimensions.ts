@@ -7,6 +7,11 @@ export interface CornerAngle { vertexId: string; deg: number; x: number; y: numb
 const SPAN_TOL = 0.9   // an interior wall covering at least this fraction of the perpendicular span fully divides the room
 const SPLIT_EPS = 0.02 // dedup near-duplicate/near-boundary split marks
 
+/** Formatea un metraje a 2 decimales para etiquetas de cota. Vivía duplicada, byte-idéntica,
+ * en FloorPlanCanvas.tsx y planImage.ts — ambos ya importan de este módulo, así que aquí es
+ * donde deja de ser dos copias que podrían divergir. */
+export const f2 = (v: number): string => (Math.round(v * 100) / 100).toFixed(2)
+
 /** Edges that count as walls for cotas: every edge except a ghost. A ghost is a manual
  * room divider, not a measured wall — it never splits a dimension chain (widthHeightChains
  * below) and never gets its own per-edge length label, in the editor or anywhere else. */

@@ -7,14 +7,12 @@ import type { FloorGraph } from './types'
 import { isGhost, FIXTURE_CATALOG } from './types'
 import { roomLabels } from './rooms'
 import { edgeAxis } from './geometry'
-import { widthHeightChains, cotaEdges } from './dimensions'
+import { widthHeightChains, cotaEdges, f2 } from './dimensions'
 
 function escapeXml(s: string): string {
   return s.replace(/[<>&"']/g, c =>
     ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] as string))
 }
-
-const f2 = (v: number) => (Math.round(v * 100) / 100).toFixed(2)
 
 /** SVG cenital del plano (muros + nombres de cuarto), escalado a los límites de la
  * planta. Es lo que se rasteriza y se manda al motor de renders. */
