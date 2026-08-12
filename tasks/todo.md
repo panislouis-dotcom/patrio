@@ -146,10 +146,16 @@ por eso las cadenas históricas de renders necesitaron 6+ rondas de edición man
 - [~] Task 21 (dividido en 3 tras 2 colgados): 21a conectividad, 21b tipo de cuarto, 21c dimensiones
   - 21a (d15ada1+9286f9d): spec ✅, calidad ✅ tras fix (9286f9d) — puerta al exterior corregida
     y verificada por reproducción del bug exacto; hueco de ventana interior cerrado con test
-  - 21b (50dba61): implementado, spec en revisión (ojo con "baño" y la ñ)
-  - 21c (988c481): spec ✅ (test-trap real verificado, matching por nombre correcto),
-    calidad en revisión — nota: nombres duplicados podrían mezclar área/dimensiones
-    de dos cuartos distintos (caso raro, fuera de alcance pero sin documentar)
+  - 21b (50dba61+0f969c1): spec ✅, calidad con fix — bug real: "bano" (sin acento) hacía
+    match como substring de "urbano" ("PATIO URBANO" salía tipo:baño). Fix: tokenizer en
+    vez de substring. Re-revisión en curso.
+  - 21c (988c481+109d2d7): spec ✅, calidad con fix — bug real confirmado: nombres duplicados
+    mezclaban área de un cuarto con dimensiones de otro (dato falso a una llamada de IA
+    pagada). Fix: correlación posicional en vez de Map por nombre, + DRY del bbox de piso.
+    Re-revisión en curso.
+  - Dos fixes concurrentes al mismo archivo (planFacts.ts) manejados sin choque: el agente
+    de 21b detectó el WIP de 21c, lo aisló con patch, commiteó su fix limpio, reaplicó el
+    WIP encima — 0 pérdida de trabajo.
   - Nota: 2 agentes se colgaron en Task 21 antes de dividirla; un 3er colgado en el spec
     review de 21a (intentó worktree innecesario) — limpiado sin tocar nada del usuario
 - [ ] Task 22: render_prompts.kind + migración 041 + presets de estilo
