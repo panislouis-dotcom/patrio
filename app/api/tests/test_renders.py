@@ -1,5 +1,7 @@
 """Renders: la biblioteca de prompts y la propuesta que no se disfraza de foto."""
+import base64
 import io
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -23,12 +25,47 @@ def fake_openai(monkeypatch):
 
     calls = []
 
-    def _fake(image_bytes: bytes, content_type: str, prompt: str):
-        calls.append({"image": image_bytes, "content_type": content_type, "prompt": prompt})
+    def _fake(image_bytes: bytes, content_type: str, prompt: str, *,
+              max_edge: int, match_aspect: bool):
+        calls.append({
+            "image": image_bytes, "content_type": content_type, "prompt": prompt,
+            "max_edge": max_edge, "match_aspect": match_aspect,
+        })
         return b"RENDERED-BYTES", "image/png"
 
     monkeypatch.setattr(renders, "generate_image", _fake)
     return calls
+
+
+@pytest.fixture
+def fake_images_edit(monkeypatch):
+    """Sustituye SOLO la llamada HTTP de `images.edit`, dejando que
+    `generate_image` corra de verdad — así se puede afirmar qué `size` y qué
+    tope de downscale calculó por dentro, algo que `fake_openai` (que sustituye
+    `generate_image` entero) no puede ver."""
+    import openai
+
+    calls = []
+
+    class _FakeImages:
+        def edit(self, **kwargs):
+            calls.append(kwargs)
+            b64 = base64.b64encode(_png_bytes()).decode()
+            return SimpleNamespace(data=[SimpleNamespace(b64_json=b64)])
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.images = _FakeImages()
+
+    monkeypatch.setattr(openai, "OpenAI", _FakeClient)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used")
+    return calls
+
+
+def _rect_png_bytes(width: int, height: int) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), (10, 20, 30)).save(buf, format="PNG")
+    return buf.getvalue()
 
 
 @pytest.fixture
@@ -165,6 +202,98 @@ def test_editing_a_photo_render_keeps_the_photo_clause(
     assert "ángulo de cámara" in fake_openai[-1]["prompt"]   # cláusula de foto
 
 
+# ─── Tamaño de salida y tope de referencia: foto vs. plano ────────────────────
+#
+# Estas pruebas usan `fake_images_edit`, no `fake_openai`: necesitan ver lo que
+# `generate_image` calculó de verdad puertas adentro (el `size` y el tamaño de
+# la imagen de referencia que preparó), algo invisible si se sustituye
+# `generate_image` entero.
+
+def test_a_photo_render_keeps_the_fixed_square_size_and_the_1536_cap(
+    client, test_property, fake_images_edit,
+):
+    """El comportamiento de hoy para fotos no cambia ni un bit: cuadrado fijo,
+    tope de referencia 1536, sin importar la forma real de la foto fuente."""
+    big_photo = _rect_png_bytes(3000, 2000)   # más grande que el tope: debe recortarse
+    up = client.post(
+        f"/api/properties/{test_property['id']}/images",
+        files={"file": ("fachada.png", io.BytesIO(big_photo), "image/png")},
+        data={"image_type": "antes"},
+    )
+    assert up.status_code == 201, up.text
+
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders",
+        json={"sourceImageId": up.json()["id"], "promptText": "Jardín."},
+    )
+    assert r.status_code == 201, r.text
+
+    assert fake_images_edit[-1]["size"] == "1024x1024"
+    sent = Image.open(fake_images_edit[-1]["image"][1])
+    assert max(sent.size) == 1536   # el tope de foto, no el de plano (2048)
+
+
+def test_a_plan_render_uses_its_real_aspect_ratio_and_the_2048_cap(
+    client, test_property, fake_images_edit,
+):
+    """El plano NO sale cuadrado: el `size` que se manda a `images.edit` es el
+    que calcula `_output_size` sobre la forma real del plano, y la imagen de
+    referencia se prepara con el tope de 2048, no el de 1536 de las fotos."""
+    from api import renders
+
+    real_width, real_height = 599, 1105   # proporción real de la propiedad 5
+    big_plan = _rect_png_bytes(real_width * 4, real_height * 4)   # > 2048: debe recortarse
+    expected_size = renders._output_size(big_plan)
+
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(big_plan), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": "original"},
+    )
+    assert r.status_code == 201, r.text
+
+    assert fake_images_edit[-1]["size"] == expected_size
+    assert expected_size != "1024x1024"   # el fixture es deliberadamente rectangular
+    sent = Image.open(fake_images_edit[-1]["image"][1])
+    assert max(sent.size) == 2048   # el tope de plano, no el de foto (1536)
+
+
+def test_editing_a_plan_render_inherits_match_aspect_and_the_plan_cap(
+    client, test_property, fake_openai,
+):
+    """Mismo patrón que `test_editing_a_plan_render_keeps_the_plan_clause`: lo
+    que decide `chain_is_plan` también decide el tamaño de salida, no solo la
+    cláusula del prompt."""
+    parent = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla.", "variant": "original"},
+    ).json()
+    client.post(
+        f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
+        json={"promptText": "Agrega puerta al baño."},
+    )
+    from api import renders
+    assert fake_openai[-1]["match_aspect"] is True
+    assert fake_openai[-1]["max_edge"] == renders.MAX_EDGE_PLAN
+
+
+def test_editing_a_photo_render_inherits_the_fixed_size_and_the_photo_cap(
+    client, test_property, source_image, fake_openai,
+):
+    parent = client.post(
+        f"/api/properties/{test_property['id']}/renders",
+        json={"sourceImageId": source_image["id"], "promptText": "x"},
+    ).json()
+    client.post(
+        f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
+        json={"promptText": "y"},
+    )
+    from api import renders
+    assert fake_openai[-1]["match_aspect"] is False
+    assert fake_openai[-1]["max_edge"] == renders.MAX_EDGE_PHOTO
+
+
 def test_render_heads_are_the_latest_of_each_chain(
     client, test_property, source_image, fake_openai,
 ):
@@ -200,6 +329,54 @@ def test_input_fidelity_is_sent_when_configured(monkeypatch):
 
     monkeypatch.setenv("OPENAI_INPUT_FIDELITY", "high")
     assert renders.edit_kwargs()["input_fidelity"] == "high"
+
+
+# ─── _output_size: la razón real del plano, no un cuadrado fijo ──────────────
+
+def test_output_size_matches_the_real_aspect_ratio():
+    """599x1105 es la proporción real de la propiedad 5 (5.99m x 11.05m),
+    escalada a píxeles de prueba razonables."""
+    from api import renders
+
+    real_width, real_height = 599, 1105
+    size = renders._output_size(_rect_png_bytes(real_width, real_height))
+    out_width, out_height = (int(part) for part in size.split("x"))
+
+    assert out_width % 16 == 0
+    assert out_height % 16 == 0
+    true_ratio = real_width / real_height
+    out_ratio = out_width / out_height
+    assert abs(true_ratio - out_ratio) < 0.02
+
+
+def test_output_size_of_a_square_image_stays_near_1024():
+    from api import renders
+
+    size = renders._output_size(_rect_png_bytes(1000, 1000))
+    out_width, out_height = (int(part) for part in size.split("x"))
+
+    assert out_width % 16 == 0
+    assert out_height % 16 == 0
+    assert abs(out_width - out_height) <= 16          # prácticamente cuadrado
+    assert 960 <= out_width <= 1088                    # cerca de 1024, no lejos
+
+
+def test_output_size_clamps_extreme_ratios_to_the_api_limit():
+    """gpt-image-2 rechaza razones más allá de 1:3 — un plano larguísimo se
+    recorta a ese límite, nunca lo excede."""
+    from api import renders
+
+    size = renders._output_size(_rect_png_bytes(200, 1200))  # 1:6, muy vertical
+    out_width, out_height = (int(part) for part in size.split("x"))
+    assert out_width % 16 == 0
+    assert out_height % 16 == 0
+    assert out_height / out_width <= 3.0 + 1e-9
+
+    size = renders._output_size(_rect_png_bytes(1200, 200))  # 6:1, muy horizontal
+    out_width, out_height = (int(part) for part in size.split("x"))
+    assert out_width % 16 == 0
+    assert out_height % 16 == 0
+    assert out_width / out_height <= 3.0 + 1e-9
 
 
 # ─── Biblioteca de prompts ────────────────────────────────────────────────────

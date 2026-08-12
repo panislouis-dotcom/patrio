@@ -105,7 +105,8 @@ def create_property_render(property_id: int, body: RenderRequest,
     prompt = renders.compose_prompt(body.promptText)
     try:
         image_bytes, content_type = renders.generate_image(
-            content, source["contentType"], prompt)
+            content, source["contentType"], prompt,
+            max_edge=renders.MAX_EDGE_PHOTO, match_aspect=False)
     except renders.RenderUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
@@ -180,7 +181,9 @@ def create_render_from_plan(
     # Cláusula del plano, no la de la foto: mantén la distribución, amuebla, 2D.
     prompt = renders.compose_plan_prompt(promptText)
     try:
-        image_bytes, content_type = renders.generate_image(plan_bytes, content_in, prompt)
+        image_bytes, content_type = renders.generate_image(
+            plan_bytes, content_in, prompt,
+            max_edge=renders.MAX_EDGE_PLAN, match_aspect=True)
     except renders.RenderUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
@@ -227,13 +230,19 @@ def edit_property_render(property_id: int, render_id: int, body: RenderEditReque
         raise HTTPException(status_code=422, detail="La imagen del render ya no está almacenada") from exc
 
     # La cláusula correcta según el ORIGEN de la cadena: un plano editado sigue
-    # siendo un plano 2D; una foto editada sigue siendo fotorrealista.
-    if renders_db.chain_is_plan(property_id, render_id):
+    # siendo un plano 2D; una foto editada sigue siendo fotorrealista. El mismo
+    # origen también decide el tamaño de salida y el tope de referencia: no
+    # tendría sentido mantener la proporción del plano en el prompt y perderla
+    # en el tamaño del lienzo que se le pide a la API.
+    is_plan = renders_db.chain_is_plan(property_id, render_id)
+    if is_plan:
         prompt = renders.compose_plan_prompt(body.promptText)
     else:
         prompt = renders.compose_prompt(body.promptText)
+    max_edge = renders.MAX_EDGE_PLAN if is_plan else renders.MAX_EDGE_PHOTO
     try:
-        image_bytes, content_type = renders.generate_image(content, ctype, prompt)
+        image_bytes, content_type = renders.generate_image(
+            content, ctype, prompt, max_edge=max_edge, match_aspect=is_plan)
     except renders.RenderUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
