@@ -143,7 +143,13 @@ por eso las cadenas históricas de renders necesitaron 6+ rondas de edición man
   - roomA/roomB determinismo verificado empíricamente (se invirtió v1/v2 de una arista, el orden cambió como se esperaba)
   - Triplicación de "cara de mayor área = exterior" (exteriorEdgeIds/interiorPolygons/outerFace) aceptada como correctamente acotada — outerFace ya reusable si algún día se consolida
   - Pendiente menor para Task 21: retitular el test del guard defensivo (es narrowing de TS, no defensa de un input real alcanzable); roomA/roomB pueden ser '' (cuarto sin nombre) — Task 21 debe manejarlo explícito (ej. "un cuarto sin nombre") y probarlo
-- [ ] Task 21: planFacts — conectividad + tipo de cuarto + dimensiones
+- [~] Task 21 (dividido en 3 tras 2 colgados): 21a conectividad, 21b tipo de cuarto, 21c dimensiones
+  - 21a (d15ada1): spec ✅ (ventana interior verificada alcanzable), calidad con fix — bug real:
+    puerta al exterior salía "exterior conecta por puerta con Sala." (al revés). Fix en curso.
+  - 21b (50dba61): implementado, revisión pendiente
+  - 21c (988c481): implementado (roomPolygons additivo, matching por nombre), spec en revisión
+  - Nota: 2 agentes se colgaron en Task 21 antes de dividirla; un 3er colgado en el spec
+    review de 21a (intentó worktree innecesario) — limpiado sin tocar nada del usuario
 - [ ] Task 22: render_prompts.kind + migración 041 + presets de estilo
 - [ ] Task 23: frontend filtra presets por kind
 - [ ] Task 24: verificación integral (+ render real de prueba si el tiempo alcanza)
