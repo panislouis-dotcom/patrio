@@ -18,6 +18,7 @@ const propiedadesSubTabs = [
   { path: '/propiedades', label: 'TABLA' },
   { path: '/propiedades/mapa', label: 'MAPA' },
   { path: '/propiedades/sonar', label: 'SONAR' },
+  { path: '/propiedades/scouting', label: 'SCOUTING' },
   { path: '/propiedades/comparables', label: 'COMPARABLES' },
 ]
 
