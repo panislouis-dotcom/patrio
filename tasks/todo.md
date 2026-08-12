@@ -252,3 +252,35 @@ distribución real (conectividad puerta-a-puerta y disposición de cuartos) de f
 notablemente más fiel que el primer intento histórico, con un solo defecto menor y
 localizado (una división de cuarto en L) en vez de una topología completa
 inventada. TASKS 19-24 CERRADAS. Rama sin push/merge — decisión de Eduardo.**
+
+---
+
+# Fidelidad dimensional en renders (addendum #2, 2026-08-12)
+
+Plan: `docs/plans/2026-08-12-fidelidad-dimensional-renders.md`
+Motivo: Eduardo generó un render real con el addendum #1 y confirmó que el estilo/
+conectividad ya funcionan, pero las proporciones salen más cuadradas que el plano
+real (propiedad 5: 5.99×11.05m, razón 1.845).
+
+Diagnóstico verificado contra el SDK real (`openai==3.0.0`): `size="1024x1024"`
+estaba fijo en `renders.py` pese a que gpt-image-2 soporta razones de aspecto
+arbitrarias.
+
+- [x] Task 25: tamaño de salida + resolución de referencia ajustados para planos
+  (ab826ae; spec en revisión)
+  - `_output_size` calcula WIDTHxHEIGHT real, clamp [1:3,3:1], múltiplos de 16;
+    fotos quedan byte-idénticas (size fijo, tope 1536); planos usan proporción
+    real + tope 2048. Edición hereda vía chain_is_plan, mismo patrón que la
+    cláusula del prompt.
+  - Nota de proceso: `_output_size` en sí no fue TDD estrictamente rojo-primero
+    (verificado con script suelto antes de escribir sus 3 tests) — todo lo demás
+    (generate_image/rutas, 7 tests) sí fue rojo-primero real.
+- [x] Task 26: planFacts — posición de puertas + ángulos de esquina (6231837+b07aa17;
+  spec ✅, calidad ✅ tras fix)
+  - Bug real cazado por calidad: "a X.XX m del extremo del muro" no dice CUÁL
+    extremo — v1/v2 es un detalle interno invisible en la imagen rasterizada (sin
+    grid/eje). Fix: `wallEndLabel` ancla la distancia a algo visible (izquierdo/
+    derecho o superior/inferior, derivado de las mismas fórmulas monótonas px()/
+    py() que usa planImage.ts), verificado contra 8 fixtures reales.
+  - De paso: `wallLength` duplicado se reemplazó por `edgeAxis(...).L` compartido
+    con planImage.ts/FloorPlanCanvas.tsx (mismo cálculo, ya no puede divergir).
