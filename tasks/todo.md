@@ -124,3 +124,26 @@ de la tarea.
 
 **LAS 18 TAREAS DE LAS 6 FASES ESTÁN CERRADAS, CADA UNA CON REVISIÓN DE SPEC Y DE CALIDAD.
 Rama lista para que Eduardo decida push/PR.**
+
+---
+
+# Renders de plano más precisos (addendum, 2026-08-11)
+
+Plan: `docs/plans/2026-08-11-renders-de-plano-mas-precisos.md`
+Diagnóstico: el plano-imagen que se manda al modelo no dibuja puertas/ventanas —
+por eso las cadenas históricas de renders necesitaron 6+ rondas de edición manual.
+
+- [x] Task 19: huecos de puerta/ventana + cotas en planImage.ts (69a4693; spec ✅, calidad ✅)
+  - edgeAxis extraído a geometry.ts (compartido con el editor), geometría verificada
+    a mano pixel por pixel contra el editor
+  - Pendiente menor para Task 20 (no bloqueante): test directo de edgeAxis en
+    geometry.test.ts; mover el helper `f2` de formateo a dimensions.ts (hoy duplicado
+    entre FloorPlanCanvas.tsx y planImage.ts)
+- [x] Task 20: conectividad de cuartos vía puertas (c30871a+d8e163e; spec ✅, calidad ✅)
+  - roomA/roomB determinismo verificado empíricamente (se invirtió v1/v2 de una arista, el orden cambió como se esperaba)
+  - Triplicación de "cara de mayor área = exterior" (exteriorEdgeIds/interiorPolygons/outerFace) aceptada como correctamente acotada — outerFace ya reusable si algún día se consolida
+  - Pendiente menor para Task 21: retitular el test del guard defensivo (es narrowing de TS, no defensa de un input real alcanzable); roomA/roomB pueden ser '' (cuarto sin nombre) — Task 21 debe manejarlo explícito (ej. "un cuarto sin nombre") y probarlo
+- [ ] Task 21: planFacts — conectividad + tipo de cuarto + dimensiones
+- [ ] Task 22: render_prompts.kind + migración 041 + presets de estilo
+- [ ] Task 23: frontend filtra presets por kind
+- [ ] Task 24: verificación integral (+ render real de prueba si el tiempo alcanza)
