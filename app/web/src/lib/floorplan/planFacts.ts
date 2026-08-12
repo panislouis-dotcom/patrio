@@ -19,6 +19,9 @@ const fmt = (n: number): string => n.toFixed(2)
  * fuera del catálogo (p.ej. "RECIBIDOR PA") simplemente no infieren tipo, lo cual es
  * aceptable: `roomType` regresa null y `planFacts` omite la anotación en vez de forzar
  * una categoría inventada. */
+// El orden de las claves también actúa como desempate cuando un nombre trae palabras de
+// dos categorías ("SALA COMEDOR" cae en 'sala', la primera que aparece abajo) — no hay
+// nada más sofisticado que eso, y no hace falta: no es la parte que importa del catálogo.
 const ROOM_TYPE_KEYWORDS: Record<string, string[]> = {
   cocina: ['cocina'],
   baño: ['baño', 'bano', 'wc'],
@@ -29,13 +32,24 @@ const ROOM_TYPE_KEYWORDS: Record<string, string[]> = {
   terraza: ['terraza'],
 }
 
-/** Infiere el tipo de cuarto por palabra clave en su nombre (insensible a mayúsculas).
- * `null` cuando ninguna categoría del catálogo aparece en el nombre — no todo nombre
- * de cuarto tiene por qué caer en una categoría conocida. */
+/** Separa un nombre en palabras completas (letras españolas incl. acentos/ñ; cualquier
+ * otro carácter —espacio, dígito, guion— es separador). Usado por `roomType` para
+ * comparar por PALABRA, no por subcadena: con `.includes()` plano, la clave sin acento
+ * "bano" (de "baño") coincidía dentro de "urbano" — "PATIO URBANO" se etiquetaba
+ * "tipo: baño" en vez de "tipo: patio", un dato falso alimentado al prompt de imagen.
+ * Un solo tokenizador genérico, reusado por todas las claves — no regex por-palabra
+ * disperso por el catálogo. */
+const tokenize = (name: string): string[] =>
+  name.toLowerCase().split(/[^a-zàáéíóúñü]+/i).filter(t => t.length > 0)
+
+/** Infiere el tipo de cuarto por palabra clave en su nombre (insensible a mayúsculas,
+ * por palabra completa — ver `tokenize`). `null` cuando ninguna categoría del catálogo
+ * aparece en el nombre — no todo nombre de cuarto tiene por qué caer en una categoría
+ * conocida. */
 const roomType = (name: string): string | null => {
-  const lower = name.toLowerCase()
+  const tokens = tokenize(name)
   for (const [type, keywords] of Object.entries(ROOM_TYPE_KEYWORDS)) {
-    if (keywords.some(kw => lower.includes(kw))) return type
+    if (keywords.some(kw => tokens.includes(kw))) return type
   }
   return null
 }

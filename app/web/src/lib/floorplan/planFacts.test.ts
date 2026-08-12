@@ -190,6 +190,17 @@ describe('planFacts', () => {
       ['BAÑO DP1', 'baño'],
       ['cocina dp1', 'cocina'],
       ['PATIO DP1', 'patio'],
+      // Cobertura directa de las 2 categorías que antes solo se ejercitaban de forma
+      // incidental (comedor y terraza no tienen sinónimos, así que un solo caso basta).
+      ['COMEDOR PB', 'comedor'],
+      ['TERRAZA PA', 'terraza'],
+      // Un sinónimo más por categoría con sinónimos, además del ya cubierto arriba
+      // (habitacion sin acento y estancia): wc y "bano" sin acento para baño, dormitorio
+      // y "recamara" sin acento para recámara — antes ninguno tenía aserción directa.
+      ['WC PB', 'baño'],
+      ['BANO PB', 'baño'],
+      ['DORMITORIO PPAL', 'recámara'],
+      ['RECAMARA PPAL', 'recámara'],
     ]
 
     it.each(cases)('infiere el tipo de "%s" como "%s"', (name, expectedType) => {
@@ -241,6 +252,23 @@ describe('planFacts', () => {
 
       expect(textLower).toContain('tipo: cocina')
       expect(textUpper).toContain('tipo: cocina')
+    })
+
+    // Regresión: matching por subcadena (`String.includes`) hacía que la palabra clave
+    // sin acento "bano" (de "baño") coincidiera DENTRO de "urbano" — "PATIO URBANO" es un
+    // nombre realista (terraza/patio de una casa "estilo urbano") que terminaba etiquetado
+    // como "tipo: baño" en vez de "tipo: patio", dato falso alimentado al prompt de imagen.
+    // El mismo riesgo existe con "cubano"/"suburbano". El fix compara por TOKEN completo
+    // (la palabra se separa del resto por espacios/no-letras), no por subcadena.
+    it('"PATIO URBANO" infiere "patio", no "baño" — "urbano" contiene la subcadena "bano" pero no es la palabra "bano"', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'PATIO URBANO', cx: 2, cy: 1.5 })
+
+      const text = planFacts(f)
+
+      expect(text).toContain('tipo: patio')
+      expect(text).not.toContain('tipo: baño')
     })
   })
 
