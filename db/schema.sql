@@ -16,6 +16,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
+-- Name: public; Type: SCHEMA; Schema: -; Owner: -
+--
+
+-- *not* creating schema, since initdb creates it
+
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON SCHEMA public IS '';
+
+
+--
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
 --
 
@@ -1533,7 +1547,9 @@ CREATE TABLE public.render_prompts (
     is_default boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     archived_at timestamp with time zone,
+    kind text DEFAULT 'photo'::text NOT NULL,
     CONSTRAINT render_prompts_body_check CHECK ((body <> ''::text)),
+    CONSTRAINT render_prompts_kind_check CHECK ((kind = ANY (ARRAY['photo'::text, 'plan'::text]))),
     CONSTRAINT render_prompts_name_check CHECK ((name <> ''::text))
 );
 
@@ -3456,4 +3472,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('037'),
     ('038'),
     ('039'),
-    ('040');
+    ('040'),
+    ('041');

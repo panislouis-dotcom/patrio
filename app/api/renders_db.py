@@ -17,14 +17,21 @@ class NotFound(RuntimeError):
 
 # ─── Biblioteca de prompts ────────────────────────────────────────────────────
 
-def list_prompts() -> list[dict]:
+def list_prompts(kind: str | None = None) -> list[dict]:
     """Sembrados primero, luego los propios por nombre: la biblioteca siempre
-    abre con el piso conocido."""
+    abre con el piso conocido.
+
+    `kind` filtra entre 'photo' y 'plan' cuando se pasa; sin filtro devuelve
+    las dos bibliotecas juntas, porque no todo llamador (p.ej. una vista de
+    administración) necesita separarlas."""
+    query = "SELECT * FROM render_prompts WHERE archived_at IS NULL"
+    params: tuple = ()
+    if kind is not None:
+        query += " AND kind = %s"
+        params = (kind,)
+    query += " ORDER BY is_default DESC, name"
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM render_prompts WHERE archived_at IS NULL"
-            " ORDER BY is_default DESC, name"
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
     return [_row_to_dict(r) for r in rows]
 
 
@@ -39,7 +46,10 @@ def get_prompt(prompt_id: int) -> dict:
     return _row_to_dict(row)
 
 
-def create_prompt(name: str, body: str) -> dict:
+def create_prompt(name: str, body: str, kind: str = "photo") -> dict:
+    """`kind` por defecto 'photo' por compatibilidad hacia atrás: un llamador
+    que no sabe todavía de la biblioteca de plano sigue creando lo que siempre
+    creó."""
     name, body = name.strip(), body.strip()
     if not name or not body:
         raise PromptError("El prompt necesita nombre y texto")
@@ -50,9 +60,9 @@ def create_prompt(name: str, body: str) -> dict:
         ).fetchone():
             raise PromptError(f"Ya existe un prompt llamado «{name}»")
         row = conn.execute(
-            "INSERT INTO render_prompts (name, body, is_default)"
-            " VALUES (%s, %s, false) RETURNING *",
-            (name, body),
+            "INSERT INTO render_prompts (name, body, is_default, kind)"
+            " VALUES (%s, %s, false, %s) RETURNING *",
+            (name, body, kind),
         ).fetchone()
     return _row_to_dict(row)
 

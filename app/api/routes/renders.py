@@ -15,6 +15,9 @@ router = APIRouter()
 class PromptCreate(BaseModel):
     name: str
     body: str
+    # 'photo' por defecto: compat con cualquier llamador anterior a la
+    # biblioteca de plano (Tarea 22), que nunca mandó este campo.
+    kind: str = "photo"
 
 
 class PromptUpdate(BaseModel):
@@ -35,14 +38,14 @@ class RenderEditRequest(BaseModel):
 # ─── Biblioteca de prompts ────────────────────────────────────────────────────
 
 @router.get("/api/render-prompts", operation_id="render_prompts_list")
-def list_render_prompts(_: dict = Depends(get_current_user)):
-    return renders_db.list_prompts()
+def list_render_prompts(kind: str | None = None, _: dict = Depends(get_current_user)):
+    return renders_db.list_prompts(kind)
 
 
 @router.post("/api/render-prompts", status_code=201, operation_id="render_prompts_create")
 def create_render_prompt(body: PromptCreate, _: dict = Depends(get_current_user)):
     try:
-        return renders_db.create_prompt(body.name, body.body)
+        return renders_db.create_prompt(body.name, body.body, body.kind)
     except renders_db.PromptError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

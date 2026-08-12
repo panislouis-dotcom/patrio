@@ -244,6 +244,78 @@ def test_duplicate_active_prompt_name_is_rejected(client):
                        json={"name": "repetido", "body": "b"}).status_code == 409
 
 
+# ─── kind: la biblioteca de foto y la de plano son distintas (Tarea 22) ───────
+#
+# Un preset de foto describe un ÁREA (jardín, fachada, alberca...). Un preset
+# de plano describe un ESTILO puro, porque un plano no tiene "jardín" que
+# renderizar — es la distribución completa vista desde arriba.
+
+_SEEDED_PHOTO_NAMES = (
+    "Jardín regional (xeriscape)",
+    "Fachada minimalista contemporánea",
+    "Patio y terraza de estar",
+    "Alberca y asoleadero",
+    "Interior renovado (sala y cocina)",
+    "Lote limpio (potencial)",
+)
+
+_SEEDED_PLAN_NAMES = (
+    "Cálido contemporáneo",
+    "Minimalista nórdico",
+    "Industrial urbano",
+    "Colorido y vibrante",
+    "Clásico cálido",
+)
+
+
+def test_the_six_original_seeds_are_kind_photo(client):
+    prompts = client.get("/api/render-prompts").json()
+    for name in _SEEDED_PHOTO_NAMES:
+        prompt = next(p for p in prompts if p["name"] == name)
+        assert prompt["kind"] == "photo"
+
+
+def test_the_new_plan_style_presets_are_seeded_as_defaults(client):
+    """Los presets de plano son el piso de esa biblioteca, igual que los de
+    foto lo son de la suya: mismo patrón, is_default=true."""
+    prompts = client.get("/api/render-prompts").json()
+    for name in _SEEDED_PLAN_NAMES:
+        prompt = next(p for p in prompts if p["name"] == name)
+        assert prompt["kind"] == "plan"
+        assert prompt["isDefault"] is True
+
+
+def test_creating_a_prompt_without_kind_defaults_to_photo(client):
+    """Compat hacia atrás: cualquier llamador que no sepa de `kind` todavía
+    obtiene el comportamiento de siempre."""
+    r = client.post("/api/render-prompts",
+                    json={"name": "Sin kind explícito", "body": "x"})
+    assert r.status_code == 201, r.text
+    assert r.json()["kind"] == "photo"
+
+
+def test_creating_a_prompt_with_kind_plan_persists(client):
+    r = client.post("/api/render-prompts",
+                    json={"name": "Estilo de prueba", "body": "x", "kind": "plan"})
+    assert r.status_code == 201, r.text
+    assert r.json()["kind"] == "plan"
+    stored = next(p for p in client.get("/api/render-prompts").json()
+                  if p["name"] == "Estilo de prueba")
+    assert stored["kind"] == "plan"
+
+
+def test_listing_prompts_filtered_by_kind(client):
+    all_prompts = client.get("/api/render-prompts").json()
+    photo_prompts = client.get("/api/render-prompts?kind=photo").json()
+    plan_prompts = client.get("/api/render-prompts?kind=plan").json()
+
+    assert all(p["kind"] == "photo" for p in photo_prompts)
+    assert all(p["kind"] == "plan" for p in plan_prompts)
+    assert len(photo_prompts) + len(plan_prompts) == len(all_prompts)
+    assert {p["name"] for p in photo_prompts} >= set(_SEEDED_PHOTO_NAMES)
+    assert {p["name"] for p in plan_prompts} >= set(_SEEDED_PLAN_NAMES)
+
+
 # ─── Generar un render ────────────────────────────────────────────────────────
 
 def test_generating_a_render_stores_it_against_the_property(
