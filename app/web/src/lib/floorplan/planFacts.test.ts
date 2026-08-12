@@ -109,9 +109,11 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    // divider va de botMid=(3,0) a topMid=(3,4) → muro de 4 m; offset .5 → 2.00 m desde v1
-    // (Task 26: la sentencia de conectividad ahora incluye la posición métrica de la puerta).
-    expect(text).toContain('Cocina conecta por puerta con Sala, a 2.00 m del extremo del muro.')
+    // divider va de botMid=(3,0) a topMid=(3,4) → muro VERTICAL (Δy=4 domina Δx=0) de 4 m;
+    // offset .5 → 2.00 m desde v1=botMid. v1.y=0 < v2.y=4 → v1 es el extremo "inferior"
+    // (Task 26: la sentencia de conectividad ahora incluye la posición métrica de la puerta,
+    // anclada a un extremo visualmente verificable en la imagen, no al v1/v2 interno).
+    expect(text).toContain('Cocina conecta por puerta con Sala, a 2.00 m del extremo inferior del muro.')
   })
 
   it('states a room with a window to the exterior', () => {
@@ -121,8 +123,9 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    // eBottomLeft va de a=(0,0) a botMid=(3,0) tras el split → muro de 3 m; offset .5 → 1.50 m.
-    expect(text).toContain('Cocina tiene ventana hacia el exterior, a 1.50 m del extremo del muro.')
+    // eBottomLeft va de a=(0,0) a botMid=(3,0) tras el split → muro HORIZONTAL (Δx=3 domina
+    // Δy=0) de 3 m; offset .5 → 1.50 m. v1.x=0 <= v2.x=3 → v1 es el extremo "izquierdo".
+    expect(text).toContain('Cocina tiene ventana hacia el exterior, a 1.50 m del extremo izquierdo del muro.')
   })
 
   it('states a room with a door to the exterior — the most common door in any home (front/patio door)', () => {
@@ -132,7 +135,9 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    expect(text).toContain('Cocina tiene puerta hacia el exterior, a 1.50 m del extremo del muro.')
+    // Mismo muro horizontal que el test anterior (eBottomLeft, a→botMid, 3 m, extremo v1
+    // izquierdo).
+    expect(text).toContain('Cocina tiene puerta hacia el exterior, a 1.50 m del extremo izquierdo del muro.')
     // Nunca la frase al revés/rota: 'exterior' no es un cuarto que "conecte por puerta"
     // con otro — ese texto sale de tratar la puerta exterior como la plantilla genérica.
     expect(text).not.toContain('exterior conecta por puerta')
@@ -153,8 +158,9 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    // eLeft va de d=(0,3) a a=(0,0) → muro de 3 m; offset .7 → 2.10 m desde v1=d.
-    expect(text).toContain('Sala tiene puerta hacia el exterior, a 2.10 m del extremo del muro.')
+    // eLeft va de d=(0,3) a a=(0,0) → muro VERTICAL (Δy=3 domina Δx=0) de 3 m; offset .7 →
+    // 2.10 m desde v1=d. v1.y=3 >= v2.y=0 → v1 es el extremo "superior".
+    expect(text).toContain('Sala tiene puerta hacia el exterior, a 2.10 m del extremo superior del muro.')
     expect(text).not.toContain('exterior conecta por puerta')
   })
 
@@ -165,7 +171,9 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    expect(text).toContain('Cocina y Sala comparten una ventana interior, a 2.00 m del extremo del muro.')
+    // Mismo divider vertical que el primer test de este bloque (botMid→topMid, 4 m, extremo
+    // v1 inferior).
+    expect(text).toContain('Cocina y Sala comparten una ventana interior, a 2.00 m del extremo inferior del muro.')
   })
 
   it('falls back gracefully when a door connects a named room to a closed but UNLABELED room', () => {
@@ -178,7 +186,8 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    expect(text).toContain('un cuarto sin nombre conecta por puerta con Sala, a 2.00 m del extremo del muro.')
+    // Mismo divider vertical (botMid→topMid, 4 m, extremo v1 inferior).
+    expect(text).toContain('un cuarto sin nombre conecta por puerta con Sala, a 2.00 m del extremo inferior del muro.')
     expect(text).not.toContain('con .')
     expect(text).not.toMatch(/undefined/i)
     expect(text).not.toMatch(/null/i)
@@ -200,8 +209,33 @@ describe('planFacts', () => {
 
       const text = planFacts(f)
 
-      // Muro de a=(0,0) a b=(5,0): 5 m de largo. offset .4 → 0.4*5 = 2.00 m desde v1=a.
-      expect(text).toContain('Recámara tiene puerta hacia el exterior, a 2.00 m del extremo del muro.')
+      // Muro HORIZONTAL de a=(0,0) a b=(5,0): 5 m de largo, offset .4 → 0.4*5 = 2.00 m
+      // desde v1=a. v1.x=0 <= v2.x=5 → v1 es el extremo "izquierdo" (verificable en la
+      // imagen: a queda a la izquierda de b en el PNG rasterizado por planImage.ts).
+      expect(text).toContain('Recámara tiene puerta hacia el exterior, a 2.00 m del extremo izquierdo del muro.')
+    })
+
+    it('two openings on the SAME wall each report their own independent offset off the same wall length', () => {
+      // Escenario realista: un muro exterior con una ventana Y una puerta (p.ej. cochera
+      // con puerta peatonal junto a una ventana). Ambas comparten muro/longitud pero deben
+      // salir con SU PROPIA distancia — no la del otro opening, ni una mezclada.
+      const f = emptyFloorGraph('Test')
+      const a = addVertex(f, 0, 0), b = addVertex(f, 6, 0), c = addVertex(f, 6, 3), d = addVertex(f, 0, 3)
+      const eBottom = addEdge(f, a, b, 0.15)
+      addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+      f.rooms.push({ name: 'Cochera', cx: 3, cy: 1.5 })
+      f.edges[eBottom].openings.push(
+        { kind: 'door', offset: 0.25, width: 0.9 },
+        { kind: 'window', offset: 0.75, width: 1.2 },
+      )
+
+      const text = planFacts(f)
+
+      // Muro de 6 m, v1=a=(0,0), extremo izquierdo (horizontal, v1.x <= v2.x).
+      // Puerta: offset .25 → 1.50 m. Ventana: offset .75 → 4.50 m. Distintas entre sí,
+      // cada una calculada sobre la MISMA longitud de muro (6 m).
+      expect(text).toContain('Cochera tiene puerta hacia el exterior, a 1.50 m del extremo izquierdo del muro.')
+      expect(text).toContain('Cochera tiene ventana hacia el exterior, a 4.50 m del extremo izquierdo del muro.')
     })
 
     it('a non-90° corner (an L/angled cut) is reported by location and angle', () => {

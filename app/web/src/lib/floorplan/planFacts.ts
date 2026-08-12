@@ -4,10 +4,11 @@
 // §"Prompt base enriquecido". Reemplaza a `planSeed` (RendersPanel.tsx), que solo mandaba
 // nombres de cuarto: sin medidas ni muebles, "amuebla y da acabados" no le decía al modelo
 // NADA sobre el tamaño real del espacio.
-import type { Edge, FloorGraph } from './types'
+import type { FloorGraph, Vertex } from './types'
 import { FIXTURE_CATALOG } from './types'
 import { roomLabels, roomAreas, roomConnections, roomPolygons, type Connection } from './rooms'
 import { cornerAngles } from './dimensions'
+import { edgeAxis } from './geometry'
 
 const fmt = (n: number): string => n.toFixed(2)
 
@@ -78,37 +79,52 @@ const boundingBoxText = (vertices: { x: number; y: number }[]): string => {
   return `${fmt(width)} m × ${fmt(depth)} m`
 }
 
-/** Longitud real (metros) del muro de una arista — la hipotenusa entre sus dos vértices.
- * Nombre explícito en vez de reusar alguna utilidad de geometry.ts: aquí solo hace falta
- * un escalar, no el aparato de `Pt`/shoelace que ese módulo trae para polígonos. */
-const wallLength = (floor: FloorGraph, edge: Edge): number => {
-  const v1 = floor.vertices[edge.v1], v2 = floor.vertices[edge.v2]
-  return Math.hypot(v2.x - v1.x, v2.y - v1.y)
+/**
+ * Etiqueta visual ("izquierdo"/"derecho"/"superior"/"inferior") del extremo `v1` de un
+ * muro, TAL COMO SE VE en el PNG que de verdad recibe el modelo de imagen — nunca "v1"
+ * a secas, que es un identificador interno del grafo sin ninguna marca visible en el
+ * dibujo (`planImage.ts` no traza ejes, cuadrícula ni origen). El modelo no puede
+ * verificar "v1" mirando la imagen; sí puede verificar "izquierda" o "arriba", porque esa
+ * relación se deriva de las MISMAS fórmulas de proyección con las que `planImage.ts`
+ * rasteriza el plano: `px(x) = (x - minx) * scale` crece con x (mundo más a la derecha ⇒
+ * pantalla más a la derecha) y `py(y) = (maxy - y) * scale` DECRECE con y (mundo y mayor ⇒
+ * pantalla más arriba) — ver planImage.ts:27-28. Ambas relaciones son monótonas
+ * independientemente de pad/scale (que solo trasladan y escalan, nunca voltean el signo),
+ * así que comparar v1.x contra v2.x (o v1.y contra v2.y) basta para saber, sin necesidad
+ * de esos parámetros, de qué lado cae cada extremo en la imagen.
+ *
+ * Un muro casi horizontal (Δx domina sobre Δy) se describe por izquierda/derecha — el eje
+ * visualmente más obvio para ESE muro; uno casi vertical se describe por arriba/abajo. En
+ * el empate degenerado (Δx === Δy, solo posible con longitud 0, que un muro real nunca
+ * tiene) se resuelve por izquierda/derecha de forma estable, sin caso especial extra.
+ */
+const wallEndLabel = (v1: Vertex, v2: Vertex): string => {
+  const dx = Math.abs(v2.x - v1.x), dy = Math.abs(v2.y - v1.y)
+  if (dx >= dy) return v1.x <= v2.x ? 'izquierdo' : 'derecho'
+  return v1.y >= v2.y ? 'superior' : 'inferior'
 }
 
 /**
- * Cláusula ", a X.XX m del extremo del muro" para una `Connection` — la posición métrica
- * de SU abertura (puerta/ventana) a lo largo del muro que la contiene. `Opening.offset`
- * es una fracción 0..1 de la longitud del muro (types.ts); aquí se resuelve la arista y
- * la abertura reales vía `edgeId`/`openingIndex` (Task 20, rooms.ts::roomConnections) y
- * se convierte a metros: `offset * wallLength`.
+ * Cláusula ", a X.XX m del extremo {izquierdo|derecho|superior|inferior} del muro" para
+ * una `Connection` — la posición métrica de SU abertura (puerta/ventana) a lo largo del
+ * muro que la contiene. `Opening.offset` es una fracción 0..1 de la longitud del muro
+ * (types.ts); aquí se resuelve la arista y la abertura reales vía `edgeId`/`openingIndex`
+ * (Task 20, rooms.ts::roomConnections), se reusa `edgeAxis` (geometry.ts — ya calcula `L`
+ * para el mismo propósito en `planImage.ts`/el editor, no se reimplementa aquí) para la
+ * longitud real del muro, y se convierte a metros: `offset * L`.
  *
- * POR QUÉ siempre desde `edge.v1` (nunca v2, nunca "el extremo visualmente más cercano"):
- * ninguno de los dos extremos de una arista es "el inicio real" del muro — la elección es
- * arbitraria — pero tiene que ser SIEMPRE LA MISMA, porque quien consume este dato no es
- * una persona viendo el plano junto al texto: es el modelo de imagen, que solo tiene la
- * cota como ancla. Si hoy esta puerta se reporta "a 1.20 m del extremo" y mañana, tras
- * editar el plano, "a 2.80 m" (el resto del mismo muro) solo porque v1/v2 se resolvieron
- * al revés, la cota deja de ser una referencia fija y el modelo no puede anclar la puerta
- * a un punto del dibujo. `edge.v1` es estable ante edición: partir el muro
- * (`splitEdgeAtVertex`, graph.ts) o mover un vértice no cambia cuál extremo de una arista
- * YA EXISTENTE es v1 — así que la convención no se corrompe al seguir editando el plano.
+ * La distancia SIEMPRE se mide desde `edge.v1` — estable ante edición (partir el muro con
+ * `splitEdgeAtVertex`, graph.ts, o mover un vértice no cambia cuál extremo de una arista
+ * YA EXISTENTE es v1) — pero la ETIQUETA de ese extremo (`wallEndLabel`, arriba) nunca es
+ * "v1" literal: es su posición visual real en la imagen, así que el modelo puede
+ * verificarla contra lo que ve, no adivinarla a ciegas entre dos opciones.
  */
 const openingPositionClause = (floor: FloorGraph, c: Connection): string => {
   const edge = floor.edges[c.edgeId]
   const opening = edge.openings[c.openingIndex]
-  const distance = opening.offset * wallLength(floor, edge)
-  return `, a ${fmt(distance)} m del extremo del muro`
+  const v1 = floor.vertices[edge.v1], v2 = floor.vertices[edge.v2]
+  const distance = opening.offset * edgeAxis(v1, v2).L
+  return `, a ${fmt(distance)} m del extremo ${wallEndLabel(v1, v2)} del muro`
 }
 
 /** Una oración por conexión. El chequeo de exterior va PRIMERO y cubre puerta Y ventana
