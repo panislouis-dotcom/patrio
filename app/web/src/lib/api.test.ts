@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { updateProperty, clearPropertyFields, generatePropertyRenderFromPlan } from './api'
+import { updateProperty, clearPropertyFields, generatePropertyRenderFromPlan, listRenderPrompts, createRenderPrompt } from './api'
 
 // La sesión no es lo que se está probando: aquí importa qué sale por el cable.
 vi.mock('./auth', () => ({ getToken: () => 'test-token', clearToken: () => {} }))
@@ -58,5 +58,41 @@ describe('generatePropertyRenderFromPlan', () => {
     const form = fetchMock.mock.calls[0][1]!.body as FormData
     expect(form.get('variant')).toBe('planned')
     expect(form.get('promptText')).toBe('Amuebla')
+  })
+})
+
+describe('listRenderPrompts', () => {
+  it('agrega ?kind= cuando se filtra por tipo (Tarea 22, biblioteca partida por kind)', async () => {
+    const fetchMock = stubFetch([])
+    await listRenderPrompts('plan')
+
+    expect(fetchMock.mock.calls[0][0]).toContain('?kind=plan')
+  })
+
+  it('sin kind no manda el filtro — la ficha pide la biblioteca completa y filtra ella misma', async () => {
+    const fetchMock = stubFetch([])
+    await listRenderPrompts()
+
+    expect(fetchMock.mock.calls[0][0]).not.toContain('kind')
+  })
+})
+
+describe('createRenderPrompt', () => {
+  it('manda el kind explícito en el cuerpo', async () => {
+    const fetchMock = stubFetch({ id: 1 })
+    await createRenderPrompt('Cálido contemporáneo', 'Piso de madera, tonos cálidos.', 'plan')
+
+    expect(bodyOf(fetchMock)).toEqual({
+      name: 'Cálido contemporáneo', body: 'Piso de madera, tonos cálidos.', kind: 'plan',
+    })
+  })
+
+  it('sin kind, default a "photo" — compat con el backend (Tarea 22)', async () => {
+    const fetchMock = stubFetch({ id: 1 })
+    await createRenderPrompt('Jardín regional', 'Mezquite y agaves.')
+
+    expect(bodyOf(fetchMock)).toEqual({
+      name: 'Jardín regional', body: 'Mezquite y agaves.', kind: 'photo',
+    })
   })
 })

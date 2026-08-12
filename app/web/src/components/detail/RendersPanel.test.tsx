@@ -17,9 +17,18 @@ const photo = (id: number, name: string): PropertyImage => ({
 })
 
 const prompts: RenderPrompt[] = [
-  { id: 1, name: 'Jardín regional (xeriscape)', body: 'Mezquite y agaves.', isDefault: true,
+  { id: 1, name: 'Jardín regional (xeriscape)', body: 'Mezquite y agaves.', kind: 'photo', isDefault: true,
     createdAt: '2026-08-01T00:00:00Z' },
-  { id: 2, name: 'Fachada minimalista', body: 'Aplanado fino en lino.', isDefault: true,
+  { id: 2, name: 'Fachada minimalista', body: 'Aplanado fino en lino.', kind: 'photo', isDefault: true,
+    createdAt: '2026-08-01T00:00:00Z' },
+]
+
+/** Presets de PLANO (Tarea 22): estilo puro, sin describir áreas. Sirven para
+ * probar que un panel `photos` nunca los ofrece, y viceversa. */
+const planPrompts: RenderPrompt[] = [
+  { id: 3, name: 'Cálido contemporáneo', body: 'Piso de madera, tonos cálidos.', kind: 'plan', isDefault: true,
+    createdAt: '2026-08-01T00:00:00Z' },
+  { id: 4, name: 'Minimalista nórdico', body: 'Blancos y madera clara.', kind: 'plan', isDefault: true,
     createdAt: '2026-08-01T00:00:00Z' },
 ]
 
@@ -124,7 +133,7 @@ describe('RendersPanel', () => {
     }))
   })
 
-  it('guarda el texto ajustado como prompt nuevo', async () => {
+  it('guarda el texto ajustado como prompt nuevo, con kind="photo" (modo fotos)', async () => {
     const props = setup()
     fireEvent.change(screen.getByLabelText(/texto del prompt/i),
       { target: { value: 'Cochera techada ligera.' } })
@@ -134,8 +143,49 @@ describe('RendersPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /^guardar$/i }))
 
     await waitFor(() => expect(props.onSavePrompt).toHaveBeenCalledWith({
-      name: 'Cochera', body: 'Cochera techada ligera.',
+      name: 'Cochera', body: 'Cochera techada ligera.', kind: 'photo',
     }))
+  })
+
+  it('modo plano: guarda como nuevo con kind="plan", nunca "photo"', async () => {
+    const onSavePrompt = vi.fn().mockResolvedValue(planPrompts[0])
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Sala']),
+      onGeneratePlan: vi.fn(), onSavePrompt,
+    })
+    fireEvent.change(screen.getByLabelText(/texto del prompt/i),
+      { target: { value: 'Estilo cálido con madera.' } })
+    fireEvent.click(screen.getByRole('button', { name: /guardar como nuevo/i }))
+    fireEvent.change(screen.getByLabelText(/nombre del prompt/i),
+      { target: { value: 'Cálido' } })
+    fireEvent.click(screen.getByRole('button', { name: /^guardar$/i }))
+
+    await waitFor(() => expect(onSavePrompt).toHaveBeenCalledWith({
+      name: 'Cálido', body: 'Estilo cálido con madera.', kind: 'plan',
+    }))
+  })
+
+  it('modo fotos: el selector de preset solo ofrece los de kind="photo"', () => {
+    setup({ prompts: [...prompts, ...planPrompts] })
+    const select = screen.getByLabelText(/preset/i) as HTMLSelectElement
+    const optionText = Array.from(select.options).map(o => o.textContent).join(' | ')
+    expect(optionText).toMatch(/Jardín regional/)
+    expect(optionText).toMatch(/Fachada minimalista/)
+    expect(optionText).not.toMatch(/Cálido contemporáneo/)
+    expect(optionText).not.toMatch(/Minimalista nórdico/)
+  })
+
+  it('modo plano: el selector de preset solo ofrece los de kind="plan"', () => {
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Sala']),
+      onGeneratePlan: vi.fn(), prompts: [...prompts, ...planPrompts],
+    })
+    const select = screen.getByLabelText(/preset/i) as HTMLSelectElement
+    const optionText = Array.from(select.options).map(o => o.textContent).join(' | ')
+    expect(optionText).toMatch(/Cálido contemporáneo/)
+    expect(optionText).toMatch(/Minimalista nórdico/)
+    expect(optionText).not.toMatch(/Jardín regional/)
+    expect(optionText).not.toMatch(/Fachada minimalista/)
   })
 
   it('marca cada render como propuesta, nunca como foto', () => {

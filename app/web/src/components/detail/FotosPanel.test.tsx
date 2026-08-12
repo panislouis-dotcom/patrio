@@ -16,7 +16,7 @@ const image = (id: number): PropertyImage => ({
 })
 
 const prompt: RenderPrompt = {
-  id: 1, name: 'Jardín regional', body: 'Mezquite y agaves.', isDefault: true,
+  id: 1, name: 'Jardín regional', body: 'Mezquite y agaves.', kind: 'photo', isDefault: true,
   createdAt: '2026-08-01T00:00:00Z',
 }
 

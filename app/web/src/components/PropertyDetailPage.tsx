@@ -12,7 +12,7 @@ import type {
   AssumptionField,
   Property, RawPropertyFields, ClearableField, Transition, ImageType,
   PropertyInvestor, Investor, ProfitWaterfall, ProcessInstance, TeamMember,
-  RenderPrompt, PropertyRender,
+  RenderPrompt, RenderPromptKind, PropertyRender,
 } from '../lib/types'
 import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
 import {
@@ -216,6 +216,12 @@ export function PropertyDetailPage() {
 
   // La biblioteca y los renders van aparte de la ficha: si el proveedor de
   // imágenes está caído o la biblioteca falla, la propiedad se sigue leyendo.
+  //
+  // Un solo fetch, SIN filtrar por `kind` (Tarea 23): son 11 filas en total —
+  // pedir 'photo' aparte de 'plan' sería un segundo viaje de red para ahorrar
+  // filtrar un arreglo de una docena de elementos. Cada `RendersPanel` recorta
+  // la lista a SU `kind` por dentro (foto↔`source:'photos'`, plano↔`source:'plan'`),
+  // igual que ya recorta `renders` por `sourceVariant`.
   useEffect(() => {
     listRenderPrompts().then(setRenderPrompts).catch(() => {})
     listPropertyRenders(propertyId).then(setRenders).catch(() => {})
@@ -261,8 +267,10 @@ export function PropertyDetailPage() {
     setRenders(prev => [created, ...prev])
     return created
   }
-  async function onSaveRenderPrompt({ name, body }: { name: string; body: string }): Promise<RenderPrompt> {
-    const created = await createRenderPrompt(name, body)
+  async function onSaveRenderPrompt(
+    { name, body, kind }: { name: string; body: string; kind: RenderPromptKind },
+  ): Promise<RenderPrompt> {
+    const created = await createRenderPrompt(name, body, kind)
     setRenderPrompts(prev => [...prev, created])
     return created
   }

@@ -33,10 +33,20 @@ export type ImageType = 'antes' | 'despues'
 // Un render NO es un ImageType. Una foto es evidencia de lo que hay; un render
 // es una propuesta de lo que podría haber. Viven en tablas distintas justo para
 // que el prospecto nunca pueda imprimir una propuesta en la casilla de «después».
+
+// La biblioteca de presets se parte en dos catálogos (migración 041): 'photo'
+// para fotos reales (jardín, fachada, alberca...), 'plan' para el render que
+// nace del PLANO (estilo de interior puro, sin describir áreas — ofrecer
+// "Jardín regional" para un plano, o "Minimalista nórdico" para una foto de
+// fachada, no tiene sentido). Un panel de RENDERS solo ofrece el catálogo de
+// su propio `source` (Tarea 23).
+export type RenderPromptKind = 'photo' | 'plan'
+
 export interface RenderPrompt {
   id: number
   name: string
   body: string
+  kind: RenderPromptKind
   /** Los sembrados son el piso de la biblioteca: se duplican, no se borran. */
   isDefault: boolean
   createdAt: string

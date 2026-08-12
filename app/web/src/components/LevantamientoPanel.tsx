@@ -5,7 +5,7 @@ import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
 import { RendersPanel } from './detail/RendersPanel'
 import { floorToPngBlob } from '../lib/floorplan/planImage'
 import { clone, emptyFloorSet, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
-import type { PropertyRender, RenderPrompt } from '../lib/types'
+import type { PropertyRender, RenderPrompt, RenderPromptKind } from '../lib/types'
 
 const btnBase: React.CSSProperties = {
   cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px',
@@ -41,7 +41,7 @@ interface Props {
   onGenerateRender: (variant: VariantKey, req: { promptId: number | null; promptText: string; plan: Blob })
     => Promise<PropertyRender>
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
-  onSavePrompt: (p: { name: string; body: string }) => Promise<RenderPrompt>
+  onSavePrompt: (p: { name: string; body: string; kind: RenderPromptKind }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
 }
 

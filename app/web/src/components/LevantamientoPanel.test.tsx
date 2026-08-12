@@ -71,7 +71,7 @@ function renderPanel(
       prompts={[]}
       renders={over.renders ?? []}
       onGenerateRender={onGenerateRender}
-      onSavePrompt={vi.fn().mockResolvedValue({ id: 1, name: 'x', body: 'y', isDefault: false, createdAt: '2026-08-01T00:00:00Z' })}
+      onSavePrompt={vi.fn().mockResolvedValue({ id: 1, name: 'x', body: 'y', kind: 'plan', isDefault: false, createdAt: '2026-08-01T00:00:00Z' })}
       onDeleteRender={vi.fn().mockResolvedValue(undefined)}
     />,
   )

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { colors, fonts, radius, spacing } from '../../lib/theme'
 import { fmtDia } from '../../lib/fmt'
-import type { PropertyImage, PropertyRender, RenderPrompt } from '../../lib/types'
+import type { PropertyImage, PropertyRender, RenderPrompt, RenderPromptKind } from '../../lib/types'
 import type { FloorGraph, VariantKey } from '../../lib/floorplan/types'
 import { roomLabels } from '../../lib/floorplan/rooms'
 import { planFacts } from '../../lib/floorplan/planFacts'
@@ -12,7 +12,10 @@ interface CommonProps {
   base: string
   /** Editar ENCIMA de un render: instrucción chica sobre su misma imagen. */
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
-  onSavePrompt: (p: { name: string; body: string }) => Promise<RenderPrompt>
+  /** `kind` lo decide este panel, no quien llama: es SIEMPRE el mismo que su
+   * propio `source` (Tarea 23) — un preset guardado desde un panel `plan` no
+   * puede terminar en el catálogo de foto ni viceversa. */
+  onSavePrompt: (p: { name: string; body: string; kind: RenderPromptKind }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
 }
 
@@ -77,6 +80,14 @@ export function RendersPanel(props: Props) {
   const onGenerate = props.source === 'photos' ? props.onGenerate : undefined
   const onGeneratePlan = props.source === 'plan' ? props.onGeneratePlan : undefined
 
+  // El catálogo que le toca a ESTE panel, nunca el del otro (Tarea 23): un preset
+  // de plano ("Minimalista nórdico") no tiene sentido ofrecido sobre una foto de
+  // fachada, y uno de foto ("Jardín regional") tampoco sobre un plano. `source`
+  // ya es el discriminante — 'photos'↔'photo', 'plan'↔'plan' — así que no hace
+  // falta un prop nuevo para decidirlo.
+  const kind: RenderPromptKind = source === 'photos' ? 'photo' : 'plan'
+  const visiblePrompts = useMemo(() => prompts.filter(p => p.kind === kind), [prompts, kind])
+
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [usePlan, setUsePlan] = useState(false)
   const [promptId, setPromptId] = useState<number | null>(null)
@@ -118,14 +129,14 @@ export function RendersPanel(props: Props) {
     return chain  // el paso inmediato anterior primero
   }
 
-  const selectedPrompt = prompts.find(p => p.id === promptId) ?? null
+  const selectedPrompt = visiblePrompts.find(p => p.id === promptId) ?? null
   // Si el texto ya no es el del preset, el render no salió de ese preset.
   // Mandar el id de todos modos haría que el render mintiera sobre su origen.
   const effectivePromptId =
     selectedPrompt && selectedPrompt.body.trim() === text.trim() ? selectedPrompt.id : null
 
   function choosePreset(value: string) {
-    const p = prompts.find(x => String(x.id) === value) ?? null
+    const p = visiblePrompts.find(x => String(x.id) === value) ?? null
     setPromptId(p?.id ?? null)
     setText(p?.body ?? '')
   }
@@ -152,7 +163,7 @@ export function RendersPanel(props: Props) {
     if (!newName.trim() || !text.trim()) return
     setBusy(true); setError(null)
     try {
-      await onSavePrompt({ name: newName.trim(), body: text.trim() })
+      await onSavePrompt({ name: newName.trim(), body: text.trim(), kind })
       setNaming(false); setNewName('')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar el prompt')
@@ -220,7 +231,7 @@ export function RendersPanel(props: Props) {
             background: colors.dark, border: `1px solid ${colors.border}`, borderRadius: radius.sm,
           }}>
           <option value="">— Escribir desde cero —</option>
-          {prompts.map(p => (
+          {visiblePrompts.map(p => (
             <option key={p.id} value={p.id}>{p.name}{p.isDefault ? '' : ' ·'}</option>
           ))}
         </select>

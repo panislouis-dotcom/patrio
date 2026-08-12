@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { colors, fonts } from '../../lib/theme'
-import type { ImageType, PropertyImage, PropertyRender, RenderPrompt } from '../../lib/types'
+import type { ImageType, PropertyImage, PropertyRender, RenderPrompt, RenderPromptKind } from '../../lib/types'
 import { PhotoGallery } from '../PhotoGallery'
 import { RendersPanel } from './RendersPanel'
 
@@ -16,7 +16,7 @@ interface Props {
   onGenerate: (req: { sourceImageId: number; promptId: number | null; promptText: string })
     => Promise<PropertyRender>
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
-  onSavePrompt: (p: { name: string; body: string }) => Promise<RenderPrompt>
+  onSavePrompt: (p: { name: string; body: string; kind: RenderPromptKind }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
 }
 

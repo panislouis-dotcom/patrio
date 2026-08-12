@@ -1,4 +1,4 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetSource } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, RenderPromptKind, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetSource } from './types'
 import type { FloorPlanModel, VariantKey } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -179,17 +179,29 @@ export async function deletePropertyImage(id: number, imageId: number): Promise<
 
 // ─── Renders y su biblioteca de prompts ──────────────────────────────────────
 
-export async function listRenderPrompts(): Promise<RenderPrompt[]> {
-  const res = await authFetch(`${BASE}/api/render-prompts`)
+/**
+ * `kind` filtra entre 'photo' y 'plan' (migración 041, Tarea 22) cuando se pasa;
+ * sin él trae la biblioteca completa. La ficha (`PropertyDetailPage`) pide
+ * SIEMPRE la completa una sola vez —son 11 filas, no vale la pena un segundo
+ * viaje— y dos `RendersPanel` (fotos, plano) filtran cada quien la suya por
+ * dentro; este filtro existe para quien SÍ necesite pedir un solo catálogo.
+ */
+export async function listRenderPrompts(kind?: RenderPromptKind): Promise<RenderPrompt[]> {
+  const params = new URLSearchParams()
+  if (kind) params.set('kind', kind)
+  const res = await authFetch(`${BASE}/api/render-prompts${params.size ? `?${params}` : ''}`)
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
-export async function createRenderPrompt(name: string, body: string): Promise<RenderPrompt> {
+/** `kind` por defecto 'photo': mismo default que `renders_db.create_prompt`
+ * (Tarea 22), por compatibilidad hacia atrás con cualquier llamador que no
+ * sepa todavía de la biblioteca de plano. */
+export async function createRenderPrompt(name: string, body: string, kind: RenderPromptKind = 'photo'): Promise<RenderPrompt> {
   const res = await authFetch(`${BASE}/api/render-prompts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, body }),
+    body: JSON.stringify({ name, body, kind }),
   })
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
