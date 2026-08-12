@@ -173,4 +173,82 @@ nombres duplicados) — cada uno con evidencia de mutación verificada.**
 
 **TASKS 19-23 COMPLETAS: el código del addendum de renders más precisos está cerrado.
 Falta solo Task 24 (verificación final).**
-- [ ] Task 24: verificación integral (+ render real de prueba si el tiempo alcanza)
+- [x] Task 24: verificación integral (evidencia fresca + render real de prueba)
+
+## Revisión final del addendum (Task 24)
+
+**Part A — 4 capas de verificación, evidencia fresca de esta corrida:**
+- Frontend: `npm test` → **517/517** (43 archivos, coincide con el conteo esperado);
+  `npx tsc --noEmit` limpio; `npm run build` limpio (el warning de chunk >500kB es
+  preexistente, ya señalado en el cierre del Task 18).
+- Backend: `.venv/bin/python -m pytest app/api/tests/ -q` → **582/582**.
+- Las 4 capas (2 suites + tsc + build) en verde, sin fixes necesarios.
+
+**Part B — render real de prueba (el punto de todo el addendum):**
+- Bloqueo inicial: ni `claude-in-chrome` (extensión no conectada) ni `chrome-devtools`
+  MCP (perfil compartido ya ocupado por otra sesión de Chrome de este mismo entorno
+  multi-agente — matar ese proceso a ciegas arriesgaba romper la sesión de otro
+  agente) estaban disponibles. Se optó por la ruta alterna explícitamente autorizada
+  por la tarea: llamar al endpoint real por API en vez de manejar la UI.
+- Se generó el SVG y el `planFacts` REALES (no una aproximación) corriendo el código
+  de producción (`floorToSvgString` + `planFacts`) contra la geometría real de la
+  propiedad 5 vía un test de vitest desechable (borrado al terminar), con la
+  geometría de la propiedad 5 volcada de la BD como fixture temporal (también
+  borrada). El PNG se rasterizó reproduciendo EXACTAMENTE el algoritmo de
+  `floorToPngBlob` (Image → canvas → toDataURL) con el Playwright de Python que ya
+  usa el repo para el PDF — no una aproximación con otra librería.
+- Blocker encontrado y resuelto: el stack vivo en el puerto 8010 (levantado antes en
+  esta sesión desde este mismo checkout) tronaba `ModuleNotFoundError: No module
+  named 'openai'` — el paquete está en `requirements.txt` pero no estaba instalado en
+  `.venv`. `pip install openai>=2.0.0` lo resolvió sin reiniciar uvicorn (el import es
+  perezoso dentro de `generate_image`).
+- Render real generado: `POST /api/properties/5/renders/from-plan` contra el stack de
+  este checkout (puerto 8010), variant=`original`, preset `Cálido contemporáneo`
+  (id 7, el mismo estilo que ya había funcionado en el ejemplo histórico) + el texto
+  de `planFacts` (conectividad + tipo de cuarto + dimensiones) concatenado a mano —
+  la UI real habría necesitado el mismo paso manual porque `choosePreset`/`selectPlan`
+  todavía se pisan el texto en vez de componerse (defecto conocido y diferido desde
+  el Task 15, no de este addendum). Costo real de OpenAI incurrido, ~78s de espera.
+  Resultado: `property_renders.id=20`, propiedad 5.
+- **Comparación honesta contra el primer intento histórico (`property_renders.id=7`,
+  misma propiedad):** el nuevo render es claramente mejor en fidelidad estructural.
+  El intento histórico (2026-08-06, plano-fuente ya no existe en disco) inventó una
+  topología completa: un edificio dividido arriba/abajo con un corredor central y una
+  escalera, dos cocinas simétricas — nada de eso corresponde al layout real
+  (dos departamentos divididos IZQUIERDA/DERECHA por un muro central, sin escalera
+  visible en la geometría actual), y por eso las 6+ rondas de corrección manual
+  tuvieron que reescribir a qué cuarto conectaba cada puerta. El render nuevo sí seguí
+  el layout real: columna izquierda de arriba a abajo (patio, BAÑO DP1, HABITACION
+  DP1 con la puerta hacia el pasillo, ESTANCIA DP1 grande abajo con puerta al
+  exterior) y columna derecha (HABITACION DP2 arriba, BAÑO DP2, ESTANCIA DP2 como
+  sala-comedor alargada con puertas al exterior) — verificado recortando la imagen
+  por zonas y cruzándolo contra el texto de `planFacts` conexión por conexión. Único
+  defecto real detectado: el modelo partió el cuarto BAÑO DP1 (con forma en L
+  alrededor del patio) en dos cajas (una vacía + un baño con regadera/WC) en vez de
+  un solo cuarto en L — un error menor y localizado, no un error de topología general
+  como el histórico.
+  - Veredicto: **mejor**, con evidencia específica, no una impresión genérica.
+
+**Part C — barrido final:**
+- `git diff 4223266..HEAD` (4223266 = el commit que introdujo
+  `docs/plans/2026-08-11-renders-de-plano-mas-precisos.md`, el arranque real del
+  addendum) sin `console.log`/`debugger`/TODO/FIXME nuevos.
+- `origin/main...feat/levantamientos`: la rama quedó **3 commits detrás** de
+  `origin/main` (3 PRs mergeados de Procesos/Scouting, ninguno toca floorplan/renders
+  ni migraciones — sin riesgo de conflicto) y sigue 52 adelante. Reconfirma lo ya
+  sabido: nadie más toca este código en paralelo.
+- Stack de prueba de esta sesión (mismo checkout, mismo HEAD) queda **vivo a
+  propósito** por si Eduardo quiere revisar en vivo:
+  API `http://localhost:8010` (`/api/version` responde), frontend
+  `http://localhost:5174`.
+- Dato de prueba creado en esta tarea: `property_renders.id=20` (propiedad 5) — se
+  deja, es la evidencia de Part B, no basura. Ningún dato histórico se tocó ni se
+  borró.
+
+**Conclusión: las 4 capas de verificación están en verde con evidencia fresca de esta
+corrida. El render real de prueba (Part B) confirma en la práctica el diagnóstico y
+el objetivo del addendum: el primer intento desde el nuevo flujo sigue la
+distribución real (conectividad puerta-a-puerta y disposición de cuartos) de forma
+notablemente más fiel que el primer intento histórico, con un solo defecto menor y
+localizado (una división de cuarto en L) en vez de una topología completa
+inventada. TASKS 19-24 CERRADAS. Rama sin push/merge — decisión de Eduardo.**
