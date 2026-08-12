@@ -1,11 +1,32 @@
 import { describe, it, expect } from 'vitest'
 import { emptyFloorGraph, type Fixture } from './types'
-import { addVertex, addEdge } from './graph'
+import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import { planFacts } from './planFacts'
 
 function rectangle(f: ReturnType<typeof emptyFloorGraph>, x0: number, y0: number, x1: number, y1: number) {
   const a = addVertex(f, x0, y0), b = addVertex(f, x1, y0), c = addVertex(f, x1, y1), d = addVertex(f, x0, y1)
   addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+}
+
+/** Rectángulo de 6x4 dividido a la mitad (x=3) por un muro interior — misma forma que
+ * `dividedRooms` de rooms.test.ts, reusada aquí para probar las oraciones de conectividad
+ * que planFacts arma sobre `roomConnections`. `nameLeft`/`nameRight` en '' deja ese cuarto
+ * SIN punto de nombre (cuarto cerrado pero sin etiqueta) — el caso "sin nombre" del task.
+ */
+function dividedRooms(f: ReturnType<typeof emptyFloorGraph>, nameLeft: string, nameRight: string) {
+  const a = addVertex(f, 0, 0), b = addVertex(f, 6, 0), c = addVertex(f, 6, 4), d = addVertex(f, 0, 4)
+  const eBottom = addEdge(f, a, b, 0.15)
+  addEdge(f, b, c, 0.15)
+  const eTop = addEdge(f, c, d, 0.15)
+  addEdge(f, d, a, 0.15)
+  const botMid = addVertex(f, 3, 0)
+  const topMid = addVertex(f, 3, 4)
+  splitEdgeAtVertex(f, eBottom, botMid)
+  splitEdgeAtVertex(f, eTop, topMid)
+  const divider = addEdge(f, botMid, topMid, 0.10)
+  if (nameLeft) f.rooms.push({ name: nameLeft, cx: 1.5, cy: 2 })
+  if (nameRight) f.rooms.push({ name: nameRight, cx: 4.5, cy: 2 })
+  return { divider, eBottomLeft: eBottom }
 }
 
 describe('planFacts', () => {
@@ -79,5 +100,41 @@ describe('planFacts', () => {
     f.height_m = 2.6
     const text = planFacts(f)
     expect(text).toContain('2.60 m')
+  })
+
+  it('states which two rooms a door connects, by name', () => {
+    const f = emptyFloorGraph('Test')
+    const { divider } = dividedRooms(f, 'Cocina', 'Sala')
+    f.edges[divider].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
+
+    const text = planFacts(f)
+
+    expect(text).toContain('Cocina conecta por puerta con Sala.')
+  })
+
+  it('states a room with a window to the exterior', () => {
+    const f = emptyFloorGraph('Test')
+    const { eBottomLeft } = dividedRooms(f, 'Cocina', 'Sala')
+    f.edges[eBottomLeft].openings.push({ kind: 'window', offset: 0.5, width: 1.2 })
+
+    const text = planFacts(f)
+
+    expect(text).toContain('Cocina tiene ventana hacia el exterior.')
+  })
+
+  it('falls back gracefully when a door connects a named room to a closed but UNLABELED room', () => {
+    const f = emptyFloorGraph('Test')
+    // El cuarto izquierdo se queda sin punto de nombre en f.rooms — cerrado, pero sin
+    // etiqueta. roomConnections le resuelve name: '' (rooms.ts::roomNameInside), y
+    // planFacts no debe imprimir eso crudo ("conecta por puerta con .").
+    const { divider } = dividedRooms(f, '', 'Sala')
+    f.edges[divider].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
+
+    const text = planFacts(f)
+
+    expect(text).toContain('un cuarto sin nombre conecta por puerta con Sala.')
+    expect(text).not.toContain('con .')
+    expect(text).not.toMatch(/undefined/i)
+    expect(text).not.toMatch(/null/i)
   })
 })

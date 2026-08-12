@@ -235,10 +235,15 @@ describe('roomConnections', () => {
     expect(conns[0]).toMatchObject({ kind: 'window', roomA: 'Cocina', roomB: 'exterior' })
   })
 
-  it('does not crash on an opening whose edge sits on an open (non-closed) boundary', () => {
+  it('el guard de faceA/faceB satisface el narrowing de TS aunque nunca se alcance en un grafo bien formado', () => {
     // Una fantasma con opening es imposible por construcción (Task 7 la rechaza en el
-    // reducer), pero esta es la guarda defensiva real: una arista cuyo dart no resuelve a
-    // ninguna cara (grafo no cerrado) no debe tronar, solo omitirse o degradar con calma.
+    // reducer). Y este caso —un opening sobre un límite abierto (no cerrado)— TAMPOCO
+    // dispara la rama `!faceA || !faceB`: quitando el guard temporalmente y corriendo
+    // toda la suite (revisión de código previa) confirmó que sigue pasando sin tronar,
+    // porque `traceFaces` siempre resuelve una cara para cada dart, cerrado o no. El
+    // guard existe solo para que TypeScript acepte el `T | undefined` de `Map.get`, no
+    // porque haya un `FloorGraph` real que lo alcance. Este test se queda igual (cobertura
+    // barata y sin daño de que un límite abierto no truena), solo con el nombre corregido.
     const f = emptyFloorGraph('Test')
     const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3)
     const e1 = addEdge(f, a, b, 0.15)

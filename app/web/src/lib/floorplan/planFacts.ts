@@ -6,9 +6,31 @@
 // NADA sobre el tamaño real del espacio.
 import type { FloorGraph } from './types'
 import { FIXTURE_CATALOG } from './types'
-import { roomLabels } from './rooms'
+import { roomLabels, roomConnections, type Connection } from './rooms'
 
 const fmt = (n: number): string => n.toFixed(2)
+
+/** Nombre para mostrar de un lado de una `Connection`: 'exterior' se queda literal, un
+ * nombre real se queda igual, y un nombre vacío (cara cerrada sin punto de etiqueta
+ * dentro — rooms.ts::roomNameInside) cae a una frase honesta en vez de imprimirse crudo
+ * como "" (que dejaría "conecta por puerta con ." en el texto). */
+const roomDisplay = (name: string | 'exterior'): string =>
+  name === 'exterior' ? 'exterior' : name.trim() ? name : 'un cuarto sin nombre'
+
+/** Una oración por conexión: puerta siempre nombra ambos lados; ventana hacia el
+ * exterior nombra solo el cuarto interior. El tercer caso —ventana entre dos cuartos
+ * interiores— es alcanzable (`Connection.roomA`/`roomB` no restringen `kind: 'window'`
+ * a un muro exterior; nada en `roomConnections` lo impide), así que también se frasea
+ * en vez de asumir que nunca pasa. */
+const connectionSentence = (c: Connection): string => {
+  const a = roomDisplay(c.roomA), b = roomDisplay(c.roomB)
+  if (c.kind === 'door') return `${a} conecta por puerta con ${b}.`
+  if (c.roomA === 'exterior' || c.roomB === 'exterior') {
+    const interior = c.roomA === 'exterior' ? b : a
+    return `${interior} tiene ventana hacia el exterior.`
+  }
+  return `${a} y ${b} comparten una ventana interior.`
+}
 
 /**
  * Datos duros del piso ACTIVO de un levantamiento, en un párrafo listo para anteponerse
@@ -36,6 +58,13 @@ export function planFacts(floor: FloorGraph): string {
       r.area != null ? `${r.name} (${fmt(r.area)} m²)` : `${r.name} (área sin medir)`)
     parts.push(`Cuartos: ${roomTexts.join(', ')}.`)
   }
+
+  // Conectividad por puerta/ventana: sin esto el modelo de imagen no tiene forma de saber
+  // qué cuartos comunican entre sí ni cuáles dan al exterior — ver el diagnóstico de
+  // docs/plans/2026-08-11-renders-de-plano-mas-precisos.md (Task 20/21a). Reusa
+  // `roomConnections` (rooms.ts) en vez de reimplementar el trazo de caras aquí.
+  const connections = roomConnections(floor)
+  if (connections.length > 0) parts.push(...connections.map(connectionSentence))
 
   // Dimensiones generales: bounding box de los vértices dibujados. Sin vértices no hay
   // plano que describir — se omite la frase entera en vez de fabricar un 0×0 o 1×1 falso
