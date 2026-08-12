@@ -163,6 +163,8 @@ con 3 bugs reales cazados y corregidos (puerta al exterior, substring "bano"⊂"
 nombres duplicados) — cada uno con evidencia de mutación verificada.**
   - Nota: 2 agentes se colgaron en Task 21 antes de dividirla; un 3er colgado en el spec
     review de 21a (intentó worktree innecesario) — limpiado sin tocar nada del usuario
-- [ ] Task 22: render_prompts.kind + migración 041 + presets de estilo
+- [x] Task 22: render_prompts.kind + migración 041 + presets de estilo (e251e23; spec ✅, calidad en revisión)
+  - 5 presets nuevos puro estilo, verificados sin contenido de área; schema.sql regenerado
+    independientemente por el revisor, byte-idéntico
 - [ ] Task 23: frontend filtra presets por kind
 - [ ] Task 24: verificación integral (+ render real de prueba si el tiempo alcanza)
