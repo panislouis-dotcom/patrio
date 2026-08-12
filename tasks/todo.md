@@ -148,13 +148,19 @@ por eso las cadenas históricas de renders necesitaron 6+ rondas de edición man
     y verificada por reproducción del bug exacto; hueco de ventana interior cerrado con test
   - 21b (50dba61+0f969c1): spec ✅, calidad ✅ tras fix (tokenizer en vez de substring;
     "PATIO URBANO" ahora infiere patio, no baño; cobertura completa de las 7 categorías)
-  - 21c (988c481+109d2d7): spec ✅, calidad con fix — bug real confirmado: nombres duplicados
-    mezclaban área de un cuarto con dimensiones de otro (dato falso a una llamada de IA
-    pagada). Fix: correlación posicional en vez de Map por nombre, + DRY del bbox de piso.
-    Re-revisión en curso.
+  - 21c (988c481+109d2d7): spec ✅, calidad ✅ tras fix — correlación posicional (no Map por
+    nombre) verificada estructuralmente correcta; mutación reproducida de forma independiente;
+    swap DRY del bbox de piso verificado byte-idéntico contra 5 fixtures
   - Dos fixes concurrentes al mismo archivo (planFacts.ts) manejados sin choque: el agente
     de 21b detectó el WIP de 21c, lo aisló con patch, commiteó su fix limpio, reaplicó el
     WIP encima — 0 pérdida de trabajo.
+  - Nota (no bloqueante, ya conocida desde antes de esta rama): interiorPolygons/outerFace
+    solo descartan UNA cara exterior — con islas desconectadas en una planta, se duplican
+    áreas. Confirmado pre-existente desde Task 20, fuera de alcance del addendum.
+
+**TASK 21 COMPLETA (21a+21b+21c): conectividad, tipo de cuarto y dimensiones por espacio,
+con 3 bugs reales cazados y corregidos (puerta al exterior, substring "bano"⊂"urbano",
+nombres duplicados) — cada uno con evidencia de mutación verificada.**
   - Nota: 2 agentes se colgaron en Task 21 antes de dividirla; un 3er colgado en el spec
     review de 21a (intentó worktree innecesario) — limpiado sin tocar nada del usuario
 - [ ] Task 22: render_prompts.kind + migración 041 + presets de estilo
