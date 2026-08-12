@@ -304,6 +304,16 @@ def test_creating_a_prompt_with_kind_plan_persists(client):
     assert stored["kind"] == "plan"
 
 
+def test_creating_a_prompt_with_invalid_kind_is_rejected(client):
+    """Sin la validación de Pydantic esto llega crudo al INSERT y choca contra
+    el CHECK de la 041 como un 500 mudo — el mismo patrón que `variant` ya
+    evita unas líneas más abajo en este archivo."""
+    r = client.post("/api/render-prompts",
+                    json={"name": "Kind inválido", "body": "x", "kind": "banana"})
+    assert r.status_code == 422, r.text
+    assert not any(p["name"] == "Kind inválido" for p in client.get("/api/render-prompts").json())
+
+
 def test_listing_prompts_filtered_by_kind(client):
     all_prompts = client.get("/api/render-prompts").json()
     photo_prompts = client.get("/api/render-prompts?kind=photo").json()

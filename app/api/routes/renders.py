@@ -1,4 +1,5 @@
 """Endpoints de la biblioteca de prompts y de los renders de una propiedad."""
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -16,8 +17,11 @@ class PromptCreate(BaseModel):
     name: str
     body: str
     # 'photo' por defecto: compat con cualquier llamador anterior a la
-    # biblioteca de plano (Tarea 22), que nunca mandó este campo.
-    kind: str = "photo"
+    # biblioteca de plano (Tarea 22), que nunca mandó este campo. `Literal`
+    # (no `str`) para que un valor fuera del CHECK de la 041 se rechace aquí
+    # con un 422 limpio de Pydantic — sin la revisión previa el choque llega
+    # como IntegrityError, un 500 mudo, igual que `variant` evita más abajo.
+    kind: Literal["photo", "plan"] = "photo"
 
 
 class PromptUpdate(BaseModel):
