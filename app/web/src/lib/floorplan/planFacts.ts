@@ -10,6 +10,36 @@ import { roomLabels, roomConnections, type Connection } from './rooms'
 
 const fmt = (n: number): string => n.toFixed(2)
 
+/** Catálogo explícito palabra-clave → tipo de cuarto (estructura de datos, no regex
+ * disperso por la lógica — convención del repo). El usuario nombra sus cuartos como
+ * quiere ("HABITACION DP1", "cocina dp1", "ESTANCIA DP2" — ver el diagnóstico de
+ * docs/plans/2026-08-11-renders-de-plano-mas-precisos.md), así que el prompt de
+ * render necesita inferir el tipo para dar contexto de mobiliario/acabados al modelo
+ * de imagen. La lista NO pretende cubrir cada nombre posible en español — nombres
+ * fuera del catálogo (p.ej. "RECIBIDOR PA") simplemente no infieren tipo, lo cual es
+ * aceptable: `roomType` regresa null y `planFacts` omite la anotación en vez de forzar
+ * una categoría inventada. */
+const ROOM_TYPE_KEYWORDS: Record<string, string[]> = {
+  cocina: ['cocina'],
+  baño: ['baño', 'bano', 'wc'],
+  recámara: ['recámara', 'recamara', 'habitación', 'habitacion', 'dormitorio'],
+  sala: ['sala', 'estancia'],
+  comedor: ['comedor'],
+  patio: ['patio'],
+  terraza: ['terraza'],
+}
+
+/** Infiere el tipo de cuarto por palabra clave en su nombre (insensible a mayúsculas).
+ * `null` cuando ninguna categoría del catálogo aparece en el nombre — no todo nombre
+ * de cuarto tiene por qué caer en una categoría conocida. */
+const roomType = (name: string): string | null => {
+  const lower = name.toLowerCase()
+  for (const [type, keywords] of Object.entries(ROOM_TYPE_KEYWORDS)) {
+    if (keywords.some(kw => lower.includes(kw))) return type
+  }
+  return null
+}
+
 /** Nombre para mostrar de un lado de una `Connection`: 'exterior' se queda literal, un
  * nombre real se queda igual, y un nombre vacío (cara cerrada sin punto de etiqueta
  * dentro — rooms.ts::roomNameInside) cae a una frase honesta en vez de imprimirse crudo
@@ -54,8 +84,14 @@ export function planFacts(floor: FloorGraph): string {
   // de eso el párrafo dice que el área no se pudo medir, que es la verdad del dato.
   const rooms = roomLabels(floor).filter(r => r.name.trim())
   if (rooms.length > 0) {
-    const roomTexts = rooms.map(r =>
-      r.area != null ? `${r.name} (${fmt(r.area)} m²)` : `${r.name} (área sin medir)`)
+    const roomTexts = rooms.map(r => {
+      const measure = r.area != null ? `${fmt(r.area)} m²` : 'área sin medir'
+      const type = roomType(r.name)
+      // Sin tipo inferido, el paréntesis se queda solo con la medida — nunca
+      // "(tipo: )" ni "tipo: null" colgando cuando el nombre no cae en el catálogo.
+      const detail = type != null ? `${measure}, tipo: ${type}` : measure
+      return `${r.name} (${detail})`
+    })
     parts.push(`Cuartos: ${roomTexts.join(', ')}.`)
   }
 

@@ -137,4 +137,68 @@ describe('planFacts', () => {
     expect(text).not.toMatch(/undefined/i)
     expect(text).not.toMatch(/null/i)
   })
+
+  // Task 21b — tipo de cuarto inferido por palabra clave en el nombre. Nombres reales
+  // tomados del diagnóstico en docs/plans/2026-08-11-renders-de-plano-mas-precisos.md
+  // (levantamientos capturados por el usuario, no inventados).
+  describe('room-type inference by name', () => {
+    const cases: Array<[string, string]> = [
+      ['HABITACION DP1', 'recámara'],
+      ['ESTANCIA DP2', 'sala'],
+      ['BAÑO DP1', 'baño'],
+      ['cocina dp1', 'cocina'],
+      ['PATIO DP1', 'patio'],
+    ]
+
+    it.each(cases)('infiere el tipo de "%s" como "%s"', (name, expectedType) => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name, cx: 2, cy: 1.5 })
+
+      const text = planFacts(f)
+
+      expect(text).toContain(`tipo: ${expectedType}`)
+    })
+
+    it('"RECIBIDOR PA" no infiere ningún tipo del catálogo (nombre fuera de las categorías cubiertas)', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'RECIBIDOR PA', cx: 2, cy: 1.5 })
+
+      const text = planFacts(f)
+
+      expect(text).toContain('RECIBIDOR PA')
+      expect(text).not.toMatch(/tipo: undefined/i)
+      expect(text).not.toMatch(/tipo: null/i)
+      expect(text).not.toMatch(/tipo:\s*\)/i)
+      expect(text).not.toMatch(/\(tipo:\s*\)/i)
+    })
+
+    it('un nombre sin ninguna palabra clave conocida sigue reportando el cuarto sin romper y sin artefacto vacío', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'Zzyx Inventado', cx: 2, cy: 1.5 })
+
+      const text = planFacts(f)
+
+      expect(text).toContain('Zzyx Inventado')
+      expect(text).not.toContain('(tipo: )')
+      expect(text).not.toMatch(/tipo: undefined/i)
+    })
+
+    it('la coincidencia de tipo es insensible a mayúsculas/minúsculas', () => {
+      const fLower = emptyFloorGraph('Test')
+      rectangle(fLower, 0, 0, 4, 3)
+      fLower.rooms.push({ name: 'Cocina', cx: 2, cy: 1.5 })
+      const textLower = planFacts(fLower)
+
+      const fUpper = emptyFloorGraph('Test')
+      rectangle(fUpper, 0, 0, 4, 3)
+      fUpper.rooms.push({ name: 'COCINA', cx: 2, cy: 1.5 })
+      const textUpper = planFacts(fUpper)
+
+      expect(textLower).toContain('tipo: cocina')
+      expect(textUpper).toContain('tipo: cocina')
+    })
+  })
 })
