@@ -267,7 +267,10 @@ estaba fijo en `renders.py` pese a que gpt-image-2 soporta razones de aspecto
 arbitrarias.
 
 - [x] Task 25: tamaño de salida + resolución de referencia ajustados para planos
-  (ab826ae; spec en revisión)
+  (ab826ae; spec ✅, calidad ✅ — barrido independiente de ~916k combinaciones,
+  cero violaciones)
+  - Pendientes cosméticos no bloqueantes (opcional, no urgente): comentario de
+    costo/latencia junto a MAX_EDGE_PLAN, assert defensivo de tolerancia post-clamp
   - `_output_size` calcula WIDTHxHEIGHT real, clamp [1:3,3:1], múltiplos de 16;
     fotos quedan byte-idénticas (size fijo, tope 1536); planos usan proporción
     real + tope 2048. Edición hereda vía chain_is_plan, mismo patrón que la
@@ -284,3 +287,6 @@ arbitrarias.
     py() que usa planImage.ts), verificado contra 8 fixtures reales.
   - De paso: `wallLength` duplicado se reemplazó por `edgeAxis(...).L` compartido
     con planImage.ts/FloorPlanCanvas.tsx (mismo cálculo, ya no puede divergir).
+
+**TASKS 25-26 COMPLETAS: código del addendum #2 cerrado. Falta Task 27
+(verificación final + render de prueba comparando proporción real).**
