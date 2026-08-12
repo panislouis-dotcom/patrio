@@ -4,9 +4,10 @@
 // §"Prompt base enriquecido". Reemplaza a `planSeed` (RendersPanel.tsx), que solo mandaba
 // nombres de cuarto: sin medidas ni muebles, "amuebla y da acabados" no le decía al modelo
 // NADA sobre el tamaño real del espacio.
-import type { FloorGraph } from './types'
+import type { Edge, FloorGraph } from './types'
 import { FIXTURE_CATALOG } from './types'
 import { roomLabels, roomAreas, roomConnections, roomPolygons, type Connection } from './rooms'
+import { cornerAngles } from './dimensions'
 
 const fmt = (n: number): string => n.toFixed(2)
 
@@ -77,25 +78,61 @@ const boundingBoxText = (vertices: { x: number; y: number }[]): string => {
   return `${fmt(width)} m × ${fmt(depth)} m`
 }
 
+/** Longitud real (metros) del muro de una arista — la hipotenusa entre sus dos vértices.
+ * Nombre explícito en vez de reusar alguna utilidad de geometry.ts: aquí solo hace falta
+ * un escalar, no el aparato de `Pt`/shoelace que ese módulo trae para polígonos. */
+const wallLength = (floor: FloorGraph, edge: Edge): number => {
+  const v1 = floor.vertices[edge.v1], v2 = floor.vertices[edge.v2]
+  return Math.hypot(v2.x - v1.x, v2.y - v1.y)
+}
+
+/**
+ * Cláusula ", a X.XX m del extremo del muro" para una `Connection` — la posición métrica
+ * de SU abertura (puerta/ventana) a lo largo del muro que la contiene. `Opening.offset`
+ * es una fracción 0..1 de la longitud del muro (types.ts); aquí se resuelve la arista y
+ * la abertura reales vía `edgeId`/`openingIndex` (Task 20, rooms.ts::roomConnections) y
+ * se convierte a metros: `offset * wallLength`.
+ *
+ * POR QUÉ siempre desde `edge.v1` (nunca v2, nunca "el extremo visualmente más cercano"):
+ * ninguno de los dos extremos de una arista es "el inicio real" del muro — la elección es
+ * arbitraria — pero tiene que ser SIEMPRE LA MISMA, porque quien consume este dato no es
+ * una persona viendo el plano junto al texto: es el modelo de imagen, que solo tiene la
+ * cota como ancla. Si hoy esta puerta se reporta "a 1.20 m del extremo" y mañana, tras
+ * editar el plano, "a 2.80 m" (el resto del mismo muro) solo porque v1/v2 se resolvieron
+ * al revés, la cota deja de ser una referencia fija y el modelo no puede anclar la puerta
+ * a un punto del dibujo. `edge.v1` es estable ante edición: partir el muro
+ * (`splitEdgeAtVertex`, graph.ts) o mover un vértice no cambia cuál extremo de una arista
+ * YA EXISTENTE es v1 — así que la convención no se corrompe al seguir editando el plano.
+ */
+const openingPositionClause = (floor: FloorGraph, c: Connection): string => {
+  const edge = floor.edges[c.edgeId]
+  const opening = edge.openings[c.openingIndex]
+  const distance = opening.offset * wallLength(floor, edge)
+  return `, a ${fmt(distance)} m del extremo del muro`
+}
+
 /** Una oración por conexión. El chequeo de exterior va PRIMERO y cubre puerta Y ventana
  * por igual: 'exterior' no es un cuarto, así que "conecta por puerta con exterior"
  * (o, peor, "exterior conecta por puerta con Sala" cuando roomA es el lado exterior) es
  * gramaticalmente roto — la puerta de entrada/patio es la más común de cualquier casa, no
  * un caso raro que se pueda dejar caer en la plantilla genérica. Solo cuando NINGÚN lado es
  * exterior (dos cuartos interiores con puerta, o con ventana — ambos alcanzables, ver abajo)
- * se nombra a ambos por separado. */
-const connectionSentence = (c: Connection): string => {
+ * se nombra a ambos por separado. Toda rama agrega la posición métrica de la abertura
+ * (Task 26: "las puertas en el lugar correcto") ANTES del punto final, nunca después.
+ */
+const connectionSentence = (floor: FloorGraph, c: Connection): string => {
   const a = roomDisplay(c.roomA), b = roomDisplay(c.roomB)
+  const position = openingPositionClause(floor, c)
   if (c.roomA === 'exterior' || c.roomB === 'exterior') {
     const interior = c.roomA === 'exterior' ? b : a
     const label = c.kind === 'door' ? 'puerta' : 'ventana'
-    return `${interior} tiene ${label} hacia el exterior.`
+    return `${interior} tiene ${label} hacia el exterior${position}.`
   }
-  if (c.kind === 'door') return `${a} conecta por puerta con ${b}.`
+  if (c.kind === 'door') return `${a} conecta por puerta con ${b}${position}.`
   // Ventana entre dos cuartos interiores: alcanzable (`Connection.roomA`/`roomB` no
   // restringen `kind: 'window'` a un muro exterior; nada en `roomConnections` ni en el
   // reducer/editor lo impide), así que también se frasea en vez de asumir que nunca pasa.
-  return `${a} y ${b} comparten una ventana interior.`
+  return `${a} y ${b} comparten una ventana interior${position}.`
 }
 
 /**
@@ -160,7 +197,7 @@ export function planFacts(floor: FloorGraph): string {
   // docs/plans/2026-08-11-renders-de-plano-mas-precisos.md (Task 20/21a). Reusa
   // `roomConnections` (rooms.ts) en vez de reimplementar el trazo de caras aquí.
   const connections = roomConnections(floor)
-  if (connections.length > 0) parts.push(...connections.map(connectionSentence))
+  if (connections.length > 0) parts.push(...connections.map(c => connectionSentence(floor, c)))
 
   // Dimensiones generales: bounding box de los vértices dibujados. Sin vértices no hay
   // plano que describir — se omite la frase entera en vez de fabricar un 0×0 o 1×1 falso
@@ -168,6 +205,21 @@ export function planFacts(floor: FloorGraph): string {
   const vs = Object.values(floor.vertices)
   if (vs.length > 0) {
     parts.push(`Dimensiones generales del piso: ${boundingBoxText(vs)}.`)
+  }
+
+  // Ángulos de esquina NO rectos: una esquina a 90° es el caso esperado de una
+  // construcción rectangular y no le aporta nada nuevo al modelo de imagen; solo las
+  // irregulares (un corte en L, un muro en diagonal) importan — omitirlas evita ruido en
+  // el 90%+ de los planos, que sí son rectangulares. Reusa `cornerAngles` (dimensions.ts)
+  // sin reimplementar el trazo de esquinas, y reusa también SU criterio de "es recta"
+  // (`isRight`, tolerancia ±1°) en vez de inventar una tolerancia nueva aquí: la misma
+  // pregunta ("¿esta esquina es recta?") ya tiene una respuesta en el código base (la que
+  // colorea la etiqueta de ángulo en FloorPlanCanvas.tsx) — un segundo umbral distinto
+  // para la misma pregunta solo podría divergir de esa respuesta, no mejorarla.
+  const irregularCorners = cornerAngles(floor).filter(c => !c.isRight)
+  if (irregularCorners.length > 0) {
+    parts.push(...irregularCorners.map(c =>
+      `Esquina en (${fmt(c.x)}, ${fmt(c.y)}) con ángulo de ${Math.round(c.deg)}°.`))
   }
 
   parts.push(`Altura de piso: ${fmt(floor.height_m)} m.`)

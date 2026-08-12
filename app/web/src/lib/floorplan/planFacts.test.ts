@@ -109,7 +109,9 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    expect(text).toContain('Cocina conecta por puerta con Sala.')
+    // divider va de botMid=(3,0) a topMid=(3,4) → muro de 4 m; offset .5 → 2.00 m desde v1
+    // (Task 26: la sentencia de conectividad ahora incluye la posición métrica de la puerta).
+    expect(text).toContain('Cocina conecta por puerta con Sala, a 2.00 m del extremo del muro.')
   })
 
   it('states a room with a window to the exterior', () => {
@@ -119,7 +121,8 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    expect(text).toContain('Cocina tiene ventana hacia el exterior.')
+    // eBottomLeft va de a=(0,0) a botMid=(3,0) tras el split → muro de 3 m; offset .5 → 1.50 m.
+    expect(text).toContain('Cocina tiene ventana hacia el exterior, a 1.50 m del extremo del muro.')
   })
 
   it('states a room with a door to the exterior — the most common door in any home (front/patio door)', () => {
@@ -129,7 +132,7 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    expect(text).toContain('Cocina tiene puerta hacia el exterior.')
+    expect(text).toContain('Cocina tiene puerta hacia el exterior, a 1.50 m del extremo del muro.')
     // Nunca la frase al revés/rota: 'exterior' no es un cuarto que "conecte por puerta"
     // con otro — ese texto sale de tratar la puerta exterior como la plantilla genérica.
     expect(text).not.toContain('exterior conecta por puerta')
@@ -150,7 +153,8 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    expect(text).toContain('Sala tiene puerta hacia el exterior.')
+    // eLeft va de d=(0,3) a a=(0,0) → muro de 3 m; offset .7 → 2.10 m desde v1=d.
+    expect(text).toContain('Sala tiene puerta hacia el exterior, a 2.10 m del extremo del muro.')
     expect(text).not.toContain('exterior conecta por puerta')
   })
 
@@ -161,7 +165,7 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    expect(text).toContain('Cocina y Sala comparten una ventana interior.')
+    expect(text).toContain('Cocina y Sala comparten una ventana interior, a 2.00 m del extremo del muro.')
   })
 
   it('falls back gracefully when a door connects a named room to a closed but UNLABELED room', () => {
@@ -174,10 +178,57 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    expect(text).toContain('un cuarto sin nombre conecta por puerta con Sala.')
+    expect(text).toContain('un cuarto sin nombre conecta por puerta con Sala, a 2.00 m del extremo del muro.')
     expect(text).not.toContain('con .')
     expect(text).not.toMatch(/undefined/i)
     expect(text).not.toMatch(/null/i)
+  })
+
+  // Task 26 — posición métrica de puertas/ventanas a lo largo del muro + ángulos de
+  // esquina no rectos. Ver docs/plans/2026-08-12-fidelidad-dimensional-renders.md: el
+  // usuario, tras ver un render real, notó que las puertas no salían "en el lugar
+  // correcto" — planFacts ya decía QUÉ cuartos conecta una puerta, pero no DÓNDE a lo
+  // largo del muro.
+  describe('posición de aberturas y ángulos de esquina', () => {
+    it('a door at a known offset on a wall of known length reports the correct metric distance', () => {
+      const f = emptyFloorGraph('Test')
+      const a = addVertex(f, 0, 0), b = addVertex(f, 5, 0), c = addVertex(f, 5, 3), d = addVertex(f, 0, 3)
+      const eBottom = addEdge(f, a, b, 0.15)
+      addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+      f.rooms.push({ name: 'Recámara', cx: 2.5, cy: 1.5 })
+      f.edges[eBottom].openings.push({ kind: 'door', offset: 0.4, width: 0.9 })
+
+      const text = planFacts(f)
+
+      // Muro de a=(0,0) a b=(5,0): 5 m de largo. offset .4 → 0.4*5 = 2.00 m desde v1=a.
+      expect(text).toContain('Recámara tiene puerta hacia el exterior, a 2.00 m del extremo del muro.')
+    })
+
+    it('a non-90° corner (an L/angled cut) is reported by location and angle', () => {
+      const f = emptyFloorGraph('Test')
+      // Triángulo rectángulo isósceles: ángulos exactos 90°/45°/45° (verificado con
+      // python: acos aplicado a los vectores da 90.0 en a, 45.00...1 en b y c).
+      const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 0, 4)
+      addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, a, 0.15)
+
+      const text = planFacts(f)
+
+      expect(text).toContain('Esquina en (4.00, 0.00) con ángulo de 45°.')
+      expect(text).toContain('Esquina en (0.00, 4.00) con ángulo de 45°.')
+      // La esquina recta (90°, en el origen) no se menciona — no aporta información nueva.
+      expect(text).not.toContain('(0.00, 0.00)')
+    })
+
+    it('a fully rectangular floor (every corner at 90°) never mentions a corner angle', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
+
+      const text = planFacts(f)
+
+      expect(text).not.toContain('Esquina')
+      expect(text).not.toContain('ángulo')
+    })
   })
 
   // Task 21b — tipo de cuarto inferido por palabra clave en el nombre. Nombres reales
