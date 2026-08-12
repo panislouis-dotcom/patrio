@@ -327,5 +327,45 @@ describe('planFacts', () => {
       expect(text).not.toMatch(/undefined/i)
       expect(text).not.toMatch(/null/i)
     })
+
+    // Regresión: un lookup keyed by name (Map<nombre, vértices>) colisiona cuando dos
+    // cuartos comparten nombre — nada en el reducer exige nombres de cuarto únicos, y
+    // "Recámara" repetida sin numerar es un caso real de una casa con varias recámaras. El
+    // bug hacía que el ÚLTIMO cuarto con ese nombre pisara los vértices del primero, así
+    // que el primer cuarto imprimía su área real junto al bounding box del OTRO cuarto.
+    it('two rooms with the SAME name but different sizes never mix one room\'s area with the other\'s dimensions', () => {
+      const f = emptyFloorGraph('Test')
+      // Un solo rectángulo 6x4 dividido ASIMÉTRICAMENTE en x=2 (no en x=3 como
+      // `dividedRooms`, que da mitades iguales — aquí necesitamos tamaños DISTINTOS para
+      // poder detectar si se mezclan): izquierda 2x4=8 m², derecha 4x4=16 m², mismo nombre
+      // en ambas. Un solo componente conexo (a diferencia de dos rectángulos sueltos) para
+      // no tropezar con la limitación conocida y aparte de `interiorPolygons`/`outerFace`
+      // de solo reconocer una cara exterior global entre componentes desconectados.
+      const a = addVertex(f, 0, 0), b = addVertex(f, 6, 0), c = addVertex(f, 6, 4), d = addVertex(f, 0, 4)
+      const eBottom = addEdge(f, a, b, 0.15)
+      addEdge(f, b, c, 0.15)
+      const eTop = addEdge(f, c, d, 0.15)
+      addEdge(f, d, a, 0.15)
+      const botMid = addVertex(f, 2, 0)
+      const topMid = addVertex(f, 2, 4)
+      splitEdgeAtVertex(f, eBottom, botMid)
+      splitEdgeAtVertex(f, eTop, topMid)
+      addEdge(f, botMid, topMid, 0.10)
+      f.rooms.push({ name: 'Recámara', cx: 1, cy: 2 }, { name: 'Recámara', cx: 4, cy: 2 })
+
+      const text = planFacts(f)
+
+      const firstIdx = text.indexOf('Recámara')
+      const firstDetail = text.slice(firstIdx, text.indexOf(')', firstIdx))
+      const secondIdx = text.indexOf('Recámara', firstIdx + 1)
+      const secondDetail = text.slice(secondIdx, text.indexOf(')', secondIdx))
+
+      // Cada cuarto reporta SU PROPIA área junto a SU PROPIO bounding box — nunca el área
+      // de uno junto a las dimensiones del otro (8 m² es 2x4, no 4x4; 16 m² es 4x4, no 2x4).
+      expect(firstDetail).toContain('8.00 m²')
+      expect(firstDetail).toContain('2.00 m × 4.00 m')
+      expect(secondDetail).toContain('16.00 m²')
+      expect(secondDetail).toContain('4.00 m × 4.00 m')
+    })
   })
 })
