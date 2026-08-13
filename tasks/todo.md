@@ -546,3 +546,26 @@ componer el trazo exacto de los muros encima del resultado de la IA.
     ese test falla contra la mutación reintroducida, re-verificado
     independientemente por el revisor.
   - 571/571 tests, tsc y build limpios.
+- [x] Task 33c: fixes en `planFacts.ts` (9daf8e8+ae47840; spec ✅, calidad ✅)
+  - Filtra esquinas fabricadas a ~180° (T-junctions colineales) — reusa
+    ahora la MISMA constante exportada que `isRight` de `dimensions.ts`
+    (deduplicada tras el ciclo de fix, ver abajo).
+  - Nueva `wallSideLabel`: identifica cada muro por su lado dentro del
+    bbox del piso completo (izquierdo/derecho/superior/inferior, o
+    "central" explícito — nunca fabrica un lado falso) + longitud real
+    como desempate. Diseño validado con Eduardo antes de implementar.
+    Resuelve el caso original del bug (dos ventanas en muros
+    perpendiculares del mismo cuarto, antes indistinguibles).
+  - Cuartos sin muros (`enclosed: false`, el caso "Terraza") ahora se
+    marcan explícitamente como espacio abierto, nunca mezclados con
+    cuartos cerrados reales — separación imposible de romper por
+    construcción (dos arrays de origen disjuntos, no un flag manual).
+  - Ciclo de fix con prueba de mutación (dos rondas): el revisor mutó la
+    tolerancia de `isRight` en `dimensions.ts` y ningún test detectó la
+    divergencia con el literal duplicado en `planFacts.ts` — se exportó
+    una única constante (`CORNER_ANGLE_TOL_DEG`). Al re-probar, la
+    deduplicación SOLA no bastaba (ningún test tocaba la frontera exacta
+    de la tolerancia) — el propio implementador lo detectó con su misma
+    técnica de mutación y agregó 2 tests de frontera, cerrando el hueco
+    de verdad (verificado independientemente por el revisor).
+  - 576/576 tests, tsc y build limpios.
