@@ -633,3 +633,39 @@ sin el segundo par de ojos adversarial.
     la API exige. Fix: `_floor16`/`_ceil16` (redondeo direccional).
     Verificado con prueba de mutación.
   - 597/597 tests backend.
+- [x] Task 36: validación empírica del encuadre (render real, sin código)
+  - Generado vía UI real (Playwright, JWT propio), propiedad 5, "Planta
+    Baja", preset+hechos compuestos. Tardó ~4.5 min (calidad/resolución
+    más altas). floor_id/floor_name correctos en BD.
+  - Medido: eje X coincide casi exacto entre referencia y salida; eje Y se
+    estira ~16% desde el mismo borde superior (no un recorte caótico).
+    Pegar a coordenadas fijas NO serviría. Prototipo real (afín por bbox
+    de contenido) confirmó alineación fuerte del perímetro y la mayoría de
+    muros interiores.
+  - Decisión para Task 37: detectar bbox de contenido de ambas imágenes,
+    ajuste afín simple (no local/por regiones — YAGNI hasta que un caso
+    real lo exija).
+- [x] Task 37: composición de geometría exacta (e861bc5)
+  - `_content_bbox`+`_composite_geometry` en `renders.py`: detecta bbox de
+    referencia y salida, transforma afín, compone SOLO pixeles de
+    muro/vano real (luminancia ≤60, piso de opacidad total en 25) OPACOS
+    — el gris de silueta de mueble (~85) nunca se fuerza. Conectado solo
+    al camino de plano (`match_aspect=True`), reusa la referencia limpia
+    que `generate_image` ya recibía, sin regenerar nada.
+  - Bug real en TDD: la fórmula de alfa inicial no llegaba a opacidad
+    completa en la luminancia real del trazo (~17, no 0 puro) — corregido
+    con un piso antes de la rampa. Verificado con prueba de mutación.
+  - Verificación visual real (no solo sintética): corrida contra la
+    referencia/salida capturadas en la Task 36 — muros nítidos y opacos en
+    su posición real, mobiliario de la IA intacto alrededor.
+  - Efecto colateral encontrado y arreglado: el fixture compartido
+    `fake_images_edit` devolvía un PNG de 1x1 que PIL no podía procesar
+    por el nuevo camino real de composición — corregido a un PNG real
+    generado con PIL, beneficia a todos los tests que ya lo usaban.
+  - Incidente de proceso: sin subagentes, un `git checkout` mal dirigido
+    (sin revisar `git status` primero) borró el trabajo no commiteado de
+    esta task en `renders.py` — reconstruido de memoria exacta (verificado
+    con hash idéntico al resultado ya validado visualmente) antes de
+    commitear. Lección aplicada: revisar `git status` antes de cualquier
+    comando destructivo, sin excepción, incluso a mitad de una tarea.
+  - 603/603 tests backend.
