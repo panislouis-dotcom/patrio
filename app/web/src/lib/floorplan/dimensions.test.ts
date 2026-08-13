@@ -81,17 +81,20 @@ describe('widthHeightChains', () => {
     expect(heightMarks).toEqual([0, 8])
   })
 
-  it('does NOT sum disjoint segments that coincidentally share a coordinate but never touch', () => {
-    // Dos tramos a la misma x, cada uno corto, separados por un hueco real (no una T): no
-    // son la misma pared partida, son dos particiones parciales distintas que casualmente
-    // alinean. Ninguna corre debe sumar con la otra — el máximo tramo CONTINUO sigue sin
-    // llegar al 90%, así que no deben generar marca.
+  it('does NOT invent a mark from naive summing when disjoint segments individually fall short but sum past the threshold', () => {
+    // Caso adversarial real: dos tramos separados por un hueco real (0.5 m, muy por encima de
+    // SPLIT_EPS), elegidos para que la SUMA ingenua de sus longitudes cruce el 90% aunque
+    // ninguno de los dos, ni el tramo continuo real que forman, lo haga.
+    //   naive sum = (4 + 3.5) / 8 = 93.75%  → cruzaría el umbral si el código sumara segmentos
+    //   tramo continuo real = max(4, 3.5) / 8 = 50%  → no debe cruzarlo
+    // Esta es la única forma de test que distingue "fusionar tramos que se tocan" (el fix)
+    // de "sumar todos los segmentos del grupo sin verificar que se toquen" (el bug original):
+    // un test con sumas que nunca cruzan el umbral (p.ej. 3+3 de 8) pasa igual con ambas
+    // implementaciones y no prueba nada.
     const f = emptyFloorGraph('Test')
     closedRect(f, 0, 0, 10, 8)
-    addEdge(f, addVertex(f, 5, 0), addVertex(f, 5, 3), 0.10)   // 3 m, toca el borde inferior
-    addEdge(f, addVertex(f, 5, 5), addVertex(f, 5, 8), 0.10)   // 3 m, toca el borde superior
-    // Combinados suman 6/8 = 75%, y el hueco 3→5 es real (2 m, muy por encima de SPLIT_EPS):
-    // ninguna corre continua llega a 7.2 m, así que no debe marcar x=5.
+    addEdge(f, addVertex(f, 5, 0), addVertex(f, 5, 4), 0.10)     // 4 m, toca el borde inferior
+    addEdge(f, addVertex(f, 5, 4.5), addVertex(f, 5, 8), 0.10)   // 3.5 m, toca el borde superior
     const { widthMarks } = widthHeightChains(f)
     expect(widthMarks).toEqual([0, 10])
   })
