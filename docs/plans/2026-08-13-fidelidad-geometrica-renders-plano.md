@@ -47,6 +47,22 @@ el resultado e inspeccionó los píxeles:
    izquierdo del muro" — ¿cuál muro, si hay dos ventanas en el mismo
    cuarto?). Confirma la hipótesis original de Eduardo sobre ambigüedad de
    la prosa, con un ejemplo real reproducido.
+10. **Un cuarto sin muros se lista igual que uno cerrado — tercer mecanismo
+    verificado de "cuartos inventados".** `rooms.ts::roomLabels` devuelve
+    cualquier nombre puesto sobre espacio abierto (`area: null`, sin
+    polígono cerrado — el caso "Terraza"). `planFacts.ts` los mete bajo
+    `"Cuartos:"` indistinguibles de los reales, salvo `"área sin medir"`.
+    Combinado con `_PLAN_CLAUSE` ("No agregues, quites ni muevas cuartos ni
+    paredes"), el prompt le dice al modelo que preserve un "cuarto" que en
+    la imagen no tiene ni un muro — la forma natural de obedecer es
+    dibujarle muros. Confirmado por un segundo subagente independiente.
+
+**Nota sobre resolución de salida (cuantitativo, calculado):** a los
+`_TARGET_PIXELS = 1024*1024` actuales, un muro interior de 0.10 m en una
+casa de 20 m de ancho se pinta a ~5.8 px; en una de 30 m, ~4 px — sub-token
+para un modelo que tokeniza por parches. Argumento cuantitativo adicional
+(no solo cualitativo) de por qué "faltan paredes" en plantas grandes,
+independiente de cualquier arreglo de prompt.
 
 ### Capa 2 — un bug de UI que puede estar anulando el prompt en producción
 
@@ -138,6 +154,12 @@ addendum de fidelidad dimensional.
   - Nombrar el muro en `connectionSentence`/`openingPositionClause` (un
     identificador visualmente verificable, no "v1" — mismo criterio que
     `wallEndLabel` ya usa para los extremos).
+  - Un cuarto SIN muros (`area: null`, de `roomLabels` — el caso "Terraza")
+    debe listarse marcado explícitamente como espacio abierto ("Terraza
+    (espacio abierto, sin muros que cerrarlo)" o equivalente), nunca
+    mezclado sin distinción con los cuartos cerrados — para que la
+    instrucción "no agregues ni quites cuartos ni paredes" no se
+    malinterprete como "dibújale muros a esto".
 - `app/api/renders.py`: quitar "Sin texto ni marcas de agua" de
   `_PLAN_CLAUSE` SI la Task 34 (SVG limpio) hace que esa instrucción deje de
   ser necesaria — decidir cuál de las dos rutas se toma, no ambas.
@@ -166,21 +188,40 @@ siguen verdes.
 - Reusar esta misma fuente "limpia" como base para el overlay de
   composición de la Task 37 — un solo lugar que sabe dibujar la geometría
   exacta, dos consumidores.
+- Nota a verificar antes de construir: existe un SEGUNDO renderer SVG
+  determinista del plano, en Python, `app/api/lib/prospectus_html.py`
+  (`_floorplan_svg`) — usado para el documento de prospecto, no para
+  renders. Confirmar si es relevante reusar algo de ahí o si es
+  deliberadamente un sistema aparte (documento humano vs. imagen de
+  referencia para IA) antes de duplicar lógica de dibujo de muros.
 
 **Tests:** el SVG limpio no contiene ningún `<text>`; el SVG completo (para
 humano) sigue igual que antes — regresión explícita.
 
 **Definition of done:** suite frontend verde, tsc limpio.
 
-### Task 35 — `quality="high"` para el camino de plano
+### Task 35 — `quality="high"` y más resolución de salida para el camino de plano
+
+Cuantitativo (calculado, no supuesto): a `_TARGET_PIXELS = 1024*1024`
+actual, un muro interior de 0.10 m en una casa de 20 m de ancho se pinta a
+~5.8 px; en una de 30 m, ~4 px — sub-token para un modelo que tokeniza por
+parches. Subir la resolución de salida no es solo "más nítido", es la
+diferencia entre que un muro exista como señal codificable o no.
 
 **Files:**
 - `app/api/renders.py`: `generate_image`/`edit_kwargs` o el call-site en
   `routes/renders.py` — mandar `quality="high"` cuando `match_aspect=True`
   (camino de plano). Fotos quedan sin tocar (siguen en `auto`).
+- `app/api/renders.py`: subir `_TARGET_PIXELS` para el camino de plano (no
+  el de foto) — a algo del orden de 2.5-3.7 MP, dentro de lo que
+  `_output_size` ya soporta (verificado hasta 3840×2160, "por encima de
+  2560×1440 es experimental" según el addendum de fidelidad dimensional).
+  Definir el valor exacto con criterio de costo/latencia aceptable, no solo
+  "lo más alto posible".
 
 **Tests:** mock de `images.edit`, confirma que el camino de plano manda
-`quality="high"` y el de foto no.
+`quality="high"` y una resolución mayor que el camino de foto (que sigue
+en `1024x1024`/`auto`).
 
 **Definition of done:** suite backend verde.
 
