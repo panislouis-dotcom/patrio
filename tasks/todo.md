@@ -442,5 +442,27 @@ ambos subagentes):
     (campos nuevos requeridos en PlanProps, `?: never` en PhotosProps) — no
     hubo retroceso al aflojarla.
   - 541/541 tests frontend, tsc y build limpios.
-- [ ] Task 31: "Generar todos los pisos" (lote, confirmación, progreso, fallo parcial)
+- [x] Task 31: "Generar todos los pisos" (f3474c8+8a7b5ed; spec ✅, calidad ✅)
+  - Botón secundario (solo con 2+ pisos), confirmación de dos pasos calcada
+    de RE-PARTIR DEL ORIGINAL (N pisos, ~Nx60-90s, N cargos reales).
+    Orquestación pura en `generateAllFloors.ts` (sin React/red, probada con
+    mocks): loop `for` secuencial real (nunca `Promise.all`), try/catch POR
+    PISO (un fallo no cancela a los demás), resumen final con motivo del
+    fallo. Cada piso usa su PROPIO `floorToPngBlob`/`planFacts`, nunca el
+    del piso seleccionado en el selector individual.
+  - El implementador original se estancó justo antes de commitear (timeout
+    600s) con el trabajo ya terminado — verificado manualmente (559/559
+    tests, tsc y build limpios) y commiteado tal cual por el orquestador.
+  - Hallazgo Importante de calidad, verificado empíricamente y corregido:
+    el estado del lote no se reseteaba cuando el `FloorSet` se reemplazaba
+    por otra vía (RE-PARTIR, o agregar un piso) — el resumen quedaba
+    "pegado" mostrando pisos ya inexistentes. Al investigar el fix se
+    descubrió que `ADD_FLOOR` SÍ tiene botón conectado hoy en
+    `FloorPlanEditor.tsx` (el diseño original lo creía función latente sin
+    UI) — el bug era real y alcanzable, no solo teórico. Fix: `useEffect`
+    sobre la IDENTIDAD real de los pisos (`fs.floors.map(f=>f.id).join(',')`),
+    más sólido que depender de `generation` (que `ADD_FLOOR` no sube). TDD
+    rojo-primero con test de reproducción. Re-revisión de calidad: APROBADO.
+  - 560/560 tests frontend, tsc y build limpios (verificado 2 veces,
+    independientemente, por reviewers distintos).
 - [ ] Task 32: verificación final
