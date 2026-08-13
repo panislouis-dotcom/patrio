@@ -243,21 +243,109 @@ modelo compensó un bug que ya arreglamos").
 **Definition of done:** un veredicto por escrito con las imágenes de
 evidencia, y la decisión de mecanismo para la Task 37.
 
+**VEREDICTO (2026-08-13, render real contra propiedad 5, id=30, borrado tras
+esta validación por ser evidencia de prueba — mismo criterio que los
+renders de prueba de addenda anteriores):**
+
+Generado vía la UI real (Playwright, sesión autenticada con JWT propio),
+piso "Planta Baja", preset "Cálido contemporáneo" compuesto con los hechos
+duros reales. Referencia: 802×1700 (limpia, sin anotaciones — Task 34).
+Salida real de OpenAI: 1312×2784, quality="high" (Task 35). Tardó ~4.5 min
+(más que el ~1 min de antes — el trade-off esperado por calidad/resolución
+más alta).
+
+Medido (bounding box de contenido no-blanco, PIL puro, sin numpy):
+
+| | lienzo | bbox contenido (fracción) |
+|---|---|---|
+| Referencia | 802×1700 | x=[0.122,0.882] y=[0.056,0.763] |
+| Salida IA | 1312×2784 | x=[0.122,0.878] y=[0.056,0.877] |
+
+**Eje X: coincide casi exactamente.** Eje Y: mismo borde superior
+(0.056 ambos), pero la salida estira el contenido ~16% más alto
+proporcionalmente (0.821 vs 0.707 de altura relativa) — el modelo no hace
+un recorte caótico ni un despliegue arbitrario, sino un estiramiento
+vertical suave anclado arriba. **Un pegado ingenuo a coordenadas fijas NO
+serviría** (el error crece hacia abajo, hasta ~16% de la altura del
+contenido en el extremo inferior — visible y no aceptable a esta
+resolución).
+
+**Prototipo real de la solución:** se calculó una transformación afín
+simple (escala X e Y independientes + traslado) que mapea el bbox de
+contenido de la referencia sobre el bbox de contenido detectado en la
+salida real, y se superpuso el resultado (semitransparente, para
+inspección) sobre el render real. El perímetro exterior del edificio
+coincide casi perfectamente en las 4 caras; la mayoría de los muros
+interiores caen dentro de un margen pequeño, con la mayor desviación
+(aún moderada, no catastrófica) en la sección inferior-central — coherente
+con que el estiramiento no es uniforme en el 100% de los casos, pero SÍ es
+lo bastante suave para que un ajuste afín simple lo corrija muy bien.
+
+**Decisión de mecanismo para la Task 37:** detectar el bbox de contenido
+de AMBAS imágenes (referencia y salida real) con la misma técnica simple
+(umbral sobre escala de grises, sin dependencias nuevas — PIL puro, ya es
+dependencia del proyecto), calcular la transformación afín que mapea una
+sobre otra, y componer el trazo de muros (de la MISMA fuente limpia que ya
+se manda a OpenAI, Task 34) escalado/trasladado por esa transformación,
+OPACO, encima del resultado de la IA. Esto responde directamente a la
+decisión de Eduardo ("fidelidad 100%, siempre"): el muro final en la
+imagen persistida SIEMPRE es el real, nunca el que la IA interpretó —
+incluso donde el ajuste afín no sea perfecto, lo que se ve es la
+geometría correcta cubriendo lo que la IA dibujó, no al revés.
+
+No se descarta que en el futuro haga falta un ajuste más fino (por
+regiones, no solo un afín global) si un caso real lo exige — pero la
+evidencia de este render real no lo justifica todavía: un afín global es
+la solución más simple que ya funciona bien, y el diseño puede evolucionar
+después si un caso concreto lo requiere (YAGNI).
+
 ### Task 37 — Implementar la composición de geometría exacta
 
-**Files:** depende del veredicto de la Task 36. Como mínimo:
-- `app/api/renders.py` o un módulo nuevo: tras recibir el resultado de
-  `images.edit`, componer el SVG limpio (Task 34) rasterizado a la
-  resolución de salida, encima del resultado, con Pillow (ya es
-  dependencia del proyecto).
-- Persistir SOLO el resultado ya compuesto como el render final (el
-  usuario nunca ve la versión sin componer).
+Implementado según el veredicto de la Task 36 (afín por bounding box de
+contenido, no pegado a coordenadas fijas).
 
-**Tests:** dado un resultado de IA simulado y una geometría conocida, el
-compuesto final tiene los muros exactamente donde el SVG los pone (no donde
-la IA los dibujó) — test de regresión geométrica real, no solo "no truena".
+**Files:**
+- `app/api/renders.py`:
+  - `_content_bbox(img)`: bounding box del contenido no-blanco (umbral
+    `_BBOX_BG_THRESHOLD=245`), o `None` si la imagen está en blanco.
+  - `_composite_geometry(reference_bytes, output_bytes)`: detecta el bbox
+    de AMBAS imágenes, calcula la transformación afín (escala X/Y
+    independientes + traslado) que mapea el de la referencia sobre el de
+    la salida, reescala la referencia completa con esa transformación, y
+    compone SOLO los pixeles de muro/vano real (luminancia ≤
+    `WALL_LUMINANCE_MAX=60`, con piso de opacidad total en
+    `WALL_CORE_LUMINANCE=25` para que el negro real del trazo —
+    `#111111`≈17, nunca puro negro— quede 100% opaco) OPACO encima del
+    resultado. El gris de silueta de mueble (`#555555`≈85) queda siempre
+    excluido — nunca se fuerza, solo el muro. Si no hay contenido
+    detectable en alguna imagen, regresa `output_bytes` sin tocar.
+  - Conectado al final de `generate_image`, solo cuando `match_aspect=True`
+    (el camino de plano) — reusa `image_bytes` (la referencia limpia
+    original que ya recibió la función) como fuente de geometría, sin
+    regenerar nada.
 
-**Definition of done:** suite backend verde, render real de verificación.
+**Tests:** `_content_bbox` (blanco→`None`, forma dibujada→bbox correcto),
+`_composite_geometry` (reposiciona el muro al bbox de salida detectado, no
+a las coordenadas crudas de la referencia — reproduce el caso real de la
+Task 36; nunca fuerza el gris de mueble; regresa la salida intacta si la
+referencia está en blanco), y un test de wiring confirmando que solo el
+camino de plano compone (nunca fotos). Verificado con prueba de mutación
+(desactivar `_wall_alpha` rompe 2 de los 4 tests de composición).
+
+**Bug real encontrado y arreglado durante el TDD:** la fórmula de alfa
+inicial no llegaba a opacidad completa en la luminancia REAL del trazo de
+muro (17, no 0) — el muro salía semitransparente (~72% opaco). Corregido
+con un piso (`WALL_CORE_LUMINANCE`) antes de empezar la rampa hacia
+`WALL_LUMINANCE_MAX`.
+
+**Verificación visual real** (no solo tests sintéticos): se corrió la
+función real contra la referencia y la salida real capturadas en la Task
+36 (mismo render, id=30) — el resultado compuesto muestra muros nítidos,
+opacos, exactamente en su posición real, con el mobiliario/estilo de la IA
+intacto alrededor.
+
+**Definition of done:** suite backend verde (603/603), verificado contra
+un render real capturado en la Task 36.
 
 ### Task 38 — Verificación final
 

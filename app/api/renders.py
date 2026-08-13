@@ -196,6 +196,118 @@ def _output_size(image_bytes: bytes) -> str:
     return f"{width}x{height}"
 
 
+# ── Task 37: componer la geometría exacta encima del resultado de la IA ──────
+#
+# Diagnóstico del addendum completo (docs/plans/2026-08-13-fidelidad-
+# geometrica-renders-plano.md): images.edit no es una transformación que
+# preserve geometría — es una re-síntesis completa. Ningún prompt lo cambia.
+# La única forma de garantizar "el muro final SIEMPRE es el real" es no
+# depender de que la IA lo haya dibujado bien: se compone el trazo exacto
+# (la MISMA referencia limpia que ya se le mandó a OpenAI, Task 34) encima
+# de lo que la IA devolvió.
+#
+# Validado con un render real (Task 36, propiedad 5, 2026-08-13): el eje X
+# del resultado de OpenAI coincide casi exactamente con el de la referencia,
+# pero el eje Y se estira ~16% (anclado en el mismo borde superior, no un
+# recorte caótico) — un pegado a coordenadas fijas queda mal alineado hacia
+# abajo. Fix: detectar el bounding box de CONTENIDO real (no blanco) de
+# ambas imágenes y ajustar con una transformación afín simple (escala X/Y
+# independientes + traslado) antes de componer — prototipado y verificado
+# visualmente contra ese mismo render real antes de escribir este código.
+
+WALL_CORE_LUMINANCE = 25
+# Cualquier pixel tan oscuro como esto (el trazo real de muro/vano,
+# `#111111` ≈ 17, nunca puro negro 0) recibe alfa TOTAL — sin este piso, un
+# muro real quedaría semitransparente en vez de opaco.
+WALL_LUMINANCE_MAX = 60
+# Separa el trazo de muro/vano real (`#111111`, ~17) del contorno de
+# silueta de mueble (`#555555`, ~85): el mueble es solo una sugerencia de
+# colocación para la IA — nunca se fuerza, solo el muro se compone con
+# garantía. Entre WALL_CORE_LUMINANCE y este valor hay una rampa suave para
+# el antialiasing del reescalado (ver `_wall_alpha` en `_composite_geometry`).
+
+_BBOX_BG_THRESHOLD = 245
+# Un pixel más claro que esto se trata como "fondo/página en blanco", no
+# contenido real — mismo umbral usado para detectar tanto la referencia
+# (línea sobre blanco) como la salida fotorrealista (donde TODO el interior
+# del edificio queda no-blanco, así que el bbox de "no blanco" traza el
+# contorno real del edificio con buena fidelidad, verificado empíricamente).
+
+
+def _content_bbox(img):
+    """Bounding box (x0,y0,x1,y1) del contenido no-blanco de `img`, o `None`
+    si la imagen está en blanco por completo (nada que alinear)."""
+    gray = img.convert("L")
+    mask = gray.point(lambda p: 255 if p < _BBOX_BG_THRESHOLD else 0)
+    return mask.getbbox()
+
+
+def _composite_geometry(reference_bytes: bytes, output_bytes: bytes) -> bytes:
+    """Compone el trazo de muros/vanos de `reference_bytes` (la referencia
+    limpia que se mandó a OpenAI) OPACO encima de `output_bytes` (lo que
+    OpenAI devolvió), ajustado por un afín simple que alinea el bounding box
+    de contenido de ambas imágenes.
+
+    Si no se puede detectar contenido en alguna de las dos (imagen en
+    blanco, caso degenerado) se regresa `output_bytes` tal cual — mejor no
+    componer nada que arriesgar una composición mal alineada sobre datos
+    que no se pueden medir.
+    """
+    from PIL import Image
+
+    ref = Image.open(io.BytesIO(reference_bytes)).convert("RGBA")
+    out = Image.open(io.BytesIO(output_bytes)).convert("RGBA")
+
+    ref_bbox = _content_bbox(ref)
+    out_bbox = _content_bbox(out)
+    if ref_bbox is None or out_bbox is None:
+        return output_bytes
+
+    rx0, ry0, rx1, ry1 = ref_bbox
+    ox0, oy0, ox1, oy1 = out_bbox
+    ref_w, ref_h = max(1, rx1 - rx0), max(1, ry1 - ry0)
+    scale_x = (ox1 - ox0) / ref_w
+    scale_y = (oy1 - oy0) / ref_h
+
+    new_w = max(1, round(ref.width * scale_x))
+    new_h = max(1, round(ref.height * scale_y))
+    resized = ref.resize((new_w, new_h), Image.LANCZOS)
+
+    off_x = round(ox0 - rx0 * scale_x)
+    off_y = round(oy0 - ry0 * scale_y)
+
+    aligned = Image.new("RGBA", out.size, (0, 0, 0, 0))
+    aligned.paste(resized, (off_x, off_y))
+
+    # Alfa de dos tramos: OPACO completo para cualquier pixel tan oscuro como
+    # el trazo real de muro (`#111111`, luminancia ~17 — nunca puro negro
+    # 0, así que la rampa no puede empezar en 0 o el muro real mismo
+    # quedaría semitransparente, bug real encontrado al escribir el test).
+    # Entre WALL_CORE_LUMINANCE y WALL_LUMINANCE_MAX hay una rampa suave —
+    # el antialiasing del reescalado deja pixeles de borde en esa banda, y
+    # sin rampa el borde del muro compuesto saldría dentado. Cualquier cosa
+    # a partir de WALL_LUMINANCE_MAX (incluido el gris de silueta de
+    # mueble, ~85) queda en cero a propósito.
+    gray = aligned.convert("L")
+
+    def _wall_alpha(p: int) -> int:
+        if p <= WALL_CORE_LUMINANCE:
+            return 255
+        if p >= WALL_LUMINANCE_MAX:
+            return 0
+        span = WALL_LUMINANCE_MAX - WALL_CORE_LUMINANCE
+        return round(255 * (WALL_LUMINANCE_MAX - p) / span)
+
+    alpha = gray.point(_wall_alpha)
+    wall_layer = Image.new("RGBA", out.size, (17, 17, 17, 255))
+    wall_layer.putalpha(alpha)
+
+    composited = Image.alpha_composite(out, wall_layer)
+    buf = io.BytesIO()
+    composited.convert("RGB").save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def generate_image(image_bytes: bytes, content_type: str, prompt: str, *,
                     max_edge: int, match_aspect: bool) -> tuple[bytes, str]:
     """Manda la foto y el prompt a OpenAI. Devuelve (bytes del render, mime).
@@ -237,7 +349,15 @@ def generate_image(image_bytes: bytes, content_type: str, prompt: str, *,
     b64 = result.data[0].b64_json
     if not b64:
         raise RenderUnavailable("OpenAI no devolvió imagen")
-    return base64.b64decode(b64), "image/png"
+    raw = base64.b64decode(b64)
+
+    # Task 37: solo el camino de plano tiene una referencia limpia de línea
+    # (Task 34) cuya geometría se pueda componer con garantía — una foto no
+    # tiene un "trazo verdadero" equivalente que componer encima.
+    if match_aspect:
+        raw = _composite_geometry(image_bytes, raw)
+
+    return raw, "image/png"
 
 
 class RenderUnavailable(RuntimeError):

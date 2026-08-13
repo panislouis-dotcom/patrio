@@ -4,7 +4,7 @@ import io
 from types import SimpleNamespace
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from api import storage
 
@@ -50,7 +50,13 @@ def fake_images_edit(monkeypatch):
     class _FakeImages:
         def edit(self, **kwargs):
             calls.append(kwargs)
-            b64 = base64.b64encode(_png_bytes()).decode()
+            # Un PNG real y decodificable, no el hex de 1x1 de `_png_bytes()`
+            # (Task 37: `generate_image` ahora sí abre los bytes de "salida"
+            # con PIL para componer geometría en el camino de plano — ese
+            # fixture minúsculo truena con "broken data stream" al primer
+            # intento real de procesarlo, algo que ningún test anterior
+            # necesitaba hacer).
+            b64 = base64.b64encode(_rect_png_bytes(64, 64)).decode()
             return SimpleNamespace(data=[SimpleNamespace(b64_json=b64)])
 
     class _FakeClient:
@@ -404,6 +410,148 @@ def test_output_size_clamps_extreme_ratios_to_the_api_limit():
     assert out_width % 16 == 0
     assert out_height % 16 == 0
     assert out_width / out_height <= 3.0 + 1e-9
+
+
+# ─── Task 37: componer la geometría exacta encima del resultado de la IA ─────
+# Diseño validado con un render real (Task 36, propiedad 5, 2026-08-13): el
+# eje X de la salida de OpenAI coincide con el de la referencia, pero el eje
+# Y se estira ~16% anclado en el mismo borde superior — nunca a coordenadas
+# fijas. Ver docs/plans/2026-08-13-fidelidad-geometrica-renders-plano.md.
+
+def _png_with_rect(canvas_size, rect_box, color=(17, 17, 17), bg=(255, 255, 255)):
+    """PNG de `bg` con un rectángulo de `color` en `rect_box` (x0,y0,x1,y1) —
+    simula una geometría (muro o silueta de mueble) sobre un fondo."""
+    img = Image.new("RGB", canvas_size, bg)
+    ImageDraw.Draw(img).rectangle(rect_box, fill=color)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_content_bbox_of_a_blank_image_is_none():
+    from api import renders
+
+    blank = Image.new("RGB", (100, 100), (255, 255, 255))
+    assert renders._content_bbox(blank) is None
+
+
+def test_content_bbox_finds_the_drawn_shape():
+    from api import renders
+
+    img = Image.open(io.BytesIO(_png_with_rect((200, 200), (40, 50, 160, 150))))
+    # ImageDraw.rectangle dibuja INCLUSIVO en ambos extremos (pixeles 40..160
+    # y 50..150) — getbbox() usa la convención de límite superior EXCLUSIVO
+    # (uno más allá del último pixel no-blanco), de ahí el +1 en x1/y1.
+    assert renders._content_bbox(img) == (40, 50, 161, 151)
+
+
+def test_composite_geometry_repositions_the_wall_to_match_the_detected_output_bbox():
+    """El caso real que motivó la Task 37: si la salida de la IA usa MÁS
+    lienzo del que ocupaba el contenido de la referencia, el muro debe
+    aparecer estirado/reposicionado para llenar ese mismo espacio relativo
+    — nunca quedarse pegado a las coordenadas crudas de la referencia."""
+    from api import renders
+
+    # Referencia 150x150: TODO su contenido es un "muro" negro en
+    # (50,50)-(100,100) — el resto es fondo blanco. bbox = (50,50,100,100).
+    reference = _png_with_rect((150, 150), (50, 50, 100, 100))
+
+    # Salida de la IA 150x150: contenido no-blanco llena el lienzo COMPLETO
+    # (bbox = (0,0)-(150,150)) — la IA "usó más lienzo" que la referencia,
+    # el mismo patrón medido en el render real de la Task 36.
+    output = _png_with_rect((150, 150), (0, 0, 150, 150), color=(230, 210, 190), bg=(230, 210, 190))
+
+    composited = renders._composite_geometry(reference, output)
+    result = Image.open(io.BytesIO(composited)).convert("RGB")
+
+    def is_wall(xy):
+        r, g, b = result.getpixel(xy)
+        return r < 60 and g < 60 and b < 60
+
+    # Si NO se hubiera reposicionado (pegar a coordenadas crudas de la
+    # referencia), la esquina del lienzo NUNCA sería pared — el rect
+    # original (50,50)-(100,100) no la toca.
+    assert is_wall((5, 5)), "la esquina debería quedar cubierta tras el ajuste afín"
+    assert is_wall((145, 145))
+    assert is_wall((75, 75))   # el centro también sigue siendo pared
+
+
+def test_composite_geometry_never_forces_furniture_gray_only_true_walls():
+    """El gris de silueta de mueble (#555555, luminancia ~85) es solo una
+    sugerencia de colocación para la IA — nunca se fuerza, a diferencia del
+    muro real (#111111, luminancia ~17)."""
+    from api import renders
+
+    ref_img = Image.new("RGB", (100, 100), (255, 255, 255))
+    d = ImageDraw.Draw(ref_img)
+    d.rectangle((0, 0, 49, 99), fill=(17, 17, 17))     # mitad izquierda: muro real
+    d.rectangle((50, 0, 99, 99), fill=(85, 85, 85))    # mitad derecha: silueta de mueble
+    buf = io.BytesIO()
+    ref_img.save(buf, format="PNG")
+    reference = buf.getvalue()
+
+    output = _png_with_rect((100, 100), (0, 0, 100, 100), color=(230, 210, 190), bg=(230, 210, 190))
+
+    composited = renders._composite_geometry(reference, output)
+    result = Image.open(io.BytesIO(composited)).convert("RGB")
+
+    left = result.getpixel((10, 50))
+    right = result.getpixel((90, 50))
+    assert left[0] < 60, "el muro real SÍ debe forzarse opaco"
+    assert right == (230, 210, 190), "el gris de mueble NUNCA se fuerza — el color de la IA sobrevive intacto"
+
+
+def test_composite_geometry_returns_output_unchanged_when_reference_has_no_content():
+    """Sin geometría detectable en la referencia no hay nada confiable que
+    alinear — mejor no componer que arriesgar una composición mal alineada."""
+    from api import renders
+
+    blank_ref = Image.new("RGB", (50, 50), (255, 255, 255))
+    buf = io.BytesIO()
+    blank_ref.save(buf, format="PNG")
+    reference = buf.getvalue()
+
+    output = _png_with_rect((50, 50), (0, 0, 50, 50), color=(10, 20, 30), bg=(10, 20, 30))
+
+    assert renders._composite_geometry(reference, output) == output
+
+
+def test_composite_geometry_runs_only_for_plan_renders_not_photos(
+    client, test_property, fake_images_edit, monkeypatch,
+):
+    """Solo el camino de plano tiene una referencia limpia de línea (Task 34)
+    cuya geometría se pueda componer con garantía — una foto no tiene un
+    "trazo verdadero" equivalente. Usa `fake_images_edit` (deja correr
+    `generate_image` de verdad) con imágenes reales — no el fixture
+    `_png_bytes()` de 1x1, que PIL no puede procesar por este camino real
+    (mismo problema ya encontrado en otros tests de este archivo)."""
+    from api import renders
+
+    calls = []
+    monkeypatch.setattr(renders, "_composite_geometry", lambda ref, out: calls.append(True) or out)
+
+    up = client.post(
+        f"/api/properties/{test_property['id']}/images",
+        files={"file": ("fachada.png", io.BytesIO(_rect_png_bytes(1000, 800)), "image/png")},
+        data={"image_type": "antes"},
+    )
+    assert up.status_code == 201, up.text
+    r_photo = client.post(
+        f"/api/properties/{test_property['id']}/renders",
+        json={"sourceImageId": up.json()["id"], "promptText": "x"},
+    )
+    assert r_photo.status_code == 201, r_photo.text
+    assert len(calls) == 0, "una foto no debe componerse"
+
+    plan = _rect_png_bytes(599, 1105)
+    r_plan = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(plan), "image/png")},
+        data={"promptText": "Amuebla.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    assert r_plan.status_code == 201, r_plan.text
+    assert len(calls) == 1, "un plano SÍ debe componerse"
 
 
 # ─── Biblioteca de prompts ────────────────────────────────────────────────────
