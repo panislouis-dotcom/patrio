@@ -7,6 +7,13 @@ export interface CornerAngle { vertexId: string; deg: number; x: number; y: numb
 const SPAN_TOL = 0.9   // an interior wall covering at least this fraction of the perpendicular span fully divides the room
 const SPLIT_EPS = 0.02 // dedup near-duplicate/near-boundary split marks
 
+/** Tolerance for "is this corner angle a right angle" — shared with planFacts.ts (the
+ * "is this ~180° degenerate, not a real corner" filter), which imports this constant
+ * instead of keeping its own copy of the literal. Exported, not duplicated: a mutation
+ * test showed two independently-declared `1`s can silently drift apart with the full
+ * suite still green — see docs/plans (Task 33c review). */
+export const CORNER_ANGLE_TOL_DEG = 1
+
 /** Formatea un metraje a 2 decimales para etiquetas de cota. Vivía duplicada, byte-idéntica,
  * en FloorPlanCanvas.tsx y planImage.ts — ambos ya importan de este módulo, así que aquí es
  * donde deja de ser dos copias que podrían divergir. */
@@ -102,6 +109,6 @@ export function cornerAngles(f: FloorGraph): CornerAngle[] {
     const m1 = Math.hypot(v1x, v1y) || 1, m2 = Math.hypot(v2x, v2y) || 1
     const cos = Math.max(-1, Math.min(1, (v1x * v2x + v1y * v2y) / (m1 * m2)))
     const deg = Math.acos(cos) * 180 / Math.PI
-    return { vertexId: id, deg, x: p.x, y: p.y, isRight: Math.abs(deg - 90) <= 1 }
+    return { vertexId: id, deg, x: p.x, y: p.y, isRight: Math.abs(deg - 90) <= CORNER_ANGLE_TOL_DEG }
   })
 }

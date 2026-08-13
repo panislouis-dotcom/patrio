@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
-import { widthHeightChains, cornerAngles, cotaEdges } from './dimensions'
+import { widthHeightChains, cornerAngles, cotaEdges, CORNER_ANGLE_TOL_DEG } from './dimensions'
+
+/** Triángulo A-B-C con el ángulo en A construido para valer EXACTAMENTE `thetaDeg`: B se
+ * coloca sobre +x y C a `thetaDeg` de esa dirección (mismo radio), así que el ángulo entre
+ * A→B y A→C es `thetaDeg` por construcción trigonométrica, no por casualidad geométrica. */
+function angledCorner(f: ReturnType<typeof emptyFloorGraph>, thetaDeg: number) {
+  const theta = thetaDeg * Math.PI / 180
+  const a = addVertex(f, 0, 0)
+  const b = addVertex(f, 5, 0)
+  const c = addVertex(f, 5 * Math.cos(theta), 5 * Math.sin(theta))
+  addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, a, 0.15)
+  return a
+}
 
 function closedRect(f: ReturnType<typeof emptyFloorGraph>, x0: number, y0: number, x1: number, y1: number) {
   const a = addVertex(f, x0, y0), b = addVertex(f, x1, y0), c = addVertex(f, x1, y1), d = addVertex(f, x0, y1)
@@ -121,5 +133,28 @@ describe('cornerAngles', () => {
     expect(angles).toHaveLength(4)
     angles.forEach(a => expect(a.deg).toBeCloseTo(90, 0))
     angles.forEach(a => expect(a.isRight).toBe(true))
+  })
+
+  // Pin de frontera para `isRight` (Task 33c review, Suggestion #6): sin esto, un cambio en
+  // CORNER_ANGLE_TOL_DEG (ej. de 1° a 3°) no rompe ningún test — se verificó con prueba de
+  // mutación que los 45 tests de dimensions.test.ts + planFacts.test.ts seguían pasando en
+  // ese escenario, porque el resto de los tests solo ejercitan ángulos exactos (90°, 45°,
+  // 180°), nunca la frontera misma. Estos dos casos SÍ distinguen ±1° de ±3°: a 92° del
+  // ángulo recto, isRight debe ser false con la tolerancia real (1°) pero pasaría a true si
+  // alguien la relajara a 3° sin querer.
+  it('is right exactly at the tolerance boundary (90° ± CORNER_ANGLE_TOL_DEG)', () => {
+    const f = emptyFloorGraph('Test')
+    const a = angledCorner(f, 90 + CORNER_ANGLE_TOL_DEG)
+    const angle = cornerAngles(f).find(c => c.vertexId === a)!
+    expect(angle.deg).toBeCloseTo(90 + CORNER_ANGLE_TOL_DEG, 6)
+    expect(angle.isRight).toBe(true)
+  })
+
+  it('is NOT right just past the tolerance boundary — catches a silently relaxed tolerance', () => {
+    const f = emptyFloorGraph('Test')
+    const a = angledCorner(f, 92) // 2° off: within a tolerance of 3° but not of 1°
+    const angle = cornerAngles(f).find(c => c.vertexId === a)!
+    expect(angle.deg).toBeCloseTo(92, 6)
+    expect(angle.isRight).toBe(false)
   })
 })

@@ -7,7 +7,7 @@
 import type { FloorGraph, Vertex } from './types'
 import { FIXTURE_CATALOG } from './types'
 import { roomLabels, roomAreas, roomConnections, roomPolygons, type Connection } from './rooms'
-import { cornerAngles } from './dimensions'
+import { cornerAngles, CORNER_ANGLE_TOL_DEG } from './dimensions'
 import { edgeAxis } from './geometry'
 
 const fmt = (n: number): string => n.toFixed(2)
@@ -303,12 +303,13 @@ export function planFacts(floor: FloorGraph): string {
   // levantamiento con más de un cuarto): un punto COLINEAL, no una esquina real (en la
   // imagen ese punto está sobre una línea recta). `isRight` (dimensions.ts) ya excluye
   // "casi 90°" con tolerancia ±1°; el filtro de "casi 180°" no vive en dimensions.ts (Task
-  // 33b, ya cerrada — CornerAngle no gana un campo nuevo por esto) sino aquí, reusando la
-  // MISMA tolerancia de 1° que isRight en vez de inventar un criterio distinto para la
-  // misma pregunta ("¿este ángulo es un caso degenerado, no una esquina real?").
-  const CORNER_STRAIGHT_TOL_DEG = 1 // igual a la tolerancia de `isRight` en dimensions.ts
+  // 33b, ya cerrada — CornerAngle no gana un campo nuevo por esto) sino aquí, importando
+  // `CORNER_ANGLE_TOL_DEG` (dimensions.ts) en vez de duplicar el literal: dos constantes
+  // `= 1` independientes se probó que pueden divergir en silencio (prueba de mutación,
+  // Task 33c review) sin que ningún test lo note — una sola fuente de verdad lo hace
+  // imposible.
   const irregularCorners = cornerAngles(floor)
-    .filter(c => !c.isRight && Math.abs(c.deg - 180) > CORNER_STRAIGHT_TOL_DEG)
+    .filter(c => !c.isRight && Math.abs(c.deg - 180) > CORNER_ANGLE_TOL_DEG)
   if (irregularCorners.length > 0) {
     parts.push(...irregularCorners.map(c =>
       `Esquina en (${fmt(c.x)}, ${fmt(c.y)}) con ángulo de ${Math.round(c.deg)}°.`))
