@@ -527,3 +527,22 @@ componer el trazo exacto de los muros encima del resultado de la IA.
     laxo que también pasaba con el bug presente) — borrado, su única
     aserción no duplicada (forma del arco) plegada al test nuevo estricto.
   - 567/567 tests, tsc y build limpios.
+- [x] Task 33b: cotas de particiones interiores en `dimensions.ts` (c4310e3+9d69f54; spec ✅, calidad ✅)
+  - Bug real: `widthHeightChains` evaluaba cada arista SOLA contra "cubre
+    ≥90% del claro" — un divisor partido en T por otro muro nunca
+    calificaba solo, degenerando a 2 marcas (el total) para cualquier
+    plano con particiones interiores reales.
+  - Fix: `spanningCoords` agrupa aristas por coordenada de partición
+    (reusa `SPLIT_EPS`, no un umbral nuevo) y mide el TRAMO CONTINUO más
+    largo, fusionando solo segmentos que se tocan — nunca sumando tramos
+    separados por un hueco real. Preserva la intención original (columna
+    aislada sigue sin generar marca falsa).
+  - Ciclo de fix con prueba de mutación: el revisor de calidad reemplazó
+    la fusión por una suma ingenua y encontró que 27/27 tests seguían
+    pasando — el test "no suma segmentos disjuntos" usaba números que
+    nunca cruzaban el umbral ni sumando mal. Reemplazado por un caso que
+    SÍ discrimina (4m+3.5m con hueco real de 0.5m en claro de 8m: suma
+    ingenua 93.75%≥90%, tramo real 50%<90%) — verificado que ahora solo
+    ese test falla contra la mutación reintroducida, re-verificado
+    independientemente por el revisor.
+  - 571/571 tests, tsc y build limpios.
