@@ -190,21 +190,29 @@ def add_render(property_id: int, source_image_id: int | None, file_path: str,
                content_type: str, prompt_id: int | None, prompt_text: str,
                provider: str, model: str, source_plan_path: str | None = None,
                parent_render_id: int | None = None,
-               source_variant: str | None = None) -> dict:
+               source_variant: str | None = None,
+               floor_id: str | None = None, floor_name: str | None = None) -> dict:
     """`source_variant` dice de qué levantamiento nació un render de plano
     ('original' | 'planned'); NULL para uno nacido de una foto. Al editar, el
     llamador (el endpoint de edición) lo resuelve del padre y lo pasa aquí
     explícito — no se recalcula caminando la cadena, porque cada edición ya
-    copia la variante de su padre inmediato y eso basta por inducción."""
+    copia la variante de su padre inmediato y eso basta por inducción.
+
+    `floor_id`/`floor_name` dicen de qué piso del levantamiento nació un render
+    de plano: identidad + nombre congelado, mismo patrón dual que
+    prompt_id/prompt_text. NULL para uno nacido de una foto (un piso no aplica
+    ahí) y para cualquier render anterior a esta identidad — no hay backfill
+    honesto posible. Igual que source_variant, se hereda del padre inmediato al
+    editar, no se recalcula."""
     with get_db() as conn:
         row = conn.execute(
             "INSERT INTO property_renders (property_id, source_image_id, file_path,"
             " content_type, prompt_id, prompt_text, provider, model, source_plan_path,"
-            " parent_render_id, source_variant)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            " parent_render_id, source_variant, floor_id, floor_name)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
             (property_id, source_image_id, file_path, content_type,
              prompt_id, prompt_text, provider, model, source_plan_path, parent_render_id,
-             source_variant),
+             source_variant, floor_id, floor_name),
         ).fetchone()
     return _row_to_dict(row)
 

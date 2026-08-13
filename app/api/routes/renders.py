@@ -143,6 +143,8 @@ def create_render_from_plan(
     file: UploadFile = File(...),
     promptText: str = Form(...),
     variant: str = Form(...),
+    floorId: str = Form(...),
+    floorName: str = Form(...),
     promptId: int | None = Form(None),
     _: dict = Depends(get_current_user),
 ):
@@ -162,6 +164,10 @@ def create_render_from_plan(
     if variant not in renders_db.SOURCE_VARIANTS:
         raise HTTPException(status_code=422,
                             detail=f"variant debe ser uno de {', '.join(renders_db.SOURCE_VARIANTS)}")
+    if not floorId.strip():
+        raise HTTPException(status_code=422, detail="floorId no puede ir vacío")
+    if not floorName.strip():
+        raise HTTPException(status_code=422, detail="floorName no puede ir vacío")
     plan_bytes = file.file.read()
     if not plan_bytes:
         raise HTTPException(status_code=422, detail="El plano llegó vacío")
@@ -207,6 +213,8 @@ def create_render_from_plan(
         model=renders.MODEL,
         source_plan_path=plan_path,
         source_variant=variant,
+        floor_id=floorId.strip(),
+        floor_name=floorName.strip(),
     )
 
 
@@ -268,6 +276,10 @@ def edit_property_render(property_id: int, render_id: int, body: RenderEditReque
         # El hijo hereda la variante del padre inmediato, no la recalcula: un
         # plano editado sigue perteneciendo al mismo levantamiento.
         source_variant=parent["sourceVariant"],
+        # Mismo patrón: el hijo hereda de qué piso nació el padre, no lo
+        # recalcula — un plano editado sigue perteneciendo al mismo piso.
+        floor_id=parent["floorId"],
+        floor_name=parent["floorName"],
     )
 
 

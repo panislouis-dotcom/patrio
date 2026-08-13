@@ -90,7 +90,8 @@ def test_generating_a_render_from_the_plan_keeps_the_plan_as_source(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
         data={"promptText": "Amuebla la planta: sala amplia, cocina integral.",
-              "variant": "original"},
+              "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
     )
     assert r.status_code == 201, r.text
     body = r.json()
@@ -104,7 +105,8 @@ def test_a_plan_render_uses_the_plan_clause_not_the_photo_clause(
     client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-        data={"promptText": "Amuebla la planta.", "variant": "original"},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
     )
     prompt = fake_openai[-1]["prompt"]
     assert "vista de planta" in prompt          # la cláusula del plano se añadió
@@ -117,7 +119,8 @@ def test_a_plan_render_does_not_land_in_the_photo_gallery(
     client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-        data={"promptText": "Amuebla la planta.", "variant": "original"},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
     )
     # No hay endpoint propio para listar fotos: `images` vive embebido en la
     # propiedad, igual que en cualquier otro lector (properties_db.parse_property).
@@ -139,7 +142,8 @@ def test_a_rotated_plan_is_straightened_for_both_of_its_uses(
     r = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(buf.getvalue()), "image/png")},
-        data={"promptText": "Amuebla la planta.", "variant": "original"},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
     )
     assert r.status_code == 201, r.text
 
@@ -179,7 +183,8 @@ def test_editing_a_plan_render_keeps_the_plan_clause(
     parent = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-        data={"promptText": "Amuebla.", "variant": "original"},
+        data={"promptText": "Amuebla.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
     ).json()
     client.post(
         f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
@@ -248,7 +253,8 @@ def test_a_plan_render_uses_its_real_aspect_ratio_and_the_2048_cap(
     r = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(big_plan), "image/png")},
-        data={"promptText": "Amuebla la planta.", "variant": "original"},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
     )
     assert r.status_code == 201, r.text
 
@@ -267,7 +273,8 @@ def test_editing_a_plan_render_inherits_match_aspect_and_the_plan_cap(
     parent = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-        data={"promptText": "Amuebla.", "variant": "original"},
+        data={"promptText": "Amuebla.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
     ).json()
     client.post(
         f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
@@ -309,7 +316,8 @@ def test_render_heads_are_the_latest_of_each_chain(
     # Línea B: desde el plano (cadena de 1)
     b = client.post(f"/api/properties/{pid}/renders/from-plan",
                     files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-                    data={"promptText": "B0", "variant": "original"}).json()
+                    data={"promptText": "B0", "variant": "original",
+                          "floorId": "floor-abc-123", "floorName": "Planta Baja"}).json()
     ids = {h["id"] for h in renders_db.list_render_heads(pid)}
     assert ids == {a2["id"], b["id"]}   # las cabezas: la última de A y la de B
     assert a["id"] not in ids           # el paso intermedio queda fuera
@@ -634,7 +642,8 @@ def test_from_plan_persists_the_variant_it_was_given(
     r = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
-        data={"promptText": "Amuebla la planta.", "variant": variant},
+        data={"promptText": "Amuebla la planta.", "variant": variant,
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
     )
     assert r.status_code == 201, r.text
     created = r.json()
@@ -743,3 +752,105 @@ def test_render_heads_and_list_surface_source_variant(client, test_property, fak
     via_http = next(r for r in client.get(f"/api/properties/{test_property['id']}/renders").json()
                     if r["id"] == created["id"])
     assert via_http["sourceVariant"] == "original"
+
+
+# ─── floor_id/floor_name: de qué piso nació (Tarea 29) ────────────────────────
+#
+# Un levantamiento puede tener varios pisos (la propiedad 5 ya tiene "Planta
+# Baja"/"Planta Alta"). Mismo patrón dual que prompt_id/prompt_text: floor_id
+# es la identidad, floor_name es el nombre congelado al momento de generar.
+# Ambos requeridos en from-plan (el frontend siempre los manda una vez
+# cableado); NULL solo para renders de foto y para renders anteriores a esta
+# migración.
+
+def test_from_plan_without_floor_id_is_rejected(client, test_property, fake_openai):
+    before = client.get(f"/api/properties/{test_property['id']}/renders").json()
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorName": "Planta Baja"},
+    )
+    assert r.status_code == 422
+    after = client.get(f"/api/properties/{test_property['id']}/renders").json()
+    assert after == before   # no se creó ningún render a medio validar
+
+
+def test_from_plan_without_floor_name_is_rejected(client, test_property, fake_openai):
+    before = client.get(f"/api/properties/{test_property['id']}/renders").json()
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorId": "floor-abc-123"},
+    )
+    assert r.status_code == 422
+    after = client.get(f"/api/properties/{test_property['id']}/renders").json()
+    assert after == before
+
+
+def test_from_plan_with_blank_floor_id_is_rejected(client, test_property, fake_openai):
+    """`Form(...)` solo blinda contra AUSENCIA; un string en blanco llega igual
+    de vacío que si nunca se hubiera mandado — mismo patrón que promptText."""
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorId": "   ", "floorName": "Planta Baja"},
+    )
+    assert r.status_code == 422
+
+
+def test_from_plan_with_blank_floor_name_is_rejected(client, test_property, fake_openai):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "   "},
+    )
+    assert r.status_code == 422
+
+
+def test_from_plan_persists_floor_id_and_name(client, test_property, fake_openai):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    assert r.status_code == 201, r.text
+    created = r.json()
+    assert created["floorId"] == "floor-abc-123"
+    assert created["floorName"] == "Planta Baja"
+    # Redondea completo: lo que se guardó es lo que se lee de vuelta.
+    fetched = next(x for x in client.get(f"/api/properties/{test_property['id']}/renders").json()
+                   if x["id"] == created["id"])
+    assert fetched["floorId"] == "floor-abc-123"
+    assert fetched["floorName"] == "Planta Baja"
+
+
+def test_editing_a_plan_render_inherits_floor_id_and_name(client, test_property, fake_openai):
+    """El plano editado sigue perteneciendo al mismo piso, igual que sigue
+    respetando la cláusula del plano y la source_variant del padre."""
+    parent = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    ).json()
+    child = client.post(
+        f"/api/properties/{test_property['id']}/renders/{parent['id']}/edit",
+        json={"promptText": "Agrega puerta al baño."},
+    ).json()
+    assert child["floorId"] == "floor-abc-123"
+    assert child["floorName"] == "Planta Baja"
+
+
+def test_a_render_from_a_photo_has_no_floor_identity(
+        client, test_property, source_image, fake_openai):
+    """La ruta de foto no toca floor_id/floor_name en absoluto — quedan NULL,
+    igual que source_variant en ese mismo camino."""
+    body = client.post(f"/api/properties/{test_property['id']}/renders",
+                       json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    assert body["floorId"] is None
+    assert body["floorName"] is None
