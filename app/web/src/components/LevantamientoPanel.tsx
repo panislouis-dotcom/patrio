@@ -5,7 +5,9 @@ import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
 import { btn as floorBtn } from './floorplanStyles'
 import { RendersPanel } from './detail/RendersPanel'
 import { floorToPngBlob } from '../lib/floorplan/planImage'
-import { clone, emptyFloorSet, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
+import { planFacts } from '../lib/floorplan/planFacts'
+import { generateAllFloors, formatBatchSummary, type FloorBatchSummary } from '../lib/floorplan/generateAllFloors'
+import { clone, emptyFloorSet, type FloorGraph, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
 import type { PropertyRender, RenderPrompt, RenderPromptKind } from '../lib/types'
 
 const btnBase: React.CSSProperties = {
@@ -87,6 +89,16 @@ export function LevantamientoPanel({
   // cambiar de piso aquí nunca reordena ni reactiva nada en el editor, y
   // viceversa. Por id, no por índice: sobrevive a que los pisos se reordenen.
   const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null)
+  // GENERAR TODOS LOS PISOS (Task 31): confirmación de dos pasos, igual patrón que
+  // RE-PARTIR DEL ORIGINAL arriba — `batchConfirm` arma la advertencia sin disparar
+  // nada, un segundo click sí dispara. `batchProgress`/`batchTally` son el estado
+  // EN VUELO (qué piso corre ahora, cuántos van bien/mal hasta este momento);
+  // `batchSummary` es el resultado congelado al terminar, para el resumen final.
+  const [batchConfirm, setBatchConfirm] = useState(false)
+  const [batchRunning, setBatchRunning] = useState(false)
+  const [batchProgress, setBatchProgress] = useState<{ floorName: string; index: number; total: number } | null>(null)
+  const [batchTally, setBatchTally] = useState({ succeeded: 0, failed: 0 })
+  const [batchSummary, setBatchSummary] = useState<FloorBatchSummary | null>(null)
 
   const original = geometry?.variants.original ?? null
   const fs = variant === 'original' ? original : geometry?.variants.planned ?? null
@@ -115,6 +127,52 @@ export function LevantamientoPanel({
     const blob = await floorToPngBlob(selectedFloor!)
     return onGenerateRender(variant, { ...req, plan: blob })
   }, [selectedFloor, variant, onGenerateRender])
+
+  // GENERAR TODOS LOS PISOS (Task 31): un render por CADA piso de `fs.floors`, sin
+  // importar cuál esté seleccionado arriba en RENDERS — el selector de un piso es
+  // independiente de este botón de lote (decisión de Eduardo). Cada llamada usa
+  // SU PROPIO piso para el blob (`floorToPngBlob`) y el prompt (`planFacts`, los
+  // mismos hechos duros que siembra "El plano" en `RendersPanel` cuando no hay
+  // preset elegido) — nunca reusa el blob/piso seleccionado en el selector de
+  // RENDERS. Sin `promptId`: el lote no nace de un preset guardado, nace de los
+  // hechos de cada piso.
+  const generateOneFloor = useCallback(async (floor: FloorGraph) => {
+    const blob = await floorToPngBlob(floor)
+    return onGenerateRender(variant, {
+      promptId: null, promptText: planFacts(floor), plan: blob, floorId: floor.id, floorName: floor.name,
+    })
+  }, [variant, onGenerateRender])
+
+  // La orquestación secuencial y la tolerancia a fallo parcial viven en
+  // `generateAllFloors` (probado aparte, sin UI ni red) — esta función solo
+  // conecta ese resultado con el estado visible: qué piso corre ahora
+  // (`batchProgress`), el tally en vivo (`batchTally`, actualizado por piso según
+  // resuelve o truena, sin alterar si `generateAllFloors` lo cuenta como éxito o
+  // fallo — solo lo observa) y el resumen final (`batchSummary`).
+  async function runGenerateAllFloors() {
+    if (fs == null || fs.floors.length === 0) return
+    setBatchRunning(true)
+    setBatchSummary(null)
+    setBatchTally({ succeeded: 0, failed: 0 })
+    const summary = await generateAllFloors(
+      fs.floors,
+      async floor => {
+        try {
+          const result = await generateOneFloor(floor)
+          setBatchTally(t => ({ ...t, succeeded: t.succeeded + 1 }))
+          return result
+        } catch (e) {
+          setBatchTally(t => ({ ...t, failed: t.failed + 1 }))
+          throw e
+        }
+      },
+      current => setBatchProgress(current),
+    )
+    setBatchProgress(null)
+    setBatchRunning(false)
+    setBatchConfirm(false)
+    setBatchSummary(summary)
+  }
 
   // Escribe el planeado ENTERO de un golpe: un clon del original o una planta en
   // blanco. Es la única escritura que no pasa por el editor.
@@ -220,10 +278,11 @@ export function LevantamientoPanel({
   // pero es SU PROPIO estado (`selectedFloorId` arriba) — nunca dispatcha al
   // reducer del editor. Se enseña siempre que haya al menos un piso, incluso con
   // uno solo, igual que la tira de PLANO nunca se esconde por tener un piso único.
+  const floorCount = fs?.floors.length ?? 0
   const rendersContent = (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      {fs != null && fs.floors.length > 0 && (
-        <div style={{ flexShrink: 0, display: 'flex', gap: '4px', alignItems: 'center',
+      {fs != null && floorCount > 0 && (
+        <div style={{ flexShrink: 0, display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap',
                       padding: '6px 16px', borderBottom: `1px solid ${colors.border}` }}>
           <span style={label}>PISO</span>
           {fs.floors.map(f => (
@@ -233,11 +292,55 @@ export function LevantamientoPanel({
               {f.name}
             </button>
           ))}
+          <div style={{ flex: 1 }} />
+          {/* GENERAR TODOS LOS PISOS (Task 31): botón secundario, nunca sustituye al
+              GENERAR RENDER de un piso. Solo se ofrece con 2+ pisos — con uno solo
+              sería idéntico al individual, ruido sin acción nueva. Mismo patrón de
+              confirmación de dos pasos que RE-PARTIR DEL ORIGINAL (arriba en PLANO):
+              un botón inicial, y un segundo paso que advierte costo/tiempo antes de
+              disparar — pero sin el rojo de `danger`, porque aquí no se descarta
+              nada, se paga por N renders nuevos. */}
+          {floorCount > 1 && (batchConfirm ? (
+            <>
+              <span style={label}>
+                {floorCount} PISOS · ~{floorCount}×60-90S · {floorCount} CARGOS REALES
+              </span>
+              <button onClick={() => setBatchConfirm(false)} disabled={batchRunning}
+                style={{ ...outlined, opacity: batchRunning ? 0.6 : 1, cursor: batchRunning ? 'not-allowed' : 'pointer' }}>
+                CANCELAR
+              </button>
+              <button onClick={runGenerateAllFloors} disabled={batchRunning}
+                style={{ ...outlinedPrimary, cursor: batchRunning ? 'not-allowed' : 'pointer', opacity: batchRunning ? 0.7 : 1 }}>
+                {batchRunning ? 'GENERANDO…' : `¿CONFIRMAR GENERAR ${floorCount} PISOS?`}
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setBatchConfirm(true)} style={outlined}>GENERAR TODOS LOS PISOS</button>
+          ))}
+        </div>
+      )}
+      {/* Progreso del lote: qué piso corre ahora y el tally en vivo mientras dura;
+          el resumen final congelado ("N de M generados. Falló: …") en cuanto
+          termina — nunca los dos a la vez. */}
+      {batchProgress && (
+        <div style={{ flexShrink: 0, padding: '6px 16px', borderBottom: `1px solid ${colors.border}` }}>
+          <span style={{ ...label, letterSpacing: 0, textTransform: 'none' }}>
+            Generando piso {batchProgress.index + 1} de {batchProgress.total}: {batchProgress.floorName}…
+            {' '}({batchTally.succeeded} completados, {batchTally.failed} fallidos)
+          </span>
+        </div>
+      )}
+      {!batchProgress && batchSummary && (
+        <div style={{ flexShrink: 0, padding: '6px 16px', borderBottom: `1px solid ${colors.border}` }}>
+          <span style={{ ...label, letterSpacing: 0, textTransform: 'none',
+                         color: batchSummary.failed > 0 ? colors.tertiary : colors.secondary }}>
+            {formatBatchSummary(batchSummary)}
+          </span>
         </div>
       )}
       <RendersPanel source="plan" variant={variant} plan={selectedFloor}
         floorId={selectedFloor?.id ?? null} floorName={selectedFloor?.name ?? null}
-        floorCount={fs?.floors.length ?? 0} base={base}
+        floorCount={floorCount} base={base}
         prompts={prompts} renders={renders} onGeneratePlan={handleGeneratePlan}
         onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender} />
     </div>

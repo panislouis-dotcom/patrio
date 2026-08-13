@@ -388,3 +388,122 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
     expect(req.floorName).toBe('Planta Baja')
   })
 })
+
+describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
+  it('con un solo piso no ofrece el botón de lote — sería idéntico al individual', () => {
+    renderPanel('original', withVariant(null, 'original', originalConMuro()))
+    fireEvent.click(screen.getByText('RENDERS'))
+    expect(screen.queryByText('GENERAR TODOS LOS PISOS')).toBeNull()
+  })
+
+  it('con 2+ pisos ofrece el botón de lote', () => {
+    renderPanel('original', withVariant(null, 'original', dosPlantas()))
+    fireEvent.click(screen.getByText('RENDERS'))
+    expect(screen.getByText('GENERAR TODOS LOS PISOS')).toBeTruthy()
+  })
+
+  it('exige confirmación de dos pasos: el primer click NO dispara ninguna llamada', () => {
+    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dosPlantas()))
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
+
+    expect(onGenerateRender).not.toHaveBeenCalled()
+    expect(screen.getByText(/¿CONFIRMAR/i)).toBeTruthy()
+    // Avisa costo/tiempo antes de confirmar: N pisos, N cargos reales.
+    expect(screen.getByText(/2 PISOS · ~2×60-90S · 2 CARGOS REALES/)).toBeTruthy()
+  })
+
+  it('CANCELAR en la confirmación no dispara nada y regresa al botón inicial', () => {
+    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dosPlantas()))
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
+    fireEvent.click(screen.getByText('CANCELAR'))
+
+    expect(screen.queryByText(/¿CONFIRMAR/i)).toBeNull()
+    expect(screen.getByText('GENERAR TODOS LOS PISOS')).toBeTruthy()
+    expect(onGenerateRender).not.toHaveBeenCalled()
+  })
+
+  it('confirmar genera un render por CADA piso, con su propio floorId/floorName/plano', async () => {
+    const dos = dosPlantas()
+    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dos))
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
+    fireEvent.click(screen.getByText(/¿CONFIRMAR/i))
+
+    await waitFor(() => expect(onGenerateRender).toHaveBeenCalledTimes(2))
+    const [variant1, req1] = onGenerateRender.mock.calls[0]
+    const [variant2, req2] = onGenerateRender.mock.calls[1]
+    expect(variant1).toBe('original')
+    expect(variant2).toBe('original')
+    expect(req1.floorId).toBe(dos.floors[0].id)
+    expect(req1.floorName).toBe('Planta Baja')
+    expect(req2.floorId).toBe(dos.floors[1].id)
+    expect(req2.floorName).toBe('Planta Alta')
+    // Cada llamada trae SU propio plano rasterizado, no el mismo blob reusado.
+    expect(req1.plan).toBeInstanceOf(Blob)
+    expect(req2.plan).toBeInstanceOf(Blob)
+    // No nace de un preset guardado: el lote siembra su propio texto desde los hechos del piso.
+    expect(req1.promptId).toBeNull()
+    expect(req1.promptText.length).toBeGreaterThan(0)
+  })
+
+  it('es SECUENCIAL: el piso 2 no se dispara hasta que el piso 1 resuelve', async () => {
+    const dos = dosPlantas()
+    let resolveFirst: (v: PropertyRender) => void = () => {}
+    const first = new Promise<PropertyRender>(r => { resolveFirst = r })
+    let n = 0
+    const impl = vi.fn(async (variant: VariantKey) => {
+      n++
+      if (n === 1) return first
+      return planRenderRow(2, variant)
+    })
+    const { onGenerateRender } = renderPanel(
+      'original', withVariant(null, 'original', dos), undefined, { onGenerateRender: impl },
+    )
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
+    fireEvent.click(screen.getByText(/¿CONFIRMAR/i))
+
+    await waitFor(() => expect(onGenerateRender).toHaveBeenCalledTimes(1))
+    // El primero sigue en vuelo: el segundo no debe haberse disparado todavía.
+    await new Promise(r => setTimeout(r, 10))
+    expect(onGenerateRender).toHaveBeenCalledTimes(1)
+
+    resolveFirst(planRenderRow(1, 'original'))
+    await waitFor(() => expect(onGenerateRender).toHaveBeenCalledTimes(2))
+  })
+
+  it('un fallo en un piso no cancela a los demás — todos se intentan y el resumen final lo dice', async () => {
+    const dos = dosPlantas()
+    const impl = vi.fn(async (variant: VariantKey, req: { floorName: string }) => {
+      if (req.floorName === 'Planta Baja') throw new Error('OPENAI_API_KEY no está configurada')
+      return planRenderRow(2, variant)
+    })
+    const { onGenerateRender } = renderPanel(
+      'original', withVariant(null, 'original', dos), undefined, { onGenerateRender: impl },
+    )
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
+    fireEvent.click(screen.getByText(/¿CONFIRMAR/i))
+
+    await waitFor(() => expect(onGenerateRender).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText(/1 de 2 generados/)).toBeTruthy()
+    expect(screen.getByText(/Planta Baja — OPENAI_API_KEY no está configurada/)).toBeTruthy()
+  })
+
+  it('muestra qué piso se está generando ahora mismo mientras el lote corre', async () => {
+    const dos = dosPlantas()
+    let resolveFirst: (v: PropertyRender) => void = () => {}
+    const pendiente = new Promise<PropertyRender>(r => { resolveFirst = r })
+    const impl = vi.fn(async () => pendiente)
+    renderPanel('original', withVariant(null, 'original', dos), undefined, { onGenerateRender: impl })
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
+    fireEvent.click(screen.getByText(/¿CONFIRMAR/i))
+
+    expect(await screen.findByText(/Generando piso 1 de 2: Planta Baja/i)).toBeTruthy()
+    resolveFirst(planRenderRow(1, 'original'))
+  })
+})
