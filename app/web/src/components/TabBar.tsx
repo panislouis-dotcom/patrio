@@ -8,7 +8,11 @@ const topTabs = [
   { path: '/propiedades', label: 'PROPIEDADES' },
   { path: '/inversionistas', label: 'INVERSIONISTAS' },
   { path: '/proveedores', label: 'PROVEEDORES' },
-  { path: '/obra', label: 'OBRA' },
+  // OBRA oculta del menú a petición de Louis y Garza — no la usan y prefieren no verla.
+  // Se retira SOLO del nav; las rutas /obra y el backend del presupuesto siguen intactos
+  // (la pestaña Presupuesto por-propiedad depende de ese backend). Reversible: reactivar
+  // esta línea la vuelve a mostrar. Pendiente de decidir con Ed si se refactoriza/retira.
+  // { path: '/obra', label: 'OBRA' },
   { path: '/procesos', label: 'PROCESOS' },
   { path: '/equipo', label: 'EQUIPO' },
 ]
