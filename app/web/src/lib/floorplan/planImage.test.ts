@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph, GHOST_THICKNESS_M, type Fixture } from './types'
+import { emptyFloorGraph, GHOST_THICKNESS_M, type Fixture, type FloorGraph } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import { floorToSvgString } from './planImage'
 
@@ -333,5 +333,51 @@ describe('floorToSvgString', () => {
     const bigRatio = dimFontSize(bigSvg) / svgSpan(bigSvg)
     expect(bigRatio / smallRatio).toBeCloseTo(1, 1)
     expect(dimFontSize(bigSvg)).toBeGreaterThan(dimFontSize(smallSvg))
+  })
+
+  // Task 34: `_PLAN_CLAUSE` (app/api/renders.py) le pide al modelo de imagen "sin texto ni
+  // marcas de agua" — pero hasta ahora la referencia SIEMPRE iba cubierta de nombres de
+  // cuarto, cotas y etiquetas de mueble. `annotations:false` es la versión que de verdad se
+  // manda a OpenAI (floorToPngBlob, LevantamientoPanel.tsx): sin ningún <text>, pero
+  // conservando todo lo que el modelo SÍ necesita ver (muros, huecos, símbolos de
+  // puerta/ventana, siluetas de mueble a escala).
+  function fullFloor(): FloorGraph {
+    const f = emptyFloorGraph('Test')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+    const eBottom = addEdge(f, a, b, 0.15), eRight = addEdge(f, b, c, 0.15)
+    addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+    f.edges[eBottom].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
+    f.edges[eRight].openings.push({ kind: 'window', offset: 0.5, width: 1.0 })
+    f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
+    f.fixtures = [{ id: 'fx1', kind: 'cama_queen', x: 2, y: 1.5, rot: 0, w_m: 1.6, h_m: 2.0 }]
+    return f
+  }
+
+  it('annotations:false produces no <text> at all — no room names, no dimensions, no fixture labels', () => {
+    const svg = floorToSvgString(fullFloor(), { annotations: false })
+    expect(svg).not.toContain('<text')
+    expect(svg).not.toContain('Sala')
+    expect(svg).not.toContain('Cama queen')
+  })
+
+  it('annotations:false keeps everything the render model still needs: walls, door/window symbols, and fixture silhouettes', () => {
+    const svg = floorToSvgString(fullFloor(), { annotations: false })
+    // 4 muros, 2 de ellos (bottom, right) partidos en 2 segmentos por su abertura = 6.
+    expect((svg.match(/<line data-wall="/g) || []).length).toBe(6)
+    expect(svg).toContain('data-opening="door-leaf"')
+    expect(svg).toMatch(/<path[^>]*d="M [\d.-]+ [\d.-]+ A /)   // arco de abatimiento
+    expect(svg).toContain('data-opening="window-glass"')
+    expect((svg.match(/data-opening="window-jamb"/g) || []).length).toBe(2)
+    expect(svg).toContain('data-fixture="fx1"')   // la silueta del mueble sigue ahí
+  })
+
+  it('annotations:true (default, sin pasar la opción) sigue produciendo el SVG completo de siempre — regresión explícita', () => {
+    const floor = fullFloor()
+    const explicit = floorToSvgString(floor, { annotations: true })
+    const implicitDefault = floorToSvgString(floor)
+    expect(implicitDefault).toBe(explicit)
+    expect(explicit).toContain('Sala')
+    expect(explicit).toContain('Cama queen')
+    expect(explicit).toContain('>4.00 m<')
   })
 })

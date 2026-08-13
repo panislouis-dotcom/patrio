@@ -15,10 +15,25 @@ function escapeXml(s: string): string {
 }
 
 /** SVG cenital del plano (muros + nombres de cuarto), escalado a los límites de la
- * planta. Es lo que se rasteriza y se manda al motor de renders. */
-export function floorToSvgString(floor: FloorGraph, opts: { pad?: number; scale?: number } = {}): string {
+ * planta. Es lo que se rasteriza y se manda al motor de renders.
+ *
+ * `opts.annotations` (default `true`, preserva el comportamiento de siempre): con
+ * `false` omite todo TEXTO (nombres de cuarto, cotas, etiquetas de mueble) — deja
+ * solo muros, vanos (con su símbolo de puerta/ventana) y las siluetas de mueble sin
+ * etiqueta. Task 34 del addendum de fidelidad geométrica: `_PLAN_CLAUSE`
+ * (`app/api/renders.py`) le pide al modelo de imagen "sin texto ni marcas de agua"
+ * sobre una referencia que hasta ahora iba cubierta de texto — instrucción que se
+ * contradecía a sí misma. La versión `annotations:false` es la que de verdad se
+ * manda a OpenAI (`floorToPngBlob`, más abajo); la versión completa (`true`, el
+ * default) sigue existiendo para cualquier otro consumidor que sí quiera ver
+ * cotas/nombres — hoy ninguno más la usa, pero la regresión se prueba explícita. */
+export function floorToSvgString(
+  floor: FloorGraph,
+  opts: { pad?: number; scale?: number; annotations?: boolean } = {},
+): string {
   const pad = opts.pad ?? 1          // metros de margen
   const scale = opts.scale ?? 100    // px por metro
+  const annotations = opts.annotations ?? true
   const vs = Object.values(floor.vertices)
   const xs = vs.map(v => v.x), ys = vs.map(v => v.y)
   const minx = Math.min(...xs, 0) - pad, maxx = Math.max(...xs, 1) + pad
@@ -146,63 +161,75 @@ export function floorToSvgString(floor: FloorGraph, opts: { pad?: number; scale?
       `fill="#e8e8e8" stroke="#555555" stroke-width="1" ` +
       `transform="translate(${cx} ${cy}) rotate(${-fx.rot})"/>`,
     )
-    parts.push(
-      `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-family="sans-serif" font-size="${fixtureFontPx}" fill="#333333">${escapeXml(meta.label)}</text>`,
-    )
+    // La silueta del mueble (el <rect> de arriba) va SIEMPRE — el modelo de render necesita
+    // verla a escala real sin importar `annotations`. Su etiqueta de texto es la que se omite
+    // en la versión limpia (Task 34): es exactamente el tipo de texto que `_PLAN_CLAUSE` le
+    // pide al modelo que no reproduzca.
+    if (annotations) {
+      parts.push(
+        `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-family="sans-serif" font-size="${fixtureFontPx}" fill="#333333">${escapeXml(meta.label)}</text>`,
+      )
+    }
   }
-  for (const r of roomLabels(floor)) {
-    const t = (r.name || '').trim()
-    if (!t) continue
-    parts.push(`<text x="${px(r.cx)}" y="${py(r.cy)}" text-anchor="middle" font-family="sans-serif" font-size="${roomFontPx}" fill="#333333">${escapeXml(t)}</text>`)
-  }
+  if (annotations) {
+    for (const r of roomLabels(floor)) {
+      const t = (r.name || '').trim()
+      if (!t) continue
+      parts.push(`<text x="${px(r.cx)}" y="${py(r.cy)}" text-anchor="middle" font-family="sans-serif" font-size="${roomFontPx}" fill="#333333">${escapeXml(t)}</text>`)
+    }
 
-  // Cotas: antes el export no mandaba NINGUNA dimensión en la imagen (solo vivían en el
-  // texto del prompt) — mismas cadenas ancho/alto y misma convención visual que el editor
-  // (FloorPlanCanvas.tsx, sección "── dimensions ──"), adaptada a este módulo sin JSX.
-  const dimText = (x: number, y: number, txt: string) =>
-    parts.push(`<text x="${x}" y="${y}" text-anchor="middle" font-family="serif" font-size="${dimFontPx}" fill="#333333">${escapeXml(txt)}</text>`)
-  const { widthMarks, heightMarks } = widthHeightChains(floor)
-  const dimX0 = widthMarks[0], dimX1 = widthMarks[widthMarks.length - 1]
-  const dimY0 = heightMarks[0], dimY1 = heightMarks[heightMarks.length - 1]
+    // Cotas: antes el export no mandaba NINGUNA dimensión en la imagen (solo vivían en el
+    // texto del prompt) — mismas cadenas ancho/alto y misma convención visual que el editor
+    // (FloorPlanCanvas.tsx, sección "── dimensions ──"), adaptada a este módulo sin JSX.
+    // Task 34: toda esta sección es TEXTO — se omite por completo en la versión limpia que se
+    // manda a OpenAI (las cotas y nombres solo importan para un humano viendo el SVG completo).
+    const dimText = (x: number, y: number, txt: string) =>
+      parts.push(`<text x="${x}" y="${y}" text-anchor="middle" font-family="serif" font-size="${dimFontPx}" fill="#333333">${escapeXml(txt)}</text>`)
+    const { widthMarks, heightMarks } = widthHeightChains(floor)
+    const dimX0 = widthMarks[0], dimX1 = widthMarks[widthMarks.length - 1]
+    const dimY0 = heightMarks[0], dimY1 = heightMarks[heightMarks.length - 1]
 
-  parts.push(`<line x1="${px(dimX0)}" y1="${py(dimY0) + 40}" x2="${px(dimX1)}" y2="${py(dimY0) + 40}" stroke="#999999" stroke-width="0.6"/>`)
-  for (let k = 0; k < widthMarks.length - 1; k++) {
-    const a = widthMarks[k], b = widthMarks[k + 1]
-    dimText((px(a) + px(b)) / 2, py(dimY0) + 54, `${f2(b - a)} m`)
-  }
+    parts.push(`<line x1="${px(dimX0)}" y1="${py(dimY0) + 40}" x2="${px(dimX1)}" y2="${py(dimY0) + 40}" stroke="#999999" stroke-width="0.6"/>`)
+    for (let k = 0; k < widthMarks.length - 1; k++) {
+      const a = widthMarks[k], b = widthMarks[k + 1]
+      dimText((px(a) + px(b)) / 2, py(dimY0) + 54, `${f2(b - a)} m`)
+    }
 
-  parts.push(`<line x1="${px(dimX1) + 40}" y1="${py(dimY0)}" x2="${px(dimX1) + 40}" y2="${py(dimY1)}" stroke="#999999" stroke-width="0.6"/>`)
-  for (let k = 0; k < heightMarks.length - 1; k++) {
-    const a = heightMarks[k], b = heightMarks[k + 1]
-    dimText(px(dimX1) + 64, (py(a) + py(b)) / 2, `${f2(b - a)} m`)
-  }
+    parts.push(`<line x1="${px(dimX1) + 40}" y1="${py(dimY0)}" x2="${px(dimX1) + 40}" y2="${py(dimY1)}" stroke="#999999" stroke-width="0.6"/>`)
+    for (let k = 0; k < heightMarks.length - 1; k++) {
+      const a = heightMarks[k], b = heightMarks[k + 1]
+      dimText(px(dimX1) + 64, (py(a) + py(b)) / 2, `${f2(b - a)} m`)
+    }
 
-  // Longitud por muro real — la fantasma no lleva su propia cota, igual que en dimensions.ts.
-  // Antes el offset era fijo (+11px en X): para un muro HORIZONTAL, my cae sobre la línea del
-  // muro, así que el texto quedaba encima del propio trazo negro (10-15px de grosor, #111111)
-  // en gris #333 — ilegible. El fix desplaza el texto por la normal REAL del muro (edgeAxis),
-  // así que se separa del trazo sin importar su orientación (horizontal, vertical o diagonal).
-  // (nx,ny) es un vector unitario en espacio de MUNDO; como px/py son una transformación
-  // conforme (escala uniforme + reflejo en Y, sin cizalla), un desplazamiento unitario en
-  // mundo sigue siendo perpendicular en pantalla — solo el componente Y cambia de signo
-  // (py(y) = (maxy - y) * scale). El margen crece con el grosor real del muro (w/2) más un
-  // colchón fijo, para despegar el texto del trazo sin importar qué tan grueso sea el muro.
-  for (const e of cotaEdges(floor)) {
-    const p1 = floor.vertices[e.v1], p2 = floor.vertices[e.v2]
-    const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2
-    const L = Math.hypot(p2.x - p1.x, p2.y - p1.y)
-    const { nx, ny } = edgeAxis(p1, p2)
-    const wallPx = Math.max(4, e.thickness * scale)
-    const off = wallPx / 2 + 10
-    dimText(px(mx) + nx * off, py(my) - ny * off, f2(L))
+    // Longitud por muro real — la fantasma no lleva su propia cota, igual que en dimensions.ts.
+    // Antes el offset era fijo (+11px en X): para un muro HORIZONTAL, my cae sobre la línea del
+    // muro, así que el texto quedaba encima del propio trazo negro (10-15px de grosor, #111111)
+    // en gris #333 — ilegible. El fix desplaza el texto por la normal REAL del muro (edgeAxis),
+    // así que se separa del trazo sin importar su orientación (horizontal, vertical o diagonal).
+    // (nx,ny) es un vector unitario en espacio de MUNDO; como px/py son una transformación
+    // conforme (escala uniforme + reflejo en Y, sin cizalla), un desplazamiento unitario en
+    // mundo sigue siendo perpendicular en pantalla — solo el componente Y cambia de signo
+    // (py(y) = (maxy - y) * scale). El margen crece con el grosor real del muro (w/2) más un
+    // colchón fijo, para despegar el texto del trazo sin importar qué tan grueso sea el muro.
+    for (const e of cotaEdges(floor)) {
+      const p1 = floor.vertices[e.v1], p2 = floor.vertices[e.v2]
+      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2
+      const L = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+      const { nx, ny } = edgeAxis(p1, p2)
+      const wallPx = Math.max(4, e.thickness * scale)
+      const off = wallPx / 2 + 10
+      dimText(px(mx) + nx * off, py(my) - ny * off, f2(L))
+    }
   }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join('')}</svg>`
 }
 
-/** Rasteriza el SVG del plano a un PNG (navegador). */
-export async function floorToPngBlob(floor: FloorGraph): Promise<Blob> {
-  const svg = floorToSvgString(floor)
+/** Rasteriza el SVG del plano a un PNG (navegador). `opts.annotations` se reenvía tal
+ * cual a `floorToSvgString` — default `true` (SVG completo), los llamadores que
+ * generan la imagen de referencia para OpenAI deben pasar `annotations: false`. */
+export async function floorToPngBlob(floor: FloorGraph, opts: { annotations?: boolean } = {}): Promise<Blob> {
+  const svg = floorToSvgString(floor, { annotations: opts.annotations })
   const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
   const img = new Image()
   await new Promise<void>((resolve, reject) => {

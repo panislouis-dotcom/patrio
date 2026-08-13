@@ -148,7 +148,10 @@ export function LevantamientoPanel({
   const handleGeneratePlan = useCallback(async (req: {
     promptId: number | null; promptText: string; floorId: string; floorName: string
   }) => {
-    const blob = await floorToPngBlob(selectedFloor!)
+    // Task 34: la referencia que ve la IA es la versión SIN anotaciones — `_PLAN_CLAUSE`
+    // (app/api/renders.py) le pide "sin texto ni marcas de agua", instrucción que se
+    // contradecía a sí misma cuando la imagen sí llevaba nombres/cotas/etiquetas.
+    const blob = await floorToPngBlob(selectedFloor!, { annotations: false })
     return onGenerateRender(variant, { ...req, plan: blob })
   }, [selectedFloor, variant, onGenerateRender])
 
@@ -161,7 +164,8 @@ export function LevantamientoPanel({
   // RENDERS. Sin `promptId`: el lote no nace de un preset guardado, nace de los
   // hechos de cada piso.
   const generateOneFloor = useCallback(async (floor: FloorGraph) => {
-    const blob = await floorToPngBlob(floor)
+    // Task 34: mismo motivo que handleGeneratePlan — la IA nunca ve la versión anotada.
+    const blob = await floorToPngBlob(floor, { annotations: false })
     return onGenerateRender(variant, {
       promptId: null, promptText: planFacts(floor), plan: blob, floorId: floor.id, floorName: floor.name,
     })
