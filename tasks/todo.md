@@ -496,3 +496,34 @@ nació, RENDERS tiene selector propio de piso independiente de PLANO, y un
 botón de lote genera los renders de todos los pisos con confirmación,
 progreso y tolerancia a fallo parcial — verificado con render real contra
 la propiedad 5. Rama sin push/merge — decisión de Eduardo.
+
+---
+
+# Fidelidad geométrica en renders de plano (addendum #4, 2026-08-13)
+
+Plan/diseño: `docs/plans/2026-08-13-fidelidad-geometrica-renders-plano.md`
+Motivo: Eduardo reportó que los renders no se ven fieles al levantamiento
+(cuartos agregados, puertas fuera de posición/dimensión, paredes
+faltantes). Diagnóstico con 6 subagentes independientes (3 Claude, 3 Codex)
+antes de decidir. Decisiones de Eduardo por AskUserQuestion: fidelidad 100%
+siempre (no "mejor esfuerzo"), el render se queda como plano 2D (no es un
+paso hacia 3D), y la vía elegida para eliminar el techo del proveedor es
+componer el trazo exacto de los muros encima del resultado de la IA.
+
+- [x] Task 33a: 5 bugs de dibujo en `planImage.ts` (60b54a3+6751c10; spec ✅, calidad ✅)
+  - Símbolo real de ventana (línea de vidrio + jambas) en vez de un hueco
+    desnudo — mejor candidato para "paredes faltantes".
+  - Vanos miden su ancho real (recorte de segmento por media anchura SOLO
+    en el extremo que colinda con una abertura, nunca en el vértice real
+    del muro — verificado que un muro sin aberturas no se recorta).
+  - Trazos de hoja/vidrio/arco/jamba proporcionales al grosor real del
+    muro (antes ~19× más delgados que el muro).
+  - Cotas con offset perpendicular real (vía `edgeAxis`), verificado con
+    un muro diagonal, no solo horizontal/vertical.
+  - Tipografía escalada como fracción de `planSpan` — razón texto/lienzo
+    constante sin importar el tamaño del plano, sobrevive el reescalado
+    posterior de PIL (`renders.py`).
+  - Ciclo de fix: un test viejo de puerta quedó de peso muerto (umbral tan
+    laxo que también pasaba con el bug presente) — borrado, su única
+    aserción no duplicada (forma del arco) plegada al test nuevo estricto.
+  - 567/567 tests, tsc y build limpios.
