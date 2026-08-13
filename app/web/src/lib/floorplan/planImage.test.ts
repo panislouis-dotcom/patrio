@@ -76,21 +76,7 @@ describe('floorToSvgString', () => {
 
   // Task 19: el render model no puede inferir dónde está una puerta si el muro se pinta
   // como una línea sólida continua — necesita ver el hueco real, igual que el editor.
-  it('draws a door opening as a real gap (two wall segments) plus its swing arc', () => {
-    const f = emptyFloorGraph('Test')
-    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0)
-    const e = addEdge(f, a, b, 0.15)
-    f.edges[e].openings.push({ kind: 'door', offset: 0.5, width: 0.9 }) // hueco de 1.55 a 2.45 (mundo)
-    const svg = floorToSvgString(f)
-    const walls = [...svg.matchAll(/<line data-wall="[^"]*"[^>]*x1="([\d.-]+)"[^>]*x2="([\d.-]+)"/g)]
-    expect(walls.length).toBe(2)   // dos segmentos de muro, no uno continuo
-    // El primer segmento termina antes de donde empieza el segundo — hueco real y numérico.
-    const seg1End = Number(walls[0][2]), seg2Start = Number(walls[1][1])
-    const gap = Math.abs(seg2Start - seg1End)
-    expect(gap).toBeGreaterThan(50)   // 0.9m de hueco * 100px/m = 90px, con margen
-    expect(svg).toMatch(/<path[^>]*d="M [\d.-]+ [\d.-]+ A [\d.-]+ [\d.-]+ 0 0 0 [\d.-]+ [\d.-]+"/)
-  })
-
+  //
   // Bug #2 del plan de Task 33a: stroke-linecap="round" extendía cada segmento de muro
   // media anchura de línea más allá de su punto final, comiéndose el hueco — una puerta de
   // 0.90 m en un muro de 0.15 m salía pintada a solo 0.76 m (medido rasterizando). La
@@ -114,6 +100,9 @@ describe('floorToSvgString', () => {
     const leftEdgeSeg2 = visualEdge(Number(x1b), Number(swB), capB, -1)
     const realGapPx = leftEdgeSeg2 - rightEdgeSeg1
     expect(realGapPx).toBeCloseTo(90, 0)   // 0.9m * 100px/m real, exacto (antes: ~75px, 17% angosto)
+    // El hueco de la puerta también debe llevar su arco de abatimiento (aserción heredada
+    // del test que este reemplaza, que verificaba lo mismo con un umbral demasiado laxo).
+    expect(svg).toMatch(/<path[^>]*d="M [\d.-]+ [\d.-]+ A [\d.-]+ [\d.-]+ 0 0 0 [\d.-]+ [\d.-]+"/)
   })
 
   // El mismo recorte no debe tocar los extremos de muro que SÍ coinciden con un vértice real
