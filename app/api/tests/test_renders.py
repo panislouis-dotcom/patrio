@@ -234,6 +234,7 @@ def test_a_photo_render_keeps_the_fixed_square_size_and_the_1536_cap(
     assert r.status_code == 201, r.text
 
     assert fake_images_edit[-1]["size"] == "1024x1024"
+    assert fake_images_edit[-1]["quality"] == "auto"   # sin el costo extra de "high"
     sent = Image.open(fake_images_edit[-1]["image"][1])
     assert max(sent.size) == 1536   # el tope de foto, no el de plano (2048)
 
@@ -262,6 +263,21 @@ def test_a_plan_render_uses_its_real_aspect_ratio_and_the_2048_cap(
     assert expected_size != "1024x1024"   # el fixture es deliberadamente rectangular
     sent = Image.open(fake_images_edit[-1]["image"][1])
     assert max(sent.size) == 2048   # el tope de plano, no el de foto (1536)
+
+
+def test_a_plan_render_uses_quality_high(client, test_property, fake_images_edit):
+    """Task 35: un muro interior vive en pocos píxeles a la calidad `auto` de
+    siempre — `high` sube el presupuesto de tokens de salida solo para el
+    camino de plano, donde el detalle lineal fino sí importa."""
+    plan = _rect_png_bytes(599, 1105)   # mismo patrón que los demás tests con fake_images_edit
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(plan), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    assert r.status_code == 201, r.text
+    assert fake_images_edit[-1]["quality"] == "high"
 
 
 def test_editing_a_plan_render_inherits_match_aspect_and_the_plan_cap(
@@ -357,7 +373,10 @@ def test_output_size_matches_the_real_aspect_ratio():
     assert abs(true_ratio - out_ratio) < 0.02
 
 
-def test_output_size_of_a_square_image_stays_near_1024():
+def test_output_size_of_a_square_image_stays_near_the_target_pixel_budget():
+    """Task 35 subió `_TARGET_PIXELS` de 1024*1024 a 2560*1440 (~3.69 MP) para
+    que un muro interior no viva en unos pocos píxeles — un cuadrado debe
+    acercarse a sqrt(2560*1440) ≈ 1920x1920, no al 1024 viejo."""
     from api import renders
 
     size = renders._output_size(_rect_png_bytes(1000, 1000))
@@ -366,7 +385,7 @@ def test_output_size_of_a_square_image_stays_near_1024():
     assert out_width % 16 == 0
     assert out_height % 16 == 0
     assert abs(out_width - out_height) <= 16          # prácticamente cuadrado
-    assert 960 <= out_width <= 1088                    # cerca de 1024, no lejos
+    assert 1856 <= out_width <= 1984                   # cerca de 1920, no lejos
 
 
 def test_output_size_clamps_extreme_ratios_to_the_api_limit():

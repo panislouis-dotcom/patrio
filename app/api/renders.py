@@ -107,10 +107,17 @@ def _downscale(image_bytes: bytes, max_edge: int) -> tuple[bytes, str]:
 _MIN_RATIO = 1 / 3
 _MAX_RATIO = 3.0
 
-# Mismo orden de magnitud que el "1024x1024" fijo de hoy (~1.05 MP): lo que
-# cambia con este presupuesto es la FORMA del lienzo, no su tamaño total —
-# no hay razón para pagar más costo/latencia solo por respetar la proporción.
-_TARGET_PIXELS = 1024 * 1024
+# Task 35 (addendum de fidelidad geométrica, 2026-08-13): a 1024*1024
+# (~1.05 MP, el presupuesto original) un muro interior de 0.10 m en una casa
+# de 20 m de ancho se pinta a ~5.8 px — sub-token para un modelo que
+# tokeniza por parches (calculado, no medido: ver
+# docs/plans/2026-08-13-fidelidad-geometrica-renders-plano.md). 2560x1440
+# (~3.69 MP) es el techo que la propia API documenta como "no experimental"
+# (arriba de eso "los resultados pueden ser más variables" — ver el SDK
+# instalado y el plan de fidelidad dimensional, 2026-08-12); apuntar al
+# mismo presupuesto TOTAL de píxeles sube la resolución real de cada muro
+# ~3.5× sin cruzar a territorio experimental.
+_TARGET_PIXELS = 2560 * 1440
 
 _SIZE_TOLERANCE = 0.02
 
@@ -118,6 +125,21 @@ _SIZE_TOLERANCE = 0.02
 def _round16(value: float) -> int:
     """Redondea al múltiplo de 16 más cercano — la API rechaza cualquier otro."""
     return max(16, round(value / 16) * 16)
+
+
+def _floor16(value: float) -> int:
+    """Redondea HACIA ABAJO al múltiplo de 16 — a diferencia de `_round16` (que
+    redondea al más cercano y puede subir), garantiza que el resultado nunca
+    EXCEDA `value`. Necesario en la salvaguarda de razón máxima: redondear al más
+    cercano ahí podía dejar una razón por encima del límite que la API rechaza."""
+    return max(16, (int(value) // 16) * 16)
+
+
+def _ceil16(value: float) -> int:
+    """Redondea HACIA ARRIBA al múltiplo de 16 — simétrico a `_floor16`, garantiza
+    que el resultado nunca quede POR DEBAJO de `value`. Necesario en la salvaguarda
+    de razón mínima."""
+    return max(16, -(-int(value) // 16) * 16)
 
 
 def _output_size(image_bytes: bytes) -> str:
@@ -151,11 +173,25 @@ def _output_size(image_bytes: bytes) -> str:
 
     # Salvaguarda dura: pase lo que pase con el redondeo de arriba, nunca se
     # manda una razón fuera de lo que la API acepta.
+    #
+    # Bug real, encontrado en la Task 35 al subir `_TARGET_PIXELS`: `_round16` (al
+    # más cercano) puede redondear el lado corregido HACIA EL LADO EQUIVOCADO del
+    # límite. Ejemplo real que lo expuso: 1200x200 (6:1) con el presupuesto nuevo
+    # rendía width=3328, height=1104 antes de esta salvaguarda — height/width =
+    # 0.3318, por DEBAJO de _MIN_RATIO (0.3333...). La rama de abajo recalculaba
+    # `_round16(3328 * (1/3))` = `_round16(1109.33)` = 1104 — EL MISMO valor
+    # redondeado al más cercano, sin corregir nada: la razón final quedaba en
+    # 3.0145, por encima del 3.0 que la API exige como tope duro. `_floor16`/
+    # `_ceil16` (redondeo direccional, no al más cercano) garantizan que el
+    # resultado SIEMPRE caiga del lado permitido, nunca lo cruce por redondeo.
     final_ratio = height / width
     if final_ratio > _MAX_RATIO:
-        height = _round16(width * _MAX_RATIO)
+        # height/width debe quedar <= _MAX_RATIO: redondear height HACIA ABAJO
+        # nunca puede empujarlo por encima del límite.
+        height = _floor16(width * _MAX_RATIO)
     elif final_ratio < _MIN_RATIO:
-        height = _round16(width * _MIN_RATIO)
+        # Simétrico: height/width debe quedar >= _MIN_RATIO: redondear HACIA ARRIBA.
+        height = _ceil16(width * _MIN_RATIO)
 
     return f"{width}x{height}"
 
@@ -181,12 +217,20 @@ def generate_image(image_bytes: bytes, content_type: str, prompt: str, *,
 
     prepared, _ = _downscale(image_bytes, max_edge)
     size = _output_size(image_bytes) if match_aspect else "1024x1024"
+    # Task 35: un plano es línea + texto denso (cotas, nombres) — "high" sube el
+    # presupuesto de TOKENS DE SALIDA que el modelo gasta dibujando el detalle fino
+    # de muros/vanos; no cambia cómo se LEE la entrada (gpt-image-2 siempre procesa
+    # la referencia a alta fidelidad, sin importar `quality`). Una foto no tiene ese
+    # problema de detalle lineal fino, así que se queda en el `auto` de siempre en
+    # vez de pagar el costo extra sin beneficio de fidelidad geométrica.
+    quality = "high" if match_aspect else "auto"
     client = OpenAI(api_key=api_key, max_retries=2)
     result = client.images.edit(
         model=MODEL,
         image=("source.png", io.BytesIO(prepared), "image/png"),
         prompt=prompt,
         size=size,
+        quality=quality,
         n=1,
         **edit_kwargs(),
     )
