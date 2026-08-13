@@ -425,6 +425,22 @@ ambos subagentes):
     8 renders reales de la propiedad 5). Requerido en el endpoint — seguro
     porque el deploy es monolítico (frontend+API en una imagen, sin gap de
     versión).
-- [ ] Task 30: selector de piso + filtrado en RendersPanel
+- [x] Task 30: selector de piso + filtrado en RendersPanel (a68e270; spec ✅, calidad ✅)
+  - Selector con estado propio (`selectedFloorId` en `LevantamientoPanel`),
+    verificado NO acoplado al `activeFloor`/reducer de PLANO (test dedicado).
+    Fallback a `fs.floors[0]` si el piso seleccionado ya no existe (borde de
+    `DEL_FLOOR`, aunque esa acción sigue sin botón conectado en la UI).
+  - `RendersPanel.scoped` filtra por floor_id DEL PISO SELECCIONADO +
+    source_variant (nunca floor_id solo, regla del Task 28). Sección "Sin
+    piso identificado" para floor_id=NULL cuando floorCount≥2, siempre
+    visible incluso en 0; con exactamente 1 piso esos renders se pliegan
+    bajo ese único piso sin sección aparte — ambos casos con test dedicado.
+  - Arregla el flujo de generación desde plano, roto desde que el Task 29
+    volvió floorId/floorName obligatorios en el backend: ahora manda el
+    id/nombre del piso SELECCIONADO EN RENDERS (no el activo de PLANO).
+  - Unión discriminada `PlanProps | PhotosProps` se mantiene endurecida
+    (campos nuevos requeridos en PlanProps, `?: never` en PhotosProps) — no
+    hubo retroceso al aflojarla.
+  - 541/541 tests frontend, tsc y build limpios.
 - [ ] Task 31: "Generar todos los pisos" (lote, confirmación, progreso, fallo parcial)
 - [ ] Task 32: verificación final
