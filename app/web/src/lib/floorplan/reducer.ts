@@ -173,6 +173,11 @@ export function reducer(s: EditorState, a: Action): EditorState {
     case 'ADD_FLOOR': {
       const m = clone(s.model)
       const src = clone(F(m))
+      // clone() copia TODOS los campos del piso activo, incluido `id` — sin esta línea el
+      // piso nuevo compartiría identidad con el piso del que nació. Dos pisos con el mismo
+      // id en el mismo FloorSet romperían la atribución de renders por piso (task futura),
+      // que empareja cada render con el id de SU piso.
+      src.id = genId()
       src.name = m.floors.length === 1 ? 'Planta Alta' : `Nivel ${m.floors.length + 1}`
       m.floors.push(src); m.activeFloor = m.floors.length - 1
       return { ...modelChange(s, m), ui: { ...s.ui, sel: null, editRoom: null } }

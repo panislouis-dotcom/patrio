@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  withVariant, emptyFloorSet, clone, floorElev, migrateGeometry, FIXTURE_CATALOG,
+  withVariant, emptyFloorSet, emptyFloorGraph, clone, floorElev, migrateGeometry, FIXTURE_CATALOG,
 } from './types'
 
 // Real shape seen in production: the old wall-list editor's blob has no `activeFloor` at all
@@ -20,6 +20,14 @@ function v2Blob() {
   fs.activeFloor = 1
   return { schemaVersion: 2 as const, slab_m: fs.slab_m, activeFloor: fs.activeFloor, floors: fs.floors }
 }
+
+describe('emptyFloorGraph', () => {
+  it('nace con un id no vacío (identidad estable del piso)', () => {
+    const f = emptyFloorGraph('Planta Baja')
+    expect(typeof f.id).toBe('string')
+    expect(f.id.length).toBeGreaterThan(0)
+  })
+})
 
 describe('withVariant', () => {
   it('builds a fresh v3 envelope from null: the written variant lands, the other defaults', () => {
@@ -117,6 +125,51 @@ describe('migrateGeometry', () => {
     expect(migrateGeometry(undefined)).toBeNull()
     expect(migrateGeometry('geometría')).toBeNull()
     expect(migrateGeometry(42)).toBeNull()
+  })
+
+  it('asigna un id fresco al piso de un blob v2 que no lo tiene (dato legado, previo a este campo)', () => {
+    const v2 = v2Blob()
+    delete (v2.floors[0] as { id?: string }).id
+    const m = migrateGeometry(v2)!
+    expect(m).not.toBeNull()
+    expect(m.variants.original.floors[0].id).toBeTruthy()
+  })
+
+  it('asigna un id fresco a un piso v3 que ya no lo tiene (blob guardado antes de esta feature)', () => {
+    const v3 = withVariant(null, 'original', emptyFloorSet())
+    delete (v3.variants.original.floors[0] as { id?: string }).id
+    const m = migrateGeometry(v3)!
+    expect(m).not.toBeNull()
+    expect(m.variants.original.floors[0].id).toBeTruthy()
+  })
+
+  it('asigna un id fresco también en la variante planned cuando le falta', () => {
+    const planned = emptyFloorSet()
+    delete (planned.floors[0] as { id?: string }).id
+    const v3 = withVariant(withVariant(null, 'original', emptyFloorSet()), 'planned', planned)
+    const m = migrateGeometry(v3)!
+    expect(m).not.toBeNull()
+    expect(m.variants.planned!.floors[0].id).toBeTruthy()
+  })
+
+  it('asigna ids DISTINTOS a dos pisos del mismo blob que no tienen id (no reusa un solo genId())', () => {
+    const fs = emptyFloorSet()
+    fs.floors.push({ ...clone(fs.floors[0]), name: 'Planta Alta' })
+    delete (fs.floors[0] as { id?: string }).id
+    delete (fs.floors[1] as { id?: string }).id
+    const v3 = withVariant(null, 'original', fs)
+    const m = migrateGeometry(v3)!
+    const [f0, f1] = m.variants.original.floors
+    expect(f0.id).toBeTruthy()
+    expect(f1.id).toBeTruthy()
+    expect(f0.id).not.toBe(f1.id)
+  })
+
+  it('conserva el id de un piso que ya lo tenía: no lo pisa en cada carga', () => {
+    const v3 = withVariant(null, 'original', emptyFloorSet())
+    const originalId = v3.variants.original.floors[0].id
+    const m = migrateGeometry(v3)!
+    expect(m.variants.original.floors[0].id).toBe(originalId)
   })
 })
 

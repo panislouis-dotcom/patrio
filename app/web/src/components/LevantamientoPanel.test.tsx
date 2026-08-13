@@ -33,6 +33,15 @@ function plannedFloorSet(): FloorSet {
   return fs
 }
 
+/** Compara un FloorSet ignorando el `id` de cada piso: útil cuando la variante bajo prueba
+ * nace con identidad nueva a propósito (p. ej. EMPEZAR EN BLANCO) y solo importa la FORMA —
+ * comparar contra una segunda llamada de fábrica generaría un id distinto por diseño. */
+function sinIdsDePiso(fs: FloorSet): FloorSet {
+  const c = clone(fs)
+  c.floors.forEach(f => { delete (f as { id?: string }).id })
+  return c
+}
+
 /** Render nacido del plano de UNA variante — `sourceVariant` es lo único que
  * `RendersPanel` usa para separar «lo mío» de «lo del otro levantamiento». */
 function planRenderRow(id: number, variant: VariantKey): PropertyRender {
@@ -145,7 +154,11 @@ describe('LevantamientoPanel · PLANEADO sin datos', () => {
 
     const [variant, fs] = onSave.mock.calls[0]
     expect(variant).toBe('planned')
-    expect(fs).toEqual(emptyFloorSet())
+    // Misma forma que un FloorSet en blanco — el id difiere a propósito: EMPEZAR EN BLANCO
+    // nace con identidad propia, no clonada, así que comparar contra otra llamada de
+    // fábrica nunca puede coincidir en el id sin volverse un mock del generador.
+    expect(sinIdsDePiso(fs)).toEqual(sinIdsDePiso(emptyFloorSet()))
+    expect(fs.floors[0].id).toBeTruthy()
   })
 })
 
@@ -163,7 +176,11 @@ describe('LevantamientoPanel · PLANEADO existente', () => {
   })
 
   it('RE-PARTIR exige la confirmación de dos pasos, y cancelar no clona nada', async () => {
-    const { onSave } = renderPanel('planned', geometry())
+    // Reusa LA MISMA instancia de `original` para armar la geometría y para comparar el
+    // resultado: `originalConMuro()` genera un id nuevo en cada llamada (vía emptyFloorSet),
+    // así que comparar contra una segunda llamada nunca coincidiría en el id del piso.
+    const original = originalConMuro()
+    const { onSave } = renderPanel('planned', withVariant(withVariant(null, 'original', original), 'planned', plannedFloorSet()))
 
     // Primer paso: el botón solo arma la confirmación, sin tocar el modelo.
     fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
@@ -181,7 +198,7 @@ describe('LevantamientoPanel · PLANEADO existente', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
     const [variant, fs] = onSave.mock.calls[0]
     expect(variant).toBe('planned')
-    expect(fs).toEqual(originalConMuro())
+    expect(fs).toEqual(original)
   })
 
   it('CANCELAR se desactiva mientras el re-partir está en vuelo: ya no hay nada que cancelar', () => {

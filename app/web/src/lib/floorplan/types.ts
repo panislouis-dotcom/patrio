@@ -77,6 +77,11 @@ export const FIXTURE_CATALOG: Record<FixtureKind, { label: string; w_m: number; 
 }
 
 export interface FloorGraph {
+  // Identidad estable del piso, independiente de su posición (sobrevive a reordenar) y de
+  // su nombre (sobrevive a renombrar). Requerido — no opcional — para que ningún consumidor
+  // tenga que verificar su ausencia: emptyFloorGraph/ADD_FLOOR lo asignan al crear, y
+  // migrateGeometry lo rellena en memoria para todo blob viejo que aún no lo tenga.
+  id: string
   name: string
   height_m: number
   extWall_m: number
@@ -113,6 +118,7 @@ export function genId(): string {
 
 export function emptyFloorGraph(name: string): FloorGraph {
   return {
+    id: genId(),
     name, height_m: 2.60, extWall_m: 0.15, intWall_m: 0.10,
     vertices: {}, edges: {}, rooms: [], fixtures: [],
   }
@@ -141,6 +147,19 @@ export function withVariant(model: FloorPlanModel | null, key: VariantKey, fs: F
 const isFloorSet = (v: unknown): v is FloorSet =>
   !!v && typeof v === 'object' && Array.isArray((v as FloorSet).floors)
 
+// Rellena `id` en memoria a cualquier piso de `fs` que no lo tenga — ya sea un piso v2 recién
+// anidado (nunca tuvo el campo) o un piso v3 guardado antes de que este campo existiera
+// (isFloorSet solo valida que `floors` sea un arreglo, no que cada piso esté completo). Cada
+// piso llama a genId() por su cuenta dentro del loop: un `.map(() => ({...f, id: genId()}))`
+// evaluado perezosamente o un `const id = genId()` sacado del loop reusarían el mismo id en
+// dos pisos distintos — mutar in-place, uno por uno, evita ambos. Un piso que YA trae id no
+// se toca: no pisar un id real en cada carga, solo rellenar los que faltan de verdad.
+function backfillFloorIds(fs: FloorSet): void {
+  for (const f of fs.floors) {
+    if (!f.id) f.id = genId()
+  }
+}
+
 /**
  * Único punto de entrada para leer un blob de geometría persistido: v3 pasa tal cual,
  * v2 (un plano en la raíz) se anida como variante `original` con `planned: null`.
@@ -159,6 +178,10 @@ export function migrateGeometry(raw: unknown): FloorPlanModel | null {
     // Un planned presente pero malformado invalida el blob ENTERO: si miente en una
     // variante puede mentir en la otra, y leerlo a medias es peor que no leerlo.
     if (planned != null && !isFloorSet(planned)) return null
+    // Backfill de `id` ANTES de entregar el modelo: mutar in-place preserva la identidad
+    // del objeto para el caso ya-bien-formado (nada que rellenar, mismo objeto de vuelta).
+    backfillFloorIds(original)
+    if (isFloorSet(planned)) backfillFloorIds(planned)
     // Ausente (clave sin escribir) se normaliza a null para que el tipo no mienta;
     // un v3 ya bien formado conserva su identidad, sin copia.
     if (planned === undefined) return withVariant(null, 'original', original)
@@ -166,6 +189,7 @@ export function migrateGeometry(raw: unknown): FloorPlanModel | null {
   }
   if (m.schemaVersion === 2 && isFloorSet(m)) {
     const { slab_m, activeFloor, floors } = m
+    backfillFloorIds({ slab_m, activeFloor, floors })
     return withVariant(null, 'original', { slab_m, activeFloor, floors })
   }
   return null

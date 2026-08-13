@@ -502,3 +502,20 @@ describe('camera actions (view-only, never touch history)', () => {
     expect(s.ui.camera).toEqual({ scale: 100, centerX: 2, centerY: 1 })
   })
 })
+
+describe('ADD_FLOOR', () => {
+  it('el piso nuevo tiene un id distinto al del piso clonado, nunca lo hereda', () => {
+    // Riesgo: ADD_FLOOR clona el piso activo completo (clone(F(m))), y clonar copia TODOS
+    // los campos incluyendo `id` a menos que se sobreescriba explícitamente. Si el clon se
+    // quedara con el id heredado, dos pisos del mismo FloorSet compartirían identidad — y
+    // la atribución de renders por piso (task futura) no podría distinguirlos.
+    const { model } = modelWithRectangle()
+    const sourceId = model.floors[0].id
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FLOOR' })
+    expect(s.model.floors).toHaveLength(2)
+    const newFloor = s.model.floors[s.model.activeFloor]
+    expect(newFloor.id).toBeTruthy()
+    expect(newFloor.id).not.toBe(sourceId)
+  })
+})
