@@ -288,5 +288,143 @@ arbitrarias.
   - De paso: `wallLength` duplicado se reemplazó por `edgeAxis(...).L` compartido
     con planImage.ts/FloorPlanCanvas.tsx (mismo cálculo, ya no puede divergir).
 
-**TASKS 25-26 COMPLETAS: código del addendum #2 cerrado. Falta Task 27
-(verificación final + render de prueba comparando proporción real).**
+- [x] Task 27: verificación integral (evidencia fresca + render real de prueba)
+
+## Revisión final del addendum #2 (Task 27)
+
+**Part A — 4 capas de verificación, evidencia fresca de esta corrida:**
+- Frontend: `npm test` → **521/521** (43 archivos); `npx tsc --noEmit` limpio;
+  `npm run build` limpio (el warning de chunk >500kB es preexistente, ya
+  señalado en el cierre del Task 18/24).
+- Backend: `.venv/bin/python -m pytest app/api/tests/ -q` → **589/589**.
+- Las 4 capas en verde, sin fixes necesarios.
+
+**Part B — render real de prueba (el punto de este addendum):**
+- Browser automation no disponible esta corrida (`list_connected_browsers` →
+  `[]`) — se usó la ruta alterna vía API, mismo precedente que el Task 24.
+- El stack de este checkout venía corriendo desde antes de los commits de
+  hoy (Aug11 19:08 vs. commits de Task 25/26 esta mañana) — se reinició
+  desde cero para garantizar código fresco: API en :8010, frontend en :5174,
+  logs en el scratchpad de la sesión.
+- Se reprodujo el SVG y el `planFacts` REALES corriendo `floorToSvgString` +
+  `planFacts` de producción (vitest desechable, borrado al terminar) contra
+  la geometría real de la propiedad 5 (Planta Baja, `activeFloor=0`) volcada
+  de la BD. Se rasterizó con Playwright Python replicando `floorToPngBlob`
+  EXACTAMENTE (Image → canvas → PNG) — verificado por **MD5 idéntico**
+  contra el plan-source real de un render histórico (id=20): reproducción
+  byte por byte, no una aproximación.
+- Render real generado: `POST /api/properties/5/renders/from-plan`,
+  `variant=original`, preset "Cálido contemporáneo" (id 7) + el `planFacts`
+  real concatenado a mano (mismo defecto diferido de composición UI que ya
+  documentó el Task 24). Costo real de OpenAI incurrido, ~54s de espera.
+  Resultado: `property_renders.id=23`, propiedad 5.
+- **Comparación numérica honesta:**
+  - Antes (id=20, generado antes del fix, mismo checkout/preset): **1024×1024,
+    ratio 1.0** — cuadrado forzado. Confirmado también en dos renders
+    adicionales de esta sesión (id=21, id=22, generados antes de que Task 25
+    aterrizara en disco): ambos también 1024×1024.
+  - Ahora (id=23): **704×1488, ratio h/w = 2.114**.
+  - La predicción determinista de `_output_size` sobre la imagen de
+    referencia real dio exactamente `704x1488` — coincide EXACTO con lo que
+    OpenAI devolvió.
+  - Razón cruda del piso real (bounding box de vértices, Planta Baja):
+    5.99×11.05 m → **1.845**.
+  - Hallazgo honesto, no escondido: la imagen de referencia que de verdad se
+    manda a OpenAI (el PNG que exporta `floorToSvgString`) mide 802×1700 →
+    ratio **2.12**, no 1.845. `floorToSvgString` fuerza el bbox del SVG a
+    incluir el origen del mundo (0,0)-(1,1) sin importar dónde esté la planta
+    real (`Math.min(...xs, 0)` / `Math.max(...xs, 1)`) — en la propiedad 5
+    (rango Y real 3.95–15.00, lejos del origen) eso añade ~5 m de margen en
+    blanco arriba de la planta. Verificado que esa línea es preexistente y
+    ajena a este addendum: último commit sobre `planImage.ts` es `d8e163e`
+    (anterior al plan de este addendum); `git log 61db7b5..HEAD --
+    planImage.ts` no toca el archivo. `_output_size` hizo exactamente lo que
+    Task 25 le pidió — igualar la razón de LA IMAGEN QUE RECIBIÓ (2.12) con
+    alta fidelidad (diferencia de 0.006, muy por debajo de la tolerancia de
+    0.02 del propio algoritmo). El objetivo del addendum (dejar de mandar un
+    cuadrado fijo) se cumple con evidencia numérica; el objetivo aspiracional
+    de acertar 1.845 exacto queda parcialmente diluido por un bug preexistente
+    y separado en el exportador del plano, no por este fix.
+  - Comparación visual: el render histórico (id=20) sale una planta casi
+    cuadrada, los 2 departamentos comprimidos lado a lado en un envolvente
+    1:1. El render nuevo (id=23) sale claramente alargado/vertical — un
+    edificio angosto de dos crujías, mucho más cercano a la forma real del
+    inmueble (sigue la misma partición izquierda/derecha por departamento que
+    ya validó el Task 24). Mejora visible, no solo numérica.
+  - **Veredicto: el fix funciona como se diseñó.** El canvas de salida ya no
+    es un cuadrado fijo — sigue la razón de la imagen de referencia con alta
+    fidelidad. La razón absoluta objetivo (1.845) no se alcanza exacta por un
+    bug preexistente y no relacionado en el exportador del plano —
+    documentado, no ocultado.
+
+**Part C — barrido final:**
+- `git diff 61db7b5..HEAD -- app/web/src app/api` sin
+  `console.log`/`debugger`/TODO/FIXME nuevos (61db7b5 = el commit que
+  introdujo `docs/plans/2026-08-12-fidelidad-dimensional-renders.md`, el
+  arranque real de este addendum).
+- `origin/main...feat/levantamientos`: la rama quedó **3 commits detrás** de
+  `origin/main` (features de Procesos/Scouting, #27-#29, ninguno toca
+  floorplan/renders — sin riesgo de conflicto) y sigue 59 adelante.
+- Stack de esta sesión reiniciado y **vivo a propósito**: API
+  `http://localhost:8010` (`/api/version` responde), frontend
+  `http://localhost:5174`.
+- Dato de prueba creado en esta tarea: `property_renders.id=23` (propiedad
+  5) — se deja, es la evidencia de Part B. Ningún dato histórico se tocó ni
+  se borró (id=20/21/22 siguen intactos como referencia "antes").
+- Scripts desechables (test de vitest, fixture JSON de geometría, script de
+  rasterización con Playwright) borrados al terminar — ninguno quedó en el
+  repo (`git status` limpio).
+
+**Conclusión: las 4 capas de verificación están en verde con evidencia fresca
+de esta corrida. El render real de prueba (Part B) confirma numéricamente que
+Task 25 funciona: el canvas de salida pasó de 1024×1024 fijo (ratio 1.0) a
+704×1488 (ratio 2.114), siguiendo con alta fidelidad (±0.006) la razón real de
+la imagen de referencia que se le manda a OpenAI. Se documenta honestamente
+que esa imagen de referencia no reproduce exactamente la razón cruda del piso
+(1.845) por un bug preexistente y fuera de alcance en `floorToSvgString`
+(padding forzado al origen del mundo) — no una falla de este addendum.
+`planFacts` (Task 26) se verificó presente y correcto en el prompt real usado:
+anclaje de puertas/ventanas a extremos visibles (izquierdo/derecho/superior/
+inferior) y ángulos de esquina no rectos (88°, 177°, 179°) aparecen en el
+texto real enviado a OpenAI. TASKS 25-27 CERRADAS. Rama sin push/merge —
+decisión de Eduardo.**
+
+---
+
+# Renders por piso (addendum #3, 2026-08-13)
+
+Plan/diseño: `docs/plans/2026-08-13-renders-multi-piso-design.md`
+Motivo: Eduardo pidió generar renders de TODOS los pisos de un levantamiento,
+no solo el activo. Análisis independiente de un subagente Claude (Explore) y
+un subagente Codex antes de decidir — ambos convergieron en: una llamada por
+piso (técnicamente forzado por images.edit, no solo preferido), y el mismo
+patrón de snapshot congelado que ya usa prompt_id/prompt_text.
+
+Decisiones de Eduardo (más ambiciosas que la recomendación por defecto de
+ambos subagentes):
+- ID estable para FloorGraph (no el snapshot índice+nombre más barato que
+  ambos recomendaban) — base más sólida.
+- "Generar todos los pisos" se construye YA, no se difiere.
+- Los 6 renders de prueba de la propiedad 5 (ids 20-25, de la verificación
+  del addendum #2) se borraron con el mecanismo real de la app
+  (`delete_render` + `storage.delete`, no un DELETE crudo). Quedan intactos
+  los 8 renders históricos reales (2026-08-05 al 07) — nunca se tocaron.
+
+- [x] Task 28: `FloorGraph.id` — identidad estable (dc835b9; spec ✅, calidad ✅ con fix)
+  - Bug real cazado y corregido: `ADD_FLOOR` clonaba el piso activo completo,
+    heredando su id — dos pisos hubieran quedado con el mismo id. Fix + test
+    dedicado.
+  - Hallazgo de calidad: `writePlanned` (PARTIR/RE-PARTIR) también clona un
+    piso completo y comparte su id entre variantes — decidido INTENCIONAL
+    (linaje original↔planeado, sin ambigüedad porque el filtrado de renders
+    siempre combina floor_id+source_variant). Fix en curso: documentar +
+    test explícito antes de que Task 30 construya encima.
+- [x] Task 29: `floor_id`/`floor_name` en `property_renders` (ecef8d4; spec ✅, calidad ✅)
+  - Migración 042, mismo patrón que source_variant (040): sin backfill,
+    NULL permanente para todo render preexistente (verificado contra los
+    8 renders reales de la propiedad 5). Requerido en el endpoint — seguro
+    porque el deploy es monolítico (frontend+API en una imagen, sin gap de
+    versión).
+- [ ] Task 30: selector de piso + filtrado en RendersPanel
+- [ ] Task 31: "Generar todos los pisos" (lote, confirmación, progreso, fallo parcial)
+- [ ] Task 32: verificación final
