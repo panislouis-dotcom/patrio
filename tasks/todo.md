@@ -599,3 +599,24 @@ componer el trazo exacto de los muros encima del resultado de la IA.
 
 **Task 33 (bugs de imagen de referencia + prompt) cerrado por completo —
 las Capas 1 y 2 del diagnóstico del addendum #4 quedan resueltas.**
+
+**Nota de proceso:** a partir de aquí se agotó el límite de subagentes de la
+sesión (200). Eduardo eligió que Claude siga implementando y verificando
+directamente, sin el patrón de doble revisión independiente (espec+calidad)
+usado en Tasks 28-33. El rigor de TDD/verificación real se mantiene, pero
+sin el segundo par de ojos adversarial.
+
+- [x] Task 34: SVG limpio (sin anotaciones) para la referencia a OpenAI (c0cda96)
+  - `floorToSvgString` gana `opts.annotations` (default `true`, sin
+    regresión). Con `false` omite TODO `<text>` (nombres, cotas, etiquetas
+    de mueble) pero conserva muros/huecos/símbolos de puerta-ventana/
+    siluetas de mueble — resuelve que `_PLAN_CLAUSE` pidiera "sin texto"
+    sobre una imagen cubierta de texto.
+  - Los 2 call-sites reales de `floorToPngBlob` (individual y lote) en
+    `LevantamientoPanel.tsx` ahora mandan la versión limpia a OpenAI.
+  - Verificado que `_floorplan_svg` (Python, `prospectus_html.py`) es un
+    sistema deliberadamente separado (documento de prospecto) — nada
+    reusable para este camino.
+  - Verificado con prueba de mutación (forzar `annotations=true` rompe el
+    test de "sin texto") antes de revertir.
+  - 596/596 tests, tsc y build limpios.
