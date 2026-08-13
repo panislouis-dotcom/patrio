@@ -22,6 +22,7 @@ const prompt: RenderPrompt = {
 
 const renderRow: PropertyRender = {
   id: 1, propertyId: 7, sourceImageId: 10, sourcePlanPath: null, sourceVariant: null,
+  floorId: null, floorName: null,
   parentRenderId: null, filePath: 'r/1.png', contentType: 'image/png', promptId: 1,
   promptText: 'Mezquite y agaves.', provider: 'openai', model: 'gpt-image-2',
   createdAt: '2026-08-02T00:00:00Z',

@@ -64,6 +64,15 @@ export interface PropertyRender {
   /** De qué levantamiento nació un render de plano ('original' | 'planned'); null cuando
    * nació de una foto (migración 040). Una edición hereda la variante de su padre. */
   sourceVariant?: 'original' | 'planned' | null
+  /** De qué PISO del levantamiento nació un render de plano — identidad (coincide con
+   * un `FloorGraph.id` mientras ese piso exista), null cuando nació de una foto O
+   * cuando es un render de plano anterior a esta identidad (migración 042: sin
+   * backfill inventado, todo lo previo queda en NULL). Una edición hereda el piso de
+   * su padre, igual que `sourceVariant`. */
+  floorId: string | null
+  /** Snapshot del nombre del piso, congelado al generar — mismo patrón dual que
+   * `promptText`: el piso se pudo renombrar o borrar después. */
+  floorName: string | null
   filePath: string
   contentType: string
   promptId: number | null

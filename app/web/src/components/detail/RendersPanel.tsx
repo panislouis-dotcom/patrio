@@ -27,6 +27,9 @@ interface PhotosProps extends CommonProps {
     => Promise<PropertyRender>
   plan?: never
   variant?: never
+  floorId?: never
+  floorName?: never
+  floorCount?: never
   onGeneratePlan?: never
 }
 
@@ -38,8 +41,22 @@ interface PhotosProps extends CommonProps {
 interface PlanProps extends CommonProps {
   source: 'plan'
   variant: VariantKey
+  /** El contenido del piso SELECCIONADO — el selector de piso vive en
+   * `LevantamientoPanel` (dueño de `fs.floors`), no aquí: este panel solo ve UN
+   * piso a la vez, porque generar siempre habla de una sola PNG/piso (Task 30). */
   plan: FloorGraph | null
-  onGeneratePlan: (req: { promptId: number | null; promptText: string }) => Promise<PropertyRender>
+  /** Identidad y nombre del piso de `plan` — null exactamente cuando `plan` es
+   * null. Se mandan tal cual al generar (`onGeneratePlan`) y filtran la lista
+   * (`scoped`) junto con `variant`, nunca solos (Task 28: floor identity + variant). */
+  floorId: string | null
+  floorName: string | null
+  /** Cuántos pisos tiene ESTE levantamiento en total. Decide si un render con
+   * `floorId` NULL (legado, anterior a la migración 042) se cuela bajo el único
+   * piso sin ambigüedad (`floorCount` 1) o va a su propia sección "Sin piso
+   * identificado" (`floorCount` 2+) — ver diseño en el plan de Task 30. */
+  floorCount: number
+  onGeneratePlan: (req: { promptId: number | null; promptText: string; floorId: string; floorName: string })
+    => Promise<PropertyRender>
   images?: never
   onGenerate?: never
 }
@@ -79,6 +96,12 @@ export function RendersPanel(props: Props) {
   const variant = props.source === 'plan' ? props.variant : undefined
   const onGenerate = props.source === 'photos' ? props.onGenerate : undefined
   const onGeneratePlan = props.source === 'plan' ? props.onGeneratePlan : undefined
+  // Identidad del piso SELECCIONADO (Task 30) — null exactamente cuando `plan` es
+  // null. `floorCount` decide, más abajo, cómo agrupar los renders con `floorId`
+  // NULL (legado): bajo el único piso si es 1, aparte si son 2+.
+  const selectedFloorId = props.source === 'plan' ? props.floorId : null
+  const selectedFloorName = props.source === 'plan' ? props.floorName : null
+  const floorCount = props.source === 'plan' ? props.floorCount : 0
 
   // El catálogo que le toca a ESTE panel, nunca el del otro (Tarea 23): un preset
   // de plano ("Minimalista nórdico") no tiene sentido ofrecido sobre una foto de
@@ -98,7 +121,7 @@ export function RendersPanel(props: Props) {
   const [newName, setNewName] = useState('')
 
   // Índice para colgarle a cada render su foto base sin recorrer la lista por render.
-  const byId = useMemo(() => new Map(images.map(i => [i.id, i])), [images])
+  const photosById = useMemo(() => new Map(images.map(i => [i.id, i])), [images])
 
   // Nombres de cuarto del plano, solo para el badge "N espacios" del botón de fuente.
   const planRoomNames = useMemo(
@@ -110,24 +133,34 @@ export function RendersPanel(props: Props) {
   // `sourceVariant` de su padre inmediato, así que TODO nodo de una cadena (raíz y
   // ediciones) trae la misma marca — filtrar por nodo basta, no hace falta caminar
   // la cadena hasta la raíz. Fotos: NULL. Plano: la variante que lo generó.
-  const scoped = useMemo(
-    () => renders.filter(r => (source === 'photos' ? r.sourceVariant == null : r.sourceVariant === variant)),
-    [renders, source, variant],
-  )
+  //
+  // Modo plano AGREGA un segundo filtro (Task 30): el piso SELECCIONADO — nunca
+  // solo, siempre junto con `variant` (Task 28: floor identity + variant, jamás
+  // floor identity sola, para no mezclar el original y el planeado de un mismo
+  // piso). `floorId` NULL es legado (anterior a la migración 042): con un solo
+  // piso no hay ambigüedad y se cuela aquí; con 2+ pisos es ambiguo y se cuenta
+  // aparte en `unassigned`, nunca en la lista de un piso concreto.
+  const scoped = useMemo(() => {
+    const byVariant = renders.filter(r => (source === 'photos' ? r.sourceVariant == null : r.sourceVariant === variant))
+    if (source === 'photos') return byVariant
+    return byVariant.filter(r => r.floorId === selectedFloorId || (r.floorId === null && floorCount <= 1))
+  }, [renders, source, variant, selectedFloorId, floorCount])
+
+  // Renders de plano con `floorId` NULL cuando el levantamiento tiene 2+ pisos:
+  // ambiguos — a cuál piso pertenecen no se puede reconstruir — así que se
+  // enseñan en su propia sección, siempre visibles, nunca escondidos ni
+  // mezclados en la lista de un piso concreto (ver diseño, Task 30).
+  const unassigned = useMemo(() => {
+    if (source !== 'plan' || floorCount < 2) return []
+    return renders.filter(r => r.sourceVariant === variant && r.floorId === null)
+  }, [renders, source, variant, floorCount])
 
   // Cadenas de edición: la lista muestra solo las CABEZAS (los renders que nadie
-  // editó encima); el historial de cada una se camina hacia atrás por parentRenderId.
-  const renderById = useMemo(() => new Map(scoped.map(r => [r.id, r])), [scoped])
-  const heads = useMemo(() => {
-    const parents = new Set(scoped.map(r => r.parentRenderId).filter((x): x is number => x != null))
-    return scoped.filter(r => !parents.has(r.id))
-  }, [scoped])
-  const ancestry = (r: PropertyRender): PropertyRender[] => {
-    const chain: PropertyRender[] = []
-    let cur = r.parentRenderId != null ? renderById.get(r.parentRenderId) : undefined
-    while (cur) { chain.push(cur); cur = cur.parentRenderId != null ? renderById.get(cur.parentRenderId) : undefined }
-    return chain  // el paso inmediato anterior primero
-  }
+  // editó encima); el historial de cada una se camina hacia atrás por
+  // parentRenderId. Una edición hereda el piso de su padre igual que la variante
+  // (Task 29), así que una cadena nunca cruza de una sección a la otra.
+  const { byId: renderById, heads } = useMemo(() => computeHeads(scoped), [scoped])
+  const { byId: unassignedById, heads: unassignedHeads } = useMemo(() => computeHeads(unassigned), [unassigned])
 
   const selectedPrompt = visiblePrompts.find(p => p.id === promptId) ?? null
   // Si el texto ya no es el del preset, el render no salió de ese preset.
@@ -152,8 +185,16 @@ export function RendersPanel(props: Props) {
     if ((!viaPlan && sourceId == null) || !text.trim()) return
     setBusy(true); setError(null)
     try {
-      if (viaPlan) await onGeneratePlan!({ promptId: effectivePromptId, promptText: text.trim() })
-      else await onGenerate!({ sourceImageId: sourceId!, promptId: effectivePromptId, promptText: text.trim() })
+      if (viaPlan) {
+        // `selectedFloorId`/`selectedFloorName` viajan siempre que `plan` existe —
+        // los dos nacen del mismo piso elegido en `LevantamientoPanel` (ver PlanProps).
+        await onGeneratePlan!({
+          promptId: effectivePromptId, promptText: text.trim(),
+          floorId: selectedFloorId!, floorName: selectedFloorName!,
+        })
+      } else {
+        await onGenerate!({ sourceImageId: sourceId!, promptId: effectivePromptId, promptText: text.trim() })
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo generar el render')
     } finally { setBusy(false) }
@@ -307,18 +348,80 @@ export function RendersPanel(props: Props) {
               </p>
             </div>
           )}
-          {heads.map(h => (
-            <RenderCard key={h.id} render={h}
-                        parent={h.parentRenderId != null ? renderById.get(h.parentRenderId) ?? null : null}
-                        source={byId.get(h.sourceImageId ?? -1) ?? null}
-                        history={ancestry(h)}
-                        base={base} onDelete={() => onDeleteRender(h.id)}
-                        onReuse={() => { setPromptId(h.promptId); setText(h.promptText) }}
-                        onEdit={onEdit ? (promptText: string) => onEdit(h.id, promptText).then(() => {}) : undefined} />
-          ))}
+          <RenderCards heads={heads} renderById={renderById} photosById={photosById} base={base}
+            onDeleteRender={onDeleteRender} onEdit={onEdit}
+            onReuse={h => { setPromptId(h.promptId); setText(h.promptText) }} />
         </div>
       </div>
+
+      {/* Renders de plano SIN piso identificado (Task 30): con 2+ pisos son
+          ambiguos — a cuál piso pertenecen no se puede reconstruir — así que se
+          enseñan SIEMPRE, en su propia sección, nunca escondidos ni mezclados en
+          la lista de ningún piso concreto. Con 1 solo piso no hace falta esta
+          sección: `scoped` ya los incluyó arriba porque ahí no hay ambigüedad. */}
+      {source === 'plan' && floorCount >= 2 && (
+        <div>
+          <div style={label}>Sin piso identificado ({unassignedHeads.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, marginTop: spacing.sm }}>
+            <RenderCards heads={unassignedHeads} renderById={unassignedById} photosById={photosById} base={base}
+              onDeleteRender={onDeleteRender} onEdit={onEdit}
+              onReuse={h => { setPromptId(h.promptId); setText(h.promptText) }} />
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+/**
+ * De una lista de renders, separa las CABEZAS (los que nadie editó encima) de un
+ * índice por id — el mismo cálculo hacía falta dos veces desde Task 30 (la
+ * sección por piso y "Sin piso identificado"), así que se saca de la función del
+ * componente en vez de repetirlo. Pura: sin hooks, para poder envolverla en
+ * `useMemo` en cada sitio que la usa.
+ */
+function computeHeads(list: PropertyRender[]): { byId: Map<number, PropertyRender>; heads: PropertyRender[] } {
+  const byId = new Map(list.map(r => [r.id, r]))
+  const parents = new Set(list.map(r => r.parentRenderId).filter((x): x is number => x != null))
+  return { byId, heads: list.filter(r => !parents.has(r.id)) }
+}
+
+/** El historial de UN render, caminando `parentRenderId` hacia atrás dentro del
+ * índice `byId` que le corresponda — nunca cruza de la sección de un piso a la
+ * de otro, porque una edición hereda el piso de su padre (Task 29). */
+function ancestryIn(byId: Map<number, PropertyRender>) {
+  return (r: PropertyRender): PropertyRender[] => {
+    const chain: PropertyRender[] = []
+    let cur = r.parentRenderId != null ? byId.get(r.parentRenderId) : undefined
+    while (cur) { chain.push(cur); cur = cur.parentRenderId != null ? byId.get(cur.parentRenderId) : undefined }
+    return chain  // el paso inmediato anterior primero
+  }
+}
+
+/** Las tarjetas de una sección de renders (un piso, o "Sin piso identificado") —
+ * misma pinta en las dos, así que es un componente y no dos copias del `.map`. */
+function RenderCards({ heads, renderById, photosById, base, onDeleteRender, onReuse, onEdit }: {
+  heads: PropertyRender[]
+  renderById: Map<number, PropertyRender>
+  photosById: Map<number, PropertyImage>
+  base: string
+  onDeleteRender: (renderId: number) => Promise<void>
+  onReuse: (r: PropertyRender) => void
+  onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
+}) {
+  const ancestry = ancestryIn(renderById)
+  return (
+    <>
+      {heads.map(h => (
+        <RenderCard key={h.id} render={h}
+                    parent={h.parentRenderId != null ? renderById.get(h.parentRenderId) ?? null : null}
+                    source={photosById.get(h.sourceImageId ?? -1) ?? null}
+                    history={ancestry(h)}
+                    base={base} onDelete={() => onDeleteRender(h.id)}
+                    onReuse={() => onReuse(h)}
+                    onEdit={onEdit ? (promptText: string) => onEdit(h.id, promptText).then(() => {}) : undefined} />
+      ))}
+    </>
   )
 }
 

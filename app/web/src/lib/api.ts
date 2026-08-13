@@ -233,7 +233,10 @@ export async function generatePropertyRender(
 
 export async function generatePropertyRenderFromPlan(
   id: number,
-  req: { promptText: string; promptId: number | null; plan: Blob; variant: VariantKey },
+  req: {
+    promptText: string; promptId: number | null; plan: Blob; variant: VariantKey
+    floorId: string; floorName: string
+  },
 ): Promise<PropertyRender> {
   const form = new FormData()
   form.append('file', req.plan, 'plano.png')
@@ -242,6 +245,12 @@ export async function generatePropertyRenderFromPlan(
   // él el servidor contesta 422. De qué levantamiento nació el render, no una preferencia
   // de estilo — así una edición encima puede heredarlo (renders_db.add_render).
   form.append('variant', req.variant)
+  // Obligatorios desde la Tarea 29 (`routes/renders.py`, `floorId`/`floorName: str =
+  // Form(...)`): sin ellos el servidor contesta 422. De qué PISO del levantamiento
+  // nació el render — igual patrón dual que `promptId`/`promptText`: identidad +
+  // nombre congelado, y una edición encima los hereda (renders_db.add_render).
+  form.append('floorId', req.floorId)
+  form.append('floorName', req.floorName)
   if (req.promptId != null) form.append('promptId', String(req.promptId))
   const res = await authFetch(`${BASE}/api/properties/${id}/renders/from-plan`, { method: 'POST', body: form })
   if (!res.ok) throw new Error(await detail(res))

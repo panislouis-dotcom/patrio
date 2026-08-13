@@ -53,11 +53,27 @@ describe('generatePropertyRenderFromPlan', () => {
   it('manda `variant` en el FormData — el servidor la exige (Tarea 14) y sin ella contesta 422', async () => {
     const fetchMock = stubFetch()
     const plan = new Blob(['x'], { type: 'image/png' })
-    await generatePropertyRenderFromPlan(1, { promptText: 'Amuebla', promptId: null, plan, variant: 'planned' })
+    await generatePropertyRenderFromPlan(1, {
+      promptText: 'Amuebla', promptId: null, plan, variant: 'planned',
+      floorId: 'floor-1', floorName: 'Planta Baja',
+    })
 
     const form = fetchMock.mock.calls[0][1]!.body as FormData
     expect(form.get('variant')).toBe('planned')
     expect(form.get('promptText')).toBe('Amuebla')
+  })
+
+  it('manda `floorId`/`floorName` en el FormData — el servidor los exige (Tarea 29) y sin ellos contesta 422', async () => {
+    const fetchMock = stubFetch()
+    const plan = new Blob(['x'], { type: 'image/png' })
+    await generatePropertyRenderFromPlan(1, {
+      promptText: 'Amuebla', promptId: null, plan, variant: 'planned',
+      floorId: 'floor-1', floorName: 'Planta Baja',
+    })
+
+    const form = fetchMock.mock.calls[0][1]!.body as FormData
+    expect(form.get('floorId')).toBe('floor-1')
+    expect(form.get('floorName')).toBe('Planta Baja')
   })
 })
 

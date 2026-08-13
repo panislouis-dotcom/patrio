@@ -35,13 +35,20 @@ const planPrompts: RenderPrompt[] = [
 /** Render nacido de una FOTO: `sourceVariant` NULL, como lo manda la migración 040. */
 const renderRow = (id: number): PropertyRender => ({
   id, propertyId: 7, sourceImageId: 10, sourcePlanPath: null, sourceVariant: null, parentRenderId: null,
+  floorId: null, floorName: null,
   filePath: `r/${id}.png`, contentType: 'image/png', promptId: 1, promptText: 'Mezquite y agaves.',
   provider: 'openai', model: 'gpt-image-2', createdAt: '2026-08-02T00:00:00Z',
 })
 
-/** Render nacido del PLANO: sin foto, con `sourcePlanPath` y `sourceVariant` puestos. */
-const planRenderRow = (id: number, variant: 'original' | 'planned' = 'original'): PropertyRender => ({
+/** Render nacido del PLANO: sin foto, con `sourcePlanPath`/`sourceVariant` puestos y su
+ * piso identificado — `floorId`/`floorName` null por defecto significa RENDER LEGADO
+ * (anterior a la migración 042), no "sin variar": los tests de piso lo pisan a propósito. */
+const planRenderRow = (
+  id: number, variant: 'original' | 'planned' = 'original',
+  floor: { id: string | null; name: string | null } = { id: null, name: null },
+): PropertyRender => ({
   ...renderRow(id), sourceImageId: null, sourcePlanPath: `plan/${id}.png`, sourceVariant: variant,
+  floorId: floor.id, floorName: floor.name,
 })
 
 // Los tests mezclan campos de las dos ramas de la unión discriminada a propósito
@@ -51,6 +58,10 @@ const planRenderRow = (id: number, variant: 'original' | 'planned' = 'original')
 // se queda flexible aquí y el cast al render es intencional: este archivo prueba
 // la defensa en TIEMPO DE EJECUCIÓN, no el tipo.
 function setup(over: Record<string, unknown> = {}) {
+  // Modo plano trae de fábrica un solo piso, sin ambigüedad — el caso común (la
+  // inmensa mayoría de propiedades). Los tests de Task 30 que necesitan 2+ pisos
+  // o un piso concreto pisan `floorId`/`floorName`/`floorCount` vía `over`.
+  const isPlan = over.source === 'plan'
   const props = {
     source: 'photos' as const,
     images: [photo(10, 'fachada.jpg'), photo(11, 'jardin.jpg')],
@@ -60,6 +71,7 @@ function setup(over: Record<string, unknown> = {}) {
     onGenerate: vi.fn().mockResolvedValue(renderRow(1)),
     onSavePrompt: vi.fn().mockResolvedValue(prompts[0]),
     onDeleteRender: vi.fn().mockResolvedValue(undefined),
+    ...(isPlan ? { floorId: null, floorName: null, floorCount: 1 } : {}),
     ...over,
   }
   render(<RendersPanel {...(props as unknown as Parameters<typeof RendersPanel>[0])} />)
@@ -268,6 +280,104 @@ describe('RendersPanel', () => {
     fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
     await waitFor(() => expect(onGeneratePlan).toHaveBeenCalled())
+  })
+
+  // ── Piso (Task 30): RENDERS filtra y genera por el piso SELECCIONADO ────────
+  // El selector de piso vive en `LevantamientoPanel`, no aquí — este panel solo
+  // recibe `floorId`/`floorName`/`floorCount` del piso elegido, así que "elegir
+  // otro piso" se prueba montando otra instancia con otro `floorId`, igual que
+  // ya se prueba `variant` arriba.
+
+  it('modo plano: el piso seleccionado filtra la lista — solo sus propios renders', () => {
+    const renders = [
+      planRenderRow(1, 'original', { id: 'floor-a', name: 'Planta Baja' }),
+      planRenderRow(2, 'original', { id: 'floor-b', name: 'Planta Alta' }),
+    ]
+    setup({
+      source: 'plan', variant: 'original', renders,
+      floorId: 'floor-a', floorName: 'Planta Baja', floorCount: 2,
+    })
+    expect(screen.getByAltText('Render 1')).not.toBeNull()
+    expect(screen.queryByAltText('Render 2')).toBeNull()
+  })
+
+  it('modo plano: otra instancia con el OTRO piso seleccionado lista los renders de ESE piso', () => {
+    const renders = [
+      planRenderRow(1, 'original', { id: 'floor-a', name: 'Planta Baja' }),
+      planRenderRow(2, 'original', { id: 'floor-b', name: 'Planta Alta' }),
+    ]
+    setup({
+      source: 'plan', variant: 'original', renders,
+      floorId: 'floor-b', floorName: 'Planta Alta', floorCount: 2,
+    })
+    expect(screen.getByAltText('Render 2')).not.toBeNull()
+    expect(screen.queryByAltText('Render 1')).toBeNull()
+  })
+
+  it('modo plano: generar manda el id/nombre del piso SELECCIONADO al backend', async () => {
+    const onGeneratePlan = vi.fn().mockResolvedValue(
+      planRenderRow(9, 'original', { id: 'floor-a', name: 'Planta Baja' }),
+    )
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Sala']), onGeneratePlan,
+      floorId: 'floor-a', floorName: 'Planta Baja', floorCount: 2,
+    })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+    await waitFor(() => expect(onGeneratePlan).toHaveBeenCalledWith(
+      expect.objectContaining({ floorId: 'floor-a', floorName: 'Planta Baja' }),
+    ))
+  })
+
+  it('modo plano, 1 solo piso: un render con floorId NULL (legado) se ve bajo ese piso, sin sección aparte', () => {
+    setup({
+      source: 'plan', variant: 'original',
+      renders: [planRenderRow(1, 'original', { id: null, name: null })],
+      floorId: 'floor-a', floorName: 'Planta Baja', floorCount: 1,
+    })
+    expect(screen.getByAltText('Render 1')).not.toBeNull()
+    expect(screen.queryByText(/sin piso identificado/i)).toBeNull()
+  })
+
+  it('modo plano, 2+ pisos: los renders con floorId NULL van a "Sin piso identificado", aparte de cualquier piso', () => {
+    const renders = [
+      planRenderRow(1, 'original', { id: 'floor-a', name: 'Planta Baja' }),  // del piso seleccionado
+      planRenderRow(2, 'original', { id: null, name: null }),                 // legado, sin piso
+      planRenderRow(3, 'original', { id: null, name: null }),                 // legado, sin piso
+    ]
+    setup({
+      source: 'plan', variant: 'original', renders,
+      floorId: 'floor-a', floorName: 'Planta Baja', floorCount: 2,
+    })
+
+    expect(screen.getByText('Renders (1)')).not.toBeNull()
+    expect(screen.getByText('Sin piso identificado (2)')).not.toBeNull()
+    expect(screen.getByAltText('Render 1')).not.toBeNull()
+    expect(screen.getByAltText('Render 2')).not.toBeNull()
+    expect(screen.getByAltText('Render 3')).not.toBeNull()
+  })
+
+  it('modo plano, 2+ pisos: un render del OTRO piso no aparece ni en la lista propia ni en "Sin piso identificado"', () => {
+    const renders = [
+      planRenderRow(1, 'original', { id: 'floor-a', name: 'Planta Baja' }),
+      planRenderRow(2, 'original', { id: 'floor-b', name: 'Planta Alta' }),
+    ]
+    setup({
+      source: 'plan', variant: 'original', renders,
+      floorId: 'floor-a', floorName: 'Planta Baja', floorCount: 2,
+    })
+    expect(screen.getByText('Renders (1)')).not.toBeNull()
+    expect(screen.getByText('Sin piso identificado (0)')).not.toBeNull()
+    expect(screen.queryByAltText('Render 2')).toBeNull()
+  })
+
+  it('modo plano, 2+ pisos: sin renders legado, "Sin piso identificado" se muestra en 0 — nunca se esconde', () => {
+    setup({
+      source: 'plan', variant: 'original',
+      renders: [planRenderRow(1, 'original', { id: 'floor-a', name: 'Planta Baja' })],
+      floorId: 'floor-a', floorName: 'Planta Baja', floorCount: 2,
+    })
+    expect(screen.getByText('Sin piso identificado (0)')).not.toBeNull()
   })
 
   it('muestra «Plano base» cuando el render nació del plano, no «foto borrada» (modo plano)', () => {

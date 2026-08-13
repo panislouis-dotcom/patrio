@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
 import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
+import { btn as floorBtn } from './floorplanStyles'
 import { RendersPanel } from './detail/RendersPanel'
 import { floorToPngBlob } from '../lib/floorplan/planImage'
 import { clone, emptyFloorSet, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
@@ -34,12 +35,16 @@ interface Props {
    * ESTE panel por dentro (`sourceVariant === variant`), igual que FOTOS la
    * recorta a `sourceVariant == null`. Un solo filtro, un solo lugar. */
   renders: PropertyRender[]
-  /** Generar desde el plano de ESTA variante. Este panel resuelve el piso activo →
-   * PNG (`floorToPngBlob`) y manda la variante; quien llama (la ficha) conoce el
-   * id de la propiedad y hace la llamada real a `generatePropertyRenderFromPlan` —
-   * la misma separación de responsabilidades que ya tiene `onSave`. */
-  onGenerateRender: (variant: VariantKey, req: { promptId: number | null; promptText: string; plan: Blob })
-    => Promise<PropertyRender>
+  /** Generar desde el plano de ESTA variante, con el PISO que RENDERS tiene
+   * seleccionado — no necesariamente el piso activo de PLANO (Task 30: RENDERS
+   * tiene su propio selector, independiente de la navegación del editor). Este
+   * panel resuelve ese piso → PNG (`floorToPngBlob`) y manda la variante; quien
+   * llama (la ficha) conoce el id de la propiedad y hace la llamada real a
+   * `generatePropertyRenderFromPlan` — la misma separación de responsabilidades
+   * que ya tiene `onSave`. */
+  onGenerateRender: (variant: VariantKey, req: {
+    promptId: number | null; promptText: string; plan: Blob; floorId: string; floorName: string
+  }) => Promise<PropertyRender>
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
   onSavePrompt: (p: { name: string; body: string; kind: RenderPromptKind }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
@@ -77,27 +82,39 @@ export function LevantamientoPanel({
   // clonación bumpea esta generación para remontarlo con el planeado recién escrito.
   const [generation, setGeneration] = useState(0)
   const [tab, setTab] = useState<SubTab>('plano')
+  // El piso que RENDERS tiene elegido — estado PROPIO, independiente del piso
+  // activo del editor de PLANO (`FloorPlanEditor`'s `SWITCH_FLOOR`/`activeFloor`):
+  // cambiar de piso aquí nunca reordena ni reactiva nada en el editor, y
+  // viceversa. Por id, no por índice: sobrevive a que los pisos se reordenen.
+  const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null)
 
   const original = geometry?.variants.original ?? null
   const fs = variant === 'original' ? original : geometry?.variants.planned ?? null
   // Clonar un original sin pisos no produce nada editable: la acción ni se ofrece.
   const originalHasFloors = original != null && original.floors.length > 0
-  // El piso activo de ESTE FloorSet: lo que RENDERS siembra y exporta a PNG. `fs`
-  // es null en el empty-state del planeado (RENDERS ni se ofrece, ver abajo) y en
-  // un original que nunca se guardó — en ese caso `activeFloor` sale null y
-  // `RendersPanel` ya sabe decir "dibuja el plano primero" en vez de tronar.
-  const activeFloor = fs?.floors[fs.activeFloor] ?? null
+  // El piso SELECCIONADO en RENDERS: lo que RENDERS siembra y exporta a PNG. Cae
+  // al primer piso cuando no hay selección propia todavía o cuando la selección
+  // ya no existe (p. ej. un piso borrado) — nunca al piso activo de PLANO, que es
+  // un estado distinto (ver arriba). `fs` es null en el empty-state del planeado
+  // (RENDERS ni se ofrece, ver abajo) y en un original que nunca se guardó — en
+  // ese caso `selectedFloor` sale null y `RendersPanel` ya sabe decir "dibuja el
+  // plano primero" en vez de tronar.
+  const selectedFloor = fs?.floors.find(f => f.id === selectedFloorId) ?? fs?.floors[0] ?? null
 
   const handleReady = useCallback((api: PlanApi) => onReady?.(variant, api), [onReady, variant])
   const handleSave = useCallback((set: FloorSet) => onSave(variant, set), [onSave, variant])
   // La exportación a PNG (`floorToPngBlob`, solo corre en el navegador) vive aquí
-  // porque este panel es quien sabe cuál es el piso activo de SU variante; la
+  // porque este panel es quien sabe cuál es el piso SELECCIONADO en RENDERS; la
   // llamada real a `generatePropertyRenderFromPlan` vive en la ficha, que es
   // quien conoce el id de la propiedad — misma separación que ya tiene `onSave`.
-  const handleGeneratePlan = useCallback(async (req: { promptId: number | null; promptText: string }) => {
-    const blob = await floorToPngBlob(activeFloor!)
+  // `floorId`/`floorName` llegan ya resueltos desde `RendersPanel` (que los recibe
+  // como prop, ver abajo): se limita a pasarlos, no inventa un segundo origen.
+  const handleGeneratePlan = useCallback(async (req: {
+    promptId: number | null; promptText: string; floorId: string; floorName: string
+  }) => {
+    const blob = await floorToPngBlob(selectedFloor!)
     return onGenerateRender(variant, { ...req, plan: blob })
-  }, [activeFloor, variant, onGenerateRender])
+  }, [selectedFloor, variant, onGenerateRender])
 
   // Escribe el planeado ENTERO de un golpe: un clon del original o una planta en
   // blanco. Es la única escritura que no pasa por el editor.
@@ -197,11 +214,33 @@ export function LevantamientoPanel({
   )
 
   // RENDERS: propuestas nacidas del plano de ESTA variante, nunca del ajeno —
-  // `RendersPanel` filtra por `variant` internamente (`sourceVariant === variant`).
+  // `RendersPanel` filtra por `variant` internamente (`sourceVariant === variant`),
+  // y por el PISO seleccionado aquí (Task 30). El selector mira el mismo patrón
+  // visual que la tira de pisos de PLANO (`FloorPlanEditor.tsx`, `SWITCH_FLOOR`),
+  // pero es SU PROPIO estado (`selectedFloorId` arriba) — nunca dispatcha al
+  // reducer del editor. Se enseña siempre que haya al menos un piso, incluso con
+  // uno solo, igual que la tira de PLANO nunca se esconde por tener un piso único.
   const rendersContent = (
-    <RendersPanel source="plan" variant={variant} plan={activeFloor} base={base}
-      prompts={prompts} renders={renders} onGeneratePlan={handleGeneratePlan}
-      onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender} />
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {fs != null && fs.floors.length > 0 && (
+        <div style={{ flexShrink: 0, display: 'flex', gap: '4px', alignItems: 'center',
+                      padding: '6px 16px', borderBottom: `1px solid ${colors.border}` }}>
+          <span style={label}>PISO</span>
+          {fs.floors.map(f => (
+            <button key={f.id} onClick={() => setSelectedFloorId(f.id)}
+              style={{ ...floorBtn(f.id === selectedFloor?.id), textTransform: 'none', letterSpacing: '0.04em',
+                       fontFamily: fonts.sans, fontSize: '11px' }}>
+              {f.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <RendersPanel source="plan" variant={variant} plan={selectedFloor}
+        floorId={selectedFloor?.id ?? null} floorName={selectedFloor?.name ?? null}
+        floorCount={fs?.floors.length ?? 0} base={base}
+        prompts={prompts} renders={renders} onGeneratePlan={handleGeneratePlan}
+        onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender} />
+    </div>
   )
 
   return (

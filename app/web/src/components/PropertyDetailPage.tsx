@@ -281,13 +281,14 @@ export function PropertyDetailPage() {
 
   /**
    * Generar desde el plano de UN levantamiento. `LevantamientoPanel` ya resolvió
-   * el piso activo → PNG (`floorToPngBlob`, solo corre en el navegador); aquí se
-   * manda con la variante que lo pidió — la pieza que le faltaba al endpoint
-   * desde la Tarea 14 (`variant` obligatorio en `renders/from-plan`).
+   * el piso SELECCIONADO en RENDERS → PNG (`floorToPngBlob`, solo corre en el
+   * navegador) más su `floorId`/`floorName`; aquí se manda todo junto con la
+   * variante que lo pidió — la pieza que le faltaba al endpoint desde la Tarea 14
+   * (`variant` obligatorio) y la Tarea 29 (`floorId`/`floorName` obligatorios).
    */
   async function onGenerateRender(
     variant: VariantKey,
-    req: { promptId: number | null; promptText: string; plan: Blob },
+    req: { promptId: number | null; promptText: string; plan: Blob; floorId: string; floorName: string },
   ): Promise<PropertyRender> {
     const created = await generatePropertyRenderFromPlan(propertyId, { ...req, variant })
     setRenders(prev => [created, ...prev])

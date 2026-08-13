@@ -768,17 +768,19 @@ describe('PropertyDetailPage', () => {
   // Fase 5 (main auto-despliega a qa y prod sin promoción manual).
   const renderFromPlan = (variant: 'original' | 'planned'): PropertyRender => ({
     id: 99, propertyId: 7, sourceImageId: null, sourcePlanPath: 'plan/99.png', sourceVariant: variant,
+    floorId: 'floor-1', floorName: 'Planta Original',
     parentRenderId: null, filePath: 'r/99.png', contentType: 'image/png', promptId: null,
     promptText: 'Estilo minimalista.', provider: 'openai', model: 'gpt-image-2',
     createdAt: '2026-08-01T00:00:00Z',
   })
 
-  it('generar RENDERS desde el PLANEADO llama a generatePropertyRenderFromPlan con variant: "planned"', async () => {
+  it('generar RENDERS desde el PLANEADO llama a generatePropertyRenderFromPlan con variant: "planned" y el piso', async () => {
+    const plannedFloor = emptyFloorGraph('Planta Planeada')
     const v3: FloorPlanModel = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
-        planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [plannedFloor] },
       },
     }
     vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
@@ -798,13 +800,18 @@ describe('PropertyDetailPage', () => {
     expect(id).toBe(7)
     expect(req.variant).toBe('planned')
     expect(req.plan).toBeInstanceOf(Blob)
+    // Un solo piso: el selector de RENDERS ni hace falta tocarlo, el default ya
+    // manda la identidad correcta (Task 30 — fix del flujo roto desde la Tarea 29).
+    expect(req.floorId).toBe(plannedFloor.id)
+    expect(req.floorName).toBe('Planta Planeada')
   })
 
-  it('generar RENDERS desde el ORIGINAL llama a generatePropertyRenderFromPlan con variant: "original"', async () => {
+  it('generar RENDERS desde el ORIGINAL llama a generatePropertyRenderFromPlan con variant: "original" y el piso', async () => {
+    const originalFloor = emptyFloorGraph('Planta Original')
     const v3: FloorPlanModel = {
       schemaVersion: 3,
       variants: {
-        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        original: { slab_m: 0.15, activeFloor: 0, floors: [originalFloor] },
         planned: null,
       },
     }
@@ -823,6 +830,8 @@ describe('PropertyDetailPage', () => {
     const [id, req] = vi.mocked(api.generatePropertyRenderFromPlan).mock.calls[0]
     expect(id).toBe(7)
     expect(req.variant).toBe('original')
+    expect(req.floorId).toBe(originalFloor.id)
+    expect(req.floorName).toBe('Planta Original')
   })
 
   // ── El presupuesto de obra ────────────────────────────────────────────────

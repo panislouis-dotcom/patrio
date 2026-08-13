@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { LevantamientoPanel } from './LevantamientoPanel'
 import {
-  withVariant, emptyFloorSet, clone,
+  withVariant, emptyFloorSet, emptyFloorGraph, clone,
   type FloorPlanModel, type FloorSet, type VariantKey,
 } from '../lib/floorplan/types'
 import type { PropertyRender } from '../lib/types'
@@ -33,6 +33,15 @@ function plannedFloorSet(): FloorSet {
   return fs
 }
 
+/** Un levantamiento con 2 pisos de verdad — el caso de la propiedad 5 ("Locales
+ * Salon Escobedo"), y el que ejercita el selector de piso de RENDERS (Task 30). */
+function dosPlantas(): FloorSet {
+  const fs = emptyFloorSet()
+  fs.floors[0].name = 'Planta Baja'
+  fs.floors.push(emptyFloorGraph('Planta Alta'))
+  return fs
+}
+
 /** Compara un FloorSet ignorando el `id` de cada piso: útil cuando la variante bajo prueba
  * nace con identidad nueva a propósito (p. ej. EMPEZAR EN BLANCO) y solo importa la FORMA —
  * comparar contra una segunda llamada de fábrica generaría un id distinto por diseño. */
@@ -44,9 +53,10 @@ function sinIdsDePiso(fs: FloorSet): FloorSet {
 
 /** Render nacido del plano de UNA variante — `sourceVariant` es lo único que
  * `RendersPanel` usa para separar «lo mío» de «lo del otro levantamiento». */
-function planRenderRow(id: number, variant: VariantKey): PropertyRender {
+function planRenderRow(id: number, variant: VariantKey, floorId: string | null = null): PropertyRender {
   return {
     id, propertyId: 7, sourceImageId: null, sourcePlanPath: `plan/${id}.png`, sourceVariant: variant,
+    floorId, floorName: floorId,
     parentRenderId: null, filePath: `r/${id}.png`, contentType: 'image/png', promptId: null,
     promptText: 'Estilo minimalista.', provider: 'openai', model: 'gpt-image-2',
     createdAt: '2026-08-01T00:00:00Z',
@@ -60,7 +70,7 @@ function renderPanel(
   onSave = vi.fn(async (_variant: VariantKey, _fs: FloorSet) => {}),
   over: {
     renders?: PropertyRender[]
-    onGenerateRender?: (variant: VariantKey, req: { promptId: number | null; promptText: string; plan: Blob })
+    onGenerateRender?: (variant: VariantKey, req: { promptId: number | null; promptText: string; plan: Blob; floorId: string; floorName: string })
       => Promise<PropertyRender>
   } = {},
 ) {
@@ -288,8 +298,9 @@ describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
     expect(screen.queryByAltText('Render 1')).toBeNull()
   })
 
-  it('generar desde el ORIGINAL llama a onGenerateRender con variant: "original"', async () => {
-    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', originalConMuro()))
+  it('generar desde el ORIGINAL llama a onGenerateRender con variant: "original" y el piso único', async () => {
+    const original = originalConMuro()
+    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', original))
 
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText(/^el plano$/i))
@@ -300,9 +311,13 @@ describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
     expect(variant).toBe('original')
     expect(req.plan).toBeInstanceOf(Blob)
     expect(req.promptText.length).toBeGreaterThan(0)
+    // Con un solo piso, el selector de RENDERS no hace falta tocarlo: el
+    // default ya manda la identidad correcta al backend (Task 30).
+    expect(req.floorId).toBe(original.floors[0].id)
+    expect(req.floorName).toBe('Planta Original')
   })
 
-  it('generar desde el PLANEADO llama a onGenerateRender con variant: "planned"', async () => {
+  it('generar desde el PLANEADO llama a onGenerateRender con variant: "planned" y el piso único', async () => {
     const { onGenerateRender } = renderPanel('planned', geometryConPlaneado())
 
     fireEvent.click(screen.getByText('RENDERS'))
@@ -313,5 +328,63 @@ describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
     const [variant, req] = onGenerateRender.mock.calls[0]
     expect(variant).toBe('planned')
     expect(req.plan).toBeInstanceOf(Blob)
+    expect(req.floorId).toBeTruthy()
+    expect(req.floorName).toBe('Planta Planeada')
+  })
+})
+
+describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
+  it('el selector de RENDERS ofrece un botón por piso de fs.floors', () => {
+    renderPanel('original', withVariant(null, 'original', dosPlantas()))
+    fireEvent.click(screen.getByText('RENDERS'))
+    expect(screen.getByText('Planta Baja')).toBeTruthy()
+    expect(screen.getByText('Planta Alta')).toBeTruthy()
+  })
+
+  it('elegir un piso en RENDERS no mueve el piso activo de PLANO — estados independientes', () => {
+    renderPanel('original', withVariant(null, 'original', dosPlantas()))
+
+    // Piso activo de PLANO (pestaña por default) antes de tocar nada en RENDERS.
+    const bajaAntes = (screen.getByText('Planta Baja') as HTMLButtonElement).getAttribute('style')
+    const altaAntes = (screen.getByText('Planta Alta') as HTMLButtonElement).getAttribute('style')
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('Planta Alta'))   // el selector PROPIO de RENDERS
+    fireEvent.click(screen.getByText('PLANO'))
+
+    // El editor de PLANO se remonta igual que antes, con el MISMO piso activo:
+    // nada de lo hecho en RENDERS lo tocó.
+    expect((screen.getByText('Planta Baja') as HTMLButtonElement).getAttribute('style')).toBe(bajaAntes)
+    expect((screen.getByText('Planta Alta') as HTMLButtonElement).getAttribute('style')).toBe(altaAntes)
+  })
+
+  it('generar con el piso B seleccionado manda el id/nombre de B, no el de A', async () => {
+    const dos = dosPlantas()
+    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dos))
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('Planta Alta'))
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+
+    await waitFor(() => expect(onGenerateRender).toHaveBeenCalled())
+    const [, req] = onGenerateRender.mock.calls[0]
+    expect(req.floorId).toBe(dos.floors[1].id)
+    expect(req.floorName).toBe('Planta Alta')
+    expect(req.floorId).not.toBe(dos.floors[0].id)
+  })
+
+  it('sin tocar el selector, genera con el PRIMER piso por default', async () => {
+    const dos = dosPlantas()
+    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dos))
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+
+    await waitFor(() => expect(onGenerateRender).toHaveBeenCalled())
+    const [, req] = onGenerateRender.mock.calls[0]
+    expect(req.floorId).toBe(dos.floors[0].id)
+    expect(req.floorName).toBe('Planta Baja')
   })
 })
