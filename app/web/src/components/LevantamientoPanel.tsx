@@ -105,6 +105,16 @@ export function LevantamientoPanel({
     setPending(action)
     setError(null)
     try {
+      // clone() copia `id` tal cual: un piso planeado que nace de PARTIR/RE-PARTIR
+      // comparte el MISMO id de piso que su contraparte en el original. A propósito, no
+      // un descuido — la unicidad de FloorGraph.id (Task 28) solo exige no repetirse
+      // DENTRO de un FloorSet; original y planned son arreglos separados, así que no hay
+      // colisión. Y es una propiedad útil: da linaje gratis ("este piso planeado viene de
+      // este piso original exacto"), igual que parent_render_id/prompt_id ya rastrean
+      // linaje en otras partes de este código. Quien filtre renders por piso más adelante
+      // SIEMPRE debe combinar floor_id con source_variant — nunca floor_id solo — para no
+      // mezclar el original y el planeado de un mismo piso. No "arreglar" esto dándole un
+      // id nuevo al clon sin revisar antes ese filtro.
       await onSave('planned', clone(source))
       setGeneration(g => g + 1)
       setConfirmReclone(false)

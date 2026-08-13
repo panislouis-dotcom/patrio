@@ -167,6 +167,10 @@ function backfillFloorIds(fs: FloorSet): void {
  * basura— regresa null. Es una frontera greenfield deliberada, no una migración de v1:
  * el blob viejo queda intacto en storage (nada escribe hasta que el usuario vuelve a
  * guardar) pero jamás se lee como si fuera un modelo válido.
+ *
+ * Efecto de lado: rellena `FloorGraph.id` en cualquier piso que no lo tenga, MUTANDO
+ * `raw` in-place vía `backfillFloorIds` (ver su comentario) antes de devolver el modelo —
+ * ese id backfilleado es efímero hasta el próximo guardado, no una escritura a storage.
  */
 export function migrateGeometry(raw: unknown): FloorPlanModel | null {
   if (!raw || typeof raw !== 'object') return null

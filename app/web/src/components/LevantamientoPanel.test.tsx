@@ -131,6 +131,22 @@ describe('LevantamientoPanel · PLANEADO sin datos', () => {
     expect(fs.floors[0].edges.e1.id).toBe('e1')
   })
 
+  it('el piso planeado comparte el id de su piso original: es linaje intencional, no un bug', async () => {
+    // Decisión explícita (ver comentario junto a `clone(source)` en writePlanned,
+    // LevantamientoPanel.tsx): clonar copia el id del piso original al planeado a
+    // propósito — da linaje gratis entre variantes. La unicidad de FloorGraph.id (Task 28)
+    // solo exige no repetirse DENTRO de un FloorSet; original y planned son arreglos
+    // separados, así que compartir id entre ellos no colisiona con esa garantía.
+    const original = originalConMuro()
+    const { onSave } = renderPanel('planned', withVariant(null, 'original', original))
+
+    fireEvent.click(screen.getByText('PARTIR DEL ORIGINAL'))
+    await waitFor(() => expect(onSave).toHaveBeenCalled())
+
+    const [, fs] = onSave.mock.calls[0]
+    expect(fs.floors[0].id).toBe(original.floors[0].id)
+  })
+
   it('cada acción marca su propio estado en vuelo: el ocupado no se cuelga del botón vecino', () => {
     // Con un booleano compartido, EMPEZAR EN BLANCO ponía "CLONANDO…" en el
     // botón de PARTIR DEL ORIGINAL — el estado explícito dice CUÁL acción corre.
