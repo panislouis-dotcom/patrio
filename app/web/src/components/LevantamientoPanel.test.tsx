@@ -78,10 +78,14 @@ function renderPanel(
   const onGenerateRender = over.onGenerateRender
     ? vi.fn(over.onGenerateRender)
     : vi.fn().mockResolvedValue(planRenderRow(99, variant))
-  render(
+  // Extraído a función para poder re-renderizar con OTRA `geometry` — la
+  // instancia real (`PropertyDetailPage`) nunca remonta el panel al cambiar el
+  // FloorSet, solo le pasa props nuevas (`key` fijo por variante). Un test que
+  // reproduzca "el FloorSet cambió por debajo" tiene que hacer lo mismo.
+  const buildElement = (geo: FloorPlanModel | null) => (
     <LevantamientoPanel
       variant={variant}
-      geometry={geometry}
+      geometry={geo}
       onSave={onSave}
       onUploadImage={async () => ({ imageKey: 'test-key' })}
       onReady={onReady}
@@ -92,9 +96,13 @@ function renderPanel(
       onGenerateRender={onGenerateRender}
       onSavePrompt={vi.fn().mockResolvedValue({ id: 1, name: 'x', body: 'y', kind: 'plan', isDefault: false, createdAt: '2026-08-01T00:00:00Z' })}
       onDeleteRender={vi.fn().mockResolvedValue(undefined)}
-    />,
+    />
   )
-  return { onSave, onReady, onGenerateRender }
+  const { rerender } = render(buildElement(geometry))
+  return {
+    onSave, onReady, onGenerateRender,
+    rerenderWithGeometry: (geo: FloorPlanModel | null) => rerender(buildElement(geo)),
+  }
 }
 
 describe('LevantamientoPanel · ORIGINAL', () => {
@@ -505,5 +513,32 @@ describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
 
     expect(await screen.findByText(/Generando piso 1 de 2: Planta Baja/i)).toBeTruthy()
     resolveFirst(planRenderRow(1, 'original'))
+  })
+
+  it('el resumen del lote no sobrevive a que el FloorSet se reemplace por otro con pisos distintos', async () => {
+    // Reproduce el hallazgo del revisor: un lote corre hasta terminar en un
+    // FloorSet de 2 pisos, y LUEGO ese FloorSet se reemplaza POR COMPLETO —
+    // el mismo gesto que un RE-PARTIR DEL ORIGINAL, un EMPEZAR EN BLANCO, o
+    // agregar/quitar un piso en el editor y guardar (`onSave` reescribe la
+    // variante entera en los tres casos). El banner viejo no debe seguir
+    // describiendo pisos que ya no existen.
+    const dos = dosPlantas()
+    const { rerenderWithGeometry } = renderPanel('original', withVariant(null, 'original', dos))
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
+    fireEvent.click(screen.getByText(/¿CONFIRMAR/i))
+
+    expect(await screen.findByText(/2 de 2 generados/)).toBeTruthy()
+
+    const otros = emptyFloorSet()
+    otros.floors[0].name = 'Sotano'
+    otros.floors.push(emptyFloorGraph('Azotea'))
+    rerenderWithGeometry(withVariant(null, 'original', otros))
+
+    expect(screen.queryByText(/generados/)).toBeNull()
+    expect(screen.queryByText(/Generando piso/)).toBeNull()
+    // El botón inicial regresa — ninguna confirmación armada de un lote viejo.
+    expect(screen.getByText('GENERAR TODOS LOS PISOS')).toBeTruthy()
+    expect(screen.queryByText(/¿CONFIRMAR/i)).toBeNull()
   })
 })

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
 import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
@@ -113,6 +113,30 @@ export function LevantamientoPanel({
   // plano primero" en vez de tronar.
   const selectedFloor = fs?.floors.find(f => f.id === selectedFloorId) ?? fs?.floors[0] ?? null
 
+  // La IDENTIDAD real de qué pisos hay ahora mismo. `generation` (abajo) solo sube
+  // cuando `writePlanned` reescribe el planeado de un golpe (PARTIR/BLANCO/RE-PARTIR)
+  // — pero el editor de PLANO también puede cambiar `fs.floors` por su cuenta (hoy,
+  // "+ Floor" ya está conectado a un botón; DEL_FLOOR vive en el reducer con tests
+  // pero sin botón todavía) y ese camino pasa por el mismo `onSave` de siempre, sin
+  // tocar `generation`. Un join de ids es la señal que cubre los dos caminos con una
+  // sola dependencia: cambia si y solo si el CONJUNTO de pisos cambió, sin importar
+  // por cuál puerta entró el cambio.
+  const floorIdentity = fs?.floors.map(f => f.id).join(',') ?? ''
+
+  // El lote (GENERAR TODOS LOS PISOS, Task 31) describe un conjunto de pisos
+  // congelado en el momento en que corrió. Si ese conjunto cambia — por cualquier
+  // camino, ver `floorIdentity` arriba — el resumen/progreso viejo se queda
+  // describiendo pisos que ya no existen. Las 5 piezas se resetean juntas: no tiene
+  // sentido dejar la confirmación armada o el tally a medias de un lote que ya no
+  // corresponde al plano actual.
+  useEffect(() => {
+    setBatchConfirm(false)
+    setBatchRunning(false)
+    setBatchProgress(null)
+    setBatchTally({ succeeded: 0, failed: 0 })
+    setBatchSummary(null)
+  }, [floorIdentity])
+
   const handleReady = useCallback((api: PlanApi) => onReady?.(variant, api), [onReady, variant])
   const handleSave = useCallback((set: FloorSet) => onSave(variant, set), [onSave, variant])
   // La exportación a PNG (`floorToPngBlob`, solo corre en el navegador) vive aquí
@@ -154,24 +178,32 @@ export function LevantamientoPanel({
     setBatchRunning(true)
     setBatchSummary(null)
     setBatchTally({ succeeded: 0, failed: 0 })
-    const summary = await generateAllFloors(
-      fs.floors,
-      async floor => {
-        try {
-          const result = await generateOneFloor(floor)
-          setBatchTally(t => ({ ...t, succeeded: t.succeeded + 1 }))
-          return result
-        } catch (e) {
-          setBatchTally(t => ({ ...t, failed: t.failed + 1 }))
-          throw e
-        }
-      },
-      current => setBatchProgress(current),
-    )
-    setBatchProgress(null)
-    setBatchRunning(false)
-    setBatchConfirm(false)
-    setBatchSummary(summary)
+    // `generateAllFloors` ya atrapa el fallo de CADA piso por dentro y nunca relanza
+    // (Task 31: tolerancia a fallo parcial) — pero si algo se le escapara igual (un
+    // bug ahí, o que `onProgress` truene), el `finally` es lo que evita que el botón
+    // se quede en "GENERANDO…" para siempre: correr/progreso/confirmación se limpian
+    // pase lo que pase, y el resumen solo se pone si de verdad hay uno que mostrar.
+    try {
+      const summary = await generateAllFloors(
+        fs.floors,
+        async floor => {
+          try {
+            const result = await generateOneFloor(floor)
+            setBatchTally(t => ({ ...t, succeeded: t.succeeded + 1 }))
+            return result
+          } catch (e) {
+            setBatchTally(t => ({ ...t, failed: t.failed + 1 }))
+            throw e
+          }
+        },
+        current => setBatchProgress(current),
+      )
+      setBatchSummary(summary)
+    } finally {
+      setBatchProgress(null)
+      setBatchRunning(false)
+      setBatchConfirm(false)
+    }
   }
 
   // Escribe el planeado ENTERO de un golpe: un clon del original o una planta en
@@ -305,6 +337,10 @@ export function LevantamientoPanel({
               <span style={label}>
                 {floorCount} PISOS · ~{floorCount}×60-90S · {floorCount} CARGOS REALES
               </span>
+              {/* Desactivado en vuelo, mismo motivo que el CANCELAR de RE-PARTIR DEL
+                  ORIGINAL (arriba en PLANO): el lote ya se despachó — es secuencial,
+                  sin punto de corte entre pisos — y un CANCELAR clicable escondería
+                  la confirmación mientras los renders restantes igual se generan. */}
               <button onClick={() => setBatchConfirm(false)} disabled={batchRunning}
                 style={{ ...outlined, opacity: batchRunning ? 0.6 : 1, cursor: batchRunning ? 'not-allowed' : 'pointer' }}>
                 CANCELAR
