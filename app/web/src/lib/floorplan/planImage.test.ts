@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { emptyFloorGraph, GHOST_THICKNESS_M, type Fixture } from './types'
-import { addVertex, addEdge } from './graph'
+import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import { floorToSvgString } from './planImage'
 
 describe('floorToSvgString', () => {
@@ -217,6 +217,30 @@ describe('floorToSvgString', () => {
     // una de 3.00 m (alto) — sin muros interiores que las corten.
     expect(svg).toContain('>4.00 m<')
     expect(svg).toContain('>3.00 m<')
+  })
+
+  // dimensions.ts (Task 33): un muro interior partido en una T (splitEdgeAtVertex, el caso
+  // normal de un levantamiento con varios cuartos) debe seguir generando su propia marca de
+  // cota — antes widthHeightChains degeneraba a solo el total del piso porque ninguno de los
+  // dos tramos, por separado, cubría el 90% del claro. Esta prueba de integración confirma
+  // que floorToSvgString (el consumidor real) dibuja las tres cadenas parciales — no solo el
+  // total — sin cambios propios: basta con que widthHeightChains regrese más marcas.
+  it('draws a dimension chain per interior partition, even when a T-junction splits the wall into two short segments', () => {
+    const f = emptyFloorGraph('Test')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 10, 0), c = addVertex(f, 10, 8), d = addVertex(f, 0, 8)
+    const eTop = addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15)
+    const eBottom = addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+    const topMid = addVertex(f, 5, 0), botMid = addVertex(f, 5, 8)
+    splitEdgeAtVertex(f, eTop, topMid)
+    splitEdgeAtVertex(f, eBottom, botMid)
+    const divider = addEdge(f, topMid, botMid, 0.10)
+    splitEdgeAtVertex(f, divider, addVertex(f, 5, 4)) // la T: parte el divisor en dos tramos de 4 m
+    const svg = floorToSvgString(f)
+    // Antes del fix la cadena de ancho era una sola de 10.00 m; ahora son dos de 5.00 m —
+    // la posición de la partición interior (x=5) queda acotada en la imagen de referencia.
+    expect(svg).not.toContain('>10.00 m<')
+    expect((svg.match(/>5\.00 m</g) || []).length).toBe(2)
+    expect(svg).toContain('>8.00 m<') // la cadena de alto no la corta nada: sigue completa
   })
 
   // Bug #4 del plan de Task 33a: dimText(px(mx) + 11, py(my), ...) usaba un offset FIJO en X

@@ -43,6 +43,58 @@ describe('widthHeightChains', () => {
     const { widthMarks } = widthHeightChains(f)
     expect(widthMarks).toEqual([0, 6])
   })
+
+  it('splits the width chain when a T-junction breaks the divider into two short segments', () => {
+    // Reproduce el hallazgo real: un levantamiento normal parte los muros interiores en las
+    // T (splitEdgeAtVertex), así que la pared divisoria de 8 m de alto nunca es UNA arista de
+    // 8 m — son dos de 4 m, y ninguna por sí sola llega al 90% de 8 m (7.2 m). El muro sigue
+    // dividiendo el piso completo (0→8 sin huecos), solo que partido por otra pared que lo
+    // cruza a medio camino — la cadena de ancho debe marcar x=5 igual que si fuera una sola
+    // arista continua.
+    const f = emptyFloorGraph('Test')
+    const { eTop, eBottom } = closedRect(f, 0, 0, 10, 8)
+    const topMid = addVertex(f, 5, 0), botMid = addVertex(f, 5, 8)
+    splitEdgeAtVertex(f, eTop, topMid)
+    splitEdgeAtVertex(f, eBottom, botMid)
+    const divider = addEdge(f, topMid, botMid, 0.10)
+    const tJunction = addVertex(f, 5, 4)
+    splitEdgeAtVertex(f, divider, tJunction)
+    // La pared que produce la T: cruza el divisor pero solo cubre la mitad derecha del
+    // ancho total (5→10 de 0→10, 50%) — no debe generar su propia marca en la cadena de
+    // alto, porque no divide el piso completo (preserva la intención original del umbral:
+    // excluir particiones parciales, tipo columna aislada).
+    addEdge(f, tJunction, addVertex(f, 10, 4), 0.10)
+
+    const { widthMarks, heightMarks } = widthHeightChains(f)
+    expect(widthMarks).toEqual([0, 5, 10])
+    expect(heightMarks).toEqual([0, 8])
+  })
+
+  it('does NOT split the chain from an isolated stub that never reaches the far side', () => {
+    // Una columna/nub decorativa de 1 m en medio de un cuarto de 8 m de alto: ni sola ni
+    // "acumulada" (no hay nada más con qué acumular) llega al 90% — debe seguir excluida.
+    const f = emptyFloorGraph('Test')
+    closedRect(f, 0, 0, 10, 8)
+    addEdge(f, addVertex(f, 5, 3), addVertex(f, 5, 4), 0.10)
+    const { widthMarks, heightMarks } = widthHeightChains(f)
+    expect(widthMarks).toEqual([0, 10])
+    expect(heightMarks).toEqual([0, 8])
+  })
+
+  it('does NOT sum disjoint segments that coincidentally share a coordinate but never touch', () => {
+    // Dos tramos a la misma x, cada uno corto, separados por un hueco real (no una T): no
+    // son la misma pared partida, son dos particiones parciales distintas que casualmente
+    // alinean. Ninguna corre debe sumar con la otra — el máximo tramo CONTINUO sigue sin
+    // llegar al 90%, así que no deben generar marca.
+    const f = emptyFloorGraph('Test')
+    closedRect(f, 0, 0, 10, 8)
+    addEdge(f, addVertex(f, 5, 0), addVertex(f, 5, 3), 0.10)   // 3 m, toca el borde inferior
+    addEdge(f, addVertex(f, 5, 5), addVertex(f, 5, 8), 0.10)   // 3 m, toca el borde superior
+    // Combinados suman 6/8 = 75%, y el hueco 3→5 es real (2 m, muy por encima de SPLIT_EPS):
+    // ninguna corre continua llega a 7.2 m, así que no debe marcar x=5.
+    const { widthMarks } = widthHeightChains(f)
+    expect(widthMarks).toEqual([0, 10])
+  })
 })
 
 describe('cotaEdges', () => {
