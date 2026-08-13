@@ -465,4 +465,34 @@ ambos subagentes):
     rojo-primero con test de reproducción. Re-revisión de calidad: APROBADO.
   - 560/560 tests frontend, tsc y build limpios (verificado 2 veces,
     independientemente, por reviewers distintos).
-- [ ] Task 32: verificación final
+- [x] Task 32: verificación final — TASKS 28-32 CERRADAS, addendum #3 completo
+  - **Las 4 capas, evidencia fresca**: backend 596/596 (pytest), frontend
+    560/560 (vitest), tsc limpio, build limpio.
+  - **Render real de prueba, propiedad 5 (2 pisos reales)**: generación
+    individual + lote "GENERAR TODOS LOS PISOS" real (2 llamadas reales a
+    OpenAI, ~2 min, cargos reales) contra ORIGINAL/Planta Baja+Planta Alta.
+    4 renders reales generados (ids 26-29), PNGs válidos 704×1488
+    verificados en filesystem (no stubs de un call fallido). `floor_id`
+    consistente por piso (mismo id en las 2 filas de cada piso, distinto
+    entre pisos, nunca se cruzan) — confirma que la identidad efímera de
+    piso (documentada en el diseño: se regenera en cada carga sin guardar)
+    se mantiene ESTABLE dentro de una misma sesión, exactamente como
+    predecía el diseño.
+  - Un agente de verificación se estancó a medio camino (timeout 600s)
+    pero ya había completado la parte de costo real (Partes B y C) antes
+    de estancarse — verificado directamente contra BD y filesystem antes
+    de relanzar, para no disparar más cargos reales innecesarios.
+  - **Limpieza**: los 4 renders de prueba (26-29) se borraron con el
+    mecanismo real de la app (`DELETE /api/properties/5/renders/{id}`,
+    JWT real del usuario existente, nunca SQL crudo) — fila Y archivo PNG
+    confirmados eliminados. Los 8 renders históricos reales de la
+    propiedad 5 (ids 1,7,9-14, floor_id=NULL, 2026-08-05 al 07) quedan
+    intactos, nunca tocados en todo el addendum.
+  - `git status` limpio en todo momento.
+
+**Addendum #3 cerrado por completo.** Cada piso de un levantamiento tiene
+identidad estable (`FloorGraph.id`), cada render de plano sabe de qué piso
+nació, RENDERS tiene selector propio de piso independiente de PLANO, y un
+botón de lote genera los renders de todos los pisos con confirmación,
+progreso y tolerancia a fallo parcial — verificado con render real contra
+la propiedad 5. Rama sin push/merge — decisión de Eduardo.
