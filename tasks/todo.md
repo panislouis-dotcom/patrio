@@ -620,3 +620,16 @@ sin el segundo par de ojos adversarial.
   - Verificado con prueba de mutación (forzar `annotations=true` rompe el
     test de "sin texto") antes de revertir.
   - 596/596 tests, tsc y build limpios.
+- [x] Task 35: `quality="high"` + más resolución de salida para planos (6859b80)
+  - `quality` ahora explícito: `"high"` en el camino de plano (antes
+    siempre `"auto"`), fotos quedan igual. `_TARGET_PIXELS` sube de
+    1024*1024 a 2560x1440 (~3.69MP) — el techo "no experimental" que la
+    propia API documenta — subiendo la resolución real de cada muro
+    ~3.5×.
+  - Bug real preexistente encontrado al subir el presupuesto: la
+    salvaguarda de razón en `_output_size` usaba `_round16` (al más
+    cercano), que podía redondear hacia el lado EQUIVOCADO del límite —
+    un caso real (1200x200) rendía razón 3.0145, por encima del 3.0 que
+    la API exige. Fix: `_floor16`/`_ceil16` (redondeo direccional).
+    Verificado con prueba de mutación.
+  - 597/597 tests backend.
