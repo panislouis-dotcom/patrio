@@ -668,4 +668,36 @@ sin el segundo par de ojos adversarial.
     con hash idéntico al resultado ya validado visualmente) antes de
     commitear. Lección aplicada: revisar `git status` antes de cualquier
     comando destructivo, sin excepción, incluso a mitad de una tarea.
+- [x] Task 38: verificación final (064d00d) — ADDENDUM #4 CERRADO
+  - Las 4 capas: backend 603/603, frontend 596/596, tsc y build limpios.
+  - Render real de extremo a extremo vía UI real (Playwright, servidor
+    vivo) contra propiedad 5, "Planta Alta" (render id=31, distinto del
+    id=30 de la Task 36) — confirma el pipeline completo (Tasks 33-37)
+    funcionando en producción local, no solo en pruebas aisladas: muros
+    nítidos y opacos en su posición geométrica real, dos baños simétricos
+    correctamente distinguidos, escalera en su lugar, mobiliario de la IA
+    intacto alrededor.
+  - Comparación explícita contra cada queja original de Eduardo (tabla
+    completa en el plan doc) — dimensiones, proporción, puertas y paredes
+    resueltas de raíz por la composición; cuartos agregados con 3 causas
+    concretas cerradas (sin garantía absoluta del 100% para cualquier
+    creatividad futura de un modelo generativo, pero las causas conocidas
+    sí); JSON crudo investigado y descartado con evidencia.
+  - Limitaciones documentadas honestamente: la composición es un afín
+    GLOBAL (no por regiones — YAGNI hasta que un caso real lo exija);
+    mobiliario sigue siendo libre interpretación de la IA (nunca fue
+    requisito); el quirk preexistente de `floorToSvgString` (padding al
+    origen del mundo) sigue abierto, no rompe la composición pero
+    desperdicia parte del presupuesto de resolución.
+  - Limpieza: 2 renders de verificación (ids 30, 31) borrados con el
+    mecanismo real de la app; los 8 renders históricos reales de la
+    propiedad 5 quedan intactos, nunca tocados en todo el addendum.
+
+**Addendum #4 cerrado por completo.** Diagnóstico con 6 subagentes
+independientes → decisiones validadas con Eduardo → 9+ bugs concretos
+arreglados en la imagen de referencia y el prompt → el fix arquitectónico
+de raíz (componer la geometría exacta encima del resultado de la IA,
+eliminando la dependencia de que el modelo generativo interprete bien) →
+verificado con 2 renders reales de extremo a extremo. Rama sin push/merge
+— decisión de Eduardo.
   - 603/603 tests backend.
