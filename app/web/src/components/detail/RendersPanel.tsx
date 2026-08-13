@@ -218,6 +218,16 @@ export function RendersPanel(props: Props) {
     selectedPrompt && composeWithFacts(selectedPrompt.body, currentFacts).trim() === text.trim()
       ? selectedPrompt.id : null
 
+  // El sync de piso (más abajo) deliberadamente NO toca `text` cuando la edición
+  // manual del usuario rompió el prefijo de hechos — correcto, para no pisarla
+  // sin avisar. Pero eso deja el texto describiendo el piso VIEJO sin ninguna
+  // señal de que ya no coincide con el piso/PNG que se va a mandar al generar:
+  // exactamente el tipo de brecha silenciosa que el addendum de fidelidad
+  // geométrica busca eliminar, ahora en el subcaso de edición manual. Mismo
+  // predicado que ya usa `replaceFacts` (`text.startsWith(oldFacts)`), aquí
+  // contra los hechos ACTUALES en vez de los viejos.
+  const textStale = usePlan && currentFacts != null && !text.startsWith(currentFacts)
+
   // Identidad del piso que le toca a `plan` — su `id`, no la referencia del
   // objeto: `LevantamientoPanel` reconstruye `selectedFloor` en cada render (un
   // `.find` sobre `fs.floors`), así que la referencia puede cambiar sin que el
@@ -397,6 +407,15 @@ export function RendersPanel(props: Props) {
         <p style={{ ...label, marginTop: '6px', textTransform: 'none', letterSpacing: 0 }}>
           A todo prompt se le añade la instrucción de conservar la geometría del inmueble.
         </p>
+        {/* El texto quedó describiendo el piso VIEJO porque el sync no pisa una
+            edición manual (ver `replaceFacts`) — se avisa aquí, antes de generar,
+            en vez de dejar que el usuario mande una imagen y un texto de dos
+            pisos distintos sin saberlo. */}
+        {textStale && (
+          <p style={{ ...label, marginTop: '6px', letterSpacing: 0, textTransform: 'none', color: colors.tertiary }}>
+            El texto no refleja el piso actual — revísalo antes de generar.
+          </p>
+        )}
       </div>
 
       {error && (

@@ -676,4 +676,97 @@ describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, 
       plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
     expect((screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement).value).toBe('')
   })
+
+  it('un preset elegido sigue vinculado (promptId no nulo) tras cambiar de piso', async () => {
+    // Beneficio directo del reemplazo quirúrgico de `replaceFacts`: solo la mitad
+    // de hechos se toca, la mitad de estilo (y por tanto el preset) sigue intacta.
+    const cocina = planWithRooms(['Cocina'])
+    const recamara = planWithRooms(['Recámara'])
+    const onGeneratePlan = vi.fn().mockResolvedValue(planRenderRow(9))
+    const { rerender } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={onGeneratePlan} />)
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
+
+    rerender(<RendersPanel {...planBase}
+      plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={onGeneratePlan} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+    await waitFor(() => expect(onGeneratePlan).toHaveBeenCalledWith(
+      expect.objectContaining({ promptId: 3 }),
+    ))
+  })
+
+  it('un `plan` con el mismo id pero nueva referencia de objeto no dispara un reemplazo espurio', () => {
+    // El escenario real que motiva comparar por `.id` y no por referencia:
+    // `LevantamientoPanel` reconstruye `selectedFloor` en cada render (un `.find`
+    // sobre `fs.floors`), así que la referencia cambia aunque el piso no.
+    const cocina = planWithRooms(['Cocina'])
+    const cocinaOtraReferencia = { ...cocina, rooms: [...cocina.rooms] }
+    const { rerender } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    const textoAntes = (screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement).value
+
+    rerender(<RendersPanel {...planBase}
+      plan={cocinaOtraReferencia} floorId={cocinaOtraReferencia.id} floorName={cocinaOtraReferencia.name}
+      floorCount={2} onGeneratePlan={vi.fn()} />)
+
+    expect((screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement).value).toBe(textoAntes)
+  })
+})
+
+// ── Aviso: el texto editado a mano ya no refleja el piso actual ────────────────
+// El sync deliberadamente NO toca el texto cuando el usuario lo editó a mano
+// (rompiendo el prefijo de hechos) — correcto, para no pisar su edición. Pero eso
+// deja el texto describiendo el piso VIEJO sin ninguna señal visual de que ya no
+// coincide con el piso/PNG que se va a mandar al generar. Mismo criterio del
+// addendum de fidelidad geométrica (docs/plans/2026-08-13-fidelidad-geometrica-
+// renders-plano.md): el resultado nunca debe mentir sobre la distribución real,
+// y un texto obsoleto y silencioso es exactamente ese tipo de mentira.
+describe('RendersPanel: avisa cuando el texto ya no refleja el piso actual', () => {
+  const planBase = {
+    source: 'plan' as const,
+    variant: 'original' as const,
+    prompts: planPrompts,
+    renders: [] as PropertyRender[],
+    base: '',
+    onSavePrompt: vi.fn().mockResolvedValue(planPrompts[0]),
+    onDeleteRender: vi.fn().mockResolvedValue(undefined),
+  }
+
+  it('aparece cuando una edición manual rompe el prefijo de hechos y luego cambia de piso', () => {
+    const cocina = planWithRooms(['Cocina'])
+    const recamara = planWithRooms(['Recámara'])
+    const { rerender } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+    fireEvent.click(screen.getByText(/^el plano$/i))
+
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    fireEvent.change(ta, { target: { value: 'Texto totalmente reescrito a mano, sin relación con los hechos.' } })
+
+    rerender(<RendersPanel {...planBase}
+      plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+
+    expect(screen.getByText(/el texto no refleja el piso actual/i)).not.toBeNull()
+  })
+
+  it('NO aparece cuando el texto sigue sincronizado con el piso actual (sin edición manual)', () => {
+    const cocina = planWithRooms(['Cocina'])
+    const recamara = planWithRooms(['Recámara'])
+    const { rerender } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+    fireEvent.click(screen.getByText(/^el plano$/i))
+
+    rerender(<RendersPanel {...planBase}
+      plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+
+    expect(screen.queryByText(/el texto no refleja el piso actual/i)).toBeNull()
+  })
+
+  it('NO aparece con usePlan=false, aunque el texto se edite a mano (modo fotos)', () => {
+    setup()
+    fireEvent.change(screen.getByLabelText(/texto del prompt/i), { target: { value: 'Cualquier cosa.' } })
+    expect(screen.queryByText(/el texto no refleja el piso actual/i)).toBeNull()
+  })
 })
