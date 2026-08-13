@@ -282,6 +282,106 @@ describe('RendersPanel', () => {
     await waitFor(() => expect(onGeneratePlan).toHaveBeenCalled())
   })
 
+  // ── Componer plano + preset, nunca pisarse (Task 33d) ───────────────────────
+  // El bug: `choosePreset` hacía `setText(p?.body ?? '')` (reemplazo total) y
+  // `selectPlan` solo agregaba `planFacts` si el texto estaba VACÍO. Elegir las
+  // dos fuentes en cualquier orden borraba una de las dos mitades del prompt —
+  // la geometría (Tasks 33a-c) o el estilo — dependiendo de cuál se eligiera
+  // último. Ahora ambas COMPONEN: los datos duros del piso siempre van antes
+  // del texto de estilo (ver el docstring de `planFacts`, "listo para
+  // anteponerse al prompt de estilo").
+
+  it('modo plano: elegir "El plano" y LUEGO un preset conserva los datos duros del piso', () => {
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
+      onGeneratePlan: vi.fn(), prompts: planPrompts,
+    })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    expect(ta.value).toMatch(/Cocina/)
+    expect(ta.value).toMatch(/Piso de madera, tonos cálidos\./)
+  })
+
+  it('modo plano: elegir un preset y LUEGO "El plano" agrega los datos duros del piso', () => {
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
+      onGeneratePlan: vi.fn(), prompts: planPrompts,
+    })
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    expect(ta.value).toMatch(/Cocina/)
+    expect(ta.value).toMatch(/Piso de madera, tonos cálidos\./)
+  })
+
+  it('modo plano: los datos duros del piso van ANTES del texto de estilo, no después', () => {
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
+      onGeneratePlan: vi.fn(), prompts: planPrompts,
+    })
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    expect(ta.value.indexOf('Cocina')).toBeLessThan(ta.value.indexOf('Piso de madera'))
+  })
+
+  it('modo plano: re-elegir "El plano" ya seleccionado no duplica los datos duros', () => {
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
+      onGeneratePlan: vi.fn(), prompts: planPrompts,
+    })
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    expect(ta.value.match(/Cocina/g)?.length ?? 0).toBe(1)
+  })
+
+  it('modo plano: cambiar de preset tras componer conserva los datos duros y solo reemplaza el estilo', () => {
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
+      onGeneratePlan: vi.fn(), prompts: planPrompts,
+    })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '4' } })
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    expect(ta.value).toMatch(/Cocina/)
+    expect(ta.value).toMatch(/Blancos y madera clara\./)
+    expect(ta.value).not.toMatch(/Piso de madera, tonos cálidos\./)
+  })
+
+  it('modo plano: generar con plano+preset compuestos sin editar manda el promptId del preset', async () => {
+    const onGeneratePlan = vi.fn().mockResolvedValue(planRenderRow(9))
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
+      onGeneratePlan, prompts: planPrompts,
+    })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+    await waitFor(() => expect(onGeneratePlan).toHaveBeenCalledWith(
+      expect.objectContaining({ promptId: 3 }),
+    ))
+  })
+
+  it('modo plano: editar a mano el texto ya compuesto lo desliga del preset al generar', async () => {
+    const onGeneratePlan = vi.fn().mockResolvedValue(planRenderRow(9))
+    setup({
+      source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
+      onGeneratePlan, prompts: planPrompts,
+    })
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    fireEvent.change(ta, { target: { value: `${ta.value} y techo alto.` } })
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+    await waitFor(() => expect(onGeneratePlan).toHaveBeenCalledWith(
+      expect.objectContaining({ promptId: null }),
+    ))
+  })
+
   // ── Piso (Task 30): RENDERS filtra y genera por el piso SELECCIONADO ────────
   // El selector de piso vive en `LevantamientoPanel`, no aquí — este panel solo
   // recibe `floorId`/`floorName`/`floorCount` del piso elegido, así que "elegir

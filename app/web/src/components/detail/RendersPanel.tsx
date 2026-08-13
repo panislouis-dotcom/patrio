@@ -74,6 +74,28 @@ const label: React.CSSProperties = {
 }
 
 /**
+ * Compone el texto final de un prompt de PLANO: los datos duros del piso
+ * (`planFacts`) SIEMPRE antes del texto de estilo, nunca al revés — así lo
+ * documenta el propio `planFacts` ("listo para anteponerse al prompt de
+ * estilo"). `choosePreset` y `selectPlan` (RendersPanel, más abajo) son las
+ * dos únicas fuentes que tocan `text` en modo plano y ambas pasan por este
+ * helper para que elegir un preset de estilo y elegir "El plano" compongan
+ * sin pisarse, sin importar en qué orden el usuario dispare las dos acciones
+ * (Task 33d) — antes cada una hacía su propio `setText` a secas y la segunda
+ * en dispararse borraba lo que la primera hubiera puesto.
+ *
+ * `facts` null es modo fotos (no hay plano que anteponer) o modo plano antes
+ * de elegir "El plano": el texto es solo el estilo, sin transformar — para no
+ * alterar ni un espacio del cuerpo de un preset de FOTOS, que nunca compone
+ * con nada.
+ */
+function composeWithFacts(style: string, facts: string | null): string {
+  if (!facts) return style
+  const s = style.trim()
+  return s ? `${facts}\n\n${s}` : facts
+}
+
+/**
  * RENDERS: eliges una fuente, eliges (o escribes) un prompt, y sale una
  * propuesta. La fuente depende de `source` — una foto (dentro de FOTOS) o el
  * plano de un levantamiento (dentro de ESE levantamiento) — y nunca las dos:
@@ -163,21 +185,43 @@ export function RendersPanel(props: Props) {
   const { byId: unassignedById, heads: unassignedHeads } = useMemo(() => computeHeads(unassigned), [unassigned])
 
   const selectedPrompt = visiblePrompts.find(p => p.id === promptId) ?? null
-  // Si el texto ya no es el del preset, el render no salió de ese preset.
-  // Mandar el id de todos modos haría que el render mintiera sobre su origen.
+  // Los datos duros del piso (Tasks 33a-c) que le tocan al texto ACTUAL, si "El
+  // plano" está elegido — null en modo fotos (`usePlan` nunca es true ahí) y
+  // también null en modo plano hasta que se elige la fuente.
+  const currentFacts = usePlan && plan ? planFacts(plan) : null
+  // Si el texto ya no es lo que el preset compone (su cuerpo solo en modo
+  // fotos; datos duros + su cuerpo en modo plano — ver `composeWithFacts`), el
+  // render no salió de ese preset. Mandar el id de todos modos haría que el
+  // render mintiera sobre su origen — mismo criterio de siempre, ahora
+  // consciente de la composición de Task 33d.
   const effectivePromptId =
-    selectedPrompt && selectedPrompt.body.trim() === text.trim() ? selectedPrompt.id : null
+    selectedPrompt && composeWithFacts(selectedPrompt.body, currentFacts).trim() === text.trim()
+      ? selectedPrompt.id : null
 
+  // Elegir un preset de estilo y elegir "El plano" son dos fuentes de texto
+  // independientes que deben COMPONER, nunca pisarse (Task 33d) — antes cada
+  // una hacía un `setText` que borraba lo que la otra hubiera puesto: elegir
+  // el plano y LUEGO un preset perdía los datos duros del piso, y elegir un
+  // preset y LUEGO el plano nunca los agregaba, dependiendo nada más del
+  // orden de clics del usuario. `choosePreset` reemplaza SOLO la mitad de
+  // estilo (es justo lo que "elegir OTRO preset" significa: descarta lo que
+  // hubiera antes en esa mitad, igual que siempre) y conserva los datos duros
+  // intactos si "El plano" ya estaba elegido.
   function choosePreset(value: string) {
     const p = visiblePrompts.find(x => String(x.id) === value) ?? null
     setPromptId(p?.id ?? null)
-    setText(p?.body ?? '')
+    setText(composeWithFacts(p?.body ?? '', currentFacts))
   }
 
   function selectPhoto(id: number) { setSourceId(id); setUsePlan(false) }
   function selectPlan() {
     setUsePlan(true); setSourceId(null)
-    if (!text.trim() && plan) setText(planFacts(plan))
+    if (!plan) return
+    const facts = planFacts(plan)
+    // Ya compuesto con estos mismos hechos (p.ej. un re-clic sobre "El plano"
+    // ya seleccionado): no dupliques. `startsWith` basta porque
+    // `composeWithFacts` siempre pone los hechos al frente.
+    if (!text.startsWith(facts)) setText(composeWithFacts(text, facts))
   }
 
   async function generate() {
