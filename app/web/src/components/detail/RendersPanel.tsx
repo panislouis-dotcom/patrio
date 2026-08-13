@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { colors, fonts, radius, spacing } from '../../lib/theme'
 import { fmtDia } from '../../lib/fmt'
 import type { PropertyImage, PropertyRender, RenderPrompt, RenderPromptKind } from '../../lib/types'
@@ -93,6 +93,26 @@ function composeWithFacts(style: string, facts: string | null): string {
   if (!facts) return style
   const s = style.trim()
   return s ? `${facts}\n\n${s}` : facts
+}
+
+/**
+ * Reemplaza SOLO la porción de hechos duros de un `text` ya compuesto
+ * (`composeWithFacts`) por hechos NUEVOS, conservando intacta la porción de
+ * estilo — mismo principio que `choosePreset` ya usa para su propia mitad, ahora
+ * del otro lado del prefijo. La usa el efecto de sincronización de piso, más
+ * abajo (Task 33e / addendum de fidelidad geométrica).
+ *
+ * `oldFacts` es lo que se ESPERA encontrar al frente de `text` — los hechos con
+ * los que se compuso la última vez. Si `text` ya no empieza exactamente con eso
+ * es porque el usuario lo editó a mano después de componer (rompiendo el
+ * prefijo): en ese caso se regresa `text` intacto, sin tocar nada. Forzar la
+ * sustitución ahí arriesgaría pisar una edición manual sin avisar — peor que
+ * dejarlo con datos potencialmente obsoletos, que al menos el usuario reconoce
+ * como propios (ver el efecto de sincronización para la decisión completa).
+ */
+function replaceFacts(text: string, oldFacts: string, newFacts: string): string {
+  if (!text.startsWith(oldFacts)) return text
+  return composeWithFacts(text.slice(oldFacts.length), newFacts)
 }
 
 /**
@@ -197,6 +217,49 @@ export function RendersPanel(props: Props) {
   const effectivePromptId =
     selectedPrompt && composeWithFacts(selectedPrompt.body, currentFacts).trim() === text.trim()
       ? selectedPrompt.id : null
+
+  // Identidad del piso que le toca a `plan` — su `id`, no la referencia del
+  // objeto: `LevantamientoPanel` reconstruye `selectedFloor` en cada render (un
+  // `.find` sobre `fs.floors`), así que la referencia puede cambiar sin que el
+  // piso lo haya hecho; `id` es estable ante eso y ante reordenar/renombrar
+  // (mismo campo que documenta `FloorGraph.id`), la señal correcta para
+  // detectar "cambié de piso" en vez de "el mismo piso mutó de referencia".
+  const planId = plan?.id ?? null
+  const prevPlanIdRef = useRef(planId)
+  const prevFactsRef = useRef(currentFacts)
+
+  // `LevantamientoPanel` NUNCA remonta este panel al cambiar de piso — no hay
+  // `key` por piso, solo cambia la prop `plan` (junto con `floorId`/`floorName`)
+  // — así que sin este efecto `text`/`usePlan`, que viven DENTRO de este
+  // componente, no se enteran del cambio. Dos síntomas reales, los dos de este
+  // mismo hueco (ver docs/plans/2026-08-13-fidelidad-geometrica-renders-plano.md):
+  //
+  // 1. Duplicación: un re-clic en "El plano" comparaba el guard de idempotencia
+  //    de `selectPlan` (`text.startsWith(facts)`) contra los hechos del piso
+  //    NUEVO, que nunca calzan con el prefijo viejo — así que antepone sin
+  //    quitar, y el texto termina describiendo los cuartos de los DOS pisos.
+  // 2. Datos obsoletos: generar sin volver a hacer clic en "El plano" manda el
+  //    PNG del piso nuevo (correcto, vía `plan`) con una descripción de texto
+  //    del piso VIEJO — la imagen y el prompt describiendo dos pisos distintos,
+  //    exactamente el tipo de "render sin fidelidad geométrica" que este
+  //    addendum busca eliminar.
+  //
+  // El reemplazo es QUIRÚRGICO (`replaceFacts`, arriba): solo la porción de
+  // hechos duros, la de estilo queda intacta — mismo principio que
+  // `choosePreset` ya usa para su propia mitad. Y solo ocurre si `text` sigue
+  // empezando exactamente con los hechos viejos (`prevFactsRef`); si ya no
+  // calza es porque el usuario editó el texto a mano después de componer, y ahí
+  // se deja intacto — sincronizar de todos modos arriesgaría pisar esa edición
+  // sin avisar, y se prefiere un texto con datos potencialmente obsoletos pero
+  // reconocible como propio a uno que el usuario nunca escribió.
+  useEffect(() => {
+    const prevPlanId = prevPlanIdRef.current
+    const prevFacts = prevFactsRef.current
+    prevPlanIdRef.current = planId
+    prevFactsRef.current = currentFacts
+    if (!usePlan || prevPlanId === planId || prevFacts == null || currentFacts == null) return
+    setText(t => replaceFacts(t, prevFacts, currentFacts))
+  }, [planId, currentFacts, usePlan])
 
   // Elegir un preset de estilo y elegir "El plano" son dos fuentes de texto
   // independientes que deben COMPONER, nunca pisarse (Task 33d) — antes cada

@@ -558,3 +558,122 @@ describe('RendersPanel', () => {
     expect(screen.queryByText(/generando render/i)).toBeNull()
   })
 })
+
+// ── El piso cambia sin remontar (addendum de fidelidad geométrica) ─────────────
+// `LevantamientoPanel` nunca remonta este panel al cambiar de piso — no hay `key`
+// por piso, solo cambia la prop `plan` (y `floorId`/`floorName` junto con ella).
+// `text`/`usePlan` viven DENTRO de `RendersPanel`, así que sin sincronización se
+// quedan describiendo el piso VIEJO. Dos síntomas reales:
+//   1. Duplicación: re-elegir "El plano" tras cambiar de piso comparaba el guard
+//      de idempotencia de `selectPlan` (`text.startsWith(facts)`) contra los
+//      hechos del piso NUEVO, que nunca calzan con el prefijo viejo — así que
+//      antepone sin quitar, y el texto mezcla los cuartos de los DOS pisos.
+//   2. Datos obsoletos: generar sin volver a hacer clic en "El plano" manda el
+//      PNG del piso nuevo (vía `plan`) con una descripción de texto del piso
+//      VIEJO — imagen y prompt describiendo dos pisos distintos.
+// Cada test usa `rerender` (nunca una nueva instancia de `render`) para simular
+// el cambio de piso real: la misma técnica que ya usa
+// `LevantamientoPanel.test.tsx` para probar el reset del resumen de lote.
+describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, nunca deja obsoleto)', () => {
+  // Base fija (no genérica): un objeto plano en vez de una función con `over`
+  // tipado ancho — con `over: Record<string, unknown>` (o incluso un genérico
+  // `<T extends object>`) TypeScript termina de mezclar el spread dentro del
+  // JSX sin conservar las claves específicas de cada llamada, y `PlanProps` deja
+  // de poder verificarse en el sitio de uso aunque en runtime estén presentes.
+  // Un objeto literal simple + props explícitas en cada JSX no tiene esa duda.
+  const planBase = {
+    source: 'plan' as const,
+    variant: 'original' as const,
+    prompts: planPrompts,
+    renders: [] as PropertyRender[],
+    base: '',
+    onSavePrompt: vi.fn().mockResolvedValue(planPrompts[0]),
+    onDeleteRender: vi.fn().mockResolvedValue(undefined),
+  }
+
+  it('generar sin volver a hacer clic en "El plano" tras cambiar de piso NO manda datos del piso viejo', async () => {
+    const cocina = planWithRooms(['Cocina'])
+    const recamara = planWithRooms(['Recámara'])
+    const onGeneratePlan = vi.fn().mockResolvedValue(planRenderRow(9))
+    const { rerender } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={onGeneratePlan} />)
+    fireEvent.click(screen.getByText(/^el plano$/i))
+
+    // Cambia de piso — la misma prop `plan`, sin remontar (RendersPanel no tiene
+    // `key` por piso en `LevantamientoPanel`).
+    rerender(<RendersPanel {...planBase}
+      plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={onGeneratePlan} />)
+
+    // Sin volver a tocar "El plano": genera directo.
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+    await waitFor(() => expect(onGeneratePlan).toHaveBeenCalled())
+    const promptText = onGeneratePlan.mock.calls[0][0].promptText as string
+    expect(promptText).toMatch(/Recámara/)
+    expect(promptText).not.toMatch(/Cocina/)
+  })
+
+  it('re-elegir "El plano" tras cambiar de piso no mezcla los cuartos de los dos pisos (no duplica)', () => {
+    const cocina = planWithRooms(['Cocina'])
+    const recamara = planWithRooms(['Recámara'])
+    const { rerender } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+    fireEvent.click(screen.getByText(/^el plano$/i))
+
+    rerender(<RendersPanel {...planBase}
+      plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+    fireEvent.click(screen.getByText(/^el plano$/i))
+
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    expect(ta.value).toMatch(/Recámara/)
+    expect(ta.value).not.toMatch(/Cocina/)
+  })
+
+  it('cambiar de piso por sí solo (sin re-elegir "El plano") ya actualiza el texto al piso nuevo', () => {
+    // El síntoma 2, visto desde el textarea: ni siquiera hace falta re-generar
+    // para notar el dato obsoleto — el texto mismo debe reflejar el piso actual.
+    const cocina = planWithRooms(['Cocina'])
+    const recamara = planWithRooms(['Recámara'])
+    const { rerender } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+    fireEvent.click(screen.getByText(/^el plano$/i))
+
+    rerender(<RendersPanel {...planBase}
+      plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    expect(ta.value).toMatch(/Recámara/)
+    expect(ta.value).not.toMatch(/Cocina/)
+  })
+
+  it('una edición manual del texto sobrevive a un cambio de piso — nunca se pisa en silencio', () => {
+    // Decisión de UX: si el usuario ya rompió la composición a mano, sincronizar
+    // de todos modos arriesgaría perder su edición sin avisar. Se prefiere
+    // dejarlo con datos potencialmente obsoletos (visibles, los escribió él) a
+    // pisarlos.
+    const cocina = planWithRooms(['Cocina'])
+    const recamara = planWithRooms(['Recámara'])
+    const { rerender } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+    fireEvent.click(screen.getByText(/^el plano$/i))
+
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    fireEvent.change(ta, { target: { value: 'Texto totalmente reescrito a mano, sin relación con los hechos.' } })
+
+    rerender(<RendersPanel {...planBase}
+      plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+
+    expect((screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement).value)
+      .toBe('Texto totalmente reescrito a mano, sin relación con los hechos.')
+  })
+
+  it('cambiar de piso sin haber elegido "El plano" no toca el texto (usePlan sigue en false)', () => {
+    const cocina = planWithRooms(['Cocina'])
+    const recamara = planWithRooms(['Recámara'])
+    const { rerender } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+    // Nunca se hace clic en "El plano": el texto empieza y se queda vacío.
+    rerender(<RendersPanel {...planBase}
+      plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
+    expect((screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement).value).toBe('')
+  })
+})
