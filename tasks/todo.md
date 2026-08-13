@@ -569,3 +569,33 @@ componer el trazo exacto de los muros encima del resultado de la IA.
     técnica de mutación y agregó 2 tests de frontera, cerrando el hueco
     de verdad (verificado independientemente por el revisor).
   - 576/576 tests, tsc y build limpios.
+- [x] Task 33d: fix del clobber plano+preset en `RendersPanel.tsx`
+  (22d6fcb+1ffb271+27dae95+781ba16; spec ✅, calidad ✅)
+  - Bug real (confirmado por 2 subagentes de diagnóstico independientes):
+    `choosePreset`/`selectPlan` se pisaban — elegir plano y luego estilo
+    (o al revés) borraba uno u otro. Fix: `composeWithFacts`, hechos
+    duros SIEMPRE antes del estilo (siguiendo la intención ya documentada
+    en `planFacts.ts`). Cambiar de preset tras componer reemplaza SOLO la
+    mitad de estilo, recalculando desde la fuente (no parseo de texto).
+    "Deseleccionar El plano" confirmado inalcanzable en la UI actual.
+  - La revisión de espec encontró, FUERA del alcance literal pero
+    directamente relevante al addendum, un bug real en multi-piso: sin
+    remount al cambiar de piso, el texto compuesto no se sincronizaba —
+    duplicaba datos de dos pisos, o generaba con el prompt del piso
+    equivocado. Arreglado con `useEffect` keyed en identidad de piso
+    (`plan?.id`, no referencia) + reemplazo quirúrgico solo de la
+    porción de hechos (mismo principio que el cambio de preset).
+  - La revisión de calidad de ESE fix encontró una brecha de UX residual
+    (edición manual + cambio de piso deja texto obsoleto sin aviso) y
+    recomendó cerrarla YA, citando la decisión fundacional del addendum
+    ("fidelidad 100%, siempre") — no diferirla. Aviso visual agregado
+    (`textStale`), siguiendo el patrón ya establecido de avisos del
+    archivo. Deduplicación final de un fixture de test compartido.
+  - `LevantamientoPanel.tsx`'s `generateOneFloor` (lote "GENERAR TODOS
+    LOS PISOS") nunca se tocó — ya mandaba `planFacts` directo, correcto
+    desde su implementación original.
+  - 593/593 tests, tsc y build limpios (verificado en cada eslabón de la
+    cadena de 4 commits).
+
+**Task 33 (bugs de imagen de referencia + prompt) cerrado por completo —
+las Capas 1 y 2 del diagnóstico del addendum #4 quedan resueltas.**
