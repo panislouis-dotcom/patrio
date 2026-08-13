@@ -349,9 +349,55 @@ un render real capturado en la Task 36.
 
 ### Task 38 — Verificación final
 
-- Las 4 capas verdes con evidencia fresca.
-- Render real contra la propiedad 5 (u otra con geometría conocida):
-  comparación explícita antes/después — mismas quejas originales de
-  Eduardo (cuartos agregados, puertas fuera de posición, paredes
-  faltantes), confirmando cuáles se resuelven y documentando honestamente
-  cuáles no.
+**Las 4 capas, evidencia fresca:** backend 603/603 (pytest), frontend
+596/596 (vitest), tsc limpio, build limpio.
+
+**Render real de extremo a extremo, servidor real corriendo, sin atajos:**
+vía la UI real (Playwright, sesión autenticada), propiedad 5, piso "Planta
+Alta" (id de render 31, distinto del id=30 usado para prototipar la Task
+37) — confirmando que el pipeline completo (Tasks 33-37) funciona en la
+aplicación viva, no solo en pruebas aisladas. Resultado: muros nítidos,
+opacos, exactamente en su posición geométrica real (composición en vivo,
+no simulada); dos baños simétricos correctamente distinguidos como
+espacios separados; escalera en su posición real; mobiliario/estilo de la
+IA intacto alrededor de la geometría compuesta.
+
+**Comparación explícita contra las quejas originales de Eduardo:**
+
+| Queja original | Estado |
+|---|---|
+| "las dimensiones estan mal" | Resuelto de raíz — el muro final SIEMPRE es la geometría real compuesta, ya no depende de que la IA la haya interpretado bien. |
+| "el resultado se ve mas cuadrado, el plano es mas rectangulo" | Resuelto (addendum anterior, sigue vigente): `size` respeta la razón de aspecto real. |
+| "puertas en el lugar correcto" | Resuelto — la posición de la puerta ahora es literalmente la geometría compuesta, no una esperanza del prompt. Además, `planFacts` ahora identifica el muro (lado+longitud) para las oraciones de conectividad. |
+| "paredes faltantes" | Mejor candidato encontrado y arreglado (ventana dibujada como agujero desnudo en la Capa 1) + eliminado de raíz para CUALQUIER causa por la composición (Capa 3: un muro que la IA hubiera omitido igual aparece, porque se compone encima, no se le pide con más énfasis). |
+| "cuartos agregados" | Tres mecanismos concretos encontrados y arreglados (cuartos sin muros mezclados con reales, esquinas de 180° fabricadas, bug de composición de prompt que podía mandar CERO datos duros) — no puede garantizarse al 100% que la IA nunca agregue un cuarto de más en el espacio interior de una habitación (eso sigue siendo generativo), pero las causas RAÍZ conocidas y verificadas están cerradas. |
+| "hace falta poner el bim json completo" | Investigado y respondido con evidencia, NO implementado: costaría 3.2× más tokens (mayormente UUIDs sin significado para un modelo de imagen) y no contiene los polígonos de cuarto ya calculados — `planFacts` ya es la respuesta a ese cómputo. |
+
+**Limitaciones conocidas, documentadas honestamente (no ocultas):**
+- La composición usa una transformación afín GLOBAL (una sola escala/
+  traslado por imagen), no un ajuste local por región — en el render real
+  de verificación la mayoría de los muros interiores alinean muy bien,
+  pero no hay garantía matemática de alineación perfecta en cada caso; el
+  muro compuesto SIEMPRE es correcto y opaco (la fidelidad se mantiene),
+  pero en un caso extremo podría verse una costura leve contra el
+  mobiliario/sombra que dibujó la IA debajo. Ajuste por regiones queda
+  fuera de alcance (YAGNI) hasta que un caso real lo justifique.
+- El furniture placement (dónde exactamente cae cada mueble) sigue siendo
+  interpretación libre de la IA — nunca fue un requisito de fidelidad
+  (`_PLAN_CLAUSE` pide "amuebla", no "coloca el sofá aquí exacto").
+- Quirk preexistente, NO de este addendum, sigue abierto:
+  `floorToSvgString` fuerza el bbox del SVG a incluir el origen del mundo
+  (0,0)-(1,1) — en propiedades lejos del origen esto agrega margen en
+  blanco innecesario a la referencia (y por lo tanto al lienzo final). No
+  rompe la composición (la misma referencia se usa para la IA y para
+  componer, así que es autoconsistente), pero desperdicia parte del
+  presupuesto de resolución. Documentado también en
+  `patrio-render-provider.md` (memoria) antes de este addendum.
+
+**Limpieza:** los 2 renders reales de verificación (ids 30, 31, propiedad
+5) se borraron con el mecanismo real de la app (`DELETE
+/api/properties/5/renders/{id}`, JWT real). Los 8 renders históricos reales
+de la propiedad 5 quedan intactos, nunca tocados. Los 2 archivos de
+plano-fuente (`source_plan_path`, que `delete_render` no limpia por diseño
+preexistente, no introducido por este addendum) se removieron a mano del
+filesystem.
