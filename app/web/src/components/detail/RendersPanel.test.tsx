@@ -51,6 +51,23 @@ const planRenderRow = (
   floorId: floor.id, floorName: floor.name,
 })
 
+// Base fija (no genérica) para los tests de modo PLANO que rerenderean al cambiar
+// de piso: un objeto plano en vez de una función con `over` tipado ancho — con
+// `over: Record<string, unknown>` (o incluso un genérico `<T extends object>`)
+// TypeScript termina de mezclar el spread dentro del JSX sin conservar las claves
+// específicas de cada llamada, y `PlanProps` deja de poder verificarse en el sitio
+// de uso aunque en runtime estén presentes. Un objeto literal simple + props
+// explícitas en cada JSX no tiene esa duda.
+const planBase = {
+  source: 'plan' as const,
+  variant: 'original' as const,
+  prompts: planPrompts,
+  renders: [] as PropertyRender[],
+  base: '',
+  onSavePrompt: vi.fn().mockResolvedValue(planPrompts[0]),
+  onDeleteRender: vi.fn().mockResolvedValue(undefined),
+}
+
 // Los tests mezclan campos de las dos ramas de la unión discriminada a propósito
 // (p.ej. pasar `plan` con `source: 'photos'` para probar que el modo fotos lo
 // ignora) — exactamente lo que la unión ahora bloquea en tiempo de compilación
@@ -575,22 +592,6 @@ describe('RendersPanel', () => {
 // el cambio de piso real: la misma técnica que ya usa
 // `LevantamientoPanel.test.tsx` para probar el reset del resumen de lote.
 describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, nunca deja obsoleto)', () => {
-  // Base fija (no genérica): un objeto plano en vez de una función con `over`
-  // tipado ancho — con `over: Record<string, unknown>` (o incluso un genérico
-  // `<T extends object>`) TypeScript termina de mezclar el spread dentro del
-  // JSX sin conservar las claves específicas de cada llamada, y `PlanProps` deja
-  // de poder verificarse en el sitio de uso aunque en runtime estén presentes.
-  // Un objeto literal simple + props explícitas en cada JSX no tiene esa duda.
-  const planBase = {
-    source: 'plan' as const,
-    variant: 'original' as const,
-    prompts: planPrompts,
-    renders: [] as PropertyRender[],
-    base: '',
-    onSavePrompt: vi.fn().mockResolvedValue(planPrompts[0]),
-    onDeleteRender: vi.fn().mockResolvedValue(undefined),
-  }
-
   it('generar sin volver a hacer clic en "El plano" tras cambiar de piso NO manda datos del piso viejo', async () => {
     const cocina = planWithRooms(['Cocina'])
     const recamara = planWithRooms(['Recámara'])
@@ -725,16 +726,6 @@ describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, 
 // renders-plano.md): el resultado nunca debe mentir sobre la distribución real,
 // y un texto obsoleto y silencioso es exactamente ese tipo de mentira.
 describe('RendersPanel: avisa cuando el texto ya no refleja el piso actual', () => {
-  const planBase = {
-    source: 'plan' as const,
-    variant: 'original' as const,
-    prompts: planPrompts,
-    renders: [] as PropertyRender[],
-    base: '',
-    onSavePrompt: vi.fn().mockResolvedValue(planPrompts[0]),
-    onDeleteRender: vi.fn().mockResolvedValue(undefined),
-  }
-
   it('aparece cuando una edición manual rompe el prefijo de hechos y luego cambia de piso', () => {
     const cocina = planWithRooms(['Cocina'])
     const recamara = planWithRooms(['Recámara'])
