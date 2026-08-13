@@ -410,15 +410,15 @@ ambos subagentes):
   (`delete_render` + `storage.delete`, no un DELETE crudo). Quedan intactos
   los 8 renders históricos reales (2026-08-05 al 07) — nunca se tocaron.
 
-- [x] Task 28: `FloorGraph.id` — identidad estable (dc835b9; spec ✅, calidad ✅ con fix)
+- [x] Task 28: `FloorGraph.id` — identidad estable (dc835b9+bb7bfae; spec ✅, calidad ✅)
   - Bug real cazado y corregido: `ADD_FLOOR` clonaba el piso activo completo,
     heredando su id — dos pisos hubieran quedado con el mismo id. Fix + test
     dedicado.
-  - Hallazgo de calidad: `writePlanned` (PARTIR/RE-PARTIR) también clona un
-    piso completo y comparte su id entre variantes — decidido INTENCIONAL
-    (linaje original↔planeado, sin ambigüedad porque el filtrado de renders
-    siempre combina floor_id+source_variant). Fix en curso: documentar +
-    test explícito antes de que Task 30 construya encima.
+  - Hallazgo de calidad, resuelto: `writePlanned` (PARTIR/RE-PARTIR) también
+    clona un piso completo y comparte su id entre variantes — documentado
+    como INTENCIONAL (linaje original↔planeado) con comentario explícito +
+    test de id-igualdad, advirtiendo que el filtrado SIEMPRE debe combinar
+    floor_id+source_variant, nunca floor_id solo.
 - [x] Task 29: `floor_id`/`floor_name` en `property_renders` (ecef8d4; spec ✅, calidad ✅)
   - Migración 042, mismo patrón que source_variant (040): sin backfill,
     NULL permanente para todo render preexistente (verificado contra los
