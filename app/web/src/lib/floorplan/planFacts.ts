@@ -105,13 +105,63 @@ const wallEndLabel = (v1: Vertex, v2: Vertex): string => {
 }
 
 /**
- * Cláusula ", a X.XX m del extremo {izquierdo|derecho|superior|inferior} del muro" para
- * una `Connection` — la posición métrica de SU abertura (puerta/ventana) a lo largo del
- * muro que la contiene. `Opening.offset` es una fracción 0..1 de la longitud del muro
- * (types.ts); aquí se resuelve la arista y la abertura reales vía `edgeId`/`openingIndex`
- * (Task 20, rooms.ts::roomConnections), se reusa `edgeAxis` (geometry.ts — ya calcula `L`
- * para el mismo propósito en `planImage.ts`/el editor, no se reimplementa aquí) para la
- * longitud real del muro, y se convierte a metros: `offset * L`.
+ * Lado del muro DENTRO DEL INMUEBLE COMPLETO: 'izquierdo'/'derecho'/'superior'/'inferior'
+ * cuando el muro cae claramente cerca de ese borde del plano; 'central' cuando no (el caso
+ * típico de una partición interior, que por construcción no toca el perímetro). Bug real:
+ * dos ventanas de un mismo cuarto en dos muros exteriores PERPENDICULARES (una esquina) se
+ * describían con la frase idéntica salvo el extremo — "del muro." x2, sin decir CUÁL muro —
+ * porque nada identificaba al muro en sí, solo la posición de la abertura sobre él.
+ *
+ * Distinto de `wallEndLabel`: ese compara los DOS EXTREMOS de UN muro entre sí (v1 contra
+ * v2) para decir cuál punta es cuál; este compara el PUNTO MEDIO del muro contra el
+ * bounding box de TODO EL PISO (el mismo bbox que ya imprime "Dimensiones generales del
+ * piso" — ningún sistema de coordenadas nuevo que la imagen no muestre) para decir en qué
+ * posición del PLANO COMPLETO cae el muro — lo que hace falta para diferenciar dos muros
+ * DISTINTOS del mismo cuarto. Misma proyección mundo→pantalla que wallEndLabel ya
+ * documenta (px crece con x, py decrece con y) y el mismo criterio dx-vs-dy para elegir el
+ * eje relevante (un muro casi horizontal se ubica por su Y — ¿cerca de arriba o de abajo?
+ * —; uno casi vertical, por su X).
+ *
+ * Umbral: solo se asigna un lado cuando el punto medio cae en el TERCIO exterior de ese eje
+ * (fracción ≤ 1/3 o ≥ 2/3 del rango); el tercio central se marca 'central' EXPLÍCITAMENTE
+ * en el texto (nunca se omite el calificador ni se le asigna un lado que no le
+ * corresponde) — una partición interior real (que corre por el medio del piso) cae aquí
+ * por construcción, y decir "izquierdo" o "derecho" ahí sería fabricar una posición que el
+ * modelo no puede verificar contra la imagen — el mismo pecado que este párrafo entero
+ * existe para evitar.
+ */
+const WALL_SIDE_NEAR_FRACTION = 1 / 3
+const wallSideLabel = (floor: FloorGraph, v1: Vertex, v2: Vertex): string => {
+  const vs = Object.values(floor.vertices)
+  const xs = vs.map(v => v.x), ys = vs.map(v => v.y)
+  const minX = Math.min(...xs), maxX = Math.max(...xs)
+  const minY = Math.min(...ys), maxY = Math.max(...ys)
+  const dx = Math.abs(v2.x - v1.x), dy = Math.abs(v2.y - v1.y)
+  if (dx >= dy) {
+    const rangeY = maxY - minY || 1
+    const fracFromTop = (maxY - (v1.y + v2.y) / 2) / rangeY
+    if (fracFromTop <= WALL_SIDE_NEAR_FRACTION) return 'superior'
+    if (fracFromTop >= 1 - WALL_SIDE_NEAR_FRACTION) return 'inferior'
+    return 'central'
+  }
+  const rangeX = maxX - minX || 1
+  const fracFromLeft = ((v1.x + v2.x) / 2 - minX) / rangeX
+  if (fracFromLeft <= WALL_SIDE_NEAR_FRACTION) return 'izquierdo'
+  if (fracFromLeft >= 1 - WALL_SIDE_NEAR_FRACTION) return 'derecho'
+  return 'central'
+}
+
+/**
+ * Cláusula ", a X.XX m del extremo {izquierdo|derecho|superior|inferior} del muro
+ * {lado} (L.LL m)" para una `Connection` — la posición métrica de SU abertura
+ * (puerta/ventana) a lo largo del muro que la contiene, MÁS un identificador del muro en sí
+ * (lado dentro del inmueble + largo real, `wallSideLabel` arriba) para que dos aberturas en
+ * muros distintos del mismo cuarto nunca produzcan la misma frase. `Opening.offset` es una
+ * fracción 0..1 de la longitud del muro (types.ts); aquí se resuelve la arista y la
+ * abertura reales vía `edgeId`/`openingIndex` (Task 20, rooms.ts::roomConnections), se
+ * reusa `edgeAxis` (geometry.ts — ya calcula `L` para el mismo propósito en
+ * `planImage.ts`/el editor, no se reimplementa aquí) para la longitud real del muro, y se
+ * convierte a metros: `offset * L`.
  *
  * La distancia SIEMPRE se mide desde `edge.v1` — estable ante edición (partir el muro con
  * `splitEdgeAtVertex`, graph.ts, o mover un vértice no cambia cuál extremo de una arista
@@ -123,8 +173,10 @@ const openingPositionClause = (floor: FloorGraph, c: Connection): string => {
   const edge = floor.edges[c.edgeId]
   const opening = edge.openings[c.openingIndex]
   const v1 = floor.vertices[edge.v1], v2 = floor.vertices[edge.v2]
-  const distance = opening.offset * edgeAxis(v1, v2).L
-  return `, a ${fmt(distance)} m del extremo ${wallEndLabel(v1, v2)} del muro`
+  const { L } = edgeAxis(v1, v2)
+  const distance = opening.offset * L
+  const side = wallSideLabel(floor, v1, v2)
+  return `, a ${fmt(distance)} m del extremo ${wallEndLabel(v1, v2)} del muro ${side} (${fmt(L)} m)`
 }
 
 /** Una oración por conexión. El chequeo de exterior va PRIMERO y cubre puerta Y ventana
@@ -170,8 +222,12 @@ export function planFacts(floor: FloorGraph): string {
   // Cuartos: cerrados (con área y, si tiene polígono, dimensiones) más los libres — el
   // nombre puesto sobre un espacio abierto sin cerrar (área null, el caso "Terraza" de
   // rooms.ts). Omitir esos cuartos callaría justo la información que el usuario sí capturó
-  // (el nombre); en vez de eso el párrafo dice que el área no se pudo medir, la verdad del
-  // dato.
+  // (el nombre); en vez de eso el párrafo dice, EXPLÍCITAMENTE, que es espacio abierto sin
+  // muros — nunca "área sin medir" a secas, que un lector (humano o el modelo de imagen
+  // obedeciendo _PLAN_CLAUSE de app/api/renders.py, "no agregues ni quites cuartos ni
+  // paredes") puede confundir con "cuarto real, solo que no capturamos su medida". Un
+  // cuarto sin muros no es un cuarto sin medir: es un nombre sobre aire, y decirlo así evita
+  // que la instrucción de "no quites paredes" se lea como "dibújale paredes a esto".
   //
   // Vértices por cuarto CERRADO, emparejados por POSICIÓN — nunca por nombre. roomAreas(f)
   // y roomPolygons(f) recorren interiorPolygons(f) en el MISMO orden (mismo trazo de caras,
@@ -187,23 +243,33 @@ export function planFacts(floor: FloorGraph): string {
     name: r.name,
     area: r.area as number | null,
     vertices: enclosedPolys[i].vertices as { x: number; y: number }[] | undefined,
+    enclosed: true as const,
   }))
   // Cuartos libres (nombre puesto sobre un espacio abierto sin cara cerrada — el caso
   // "Terraza" de rooms.ts): roomLabels ya los identifica por `area: null`; no tienen
-  // polígono que darles, así que se quedan sin `vertices`.
+  // polígono que darles, así que se quedan sin `vertices`, y `enclosed: false` los separa de
+  // los cerrados más abajo en vez de mezclarse por coincidencia de `area == null`.
   const freeRooms = roomLabels(floor)
     .filter(r => r.area === null)
-    .map(r => ({ name: r.name, area: null as number | null, vertices: undefined as { x: number; y: number }[] | undefined }))
+    .map(r => ({
+      name: r.name,
+      area: null as number | null,
+      vertices: undefined as { x: number; y: number }[] | undefined,
+      enclosed: false as const,
+    }))
   const rooms = [...enclosedRooms, ...freeRooms].filter(r => r.name.trim())
   if (rooms.length > 0) {
     const roomTexts = rooms.map(r => {
-      const measure = r.area != null ? `${fmt(r.area)} m²` : 'área sin medir'
-      const dims = r.vertices ? `, ${boundingBoxText(r.vertices)}` : ''
       const type = roomType(r.name)
       // Sin tipo inferido, el paréntesis se queda solo con medida+dimensiones — nunca
       // "(tipo: )" ni "tipo: null" colgando cuando el nombre no cae en el catálogo.
-      const detail = type != null ? `${measure}${dims}, tipo: ${type}` : `${measure}${dims}`
-      return `${r.name} (${detail})`
+      const typeSuffix = type != null ? `, tipo: ${type}` : ''
+      if (!r.enclosed) {
+        return `${r.name} (espacio abierto, sin muros que lo cierren${typeSuffix})`
+      }
+      const measure = r.area != null ? `${fmt(r.area)} m²` : 'área sin medir'
+      const dims = r.vertices ? `, ${boundingBoxText(r.vertices)}` : ''
+      return `${r.name} (${measure}${dims}${typeSuffix})`
     })
     parts.push(`Cuartos: ${roomTexts.join(', ')}.`)
   }
@@ -232,7 +298,17 @@ export function planFacts(floor: FloorGraph): string {
   // pregunta ("¿esta esquina es recta?") ya tiene una respuesta en el código base (la que
   // colorea la etiqueta de ángulo en FloorPlanCanvas.tsx) — un segundo umbral distinto
   // para la misma pregunta solo podría divergir de esa respuesta, no mejorarla.
-  const irregularCorners = cornerAngles(floor).filter(c => !c.isRight)
+  // `cornerAngles` también reporta 180° en cada vértice donde un muro exterior recto
+  // queda partido por una T interior (`splitEdgeAtVertex` — el caso normal de un
+  // levantamiento con más de un cuarto): un punto COLINEAL, no una esquina real (en la
+  // imagen ese punto está sobre una línea recta). `isRight` (dimensions.ts) ya excluye
+  // "casi 90°" con tolerancia ±1°; el filtro de "casi 180°" no vive en dimensions.ts (Task
+  // 33b, ya cerrada — CornerAngle no gana un campo nuevo por esto) sino aquí, reusando la
+  // MISMA tolerancia de 1° que isRight en vez de inventar un criterio distinto para la
+  // misma pregunta ("¿este ángulo es un caso degenerado, no una esquina real?").
+  const CORNER_STRAIGHT_TOL_DEG = 1 // igual a la tolerancia de `isRight` en dimensions.ts
+  const irregularCorners = cornerAngles(floor)
+    .filter(c => !c.isRight && Math.abs(c.deg - 180) > CORNER_STRAIGHT_TOL_DEG)
   if (irregularCorners.length > 0) {
     parts.push(...irregularCorners.map(c =>
       `Esquina en (${fmt(c.x)}, ${fmt(c.y)}) con ángulo de ${Math.round(c.deg)}°.`))

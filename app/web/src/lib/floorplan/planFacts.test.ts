@@ -69,6 +69,27 @@ describe('planFacts', () => {
     expect(text).not.toContain('undefined')
   })
 
+  // Bug real verificado (tercer mecanismo de "cuartos inventados"): un nombre puesto sobre
+  // espacio abierto sin cara cerrada (el caso "Terraza" de rooms.ts) se listaba bajo
+  // "Cuartos:" indistinguible de uno cerrado, salvo "área sin medir" — que un lector
+  // descuidado (o un modelo de imagen siguiendo la instrucción "no agregues ni quites
+  // cuartos ni paredes" de _PLAN_CLAUSE, app/api/renders.py) puede leer como "cuarto real
+  // sin medida capturada", no como "esto no tiene ni un muro". El texto ahora lo marca
+  // explícitamente como espacio abierto.
+  it('marks a room with no closed polygon explicitly as OPEN SPACE, distinct from a real closed room', () => {
+    const f = emptyFloorGraph('Test')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3)
+    addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15)
+    f.rooms.push({ name: 'Terraza', cx: 2, cy: 1.5 })
+
+    const text = planFacts(f)
+
+    // 'Terraza' también infiere tipo: terraza (ROOM_TYPE_KEYWORDS) — la marca de espacio
+    // abierto convive con esa anotación, no la reemplaza.
+    expect(text).toContain('Terraza (espacio abierto, sin muros que lo cierren, tipo: terraza)')
+    expect(text).not.toContain('área sin medir')
+  })
+
   it('produces a minimal valid string for an empty floor — no NaN/undefined anywhere', () => {
     const f = emptyFloorGraph('Test')
 
@@ -113,7 +134,11 @@ describe('planFacts', () => {
     // offset .5 → 2.00 m desde v1=botMid. v1.y=0 < v2.y=4 → v1 es el extremo "inferior"
     // (Task 26: la sentencia de conectividad ahora incluye la posición métrica de la puerta,
     // anclada a un extremo visualmente verificable en la imagen, no al v1/v2 interno).
-    expect(text).toContain('Cocina conecta por puerta con Sala, a 2.00 m del extremo inferior del muro.')
+    // Bug #2 (identidad del muro): el divider corre por x=3, el centro exacto del piso
+    // (bbox x: 0–6) — ni cerca del borde izquierdo ni del derecho, así que se marca
+    // "central" EXPLÍCITAMENTE en vez de fabricar un lado que no le corresponde (partición
+    // interior típica).
+    expect(text).toContain('Cocina conecta por puerta con Sala, a 2.00 m del extremo inferior del muro central (4.00 m).')
   })
 
   it('states a room with a window to the exterior', () => {
@@ -125,7 +150,10 @@ describe('planFacts', () => {
 
     // eBottomLeft va de a=(0,0) a botMid=(3,0) tras el split → muro HORIZONTAL (Δx=3 domina
     // Δy=0) de 3 m; offset .5 → 1.50 m. v1.x=0 <= v2.x=3 → v1 es el extremo "izquierdo".
-    expect(text).toContain('Cocina tiene ventana hacia el exterior, a 1.50 m del extremo izquierdo del muro.')
+    // Bug #2: este muro corre por y=0, el borde inferior del piso (bbox y: 0–4) → lado
+    // "inferior" del inmueble, largo real 3.00 m — el identificador que el bug pedía (antes
+    // el texto nunca decía CUÁL muro, solo "del muro" a secas).
+    expect(text).toContain('Cocina tiene ventana hacia el exterior, a 1.50 m del extremo izquierdo del muro inferior (3.00 m).')
   })
 
   it('states a room with a door to the exterior — the most common door in any home (front/patio door)', () => {
@@ -136,8 +164,8 @@ describe('planFacts', () => {
     const text = planFacts(f)
 
     // Mismo muro horizontal que el test anterior (eBottomLeft, a→botMid, 3 m, extremo v1
-    // izquierdo).
-    expect(text).toContain('Cocina tiene puerta hacia el exterior, a 1.50 m del extremo izquierdo del muro.')
+    // izquierdo, lado inferior del inmueble).
+    expect(text).toContain('Cocina tiene puerta hacia el exterior, a 1.50 m del extremo izquierdo del muro inferior (3.00 m).')
     // Nunca la frase al revés/rota: 'exterior' no es un cuarto que "conecte por puerta"
     // con otro — ese texto sale de tratar la puerta exterior como la plantilla genérica.
     expect(text).not.toContain('exterior conecta por puerta')
@@ -159,8 +187,9 @@ describe('planFacts', () => {
     const text = planFacts(f)
 
     // eLeft va de d=(0,3) a a=(0,0) → muro VERTICAL (Δy=3 domina Δx=0) de 3 m; offset .7 →
-    // 2.10 m desde v1=d. v1.y=3 >= v2.y=0 → v1 es el extremo "superior".
-    expect(text).toContain('Sala tiene puerta hacia el exterior, a 2.10 m del extremo superior del muro.')
+    // 2.10 m desde v1=d. v1.y=3 >= v2.y=0 → v1 es el extremo "superior". Bug #2: eLeft corre
+    // por x=0, el borde izquierdo del piso (bbox x: 0–4) → lado "izquierdo" del inmueble.
+    expect(text).toContain('Sala tiene puerta hacia el exterior, a 2.10 m del extremo superior del muro izquierdo (3.00 m).')
     expect(text).not.toContain('exterior conecta por puerta')
   })
 
@@ -172,8 +201,8 @@ describe('planFacts', () => {
     const text = planFacts(f)
 
     // Mismo divider vertical que el primer test de este bloque (botMid→topMid, 4 m, extremo
-    // v1 inferior).
-    expect(text).toContain('Cocina y Sala comparten una ventana interior, a 2.00 m del extremo inferior del muro.')
+    // v1 inferior, lado "central" del inmueble).
+    expect(text).toContain('Cocina y Sala comparten una ventana interior, a 2.00 m del extremo inferior del muro central (4.00 m).')
   })
 
   it('falls back gracefully when a door connects a named room to a closed but UNLABELED room', () => {
@@ -186,8 +215,8 @@ describe('planFacts', () => {
 
     const text = planFacts(f)
 
-    // Mismo divider vertical (botMid→topMid, 4 m, extremo v1 inferior).
-    expect(text).toContain('un cuarto sin nombre conecta por puerta con Sala, a 2.00 m del extremo inferior del muro.')
+    // Mismo divider vertical (botMid→topMid, 4 m, extremo v1 inferior, lado central).
+    expect(text).toContain('un cuarto sin nombre conecta por puerta con Sala, a 2.00 m del extremo inferior del muro central (4.00 m).')
     expect(text).not.toContain('con .')
     expect(text).not.toMatch(/undefined/i)
     expect(text).not.toMatch(/null/i)
@@ -211,8 +240,10 @@ describe('planFacts', () => {
 
       // Muro HORIZONTAL de a=(0,0) a b=(5,0): 5 m de largo, offset .4 → 0.4*5 = 2.00 m
       // desde v1=a. v1.x=0 <= v2.x=5 → v1 es el extremo "izquierdo" (verificable en la
-      // imagen: a queda a la izquierda de b en el PNG rasterizado por planImage.ts).
-      expect(text).toContain('Recámara tiene puerta hacia el exterior, a 2.00 m del extremo izquierdo del muro.')
+      // imagen: a queda a la izquierda de b en el PNG rasterizado por planImage.ts). Bug #2:
+      // este muro corre por y=0, el borde inferior del piso (bbox y: 0–3) → lado "inferior"
+      // del inmueble.
+      expect(text).toContain('Recámara tiene puerta hacia el exterior, a 2.00 m del extremo izquierdo del muro inferior (5.00 m).')
     })
 
     it('two openings on the SAME wall each report their own independent offset off the same wall length', () => {
@@ -231,11 +262,41 @@ describe('planFacts', () => {
 
       const text = planFacts(f)
 
-      // Muro de 6 m, v1=a=(0,0), extremo izquierdo (horizontal, v1.x <= v2.x).
+      // Muro de 6 m, v1=a=(0,0), extremo izquierdo (horizontal, v1.x <= v2.x), lado
+      // "inferior" del inmueble (corre por y=0, bbox y: 0–3).
       // Puerta: offset .25 → 1.50 m. Ventana: offset .75 → 4.50 m. Distintas entre sí,
-      // cada una calculada sobre la MISMA longitud de muro (6 m).
-      expect(text).toContain('Cochera tiene puerta hacia el exterior, a 1.50 m del extremo izquierdo del muro.')
-      expect(text).toContain('Cochera tiene ventana hacia el exterior, a 4.50 m del extremo izquierdo del muro.')
+      // cada una calculada sobre la MISMA longitud de muro (6 m) — y ambas identifican el
+      // MISMO muro (lado inferior, 6.00 m), correcto: es una sola pared con 2 aberturas.
+      expect(text).toContain('Cochera tiene puerta hacia el exterior, a 1.50 m del extremo izquierdo del muro inferior (6.00 m).')
+      expect(text).toContain('Cochera tiene ventana hacia el exterior, a 4.50 m del extremo izquierdo del muro inferior (6.00 m).')
+    })
+
+    // Bug real verificado (bug #2 — dos aberturas en muros DISTINTOS del mismo cuarto): un
+    // cuarto de esquina con dos ventanas, cada una en un muro exterior distinto, producía
+    // dos oraciones idénticas salvo el extremo ("...del muro." x2) — ambiguo sobre CUÁL muro
+    // es cuál. Ahora cada oración nombra el lado del inmueble donde corre su propio muro
+    // (más el largo real, como desempate si dos muros cayeran del mismo lado).
+    it('two windows on two DIFFERENT walls of the same corner room are distinguished by wall side', () => {
+      const f = emptyFloorGraph('Test')
+      const a = addVertex(f, 0, 0), b = addVertex(f, 5, 0), c = addVertex(f, 5, 4), d = addVertex(f, 0, 4)
+      addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15)
+      const eTop = addEdge(f, c, d, 0.15)
+      const eLeft = addEdge(f, d, a, 0.15)
+      f.rooms.push({ name: 'RECAMARA PRINCIPAL', cx: 2.5, cy: 2 })
+      f.edges[eLeft].openings.push({ kind: 'window', offset: 0.5, width: 1.2 })
+      f.edges[eTop].openings.push({ kind: 'window', offset: 0.5, width: 1.2 })
+
+      const text = planFacts(f)
+
+      // eLeft: d=(0,4)→a=(0,0), vertical, 4 m, corre por x=0 (bbox x: 0–5) → lado
+      // "izquierdo". offset .5 → 2.00 m desde v1=d; v1.y=4 >= v2.y=0 → extremo "superior".
+      expect(text).toContain('RECAMARA PRINCIPAL tiene ventana hacia el exterior, a 2.00 m del extremo superior del muro izquierdo (4.00 m).')
+      // eTop: c=(5,4)→d=(0,4), horizontal, 5 m, corre por y=4 (bbox y: 0–4) → lado
+      // "superior". offset .5 → 2.50 m desde v1=c; v1.x=5 <= v2.x=0 es falso → extremo
+      // "derecho".
+      expect(text).toContain('RECAMARA PRINCIPAL tiene ventana hacia el exterior, a 2.50 m del extremo derecho del muro superior (5.00 m).')
+      // Las dos oraciones ya no son indistinguibles salvo el extremo: "muro izquierdo" vs
+      // "muro superior" identifican inequívocamente muros distintos.
     })
 
     it('a non-90° corner (an L/angled cut) is reported by location and angle', () => {
@@ -262,6 +323,24 @@ describe('planFacts', () => {
 
       expect(text).not.toContain('Esquina')
       expect(text).not.toContain('ángulo')
+    })
+
+    // Bug real verificado: un muro exterior recto partido por una T interior
+    // (`splitEdgeAtVertex`, el caso normal de un levantamiento con más de un cuarto) dejaba
+    // un vértice colineal a 180° en la frontera exterior — `cornerAngles` lo reporta (no es
+    // una esquina recta, `isRight` es false), pero tampoco es una esquina IRREGULAR: es un
+    // punto sobre una línea recta. Antes del fix, planFacts lo listaba igual que un corte en
+    // L real ("Esquina en (3.00, 0.00) con ángulo de 180°" ×2 en este plano), dato fabricado
+    // que le decía al modelo de imagen que el edificio tiene esquinas donde solo hay un muro
+    // recto partido.
+    it('a T-junction split on an otherwise straight exterior wall (180°, colinear) is never reported as a corner', () => {
+      const f = emptyFloorGraph('Test')
+      dividedRooms(f, 'Cocina', 'Sala')
+
+      const text = planFacts(f)
+
+      expect(text).not.toContain('Esquina')
+      expect(text).not.toContain('180')
     })
   })
 
@@ -390,12 +469,13 @@ describe('planFacts', () => {
 
       expect(text).toContain('Terraza')
       // El detalle de ESTE cuarto (entre su nombre y el cierre del paréntesis) no trae
-      // dimensiones — solo "área sin medir". No se busca "×" en todo el texto porque la
-      // línea de "Dimensiones generales del piso" (bounding box del PISO, no del cuarto)
-      // sí usa "×" y siempre está presente cuando hay vértices.
+      // dimensiones — está marcado como espacio abierto (bug #3: un cuarto sin muros no debe
+      // leerse igual que uno cerrado). No se busca "×" en todo el texto porque la línea de
+      // "Dimensiones generales del piso" (bounding box del PISO, no del cuarto) sí usa "×" y
+      // siempre está presente cuando hay vértices.
       const idx = text.indexOf('Terraza')
       const roomDetail = text.slice(idx, text.indexOf(')', idx))
-      expect(roomDetail).toContain('área sin medir')
+      expect(roomDetail).toContain('espacio abierto')
       expect(roomDetail).not.toMatch(/×/)
       expect(text).not.toMatch(/nan/i)
       expect(text).not.toMatch(/undefined/i)
