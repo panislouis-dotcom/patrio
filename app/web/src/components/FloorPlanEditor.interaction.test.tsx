@@ -95,6 +95,29 @@ describe('edge-midpoint split without a following drag', () => {
   })
 })
 
+function rect(f: FloorGraph) {
+  const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+  addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+  return f
+}
+
+describe('delete floor', () => {
+  it('removes the selected floor after confirm, and hides the button at one floor', () => {
+    const model = {
+      schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0,
+      floors: [rect(emptyFloorGraph('Planta Baja')), rect(emptyFloorGraph('Planta Alta'))],
+    }
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { getByText, queryByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'k' })} initial={model} onSave={vi.fn()} />)
+    fireEvent.click(getByText('Planta Alta'))          // select the floor to delete
+    fireEvent.click(getByText('✕ Eliminar piso'))
+    expect(queryByText('Planta Alta')).toBeNull()      // gone
+    expect(getByText('Planta Baja')).toBeTruthy()      // the other stays
+    expect(queryByText('✕ Eliminar piso')).toBeNull()  // one floor left → no delete button
+  })
+})
+
 describe('wall tool default length', () => {
   it('the wall button drops a 1 m wall, not one spanning the whole plan', () => {
     const model = modelWithRectangleAndDivider()   // rectangle edges are 6 m and 4 m

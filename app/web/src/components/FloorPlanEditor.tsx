@@ -493,6 +493,13 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
           }}>{f.name}</button>
         ))}
         <button onClick={() => dispatch({ type: 'ADD_FLOOR' })} style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }}>+ Floor</button>
+        {model.floors.length > 1 && (
+          <button
+            onClick={() => { if (window.confirm(`¿Eliminar "${floor.name}"? Se borran sus muros. Guarda para que sea permanente.`)) dispatch({ type: 'DEL_FLOOR' }) }}
+            style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>
+            ✕ Eliminar piso
+          </button>
+        )}
       </div>
 
       {floor.reference && (
