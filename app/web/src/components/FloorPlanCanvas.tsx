@@ -17,6 +17,11 @@ const f2 = (v: number) => (Math.round(v * 100) / 100).toFixed(2)
 // from 12/11 so they stay legible over a busy plan.
 const ROOM_NAME_FS = 16
 const ROOM_AREA_FS = 14
+// Measurement labels — wall lengths, the width/height dimension chains, and door/window
+// widths — are likewise constant screen-size, bumped from 11/10 so they stay readable when
+// you zoom into a wall to check its dimension.
+const DIM_FS = 14
+const OPENING_FS = 13
 
 function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }) {
   const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
@@ -204,7 +209,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
     const y0 = heightMarks[0], y1 = heightMarks[heightMarks.length - 1]
     const dim = (mx: number, my: number, txt: string) =>
       gel.push(<text key={`dim${mx}-${my}-${txt}`} x={mx} y={my} textAnchor="middle"
-        fontFamily={fonts.serif} fontSize={11} fill={colors.secondary}>{txt}</text>)
+        fontFamily={fonts.serif} fontSize={DIM_FS} fill={colors.secondary}>{txt}</text>)
 
     gel.push(<line key="dimw" x1={px(x0)} y1={py(y0) + 40} x2={px(x1)} y2={py(y0) + 40} stroke={colors.border} strokeWidth={0.6} />)
     for (let k = 0; k < widthMarks.length - 1; k++) {
@@ -233,7 +238,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
       e.openings.forEach((op, i) => {
         const atM = op.offset * L, cx = p1.x + ux * atM, cy = p1.y + uy * atM
         gel.push(<text key={`opw${e.id}-${i}`} x={px(cx + nx * 0.34)} y={py(cy + ny * 0.34) + 3} textAnchor="middle"
-          fontFamily={fonts.serif} fontSize={10} fill={op.kind === 'door' ? colors.tertiary : colors.accent2}>{f2(op.width)}</text>)
+          fontFamily={fonts.serif} fontSize={OPENING_FS} fill={op.kind === 'door' ? colors.tertiary : colors.accent2}>{f2(op.width)}</text>)
       })
     })
     // corner angles: degree label only (decorative sweep arc deliberately deferred — see note below)
