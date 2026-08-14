@@ -166,6 +166,61 @@ describe('SET_EDGE_THICKNESS', () => {
   })
 })
 
+describe('SET_EDGE_LENGTH', () => {
+  const edgeAB = (s: ReturnType<typeof initialState>, a: string, b: string) =>
+    Object.values(s.model.floors[0].edges).find(e => e.v1 === a && e.v2 === b)!.id
+
+  it('anchor v1 keeps the first endpoint fixed and slides the second along the wall', () => {
+    const { model, a, b } = modelWithRectangle()   // a=(0,0) b=(4,0), horizontal length 4
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_EDGE_LENGTH', edgeId: edgeAB(s, a, b), value: 3, anchor: 'v1' })
+    const va = s.model.floors[0].vertices[a], vb = s.model.floors[0].vertices[b]
+    expect(va.x).toBeCloseTo(0); expect(va.y).toBeCloseTo(0)   // fixed
+    expect(vb.x).toBeCloseTo(3); expect(vb.y).toBeCloseTo(0)   // moved to length 3
+    expect(s.dirty).toBe(true)
+  })
+
+  it('anchor v2 keeps the second endpoint fixed and moves the first', () => {
+    const { model, a, b } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_EDGE_LENGTH', edgeId: edgeAB(s, a, b), value: 3, anchor: 'v2' })
+    const va = s.model.floors[0].vertices[a], vb = s.model.floors[0].vertices[b]
+    expect(vb.x).toBeCloseTo(4); expect(vb.y).toBeCloseTo(0)   // fixed
+    expect(va.x).toBeCloseTo(1); expect(va.y).toBeCloseTo(0)   // moved so length from b is 3
+  })
+
+  it('the moving endpoint is shared, so a connected wall at that corner follows', () => {
+    const { model, a, b, c } = modelWithRectangle()   // b=(4,0) shared by edge a->b and b->c
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_EDGE_LENGTH', edgeId: edgeAB(s, a, b), value: 3, anchor: 'v1' })
+    // edge b->c now begins where b moved to (3,0) — the corner traveled, wall b->c is dragged with it
+    const bc = s.model.floors[0].edges[edgeAB(s, b, c)]
+    expect(s.model.floors[0].vertices[bc.v1].x).toBeCloseTo(3)
+  })
+
+  it('preserves the wall angle for a diagonal wall', () => {
+    const f = emptyFloorGraph('Diag')
+    const p = addVertex(f, 0, 0), q = addVertex(f, 3, 4)   // length 5, slope 4/3
+    addEdge(f, p, q, 0.15)
+    let s = initialState({ schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] })
+    const edgeId = Object.values(s.model.floors[0].edges)[0].id
+    s = reducer(s, { type: 'SET_EDGE_LENGTH', edgeId, value: 10, anchor: 'v1' })
+    const vq = s.model.floors[0].vertices[q]
+    expect(vq.x).toBeCloseTo(6); expect(vq.y).toBeCloseTo(8)   // doubled length, same 3-4-5 direction
+  })
+
+  it('ignores a degenerate zero-length wall (no direction to grow along)', () => {
+    const f = emptyFloorGraph('Zero')
+    const p = addVertex(f, 1, 1), q = addVertex(f, 1, 1)
+    addEdge(f, p, q, 0.15)
+    let s = initialState({ schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] })
+    const edgeId = Object.values(s.model.floors[0].edges)[0].id
+    const before = s.model
+    s = reducer(s, { type: 'SET_EDGE_LENGTH', edgeId, value: 3, anchor: 'v1' })
+    expect(s.model).toBe(before)   // unchanged
+  })
+})
+
 describe('DELETE_SEL', () => {
   it('deletes the selected edge and clears selection', () => {
     const { model, a, b } = modelWithRectangle()

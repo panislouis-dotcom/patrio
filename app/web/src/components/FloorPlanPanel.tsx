@@ -1,8 +1,9 @@
 // app/web/src/components/FloorPlanPanel.tsx
+import { useState } from 'react'
 import type { Dispatch } from 'react'
 import { colors, fonts } from '../lib/theme'
 import type { Action, Sel, UI } from '../lib/floorplan/reducer'
-import type { FloorGraph, FloorPlanModel } from '../lib/floorplan/types'
+import type { Edge, FloorGraph, FloorPlanModel } from '../lib/floorplan/types'
 import type { RoomArea } from '../lib/floorplan/rooms'
 import { traceFaces } from '../lib/floorplan/rooms'
 import { shoelace } from '../lib/floorplan/geometry'
@@ -37,6 +38,33 @@ function Field({ label, value, onCommit, step = 0.05 }: {
   )
 }
 
+function EdgeSection({ edge, floor, dispatch }: { edge: Edge; floor: FloorGraph; dispatch: Dispatch<Action> }) {
+  // Which endpoint stays fixed while the length field grows the wall. Local view state:
+  // resets per selection because the parent keys this component by the edge id.
+  const [anchor, setAnchor] = useState<'v1' | 'v2'>('v1')
+  const v1 = floor.vertices[edge.v1], v2 = floor.vertices[edge.v2]
+  const length = Math.hypot(v2.x - v1.x, v2.y - v1.y)
+  // Flip which end is fixed AND re-apply the same length from the new anchor, so the wall
+  // visibly shifts to grow from the other side without the user retyping.
+  const flip = () => {
+    const next = anchor === 'v1' ? 'v2' : 'v1'
+    setAnchor(next)
+    dispatch({ type: 'SET_EDGE_LENGTH', edgeId: edge.id, value: length, anchor: next })
+  }
+  return (
+    <Section title="Muro seleccionado">
+      <Field label="Largo (m)" value={length} step={0.05}
+        onCommit={value => dispatch({ type: 'SET_EDGE_LENGTH', edgeId: edge.id, value, anchor })} />
+      <button onClick={flip}
+        style={{ width: '100%', marginBottom: '8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, background: colors.dark, border: `1px solid ${colors.border}`, borderRadius: '4px', padding: '4px 6px', cursor: 'pointer' }}>
+        ⇄ cambiar extremo
+      </button>
+      <Field label="Espesor (m)" value={edge.thickness} step={0.01}
+        onCommit={value => dispatch({ type: 'SET_EDGE_THICKNESS', edgeId: edge.id, value })} />
+    </Section>
+  )
+}
+
 function grossAreaM2(floor: FloorGraph): number {
   const faces = traceFaces(floor)
   if (faces.length === 0) return 0
@@ -60,12 +88,7 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
   if (sel.t === 'edge') {
     const e = floor.edges[sel.id]
     if (!e) return null
-    return (
-      <Section title="Muro seleccionado" key={sel.id}>
-        <Field label="Espesor (m)" value={e.thickness} step={0.01}
-          onCommit={value => dispatch({ type: 'SET_EDGE_THICKNESS', edgeId: sel.id, value })} />
-      </Section>
-    )
+    return <EdgeSection key={sel.id} edge={e} floor={floor} dispatch={dispatch} />
   }
   const e = floor.edges[sel.edgeId]
   const o = e?.openings[sel.index]
