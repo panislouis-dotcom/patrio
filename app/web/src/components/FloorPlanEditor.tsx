@@ -182,11 +182,15 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
 
   function onToolClick(tool: Tool) {
     if (tool === 'wall') {
+      // Drop a short 1 m wall where the user is looking — the camera centre when zoomed in,
+      // otherwise the plan's centre — instead of one spanning the whole plan. It's placed
+      // vertically and auto-selected, so you can immediately drag it or retype its length.
+      const cam = state.ui.camera
       const xs = Object.values(floor.vertices).map(v => v.x), ys = Object.values(floor.vertices).map(v => v.y)
-      const cx = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 3
-      const y0 = ys.length ? Math.min(...ys) : 0, y1 = ys.length ? Math.max(...ys) : 4
+      const cx = cam ? cam.centerX : (xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 3)
+      const cy = cam ? cam.centerY : (ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 2)
       const m = clone(model); const f = m.floors[m.activeFloor]
-      const v1 = graphAddVertex(f, cx, y0 + 0.5), v2 = graphAddVertex(f, cx, y1 - 0.5)
+      const v1 = graphAddVertex(f, cx, cy - 0.5), v2 = graphAddVertex(f, cx, cy + 0.5)
       const newEdgeId = graphAddEdge(f, v1, v2, f.intWall_m)
       dispatch({ type: 'SET_MODEL', model: m })
       dispatch({ type: 'SET_TOOL', tool: 'select' })
