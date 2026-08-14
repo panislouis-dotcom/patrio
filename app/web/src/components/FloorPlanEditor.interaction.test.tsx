@@ -95,6 +95,20 @@ describe('edge-midpoint split without a following drag', () => {
   })
 })
 
+describe('wall tool default length', () => {
+  it('the wall button drops a 1 m wall, not one spanning the whole plan', () => {
+    const model = modelWithRectangleAndDivider()   // rectangle edges are 6 m and 4 m
+    const { container, getByText } = render(
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={model} onSave={vi.fn()} />)
+    const svg = container.querySelector('svg')!
+    const edgesBefore = svg.querySelectorAll('[data-el="edge"]').length
+    expect(svg.textContent).not.toContain('1.00')   // no 1 m dimension label yet
+    fireEvent.click(getByText('wall'))
+    expect(svg.querySelectorAll('[data-el="edge"]').length).toBe(edgesBefore + 1)   // one new wall
+    expect(svg.textContent).toContain('1.00')        // and it reads 1.00 m long
+  })
+})
+
 describe('wall-body drag does not force-straighten a diagonal wall', () => {
   it('preserves the vector between the wall\'s two endpoints through a body drag', () => {
     const f = emptyFloorGraph('Test')
