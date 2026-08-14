@@ -12,6 +12,12 @@ import { BASE } from '../lib/api'
 
 const f2 = (v: number) => (Math.round(v * 100) / 100).toFixed(2)
 
+// Room name + area labels are drawn at a constant SCREEN size (px), so they never shrink as
+// you zoom the plan in — the whole point of zooming into a space is to read them. Bumped up
+// from 12/11 so they stay legible over a busy plan.
+const ROOM_NAME_FS = 16
+const ROOM_AREA_FS = 14
+
 function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }) {
   const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
   const ux = (p2.x - p1.x) / L, uy = (p2.y - p1.y) / L
@@ -134,7 +140,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
   // The rename input, shared by an existing label being renamed and a brand-new label
   // being placed on an open spot (no traced face, no stored room there yet).
   const roomInput = (cx: number, cy: number, key: string) => {
-    const w = 156, h = 24
+    const w = 156, h = 26
     return (
       <foreignObject key={key} x={px(cx) - w / 2} y={py(cy) - h + 2} width={w} height={h}>
         <input
@@ -144,7 +150,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
           style={{
             width: '100%', boxSizing: 'border-box', textAlign: 'center',
             background: colors.surfaceAlt, border: `1px solid ${colors.primary}`, borderRadius: '2px',
-            color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', outline: 'none', padding: '2px 4px',
+            color: colors.neutral, fontFamily: fonts.sans, fontSize: '14px', outline: 'none', padding: '2px 4px',
           }}
           onKeyDown={e => {
             e.stopPropagation()
@@ -168,17 +174,17 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
       gel.push(roomInput(rg.cx, rg.cy, `edit${i}`))
     } else {
       const nm = rg.name
-      const hw = Math.max(64, nm.length * 7 + 16)
-      gel.push(<rect key={`rhit${i}`} x={px(rg.cx) - hw / 2} y={py(rg.cy) - 15} width={hw} height={20}
+      const hw = Math.max(72, nm.length * 9 + 16)
+      gel.push(<rect key={`rhit${i}`} x={px(rg.cx) - hw / 2} y={py(rg.cy) - 18} width={hw} height={24}
         fill="transparent" pointerEvents="all" data-el="room" data-cx={rg.cx} data-cy={rg.cy} style={{ cursor: 'text' }} />)
-      gel.push(<text key={`rname${i}`} x={px(rg.cx)} y={py(rg.cy) - 3} textAnchor="middle"
-        fontFamily={fonts.sans} fontSize={12} fill={colors.neutral} data-el="room" data-cx={rg.cx} data-cy={rg.cy}
+      gel.push(<text key={`rname${i}`} x={px(rg.cx)} y={py(rg.cy) - 5} textAnchor="middle"
+        fontFamily={fonts.sans} fontSize={ROOM_NAME_FS} fill={colors.neutral} data-el="room" data-cx={rg.cx} data-cy={rg.cy}
         style={{ cursor: 'text' }}>{nm}</text>)
     }
     // Open spaces carry a name only — no enclosed face, so no net area to show.
     if (rg.area != null) {
-      gel.push(<text key={`rarea${i}`} x={px(rg.cx)} y={py(rg.cy) + 10} textAnchor="middle"
-        fontFamily={fonts.serif} fontSize={11} fill={colors.secondary}>{f2(rg.area)} m²</text>)
+      gel.push(<text key={`rarea${i}`} x={px(rg.cx)} y={py(rg.cy) + 13} textAnchor="middle"
+        fontFamily={fonts.serif} fontSize={ROOM_AREA_FS} fill={colors.secondary}>{f2(rg.area)} m²</text>)
     }
   })
   // A new label being placed on an open spot: no existing label matched editRoom.
