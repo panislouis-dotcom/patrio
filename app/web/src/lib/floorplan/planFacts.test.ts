@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph, type Fixture } from './types'
+import { emptyFloorGraph, ROOM_TYPE_CATALOG, type Fixture } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
-import { planFacts } from './planFacts'
+import { planFacts, resolveRoomType } from './planFacts'
 
 function rectangle(f: ReturnType<typeof emptyFloorGraph>, x0: number, y0: number, x1: number, y1: number) {
   const a = addVertex(f, x0, y0), b = addVertex(f, x1, y0), c = addVertex(f, x1, y1), d = addVertex(f, x0, y1)
@@ -365,6 +365,13 @@ describe('planFacts', () => {
       ['BANO PB', 'baño'],
       ['DORMITORIO PPAL', 'recámara'],
       ['RECAMARA PPAL', 'recámara'],
+      // Regresión (diagnóstico de Locales Salón Escobedo, Planta Alta): estos dos nombres
+      // reales de esa propiedad no caían en ninguna categoría — el prompt de render no
+      // tenía ningún dato sobre su función, solo sus medidas.
+      ['ESCALERAS ACCESO', 'escalera'],
+      ['ESCALERAS', 'escalera'],
+      ['RECIBIDOR PA', 'vestíbulo'],
+      ['VESTIBULO PB', 'vestíbulo'],
     ]
 
     it.each(cases)('infiere el tipo de "%s" como "%s"', (name, expectedType) => {
@@ -375,20 +382,6 @@ describe('planFacts', () => {
       const text = planFacts(f)
 
       expect(text).toContain(`tipo: ${expectedType}`)
-    })
-
-    it('"RECIBIDOR PA" no infiere ningún tipo del catálogo (nombre fuera de las categorías cubiertas)', () => {
-      const f = emptyFloorGraph('Test')
-      rectangle(f, 0, 0, 4, 3)
-      f.rooms.push({ name: 'RECIBIDOR PA', cx: 2, cy: 1.5 })
-
-      const text = planFacts(f)
-
-      expect(text).toContain('RECIBIDOR PA')
-      expect(text).not.toMatch(/tipo: undefined/i)
-      expect(text).not.toMatch(/tipo: null/i)
-      expect(text).not.toMatch(/tipo:\s*\)/i)
-      expect(text).not.toMatch(/\(tipo:\s*\)/i)
     })
 
     it('un nombre sin ninguna palabra clave conocida sigue reportando el cuarto sin romper y sin artefacto vacío', () => {
@@ -433,6 +426,63 @@ describe('planFacts', () => {
 
       expect(text).toContain('tipo: patio')
       expect(text).not.toContain('tipo: baño')
+    })
+  })
+
+  // Fase 1 del diagnóstico de Locales Salón Escobedo: Room.type explícito (dropdown al
+  // nivel del plano) reemplaza la inferencia por palabra clave como fuente PRIMARIA.
+  describe('room-type explícito (Room.type) gana sobre la inferencia por nombre', () => {
+    it('un nombre que no matchea ninguna palabra clave sí obtiene tipo si el Room lo trae explícito', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'CUARTO 3', cx: 2, cy: 1.5, type: 'bano' })
+
+      const text = planFacts(f)
+
+      expect(text).toContain('tipo: baño')
+    })
+
+    it('el type explícito gana aunque el nombre matchee OTRA categoría por palabra clave', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      // El nombre diría "cocina" por palabra clave — el type explícito manda igual.
+      f.rooms.push({ name: 'COCINA VIEJA (ahora escalera)', cx: 2, cy: 1.5, type: 'escalera' })
+
+      const text = planFacts(f)
+
+      expect(text).toContain('tipo: escalera')
+      expect(text).not.toContain('tipo: cocina')
+    })
+
+    it('type: "otro" NO se imprime literal — cae al inferido por nombre', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'COCINA DP1', cx: 2, cy: 1.5, type: 'otro' })
+
+      const text = planFacts(f)
+
+      expect(text).toContain('tipo: cocina') // inferido por nombre, no "tipo: otro"
+      expect(text).not.toContain('tipo: otro')
+    })
+
+    it('type: "otro" con un nombre que tampoco matchea nada omite la anotación por completo', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'Zzyx Inventado', cx: 2, cy: 1.5, type: 'otro' })
+
+      const text = planFacts(f)
+
+      expect(text).not.toMatch(/tipo:/i)
+    })
+
+    it('sin type en el Room, el comportamiento es idéntico al de hoy (fallback por nombre)', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'BAÑO DP1', cx: 2, cy: 1.5 })
+
+      const text = planFacts(f)
+
+      expect(text).toContain('tipo: baño')
     })
   })
 
@@ -531,6 +581,76 @@ describe('planFacts', () => {
       expect(firstDetail).toContain('2.00 m × 4.00 m')
       expect(secondDetail).toContain('16.00 m²')
       expect(secondDetail).toContain('4.00 m × 4.00 m')
+    })
+  })
+
+  // Fase 2 del diagnóstico de Locales Salón Escobedo: resolveRoomType es el único punto
+  // de verdad de "cuál es el tipo efectivo de este cuarto", reusado por planImage.ts
+  // (relleno de color) — cubierto directo aquí, no solo indirectamente vía planFacts().
+  describe('resolveRoomType (exportada)', () => {
+    it('el type explícito gana', () => {
+      expect(resolveRoomType('CUARTO 3', 'bano')).toBe('bano')
+    })
+
+    it("'otro' cae al inferido por nombre", () => {
+      expect(resolveRoomType('COCINA DP1', 'otro')).toBe('cocina')
+    })
+
+    it("'otro' con un nombre que tampoco matchea nada regresa null", () => {
+      expect(resolveRoomType('Zzyx Inventado', 'otro')).toBeNull()
+    })
+
+    it('sin type explícito, cae al inferido por nombre', () => {
+      expect(resolveRoomType('BAÑO DP1', undefined)).toBe('bano')
+    })
+
+    it('sin type explícito y sin match de nombre, regresa null', () => {
+      expect(resolveRoomType('Zzyx Inventado', undefined)).toBeNull()
+    })
+  })
+
+  describe('includeColorLegend', () => {
+    it('por default (sin opts) no agrega ninguna leyenda de color', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'Escalera PA', cx: 2, cy: 1.5, type: 'escalera' })
+      const text = planFacts(f)
+      expect(text).not.toContain('Colores de referencia')
+    })
+
+    it('con includeColorLegend:true, lista el color del tipo resuelto', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'Escalera PA', cx: 2, cy: 1.5, type: 'escalera' })
+      const text = planFacts(f, { includeColorLegend: true })
+      expect(text).toContain('Colores de referencia')
+      expect(text).toContain(`${ROOM_TYPE_CATALOG.escalera.color} = escalera`)
+    })
+
+    it('no repite un color dos veces cuando dos cuartos comparten tipo', () => {
+      const f = emptyFloorGraph('Test')
+      dividedRooms(f, 'Recámara 1', 'Recámara 2')
+      const text = planFacts(f, { includeColorLegend: true })
+      const occurrences = text.split(`${ROOM_TYPE_CATALOG.recamara.color} = recámara`).length - 1
+      expect(occurrences).toBe(1)
+    })
+
+    it('nunca lista un color no usado en este piso (solo cocina, no las otras 15 entradas)', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'Cocina DP1', cx: 2, cy: 1.5 })
+      const text = planFacts(f, { includeColorLegend: true })
+      expect(text).toContain(`${ROOM_TYPE_CATALOG.cocina.color} = cocina`)
+      expect(text).not.toContain(ROOM_TYPE_CATALOG.bano.color!)
+      expect(text).not.toContain(ROOM_TYPE_CATALOG.escalera.color!)
+    })
+
+    it('omite el párrafo por completo si ningún cuarto tiene tipo resoluble', () => {
+      const f = emptyFloorGraph('Test')
+      rectangle(f, 0, 0, 4, 3)
+      f.rooms.push({ name: 'Zzyx Inventado', cx: 2, cy: 1.5 })
+      const text = planFacts(f, { includeColorLegend: true })
+      expect(text).not.toContain('Colores de referencia')
     })
   })
 })

@@ -208,7 +208,13 @@ export function RendersPanel(props: Props) {
   // Los datos duros del piso (Tasks 33a-c) que le tocan al texto ACTUAL, si "El
   // plano" está elegido — null en modo fotos (`usePlan` nunca es true ahí) y
   // también null en modo plano hasta que se elige la fuente.
-  const currentFacts = usePlan && plan ? planFacts(plan) : null
+  // includeColorLegend:true (Fase 2 del diagnóstico de Locales Salón Escobedo): mismo
+  // par gemelo que `roomTypeFill` en `LevantamientoPanel.tsx::handleGeneratePlan` — el
+  // PNG que se manda ya lleva el relleno de color, así que el texto debe describir esos
+  // mismos colores. Debe coincidir EXACTO con `selectPlan` (abajo): ambos alimentan la
+  // comparación `text.startsWith(facts)` que decide si re-componer o no — una opción
+  // distinta entre los dos rompería esa comparación (Task 33d/33e).
+  const currentFacts = usePlan && plan ? planFacts(plan, { includeColorLegend: true }) : null
   // Si el texto ya no es lo que el preset compone (su cuerpo solo en modo
   // fotos; datos duros + su cuerpo en modo plano — ver `composeWithFacts`), el
   // render no salió de ese preset. Mandar el id de todos modos haría que el
@@ -290,7 +296,7 @@ export function RendersPanel(props: Props) {
   function selectPlan() {
     setUsePlan(true); setSourceId(null)
     if (!plan) return
-    const facts = planFacts(plan)
+    const facts = planFacts(plan, { includeColorLegend: true }) // debe coincidir con currentFacts, arriba
     // Ya compuesto con estos mismos hechos (p.ej. un re-clic sobre "El plano"
     // ya seleccionado): no dupliques. `startsWith` basta porque
     // `composeWithFacts` siempre pone los hechos al frente.

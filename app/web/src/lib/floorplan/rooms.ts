@@ -1,12 +1,20 @@
-import type { FloorGraph, EdgeId } from './types'
+import type { FloorGraph, EdgeId, Room, RoomType } from './types'
 import { isGhost } from './types'
 import { shoelaceSigned, shoelace, polygonCentroid, pointInPolygon, type Pt } from './geometry'
 
 export interface TracedFace { vertexIds: string[]; edgeIds: EdgeId[]; area: number }
-export interface RoomArea { cx: number; cy: number; area: number; name: string }
+export interface RoomArea { cx: number; cy: number; area: number; name: string; type?: RoomType }
 /** A label to draw on the plan: a traced (enclosed) room carries its net area; a
  * free label the user dropped on an open space carries `area: null`. */
-export interface RoomLabel { cx: number; cy: number; name: string; area: number | null }
+export interface RoomLabel { cx: number; cy: number; name: string; area: number | null; type?: RoomType }
+
+// Una cara real, por chica que sea (el patio más pequeño visto en datos reales mide
+// 0.96 m², ~10,000× esto), nunca cae aquí. Solo una cara degenerada — el rebote de
+// traceFaces al llegar a un vértice de grado 1 dentro de un subgrafo colgante y
+// desconectado del resto del plano, nunca la silueta de un cuarto — llega exactamente a
+// área 0 (diagnóstico real: Locales Salón Escobedo, Planta Alta, un tramo de muro con
+// ventanas que nunca se conectó al resto del piso).
+const DEGENERATE_AREA_EPS = 1e-4 // m²
 
 /**
  * Trace every face of the planar graph via the standard "next edge in rotational
@@ -15,6 +23,16 @@ export interface RoomLabel { cx: number; cy: number; name: string; area: number 
  * directed edge (dart) belongs to exactly one traced face; a plain closed loop of N
  * edges produces exactly 2 faces (the bounded interior, and the outer face tracing the
  * same boundary in the opposite direction) since each edge has exactly 2 darts.
+ *
+ * Caras degeneradas (área ~0, producidas por un vértice de grado 1 dentro de un
+ * subgrafo colgante — el trazo rebota sobre el mismo par de aristas en vez de cerrar un
+ * cuarto real) se excluyen antes de regresar: es el único choke point que comparten
+ * interiorPolygons/roomAreas/roomPolygons (filtran `!== outer`, nunca verían la
+ * degenerada como cuarto), exteriorEdgeIds/cornerAngles (eligen `outer` por área
+ * máxima, un área 0 nunca gana) y roomConnections (construye `faceByDart` desde aquí
+ * directo — con la degenerada ya fuera, su código defensivo existente para "dart sin
+ * cara" hace que una apertura sobre esa geometría colgante se omita en vez de
+ * describirse como conectando dos "cuartos sin nombre" fantasma).
  */
 export function traceFaces(f: FloorGraph): TracedFace[] {
   type Dart = { edgeId: EdgeId; to: string; angle: number }
@@ -58,7 +76,7 @@ export function traceFaces(f: FloorGraph): TracedFace[] {
       faces.push({ vertexIds, edgeIds, area: shoelaceSigned(pts) })
     }
   }
-  return faces
+  return faces.filter(face => Math.abs(face.area) > DEGENERATE_AREA_EPS)
 }
 
 /** Edges belonging to the largest-absolute-area traced face (the outer/exterior boundary).
@@ -88,7 +106,8 @@ function interiorPolygons(f: FloorGraph): Pt[][] {
 export function roomAreas(f: FloorGraph): RoomArea[] {
   return interiorPolygons(f).map(pts => {
     const [cx, cy] = polygonCentroid(pts)
-    return { cx, cy, area: shoelace(pts), name: roomNameInside(f, pts) }
+    const room = roomInside(f, pts)
+    return { cx, cy, area: shoelace(pts), name: room?.name ?? '', type: room?.type }
   })
 }
 
@@ -96,11 +115,11 @@ export function roomAreas(f: FloorGraph): RoomArea[] {
  * that falls in no enclosed room (drawn name-only, `area: null`). This is what lets an
  * open, un-enclosed space carry a name — the enabler for referencing it later. */
 export function roomLabels(f: FloorGraph): RoomLabel[] {
-  const enclosed = roomAreas(f).map(t => ({ cx: t.cx, cy: t.cy, name: t.name, area: t.area as number | null }))
+  const enclosed = roomAreas(f).map(t => ({ cx: t.cx, cy: t.cy, name: t.name, area: t.area as number | null, type: t.type }))
   const polys = interiorPolygons(f)
   const free: RoomLabel[] = f.rooms
     .filter(r => !polys.some(poly => pointInPolygon(r.cx, r.cy, poly)))
-    .map(r => ({ cx: r.cx, cy: r.cy, name: r.name, area: null }))
+    .map(r => ({ cx: r.cx, cy: r.cy, name: r.name, area: null, type: r.type }))
   return [...enclosed, ...free]
 }
 
@@ -108,28 +127,34 @@ export function roomLabels(f: FloorGraph): RoomLabel[] {
  * `roomAreas`). Task 21c la agrega porque `planFacts.ts` necesita el bounding box (ancho ×
  * fondo) de cada cuarto medible, y esa cuenta necesita los vértices crudos — no los da
  * `RoomArea` a propósito (mantenerlo liviano para quien solo quiere área/centroide). Reusa
- * `interiorPolygons`/`roomNameInside` (el mismo trazo de caras que `roomAreas` ya hace, en
+ * `interiorPolygons`/`roomInside` (el mismo trazo de caras que `roomAreas` ya hace, en
  * el mismo orden) en vez de volver a trazar caras: es literalmente `roomAreas` sin colapsar
  * `pts` a área+centroide. */
-export interface RoomPolygon { name: string; vertices: { x: number; y: number }[] }
+export interface RoomPolygon { name: string; type?: RoomType; vertices: { x: number; y: number }[] }
 
 export function roomPolygons(f: FloorGraph): RoomPolygon[] {
-  return interiorPolygons(f).map(pts => ({
-    name: roomNameInside(f, pts),
-    vertices: pts.map(([x, y]) => ({ x, y })),
-  }))
+  return interiorPolygons(f).map(pts => {
+    const room = roomInside(f, pts)
+    return { name: room?.name ?? '', type: room?.type, vertices: pts.map(([x, y]) => ({ x, y })) }
+  })
+}
+
+/** El punto de nombre de cuarto (con su tipo, si lo trae) que cae DENTRO de `poly`, más
+ * cercano a su centroide; `null` si ninguno cae ahí. */
+function roomInside(f: FloorGraph, poly: Pt[]): Room | null {
+  const [cx, cy] = polygonCentroid(poly)
+  let best: Room | null = null, bd = Infinity
+  for (const r of f.rooms) {
+    if (!pointInPolygon(r.cx, r.cy, poly)) continue
+    const d = Math.hypot(r.cx - cx, r.cy - cy)
+    if (d < bd) { bd = d; best = r }
+  }
+  return best
 }
 
 /** Name of the user-assigned point that lies inside `poly`, nearest its centroid; '' if none. */
 function roomNameInside(f: FloorGraph, poly: Pt[]): string {
-  const [cx, cy] = polygonCentroid(poly)
-  let name = '', bd = Infinity
-  for (const r of f.rooms) {
-    if (!pointInPolygon(r.cx, r.cy, poly)) continue
-    const d = Math.hypot(r.cx - cx, r.cy - cy)
-    if (d < bd) { bd = d; name = r.name }
-  }
-  return name
+  return roomInside(f, poly)?.name ?? ''
 }
 
 /** La cara de mayor |área| — el mismo criterio que interiorPolygons/exteriorEdgeIds usan

@@ -70,6 +70,18 @@ describe('FloorPlanPanel', () => {
     expect(screen.getAllByText(/12\.0/).length).toBeGreaterThan(0) // 4m x 3m room = 12 m²
   })
 
+  it('shows the room type label next to its name in the stats section, when the room has one', () => {
+    const f = emptyFloorGraph('Planta baja')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+    addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+    f.rooms.push({ name: 'Escaleras', cx: 2, cy: 1.5, type: 'escalera' })
+    const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
+    const state = initialState(model)
+    render(<FloorPlanPanel model={state.model} floor={f} rooms={roomAreas(f)} geoJson="{}" ui={state.ui} dispatch={vi.fn()} />)
+    const nameNode = screen.getByText('Escaleras')
+    expect(nameNode.closest('span')?.textContent).toBe('Escaleras · Escalera')
+  })
+
   it('shows the empty-rooms message when no rooms are detected', () => {
     const f = emptyFloorGraph('Planta baja')
     const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
@@ -204,17 +216,51 @@ describe('FloorPlanPanel', () => {
     })
   })
 
-  it('renders the BIM export section only when showDims is enabled', () => {
-    // initialState defaults ui.showDims to true, so the section is present out of the box.
+  describe('inspector de cota manual seleccionada', () => {
+    function setupWithManualDim(p1 = { x: 0, y: 0 }, p2 = { x: 3, y: 0 }) {
+      return setup(f => { f.manualDimensions = [{ id: 'd1', p1, p2 }]; return { t: 'manualDim', id: 'd1' } })
+    }
+
+    it('muestra el largo calculado (derivado, no un campo propio)', () => {
+      setupWithManualDim({ x: 0, y: 0 }, { x: 3, y: 4 })
+      expect(screen.getByText(/5\.00 m/)).toBeTruthy() // 3-4-5
+    })
+
+    it('dispatches SET_MANUAL_DIM_POINT al editar X del punto 1, sin tocar el punto 2', () => {
+      const { dispatch } = setupWithManualDim({ x: 0, y: 0 }, { x: 3, y: 0 })
+      const xInputs = screen.getAllByLabelText(/x \(m\)/i) as HTMLInputElement[]
+      fireEvent.change(xInputs[0], { target: { value: '1.5' } })
+      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_MANUAL_DIM_POINT', id: 'd1', which: 'p1', x: 1.5, y: 0 })
+    })
+
+    it('dispatches SET_MANUAL_DIM_POINT al editar Y del punto 2 — esto es el resize por input preciso', () => {
+      const { dispatch } = setupWithManualDim({ x: 0, y: 0 }, { x: 3, y: 0 })
+      const yInputs = screen.getAllByLabelText(/y \(m\)/i) as HTMLInputElement[]
+      fireEvent.change(yInputs[1], { target: { value: '2' } })
+      expect(dispatch).toHaveBeenCalledWith({ type: 'SET_MANUAL_DIM_POINT', id: 'd1', which: 'p2', x: 3, y: 2 })
+    })
+
+    it('muestra un botón de borrar que dispatcha DELETE_SEL', () => {
+      const { dispatch } = setupWithManualDim()
+      fireEvent.click(screen.getByText('ELIMINAR'))
+      expect(dispatch).toHaveBeenCalledWith({ type: 'DELETE_SEL' })
+    })
+  })
+
+  it('renders the BIM export section regardless of showDims — it is not dimension clutter, just a side panel', () => {
+    // Antes reusaba showDims prestado (acoplamiento incidental, sin relación real):
+    // se desacopló al cambiar el default de showDims a false, para no esconder el
+    // export BIM sin que nadie lo haya pedido.
     const f = emptyFloorGraph('Planta baja')
     const model = { slab_m: 0.15, activeFloor: 0, floors: [f] }
     let state = initialState(model)
+    expect(state.ui.showDims).toBe(false) // default actual
     const { rerender } = render(
       <FloorPlanPanel model={state.model} floor={f} rooms={[]} geoJson='{"foo":1}' ui={state.ui} dispatch={vi.fn()} />
     )
     expect(screen.getByText('Exportar BIM (JSON)')).toBeTruthy()
-    state = { ...state, ui: { ...state.ui, showDims: false } }
+    state = { ...state, ui: { ...state.ui, showDims: true } }
     rerender(<FloorPlanPanel model={state.model} floor={f} rooms={[]} geoJson="{}" ui={state.ui} dispatch={vi.fn()} />)
-    expect(screen.queryByText('Exportar BIM (JSON)')).toBeNull()
+    expect(screen.getByText('Exportar BIM (JSON)')).toBeTruthy()
   })
 })

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   withVariant, emptyFloorSet, emptyFloorGraph, clone, floorElev, migrateGeometry, FIXTURE_CATALOG,
+  ROOM_TYPE_CATALOG, type RoomType,
 } from './types'
 
 // Real shape seen in production: the old wall-list editor's blob has no `activeFloor` at all
@@ -226,5 +227,64 @@ describe('FIXTURE_CATALOG', () => {
     expect(entry.label).toBe(spec.label)
     expect(entry.w_m).toBeCloseTo(spec.w_m)
     expect(entry.h_m).toBeCloseTo(spec.h_m)
+  })
+})
+
+describe('ROOM_TYPE_CATALOG', () => {
+  it('tiene las 17 entradas del catálogo (16 tipos + "otro"), todas con label no vacío', () => {
+    const keys = Object.keys(ROOM_TYPE_CATALOG)
+    expect(keys).toHaveLength(17)
+    expect(keys).toContain('otro')
+    keys.forEach(k => expect(ROOM_TYPE_CATALOG[k as RoomType].label.length).toBeGreaterThan(0))
+  })
+
+  it('incluye escalera y vestíbulo — los dos tipos que faltaban en el catálogo de palabras clave', () => {
+    expect(ROOM_TYPE_CATALOG.escalera.label).toBe('Escalera')
+    expect(ROOM_TYPE_CATALOG.vestibulo.label).toBe('Vestíbulo')
+  })
+
+  it('un Room sin type sigue siendo válido — compatibilidad hacia atrás, mismo patrón que fixtures?/manualDimensions?', () => {
+    const f = emptyFloorGraph('Test')
+    f.rooms.push({ name: 'Sala', cx: 1, cy: 1 }) // sin type: levantamiento capturado antes de esta feature
+    expect(f.rooms[0].type).toBeUndefined()
+    expect(() => clone(f)).not.toThrow()
+  })
+
+  it('un Room con type sobrevive clone() (round-trip vía JSON, como se persiste de verdad)', () => {
+    const f = emptyFloorGraph('Test')
+    f.rooms.push({ name: 'Escalera PA', cx: 1, cy: 1, type: 'escalera' })
+    const cloned = clone(f)
+    expect(cloned.rooms[0].type).toBe('escalera')
+  })
+
+  it('cada tipo salvo "otro" trae un color hex válido; "otro" no trae ninguno', () => {
+    const HEX = /^#[0-9A-F]{6}$/
+    for (const key of Object.keys(ROOM_TYPE_CATALOG) as RoomType[]) {
+      const entry = ROOM_TYPE_CATALOG[key]
+      if (key === 'otro') expect(entry.color).toBeUndefined()
+      else expect(entry.color).toMatch(HEX)
+    }
+  })
+
+  it('los 16 colores son todos distintos entre sí (una paleta sin dos tipos indistinguibles)', () => {
+    const colors = (Object.keys(ROOM_TYPE_CATALOG) as RoomType[])
+      .map(k => ROOM_TYPE_CATALOG[k].color)
+      .filter((c): c is string => c != null)
+    expect(new Set(colors).size).toBe(colors.length)
+  })
+
+  it('ningún color se confunde con un muro ni con la página en blanco (umbrales reales de renders.py)', () => {
+    // Luminancia ITU-R 601-2 (misma fórmula que PIL .convert('L'), que app/api/renders.py
+    // usa de verdad para _composite_geometry/_content_bbox) — calculada, no adivinada.
+    const WALL_LUMINANCE_MAX = 60
+    const BBOX_BG_THRESHOLD = 245
+    for (const key of Object.keys(ROOM_TYPE_CATALOG) as RoomType[]) {
+      const hex = ROOM_TYPE_CATALOG[key].color
+      if (!hex) continue
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
+      const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+      expect(luminance).toBeGreaterThan(WALL_LUMINANCE_MAX)
+      expect(luminance).toBeLessThan(BBOX_BG_THRESHOLD)
+    }
   })
 })

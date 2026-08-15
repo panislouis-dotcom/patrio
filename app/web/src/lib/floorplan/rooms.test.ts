@@ -28,6 +28,18 @@ function rectangle(f: ReturnType<typeof emptyFloorGraph>, x0: number, y0: number
   return { a, b, c, d }
 }
 
+/** Mismo shape que el bug real (Locales Salón Escobedo, Planta Alta, diagnóstico de
+ * docs/plans): dos vértices de grado 1 unidos por un vértice intermedio de grado 2, vía
+ * dos aristas — un subgrafo colgante, desconectado de cualquier otra estructura del
+ * piso. traceFaces rebota en cada punta de grado 1 y traza una "cara" de área 0 que no
+ * es un cuarto real. */
+function danglingSpur(f: ReturnType<typeof emptyFloorGraph>) {
+  const p1 = addVertex(f, 20, 20), mid = addVertex(f, 21, 20), p2 = addVertex(f, 21, 21)
+  const eWithWindow = addEdge(f, p1, mid, 0.10)
+  addEdge(f, mid, p2, 0.10)
+  return { p1, mid, p2, eWithWindow }
+}
+
 describe('traceFaces', () => {
   it('traces exactly 2 faces for a closed rectangle: the interior and the outer face', () => {
     const f = emptyFloorGraph('Test')
@@ -37,6 +49,16 @@ describe('traceFaces', () => {
     const areas = faces.map(fc => Math.abs(fc.area)).sort((x, y) => x - y)
     expect(areas[0]).toBeCloseTo(12) // the bounded interior face
     expect(areas[1]).toBeCloseTo(12) // the outer face traces the same boundary, opposite winding
+  })
+
+  it('excludes the degenerate zero-area face produced by a dangling, disconnected spur', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    danglingSpur(f)
+    const faces = traceFaces(f)
+    // Solo las 2 caras reales del rectángulo — nada del spur colgante.
+    expect(faces).toHaveLength(2)
+    faces.forEach(face => expect(Math.abs(face.area)).toBeGreaterThan(1))
   })
 })
 
@@ -73,6 +95,29 @@ describe('roomAreas', () => {
     const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3)
     addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15) // no closing edge back to a
     expect(roomAreas(f)).toHaveLength(0)
+  })
+
+  it('does not report a phantom room for a dangling, disconnected spur', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    danglingSpur(f)
+    const rooms = roomAreas(f)
+    expect(rooms).toHaveLength(1) // solo el rectángulo real, nada del spur
+    expect(rooms[0].area).toBeCloseTo(12)
+  })
+
+  it('propaga el type del Room que cae dentro del cuarto', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    f.rooms.push({ name: 'Escalera', cx: 2, cy: 1.5, type: 'escalera' })
+    expect(roomAreas(f)[0].type).toBe('escalera')
+  })
+
+  it('type queda undefined cuando el Room dentro del cuarto no lo trae', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
+    expect(roomAreas(f)[0].type).toBeUndefined()
   })
 })
 
@@ -115,6 +160,16 @@ describe('roomLabels', () => {
     rectangle(f, 0, 0, 4, 3)
     f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
     expect(roomLabels(f).filter(l => l.name === 'Sala')).toHaveLength(1)
+  })
+
+  it('propaga type tanto para un cuarto cerrado como para un label libre', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    f.rooms.push({ name: 'Escalera', cx: 2, cy: 1.5, type: 'escalera' })
+    f.rooms.push({ name: 'Azotea', cx: 20, cy: 20, type: 'azotea' }) // libre, fuera del rectángulo
+    const labels = roomLabels(f)
+    expect(labels.find(l => l.name === 'Escalera')?.type).toBe('escalera')
+    expect(labels.find(l => l.name === 'Azotea')?.type).toBe('azotea')
   })
 })
 
@@ -201,6 +256,21 @@ describe('roomConnections', () => {
     expect(conns[0].roomB).toBe('exterior')
   })
 
+  it('a window on a dangling, disconnected spur produces no connection (not two "cuarto sin nombre")', () => {
+    // Regresión del bug real (Locales Salón Escobedo, Planta Alta): antes del fix de
+    // traceFaces, una ventana sobre esta geometría colgante resolvía sus dos lados a la
+    // MISMA cara degenerada, produciendo una conexión "sin nombre" con "sin nombre" — un
+    // dato sin sentido en el prompt de render. Con la cara degenerada ya filtrada en la
+    // fuente, el código defensivo existente de roomConnections (dart sin cara -> se omite)
+    // la deja fuera por completo.
+    const f = emptyFloorGraph('Test')
+    dividedRooms(f)
+    const { eWithWindow } = danglingSpur(f)
+    f.edges[eWithWindow].openings.push({ kind: 'window', offset: 0.3, width: 0.9 })
+    const conns = roomConnections(f)
+    expect(conns).toHaveLength(0)
+  })
+
   it('an edge with a door AND a window produces two separate connections with correct openingIndex', () => {
     const f = emptyFloorGraph('Test')
     const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
@@ -265,6 +335,13 @@ describe('roomPolygons', () => {
     const xs = polys[0].vertices.map(v => v.x), ys = polys[0].vertices.map(v => v.y)
     expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(4)
     expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(3)
+  })
+
+  it('propaga el type del Room que cae dentro del cuarto', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3)
+    f.rooms.push({ name: 'Baño', cx: 2, cy: 1.5, type: 'bano' })
+    expect(roomPolygons(f)[0].type).toBe('bano')
   })
 
   it('returns more than 4 vertices for an L-shaped room (not reducible to a simple bounding box)', () => {

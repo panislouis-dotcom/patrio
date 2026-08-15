@@ -3,7 +3,7 @@ import { emptyFloorGraph, GHOST_THICKNESS_M, FIXTURE_CATALOG, clone } from './ty
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import {
   reducer, initialState, removeVertexFromFloor, removeEdgeFromFloor, removeOpeningFromFloor,
-  removeFixtureFromFloor,
+  removeFixtureFromFloor, removeManualDimFromFloor,
 } from './reducer'
 
 function modelWithRectangle() {
@@ -29,6 +29,29 @@ describe('room naming', () => {
     s = reducer(s, { type: 'RENAME_ROOM', cx: 10.2, cy: 9.9, name: 'Terraza' })
     expect(s.model.floors[0].rooms).toHaveLength(1)
     expect(s.model.floors[0].rooms[0].name).toBe('Terraza')
+  })
+
+  it('RENAME_ROOM con roomType lo guarda en el punto nuevo', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Escaleras', roomType: 'escalera' })
+    expect(s.model.floors[0].rooms[0].type).toBe('escalera')
+  })
+
+  it('RENAME_ROOM con roomType lo guarda al editar un punto existente', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Patio' })
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10.1, cy: 9.9, name: 'Recibidor', roomType: 'vestibulo' })
+    expect(s.model.floors[0].rooms).toHaveLength(1)
+    expect(s.model.floors[0].rooms[0].type).toBe('vestibulo')
+  })
+
+  it('RENAME_ROOM sin roomType deja el campo undefined, nunca null ni string vacío', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Patio' })
+    expect(s.model.floors[0].rooms[0].type).toBeUndefined()
   })
 
   it('DELETE_ROOM removes the nearest named point within range', () => {
@@ -429,6 +452,126 @@ describe('fixtures en el reducer', () => {
     s = reducer(s, { type: 'SET_SEL', sel: { t: 'fixture', id: s.model.floors[0].fixtures![0].id } })
     s = reducer(s, { type: 'DELETE_SEL' })
     expect(s.model.floors[0].fixtures).toHaveLength(0)
+  })
+})
+
+describe('showDims default', () => {
+  it('starts OFF — las cotas automáticas ya no abarrotan la pantalla por default', () => {
+    const { model } = modelWithRectangle()
+    expect(initialState(model).ui.showDims).toBe(false)
+  })
+})
+
+describe('cotas manuales en el reducer', () => {
+  it('ADD_MANUAL_DIM agrega una cota con id nuevo, la selecciona y empuja historia', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 2, y: 0 } })
+    const dims = s.model.floors[0].manualDimensions ?? []
+    expect(dims).toHaveLength(1)
+    expect(dims[0].p1).toEqual({ x: 0, y: 0 })
+    expect(dims[0].p2).toEqual({ x: 2, y: 0 })
+    expect(dims[0].id).toBeTruthy()
+    expect(s.ui.sel).toEqual({ t: 'manualDim', id: dims[0].id })
+    expect(s.past).toHaveLength(1)
+  })
+
+  it('ADD_MANUAL_DIM rechaza una distancia menor a 0.05m (clic sin arrastre real)', () => {
+    const { model } = modelWithRectangle()
+    const s = initialState(model)
+    const s2 = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 1, y: 1 }, p2: { x: 1.01, y: 1 } })
+    expect(s2).toBe(s)
+    expect(s2.model.floors[0].manualDimensions ?? []).toHaveLength(0)
+  })
+
+  it('SET_MANUAL_DIM_POINT mueve un solo extremo (resize: el largo cambia) y empuja historia', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 2, y: 0 } })
+    const id = (s.ui.sel as { t: 'manualDim'; id: string }).id
+    const pastBefore = s.past.length
+
+    s = reducer(s, { type: 'SET_MANUAL_DIM_POINT', id, which: 'p2', x: 5, y: 0 })
+
+    const dim = s.model.floors[0].manualDimensions!.find(d => d.id === id)!
+    expect(dim.p1).toEqual({ x: 0, y: 0 }) // el otro extremo no se toca
+    expect(dim.p2).toEqual({ x: 5, y: 0 })
+    expect(s.past).toHaveLength(pastBefore + 1)
+  })
+
+  it('SET_MANUAL_DIM_POINT con un id que ya no existe es no-op', () => {
+    const { model } = modelWithRectangle()
+    const s = initialState(model)
+    const s2 = reducer(s, { type: 'SET_MANUAL_DIM_POINT', id: 'no-existe', which: 'p1', x: 9, y: 9 })
+    expect(s2).toBe(s)
+  })
+
+  it('DELETE_SEL borra una cota manual seleccionada y limpia la selección', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 2, y: 0 } })
+    s = reducer(s, { type: 'DELETE_SEL' })
+    expect(s.model.floors[0].manualDimensions).toHaveLength(0)
+    expect(s.ui.sel).toBeNull()
+  })
+
+  it('DELETE_SEL con sel.t="manualDim" pero un id que ya no existe es no-op', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_SEL', sel: { t: 'manualDim', id: 'no-existe' } })
+    const before = s
+    expect(reducer(s, { type: 'DELETE_SEL' })).toBe(before)
+  })
+
+  it('un gesto completo de arrastre (DRAG_MODEL × N + SET_MODEL) traslada ambos puntos y deshace como un solo paso', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 2, y: 0 } })
+    const id = (s.ui.sel as { t: 'manualDim'; id: string }).id
+    expect(s.past).toHaveLength(1) // past[0] = el modelo antes de agregar la cota
+
+    const withDimAt = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+      const m = clone(s.model)
+      m.floors[0].manualDimensions = m.floors[0].manualDimensions!.map(d => d.id === id ? { ...d, p1, p2 } : d)
+      return m
+    }
+    s = reducer(s, { type: 'DRAG_MODEL', model: withDimAt({ x: 1, y: 1 }, { x: 3, y: 1 }) })
+    s = reducer(s, { type: 'SET_MODEL', model: withDimAt({ x: 2, y: 2 }, { x: 4, y: 2 }) })
+
+    const dim = s.model.floors[0].manualDimensions!.find(d => d.id === id)!
+    expect(dim.p1).toEqual({ x: 2, y: 2 })
+    expect(dim.p2).toEqual({ x: 4, y: 2 })
+    expect(s.past).toHaveLength(2) // una sola entrada nueva por todo el gesto
+
+    s = reducer(s, { type: 'UNDO' })
+    const dimBack = s.model.floors[0].manualDimensions!.find(d => d.id === id)!
+    expect(dimBack.p1).toEqual({ x: 0, y: 0 }) // vuelve a la posición pre-gesto, no a un frame intermedio
+    expect(dimBack.p2).toEqual({ x: 2, y: 0 })
+  })
+
+  it('un floor cargado sin la clave manualDimensions (blob previo a esta feature) no truena', () => {
+    const { model } = modelWithRectangle()
+    delete model.floors[0].manualDimensions
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_SEL', sel: { t: 'manualDim', id: 'no-existe' } })
+    expect(reducer(s, { type: 'DELETE_SEL' })).toBe(s)
+
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 } })
+    expect(s.model.floors[0].manualDimensions).toHaveLength(1)
+  })
+
+  it('removeManualDimFromFloor quita la cota con el id dado', () => {
+    const f = emptyFloorGraph('T')
+    f.manualDimensions = [{ id: 'd1', p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 } }]
+    removeManualDimFromFloor(f, 'd1')
+    expect(f.manualDimensions).toHaveLength(0)
+  })
+
+  it('removeManualDimFromFloor no truena en un floor sin la clave manualDimensions', () => {
+    const f = emptyFloorGraph('T')
+    delete f.manualDimensions
+    expect(() => removeManualDimFromFloor(f, 'nope')).not.toThrow()
+    expect(f.manualDimensions).toEqual([])
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph, GHOST_THICKNESS_M, type Fixture, type FloorGraph } from './types'
+import { emptyFloorGraph, GHOST_THICKNESS_M, ROOM_TYPE_CATALOG, type Fixture, type FloorGraph, type RoomType } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import { floorToSvgString } from './planImage'
 
@@ -379,5 +379,59 @@ describe('floorToSvgString', () => {
     expect(explicit).toContain('Sala')
     expect(explicit).toContain('Cama queen')
     expect(explicit).toContain('>4.00 m<')
+  })
+
+  // Fase 2 del diagnóstico de Locales Salón Escobedo: relleno de color plano por tipo de
+  // cuarto, canal VISUAL de identidad — independiente de `annotations` (no es texto).
+  describe('roomTypeFill', () => {
+    // Nombre deliberadamente NO matcheable por palabra clave (ver ROOM_TYPE_KEYWORDS,
+    // planFacts.ts) — así los tests de "sin relleno" no dependen por accidente de que el
+    // NOMBRE resuelva un tipo, solo del `type` explícito que cada caso pasa.
+    function typedRoom(type: RoomType | undefined) {
+      const f = emptyFloorGraph('Test')
+      const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+      addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+      f.rooms.push({ name: 'Zzyx Inventado', cx: 2, cy: 1.5, type })
+      return f
+    }
+
+    it('por default (roomTypeFill ausente) no dibuja ningún <polygon> — cero regresión del output ya usado en producción', () => {
+      const svg = floorToSvgString(typedRoom('escalera'), { annotations: false })
+      expect(svg).not.toContain('<polygon')
+    })
+
+    it('roomTypeFill:true dibuja un <polygon> con el color exacto del catálogo para un cuarto tipado', () => {
+      const svg = floorToSvgString(typedRoom('escalera'), { annotations: false, roomTypeFill: true })
+      expect(svg).toMatch(new RegExp(`<polygon points="[^"]+" fill="${ROOM_TYPE_CATALOG.escalera.color}"`))
+    })
+
+    it('roomTypeFill:true SIN Room.type explícito igual rellena si el NOMBRE resuelve un tipo por palabra clave', () => {
+      // Mismo resolutor que planFacts.ts (resolveRoomType) — imagen y texto nunca divergen.
+      const f = emptyFloorGraph('Test')
+      const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+      addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+      f.rooms.push({ name: 'BAÑO DP1', cx: 2, cy: 1.5 }) // sin type, pero "baño" matchea por nombre
+      const svg = floorToSvgString(f, { annotations: false, roomTypeFill: true })
+      expect(svg).toMatch(new RegExp(`fill="${ROOM_TYPE_CATALOG.bano.color}"`))
+    })
+
+    it("un cuarto con type:'otro' y un nombre que tampoco matchea nada no dibuja relleno", () => {
+      const svg = floorToSvgString(typedRoom('otro'), { annotations: false, roomTypeFill: true })
+      expect(svg).not.toContain('<polygon')
+    })
+
+    it('un cuarto sin type y sin nombre matcheable no dibuja relleno', () => {
+      const svg = floorToSvgString(typedRoom(undefined), { annotations: false, roomTypeFill: true })
+      expect(svg).not.toContain('<polygon')
+    })
+
+    it('el relleno se dibuja ANTES que los muros — el trazo de muro queda encima, nunca tapado', () => {
+      const svg = floorToSvgString(typedRoom('escalera'), { annotations: false, roomTypeFill: true })
+      const polygonIdx = svg.indexOf('<polygon')
+      const wallIdx = svg.indexOf('<line data-wall="')
+      expect(polygonIdx).toBeGreaterThan(-1)
+      expect(wallIdx).toBeGreaterThan(-1)
+      expect(polygonIdx).toBeLessThan(wallIdx)
+    })
   })
 })

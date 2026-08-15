@@ -40,7 +40,54 @@ export interface Reference {
   opacity: number
 }
 
-export interface Room { name: string; cx: number; cy: number }
+// Catálogo explícito, elegido en un dropdown al colocar/renombrar un cuarto — mismo
+// espíritu que FIXTURE_CATALOG ("el catálogo es dato, no lógica"). Reemplaza la
+// inferencia frágil por palabra clave sobre el nombre libre (planFacts.ts) como fuente
+// PRIMARIA de tipo: un nombre como "CUARTO 3" nunca iba a matchear nada, y "escalera"/
+// "recibidor" ni siquiera estaban en ese catálogo (ver diagnóstico de Locales Salón
+// Escobedo). 'otro' es una decisión positiva ("miré la lista, ninguna aplica"), no un
+// valor ausente — planFacts.ts lo trata distinto de "sin tipo capturado todavía".
+export type RoomType =
+  | 'recamara' | 'bano' | 'cocina' | 'sala' | 'comedor'
+  | 'vestibulo' | 'escalera' | 'pasillo' | 'closet'
+  | 'lavanderia' | 'cuarto_servicio' | 'cochera'
+  | 'patio' | 'terraza' | 'jardin' | 'azotea'
+  | 'otro'
+
+// `color` alimenta el relleno plano por tipo de cuarto en la imagen de referencia del
+// render (planImage.ts) — canal VISUAL de identidad de cuarto, alternativa a que el
+// modelo tenga que leerlo solo en prosa (planFacts.ts). Calculado con Python (HSL, 16
+// tonos — todos los RoomType salvo 'otro' — a 360°/16 = 22.5° de separación, S=0.55,
+// L=0.82), no elegido a ojo (regla del repo: los números se calculan, no se adivinan).
+// Verificado contra los umbrales reales de app/api/renders.py: luminancia mínima 191.5
+// (margen de 131.5 sobre WALL_LUMINANCE_MAX=60 — ningún relleno se confunde jamás con
+// un muro en _composite_geometry) y máxima 226.5 (margen de 18.5 bajo
+// _BBOX_BG_THRESHOLD=245). 'otro' es el único tipo sin color: es una decisión positiva
+// del usuario ("ninguna categoría aplica"), no una señal real que pintar.
+export const ROOM_TYPE_CATALOG: Record<RoomType, { label: string; color?: string }> = {
+  recamara: { label: 'Recámara', color: '#EAB8B8' },
+  bano: { label: 'Baño', color: '#EACBB8' },
+  cocina: { label: 'Cocina', color: '#EADEB8' },
+  sala: { label: 'Sala', color: '#E4EAB8' },
+  comedor: { label: 'Comedor', color: '#D1EAB8' },
+  vestibulo: { label: 'Vestíbulo', color: '#BEEAB8' },
+  escalera: { label: 'Escalera', color: '#B8EAC4' },
+  pasillo: { label: 'Pasillo', color: '#B8EAD7' },
+  closet: { label: 'Clóset', color: '#B8EAEA' },
+  lavanderia: { label: 'Lavandería', color: '#B8D7EA' },
+  cuarto_servicio: { label: 'Cuarto de servicio', color: '#B8C4EA' },
+  cochera: { label: 'Cochera', color: '#BEB8EA' },
+  patio: { label: 'Patio', color: '#D1B8EA' },
+  terraza: { label: 'Terraza', color: '#E4B8EA' },
+  jardin: { label: 'Jardín', color: '#EAB8DE' },
+  azotea: { label: 'Azotea', color: '#EAB8CB' },
+  otro: { label: 'Otro' },
+}
+
+// type ausente = sin capturar: mismo patrón que Edge.kind — un blob persistido antes de
+// esta feature no tiene la clave, y clone()/JSON.stringify ya dropean valores undefined
+// solos, así que "sin tipo" nunca escribe basura al guardar.
+export interface Room { name: string; cx: number; cy: number; type?: RoomType }
 
 export type FixtureKind =
   | 'cama_individual' | 'cama_matrimonial' | 'cama_queen' | 'cama_king'
@@ -76,6 +123,18 @@ export const FIXTURE_CATALOG: Record<FixtureKind, { label: string; w_m: number; 
   refrigerador:     { label: 'Refrigerador',     w_m: 0.90, h_m: 0.80 },
 }
 
+// Una cota MANUAL: el usuario la coloca donde quiere ver una medida, con dos puntos
+// libres (no atada a un muro real) — a diferencia de las cadenas de cota automáticas
+// (dimensions.ts), que se calculan solas y a veces abarrotan la pantalla. La distancia
+// NUNCA se guarda — se deriva de p1/p2 en cada lugar que la necesita, mismo principio que
+// el área de un cuarto (roomAreas), que tampoco se persiste.
+export type ManualDimensionId = string
+export interface ManualDimension {
+  id: ManualDimensionId
+  p1: { x: number; y: number }
+  p2: { x: number; y: number }
+}
+
 export interface FloorGraph {
   // Identidad estable del piso, independiente de su posición (sobrevive a reordenar) y de
   // su nombre (sobrevive a renombrar). Requerido — no opcional — para que ningún consumidor
@@ -93,6 +152,9 @@ export interface FloorGraph {
   // Ausente = []: mismo patrón que Edge.kind — un blob persistido antes de esta feature
   // no tiene esta clave y debe leerse como "sin muebles", nunca como un crash.
   fixtures?: Fixture[]
+  // Ausente = []: mismo patrón que `fixtures` — un blob persistido antes de esta feature
+  // no tiene esta clave y debe leerse como "sin cotas manuales", nunca como un crash.
+  manualDimensions?: ManualDimension[]
 }
 
 // El editor trabaja sobre UNA variante (un plano completo, multi-piso); el envelope
@@ -120,7 +182,7 @@ export function emptyFloorGraph(name: string): FloorGraph {
   return {
     id: genId(),
     name, height_m: 2.60, extWall_m: 0.15, intWall_m: 0.10,
-    vertices: {}, edges: {}, rooms: [], fixtures: [],
+    vertices: {}, edges: {}, rooms: [], fixtures: [], manualDimensions: [],
   }
 }
 
