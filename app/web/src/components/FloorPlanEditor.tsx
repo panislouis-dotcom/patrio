@@ -21,6 +21,7 @@ import {
 import { snapPoint } from '../lib/floorplan/snapping'
 import { calibrationFromLine, modelToPx } from '../lib/floorplan/calibrate'
 import { toGeometryJson } from '../lib/floorplan/export'
+import { floorToSvg } from '../lib/floorplan/exportSvg'
 import { BASE } from '../lib/api'
 import FloorPlanCanvas from './FloorPlanCanvas'
 import FloorPlanPanel from './FloorPlanPanel'
@@ -137,6 +138,22 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
 
   const doSave = async () => { await onSave(model); dispatch({ type: 'MARK_SAVED' }) }
 
+  // Download the active floor as a clean, print-friendly plan (see exportSvg). SVG for
+  // editing in a vector tool; PDF via a print window (the browser's "Guardar como PDF").
+  const downloadSvg = () => {
+    const blob = new Blob([floorToSvg(floor)], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `plano-${floor.name}.svg`; a.click()
+    URL.revokeObjectURL(url)
+  }
+  const downloadPdf = () => {
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.write(`<!doctype html><html><head><title>plano-${floor.name}</title><style>@page{margin:12mm} html,body{margin:0}</style></head><body>${floorToSvg(floor)}<script>window.onload=function(){window.print()}<\/script></body></html>`)
+    w.document.close()
+  }
+
   const refImageKey = floor.reference?.imageKey
   useEffect(() => {
     if (!refImageKey) { setImgNatural(null); return }
@@ -224,11 +241,15 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     // vertical y vuelve a select para ajustarla. Este es el ÚNICO call site que aparea
     // kind 'ghost' con GHOST_THICKNESS_M — el pairing es disciplina del caller de addEdge.
     if (tool === 'wall' || tool === 'ghost') {
+      // Drop a short 1 m wall where the user is looking — the camera centre when zoomed in,
+      // otherwise the plan's centre — instead of one spanning the whole plan. It's placed
+      // vertically and auto-selected, so you can immediately drag it or retype its length.
+      const cam = state.ui.camera
       const xs = Object.values(floor.vertices).map(v => v.x), ys = Object.values(floor.vertices).map(v => v.y)
-      const cx = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 3
-      const y0 = ys.length ? Math.min(...ys) : 0, y1 = ys.length ? Math.max(...ys) : 4
+      const cx = cam ? cam.centerX : (xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 3)
+      const cy = cam ? cam.centerY : (ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 2)
       const m = clone(model); const f = m.floors[m.activeFloor]
-      const v1 = graphAddVertex(f, cx, y0 + 0.5), v2 = graphAddVertex(f, cx, y1 - 0.5)
+      const v1 = graphAddVertex(f, cx, cy - 0.5), v2 = graphAddVertex(f, cx, cy + 0.5)
       const newEdgeId = tool === 'ghost'
         ? graphAddEdge(f, v1, v2, GHOST_THICKNESS_M, 'ghost')
         : graphAddEdge(f, v1, v2, f.intWall_m)
@@ -628,6 +649,8 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
         <button onClick={() => dispatch({ type: 'REDO' })} disabled={state.future.length === 0}
           style={btnDisabled(state.future.length === 0)}>REDO</button>
         <button onClick={() => dispatch({ type: 'TOGGLE_DIMS' })} style={btn(ui.showDims)}>Dims</button>
+        <button onClick={downloadSvg} style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }} title="Descargar el piso actual como SVG (editable)">↓ SVG</button>
+        <button onClick={downloadPdf} style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }} title="Descargar el piso actual como PDF (imprimir / guardar como PDF)">↓ PDF</button>
         <button onClick={doSave} style={btn(state.dirty)}>Save</button>
       </div>
 
@@ -649,6 +672,13 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
           }}>{f.name}</button>
         ))}
         <button onClick={() => dispatch({ type: 'ADD_FLOOR' })} style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }}>+ Floor</button>
+        {model.floors.length > 1 && (
+          <button
+            onClick={() => { if (window.confirm(`¿Eliminar "${floor.name}"? Se borran sus muros. Guarda para que sea permanente.`)) dispatch({ type: 'DEL_FLOOR' }) }}
+            style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>
+            ✕ Eliminar piso
+          </button>
+        )}
       </div>
 
       {floor.reference && (

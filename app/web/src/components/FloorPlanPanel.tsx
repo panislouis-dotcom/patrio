@@ -1,8 +1,9 @@
 // app/web/src/components/FloorPlanPanel.tsx
+import { useState } from 'react'
 import type { Dispatch } from 'react'
 import { colors, fonts } from '../lib/theme'
 import type { Action, Sel, UI } from '../lib/floorplan/reducer'
-import { isGhost, FIXTURE_CATALOG, type FloorGraph, type FloorSet } from '../lib/floorplan/types'
+import { isGhost, FIXTURE_CATALOG, type Edge, type FloorGraph, type FloorSet } from '../lib/floorplan/types'
 import type { RoomArea } from '../lib/floorplan/rooms'
 import { ROOM_TYPE_CATALOG } from '../lib/floorplan/types'
 import { traceFaces } from '../lib/floorplan/rooms'
@@ -36,6 +37,60 @@ function Field({ label, value, onCommit, step = 0.05 }: {
         style={{ width: '80px', fontFamily: 'monospace', fontSize: '12px', background: colors.dark, color: colors.neutral, border: `1px solid ${colors.border}`, borderRadius: '4px', padding: '3px 6px' }}
       />
     </label>
+  )
+}
+
+// Default anchor for editing a wall's length: keep the CONNECTED end fixed and grow the FREE
+// end (the one not joined to any other wall), so lengthening a wall doesn't drag a corner that
+// holds the rest of the plan together. Only one free end → anchor the other. Both ends free or
+// both connected → fall back to v1. The ⇄ button still lets the user override.
+export function anchorForLengthEdit(floor: FloorGraph, edge: Edge): 'v1' | 'v2' {
+  const degree = (vid: string) =>
+    Object.values(floor.edges).reduce((n, e) => n + (e.v1 === vid || e.v2 === vid ? 1 : 0), 0)
+  const d1 = degree(edge.v1), d2 = degree(edge.v2)
+  if (d1 === 1 && d2 > 1) return 'v2'   // v1 is free → v1 grows, v2 stays
+  if (d2 === 1 && d1 > 1) return 'v1'   // v2 is free → v2 grows, v1 stays
+  return 'v1'
+}
+
+function EdgeSection({ edge, floor, dispatch }: { edge: Edge; floor: FloorGraph; dispatch: Dispatch<Action> }) {
+  // Which endpoint stays fixed while the length field grows the wall. Local view state:
+  // resets per selection because the parent keys this component by the edge id.
+  const [anchor, setAnchor] = useState<'v1' | 'v2'>(() => anchorForLengthEdit(floor, edge))
+  const v1 = floor.vertices[edge.v1], v2 = floor.vertices[edge.v2]
+  const length = Math.hypot(v2.x - v1.x, v2.y - v1.y)
+  // Flip which end is fixed AND re-apply the same length from the new anchor, so the wall
+  // visibly shifts to grow from the other side without the user retyping.
+  const flip = () => {
+    const next = anchor === 'v1' ? 'v2' : 'v1'
+    setAnchor(next)
+    dispatch({ type: 'SET_EDGE_LENGTH', edgeId: edge.id, value: length, anchor: next })
+  }
+  // Con vanos, el convertir se deshabilita Y se explica: el reducer también lo rechaza,
+  // pero ese no-op es silencioso — la UI debe comunicar el porqué, no depender de él.
+  const blocked = edge.openings.length > 0
+  const blockedReasonId = 'convertir-division-bloqueado'
+  return (
+    <Section title="Muro seleccionado">
+      <Field label="Largo (m)" value={length} step={0.05}
+        onCommit={value => dispatch({ type: 'SET_EDGE_LENGTH', edgeId: edge.id, value, anchor })} />
+      <button onClick={flip}
+        style={{ width: '100%', marginBottom: '8px', fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral, background: colors.dark, border: `1px solid ${colors.border}`, borderRadius: '4px', padding: '4px 6px', cursor: 'pointer' }}>
+        ⇄ cambiar extremo
+      </button>
+      <Field label="Espesor (m)" value={edge.thickness} step={0.01}
+        onCommit={value => dispatch({ type: 'SET_EDGE_THICKNESS', edgeId: edge.id, value })} />
+      <button disabled={blocked} style={btnDisabled(blocked)}
+        aria-describedby={blocked ? blockedReasonId : undefined}
+        onClick={() => dispatch({ type: 'SET_EDGE_KIND', edgeId: edge.id, kind: 'ghost' })}>
+        CONVERTIR EN DIVISIÓN
+      </button>
+      {blocked && (
+        <div id={blockedReasonId} style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '6px' }}>
+          Quita sus puertas y ventanas antes de convertirlo en división.
+        </div>
+      )}
+    </Section>
   )
 }
 
@@ -76,26 +131,7 @@ function selectedFields(sel: Sel, floor: FloorGraph, dispatch: Dispatch<Action>)
         </Section>
       )
     }
-    // Con vanos, el convertir se deshabilita Y se explica: el reducer también lo rechaza,
-    // pero ese no-op es silencioso — la UI debe comunicar el porqué, no depender de él.
-    const blocked = e.openings.length > 0
-    const blockedReasonId = 'convertir-division-bloqueado'
-    return (
-      <Section title="Muro seleccionado" key={sel.id}>
-        <Field label="Espesor (m)" value={e.thickness} step={0.01}
-          onCommit={value => dispatch({ type: 'SET_EDGE_THICKNESS', edgeId: sel.id, value })} />
-        <button disabled={blocked} style={btnDisabled(blocked)}
-          aria-describedby={blocked ? blockedReasonId : undefined}
-          onClick={() => dispatch({ type: 'SET_EDGE_KIND', edgeId: sel.id, kind: 'ghost' })}>
-          CONVERTIR EN DIVISIÓN
-        </button>
-        {blocked && (
-          <div id={blockedReasonId} style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary, marginTop: '6px' }}>
-            Quita sus puertas y ventanas antes de convertirlo en división.
-          </div>
-        )}
-      </Section>
-    )
+    return <EdgeSection key={sel.id} edge={e} floor={floor} dispatch={dispatch} />
   }
   if (sel.t === 'fixture') {
     const fx = (floor.fixtures ?? []).find(x => x.id === sel.id)

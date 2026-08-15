@@ -97,9 +97,10 @@ export interface RoomLabelFit { fontSizePx: number; rotate: boolean }
 const ROOM_LABEL_DEFAULT_PX = 12
 const ROOM_LABEL_MIN_PX = 7
 // Ancho-por-carácter empírico: el mismo factor que ya usaba el blanco de clic del nombre
-// de cuarto en FloorPlanCanvas.tsx (`nm.length * 7 + 16` a fontSize 12) — no uno inventado
-// aquí. 7/12 ≈ 0.583 px de ancho por px de fontSize por carácter.
-export const ROOM_LABEL_CHAR_WIDTH = 7 / 12
+// de cuarto en FloorPlanCanvas.tsx (`nm.length * 9 + 16` a fontSize 16, el techo actual de
+// ROOM_NAME_FS) — no uno inventado aquí. 9/16 ≈ 0.5625 px de ancho por px de fontSize por
+// carácter.
+export const ROOM_LABEL_CHAR_WIDTH = 9 / 16
 // Margen: el presupuesto de ancho real es el 85% del lado disponible del cuarto, no el
 // 100% — deja aire entre el texto y el muro en vez de tocarlo exactamente.
 const ROOM_LABEL_MARGIN = 0.85
@@ -119,16 +120,24 @@ const ROOM_LABEL_MARGIN = 0.85
  * Caso honesto: un nombre extremadamente largo en un cuarto minúsculo puede seguir sin
  * caber perfectamente incluso al tamaño mínimo (ROOM_LABEL_MIN_PX) — se acepta como límite
  * de mejor esfuerzo, no se trunca ni se envuelve el texto.
+ *
+ * `defaultPx` es el TECHO de tamaño (antes de que este ajuste entre a reducirlo) — el
+ * llamador lo pasa explícito (ROOM_NAME_FS/ROOM_AREA_FS en FloorPlanCanvas.tsx, tamaños
+ * fijos de pantalla que no encogen al hacer zoom) porque nombre y área quieren techos
+ * distintos. Sin argumento cae al default de este módulo, para llamadores que no tienen
+ * uno propio.
  */
-export function fitRoomLabel(vertices: { x: number; y: number }[], name: string, scalePxPerM: number): RoomLabelFit {
-  if (vertices.length === 0 || name.length === 0) return { fontSizePx: ROOM_LABEL_DEFAULT_PX, rotate: false }
+export function fitRoomLabel(
+  vertices: { x: number; y: number }[], name: string, scalePxPerM: number, defaultPx: number = ROOM_LABEL_DEFAULT_PX,
+): RoomLabelFit {
+  if (vertices.length === 0 || name.length === 0) return { fontSizePx: defaultPx, rotate: false }
   const xs = vertices.map(v => v.x), ys = vertices.map(v => v.y)
   const wPx = (Math.max(...xs) - Math.min(...xs)) * scalePxPerM
   const hPx = (Math.max(...ys) - Math.min(...ys)) * scalePxPerM
   const rotate = hPx > wPx
   const availPx = Math.max(wPx, hPx) * ROOM_LABEL_MARGIN
   const naturalWidthAt = (fontPx: number) => name.length * fontPx * ROOM_LABEL_CHAR_WIDTH
-  let fontSizePx = ROOM_LABEL_DEFAULT_PX
+  let fontSizePx = defaultPx
   if (naturalWidthAt(fontSizePx) > availPx) {
     fontSizePx = Math.max(ROOM_LABEL_MIN_PX, availPx / (name.length * ROOM_LABEL_CHAR_WIDTH))
   }

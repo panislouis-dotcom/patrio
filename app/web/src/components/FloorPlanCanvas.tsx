@@ -15,6 +15,18 @@ import { edgeAxis } from '../lib/floorplan/geometry'
 // (PNG de renders, SVG del prospecto, export BIM) EXCLUYEN las fantasmas, no las puntean.
 const GHOST_DASH = '6 4'
 
+// Room name + area labels are drawn at a constant SCREEN size (px), so they never shrink as
+// you zoom the plan in — the whole point of zooming into a space is to read them. Bumped up
+// from 12/11 so they stay legible over a busy plan. fitRoomLabel (dimensions.ts) uses these
+// as a CEILING and shrinks below them only when the room is too small to fit the name/area.
+const ROOM_NAME_FS = 16
+const ROOM_AREA_FS = 14
+// Measurement labels — wall lengths, the width/height dimension chains, and door/window
+// widths — are likewise constant screen-size, bumped from 11/10 so they stay readable when
+// you zoom into a wall to check its dimension.
+const DIM_FS = 14
+const OPENING_FS = 13
+
 // Familia visual mínima por tipo: UN acento sobrio (línea o círculo), nunca un ícono
 // detallado — esto es un plano técnico, no un moodboard. El catálogo (types.ts) es dato de
 // dimensiones; esta tabla es puramente de dibujo y vive aquí, no ahí.
@@ -241,7 +253,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
     else if (e.key === 'Escape') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCancel() }
   }
   const roomInput = (cx: number, cy: number, key: string) => {
-    const w = 156, h = 48
+    const w = 156, h = 52
     return (
       <foreignObject key={key} x={px(cx) - w / 2} y={py(cy) - h + 2} width={w} height={h}>
         <div
@@ -264,7 +276,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
             style={{
               width: '100%', boxSizing: 'border-box', textAlign: 'center',
               background: colors.surfaceAlt, border: `1px solid ${colors.primary}`, borderRadius: '2px',
-              color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', outline: 'none', padding: '2px 4px',
+              color: colors.neutral, fontFamily: fonts.sans, fontSize: '14px', outline: 'none', padding: '2px 4px',
             }}
             onKeyDown={roomEditKeyDown(cx, cy)}
           />
@@ -296,15 +308,15 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
     // polígono. Labels "libres" (espacio abierto, sin polígono que respetar) se quedan con
     // el tamaño fijo de siempre. Se calcula SIEMPRE, no solo cuando se muestra el nombre:
     // el área de abajo también lo necesita (mismo rotate), tanto editando como no.
-    const fit = i < polygons.length ? fitRoomLabel(polygons[i].vertices, nm, scale) : { fontSizePx: 12, rotate: false }
-    const textCx = px(rg.cx), textCy = py(rg.cy) - 3
+    const fit = i < polygons.length ? fitRoomLabel(polygons[i].vertices, nm, scale, ROOM_NAME_FS) : { fontSizePx: ROOM_NAME_FS, rotate: false }
+    const textCx = px(rg.cx), textCy = py(rg.cy) - 5
     if (editing) {
       editingExisting = true
       gel.push(roomInput(rg.cx, rg.cy, `edit${i}`))
     } else {
-      const textLenPx = Math.max(48, nm.length * fit.fontSizePx * ROOM_LABEL_CHAR_WIDTH + 16)
+      const textLenPx = Math.max(72, nm.length * fit.fontSizePx * ROOM_LABEL_CHAR_WIDTH + 16)
       const rectW = fit.rotate ? Math.max(28, fit.fontSizePx + 16) : textLenPx
-      const rectH = fit.rotate ? textLenPx : 20
+      const rectH = fit.rotate ? textLenPx : 24
       gel.push(<rect key={`rhit${i}`} x={px(rg.cx) - rectW / 2} y={py(rg.cy) - rectH / 2} width={rectW} height={rectH}
         fill="transparent" pointerEvents="all" data-el="room" data-cx={rg.cx} data-cy={rg.cy} style={{ cursor: 'text' }} />)
       gel.push(<text key={`rname${i}`} x={textCx} y={textCy} textAnchor="middle"
@@ -317,15 +329,15 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
       const areaText = `${f2(rg.area)} m²`
       // Mismo fit.rotate que el nombre (rotate depende solo de la geometría del polígono,
       // nunca del texto — fitRoomLabel siempre coincide entre nombre y área para el mismo
-      // cuarto), pero con su PROPIO tamaño de fuente ajustado a este texto más corto. Se
-      // apila junto al nombre a lo largo del eje ANGOSTO del cuarto (el que el texto rotado
-      // NO usa para correr) en vez de siempre "hacia abajo": apilar siempre hacia abajo es
-      // justo lo que hacía que el área se saliera del cuarto, igual que el nombre antes de
-      // ajustarse — un cuarto angosto y alto ya obligó a rotar el nombre; el área comparte
-      // el ajuste.
-      const areaFit = i < polygons.length ? fitRoomLabel(polygons[i].vertices, areaText, scale) : { fontSizePx: 11, rotate: false }
-      const areaX = fit.rotate ? textCx + 13 : textCx
-      const areaY = fit.rotate ? textCy : textCy + 13
+      // cuarto), pero con su PROPIO tamaño de fuente ajustado a este texto más corto y su
+      // propio techo (ROOM_AREA_FS). Se apila junto al nombre a lo largo del eje ANGOSTO del
+      // cuarto (el que el texto rotado NO usa para correr) en vez de siempre "hacia abajo":
+      // apilar siempre hacia abajo es justo lo que hacía que el área se saliera del cuarto,
+      // igual que el nombre antes de ajustarse — un cuarto angosto y alto ya obligó a rotar
+      // el nombre; el área comparte el ajuste.
+      const areaFit = i < polygons.length ? fitRoomLabel(polygons[i].vertices, areaText, scale, ROOM_AREA_FS) : { fontSizePx: ROOM_AREA_FS, rotate: false }
+      const areaX = fit.rotate ? textCx + 16 : textCx
+      const areaY = fit.rotate ? textCy : textCy + 18
       gel.push(<text key={`rarea${i}`} x={areaX} y={areaY} textAnchor="middle"
         fontFamily={fonts.serif} fontSize={areaFit.fontSizePx} fill={colors.secondary}
         transform={fit.rotate ? `rotate(-90 ${areaX} ${areaY})` : undefined}>{areaText}</text>)
@@ -348,7 +360,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
     const y0 = heightMarks[0], y1 = heightMarks[heightMarks.length - 1]
     const dim = (mx: number, my: number, txt: string) =>
       gel.push(<text key={`dim${mx}-${my}-${txt}`} x={mx} y={my} textAnchor="middle"
-        fontFamily={fonts.serif} fontSize={11} fill={colors.secondary}>{txt}</text>)
+        fontFamily={fonts.serif} fontSize={DIM_FS} fill={colors.secondary}>{txt}</text>)
 
     gel.push(<line key="dimw" x1={px(x0)} y1={py(y0) + 40} x2={px(x1)} y2={py(y0) + 40} stroke={colors.border} strokeWidth={0.6} />)
     for (let k = 0; k < widthMarks.length - 1; k++) {
@@ -377,7 +389,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
       e.openings.forEach((op, i) => {
         const atM = op.offset * L, cx = p1.x + ux * atM, cy = p1.y + uy * atM
         gel.push(<text key={`opw${e.id}-${i}`} x={px(cx + nx * 0.34)} y={py(cy + ny * 0.34) + 3} textAnchor="middle"
-          fontFamily={fonts.serif} fontSize={10} fill={op.kind === 'door' ? colors.tertiary : colors.accent2}>{f2(op.width)}</text>)
+          fontFamily={fonts.serif} fontSize={OPENING_FS} fill={op.kind === 'door' ? colors.tertiary : colors.accent2}>{f2(op.width)}</text>)
       })
     })
     // corner angles: degree label only (decorative sweep arc deliberately deferred — see note below)

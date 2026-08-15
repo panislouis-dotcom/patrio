@@ -541,11 +541,13 @@ export function ProcesoTemplateEditor() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                 {focusFiles.map(f => (
                   <div key={f.id} style={{ position: 'relative', width: 80, height: 80 }}>
-                    {f.contentType.startsWith('image/') ? (
-                      <img src={`${BASE}/files/${f.filePath}`} alt={f.fileName} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }} />
-                    ) : (
-                      <div style={{ width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.border, borderRadius: 2, fontSize: '10px', color: colors.secondary, fontFamily: fonts.label, padding: 4, textAlign: 'center' }}>{f.fileName}</div>
-                    )}
+                    <a href={`${BASE}/files/${f.filePath}`} target="_blank" rel="noopener noreferrer" title={`Abrir ${f.fileName} en pestaña nueva`} style={{ display: 'block', width: 80, height: 80, cursor: 'pointer' }}>
+                      {f.contentType.startsWith('image/') ? (
+                        <img src={`${BASE}/files/${f.filePath}`} alt={f.fileName} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }} />
+                      ) : (
+                        <div style={{ width: 80, height: 80, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderRadius: 2, fontSize: '9px', color: colors.neutral, fontFamily: fonts.label, padding: 4, textAlign: 'center', overflow: 'hidden' }}><span style={{ fontSize: '15px' }}>📄</span><span style={{ lineHeight: 1.15 }}>{f.fileName}</span></div>
+                      )}
+                    </a>
                     <button
                       onClick={async () => {
                         await deleteNodeFile(f.id)
@@ -558,7 +560,7 @@ export function ProcesoTemplateEditor() {
               </div>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: colors.surfaceAlt, border: `1px solid ${colors.border}`, color: colors.neutral, fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.08em', padding: '8px 14px', cursor: 'pointer' }}>
                 + SUBIR REFERENCIA
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
+                <input type="file" accept="image/*,application/pdf,.pdf,.doc,.docx" style={{ display: 'none' }} onChange={async e => {
                   const file = e.target.files?.[0]
                   if (!file) return
                   await uploadNodeFile(focusNodeId, file)

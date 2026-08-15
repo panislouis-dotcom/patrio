@@ -18,6 +18,7 @@ const propiedadesSubTabs = [
   { path: '/propiedades', label: 'TABLA' },
   { path: '/propiedades/mapa', label: 'MAPA' },
   { path: '/propiedades/sonar', label: 'SONAR' },
+  { path: '/propiedades/scouting', label: 'SCOUTING' },
   { path: '/propiedades/comparables', label: 'COMPARABLES' },
 ]
 
@@ -37,6 +38,7 @@ export function TabBar({ onLogout }: TabBarProps) {
   const [pwError, setPwError] = useState<string | null>(null)
   const [pwSuccess, setPwSuccess] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  const gearRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!showSettings) return
@@ -136,6 +138,7 @@ export function TabBar({ onLogout }: TabBarProps) {
           {/* Gear settings button + dropdown */}
           <div ref={panelRef} style={{ display: 'flex', alignItems: 'stretch', position: 'relative' }}>
             <button
+              ref={gearRef}
               onClick={openSettings}
               title="Configuración"
               style={{
@@ -155,13 +158,18 @@ export function TabBar({ onLogout }: TabBarProps) {
               </svg>
             </button>
 
-            {/* Settings dropdown panel */}
+            {/* Settings dropdown panel.
+                position: FIXED (not absolute) so it escapes the `overflowX:auto` scroll
+                container this bar lives in — an absolute child hung below the bar (top:100%)
+                was clipped by that container and never showed, so the gear looked dead.
+                A fixed element isn't clipped by an overflow ancestor (the <nav> is sticky, not
+                transformed, so it doesn't trap it). Anchored under the gear via its rect; still
+                a DOM child of panelRef, so the outside-click-to-close logic keeps working. */}
             {showSettings && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: '4px',
+              <div data-testid="settings-panel" style={{
+                position: 'fixed',
+                top: (gearRef.current?.getBoundingClientRect().bottom ?? 52) + 4,
+                right: Math.max(8, window.innerWidth - (gearRef.current?.getBoundingClientRect().right ?? window.innerWidth)),
                 background: colors.dark,
                 border: `1px solid ${colors.border}`,
                 padding: '16px',

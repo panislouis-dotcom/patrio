@@ -95,6 +95,7 @@ export type Action =
   | { type: 'SET_EDGE_THICKNESS'; edgeId: EdgeId; value: number }
   | { type: 'SET_EDGE_KIND'; edgeId: EdgeId; kind: EdgeKind }
   | { type: 'ADD_OPENING'; edgeId: EdgeId; opening: Opening }
+  | { type: 'SET_EDGE_LENGTH'; edgeId: EdgeId; value: number; anchor: 'v1' | 'v2' }
   | { type: 'SET_VERTEX_POINT'; id: VertexId; x: number; y: number }
   | { type: 'SPLIT_EDGE_AT_POINT'; edgeId: EdgeId; x: number; y: number }
   | { type: 'ADD_FIXTURE'; kind: FixtureKind; x: number; y: number }
@@ -296,6 +297,24 @@ export function reducer(s: EditorState, a: Action): EditorState {
       // El espesor de una fantasma es nominal (trazo/hit-testing), no un espesor de muro: no se edita.
       if (!e || isGhost(e)) return s
       e.thickness = a.value
+      return modelChange(s, m)
+    }
+    case 'SET_EDGE_LENGTH': {
+      // Retype a wall's exact length: keep one endpoint fixed and slide the other along the
+      // wall's own direction so |v2-v1| = value (angle preserved). The moving endpoint is a
+      // shared vertex, so any walls meeting it at that corner follow — same as dragging the
+      // point by hand, which keeps rooms closed. anchor picks which end stays put.
+      const m = clone(s.model); const f = F(m)
+      const e = f.edges[a.edgeId]; if (!e) return s
+      const fixed = f.vertices[a.anchor === 'v2' ? e.v2 : e.v1]
+      const moving = f.vertices[a.anchor === 'v2' ? e.v1 : e.v2]
+      if (!fixed || !moving) return s
+      const dx = moving.x - fixed.x, dy = moving.y - fixed.y
+      const L = Math.hypot(dx, dy)
+      if (L < 1e-9) return s   // degenerate wall: no direction to grow along
+      const t = Math.max(0.05, a.value) / L
+      moving.x = fixed.x + dx * t
+      moving.y = fixed.y + dy * t
       return modelChange(s, m)
     }
     case 'SET_VERTEX_POINT': {
