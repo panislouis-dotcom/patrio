@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pathlib import Path
 from api.config import ALLOWED_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD_HASH
-from api.routes import properties, sonar, team, processes, profit, investors, users, comparables, documents, proveedores, renders, budget, budget_catalog
+from api.routes import properties, sonar, team, processes, profit, investors, users, comparables, documents, proveedores, renders, budget
 from api.routes.auth import router as auth_router
 from api.db import get_db
 from api.budget_db import BudgetError, BudgetNotFound
@@ -162,7 +162,6 @@ from api import storage as _storage
 
 app.include_router(properties.router)
 app.include_router(budget.router)
-app.include_router(budget_catalog.router)
 app.include_router(sonar.router)
 app.include_router(team.router)
 app.include_router(processes.router)

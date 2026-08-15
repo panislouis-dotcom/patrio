@@ -8,7 +8,6 @@ const topTabs = [
   { path: '/propiedades', label: 'PROPIEDADES' },
   { path: '/inversionistas', label: 'INVERSIONISTAS' },
   { path: '/proveedores', label: 'PROVEEDORES' },
-  { path: '/obra', label: 'OBRA' },
   { path: '/procesos', label: 'PROCESOS' },
   { path: '/equipo', label: 'EQUIPO' },
 ]

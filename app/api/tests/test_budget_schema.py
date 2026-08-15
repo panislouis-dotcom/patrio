@@ -3,7 +3,6 @@
 Lo que fija esta suite son las decisiones que, si se rompen, no se ven rotas:
 
   · ninguna cifra total se guarda — presupuestado y pagado siempre se derivan;
-  · el catálogo es procedencia, no dependencia, y se da de baja lógicamente;
   · `closed_at` es lo único que separa un anticipo de un precio, y la vista de
     historia solo lee cierres de obra real que de verdad se pagaron.
 
@@ -26,8 +25,8 @@ PROPERTY = dict(name="[TEST] Presupuesto", address="Calle Test 1", city="Monterr
 
 @pytest.fixture
 def obra():
-    """Una propiedad con su presupuesto y un renglón, más una plantilla y un
-    capítulo del catálogo — el mínimo con el que se pueden probar las tres capas."""
+    """Una propiedad con su presupuesto y un renglón — el mínimo con el que se
+    pueden probar la capa de dato y la vista de historia de precios."""
     with get_db() as conn:
         pid = conn.execute(
             "INSERT INTO properties (name, address, city, status, url, latitude, longitude)"
@@ -35,24 +34,15 @@ def obra():
             "         %(latitude)s, %(longitude)s) RETURNING id", PROPERTY).fetchone()["id"]
         budget_id = conn.execute(
             "INSERT INTO budgets (property_id) VALUES (%s) RETURNING id", (pid,)).fetchone()["id"]
-        chapter_id = conn.execute(
-            "INSERT INTO budget_chapters (name) VALUES ('[TEST] Acabados') RETURNING id"
-        ).fetchone()["id"]
-        item_id = conn.execute(
-            "INSERT INTO budget_items (chapter_id, name, unit)"
-            " VALUES (%s, '[TEST] Piso cerámico', 'm²') RETURNING id", (chapter_id,)).fetchone()["id"]
         line_id = conn.execute(
-            "INSERT INTO budget_lines (budget_id, item_id, chapter_name, name, unit,"
+            "INSERT INTO budget_lines (budget_id, chapter_name, name, unit,"
             "                          quantity, unit_price)"
-            " VALUES (%s, %s, '[TEST] Acabados', '[TEST] Piso cerámico', 'm²', 40, 1200)"
-            " RETURNING id", (budget_id, item_id)).fetchone()["id"]
-    yield {"property_id": pid, "budget_id": budget_id, "chapter_id": chapter_id,
-           "item_id": item_id, "line_id": line_id}
+            " VALUES (%s, '[TEST] Acabados', '[TEST] Piso cerámico', 'm²', 40, 1200)"
+            " RETURNING id", (budget_id,)).fetchone()["id"]
+    yield {"property_id": pid, "budget_id": budget_id, "line_id": line_id}
     with get_db() as conn:
-        conn.execute("DELETE FROM budgets WHERE property_id = %s OR name LIKE '[TEST]%%'", (pid,))
+        conn.execute("DELETE FROM budgets WHERE property_id = %s", (pid,))
         conn.execute("DELETE FROM properties WHERE id = %s", (pid,))
-        conn.execute("DELETE FROM budget_items WHERE name LIKE '[TEST]%%'")
-        conn.execute("DELETE FROM budget_chapters WHERE name LIKE '[TEST]%%'")
 
 
 def _columns(table: str) -> set[str]:
@@ -71,7 +61,7 @@ def test_no_total_is_stored():
     El conjunto va enumerado entero para que agregar una columna a estas tablas
     sea una decisión, no un descuido."""
     assert _columns("budget_lines") == {
-        "id", "budget_id", "item_id", "chapter_name", "name", "unit",
+        "id", "budget_id", "chapter_name", "name", "unit",
         "quantity", "unit_price", "supplier_id", "committed_amount", "committed_on",
         "actual_quantity", "closed_at", "sort_order", "notes", "created_at", "updated_at",
         # `is_residual` NO es un total: es qué ES el renglón. Marca el que
@@ -79,9 +69,8 @@ def test_no_total_is_stored():
         # dependería de que nadie renombre la cadena «Otros, por detallar».
         "is_residual",
         # `supplier_category_id` tampoco es un total: es el OFICIO, y es lo que
-        # se sabe mucho antes que el proveedor. Se copia del catálogo al
-        # instanciar como el nombre y la unidad, y por eso vive en la fila en vez
-        # de resolverse en vivo contra el capítulo.
+        # se sabe mucho antes que el proveedor. Captura manual, como el nombre y
+        # la unidad — no hay catálogo del que heredarlo.
         "supplier_category_id",
     }
     assert _columns("budget_line_payments") == {
@@ -89,49 +78,30 @@ def test_no_total_is_stored():
     }
 
 
-def test_one_budget_per_property_and_many_templates(obra):
-    """Un presupuesto por obra; plantillas, las que hagan falta. Y una plantilla
-    sin nombre no existe: es lo único que la distingue de las demás."""
+def test_a_budget_belongs_to_exactly_one_job_and_a_job_has_exactly_one(obra):
+    """La invariante entera del módulo, en sus dos mitades, y las dos las sostiene
+    la base desde la 044.
+
+    Que un presupuesto no pueda existir sin obra es lo que retiró a las
+    plantillas: eran filas con `property_id NULL`, y mientras la columna lo
+    permitiera «todo presupuesto es de una obra» sería una convención que
+    cualquier INSERT por fuera del API podía romper en silencio. Que una obra no
+    pueda tener dos es lo que le permite a `_require_budget` leer el suyo sin
+    preguntarse cuál."""
+    with pytest.raises(IntegrityError):
+        with get_db() as conn:
+            conn.execute("INSERT INTO budgets (property_id) VALUES (NULL)")
     with pytest.raises(IntegrityError):
         with get_db() as conn:
             conn.execute("INSERT INTO budgets (property_id) VALUES (%s)", (obra["property_id"],))
-    with pytest.raises(IntegrityError):
-        with get_db() as conn:
-            conn.execute("INSERT INTO budgets (property_id, name) VALUES (NULL, '')")
-    with get_db() as conn:
-        for name in ("[TEST] Obra nueva", "[TEST] Reconversión"):
-            conn.execute("INSERT INTO budgets (name) VALUES (%s)", (name,))
-        assert conn.execute(
-            "SELECT count(*) AS n FROM budgets WHERE property_id IS NULL"
-            " AND name LIKE '[TEST]%%'").fetchone()["n"] == 2
 
 
-def test_catalog_item_is_provenance_not_dependency(obra):
-    """Borrar la partida del catálogo apaga la procedencia y deja el renglón
-    intacto: el presupuesto de una propiedad vendida no se puede mover editando
-    un catálogo años después."""
-    with get_db() as conn:
-        conn.execute("DELETE FROM budget_items WHERE id = %s", (obra["item_id"],))
-        row = conn.execute("SELECT name, unit, quantity, unit_price, item_id"
-                           " FROM budget_lines WHERE id = %s", (obra["line_id"],)).fetchone()
-    assert row["item_id"] is None
-    assert (row["name"], row["unit"]) == ("[TEST] Piso cerámico", "m²")
-    assert row["quantity"] * row["unit_price"] == Decimal("48000.000")
-
-
-def test_a_chapter_with_items_is_deactivated_never_deleted(obra):
-    """Baja lógica: apagar un capítulo libera su nombre para los vivos sin cortar
-    la trazabilidad de lo que ya lo citaba."""
-    with pytest.raises(IntegrityError):
-        with get_db() as conn:
-            conn.execute("DELETE FROM budget_chapters WHERE id = %s", (obra["chapter_id"],))
-    with get_db() as conn:
-        conn.execute("UPDATE budget_chapters SET is_active = FALSE WHERE id = %s",
-                     (obra["chapter_id"],))
-        reborn = conn.execute(
-            "INSERT INTO budget_chapters (name) VALUES ('[TEST] acabados') RETURNING id"
-        ).fetchone()["id"]
-        assert reborn != obra["chapter_id"]
+def test_a_budget_is_not_named_apart_from_its_job(obra):
+    """`name` y `notes` murieron con las plantillas: eran su única razón de ser.
+    Un presupuesto hereda el nombre de su propiedad y no lleva otro que pueda
+    contradecirlo — el enumerado entero, para que devolverle una columna a esta
+    tabla sea una decisión y no un descuido."""
+    assert _columns("budgets") == {"id", "property_id", "created_at", "updated_at"}
 
 
 def test_closing_a_line_demands_the_real_quantity(obra):
@@ -181,9 +151,10 @@ def _observations(line_id: int) -> list[dict]:
 
 
 def test_price_history_reads_only_closed_paid_lines_of_real_work(obra):
-    """Los tres filtros de la vista, cada uno probado por lo que deja fuera: un
-    renglón abierto (podría ser un anticipo), un cierre sin un peso pagado (no
-    observó ningún precio) y una plantilla (es una intención, no historia)."""
+    """Los dos filtros de la vista, cada uno probado por lo que deja fuera: un
+    renglón abierto (podría ser un anticipo) y un cierre sin un peso pagado (no
+    observó ningún precio). El tercero —«solo obra real»— dejó de ser un filtro
+    al morir las plantillas: ya no hay presupuesto que no sea de una obra."""
     line_id = obra["line_id"]
     assert _observations(line_id) == []          # abierto: todavía no es historia
 
@@ -205,17 +176,6 @@ def test_price_history_reads_only_closed_paid_lines_of_real_work(obra):
     assert row["actual_unit_price"] == Decimal("1314.29")
     assert row["budgeted_unit_price"] == Decimal("1200.00")
     assert row["budgeted_amount"] == Decimal("48000.000")
-
-    with get_db() as conn:
-        template_line = conn.execute(
-            "WITH t AS (INSERT INTO budgets (name) VALUES ('[TEST] Plantilla') RETURNING id)"
-            " INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity,"
-            "                           unit_price, actual_quantity, closed_at)"
-            " SELECT id, '[TEST] Acabados', '[TEST] Piso cerámico', 'm²', 10, 999, 10, now()"
-            " FROM t RETURNING id").fetchone()["id"]
-        conn.execute("INSERT INTO budget_line_payments (line_id, amount) VALUES (%s, 9990)",
-                     (template_line,))
-    assert _observations(template_line) == []    # plantilla: nunca es historia
 
 
 def test_deleting_a_budget_takes_its_lines_and_payments(obra):

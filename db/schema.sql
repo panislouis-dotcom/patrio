@@ -194,93 +194,6 @@ ALTER SEQUENCE public.api_keys_id_seq OWNED BY public.api_keys.id;
 
 
 --
--- Name: budget_chapters; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.budget_chapters (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    sort_order integer DEFAULT 0 NOT NULL,
-    is_active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    supplier_category_id bigint,
-    CONSTRAINT budget_chapters_name_check CHECK ((name <> ''::text))
-);
-
-
---
--- Name: COLUMN budget_chapters.supplier_category_id; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN public.budget_chapters.supplier_category_id IS 'El OFICIO que este capítulo requiere: se contrata al albañil, no a «colocación de piso 60×60». Sus partidas lo heredan mientras no declaren el suyo. NULL = todavía no se sabe, que es el estado normal mientras el catálogo se forma.';
-
-
---
--- Name: budget_chapters_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.budget_chapters_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: budget_chapters_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.budget_chapters_id_seq OWNED BY public.budget_chapters.id;
-
-
---
--- Name: budget_items; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.budget_items (
-    id bigint NOT NULL,
-    chapter_id bigint NOT NULL,
-    name text NOT NULL,
-    unit text NOT NULL,
-    sort_order integer DEFAULT 0 NOT NULL,
-    is_active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    supplier_category_id bigint,
-    CONSTRAINT budget_items_name_check CHECK ((name <> ''::text)),
-    CONSTRAINT budget_items_unit_check CHECK ((unit <> ''::text))
-);
-
-
---
--- Name: COLUMN budget_items.supplier_category_id; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN public.budget_items.supplier_category_id IS 'Override del oficio del capítulo, para la excepción real —impermeabilización dentro de azotea—. NULL NO es un dato faltante: es «el de mi capítulo», y por eso no se copia hacia abajo al crear la partida.';
-
-
---
--- Name: budget_items_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.budget_items_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: budget_items_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.budget_items_id_seq OWNED BY public.budget_items.id;
-
-
---
 -- Name: budget_line_payments; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -321,7 +234,6 @@ ALTER SEQUENCE public.budget_line_payments_id_seq OWNED BY public.budget_line_pa
 CREATE TABLE public.budget_lines (
     id bigint NOT NULL,
     budget_id bigint NOT NULL,
-    item_id bigint,
     chapter_name text NOT NULL,
     name text NOT NULL,
     unit text NOT NULL,
@@ -389,12 +301,9 @@ ALTER SEQUENCE public.budget_lines_id_seq OWNED BY public.budget_lines.id;
 
 CREATE TABLE public.budgets (
     id bigint NOT NULL,
-    property_id bigint,
-    name text DEFAULT ''::text NOT NULL,
-    notes text DEFAULT ''::text NOT NULL,
+    property_id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT budgets_template_needs_name CHECK (((property_id IS NOT NULL) OR (name <> ''::text)))
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -405,7 +314,6 @@ CREATE TABLE public.budgets (
 CREATE VIEW public.budget_price_observations AS
  SELECT l.id AS line_id,
     b.property_id,
-    l.item_id,
     l.chapter_name,
     l.name,
     l.unit,
@@ -422,14 +330,14 @@ CREATE VIEW public.budget_price_observations AS
      JOIN LATERAL ( SELECT COALESCE(sum(p.amount), (0)::numeric) AS paid_amount
            FROM public.budget_line_payments p
           WHERE (p.line_id = l.id)) pagos ON (true))
-  WHERE ((l.closed_at IS NOT NULL) AND (b.property_id IS NOT NULL) AND (pagos.paid_amount > (0)::numeric));
+  WHERE ((l.closed_at IS NOT NULL) AND (pagos.paid_amount > (0)::numeric));
 
 
 --
 -- Name: VIEW budget_price_observations; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON VIEW public.budget_price_observations IS 'Historia de precios: un renglón CERRADO de una obra real, con lo que se pagó por unidad y lo que se había presupuestado. Los renglones abiertos, las plantillas y los cierres sin pago quedan fuera — cada uno de los tres envenena la mediana en silencio.';
+COMMENT ON VIEW public.budget_price_observations IS 'Historia de precios: un renglón CERRADO con lo que se pagó por unidad y lo que se había presupuestado. Los renglones abiertos y los cierres sin un peso pagado quedan fuera — cada uno envenena la mediana en silencio, el primero contando anticipos como precios finales y el segundo metiendo ceros.';
 
 
 --
@@ -1859,20 +1767,6 @@ ALTER TABLE ONLY public.api_keys ALTER COLUMN id SET DEFAULT nextval('public.api
 
 
 --
--- Name: budget_chapters id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.budget_chapters ALTER COLUMN id SET DEFAULT nextval('public.budget_chapters_id_seq'::regclass);
-
-
---
--- Name: budget_items id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.budget_items ALTER COLUMN id SET DEFAULT nextval('public.budget_items_id_seq'::regclass);
-
-
---
 -- Name: budget_line_payments id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2124,22 +2018,6 @@ ALTER TABLE ONLY public.api_keys
 
 ALTER TABLE ONLY public.api_keys
     ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
-
-
---
--- Name: budget_chapters budget_chapters_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.budget_chapters
-    ADD CONSTRAINT budget_chapters_pkey PRIMARY KEY (id);
-
-
---
--- Name: budget_items budget_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.budget_items
-    ADD CONSTRAINT budget_items_pkey PRIMARY KEY (id);
 
 
 --
@@ -2517,20 +2395,6 @@ CREATE INDEX api_keys_user_id ON public.api_keys USING btree (user_id);
 
 
 --
--- Name: idx_budget_items_chapter; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_budget_items_chapter ON public.budget_items USING btree (chapter_id, sort_order);
-
-
---
--- Name: idx_budget_items_name_trgm; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_budget_items_name_trgm ON public.budget_items USING gin (name public.gin_trgm_ops);
-
-
---
 -- Name: idx_budget_line_payments_line; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2545,24 +2409,10 @@ CREATE INDEX idx_budget_lines_budget ON public.budget_lines USING btree (budget_
 
 
 --
--- Name: idx_budget_lines_item; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_budget_lines_item ON public.budget_lines USING btree (item_id) WHERE (item_id IS NOT NULL);
-
-
---
 -- Name: idx_budget_lines_name_trgm; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_budget_lines_name_trgm ON public.budget_lines USING gin (name public.gin_trgm_ops);
-
-
---
--- Name: idx_budget_lines_promotable; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_budget_lines_promotable ON public.budget_lines USING btree (lower(btrim(name))) WHERE ((item_id IS NULL) AND (NOT is_residual));
 
 
 --
@@ -2895,20 +2745,6 @@ CREATE INDEX idx_template_nodes_supplier_cat ON public.template_nodes USING btre
 
 
 --
--- Name: uq_budget_chapters_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX uq_budget_chapters_name ON public.budget_chapters USING btree (lower(name)) WHERE is_active;
-
-
---
--- Name: uq_budget_items_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX uq_budget_items_name ON public.budget_items USING btree (chapter_id, lower(name)) WHERE is_active;
-
-
---
 -- Name: uq_budget_lines_residual; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2919,14 +2755,7 @@ CREATE UNIQUE INDEX uq_budget_lines_residual ON public.budget_lines USING btree 
 -- Name: uq_budgets_property; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_budgets_property ON public.budgets USING btree (property_id) WHERE (property_id IS NOT NULL);
-
-
---
--- Name: uq_budgets_template_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX uq_budgets_template_name ON public.budgets USING btree (lower(name)) WHERE (property_id IS NULL);
+CREATE UNIQUE INDEX uq_budgets_property ON public.budgets USING btree (property_id);
 
 
 --
@@ -2941,20 +2770,6 @@ CREATE UNIQUE INDEX uq_comparables_listing_url ON public.comparables USING btree
 --
 
 CREATE UNIQUE INDEX uq_profit_split_property ON public.profit_split_config USING btree (property_id) WHERE (property_id IS NOT NULL);
-
-
---
--- Name: budget_chapters trg_budget_chapters_touch; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER trg_budget_chapters_touch BEFORE UPDATE ON public.budget_chapters FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
-
-
---
--- Name: budget_items trg_budget_items_touch; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER trg_budget_items_touch BEFORE UPDATE ON public.budget_items FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
 
 
 --
@@ -2994,30 +2809,6 @@ ALTER TABLE ONLY public.api_keys
 
 
 --
--- Name: budget_chapters budget_chapters_supplier_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.budget_chapters
-    ADD CONSTRAINT budget_chapters_supplier_category_id_fkey FOREIGN KEY (supplier_category_id) REFERENCES public.proveedor_categories(id) ON DELETE SET NULL;
-
-
---
--- Name: budget_items budget_items_chapter_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.budget_items
-    ADD CONSTRAINT budget_items_chapter_id_fkey FOREIGN KEY (chapter_id) REFERENCES public.budget_chapters(id);
-
-
---
--- Name: budget_items budget_items_supplier_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.budget_items
-    ADD CONSTRAINT budget_items_supplier_category_id_fkey FOREIGN KEY (supplier_category_id) REFERENCES public.proveedor_categories(id) ON DELETE SET NULL;
-
-
---
 -- Name: budget_line_payments budget_line_payments_line_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3031,14 +2822,6 @@ ALTER TABLE ONLY public.budget_line_payments
 
 ALTER TABLE ONLY public.budget_lines
     ADD CONSTRAINT budget_lines_budget_id_fkey FOREIGN KEY (budget_id) REFERENCES public.budgets(id) ON DELETE CASCADE;
-
-
---
--- Name: budget_lines budget_lines_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.budget_lines
-    ADD CONSTRAINT budget_lines_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.budget_items(id) ON DELETE SET NULL;
 
 
 --
@@ -3476,4 +3259,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('039'),
     ('040'),
     ('041'),
-    ('042');
+    ('042'),
+    ('043'),
+    ('044');
