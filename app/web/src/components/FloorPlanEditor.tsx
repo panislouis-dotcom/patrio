@@ -17,6 +17,7 @@ import {
 import { snapPoint } from '../lib/floorplan/snapping'
 import { calibrationFromLine, modelToPx } from '../lib/floorplan/calibrate'
 import { toGeometryJson } from '../lib/floorplan/export'
+import { floorToSvg } from '../lib/floorplan/exportSvg'
 import { BASE } from '../lib/api'
 import FloorPlanCanvas from './FloorPlanCanvas'
 import FloorPlanPanel from './FloorPlanPanel'
@@ -114,6 +115,22 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   }, [])
 
   const doSave = async () => { await onSave(model); dispatch({ type: 'MARK_SAVED' }) }
+
+  // Download the active floor as a clean, print-friendly plan (see exportSvg). SVG for
+  // editing in a vector tool; PDF via a print window (the browser's "Guardar como PDF").
+  const downloadSvg = () => {
+    const blob = new Blob([floorToSvg(floor)], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `plano-${floor.name}.svg`; a.click()
+    URL.revokeObjectURL(url)
+  }
+  const downloadPdf = () => {
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.write(`<!doctype html><html><head><title>plano-${floor.name}</title><style>@page{margin:12mm} html,body{margin:0}</style></head><body>${floorToSvg(floor)}<script>window.onload=function(){window.print()}<\/script></body></html>`)
+    w.document.close()
+  }
 
   const refImageKey = floor.reference?.imageKey
   useEffect(() => {
@@ -483,6 +500,8 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
         <button onClick={() => dispatch({ type: 'REDO' })} disabled={state.future.length === 0}
           style={{ ...btn(false), opacity: state.future.length === 0 ? 0.4 : 1, cursor: state.future.length === 0 ? 'default' : 'pointer' }}>REDO</button>
         <button onClick={() => dispatch({ type: 'TOGGLE_DIMS' })} style={btn(ui.showDims)}>Dims</button>
+        <button onClick={downloadSvg} style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }} title="Descargar el piso actual como SVG (editable)">↓ SVG</button>
+        <button onClick={downloadPdf} style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }} title="Descargar el piso actual como PDF (imprimir / guardar como PDF)">↓ PDF</button>
         <button onClick={doSave} style={btn(state.dirty)}>Save</button>
       </div>
 
