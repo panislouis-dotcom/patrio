@@ -603,7 +603,7 @@ describe('PropertyDetailPage', () => {
     await renderPage(BASE_PROPERTY)
     const barra = screen.getByText('MAPA').parentElement!
     expect(within(barra).getAllByRole('button').map(b => b.textContent))
-      .toEqual(['MAPA', 'FOTOS', 'LEVANTAMIENTO ORIGINAL', 'LEVANTAMIENTO PLANEADO', 'PRESUPUESTO'])
+      .toEqual(['MAPA', 'FOTOS', 'LEVANTAMIENTO ORIGINAL', 'PLANO DE PROYECTO', 'PRESUPUESTO'])
   })
 
   it('FOTOS ofrece GALERÍA y RENDERS, y RENDERS no es la tira de fotos', async () => {
@@ -693,7 +693,7 @@ describe('PropertyDetailPage', () => {
     vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
     await renderPage(BASE_PROPERTY)
 
-    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
     expect(await screen.findByText('PARTIR DEL ORIGINAL')).not.toBeNull()
     expect(screen.getByText('EMPEZAR EN BLANCO')).not.toBeNull()
   })
@@ -715,7 +715,7 @@ describe('PropertyDetailPage', () => {
     vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
     await renderPage(BASE_PROPERTY)
 
-    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
     expect(await screen.findByText('Planta Planeada')).not.toBeNull()
 
     fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
@@ -742,7 +742,7 @@ describe('PropertyDetailPage', () => {
     vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
     await renderPage(BASE_PROPERTY)
 
-    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
     expect(await screen.findByText('Planta Planeada')).not.toBeNull()
 
     // Dibujar un muro ensucia el editor del planeado; GUARDAR ▸ persiste por él.
@@ -787,7 +787,7 @@ describe('PropertyDetailPage', () => {
     vi.mocked(api.generatePropertyRenderFromPlan).mockResolvedValueOnce(renderFromPlan('planned'))
     await renderPage(BASE_PROPERTY)
 
-    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
     expect(await screen.findByText('Planta Planeada')).not.toBeNull()
 
     // A través del árbol real: LevantamientoPanel → su sub-nav → RendersPanel.
