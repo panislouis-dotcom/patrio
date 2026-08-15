@@ -38,10 +38,23 @@ function Field({ label, value, onCommit, step = 0.05 }: {
   )
 }
 
+// Default anchor for editing a wall's length: keep the CONNECTED end fixed and grow the FREE
+// end (the one not joined to any other wall), so lengthening a wall doesn't drag a corner that
+// holds the rest of the plan together. Only one free end → anchor the other. Both ends free or
+// both connected → fall back to v1. The ⇄ button still lets the user override.
+export function anchorForLengthEdit(floor: FloorGraph, edge: Edge): 'v1' | 'v2' {
+  const degree = (vid: string) =>
+    Object.values(floor.edges).reduce((n, e) => n + (e.v1 === vid || e.v2 === vid ? 1 : 0), 0)
+  const d1 = degree(edge.v1), d2 = degree(edge.v2)
+  if (d1 === 1 && d2 > 1) return 'v2'   // v1 is free → v1 grows, v2 stays
+  if (d2 === 1 && d1 > 1) return 'v1'   // v2 is free → v2 grows, v1 stays
+  return 'v1'
+}
+
 function EdgeSection({ edge, floor, dispatch }: { edge: Edge; floor: FloorGraph; dispatch: Dispatch<Action> }) {
   // Which endpoint stays fixed while the length field grows the wall. Local view state:
   // resets per selection because the parent keys this component by the edge id.
-  const [anchor, setAnchor] = useState<'v1' | 'v2'>('v1')
+  const [anchor, setAnchor] = useState<'v1' | 'v2'>(() => anchorForLengthEdit(floor, edge))
   const v1 = floor.vertices[edge.v1], v2 = floor.vertices[edge.v2]
   const length = Math.hypot(v2.x - v1.x, v2.y - v1.y)
   // Flip which end is fixed AND re-apply the same length from the new anchor, so the wall
