@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import type { Property } from '../lib/types'
+import type { Property, PropertyRender } from '../lib/types'
+import { emptyFloorGraph, type FloorPlanModel } from '../lib/floorplan/types'
 import { PropertyDetailPage } from './PropertyDetailPage'
 import * as api from '../lib/api'
 
@@ -9,6 +10,14 @@ vi.mock('react-leaflet', () => ({
   TileLayer: () => null,
   CircleMarker: () => null,
   useMapEvents: () => null,
+}))
+
+// `floorToPngBlob` rasteriza vía <canvas>, que jsdom no implementa (no hay
+// paquete `canvas` en este repo — ver planImage.test.ts). Se mockea para poder
+// montar el árbol REAL de LevantamientoPanel → RendersPanel sin pelear con un
+// canvas que no existe en este entorno.
+vi.mock('../lib/floorplan/planImage', () => ({
+  floorToPngBlob: vi.fn(async () => new Blob(['plano'], { type: 'image/png' })),
 }))
 
 vi.mock('../lib/api', async importOriginal => {
@@ -21,6 +30,7 @@ vi.mock('../lib/api', async importOriginal => {
     clearPropertyFields: vi.fn(),
     transitionProperty: vi.fn(),
     fetchPropertyGeometry: vi.fn(async () => ({})),
+    savePropertyGeometry: vi.fn(),
     fetchPropertyInvestors: vi.fn(async () => []),
     fetchInvestors: vi.fn(async () => []),
     fetchInstances: vi.fn(async () => []),
@@ -31,6 +41,10 @@ vi.mock('../lib/api', async importOriginal => {
     getProveedores: vi.fn(async () => []),
     // Fuera de su ventana el servidor responde 422; la ficha lo absorbe.
     fetchPropertyProfit: vi.fn(async () => { throw new Error('fuera de ventana') }),
+    // El seam de la Tarea 17: generar desde el plano de un levantamiento. Sin
+    // mockearlo aquí, el test de integración de más abajo pegaría de verdad al
+    // backend en vez de probar el wiring `{...req, variant}` de la ficha.
+    generatePropertyRenderFromPlan: vi.fn(),
   }
 })
 
@@ -167,7 +181,15 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('DATOS')).not.toBeNull()
 
     await renderPage(RENTED)
-    expect(screen.getByRole('button', { name: 'GENERAL' })).not.toBeNull()
+    // `renderPage` sincroniza con `findByText('DATOS')`, pero esa sección la
+    // pintan las DOS propiedades — la de BASE_PROPERTY (arriba, nunca
+    // desmontada: este test monta dos árboles a propósito) YA la tenía en el
+    // documento. `findByText` la encuentra de inmediato y NO garantiza que el
+    // árbol de RENTED ya haya terminado de re-renderizar. `getByRole` sin
+    // esperar corría una carrera real contra ese segundo render — intermitente
+    // bajo carga, no un bug de este cambio pero sí uno que se hizo visible con
+    // más peso en el archivo. `findByRole` espera al árbol de verdad.
+    expect(await screen.findByRole('button', { name: 'GENERAL' })).not.toBeNull()
     expect(screen.getByRole('button', { name: 'FINANZAS' })).not.toBeNull()
   })
 
@@ -575,21 +597,241 @@ describe('PropertyDetailPage', () => {
     // MediaTabs pinta la lista que le den y no sabe qué hay dentro, así que
     // quién existe y en qué orden se decide AQUÍ. Sin esta prueba, absorber una
     // pestaña ajena —o perderla en un merge— no pone nada en rojo.
+    // RENDERS ya no es pestaña propia (Tarea 16): sus renders de foto viven
+    // dentro de FOTOS, y los de plano vivirán dentro de cada levantamiento
+    // (Tarea 17).
     await renderPage(BASE_PROPERTY)
     const barra = screen.getByText('MAPA').parentElement!
     expect(within(barra).getAllByRole('button').map(b => b.textContent))
-      .toEqual(['MAPA', 'FOTOS', 'PLANO', 'RENDERS', 'PRESUPUESTO'])
+      .toEqual(['MAPA', 'FOTOS', 'LEVANTAMIENTO ORIGINAL', 'LEVANTAMIENTO PLANEADO', 'PRESUPUESTO'])
   })
 
-  it('RENDERS abre lo suyo, y no la tira de FOTOS', async () => {
+  it('FOTOS ofrece GALERÍA y RENDERS, y RENDERS no es la tira de fotos', async () => {
     // Una foto es evidencia y un render es una propuesta. El día que RENDERS
-    // caiga dentro de FOTOS, una propuesta puede terminar citada como si fuera
-    // el estado real del inmueble, y eso no se ve: se ve una imagen más.
+    // se confunda con la tira de fotos, una propuesta puede terminar citada
+    // como si fuera el estado real del inmueble, y eso no se ve: se ve una
+    // imagen más. Por eso siguen siendo dos vistas separadas, aunque ahora
+    // ambas cuelguen de la misma pestaña FOTOS.
     await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('FOTOS'))
+    expect(screen.getByText('GALERÍA')).not.toBeNull()
+    expect(screen.getByText('RENDERS')).not.toBeNull()
 
     fireEvent.click(screen.getByText('RENDERS'))
     expect(await screen.findByLabelText(/preset/i)).not.toBeNull()
     expect(screen.getByLabelText(/texto del prompt/i)).not.toBeNull()
+  })
+
+  // ── El plano y su envelope v3 ─────────────────────────────────────────────
+
+  it('un blob v2 del editor anterior entra migrado: el ORIGINAL abre con sus plantas y guarda en v3', async () => {
+    // El backend es un blob store sin esquema: lo guardado antes del envelope sigue
+    // siendo UN plano en la raíz. La página lo migra al cargar y lo persiste en v3
+    // en su primer guardado — sin migración SQL de por medio.
+    const v2 = { schemaVersion: 2, slab_m: 0.2, activeFloor: 0, floors: [emptyFloorGraph('Planta Migrada')] }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v2)
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
+    // El editor entra directo con la planta migrada, no a la pantalla de inicio.
+    expect(await screen.findByText('Planta Migrada')).not.toBeNull()
+    expect(screen.queryByText('Start blank')).toBeNull()
+
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
+    const [id, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
+    expect(id).toBe(7)
+    expect(envelope).toEqual({
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.2, activeFloor: 0, floors: v2.floors },
+        planned: null,
+      },
+    })
+  })
+
+  it('el editor edita el original, y guardar preserva el planeado que ya había', async () => {
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
+    // La pestaña trabaja sobre el levantamiento original; el planeado no se asoma aquí.
+    expect(await screen.findByText('Planta Original')).not.toBeNull()
+    expect(screen.queryByText('Planta Planeada')).toBeNull()
+
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
+    const [, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
+    expect(envelope.variants.planned).toEqual(v3.variants.planned)
+  })
+
+  it('sin geometría reconocible, el ORIGINAL abre en la pantalla de inicio', async () => {
+    // El mock por defecto responde {}: una propiedad que nunca dibujó su plano.
+    await renderPage(BASE_PROPERTY)
+    fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
+    expect(await screen.findByText('Start blank')).not.toBeNull()
+  })
+
+  it('el PLANEADO sin datos aterriza en su empty state con las dos maneras de nacer', async () => {
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: null,
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    expect(await screen.findByText('PARTIR DEL ORIGINAL')).not.toBeNull()
+    expect(screen.getByText('EMPEZAR EN BLANCO')).not.toBeNull()
+  })
+
+  it('re-partir remonta el editor con el clon: lo que se ve es lo que quedó guardado', async () => {
+    // El reducer del editor captura su `initial` al montar y lo ignora después.
+    // Sin el remontaje (el key de generación en LevantamientoPanel), confirmar
+    // RE-PARTIR persistiría el clon en el servidor mientras el editor montado
+    // sigue con el planeado viejo — y un dibujo + GUARDAR posterior desde ese
+    // editor viejo escribiría encima del clon recién hecho.
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    expect(await screen.findByText('Planta Planeada')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
+    fireEvent.click(screen.getByText('¿CONFIRMAR RE-PARTIR?'))
+
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
+    // El editor del planeado ahora enseña la planta clonada, no la vieja.
+    expect(await screen.findByText('Planta Original')).not.toBeNull()
+    expect(screen.queryByText('Planta Planeada')).toBeNull()
+  })
+
+  it('el GUARDAR de la página guarda el planeado sin pisar el original', async () => {
+    // Los dos editores comparten el GUARDAR del encabezado vía la misma PlanApi;
+    // sin registrar de QUÉ variante es el editor vivo, este flujo escribiría el
+    // planeado encima del original.
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    expect(await screen.findByText('Planta Planeada')).not.toBeNull()
+
+    // Dibujar un muro ensucia el editor del planeado; GUARDAR ▸ persiste por él.
+    fireEvent.click(screen.getByText('wall'))
+    fireEvent.click(await screen.findByText('GUARDAR ▸'))
+
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
+    const [, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
+    expect(envelope.variants.original).toEqual(v3.variants.original)
+    expect(Object.keys(envelope.variants.planned!.floors[0].edges)).toHaveLength(1)
+    expect(api.updateProperty).not.toHaveBeenCalled()
+  })
+
+  // ── Generar un render desde el plano de un levantamiento (Tarea 17) ──────
+  // `LevantamientoPanel.test.tsx` prueba que el panel llama a `onGenerateRender`
+  // con la variante correcta; `RendersPanel.test.tsx` prueba que RendersPanel
+  // llama a `onGeneratePlan`. Ninguno de los dos ejercita el CUERPO real de
+  // `onGenerateRender` en esta página — el spread `{...req, variant}` hacia
+  // `generatePropertyRenderFromPlan(propertyId, …)`. Un typo ahí (variant mal
+  // amarrada, `req` sin spread, el id equivocado) pasaría los dos tests de
+  // arriba y solo se vería en producción — justo el seam que esta tarea existe
+  // para conectar, y justo el camino que satisface la compuerta de merge de la
+  // Fase 5 (main auto-despliega a qa y prod sin promoción manual).
+  const renderFromPlan = (variant: 'original' | 'planned'): PropertyRender => ({
+    id: 99, propertyId: 7, sourceImageId: null, sourcePlanPath: 'plan/99.png', sourceVariant: variant,
+    floorId: 'floor-1', floorName: 'Planta Original',
+    parentRenderId: null, filePath: 'r/99.png', contentType: 'image/png', promptId: null,
+    promptText: 'Estilo minimalista.', provider: 'openai', model: 'gpt-image-2',
+    createdAt: '2026-08-01T00:00:00Z',
+  })
+
+  it('generar RENDERS desde el PLANEADO llama a generatePropertyRenderFromPlan con variant: "planned" y el piso', async () => {
+    const plannedFloor = emptyFloorGraph('Planta Planeada')
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [plannedFloor] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.generatePropertyRenderFromPlan).mockResolvedValueOnce(renderFromPlan('planned'))
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO PLANEADO'))
+    expect(await screen.findByText('Planta Planeada')).not.toBeNull()
+
+    // A través del árbol real: LevantamientoPanel → su sub-nav → RendersPanel.
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(await screen.findByText(/^el plano$/i))
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+
+    await waitFor(() => expect(api.generatePropertyRenderFromPlan).toHaveBeenCalled())
+    const [id, req] = vi.mocked(api.generatePropertyRenderFromPlan).mock.calls[0]
+    expect(id).toBe(7)
+    expect(req.variant).toBe('planned')
+    expect(req.plan).toBeInstanceOf(Blob)
+    // Un solo piso: el selector de RENDERS ni hace falta tocarlo, el default ya
+    // manda la identidad correcta (Task 30 — fix del flujo roto desde la Tarea 29).
+    expect(req.floorId).toBe(plannedFloor.id)
+    expect(req.floorName).toBe('Planta Planeada')
+  })
+
+  it('generar RENDERS desde el ORIGINAL llama a generatePropertyRenderFromPlan con variant: "original" y el piso', async () => {
+    const originalFloor = emptyFloorGraph('Planta Original')
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [originalFloor] },
+        planned: null,
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.generatePropertyRenderFromPlan).mockResolvedValueOnce(renderFromPlan('original'))
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
+    expect(await screen.findByText('Planta Original')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(await screen.findByText(/^el plano$/i))
+    fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
+
+    await waitFor(() => expect(api.generatePropertyRenderFromPlan).toHaveBeenCalled())
+    const [id, req] = vi.mocked(api.generatePropertyRenderFromPlan).mock.calls[0]
+    expect(id).toBe(7)
+    expect(req.variant).toBe('original')
+    expect(req.floorId).toBe(originalFloor.id)
+    expect(req.floorName).toBe('Planta Original')
   })
 
   // ── El presupuesto de obra ────────────────────────────────────────────────

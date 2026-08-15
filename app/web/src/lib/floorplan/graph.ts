@@ -1,4 +1,4 @@
-import type { FloorGraph, VertexId, EdgeId } from './types'
+import type { FloorGraph, VertexId, EdgeId, EdgeKind } from './types'
 import { genId } from './types'
 import { dist, projectAt, pointAt } from './geometry'
 
@@ -12,9 +12,11 @@ export function addVertex(f: FloorGraph, x: number, y: number): VertexId {
   return id
 }
 
-export function addEdge(f: FloorGraph, v1: VertexId, v2: VertexId, thickness: number): EdgeId {
+export function addEdge(f: FloorGraph, v1: VertexId, v2: VertexId, thickness: number, kind?: EdgeKind): EdgeId {
   const id = genId()
-  f.edges[id] = { id, v1, v2, thickness, openings: [] }
+  // 'kind' solo se escribe cuando es 'ghost': ausente = muro (ver types.ts), así el blob
+  // de un muro queda byte-idéntico al de siempre.
+  f.edges[id] = { id, v1, v2, thickness, openings: [], ...(kind === 'ghost' ? { kind } : {}) }
   return id
 }
 
@@ -51,7 +53,9 @@ export function splitEdgeAtVertex(f: FloorGraph, edgeId: EdgeId, atVertexId: Ver
   const v2 = e.v2
   f.edges[edgeId] = { ...e, v2: atVertexId, openings: firstHalfOpenings }
   const newId = genId()
-  f.edges[newId] = { id: newId, v1: atVertexId, v2, thickness: e.thickness, openings: secondHalfOpenings }
+  // La segunda mitad también hereda por spread TODO lo demás de la arista original (kind,
+  // thickness, campos futuros): partir una fantasma da dos fantasmas, no fantasma + muro.
+  f.edges[newId] = { ...e, id: newId, v1: atVertexId, v2, openings: secondHalfOpenings }
   return newId
 }
 

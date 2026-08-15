@@ -1,5 +1,5 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetSource } from './types'
-import type { FloorPlanModel } from './floorplan/types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, RenderPromptKind, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetCatalogChapter, BudgetCatalogItem, BudgetItemSuggestion, BudgetPromotionGroup, BudgetPromotion, BudgetTemplate, BudgetTemplateDetail, BudgetCatalogChapterRow, BudgetSource } from './types'
+import type { FloorPlanModel, VariantKey } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -179,17 +179,29 @@ export async function deletePropertyImage(id: number, imageId: number): Promise<
 
 // ─── Renders y su biblioteca de prompts ──────────────────────────────────────
 
-export async function listRenderPrompts(): Promise<RenderPrompt[]> {
-  const res = await authFetch(`${BASE}/api/render-prompts`)
+/**
+ * `kind` filtra entre 'photo' y 'plan' (migración 041, Tarea 22) cuando se pasa;
+ * sin él trae la biblioteca completa. La ficha (`PropertyDetailPage`) pide
+ * SIEMPRE la completa una sola vez —son 11 filas, no vale la pena un segundo
+ * viaje— y dos `RendersPanel` (fotos, plano) filtran cada quien la suya por
+ * dentro; este filtro existe para quien SÍ necesite pedir un solo catálogo.
+ */
+export async function listRenderPrompts(kind?: RenderPromptKind): Promise<RenderPrompt[]> {
+  const params = new URLSearchParams()
+  if (kind) params.set('kind', kind)
+  const res = await authFetch(`${BASE}/api/render-prompts${params.size ? `?${params}` : ''}`)
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
-export async function createRenderPrompt(name: string, body: string): Promise<RenderPrompt> {
+/** `kind` por defecto 'photo': mismo default que `renders_db.create_prompt`
+ * (Tarea 22), por compatibilidad hacia atrás con cualquier llamador que no
+ * sepa todavía de la biblioteca de plano. */
+export async function createRenderPrompt(name: string, body: string, kind: RenderPromptKind = 'photo'): Promise<RenderPrompt> {
   const res = await authFetch(`${BASE}/api/render-prompts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, body }),
+    body: JSON.stringify({ name, body, kind }),
   })
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
@@ -221,11 +233,24 @@ export async function generatePropertyRender(
 
 export async function generatePropertyRenderFromPlan(
   id: number,
-  req: { promptText: string; promptId: number | null; plan: Blob },
+  req: {
+    promptText: string; promptId: number | null; plan: Blob; variant: VariantKey
+    floorId: string; floorName: string
+  },
 ): Promise<PropertyRender> {
   const form = new FormData()
   form.append('file', req.plan, 'plano.png')
   form.append('promptText', req.promptText)
+  // Obligatorio desde la Tarea 14 (`routes/renders.py`, `variant: str = Form(...)`): sin
+  // él el servidor contesta 422. De qué levantamiento nació el render, no una preferencia
+  // de estilo — así una edición encima puede heredarlo (renders_db.add_render).
+  form.append('variant', req.variant)
+  // Obligatorios desde la Tarea 29 (`routes/renders.py`, `floorId`/`floorName: str =
+  // Form(...)`): sin ellos el servidor contesta 422. De qué PISO del levantamiento
+  // nació el render — igual patrón dual que `promptId`/`promptText`: identidad +
+  // nombre congelado, y una edición encima los hereda (renders_db.add_render).
+  form.append('floorId', req.floorId)
+  form.append('floorName', req.floorName)
   if (req.promptId != null) form.append('promptId', String(req.promptId))
   const res = await authFetch(`${BASE}/api/properties/${id}/renders/from-plan`, { method: 'POST', body: form })
   if (!res.ok) throw new Error(await detail(res))
@@ -961,7 +986,9 @@ export async function deleteCotizacion(id: number): Promise<void> {
 
 // ── Floor-plan geometry ──
 
-export async function fetchPropertyGeometry(id: number): Promise<FloorPlanModel | Record<string, never>> {
+// El backend es un blob store sin esquema: lo que regresa puede ser v3, v2 viejo o {},
+// así que el caller lo pasa por migrateGeometry en vez de confiar en un tipo aquí.
+export async function fetchPropertyGeometry(id: number): Promise<unknown> {
   const res = await authFetch(`${BASE}/api/properties/${id}/geometry`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()

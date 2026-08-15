@@ -1,5 +1,5 @@
-import type { FloorPlanModel } from './types'
-import { floorElev } from './types'
+import type { FloorSet } from './types'
+import { floorElev, isGhost } from './types'
 import { dist } from './geometry'
 import { roomAreas, exteriorEdgeIds } from './rooms'
 
@@ -22,14 +22,17 @@ export interface GeometryJson {
   }>
 }
 
-export function toGeometryJson(model: FloorPlanModel): GeometryJson {
+export function toGeometryJson(model: FloorSet): GeometryJson {
   return {
     slab_thickness_m: model.slab_m,
     storeys: model.floors.map((f, i) => {
       const ext = exteriorEdgeIds(f)
       const vertices: Record<string, { x: number; y: number }> = {}
       for (const v of Object.values(f.vertices)) vertices[v.id] = { x: r3(v.x), y: r3(v.y) }
-      const walls = Object.values(f.edges).map(e => {
+      // Una fantasma es una anotación del editor (divide cuartos para nombres/áreas), no un
+      // elemento constructivo: se excluye por completo del export BIM en vez de emitirse con
+      // una bandera — un consumidor BIM que no conozca 'ghost' nunca debe verla como muro.
+      const walls = Object.values(f.edges).filter(e => !isGhost(e)).map(e => {
         const p1 = f.vertices[e.v1], p2 = f.vertices[e.v2]
         const length = dist([p1.x, p1.y], [p2.x, p2.y])
         return {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph } from './types'
+import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
 import {
   addVertex, addEdge, moveVertex, translateEdgeBody,
   splitEdgeAtVertex, mergeVertexInto, deleteVertex, deleteEdge,
@@ -104,6 +104,44 @@ describe('mergeVertexInto', () => {
     const e = addEdge(f, a, b, 0.10)
     mergeVertexInto(f, b, a)
     expect(f.edges[e]).toBeUndefined()
+  })
+})
+
+describe('kind fantasma en operaciones de grafo', () => {
+  it('addEdge registra kind ghost; sin kind el muro queda con la propiedad ausente', () => {
+    const f = emptyFloorGraph('Test')
+    const v1 = addVertex(f, 0, 0), v2 = addVertex(f, 4, 0)
+    const wall = addEdge(f, v1, v2, 0.10)
+    const ghost = addEdge(f, v1, v2, GHOST_THICKNESS_M, 'ghost')
+    // el blob persistido de un muro no cambia ni un byte: 'kind' ausente = muro
+    expect('kind' in f.edges[wall]).toBe(false)
+    expect(f.edges[ghost].kind).toBe('ghost')
+  })
+
+  it('partir una fantasma da dos fantasmas, no una fantasma y un muro', () => {
+    // El editor auto-parte aristas en T-junctions: si el kind no se propagara, al
+    // usuario le aparecería un muro a media división.
+    const f = emptyFloorGraph('Test')
+    const v1 = addVertex(f, 0, 0), v2 = addVertex(f, 10, 0)
+    const e = addEdge(f, v1, v2, GHOST_THICKNESS_M, 'ghost')
+    const mid = addVertex(f, 4, 0)
+    const newEdgeId = splitEdgeAtVertex(f, e, mid)
+    expect(f.edges[e].kind).toBe('ghost')
+    expect(f.edges[newEdgeId].kind).toBe('ghost')
+  })
+
+  it('mergeVertexInto conserva el kind de cada arista superviviente', () => {
+    const f = emptyFloorGraph('Test')
+    const keep = addVertex(f, 0, 0)
+    const remove = addVertex(f, 0.001, 0.001) // "mismo lugar" por arrastre
+    const far = addVertex(f, 4, 0)
+    const wall = addEdge(f, keep, far, 0.10)
+    const ghost = addEdge(f, remove, far, GHOST_THICKNESS_M, 'ghost')
+    mergeVertexInto(f, remove, keep)
+    // ambas sobreviven como aristas separadas entre los mismos vértices, cada una con su kind
+    expect(f.edges[wall].kind).toBeUndefined()
+    expect(f.edges[ghost].kind).toBe('ghost')
+    expect(f.edges[ghost].v1).toBe(keep)
   })
 })
 

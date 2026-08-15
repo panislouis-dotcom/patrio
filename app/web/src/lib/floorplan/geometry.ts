@@ -57,3 +57,13 @@ export function pointAt(p0: Pt, p1: Pt, atM: number): Pt {
   const t = L ? atM / L : 0
   return [p0[0] + dx * t, p0[1] + dy * t]
 }
+
+/** Unit axis (ux,uy) along p1->p2 and its left-hand normal (nx,ny), plus length L. Shared
+ * by the editor canvas (to place/orient openings) and the plan-image export (to draw the
+ * same door/window gaps and markers) — relocated here from FloorPlanCanvas.tsx so both
+ * consumers use the exact same math instead of two copies drifting apart. */
+export function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }): { L: number; ux: number; uy: number; nx: number; ny: number } {
+  const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
+  const ux = (p2.x - p1.x) / L, uy = (p2.y - p1.y) / L
+  return { L, ux, uy, nx: -uy, ny: ux }
+}

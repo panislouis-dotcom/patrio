@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph } from './types'
+import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
-import { widthHeightChains, cornerAngles } from './dimensions'
+import { widthHeightChains, cornerAngles, cotaEdges, CORNER_ANGLE_TOL_DEG, fitRoomLabel } from './dimensions'
+
+/** Triángulo A-B-C con el ángulo en A construido para valer EXACTAMENTE `thetaDeg`: B se
+ * coloca sobre +x y C a `thetaDeg` de esa dirección (mismo radio), así que el ángulo entre
+ * A→B y A→C es `thetaDeg` por construcción trigonométrica, no por casualidad geométrica. */
+function angledCorner(f: ReturnType<typeof emptyFloorGraph>, thetaDeg: number) {
+  const theta = thetaDeg * Math.PI / 180
+  const a = addVertex(f, 0, 0)
+  const b = addVertex(f, 5, 0)
+  const c = addVertex(f, 5 * Math.cos(theta), 5 * Math.sin(theta))
+  addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, a, 0.15)
+  return a
+}
 
 function closedRect(f: ReturnType<typeof emptyFloorGraph>, x0: number, y0: number, x1: number, y1: number) {
   const a = addVertex(f, x0, y0), b = addVertex(f, x1, y0), c = addVertex(f, x1, y1), d = addVertex(f, x0, y1)
@@ -29,6 +41,88 @@ describe('widthHeightChains', () => {
     const { widthMarks } = widthHeightChains(f)
     expect(widthMarks).toEqual([0, 3, 6])
   })
+
+  it('does NOT split the width chain when the same full-span divider is a ghost', () => {
+    // Misma geometría que el test anterior, solo que la arista divisoria es 'ghost': una
+    // división de cuarto no es un muro para efectos de cotas — el plano se sigue acotando
+    // como un solo espacio de ancho completo.
+    const f = emptyFloorGraph('Test')
+    const { eTop, eBottom } = closedRect(f, 0, 0, 6, 4)
+    const topMid = addVertex(f, 3, 0), botMid = addVertex(f, 3, 4)
+    splitEdgeAtVertex(f, eTop, topMid)
+    splitEdgeAtVertex(f, eBottom, botMid)
+    addEdge(f, topMid, botMid, GHOST_THICKNESS_M, 'ghost')
+    const { widthMarks } = widthHeightChains(f)
+    expect(widthMarks).toEqual([0, 6])
+  })
+
+  it('splits the width chain when a T-junction breaks the divider into two short segments', () => {
+    // Reproduce el hallazgo real: un levantamiento normal parte los muros interiores en las
+    // T (splitEdgeAtVertex), así que la pared divisoria de 8 m de alto nunca es UNA arista de
+    // 8 m — son dos de 4 m, y ninguna por sí sola llega al 90% de 8 m (7.2 m). El muro sigue
+    // dividiendo el piso completo (0→8 sin huecos), solo que partido por otra pared que lo
+    // cruza a medio camino — la cadena de ancho debe marcar x=5 igual que si fuera una sola
+    // arista continua.
+    const f = emptyFloorGraph('Test')
+    const { eTop, eBottom } = closedRect(f, 0, 0, 10, 8)
+    const topMid = addVertex(f, 5, 0), botMid = addVertex(f, 5, 8)
+    splitEdgeAtVertex(f, eTop, topMid)
+    splitEdgeAtVertex(f, eBottom, botMid)
+    const divider = addEdge(f, topMid, botMid, 0.10)
+    const tJunction = addVertex(f, 5, 4)
+    splitEdgeAtVertex(f, divider, tJunction)
+    // La pared que produce la T: cruza el divisor pero solo cubre la mitad derecha del
+    // ancho total (5→10 de 0→10, 50%) — no debe generar su propia marca en la cadena de
+    // alto, porque no divide el piso completo (preserva la intención original del umbral:
+    // excluir particiones parciales, tipo columna aislada).
+    addEdge(f, tJunction, addVertex(f, 10, 4), 0.10)
+
+    const { widthMarks, heightMarks } = widthHeightChains(f)
+    expect(widthMarks).toEqual([0, 5, 10])
+    expect(heightMarks).toEqual([0, 8])
+  })
+
+  it('does NOT split the chain from an isolated stub that never reaches the far side', () => {
+    // Una columna/nub decorativa de 1 m en medio de un cuarto de 8 m de alto: ni sola ni
+    // "acumulada" (no hay nada más con qué acumular) llega al 90% — debe seguir excluida.
+    const f = emptyFloorGraph('Test')
+    closedRect(f, 0, 0, 10, 8)
+    addEdge(f, addVertex(f, 5, 3), addVertex(f, 5, 4), 0.10)
+    const { widthMarks, heightMarks } = widthHeightChains(f)
+    expect(widthMarks).toEqual([0, 10])
+    expect(heightMarks).toEqual([0, 8])
+  })
+
+  it('does NOT invent a mark from naive summing when disjoint segments individually fall short but sum past the threshold', () => {
+    // Caso adversarial real: dos tramos separados por un hueco real (0.5 m, muy por encima de
+    // SPLIT_EPS), elegidos para que la SUMA ingenua de sus longitudes cruce el 90% aunque
+    // ninguno de los dos, ni el tramo continuo real que forman, lo haga.
+    //   naive sum = (4 + 3.5) / 8 = 93.75%  → cruzaría el umbral si el código sumara segmentos
+    //   tramo continuo real = max(4, 3.5) / 8 = 50%  → no debe cruzarlo
+    // Esta es la única forma de test que distingue "fusionar tramos que se tocan" (el fix)
+    // de "sumar todos los segmentos del grupo sin verificar que se toquen" (el bug original):
+    // un test con sumas que nunca cruzan el umbral (p.ej. 3+3 de 8) pasa igual con ambas
+    // implementaciones y no prueba nada.
+    const f = emptyFloorGraph('Test')
+    closedRect(f, 0, 0, 10, 8)
+    addEdge(f, addVertex(f, 5, 0), addVertex(f, 5, 4), 0.10)     // 4 m, toca el borde inferior
+    addEdge(f, addVertex(f, 5, 4.5), addVertex(f, 5, 8), 0.10)   // 3.5 m, toca el borde superior
+    const { widthMarks } = widthHeightChains(f)
+    expect(widthMarks).toEqual([0, 10])
+  })
+})
+
+describe('cotaEdges', () => {
+  it('excludes ghosts from the edges that get their own per-edge length cota', () => {
+    const f = emptyFloorGraph('Test')
+    const { eTop, eLeft } = closedRect(f, 0, 0, 6, 4)
+    const a = addVertex(f, 1, 1), b = addVertex(f, 5, 1)
+    const ghost = addEdge(f, a, b, GHOST_THICKNESS_M, 'ghost')
+    const ids = cotaEdges(f).map(e => e.id)
+    expect(ids).toContain(eTop)
+    expect(ids).toContain(eLeft)
+    expect(ids).not.toContain(ghost)
+  })
 })
 
 describe('cornerAngles', () => {
@@ -39,5 +133,81 @@ describe('cornerAngles', () => {
     expect(angles).toHaveLength(4)
     angles.forEach(a => expect(a.deg).toBeCloseTo(90, 0))
     angles.forEach(a => expect(a.isRight).toBe(true))
+  })
+
+  // Pin de frontera para `isRight` (Task 33c review, Suggestion #6): sin esto, un cambio en
+  // CORNER_ANGLE_TOL_DEG (ej. de 1° a 3°) no rompe ningún test — se verificó con prueba de
+  // mutación que los 45 tests de dimensions.test.ts + planFacts.test.ts seguían pasando en
+  // ese escenario, porque el resto de los tests solo ejercitan ángulos exactos (90°, 45°,
+  // 180°), nunca la frontera misma. Estos dos casos SÍ distinguen ±1° de ±3°: a 92° del
+  // ángulo recto, isRight debe ser false con la tolerancia real (1°) pero pasaría a true si
+  // alguien la relajara a 3° sin querer.
+  it('is right exactly at the tolerance boundary (90° ± CORNER_ANGLE_TOL_DEG)', () => {
+    const f = emptyFloorGraph('Test')
+    const a = angledCorner(f, 90 + CORNER_ANGLE_TOL_DEG)
+    const angle = cornerAngles(f).find(c => c.vertexId === a)!
+    expect(angle.deg).toBeCloseTo(90 + CORNER_ANGLE_TOL_DEG, 6)
+    expect(angle.isRight).toBe(true)
+  })
+
+  it('is NOT right just past the tolerance boundary — catches a silently relaxed tolerance', () => {
+    const f = emptyFloorGraph('Test')
+    const a = angledCorner(f, 92) // 2° off: within a tolerance of 3° but not of 1°
+    const angle = cornerAngles(f).find(c => c.vertexId === a)!
+    expect(angle.deg).toBeCloseTo(92, 6)
+    expect(angle.isRight).toBe(false)
+  })
+})
+
+describe('fitRoomLabel', () => {
+  const rect = (w: number, h: number) => [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }]
+
+  it('keeps the default size, unrotated, when a short name fits comfortably', () => {
+    // Cuarto de 4x3m a escala 100px/m = 400x300px. "Sala" (4 letras) a 12px natural mide
+    // 4*12*(7/12) = 28px — cabe de sobra en 400*0.85=340px de presupuesto.
+    const fit = fitRoomLabel(rect(4, 3), 'Sala', 100)
+    expect(fit.fontSizePx).toBe(12)
+    expect(fit.rotate).toBe(false)
+  })
+
+  it('shrinks the font when a long name does not fit at the default size, never below the floor', () => {
+    // Cuarto angosto de 1.5x1.5m (150x150px) con un nombre largo: a 12px natural,
+    // 20 letras * 12 * (7/12) = 140px — cerca del presupuesto de 150*0.85=127.5px, así que
+    // SÍ se pasa y debe achicarse.
+    const longName = 'HABITACION PRINCIPAL' // 21 caracteres
+    const fit = fitRoomLabel(rect(1.5, 1.5), longName, 100)
+    expect(fit.fontSizePx).toBeLessThan(12)
+    expect(fit.fontSizePx).toBeGreaterThanOrEqual(7)
+  })
+
+  it('never grows past the default 12px even in a huge room with a short name', () => {
+    const fit = fitRoomLabel(rect(20, 20), 'PH', 100)
+    expect(fit.fontSizePx).toBe(12)
+  })
+
+  it('clamps to the 7px floor for a name that would not fit even shrunk (best-effort, not truncated)', () => {
+    const veryLongName = 'HABITACION PRINCIPAL CON VESTIDOR Y BAÑO COMPLETO' // 50 caracteres
+    const fit = fitRoomLabel(rect(1, 1), veryLongName, 100) // cuarto de 1x1m = 100x100px
+    expect(fit.fontSizePx).toBe(7)
+  })
+
+  it('rotates when the room is taller than it is wide, so the label runs along the longer axis', () => {
+    const fit = fitRoomLabel(rect(1.5, 4), 'Pasillo', 100) // angosto y alto
+    expect(fit.rotate).toBe(true)
+  })
+
+  it('does not rotate when the room is wider than tall', () => {
+    const fit = fitRoomLabel(rect(4, 1.5), 'Pasillo', 100)
+    expect(fit.rotate).toBe(false)
+  })
+
+  it('does not rotate a perfectly square room (hPx > wPx is strictly false when equal)', () => {
+    const fit = fitRoomLabel(rect(3, 3), 'Baño', 100)
+    expect(fit.rotate).toBe(false)
+  })
+
+  it('falls back to the default, unrotated, for an empty polygon or an empty name — nothing to fit', () => {
+    expect(fitRoomLabel([], 'Sala', 100)).toEqual({ fontSizePx: 12, rotate: false })
+    expect(fitRoomLabel(rect(4, 3), '', 100)).toEqual({ fontSizePx: 12, rotate: false })
   })
 })

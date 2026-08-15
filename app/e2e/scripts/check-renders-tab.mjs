@@ -1,6 +1,8 @@
-// Verificación manual de la pestaña RENDERS contra el stack levantado en 5174/8010.
+// Verificación manual de RENDERS contra el stack levantado en 5174/8010.
 // No es parte de la suite: es la prueba de que la pestaña pinta de verdad en un
 // navegador antes de decir que está lista.
+// RENDERS ya no es pestaña de nivel superior (Tarea 16): las propuestas nacidas
+// de una foto viven en la sub-navegación GALERÍA | RENDERS, dentro de FOTOS.
 import { chromium } from '@playwright/test'
 
 const WEB = process.env.WEB ?? 'http://localhost:5174'
@@ -21,6 +23,7 @@ await page.locator('button[type=submit]').first().click()
 await page.waitForURL(u => !/\/login/.test(u.pathname), { timeout: 20000 })
 
 await page.goto(`${WEB}/propiedades/1`)
+await page.getByRole('button', { name: 'FOTOS' }).click()
 await page.getByText('RENDERS', { exact: true }).click()
 
 await page.getByLabel(/preset/i).waitFor({ timeout: 10000 })

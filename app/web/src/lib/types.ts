@@ -33,10 +33,20 @@ export type ImageType = 'antes' | 'despues'
 // Un render NO es un ImageType. Una foto es evidencia de lo que hay; un render
 // es una propuesta de lo que podría haber. Viven en tablas distintas justo para
 // que el prospecto nunca pueda imprimir una propuesta en la casilla de «después».
+
+// La biblioteca de presets se parte en dos catálogos (migración 041): 'photo'
+// para fotos reales (jardín, fachada, alberca...), 'plan' para el render que
+// nace del PLANO (estilo de interior puro, sin describir áreas — ofrecer
+// "Jardín regional" para un plano, o "Minimalista nórdico" para una foto de
+// fachada, no tiene sentido). Un panel de RENDERS solo ofrece el catálogo de
+// su propio `source` (Tarea 23).
+export type RenderPromptKind = 'photo' | 'plan'
+
 export interface RenderPrompt {
   id: number
   name: string
   body: string
+  kind: RenderPromptKind
   /** Los sembrados son el piso de la biblioteca: se duplican, no se borran. */
   isDefault: boolean
   createdAt: string
@@ -51,6 +61,18 @@ export interface PropertyRender {
   sourcePlanPath: string | null
   /** El render del que se editó ENCIMA, si es un paso de una cadena. */
   parentRenderId: number | null
+  /** De qué levantamiento nació un render de plano ('original' | 'planned'); null cuando
+   * nació de una foto (migración 040). Una edición hereda la variante de su padre. */
+  sourceVariant?: 'original' | 'planned' | null
+  /** De qué PISO del levantamiento nació un render de plano — identidad (coincide con
+   * un `FloorGraph.id` mientras ese piso exista), null cuando nació de una foto O
+   * cuando es un render de plano anterior a esta identidad (migración 042: sin
+   * backfill inventado, todo lo previo queda en NULL). Una edición hereda el piso de
+   * su padre, igual que `sourceVariant`. */
+  floorId: string | null
+  /** Snapshot del nombre del piso, congelado al generar — mismo patrón dual que
+   * `promptText`: el piso se pudo renombrar o borrar después. */
+  floorName: string | null
   filePath: string
   contentType: string
   promptId: number | null

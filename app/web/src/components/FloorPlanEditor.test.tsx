@@ -15,12 +15,30 @@ const ACTIVE_BG = hexToRgb(colors.primary)
 describe('empty-state landing screen', () => {
   it('shows the start-blank affordance for an empty initial model, then enters the editor on click', () => {
     const onSave = vi.fn()
-    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={{}} onSave={onSave} />)
+    const { container } = render(<FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={null} onSave={onSave} />)
     expect(container.querySelector('svg')).toBeNull()
     const startBlank = screen.getByText('Start blank')
     expect(startBlank).toBeTruthy()
     fireEvent.click(startBlank)
     expect(container.querySelector('svg')).not.toBeNull()
+  })
+
+  it('treats a non-null initial with zero floors as not-entered instead of crashing on floors[activeFloor]', () => {
+    // El contrato del host es null-o-no; esta precondición vive AQUÍ para que un
+    // FloorSet vacío (posible en un blob v3 legítimo) no reviente el editor.
+    const onSave = vi.fn()
+    const { container } = render(
+      <FloorPlanEditor
+        onUploadImage={async () => ({ imageKey: 'test-key' })}
+        initial={{ slab_m: 0.15, activeFloor: 0, floors: [] }}
+        onSave={onSave}
+      />,
+    )
+    expect(container.querySelector('svg')).toBeNull()
+    fireEvent.click(screen.getByText('Start blank'))
+    // Entrar en blanco arranca con un piso de verdad, no con el arreglo vacío.
+    expect(container.querySelector('svg')).not.toBeNull()
+    expect(screen.getByText('Planta Baja')).toBeTruthy()
   })
 })
 
@@ -28,7 +46,7 @@ describe('tool selection', () => {
   it('clicking a tool button makes it active and deactivates the previous one', () => {
     const onSave = vi.fn()
     const { container } = render(
-      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={{}} onSave={onSave} />,
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={null} onSave={onSave} />,
     )
     fireEvent.click(screen.getByText('Start blank'))
 
@@ -61,7 +79,7 @@ describe('undo/redo buttons', () => {
   it('are disabled when there is no history yet', () => {
     const onSave = vi.fn()
     const { container } = render(
-      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={{}} onSave={onSave} />,
+      <FloorPlanEditor onUploadImage={async () => ({ imageKey: 'test-key' })} initial={null} onSave={onSave} />,
     )
     fireEvent.click(screen.getByText('Start blank'))
     const buttons = Array.from(container.querySelectorAll('button'))

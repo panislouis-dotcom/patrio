@@ -1,6 +1,11 @@
 """Persistencia de la biblioteca de prompts y de los renders generados."""
 from api.db import get_db, _row_to_dict
 
+# De qué levantamiento nació un render de plano. Mismo patrón que
+# `properties_db.IMAGE_TYPES`: tupla explícita que la ruta valida antes de
+# tocar la base de datos.
+SOURCE_VARIANTS = ("original", "planned")
+
 
 class PromptError(RuntimeError):
     """Regla de la biblioteca rota (nombre repetido, borrar un sembrado)."""
@@ -12,14 +17,21 @@ class NotFound(RuntimeError):
 
 # ─── Biblioteca de prompts ────────────────────────────────────────────────────
 
-def list_prompts() -> list[dict]:
+def list_prompts(kind: str | None = None) -> list[dict]:
     """Sembrados primero, luego los propios por nombre: la biblioteca siempre
-    abre con el piso conocido."""
+    abre con el piso conocido.
+
+    `kind` filtra entre 'photo' y 'plan' cuando se pasa; sin filtro devuelve
+    las dos bibliotecas juntas, porque no todo llamador (p.ej. una vista de
+    administración) necesita separarlas."""
+    query = "SELECT * FROM render_prompts WHERE archived_at IS NULL"
+    params: tuple = ()
+    if kind is not None:
+        query += " AND kind = %s"
+        params = (kind,)
+    query += " ORDER BY is_default DESC, name"
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM render_prompts WHERE archived_at IS NULL"
-            " ORDER BY is_default DESC, name"
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
     return [_row_to_dict(r) for r in rows]
 
 
@@ -34,7 +46,10 @@ def get_prompt(prompt_id: int) -> dict:
     return _row_to_dict(row)
 
 
-def create_prompt(name: str, body: str) -> dict:
+def create_prompt(name: str, body: str, kind: str = "photo") -> dict:
+    """`kind` por defecto 'photo' por compatibilidad hacia atrás: un llamador
+    que no sabe todavía de la biblioteca de plano sigue creando lo que siempre
+    creó."""
     name, body = name.strip(), body.strip()
     if not name or not body:
         raise PromptError("El prompt necesita nombre y texto")
@@ -45,9 +60,9 @@ def create_prompt(name: str, body: str) -> dict:
         ).fetchone():
             raise PromptError(f"Ya existe un prompt llamado «{name}»")
         row = conn.execute(
-            "INSERT INTO render_prompts (name, body, is_default)"
-            " VALUES (%s, %s, false) RETURNING *",
-            (name, body),
+            "INSERT INTO render_prompts (name, body, is_default, kind)"
+            " VALUES (%s, %s, false, %s) RETURNING *",
+            (name, body, kind),
         ).fetchone()
     return _row_to_dict(row)
 
@@ -174,15 +189,30 @@ def chain_is_plan(property_id: int, render_id: int) -> bool:
 def add_render(property_id: int, source_image_id: int | None, file_path: str,
                content_type: str, prompt_id: int | None, prompt_text: str,
                provider: str, model: str, source_plan_path: str | None = None,
-               parent_render_id: int | None = None) -> dict:
+               parent_render_id: int | None = None,
+               source_variant: str | None = None,
+               floor_id: str | None = None, floor_name: str | None = None) -> dict:
+    """`source_variant` dice de qué levantamiento nació un render de plano
+    ('original' | 'planned'); NULL para uno nacido de una foto. Al editar, el
+    llamador (el endpoint de edición) lo resuelve del padre y lo pasa aquí
+    explícito — no se recalcula caminando la cadena, porque cada edición ya
+    copia la variante de su padre inmediato y eso basta por inducción.
+
+    `floor_id`/`floor_name` dicen de qué piso del levantamiento nació un render
+    de plano: identidad + nombre congelado, mismo patrón dual que
+    prompt_id/prompt_text. NULL para uno nacido de una foto (un piso no aplica
+    ahí) y para cualquier render anterior a esta identidad — no hay backfill
+    honesto posible. Igual que source_variant, se hereda del padre inmediato al
+    editar, no se recalcula."""
     with get_db() as conn:
         row = conn.execute(
             "INSERT INTO property_renders (property_id, source_image_id, file_path,"
             " content_type, prompt_id, prompt_text, provider, model, source_plan_path,"
-            " parent_render_id)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            " parent_render_id, source_variant, floor_id, floor_name)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
             (property_id, source_image_id, file_path, content_type,
-             prompt_id, prompt_text, provider, model, source_plan_path, parent_render_id),
+             prompt_id, prompt_text, provider, model, source_plan_path, parent_render_id,
+             source_variant, floor_id, floor_name),
         ).fetchone()
     return _row_to_dict(row)
 

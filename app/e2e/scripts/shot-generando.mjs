@@ -13,6 +13,8 @@ await page.locator('input[type=password]').first().fill(process.env.E2E_PASS)
 await page.locator('button[type=submit]').first().click()
 await page.waitForURL(u => !/\/login/.test(u.pathname), { timeout: 20000 })
 await page.goto(`${WEB}/propiedades/1`)
+// RENDERS ya no es pestaña de nivel superior (Tarea 16): vive en FOTOS.
+await page.getByRole('button', { name: 'FOTOS' }).click()
 await page.getByText('RENDERS', { exact: true }).click()
 await page.getByLabel(/preset/i).waitFor({ timeout: 10000 })
 

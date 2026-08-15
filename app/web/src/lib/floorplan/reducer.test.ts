@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph } from './types'
-import { addVertex, addEdge } from './graph'
+import { emptyFloorGraph, GHOST_THICKNESS_M, FIXTURE_CATALOG, clone } from './types'
+import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import {
   reducer, initialState, removeVertexFromFloor, removeEdgeFromFloor, removeOpeningFromFloor,
+  removeFixtureFromFloor, removeManualDimFromFloor,
 } from './reducer'
 
 function modelWithRectangle() {
   const f = emptyFloorGraph('Test')
   const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
   addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
-  return { model: { schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] }, a, b, c, d }
+  return { model: { slab_m: 0.15, activeFloor: 0, floors: [f] }, a, b, c, d }
 }
 
 describe('room naming', () => {
@@ -28,6 +29,29 @@ describe('room naming', () => {
     s = reducer(s, { type: 'RENAME_ROOM', cx: 10.2, cy: 9.9, name: 'Terraza' })
     expect(s.model.floors[0].rooms).toHaveLength(1)
     expect(s.model.floors[0].rooms[0].name).toBe('Terraza')
+  })
+
+  it('RENAME_ROOM con roomType lo guarda en el punto nuevo', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Escaleras', roomType: 'escalera' })
+    expect(s.model.floors[0].rooms[0].type).toBe('escalera')
+  })
+
+  it('RENAME_ROOM con roomType lo guarda al editar un punto existente', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Patio' })
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10.1, cy: 9.9, name: 'Recibidor', roomType: 'vestibulo' })
+    expect(s.model.floors[0].rooms).toHaveLength(1)
+    expect(s.model.floors[0].rooms[0].type).toBe('vestibulo')
+  })
+
+  it('RENAME_ROOM sin roomType deja el campo undefined, nunca null ni string vacío', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'RENAME_ROOM', cx: 10, cy: 10, name: 'Patio' })
+    expect(s.model.floors[0].rooms[0].type).toBeUndefined()
   })
 
   it('DELETE_ROOM removes the nearest named point within range', () => {
@@ -166,6 +190,111 @@ describe('SET_EDGE_THICKNESS', () => {
   })
 })
 
+/** Rectángulo 6x4 con una división fantasma vertical en x=3 (dos cuartos de 3x4). */
+function modelWithGhostDivider() {
+  const f = emptyFloorGraph('Test')
+  const a = addVertex(f, 0, 0), b = addVertex(f, 6, 0), c = addVertex(f, 6, 4), d = addVertex(f, 0, 4)
+  const eBottom = addEdge(f, a, b, 0.15)
+  addEdge(f, b, c, 0.15)
+  const eTop = addEdge(f, c, d, 0.15)
+  addEdge(f, d, a, 0.15)
+  const botMid = addVertex(f, 3, 0)
+  const topMid = addVertex(f, 3, 4)
+  splitEdgeAtVertex(f, eBottom, botMid)
+  splitEdgeAtVertex(f, eTop, topMid)
+  const ghostId = addEdge(f, botMid, topMid, GHOST_THICKNESS_M, 'ghost')
+  return { model: { slab_m: 0.15, activeFloor: 0, floors: [f] }, ghostId }
+}
+
+describe('aristas fantasma en el reducer', () => {
+  it("SET_TOOL acepta la herramienta 'ghost'", () => {
+    const { model } = modelWithGhostDivider()
+    const s = reducer(initialState(model), { type: 'SET_TOOL', tool: 'ghost' })
+    expect(s.ui.tool).toBe('ghost')
+  })
+
+  it('la vía de inserción (addEdge con kind + SET_MODEL) persiste la división', () => {
+    const { model } = modelWithGhostDivider()
+    const s = reducer(initialState(model), { type: 'SET_MODEL', model })
+    const ghosts = Object.values(s.model.floors[0].edges).filter(e => e.kind === 'ghost')
+    expect(ghosts).toHaveLength(1)
+  })
+
+  it('SET_FLOOR_PARAM no toca el espesor de las fantasmas (ni intWall_m ni extWall_m)', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_FLOOR_PARAM', key: 'intWall_m', value: 0.12 })
+    s = reducer(s, { type: 'SET_FLOOR_PARAM', key: 'extWall_m', value: 0.20 })
+    expect(s.model.floors[0].edges[ghostId].thickness).toBeCloseTo(GHOST_THICKNESS_M)
+  })
+
+  it('ADD_OPENING sobre un muro agrega la abertura, la selecciona y empuja historia', () => {
+    const { model } = modelWithGhostDivider()
+    let s = initialState(model)
+    const wallId = Object.values(s.model.floors[0].edges).find(e => e.kind !== 'ghost')!.id
+    s = reducer(s, { type: 'ADD_OPENING', edgeId: wallId, opening: { kind: 'door', offset: 0.5, width: 0.9 } })
+    expect(s.model.floors[0].edges[wallId].openings).toHaveLength(1)
+    expect(s.ui.sel).toEqual({ t: 'opening', edgeId: wallId, index: 0 })
+    expect(s.past).toHaveLength(1)
+  })
+
+  it('ADD_OPENING sobre una fantasma es no-op: una división no es muro para nada más', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'ADD_OPENING', edgeId: ghostId, opening: { kind: 'door', offset: 0.5, width: 0.9 } })).toBe(s)
+  })
+
+  it('SET_EDGE_KIND muro→fantasma fija el espesor nominal de fantasma', () => {
+    const { model } = modelWithGhostDivider()
+    let s = initialState(model)
+    const wallId = Object.values(s.model.floors[0].edges).find(e => e.kind !== 'ghost')!.id
+    s = reducer(s, { type: 'SET_EDGE_KIND', edgeId: wallId, kind: 'ghost' })
+    expect(s.model.floors[0].edges[wallId].kind).toBe('ghost')
+    expect(s.model.floors[0].edges[wallId].thickness).toBeCloseTo(GHOST_THICKNESS_M)
+  })
+
+  it('SET_EDGE_KIND muro→fantasma con aberturas se rechaza (no-op)', () => {
+    const { model } = modelWithGhostDivider()
+    const wallId = Object.values(model.floors[0].edges).find(e => e.kind !== 'ghost')!.id
+    model.floors[0].edges[wallId].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
+    const s = initialState(model)
+    expect(reducer(s, { type: 'SET_EDGE_KIND', edgeId: wallId, kind: 'ghost' })).toBe(s)
+  })
+
+  it('SET_EDGE_KIND fantasma→muro interior restaura el espesor interior', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_EDGE_KIND', edgeId: ghostId, kind: 'wall' })
+    const e = s.model.floors[0].edges[ghostId]
+    expect(e.kind).toBeUndefined()
+    expect(e.thickness).toBeCloseTo(model.floors[0].intWall_m)
+  })
+
+  it('SET_EDGE_KIND fantasma→muro en el contorno restaura el espesor exterior', () => {
+    const f = emptyFloorGraph('Test')
+    const a = addVertex(f, 0, 0), b = addVertex(f, 4, 0), c = addVertex(f, 4, 3), d = addVertex(f, 0, 3)
+    const ghostSide = addEdge(f, a, b, GHOST_THICKNESS_M, 'ghost')
+    addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+    let s = initialState({ slab_m: 0.15, activeFloor: 0, floors: [f] })
+    s = reducer(s, { type: 'SET_EDGE_KIND', edgeId: ghostSide, kind: 'wall' })
+    expect(s.model.floors[0].edges[ghostSide].thickness).toBeCloseTo(f.extWall_m)
+  })
+
+  it('SET_EDGE_THICKNESS sobre una fantasma es no-op: su espesor nominal no se edita', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'SET_EDGE_THICKNESS', edgeId: ghostId, value: 0.25 })).toBe(s)
+  })
+
+  it('SET_EDGE_KIND al kind que ya tiene es no-op (sin entrada de historia basura)', () => {
+    const { model, ghostId } = modelWithGhostDivider()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'SET_EDGE_KIND', edgeId: ghostId, kind: 'ghost' })).toBe(s)
+    const wallId = Object.values(model.floors[0].edges).find(e => e.kind !== 'ghost')!.id
+    expect(reducer(s, { type: 'SET_EDGE_KIND', edgeId: wallId, kind: 'wall' })).toBe(s)
+  })
+})
+
 describe('SET_EDGE_LENGTH', () => {
   const edgeAB = (s: ReturnType<typeof initialState>, a: string, b: string) =>
     Object.values(s.model.floors[0].edges).find(e => e.v1 === a && e.v2 === b)!.id
@@ -202,7 +331,7 @@ describe('SET_EDGE_LENGTH', () => {
     const f = emptyFloorGraph('Diag')
     const p = addVertex(f, 0, 0), q = addVertex(f, 3, 4)   // length 5, slope 4/3
     addEdge(f, p, q, 0.15)
-    let s = initialState({ schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] })
+    let s = initialState({ slab_m: 0.15, activeFloor: 0, floors: [f] })
     const edgeId = Object.values(s.model.floors[0].edges)[0].id
     s = reducer(s, { type: 'SET_EDGE_LENGTH', edgeId, value: 10, anchor: 'v1' })
     const vq = s.model.floors[0].vertices[q]
@@ -213,7 +342,7 @@ describe('SET_EDGE_LENGTH', () => {
     const f = emptyFloorGraph('Zero')
     const p = addVertex(f, 1, 1), q = addVertex(f, 1, 1)
     addEdge(f, p, q, 0.15)
-    let s = initialState({ schemaVersion: 2 as const, slab_m: 0.15, activeFloor: 0, floors: [f] })
+    let s = initialState({ slab_m: 0.15, activeFloor: 0, floors: [f] })
     const edgeId = Object.values(s.model.floors[0].edges)[0].id
     const before = s.model
     s = reducer(s, { type: 'SET_EDGE_LENGTH', edgeId, value: 3, anchor: 'v1' })
@@ -257,6 +386,247 @@ describe('removeVertexFromFloor / removeEdgeFromFloor / removeOpeningFromFloor',
     f.edges[e].openings.push({ kind: 'door', offset: 0.5, width: 0.9 })
     removeOpeningFromFloor(f, e, 0)
     expect(f.edges[e].openings).toHaveLength(0)
+  })
+  it('removeFixtureFromFloor drops the fixture with the given id', () => {
+    const f = emptyFloorGraph('T')
+    f.fixtures = [{ id: 'fx1', kind: 'silla', x: 0, y: 0, rot: 0, w_m: 0.45, h_m: 0.45 }]
+    removeFixtureFromFloor(f, 'fx1')
+    expect(f.fixtures).toHaveLength(0)
+  })
+  it('removeFixtureFromFloor no truena en un floor sin la clave fixtures', () => {
+    const f = emptyFloorGraph('T')
+    delete f.fixtures
+    expect(() => removeFixtureFromFloor(f, 'nope')).not.toThrow()
+    expect(f.fixtures).toEqual([])
+  })
+})
+
+describe('fixtures en el reducer', () => {
+  it('ADD_FIXTURE coloca un mueble con las dimensiones default del catálogo, lo selecciona y empuja historia', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'cama_matrimonial', x: 1, y: 1.5 })
+    const fixtures = s.model.floors[0].fixtures ?? []
+    expect(fixtures).toHaveLength(1)
+    const fx = fixtures[0]
+    expect(fx.kind).toBe('cama_matrimonial')
+    expect(fx.x).toBe(1)
+    expect(fx.y).toBe(1.5)
+    expect(fx.rot).toBe(0)
+    expect(fx.w_m).toBeCloseTo(FIXTURE_CATALOG.cama_matrimonial.w_m)
+    expect(fx.h_m).toBeCloseTo(FIXTURE_CATALOG.cama_matrimonial.h_m)
+    expect(s.ui.sel).toEqual({ t: 'fixture', id: fx.id })
+    expect(s.past).toHaveLength(1)
+  })
+
+  it('MOVE_FIXTURE actualiza x/y del mueble', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'silla', x: 0, y: 0 })
+    const id = (s.ui.sel as { t: 'fixture'; id: string }).id
+    s = reducer(s, { type: 'MOVE_FIXTURE', id, x: 2.5, y: 1.5 })
+    const fx = s.model.floors[0].fixtures!.find(x => x.id === id)!
+    expect(fx.x).toBe(2.5)
+    expect(fx.y).toBe(1.5)
+  })
+
+  it('MOVE_FIXTURE sobre un id inexistente es no-op', () => {
+    const { model } = modelWithRectangle()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'MOVE_FIXTURE', id: 'no-existe', x: 1, y: 1 })).toBe(s)
+  })
+
+  it('SET_FIXTURE_PARAM actualiza w_m/h_m/rot de forma independiente (updates parciales)', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'mesa', x: 0, y: 0 })
+    const id = (s.ui.sel as { t: 'fixture'; id: string }).id
+
+    s = reducer(s, { type: 'SET_FIXTURE_PARAM', id, patch: { rot: 90 } })
+    let fx = s.model.floors[0].fixtures!.find(x => x.id === id)!
+    expect(fx.rot).toBe(90)
+    expect(fx.w_m).toBeCloseTo(FIXTURE_CATALOG.mesa.w_m) // sin tocar por el update parcial
+
+    s = reducer(s, { type: 'SET_FIXTURE_PARAM', id, patch: { w_m: 2.0, h_m: 1.1 } })
+    fx = s.model.floors[0].fixtures!.find(x => x.id === id)!
+    expect(fx.w_m).toBeCloseTo(2.0)
+    expect(fx.h_m).toBeCloseTo(1.1)
+    expect(fx.rot).toBe(90) // preservado del update anterior, no pisado
+  })
+
+  it('SET_FIXTURE_PARAM sobre un id inexistente es no-op', () => {
+    const { model } = modelWithRectangle()
+    const s = initialState(model)
+    expect(reducer(s, { type: 'SET_FIXTURE_PARAM', id: 'no-existe', patch: { rot: 45 } })).toBe(s)
+  })
+
+  it('DELETE_SEL borra un mueble seleccionado y limpia la selección', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'sillon', x: 0, y: 0 })
+    s = reducer(s, { type: 'DELETE_SEL' })
+    expect(s.model.floors[0].fixtures).toHaveLength(0)
+    expect(s.ui.sel).toBeNull()
+  })
+
+  it('un gesto completo de arrastre (DRAG_MODEL × N + MOVE_FIXTURE) deshace como un solo paso de historia', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'lavabo', x: 0, y: 0 })
+    const id = (s.ui.sel as { t: 'fixture'; id: string }).id
+    expect(s.past).toHaveLength(1) // past[0] = el modelo antes de agregar el mueble
+
+    const withFixtureAt = (x: number, y: number) => {
+      const m = clone(s.model)
+      m.floors[0].fixtures = m.floors[0].fixtures!.map(fx => fx.id === id ? { ...fx, x, y } : fx)
+      return m
+    }
+    s = reducer(s, { type: 'DRAG_MODEL', model: withFixtureAt(1, 1) })
+    s = reducer(s, { type: 'DRAG_MODEL', model: withFixtureAt(2, 2) })
+    s = reducer(s, { type: 'MOVE_FIXTURE', id, x: 3, y: 3 })
+
+    expect(s.model.floors[0].fixtures!.find(fx => fx.id === id)!.x).toBe(3)
+    expect(s.past).toHaveLength(2) // una sola entrada nueva por todo el gesto, no una por frame de drag
+
+    s = reducer(s, { type: 'UNDO' })
+    const fx = s.model.floors[0].fixtures!.find(f => f.id === id)!
+    expect(fx.x).toBe(0) // vuelve a la posición pre-gesto, no a un frame intermedio del drag
+    expect(fx.y).toBe(0)
+  })
+
+  it('un floor cargado sin la clave fixtures (blob previo a esta feature) no truena', () => {
+    const { model } = modelWithRectangle()
+    delete model.floors[0].fixtures
+    let s = initialState(model)
+    expect(reducer(s, { type: 'MOVE_FIXTURE', id: 'x', x: 1, y: 1 })).toBe(s)
+    expect(reducer(s, { type: 'SET_FIXTURE_PARAM', id: 'x', patch: { rot: 10 } })).toBe(s)
+
+    s = reducer(s, { type: 'ADD_FIXTURE', kind: 'estufa', x: 0, y: 0 })
+    expect(s.model.floors[0].fixtures).toHaveLength(1)
+
+    s = reducer(s, { type: 'SET_SEL', sel: { t: 'fixture', id: s.model.floors[0].fixtures![0].id } })
+    s = reducer(s, { type: 'DELETE_SEL' })
+    expect(s.model.floors[0].fixtures).toHaveLength(0)
+  })
+})
+
+describe('showDims default', () => {
+  it('starts OFF — las cotas automáticas ya no abarrotan la pantalla por default', () => {
+    const { model } = modelWithRectangle()
+    expect(initialState(model).ui.showDims).toBe(false)
+  })
+})
+
+describe('cotas manuales en el reducer', () => {
+  it('ADD_MANUAL_DIM agrega una cota con id nuevo, la selecciona y empuja historia', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 2, y: 0 } })
+    const dims = s.model.floors[0].manualDimensions ?? []
+    expect(dims).toHaveLength(1)
+    expect(dims[0].p1).toEqual({ x: 0, y: 0 })
+    expect(dims[0].p2).toEqual({ x: 2, y: 0 })
+    expect(dims[0].id).toBeTruthy()
+    expect(s.ui.sel).toEqual({ t: 'manualDim', id: dims[0].id })
+    expect(s.past).toHaveLength(1)
+  })
+
+  it('ADD_MANUAL_DIM rechaza una distancia menor a 0.05m (clic sin arrastre real)', () => {
+    const { model } = modelWithRectangle()
+    const s = initialState(model)
+    const s2 = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 1, y: 1 }, p2: { x: 1.01, y: 1 } })
+    expect(s2).toBe(s)
+    expect(s2.model.floors[0].manualDimensions ?? []).toHaveLength(0)
+  })
+
+  it('SET_MANUAL_DIM_POINT mueve un solo extremo (resize: el largo cambia) y empuja historia', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 2, y: 0 } })
+    const id = (s.ui.sel as { t: 'manualDim'; id: string }).id
+    const pastBefore = s.past.length
+
+    s = reducer(s, { type: 'SET_MANUAL_DIM_POINT', id, which: 'p2', x: 5, y: 0 })
+
+    const dim = s.model.floors[0].manualDimensions!.find(d => d.id === id)!
+    expect(dim.p1).toEqual({ x: 0, y: 0 }) // el otro extremo no se toca
+    expect(dim.p2).toEqual({ x: 5, y: 0 })
+    expect(s.past).toHaveLength(pastBefore + 1)
+  })
+
+  it('SET_MANUAL_DIM_POINT con un id que ya no existe es no-op', () => {
+    const { model } = modelWithRectangle()
+    const s = initialState(model)
+    const s2 = reducer(s, { type: 'SET_MANUAL_DIM_POINT', id: 'no-existe', which: 'p1', x: 9, y: 9 })
+    expect(s2).toBe(s)
+  })
+
+  it('DELETE_SEL borra una cota manual seleccionada y limpia la selección', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 2, y: 0 } })
+    s = reducer(s, { type: 'DELETE_SEL' })
+    expect(s.model.floors[0].manualDimensions).toHaveLength(0)
+    expect(s.ui.sel).toBeNull()
+  })
+
+  it('DELETE_SEL con sel.t="manualDim" pero un id que ya no existe es no-op', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_SEL', sel: { t: 'manualDim', id: 'no-existe' } })
+    const before = s
+    expect(reducer(s, { type: 'DELETE_SEL' })).toBe(before)
+  })
+
+  it('un gesto completo de arrastre (DRAG_MODEL × N + SET_MODEL) traslada ambos puntos y deshace como un solo paso', () => {
+    const { model } = modelWithRectangle()
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 2, y: 0 } })
+    const id = (s.ui.sel as { t: 'manualDim'; id: string }).id
+    expect(s.past).toHaveLength(1) // past[0] = el modelo antes de agregar la cota
+
+    const withDimAt = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+      const m = clone(s.model)
+      m.floors[0].manualDimensions = m.floors[0].manualDimensions!.map(d => d.id === id ? { ...d, p1, p2 } : d)
+      return m
+    }
+    s = reducer(s, { type: 'DRAG_MODEL', model: withDimAt({ x: 1, y: 1 }, { x: 3, y: 1 }) })
+    s = reducer(s, { type: 'SET_MODEL', model: withDimAt({ x: 2, y: 2 }, { x: 4, y: 2 }) })
+
+    const dim = s.model.floors[0].manualDimensions!.find(d => d.id === id)!
+    expect(dim.p1).toEqual({ x: 2, y: 2 })
+    expect(dim.p2).toEqual({ x: 4, y: 2 })
+    expect(s.past).toHaveLength(2) // una sola entrada nueva por todo el gesto
+
+    s = reducer(s, { type: 'UNDO' })
+    const dimBack = s.model.floors[0].manualDimensions!.find(d => d.id === id)!
+    expect(dimBack.p1).toEqual({ x: 0, y: 0 }) // vuelve a la posición pre-gesto, no a un frame intermedio
+    expect(dimBack.p2).toEqual({ x: 2, y: 0 })
+  })
+
+  it('un floor cargado sin la clave manualDimensions (blob previo a esta feature) no truena', () => {
+    const { model } = modelWithRectangle()
+    delete model.floors[0].manualDimensions
+    let s = initialState(model)
+    s = reducer(s, { type: 'SET_SEL', sel: { t: 'manualDim', id: 'no-existe' } })
+    expect(reducer(s, { type: 'DELETE_SEL' })).toBe(s)
+
+    s = reducer(s, { type: 'ADD_MANUAL_DIM', p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 } })
+    expect(s.model.floors[0].manualDimensions).toHaveLength(1)
+  })
+
+  it('removeManualDimFromFloor quita la cota con el id dado', () => {
+    const f = emptyFloorGraph('T')
+    f.manualDimensions = [{ id: 'd1', p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 } }]
+    removeManualDimFromFloor(f, 'd1')
+    expect(f.manualDimensions).toHaveLength(0)
+  })
+
+  it('removeManualDimFromFloor no truena en un floor sin la clave manualDimensions', () => {
+    const f = emptyFloorGraph('T')
+    delete f.manualDimensions
+    expect(() => removeManualDimFromFloor(f, 'nope')).not.toThrow()
+    expect(f.manualDimensions).toEqual([])
   })
 })
 
@@ -328,5 +698,22 @@ describe('camera actions (view-only, never touch history)', () => {
     expect(s.ui.camera).toEqual({ scale: 100, centerX: 2, centerY: 1 })
     s = reducer(s, { type: 'SWITCH_FLOOR', index: 0 })
     expect(s.ui.camera).toEqual({ scale: 100, centerX: 2, centerY: 1 })
+  })
+})
+
+describe('ADD_FLOOR', () => {
+  it('el piso nuevo tiene un id distinto al del piso clonado, nunca lo hereda', () => {
+    // Riesgo: ADD_FLOOR clona el piso activo completo (clone(F(m))), y clonar copia TODOS
+    // los campos incluyendo `id` a menos que se sobreescriba explícitamente. Si el clon se
+    // quedara con el id heredado, dos pisos del mismo FloorSet compartirían identidad — y
+    // la atribución de renders por piso (task futura) no podría distinguirlos.
+    const { model } = modelWithRectangle()
+    const sourceId = model.floors[0].id
+    let s = initialState(model)
+    s = reducer(s, { type: 'ADD_FLOOR' })
+    expect(s.model.floors).toHaveLength(2)
+    const newFloor = s.model.floors[s.model.activeFloor]
+    expect(newFloor.id).toBeTruthy()
+    expect(newFloor.id).not.toBe(sourceId)
   })
 })

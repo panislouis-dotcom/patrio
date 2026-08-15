@@ -12,7 +12,7 @@ import type {
   AssumptionField,
   Property, RawPropertyFields, ClearableField, Transition, ImageType,
   PropertyInvestor, Investor, ProfitWaterfall, ProcessInstance, TeamMember,
-  RenderPrompt, PropertyRender,
+  RenderPrompt, RenderPromptKind, PropertyRender,
 } from '../lib/types'
 import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
 import {
@@ -31,17 +31,15 @@ import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { LatLonPicker } from './LatLonPicker'
 import { NumericInput } from './NumericInput'
 import { StatRow } from './StatRow'
-import { PhotoGallery } from './PhotoGallery'
 import { PropertyProfitSection } from './PropertyProfitSection'
-import FloorPlanEditor, { type PlanApi } from './FloorPlanEditor'
-import type { FloorPlanModel } from '../lib/floorplan/types'
-import { roomLabels } from '../lib/floorplan/rooms'
-import { floorToPngBlob } from '../lib/floorplan/planImage'
+import { type PlanApi } from './FloorPlanEditor'
+import { LevantamientoPanel } from './LevantamientoPanel'
+import { migrateGeometry, withVariant, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
 import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
-import { RendersPanel } from './detail/RendersPanel'
+import { FotosPanel } from './detail/FotosPanel'
 import { BudgetPanel } from './detail/BudgetPanel'
 import { SectionDivider } from './detail/SectionDivider'
 import { ErrorBanner } from './detail/ErrorBanner'
@@ -180,13 +178,17 @@ export function PropertyDetailPage() {
   /** Debajo de 900px las dos columnas se apilan. Es el único breakpoint del repo. */
   const narrow = useNarrowViewport()
 
-  const [geometry, setGeometry] = useState<FloorPlanModel | Record<string, never> | null>(null)
-  const planApiRef = useRef<PlanApi | null>(null)
+  // El envelope v3 ya migrado, o null si la propiedad no tiene geometría reconocible
+  // (nunca dibujó, o el blob es del editor viejo). Null no significa «cargando»: mientras
+  // la ficha carga, la página entera hace early-return antes de pintar las pestañas.
+  const [geometry, setGeometry] = useState<FloorPlanModel | null>(null)
+  // El editor vivo Y de qué variante es, en UN solo ref: los dos levantamientos
+  // comparten el GUARDAR del encabezado, y con el par amarrado estructuralmente
+  // no existe el estado donde el api de un editor se guarda con la etiqueta del
+  // otro. No se limpia al desmontar a propósito: conserva el rescate de guardar
+  // lo dibujado aunque el usuario ya haya cambiado de pestaña.
+  const planEditorRef = useRef<{ variant: VariantKey; api: PlanApi } | null>(null)
   const [planDirty, setPlanDirty] = useState(false)
-  // La planta activa del plano guardado, si la hay: fuente alterna para los renders.
-  const planFloor = geometry && 'floors' in geometry && geometry.floors.length
-    ? geometry.floors[geometry.activeFloor] ?? geometry.floors[0]
-    : null
 
   const [investors, setInvestors] = useState<PropertyInvestor[]>([])
   const [allInvestors, setAllInvestors] = useState<Investor[]>([])
@@ -204,7 +206,7 @@ export function PropertyDetailPage() {
     Promise.all([fetchProperty(propertyId), fetchPropertyGeometry(propertyId)])
       .then(([p, geo]) => {
         setProperty(p)
-        setGeometry(geo)
+        setGeometry(migrateGeometry(geo))
         setTimeout(() => setMounted(true), 40)
         setTimeout(() => setBarsReady(true), 420)
       })
@@ -214,6 +216,12 @@ export function PropertyDetailPage() {
 
   // La biblioteca y los renders van aparte de la ficha: si el proveedor de
   // imágenes está caído o la biblioteca falla, la propiedad se sigue leyendo.
+  //
+  // Un solo fetch, SIN filtrar por `kind` (Tarea 23): son 11 filas en total —
+  // pedir 'photo' aparte de 'plan' sería un segundo viaje de red para ahorrar
+  // filtrar un arreglo de una docena de elementos. Cada `RendersPanel` recorta
+  // la lista a SU `kind` por dentro (foto↔`source:'photos'`, plano↔`source:'plan'`),
+  // igual que ya recorta `renders` por `sourceVariant`.
   useEffect(() => {
     listRenderPrompts().then(setRenderPrompts).catch(() => {})
     listPropertyRenders(propertyId).then(setRenders).catch(() => {})
@@ -237,10 +245,58 @@ export function PropertyDetailPage() {
     }
   }, [propertyId, status])
 
-  const onPlanReady = useCallback((api: PlanApi) => { planApiRef.current = api }, [])
+  const onPlanReady = useCallback((variant: VariantKey, api: PlanApi) => {
+    planEditorRef.current = { variant, api }
+  }, [])
+
+  /**
+   * Guardar UNA variante compone el envelope v3 completo con `withVariant`, que
+   * preserva la otra tal cual: un guardado del planeado jamás pisa el original y
+   * viceversa. Un blob v2 viejo queda persistido en v3 en su primer guardado.
+   */
+  async function saveFloorSet(variant: VariantKey, fs: FloorSet): Promise<void> {
+    setGeometry(await savePropertyGeometry(propertyId, withVariant(geometry, variant, fs)))
+  }
+
+  // ─── Renders: edición, biblioteca y borrado son iguales sin importar la fuente
+  // (una foto en FOTOS, el plano de cada levantamiento) — una sola definición para
+  // las tres monturas de RendersPanel (FotosPanel y los dos LevantamientoPanel), en
+  // vez de copiar el mismo cierre tres veces.
+  async function onEditRender(renderId: number, promptText: string): Promise<PropertyRender> {
+    const created = await editPropertyRender(propertyId, renderId, { promptText })
+    setRenders(prev => [created, ...prev])
+    return created
+  }
+  async function onSaveRenderPrompt(
+    { name, body, kind }: { name: string; body: string; kind: RenderPromptKind },
+  ): Promise<RenderPrompt> {
+    const created = await createRenderPrompt(name, body, kind)
+    setRenderPrompts(prev => [...prev, created])
+    return created
+  }
+  async function onDeleteRenderItem(renderId: number): Promise<void> {
+    await deletePropertyRender(propertyId, renderId)
+    setRenders(prev => prev.filter(r => r.id !== renderId))
+  }
+
+  /**
+   * Generar desde el plano de UN levantamiento. `LevantamientoPanel` ya resolvió
+   * el piso SELECCIONADO en RENDERS → PNG (`floorToPngBlob`, solo corre en el
+   * navegador) más su `floorId`/`floorName`; aquí se manda todo junto con la
+   * variante que lo pidió — la pieza que le faltaba al endpoint desde la Tarea 14
+   * (`variant` obligatorio) y la Tarea 29 (`floorId`/`floorName` obligatorios).
+   */
+  async function onGenerateRender(
+    variant: VariantKey,
+    req: { promptId: number | null; promptText: string; plan: Blob; floorId: string; floorName: string },
+  ): Promise<PropertyRender> {
+    const created = await generatePropertyRenderFromPlan(propertyId, { ...req, variant })
+    setRenders(prev => [created, ...prev])
+    return created
+  }
 
   async function save() {
-    if (!property || (!hasEdits && costPerSqm == null && !planApiRef.current?.isDirty())) return
+    if (!property || (!hasEdits && costPerSqm == null && !planEditorRef.current?.api.isDirty())) return
     setSaving(true)
     setSaveError(null)
     try {
@@ -252,9 +308,10 @@ export function PropertyDetailPage() {
         clear()
         setCostPerSqm(undefined)
       }
-      if (planApiRef.current?.isDirty()) {
-        setGeometry(await savePropertyGeometry(propertyId, planApiRef.current.getModel()))
-        planApiRef.current.markSaved()
+      const planEditor = planEditorRef.current
+      if (planEditor?.api.isDirty()) {
+        await saveFloorSet(planEditor.variant, planEditor.api.getModel())
+        planEditor.api.markSaved()
         setPlanDirty(false)
       }
       setEditing(false)
@@ -928,17 +985,18 @@ export function PropertyDetailPage() {
           )}
         </div>
 
-        {/* ── CENTRO: Mapa / Fotos / Plano / Renders / Presupuesto ──
+        {/* ── CENTRO: Mapa / Fotos / Plano / Presupuesto ──
             El presupuesto no lleva ventana de etapa, a diferencia de las
             herramientas de la columna izquierda: acompaña a la propiedad desde
             prospecto como el desglose de costos, porque hay que poder
             presupuestar antes de ofertar.
 
-            RENDERS va aquí como pestaña propia y no como una vista de FOTOS a
-            propósito: una foto es evidencia y un render es una propuesta.
-            Mezclarlos en la misma tira es cómo una propuesta termina citada como
-            si fuera el estado real del inmueble. La barra no sabe de esto —
-            recibe la lista tal cual va— así que la separación se sostiene aquí. */}
+            RENDERS ya no es pestaña propia: vive DENTRO de FOTOS (sub-navegación
+            GALERÍA | RENDERS, Tarea 16) para las propuestas nacidas de una foto, y
+            DENTRO de cada levantamiento (sub-navegación PLANO | RENDERS, Tarea 17)
+            para las nacidas de SU plano. La separación foto≠render no se relajó —
+            sigue siendo dos tablas y un badge que RendersPanel nunca deja de pintar
+            — solo cambió dónde vive cada una en la barra. */}
         <MediaTabs
           style={fade(160)}
           tabs={[
@@ -949,7 +1007,7 @@ export function PropertyDetailPage() {
             {
               label: 'fotos',
               panel: (
-                <PhotoGallery
+                <FotosPanel
                   images={p.images}
                   base={BASE}
                   onUpload={async (file, imageType) => {
@@ -968,57 +1026,63 @@ export function PropertyDetailPage() {
                     const images = await reorderPropertyImages(p.id, imageIds)
                     setProperty(prev => prev ? { ...prev, images } : prev)
                   }}
-                />
-              ),
-            },
-            {
-              label: 'plano',
-              panel: geometry !== null && (
-                <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-                  <FloorPlanEditor
-                    initial={geometry}
-                    onSave={async m => setGeometry(await savePropertyGeometry(p.id, m))}
-                    onUploadImage={file => uploadFloorplanImage(p.id, file)}
-                    onReady={onPlanReady}
-                    onDirtyChange={setPlanDirty}
-                  />
-                </div>
-              ),
-            },
-            {
-              label: 'renders',
-              panel: (
-                <RendersPanel
-                  images={p.images}
                   prompts={renderPrompts}
                   renders={renders}
-                  base={BASE}
-                  plan={planFloor ? { roomNames: roomLabels(planFloor).map(r => r.name).filter(Boolean) } : null}
                   onGenerate={async req => {
                     const created = await generatePropertyRender(p.id, req)
                     setRenders(prev => [created, ...prev])
                     return created
                   }}
-                  onGeneratePlan={planFloor ? async req => {
-                    const plan = await floorToPngBlob(planFloor)
-                    const created = await generatePropertyRenderFromPlan(p.id, { ...req, plan })
-                    setRenders(prev => [created, ...prev])
-                    return created
-                  } : undefined}
-                  onEdit={async (renderId, promptText) => {
-                    const created = await editPropertyRender(p.id, renderId, { promptText })
-                    setRenders(prev => [created, ...prev])
-                    return created
-                  }}
-                  onSavePrompt={async ({ name, body }) => {
-                    const created = await createRenderPrompt(name, body)
-                    setRenderPrompts(prev => [...prev, created])
-                    return created
-                  }}
-                  onDeleteRender={async renderId => {
-                    await deletePropertyRender(p.id, renderId)
-                    setRenders(prev => prev.filter(r => r.id !== renderId))
-                  }}
+                  onEdit={onEditRender}
+                  onSavePrompt={onSaveRenderPrompt}
+                  onDeleteRender={onDeleteRenderItem}
+                />
+              ),
+            },
+            {
+              label: 'levantamiento original',
+              // Los dos paneles son el MISMO componente en el mismo hueco de
+              // MediaTabs: sin `key`, React reusaría el montaje al cambiar de
+              // pestaña y el reducer del editor se quedaría con el plano de la
+              // otra variante. El key fuerza el remontaje — con lo que un cambio
+              // de pestaña pierde lo no guardado, igual que ya pasaba en PLANO.
+              panel: (
+                <LevantamientoPanel
+                  key="levantamiento-original"
+                  variant="original"
+                  geometry={geometry}
+                  onSave={saveFloorSet}
+                  onUploadImage={file => uploadFloorplanImage(p.id, file)}
+                  onReady={onPlanReady}
+                  onDirtyChange={setPlanDirty}
+                  base={BASE}
+                  prompts={renderPrompts}
+                  renders={renders}
+                  onGenerateRender={onGenerateRender}
+                  onEdit={onEditRender}
+                  onSavePrompt={onSaveRenderPrompt}
+                  onDeleteRender={onDeleteRenderItem}
+                />
+              ),
+            },
+            {
+              label: 'levantamiento planeado',
+              panel: (
+                <LevantamientoPanel
+                  key="levantamiento-planeado"
+                  variant="planned"
+                  geometry={geometry}
+                  onSave={saveFloorSet}
+                  onUploadImage={file => uploadFloorplanImage(p.id, file)}
+                  onReady={onPlanReady}
+                  onDirtyChange={setPlanDirty}
+                  base={BASE}
+                  prompts={renderPrompts}
+                  renders={renders}
+                  onGenerateRender={onGenerateRender}
+                  onEdit={onEditRender}
+                  onSavePrompt={onSaveRenderPrompt}
+                  onDeleteRender={onDeleteRenderItem}
                 />
               ),
             },

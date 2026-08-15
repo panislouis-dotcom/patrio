@@ -1,5 +1,5 @@
 """Endpoints de la biblioteca de prompts y de los renders de una propiedad."""
-import asyncio
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -16,6 +16,12 @@ router = APIRouter()
 class PromptCreate(BaseModel):
     name: str
     body: str
+    # 'photo' por defecto: compat con cualquier llamador anterior a la
+    # biblioteca de plano (Tarea 22), que nunca mandó este campo. `Literal`
+    # (no `str`) para que un valor fuera del CHECK de la 041 se rechace aquí
+    # con un 422 limpio de Pydantic — sin la revisión previa el choque llega
+    # como IntegrityError, un 500 mudo, igual que `variant` evita más abajo.
+    kind: Literal["photo", "plan"] = "photo"
 
 
 class PromptUpdate(BaseModel):
@@ -36,14 +42,14 @@ class RenderEditRequest(BaseModel):
 # ─── Biblioteca de prompts ────────────────────────────────────────────────────
 
 @router.get("/api/render-prompts", operation_id="render_prompts_list")
-def list_render_prompts(_: dict = Depends(get_current_user)):
-    return renders_db.list_prompts()
+def list_render_prompts(kind: str | None = None, _: dict = Depends(get_current_user)):
+    return renders_db.list_prompts(kind)
 
 
 @router.post("/api/render-prompts", status_code=201, operation_id="render_prompts_create")
 def create_render_prompt(body: PromptCreate, _: dict = Depends(get_current_user)):
     try:
-        return renders_db.create_prompt(body.name, body.body)
+        return renders_db.create_prompt(body.name, body.body, body.kind)
     except renders_db.PromptError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -99,7 +105,8 @@ def create_property_render(property_id: int, body: RenderRequest,
     prompt = renders.compose_prompt(body.promptText)
     try:
         image_bytes, content_type = renders.generate_image(
-            content, source["contentType"], prompt)
+            content, source["contentType"], prompt,
+            max_edge=renders.MAX_EDGE_PHOTO, match_aspect=False)
     except renders.RenderUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
@@ -131,26 +138,44 @@ def create_property_render(property_id: int, body: RenderRequest,
 
 @router.post("/api/properties/{property_id}/renders/from-plan", status_code=201,
              operation_id="property_renders_from_plan")
-async def create_render_from_plan(
+def create_render_from_plan(
     property_id: int,
     file: UploadFile = File(...),
     promptText: str = Form(...),
+    variant: str = Form(...),
+    floorId: str = Form(...),
+    floorName: str = Form(...),
     promptId: int | None = Form(None),
     _: dict = Depends(get_current_user),
 ):
     """Genera un render a partir del PLANO exportado (no de una foto). El plano
     se guarda como imagen-fuente; el render nace con source_image_id NULL y la
-    ruta del plano en source_plan_path."""
+    ruta del plano en source_plan_path.
+
+    Sync a propósito (no `async def`): llama a OpenAI y a storage, ~60s por
+    render. Async con esas llamadas sin `asyncio.to_thread` bloqueaba el event
+    loop entero — el servidor dejaba de atender cualquier otra petición
+    mientras tanto. Igual que `create_property_render` y `edit_property_render`,
+    una función sync la corre FastAPI en su threadpool, sin tocar el loop."""
     if not properties.exists(property_id):
         raise HTTPException(status_code=404, detail="Propiedad no encontrada")
     if not promptText.strip():
         raise HTTPException(status_code=422, detail="El prompt no puede ir vacío")
-    plan_bytes = await file.read()
+    if variant not in renders_db.SOURCE_VARIANTS:
+        raise HTTPException(status_code=422,
+                            detail=f"variant debe ser uno de {', '.join(renders_db.SOURCE_VARIANTS)}")
+    if not floorId.strip():
+        raise HTTPException(status_code=422, detail="floorId no puede ir vacío")
+    if not floorName.strip():
+        raise HTTPException(status_code=422, detail="floorName no puede ir vacío")
+    plan_bytes = file.file.read()
     if not plan_bytes:
         raise HTTPException(status_code=422, detail="El plano llegó vacío")
     # Antes de las dos lecturas: lo que se guarda y lo que ve el generador tienen
-    # que ser los mismos píxeles, o el render sale de un plano de lado.
-    plan_bytes = await asyncio.to_thread(images.normalize_orientation, plan_bytes)
+    # que ser los mismos píxeles, o el render sale de un plano de lado. Llamada
+    # directa (no `to_thread`): todo el endpoint ya corre en el threadpool de
+    # FastAPI, así que envolverla de nuevo sería un hilo dentro de otro hilo.
+    plan_bytes = images.normalize_orientation(plan_bytes)
 
     content_in = file.content_type or "image/png"
     plan_path = f"properties/{property_id}/plan-sources/{uuid4().hex}.png"
@@ -162,7 +187,9 @@ async def create_render_from_plan(
     # Cláusula del plano, no la de la foto: mantén la distribución, amuebla, 2D.
     prompt = renders.compose_plan_prompt(promptText)
     try:
-        image_bytes, content_type = renders.generate_image(plan_bytes, content_in, prompt)
+        image_bytes, content_type = renders.generate_image(
+            plan_bytes, content_in, prompt,
+            max_edge=renders.MAX_EDGE_PLAN, match_aspect=True)
     except renders.RenderUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
@@ -185,6 +212,9 @@ async def create_render_from_plan(
         provider=renders.PROVIDER,
         model=renders.MODEL,
         source_plan_path=plan_path,
+        source_variant=variant,
+        floor_id=floorId.strip(),
+        floor_name=floorName.strip(),
     )
 
 
@@ -208,13 +238,19 @@ def edit_property_render(property_id: int, render_id: int, body: RenderEditReque
         raise HTTPException(status_code=422, detail="La imagen del render ya no está almacenada") from exc
 
     # La cláusula correcta según el ORIGEN de la cadena: un plano editado sigue
-    # siendo un plano 2D; una foto editada sigue siendo fotorrealista.
-    if renders_db.chain_is_plan(property_id, render_id):
+    # siendo un plano 2D; una foto editada sigue siendo fotorrealista. El mismo
+    # origen también decide el tamaño de salida y el tope de referencia: no
+    # tendría sentido mantener la proporción del plano en el prompt y perderla
+    # en el tamaño del lienzo que se le pide a la API.
+    is_plan = renders_db.chain_is_plan(property_id, render_id)
+    if is_plan:
         prompt = renders.compose_plan_prompt(body.promptText)
     else:
         prompt = renders.compose_prompt(body.promptText)
+    max_edge = renders.MAX_EDGE_PLAN if is_plan else renders.MAX_EDGE_PHOTO
     try:
-        image_bytes, content_type = renders.generate_image(content, ctype, prompt)
+        image_bytes, content_type = renders.generate_image(
+            content, ctype, prompt, max_edge=max_edge, match_aspect=is_plan)
     except renders.RenderUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
@@ -237,6 +273,13 @@ def edit_property_render(property_id: int, render_id: int, body: RenderEditReque
         provider=renders.PROVIDER,
         model=renders.MODEL,
         parent_render_id=render_id,
+        # El hijo hereda la variante del padre inmediato, no la recalcula: un
+        # plano editado sigue perteneciendo al mismo levantamiento.
+        source_variant=parent["sourceVariant"],
+        # Mismo patrón: el hijo hereda de qué piso nació el padre, no lo
+        # recalcula — un plano editado sigue perteneciendo al mismo piso.
+        floor_id=parent["floorId"],
+        floor_name=parent["floorName"],
     )
 
 
