@@ -524,3 +524,38 @@ def test_orden_original_primero_luego_los_pisos_solo_planeados():
 def test_sin_hojas_todo_es_tira_suelta():
     rows, left = _plan_rows([], [_render("abc", "original")])
     assert rows == [] and len(left) == 1
+
+
+# ---------------------------------------------------------------------------
+# _opportunity_detail — el plano impreso junto al render que ancla
+# ---------------------------------------------------------------------------
+
+def test_el_detalle_imprime_el_plano_junto_a_su_render():
+    p = {"planSheets": [_sheet("abc", "original", "<svg>PLANO</svg>")],
+         "renderHeads": [_render("abc", "original")], "budget": {}}
+    html = _opportunity_detail(p)
+    assert "PLANO" in html and "plan-row" in html
+
+
+def test_una_sola_variante_no_lleva_etiquetas_antes_despues():
+    p = {"planSheets": [_sheet("abc", "original")], "renderHeads": [], "budget": {}}
+    html = _opportunity_detail(p)
+    assert "Antes" not in html and "Después" not in html
+
+
+def test_dos_variantes_distintas_llevan_antes_y_despues():
+    p = {"planSheets": [_sheet("abc", "original", "<svg>A</svg>"),
+                        _sheet("abc", "planned", "<svg>B</svg>")],
+         "renderHeads": [], "budget": {}}
+    html = _opportunity_detail(p)
+    assert "Antes" in html and "Después" in html
+
+
+def test_los_renders_sin_piso_conservan_la_tira_de_siempre():
+    p = {"planSheets": [], "renderHeads": [_render(None, None)], "budget": {}}
+    html = _opportunity_detail(p)
+    assert 'class="strip"' in html
+
+
+def test_sin_plano_sin_render_y_sin_presupuesto_no_hay_detalle():
+    assert _opportunity_detail({"planSheets": [], "renderHeads": [], "budget": {}}) == ""

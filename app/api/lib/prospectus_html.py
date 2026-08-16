@@ -318,6 +318,19 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .plano-dim { stroke: var(--sec); stroke-width: 0.4; }
 .plano-dim-label { font-family: 'Inter', sans-serif; font-size: 6px; fill: var(--sec); }
 
+/* ══ Plano junto a su render ══════════════════════════════════════════════ */
+.plan-row { margin: 0 0 7mm 0; break-inside: avoid; }
+.plan-side { margin-bottom: 3mm; }
+.plan-side-label { font-family: 'Inter', sans-serif; font-size: 7pt; letter-spacing: .12em;
+                   text-transform: uppercase; color: #7A7A7A; margin-bottom: 1.5mm; }
+.plan-pair { display: flex; gap: 4mm; align-items: flex-start; }
+.plan-sheet { flex: 1 1 50%; min-width: 0; }
+.plan-sheet svg { width: 100%; height: auto; max-height: 85mm; }
+.plan-renders { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; gap: 2mm; }
+.plan-renders img { width: 100%; height: auto; max-height: 85mm; object-fit: contain; }
+/* Una hoja sin render no debe estirarse a media página: sin pareja se queda a su ancho. */
+.plan-pair > .plan-sheet:only-child { flex: 0 0 62%; }
+
 /* ══ CLOSING ═════════════════════════════════════════════════════════════ */
 .closing { height: 297mm; background: var(--green); color: #fff; padding: 30mm var(--pad);
            display: flex; flex-direction: column; justify-content: space-between; }
@@ -504,6 +517,35 @@ def _plan_rows(sheets: list[dict], renders: list[dict]) -> tuple[list[dict], lis
             "despues": {**despues, "renders": paired[(fid, "planned")]} if despues else None,
         })
     return rows, leftovers
+
+
+def _plan_side(side: dict | None, label: str, show_label: bool) -> str:
+    """Un lado de una fila: la hoja y, a su derecha, los renders que le tocan.
+
+    `show_label` solo es cierto cuando la fila trae las DOS variantes: un piso sin
+    propuesta no necesita que le digan "Antes" de qué."""
+    if side is None:
+        return ""
+    lab = f'<div class="plan-side-label">{_esc(label)}</div>' if show_label else ""
+    imgs = "".join(f'<img src="{r["dataUri"]}" alt="">' for r in side["renders"])
+    renders = f'<div class="plan-renders">{imgs}</div>' if imgs else ""
+    return (f'<div class="plan-side">{lab}<div class="plan-pair">'
+            f'<div class="plan-sheet">{side["svg"]}</div>{renders}</div></div>')
+
+
+def _plan_block(rows: list[dict]) -> str:
+    """La medida junto a la imagen que la aproxima. Sin filas → "", el bloque
+    desaparece: si está va, si no está no va."""
+    if not rows:
+        return ""
+    out = []
+    for row in rows:
+        both = row["antes"] is not None and row["despues"] is not None
+        out.append(f'<div class="plan-row"><div class="col-label">{_esc(row["floorName"])}</div>'
+                   + _plan_side(row["antes"], "Antes", both)
+                   + _plan_side(row["despues"], "Después", both)
+                   + '</div>')
+    return "".join(out)
 
 
 def _kv_rows(pairs) -> str:
@@ -1062,12 +1104,17 @@ def _opportunity(p: dict) -> str:
 
 
 def _opportunity_detail(p: dict) -> str:
-    """Renders (propuesta de diseño) y desglose del presupuesto de obra de una
-    oportunidad. "" si no hay ninguno de los dos.
+    """Plano, renders (propuesta de diseño) y desglose del presupuesto de obra de
+    una oportunidad. "" si no hay ninguno de los tres.
 
-    El plano TÉCNICO (`_floorplan_svg`) NO va aquí — pedido de Louis: al cliente
-    no le interesan los planos técnicos; la distribución la comunica el render 2D
-    amueblado, que sí entra.
+    El plano SÍ va aquí, junto al render que ancla. El render de IA no es
+    dimensionalmente exacto —mueve muros interiores, estira cuartos— así que no
+    puede ser el único portador de la distribución: el lector necesita la medida
+    al lado de la imagen que la aproxima. Lo que entra NO es el plano técnico en
+    blanco y negro que `fe302aa` quitó (aquel sí era ruido para el cliente), sino
+    el dibujo que carga m² por cuarto, largo de muros, cotas y abatimiento de
+    puertas. Se empareja por piso y variante (`_plan_rows`), y cada hoja se
+    imprime al lado de sus propios renders, no en una sección aparte.
 
     Vive en el mismo flujo que la tarjeta principal, justo después de la nota
     — ya no en su propia page-block. Forzar un salto de página aquí, sin
@@ -1084,19 +1131,22 @@ def _opportunity_detail(p: dict) -> str:
     aquí, no junto al hero, donde la tira quedaba apretada y no se veía. Antes
     esta sección traía `renders` sin deduplicar por cadena —el mismo diseño dos
     veces, con borradores ya editados encima—; ahora es `renderHeads`."""
-    render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
-    renders_html = _strip(render_heads, "", 3) if render_heads else ""
+    rows, leftovers = _plan_rows(p.get("planSheets") or [], p.get("renderHeads") or [])
+    plan_html = _plan_block(rows)
+    renders_html = _strip(leftovers, "", 3) if leftovers else ""
 
     budget = p.get("budget") or {}
     budget_html = _budget_full(budget.get("lines", []), budget.get("chapters", []))
 
-    if not (renders_html or budget_html):
+    if not (plan_html or renders_html or budget_html):
         return ""
 
-    # El plano TÉCNICO (muros/nombres de cuarto, `_floorplan_svg`) NO se muestra:
-    # pedido explícito de Louis — al cliente no le interesa ver planos técnicos;
-    # lo que comunica la distribución es el render 2D amueblado, que sí entra abajo.
     sections = "".join([
+        f'<div class="detail-section"><div class="col-label">Plano y propuesta</div>{plan_html}</div>'
+        if plan_html else "",
+        # Los renders que no empataron con ninguna hoja (de foto, anteriores al
+        # 7-ago con columnas NULL, o de un piso ya borrado) conservan la tira de
+        # siempre: la salida de hoy es el piso de la salida nueva.
         f'<div class="detail-section"><div class="col-label">Renders · propuesta de diseño</div>{renders_html}</div>'
         if renders_html else "",
         # El presupuesto fluye después de los renders, en la misma hoja (pedido
