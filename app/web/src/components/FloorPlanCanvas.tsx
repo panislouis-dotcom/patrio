@@ -2,7 +2,7 @@
 import { forwardRef, useRef } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
-import { isGhost, FIXTURE_CATALOG, ROOM_TYPE_CATALOG, type FloorSet, type FloorGraph, type FixtureKind, type RoomType } from '../lib/floorplan/types'
+import { isGhost, FIXTURE_CATALOG, ROOM_TYPE_CATALOG, type FloorSet, type FloorGraph, type FixtureFamily, type RoomType } from '../lib/floorplan/types'
 import type { ViewTransform } from '../lib/floorplan/viewTransform'
 import type { RoomLabel, RoomPolygon } from '../lib/floorplan/rooms'
 import type { CornerAngle } from '../lib/floorplan/dimensions'
@@ -26,18 +26,6 @@ const ROOM_AREA_FS = 14
 // you zoom into a wall to check its dimension.
 const DIM_FS = 14
 const OPENING_FS = 13
-
-// Familia visual mínima por tipo: UN acento sobrio (línea o círculo), nunca un ícono
-// detallado — esto es un plano técnico, no un moodboard. El catálogo (types.ts) es dato de
-// dimensiones; esta tabla es puramente de dibujo y vive aquí, no ahí.
-type FixtureFamily = 'bed' | 'seat' | 'plain' | 'toilet' | 'sink' | 'shower' | 'tub' | 'laundry' | 'stove' | 'fridge'
-const FIXTURE_FAMILY: Record<FixtureKind, FixtureFamily> = {
-  cama_individual: 'bed', cama_matrimonial: 'bed', cama_queen: 'bed', cama_king: 'bed',
-  silla: 'seat', sillon: 'seat',
-  mesa: 'plain', escritorio: 'plain',
-  inodoro: 'toilet', lavabo: 'sink', regadera: 'shower', tina: 'tub',
-  lavadora: 'laundry', estufa: 'stove', refrigerador: 'fridge',
-}
 
 /** Acentos internos del glyph, en coordenadas LOCALES ya en px (origen = centro del mueble,
  * ANTES de rotar): viven como hijos del mismo <g rotate(...)> que el rect base, así que
@@ -230,7 +218,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
         <rect x={-wPx / 2} y={-hPx / 2} width={wPx} height={hPx}
           fill={colors.surfaceAlt} stroke={on ? colors.primary : colors.secondary} strokeWidth={on ? 2 : 1.2}
           data-el="fixture" data-id={fx.id} style={{ cursor: 'move' }} />
-        {fixtureAccents(FIXTURE_FAMILY[fx.kind], wPx, hPx, fx.id)}
+        {fixtureAccents(FIXTURE_CATALOG[fx.kind].family, wPx, hPx, fx.id)}
       </g>,
     )
     gel.push(<text key={`fxlabel${fx.id}`} x={cx} y={cy + 3} textAnchor="middle"

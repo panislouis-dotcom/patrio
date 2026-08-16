@@ -363,6 +363,42 @@ def test_input_fidelity_is_sent_when_configured(monkeypatch):
     assert renders.edit_kwargs()["input_fidelity"] == "high"
 
 
+# ─── compositing: apagado por default (2026-08-16) ───────────────────────────
+# El overlay se construyó contra un modelo que movía muros con una referencia de
+# lienzo flojo. Con el encuadre ajustado la IA coloca los muros interiores con
+# error medio de 1.9px sobre 1138px (render 42, propiedad 5) — la garantía vale
+# ~2px y cuesta el aspecto de todos los renders. Estas pruebas existen para que
+# el default no se voltee sin que alguien lo decida.
+
+def test_compositing_is_off_by_default(monkeypatch):
+    from api import renders
+
+    monkeypatch.delenv("RENDER_PLAN_COMPOSITE", raising=False)
+    assert renders.composite_enabled() is False
+
+
+def test_compositing_can_be_turned_back_on(monkeypatch):
+    from api import renders
+
+    monkeypatch.setenv("RENDER_PLAN_COMPOSITE", "1")
+    assert renders.composite_enabled() is True
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "", "cualquier-cosa"])
+def test_only_an_explicit_opt_in_turns_compositing_on(monkeypatch, value):
+    """Nada de "si la variable existe, enciéndelo": un valor vacío o basura deja
+    el default apagado en vez de prender el overlay por accidente."""
+    from api import renders
+
+    monkeypatch.setenv("RENDER_PLAN_COMPOSITE", value)
+    assert renders.composite_enabled() is False
+
+
+# La verificación de extremo a extremo (que el camino de plano de verdad no
+# compone) vive más abajo, contra el endpoint real:
+# `test_no_render_composites_geometry_by_default_not_even_a_plan`.
+
+
 # ─── _output_size: la razón real del plano, no un cuadrado fijo ──────────────
 
 def test_output_size_matches_the_real_aspect_ratio():
@@ -518,17 +554,20 @@ def test_composite_geometry_returns_output_unchanged_when_reference_has_no_conte
     assert renders._composite_geometry(reference, output) == output
 
 
-def test_composite_geometry_runs_only_for_plan_renders_not_photos(
+def test_no_render_composites_geometry_by_default_not_even_a_plan(
     client, test_property, fake_images_edit, monkeypatch,
 ):
-    """Solo el camino de plano tiene una referencia limpia de línea (Task 34)
-    cuya geometría se pueda componer con garantía — una foto no tiene un
-    "trazo verdadero" equivalente. Usa `fake_images_edit` (deja correr
+    """Desde 2026-08-16 el overlay está apagado por default, así que NINGÚN
+    camino compone — ni foto ni plano. Antes el plano sí lo hacía; ver
+    `composite_enabled` para por qué se apagó (la IA coloca los muros con error
+    medio de 1.9px cuando la referencia va bien encuadrada, y el trazo plano
+    encima se lee como cinta pegada). Usa `fake_images_edit` (deja correr
     `generate_image` de verdad) con imágenes reales — no el fixture
     `_png_bytes()` de 1x1, que PIL no puede procesar por este camino real
     (mismo problema ya encontrado en otros tests de este archivo)."""
     from api import renders
 
+    monkeypatch.delenv("RENDER_PLAN_COMPOSITE", raising=False)
     calls = []
     monkeypatch.setattr(renders, "_composite_geometry", lambda ref, out: calls.append(True) or out)
 
@@ -553,7 +592,43 @@ def test_composite_geometry_runs_only_for_plan_renders_not_photos(
               "floorId": "floor-abc-123", "floorName": "Planta Baja"},
     )
     assert r_plan.status_code == 201, r_plan.text
-    assert len(calls) == 1, "un plano SÍ debe componerse"
+    assert len(calls) == 0, "un plano tampoco se compone con el default de hoy"
+
+
+def test_a_plan_render_still_composites_when_explicitly_opted_in(
+    client, test_property, fake_images_edit, monkeypatch,
+):
+    """El overlay no se borró, se apagó: con `RENDER_PLAN_COMPOSITE=1` el camino
+    de plano vuelve a componer y el de foto sigue sin hacerlo (una foto nunca
+    tuvo un "trazo verdadero" que pegar). Sin esta prueba, apagar el default y
+    romper el interruptor serían indistinguibles."""
+    from api import renders
+
+    monkeypatch.setenv("RENDER_PLAN_COMPOSITE", "1")
+    calls = []
+    monkeypatch.setattr(renders, "_composite_geometry", lambda ref, out: calls.append(True) or out)
+
+    up = client.post(
+        f"/api/properties/{test_property['id']}/images",
+        files={"file": ("fachada.png", io.BytesIO(_rect_png_bytes(1000, 800)), "image/png")},
+        data={"image_type": "antes"},
+    )
+    assert up.status_code == 201, up.text
+    r_photo = client.post(
+        f"/api/properties/{test_property['id']}/renders",
+        json={"sourceImageId": up.json()["id"], "promptText": "x"},
+    )
+    assert r_photo.status_code == 201, r_photo.text
+    assert len(calls) == 0, "una foto no se compone ni con el flag encendido"
+
+    r_plan = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_rect_png_bytes(599, 1105)), "image/png")},
+        data={"promptText": "Amuebla.", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    assert r_plan.status_code == 201, r_plan.text
+    assert len(calls) == 1, "con el flag encendido, un plano SÍ se compone"
 
 
 # ─── Biblioteca de prompts ────────────────────────────────────────────────────

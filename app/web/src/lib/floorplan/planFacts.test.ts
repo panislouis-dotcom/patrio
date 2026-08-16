@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph, ROOM_TYPE_CATALOG, type Fixture } from './types'
+import { emptyFloorGraph, FIXTURE_CATALOG, FIXTURE_FAMILY_LABEL, ROOM_TYPE_CATALOG, type Fixture } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import { planFacts, resolveRoomType } from './planFacts'
 
@@ -52,6 +52,32 @@ describe('planFacts', () => {
     expect(text).toContain('Cama queen')
     expect(text).toContain('1.60')
     expect(text).toContain('2.00')
+    // La cama está exactamente en el centro de Sala (2, 1.5), cuyo bbox es (0,0)-(4,3): el
+    // modelo de imagen necesita saber en QUÉ cuarto cae este mueble, no solo su tamaño —
+    // antes esta lista no ataba ningún mueble a ningún cuarto.
+    expect(text).toContain('en Sala, a 2.00 m del muro izquierdo y 1.50 m del muro superior del cuarto')
+  })
+
+  it('ties a fixture to a CLOSED room with no name, not just a named one', () => {
+    const f = emptyFloorGraph('Test')
+    rectangle(f, 0, 0, 4, 3) // sin f.rooms.push — cuarto cerrado, sin punto de nombre
+    const fx: Fixture = { id: 'fx1', kind: 'silla', x: 1, y: 1, rot: 0, w_m: 0.45, h_m: 0.45 }
+    f.fixtures = [fx]
+
+    const text = planFacts(f)
+
+    expect(text).toContain('en un cuarto sin nombre, a 1.00 m del muro izquierdo y 2.00 m del muro superior del cuarto')
+  })
+
+  it('falls back to absolute plan coordinates for a fixture that falls inside no closed room', () => {
+    const f = emptyFloorGraph('Test')
+    // Sin ningún muro: no hay ningún cuarto cerrado que pueda contener al mueble.
+    const fx: Fixture = { id: 'fx1', kind: 'mesa', x: 3.5, y: 2.25, rot: 0, w_m: 1.6, h_m: 0.9 }
+    f.fixtures = [fx]
+
+    const text = planFacts(f)
+
+    expect(text).toContain('en (3.50, 2.25) del plano')
   })
 
   it('states a free-floating labeled room (no closed polygon) is unmeasured, never null or NaN', () => {
@@ -651,6 +677,49 @@ describe('planFacts', () => {
       f.rooms.push({ name: 'Zzyx Inventado', cx: 2, cy: 1.5 })
       const text = planFacts(f, { includeColorLegend: true })
       expect(text).not.toContain('Colores de referencia')
+    })
+  })
+
+  describe('includeFixtureColorLegend', () => {
+    it('por default (sin opts) no agrega ninguna leyenda de color de mueble', () => {
+      const f = emptyFloorGraph('Test')
+      f.fixtures = [{ id: 'fx1', kind: 'cama_queen', x: 1, y: 1, rot: 0, w_m: 1.6, h_m: 2.0 }]
+      const text = planFacts(f)
+      expect(text).not.toContain('Colores de mueble')
+    })
+
+    it('con includeFixtureColorLegend:true, lista el color de la familia usada', () => {
+      const f = emptyFloorGraph('Test')
+      f.fixtures = [{ id: 'fx1', kind: 'cama_queen', x: 1, y: 1, rot: 0, w_m: 1.6, h_m: 2.0 }]
+      const text = planFacts(f, { includeFixtureColorLegend: true })
+      expect(text).toContain('Colores de mueble')
+      expect(text).toContain(`${FIXTURE_CATALOG.cama_queen.color} = ${FIXTURE_FAMILY_LABEL.bed}`)
+    })
+
+    it('no repite un color dos veces cuando dos muebles comparten familia (dos tipos de cama)', () => {
+      const f = emptyFloorGraph('Test')
+      f.fixtures = [
+        { id: 'fx1', kind: 'cama_individual', x: 1, y: 1, rot: 0, w_m: 1.0, h_m: 1.9 },
+        { id: 'fx2', kind: 'cama_king', x: 2, y: 1, rot: 0, w_m: 1.93, h_m: 2.03 },
+      ]
+      const text = planFacts(f, { includeFixtureColorLegend: true })
+      const occurrences = text.split(`${FIXTURE_CATALOG.cama_individual.color} = ${FIXTURE_FAMILY_LABEL.bed}`).length - 1
+      expect(occurrences).toBe(1)
+    })
+
+    it('nunca lista una familia no usada en este piso (solo cama, no las otras 9 familias)', () => {
+      const f = emptyFloorGraph('Test')
+      f.fixtures = [{ id: 'fx1', kind: 'cama_queen', x: 1, y: 1, rot: 0, w_m: 1.6, h_m: 2.0 }]
+      const text = planFacts(f, { includeFixtureColorLegend: true })
+      expect(text).toContain(`${FIXTURE_CATALOG.cama_queen.color} = ${FIXTURE_FAMILY_LABEL.bed}`)
+      expect(text).not.toContain(FIXTURE_CATALOG.estufa.color)
+      expect(text).not.toContain(FIXTURE_CATALOG.inodoro.color)
+    })
+
+    it('omite el párrafo por completo si el piso no tiene ningún mueble', () => {
+      const f = emptyFloorGraph('Test')
+      const text = planFacts(f, { includeFixtureColorLegend: true })
+      expect(text).not.toContain('Colores de mueble')
     })
   })
 })

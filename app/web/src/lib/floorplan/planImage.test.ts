@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptyFloorGraph, GHOST_THICKNESS_M, ROOM_TYPE_CATALOG, type Fixture, type FloorGraph, type RoomType } from './types'
+import { emptyFloorGraph, GHOST_THICKNESS_M, FIXTURE_CATALOG, ROOM_TYPE_CATALOG, type Fixture, type FloorGraph, type RoomType } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import { floorToSvgString } from './planImage'
 
@@ -49,6 +49,37 @@ describe('floorToSvgString', () => {
     expect(Number(cx)).toBeCloseTo((2 - -1) * 100, 5)   // px(x) = (x - minx) * scale
     expect(Number(cy)).toBeCloseTo((2 - 1) * 100, 5)    // py(y) = (maxy - y) * scale
     expect(Number(rot)).toBeCloseTo(-0, 5)
+  })
+
+  // El encuadre decide la fidelidad geométrica del render, no solo su estética. Medido
+  // contra la API real (2026-08-12): con encuadre ajustado el modelo deja el edificio
+  // quieto (desplazamiento 0-18px, escala 0.993-1.014); con ~64% de lienzo vacío lo mueve
+  // y lo reescala (desplazamiento 87-261px, escala hasta 1.279x1.424). Sembrar el bbox con
+  // el origen del mundo metía exactamente ese lienzo vacío cuando el inmueble se dibujó
+  // lejos de (0,0) — que es el caso normal, no el raro. Sin esta prueba la regresión vuelve
+  // en silencio: ningún otro test del archivo mira el tamaño del lienzo.
+  it('hugs the building instead of dragging the world origin into frame', () => {
+    const f = emptyFloorGraph('Test')
+    // Un cuarto de 4x3 dibujado LEJOS del origen, como queda un levantamiento real.
+    const a = addVertex(f, 50, 40), b = addVertex(f, 54, 40)
+    const c = addVertex(f, 54, 43), d = addVertex(f, 50, 43)
+    addEdge(f, a, b, 0.15); addEdge(f, b, c, 0.15); addEdge(f, c, d, 0.15); addEdge(f, d, a, 0.15)
+    const svg = floorToSvgString(f)
+    const m = svg.match(/^<svg[^>]*width="([\d.]+)"[^>]*height="([\d.]+)"/)
+    expect(m).not.toBeNull()
+    const [, w, h] = m!
+    // 4m + 2m de pad = 6m; 3m + 2m de pad = 5m, a 100px/m. Si el origen entrara al lienzo
+    // esto sería ~5600x4400 y el edificio ocuparía menos del 1% de la imagen.
+    expect(Number(w)).toBeCloseTo(600, 5)
+    expect(Number(h)).toBeCloseTo(500, 5)
+  })
+
+  it('still falls back to the 1m floor when there are no vertices at all', () => {
+    // El 0/1 de la semilla vieja solo protegía este caso — y sigue protegido.
+    const svg = floorToSvgString(emptyFloorGraph('Test'))
+    const m = svg.match(/^<svg[^>]*width="([\d.]+)"[^>]*height="([\d.]+)"/)
+    expect(Number(m![1])).toBeCloseTo(300, 5)   // (1 - 0) + 2m de pad
+    expect(Number(m![2])).toBeCloseTo(300, 5)
   })
 
   it('rotates with the sign convention of this module (py flips Y, same as the editor canvas), not the raw world angle', () => {
@@ -381,6 +412,32 @@ describe('floorToSvgString', () => {
     expect(explicit).toContain('>4.00 m<')
   })
 
+  // Pedido explícito de Eduardo tras validar roomTypeFill/fixtureFamilyFill: un rectángulo
+  // gris sin ninguna marca es indistinguible a simple vista. `nameLabels` trae de vuelta
+  // SOLO nombre de cuarto + etiqueta de mueble — nunca cotas — independiente de
+  // `annotations`, que sigue controlando exclusivamente la sección de cotas.
+  describe('nameLabels', () => {
+    it('por default (nameLabels ausente) con annotations:false, sigue sin dibujar ningún <text> — cero regresión', () => {
+      const svg = floorToSvgString(fullFloor(), { annotations: false })
+      expect(svg).not.toContain('<text')
+    })
+
+    it('nameLabels:true con annotations:false dibuja nombre de cuarto y etiqueta de mueble, pero NINGUNA cota', () => {
+      const svg = floorToSvgString(fullFloor(), { annotations: false, nameLabels: true })
+      expect(svg).toContain('Sala')
+      expect(svg).toContain('Cama queen')
+      // Sin cadenas de dimensión ni longitud por muro — eso sigue exclusivo de `annotations`.
+      expect(svg).not.toContain('>4.00 m<')
+      expect(svg).not.toContain('>3.00 m<')
+    })
+
+    it('annotations:true trae nameLabels implícito, aunque nameLabels no se pase', () => {
+      const svg = floorToSvgString(fullFloor(), { annotations: true })
+      expect(svg).toContain('Sala')
+      expect(svg).toContain('Cama queen')
+    })
+  })
+
   // Fase 2 del diagnóstico de Locales Salón Escobedo: relleno de color plano por tipo de
   // cuarto, canal VISUAL de identidad — independiente de `annotations` (no es texto).
   describe('roomTypeFill', () => {
@@ -432,6 +489,44 @@ describe('floorToSvgString', () => {
       expect(polygonIdx).toBeGreaterThan(-1)
       expect(wallIdx).toBeGreaterThan(-1)
       expect(polygonIdx).toBeLessThan(wallIdx)
+    })
+  })
+
+  // Seguimiento al reporte de fidelidad de muebles: un rectángulo gris genérico no le dice
+  // al modelo QUÉ tipo de objeto es — mismo canal visual (color) que roomTypeFill ya usa
+  // para tipo de cuarto, aplicado aquí a familia de mueble.
+  describe('fixtureFamilyFill', () => {
+    function withFixture(kind: Fixture['kind']) {
+      const f = emptyFloorGraph('Test')
+      f.fixtures = [{ id: 'fx1', kind, x: 2, y: 1, rot: 0, w_m: 1, h_m: 1 }]
+      return f
+    }
+
+    it('por default (fixtureFamilyFill ausente) el mueble sigue en el gris plano de siempre — cero regresión', () => {
+      const svg = floorToSvgString(withFixture('cama_queen'), { annotations: false })
+      expect(svg).toContain('fill="#e8e8e8"')
+      expect(svg).not.toContain(`fill="${FIXTURE_CATALOG.cama_queen.color}"`)
+    })
+
+    it('fixtureFamilyFill:true rellena la silueta con el color exacto de la familia del catálogo', () => {
+      const svg = floorToSvgString(withFixture('cama_queen'), { annotations: false, fixtureFamilyFill: true })
+      expect(svg).toMatch(new RegExp(`<rect data-fixture="fx1"[^>]*fill="${FIXTURE_CATALOG.cama_queen.color}"`))
+    })
+
+    it('dos muebles de la misma familia (dos tipos de cama) comparten el mismo color', () => {
+      const f = emptyFloorGraph('Test')
+      f.fixtures = [
+        { id: 'fx1', kind: 'cama_individual', x: 2, y: 1, rot: 0, w_m: 1, h_m: 1.9 },
+        { id: 'fx2', kind: 'cama_king', x: 4, y: 1, rot: 0, w_m: 1.93, h_m: 2.03 },
+      ]
+      const svg = floorToSvgString(f, { annotations: false, fixtureFamilyFill: true })
+      expect(svg).toMatch(new RegExp(`<rect data-fixture="fx1"[^>]*fill="${FIXTURE_CATALOG.cama_individual.color}"`))
+      expect(svg).toMatch(new RegExp(`<rect data-fixture="fx2"[^>]*fill="${FIXTURE_CATALOG.cama_king.color}"`))
+    })
+
+    it('el stroke del mueble no cambia — solo el fill se codifica por familia', () => {
+      const svg = floorToSvgString(withFixture('estufa'), { annotations: false, fixtureFamilyFill: true })
+      expect(svg).toMatch(/<rect data-fixture="fx1"[^>]*stroke="#555555"/)
     })
   })
 })
