@@ -286,9 +286,15 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
                    text-transform: uppercase; color: #7A7A7A; margin-bottom: 1.5mm; }
 .plan-pair { display: flex; gap: 4mm; align-items: flex-start; }
 .plan-sheet { flex: 1 1 50%; min-width: 0; }
-.plan-sheet svg { width: 100%; height: auto; max-height: 85mm; }
+/* 165mm, no 85: un lote angosto y profundo (los dos reales de la propiedad 5 lo son)
+   tiene viewBox vertical, así que con un tope de 85mm el ALTO manda y el ancho se
+   desploma a ~42mm — el plano se dibujaba a un cuarto de su columna y las cotas y los
+   m² quedaban ilegibles, que es justo lo único que este plano viene a aportar. */
+.plan-sheet svg { width: 100%; height: auto; max-height: 165mm; }
 .plan-renders { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; gap: 2mm; }
-.plan-renders img { width: 100%; height: auto; max-height: 85mm; object-fit: contain; }
+/* 78mm × 2 + hueco ≈ el alto del plano de al lado: la pareja se lee como una banda,
+   no como una columna corta junto a una torre de imágenes. */
+.plan-renders img { width: 100%; height: auto; max-height: 78mm; object-fit: contain; }
 /* Una hoja sin render no debe estirarse a media página: sin pareja se queda a su ancho. */
 .plan-pair > .plan-sheet:only-child { flex: 0 0 62%; }
 
@@ -425,6 +431,11 @@ def _strip(images, label: str, limit: int) -> str:
     return f'{lab}<div class="strip">{tags}</div>'
 
 
+# Cuántos renders caben junto a una hoja sin encogerla. El excedente baja a la tira
+# suelta; no se pierde ninguno.
+_PAIRED_RENDERS_MAX = 2
+
+
 def _plan_rows(sheets: list[dict], renders: list[dict]) -> tuple[list[dict], list[dict]]:
     """Las hojas dibujadas + las cabezas de render → filas por LINAJE de piso, más lo
     que no empató.
@@ -472,6 +483,17 @@ def _plan_rows(sheets: list[dict], renders: list[dict]) -> tuple[list[dict], lis
         if antes and despues and antes["svg"] == despues["svg"]:
             paired[(fid, "original")] += paired[(fid, "planned")]
             despues = None
+        # Al lado de una hoja solo caben DOS renders sin encogerla: la propiedad 5 tiene
+        # tres por piso y la pareja salía como un plano chico junto a una torre de
+        # imágenes, con dos tercios de la columna izquierda en blanco. Los excedentes no
+        # se tiran — bajan a la tira suelta, donde ya viven los que no empataron.
+        # `list_render_heads` ordena por created_at DESC, así que los que se quedan
+        # arriba son los más recientes.
+        for key in ((fid, "original"), (fid, "planned")):
+            if key not in paired:      # esa variante no tiene hoja: no hay pareja que recortar
+                continue
+            leftovers.extend(paired[key][_PAIRED_RENDERS_MAX:])
+            paired[key] = paired[key][:_PAIRED_RENDERS_MAX]
         rows.append({
             "floorName": (antes or despues)["floorName"],
             "antes": {**antes, "renders": paired[(fid, "original")]} if antes else None,
