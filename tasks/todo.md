@@ -129,8 +129,33 @@ era discrepar.
       lee al momento y no viaja en el cuerpo.
 
 ## Verificación final
-- [ ] `pytest` + `tsc --noEmit` + `vitest` verdes
-- [ ] Lint de idempotencia de migraciones corrido LOCAL antes de pushear
-- [ ] `dbmate up` desde cero + round-trip `down`/`up`
-- [ ] Contra el stack vivo: copiar proporcional de una obra a otra de distinto metraje y verificar a mano que los totales dan lo que promete el popup
-- [ ] `db/schema.sql` regenerado con el dbmate de Docker
+- [x] `pytest` 565 · `tsc --noEmit` limpio · `vitest` 649 — todo verde tras mezclar `main`
+- [x] Lint de idempotencia de migraciones, local y limpio
+- [x] `dbmate up` desde cero (000→045) + round-trip `down`/`up` sobre BD scratch
+- [x] Contra el stack vivo: Vicente Guerrero ($1,496,000) → Escobedo ($962,500) dio factor **0.6434** en los 8 renglones, con el total intacto. Con una partida marcada NO proporcional, llegó en $62,832 sin escalar y la suma **volvió a dar exactamente el objetivo** — el residuo absorbió el redondeo.
+- [x] `db/schema.sql` regenerado con el dbmate de Docker y **re-verificado después del merge** (volcado idéntico al que dejó el merge)
+- [x] **E2E completos**: 201/203 contra nuestro stack. Los 2 fallos son de `08-proveedores`, suite que no tocamos, y **fallan en tests DISTINTOS entre corridas** — firma de estado compartido en la BD de dev, no regresión. En CI corren contra BD limpia. `09-propiedad-detalle` (el que toca el presupuesto) pasó las dos veces.
+
+## Revisión
+
+Tres correcciones nacieron de que Ed lo probara en vivo, y ninguna se habría
+visto en pruebas:
+
+1. **El `$/m²` no debía ser un input.** Cada propiedad ya tiene su costo de obra
+   —el total de su presupuesto, que por construcción ES `m² × $/m²`—, así que
+   pedirlo otra vez era pedir un dato que ya estaba. Se lee del destino. Neto:
+   −72 líneas y dos 422 menos.
+2. **Un booleano con default TRUE preguntado como `!valor`.** Un renglón sin el
+   campo contaba como FIJO, o sea lo contrario de su default. Bloqueó una copia
+   real de Ed. La misma lectura estaba en el `checked` de la casilla, donde
+   además volvía el input no controlado.
+3. **La causa raíz de todo no era del código, sino del entorno**: Vite lee sus
+   `.env` desde `app/web/`, no de la raíz del repo, así que el front caía al
+   default `:8000` —el API de OTRO worktree— y hacía copia directa ignorando la
+   bandera. Ver [[patrio-vite-api-base-trampa]]. La pista que tardé en seguir:
+   **cero tráfico del navegador en el log del uvicorn**. Si la UI responde pero
+   el log del API no ve nada, no es un bug de la UI.
+
+Además, mezclar `main` antes de abrir el PR destapó un test rojo preexistente
+(`TabBar.test.tsx`, del PR #36) que CI nunca vio porque **no corre vitest**.
+Arreglado en su propio commit.
