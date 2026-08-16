@@ -395,13 +395,9 @@ def _settle_residual(conn, budget_id: int, total_objetivo: Decimal) -> Decimal:
 # hace: aquí solo protege un nombre contra un duplicado por espacios o mayúsculas
 # de más. La usa la dedup de `copy_lines`, para contestar por `(capítulo,
 # nombre)` la única pregunta que hay que contestar antes de copiar: «¿esto ya
-# está?». Vive aparte del lugar que la hace porque cualquier segunda comparación
-# de nombres tecleados por humanos tiene que ser exactamente ésta.
-_NORMALIZED = "lower(btrim(%s))"
-
-
+# está?».
 def _norm(column: str) -> str:
-    return _NORMALIZED % column
+    return f"lower(btrim({column}))"
 
 
 # ─── Copiar un presupuesto a otro ──────────────────────────────────────────────
@@ -429,19 +425,11 @@ _COPIED_LINE_COLUMNS = ("chapter_name", "name", "unit",
 # Qué renglones del origen entran a la copia. `NULL` es «todos los capítulos»,
 # que es el caso de siempre; una lista los recorta a los que se pidieron.
 #
-# El filtro va como fragmento COMPARTIDO —lo usan el conteo de candidatos y el
-# INSERT, en ese orden— y ahí está toda la razón de que exista como constante:
-# los saltados son la RESTA de esos dos números, así que dos WHERE que se
-# parezcan pero no sean idénticos convertirían un hecho en una estimación.
-#
 # La comparación de capítulo es EXACTA, no normalizada, al revés que la dedup de
-# abajo: un capítulo se elige de la lista que el propio origen publica
+# nombres: un capítulo se elige de la lista que el propio origen publica
 # (`get_budget` → `chapters`), no se teclea, igual que en `rename_chapter` y
 # `delete_chapter`. Normalizar aquí no arreglaría ningún error real y volvería
 # «Acabados» y «acabados» —dos capítulos que el origen sí distingue— uno solo.
-_CHAPTER_FILTER = "(%s::text[] IS NULL OR l.chapter_name = ANY(%s::text[]))"
-
-
 def copy_lines(conn, source_budget_id: int, target_budget_id: int,
                chapters: list[str] | None = None) -> tuple[int, int]:
     """Copia los renglones de un presupuesto a otro, sin repetir los que el
@@ -475,29 +463,41 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
             "Copiar «solo estos capítulos» necesita al menos uno. Para copiar el "
             "presupuesto completo, no mandes la lista.")
 
-    candidatos = conn.execute(
-        "SELECT count(*) AS n FROM budget_lines l"
-        "  WHERE l.budget_id = %s AND NOT l.is_residual"
-        f"   AND {_CHAPTER_FILTER}",
-        (source_budget_id, chapters, chapters),
-    ).fetchone()["n"]
-    if chapters is not None and candidatos == 0:
-        raise BudgetError(_no_such_chapters(conn, source_budget_id, chapters))
-
+    # Una sola sentencia, y ésa es la razón de la CTE: los saltados son la RESTA
+    # de candidatos menos copiados, así que los dos números tienen que salir del
+    # MISMO conjunto de filas. Escrito como dos queries, el filtro del origen
+    # quedaba tecleado dos veces y bastaba con que se despegaran un carácter para
+    # que un hecho se volviera una estimación. Aquí se escribe una vez, en `cand`,
+    # y el INSERT no puede leer nada más.
     columns = ", ".join(_COPIED_LINE_COLUMNS)
     source = ", ".join(f"l.{c}" for c in _COPIED_LINE_COLUMNS)
-    copied = conn.execute(
-        f"INSERT INTO budget_lines (budget_id, {columns})"
-        f" SELECT %s, {source} FROM budget_lines l"
-        "  WHERE l.budget_id = %s AND NOT l.is_residual"
-        f"   AND {_CHAPTER_FILTER}"
-        "   AND NOT EXISTS (SELECT 1 FROM budget_lines d"
-        "                    WHERE d.budget_id = %s AND NOT d.is_residual"
-        f"                     AND {_norm('d.chapter_name')} = {_norm('l.chapter_name')}"
-        f"                     AND {_norm('d.name')} = {_norm('l.name')})"
-        "  ORDER BY l.chapter_name, l.sort_order, l.id",
-        (target_budget_id, source_budget_id, chapters, chapters, target_budget_id),
-    ).rowcount
+    row = conn.execute(
+        # `l.id` viaja en `cand` sin copiarse: solo desempata el ORDER BY, para
+        # que el orden de inserción —y por lo tanto los `id` nuevos— sea el mismo
+        # que el del origen y no el que le toque al planeador.
+        f"WITH cand AS ("
+        f"     SELECT l.id, {source} FROM budget_lines l"
+        "       WHERE l.budget_id = %s AND NOT l.is_residual"
+        "         AND (%s::text[] IS NULL OR l.chapter_name = ANY(%s::text[]))"
+        "), ins AS ("
+        f"     INSERT INTO budget_lines (budget_id, {columns})"
+        f"     SELECT %s, {source} FROM cand l"
+        "       WHERE NOT EXISTS (SELECT 1 FROM budget_lines d"
+        "                          WHERE d.budget_id = %s AND NOT d.is_residual"
+        f"                           AND {_norm('d.chapter_name')} = {_norm('l.chapter_name')}"
+        f"                           AND {_norm('d.name')} = {_norm('l.name')})"
+        "       ORDER BY l.chapter_name, l.sort_order, l.id"
+        "     RETURNING 1"
+        ") SELECT (SELECT count(*) FROM cand) AS candidatos,"
+        "         (SELECT count(*) FROM ins) AS copiados",
+        (source_budget_id, chapters, chapters, target_budget_id, target_budget_id),
+    ).fetchone()
+    candidatos, copied = row["candidatos"], row["copiados"]
+    # El rechazo va DESPUÉS de insertar y sigue siendo el mismo rechazo: sin
+    # candidatos el INSERT no metió una sola fila, y de todos modos `get_db()`
+    # hace rollback de la transacción entera cuando algo sube.
+    if chapters is not None and candidatos == 0:
+        raise BudgetError(_no_such_chapters(conn, source_budget_id, chapters))
     return copied, candidatos - copied
 
 
@@ -596,10 +596,6 @@ _SOURCES_SQL = """
 # `line_count` y no `lines`: aquí es un NÚMERO, y en `get_budget` ese mismo
 # nombre carga el ARREGLO de renglones. Un campo que es un número en la lista y
 # una lista en el detalle es la clase de trampa que se paga en el cliente.
-def _source_row(row) -> dict:
-    source = _row_to_dict(row)
-    source["total"] = money0(source["total"])
-    return source
 
 
 def list_sources(conn, exclude_property_id: int | None = None) -> list[dict]:
@@ -610,8 +606,9 @@ def list_sources(conn, exclude_property_id: int | None = None) -> list[dict]:
     `apply` ya rechaza copiarse sobre sí mismo con un 422, y ofrecer en un
     selector una opción que solo puede dar error es hacer que el usuario
     descubra la regla chocando con ella."""
-    rows = conn.execute(_SOURCES_SQL, (exclude_property_id, exclude_property_id)).fetchall()
-    return [_source_row(row) for row in rows]
+    return [_row_to_dict(row) | {"total": money0(row["total"])}
+            for row in conn.execute(
+                _SOURCES_SQL, (exclude_property_id, exclude_property_id)).fetchall()]
 
 
 # ─── Renglones ────────────────────────────────────────────────────────────────
@@ -826,10 +823,10 @@ def set_total(conn, property_id: int, amount) -> Decimal:
 # ─── Capítulos ────────────────────────────────────────────────────────────────
 #
 # Un capítulo no es una fila: es el `chapter_name` que copian sus renglones, y
-# por eso no se crea vacío ni se lee del catálogo. Nace cuando el primer renglón
-# lo nombra. Lo que sí necesita operaciones propias es renombrarlo y quitarlo,
-# porque las dos tocan varios renglones a la vez y hacerlas renglón por renglón
-# dejaría el presupuesto medio renombrado si algo falla en medio.
+# por eso no se crea vacío. Nace cuando el primer renglón lo nombra. Lo que sí
+# necesita operaciones propias es renombrarlo y quitarlo, porque las dos tocan
+# varios renglones a la vez y hacerlas renglón por renglón dejaría el
+# presupuesto medio renombrado si algo falla en medio.
 
 def rename_chapter(conn, property_id: int, chapter: str, new_name: str) -> int:
     budget_id = _require_budget(conn, property_id)

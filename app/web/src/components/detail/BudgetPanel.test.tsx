@@ -642,10 +642,12 @@ describe('BudgetPanel', () => {
     expect(await screen.findByText(/Todavía no hay de dónde copiar/)).not.toBeNull()
   })
 
-  it('copiar un presupuesto se confirma, porque copiar dos veces duplica', async () => {
-    // No es idempotente: dos renglones con el mismo nombre pueden ser dos
-    // renglones legítimos y el servidor no puede saber cuál es el caso. Lo sabe
-    // quien copia.
+  it('copiar un presupuesto se confirma: es una escritura en masa que no se ve', async () => {
+    // NO se confirma porque duplique: el servidor compara (capítulo, nombre)
+    // normalizados y salta los que ya están, así que copiar dos veces deja el
+    // presupuesto igual. Se confirma porque mete decenas de renglones de un
+    // clic y caen dentro de capítulos colapsados: el efecto no está en
+    // pantalla, y una escritura así no se dispara de un dedazo.
     await renderPanel(DETALLADO)
     fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
     const selector = await screen.findByLabelText('Presupuesto de origen')

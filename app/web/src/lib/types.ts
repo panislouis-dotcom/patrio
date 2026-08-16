@@ -699,10 +699,11 @@ export interface BudgetLinePayment {
 /**
  * Un renglón del presupuesto de obra.
  *
- * El capítulo va por NOMBRE y no por id porque es una COPIA, no una referencia
- * (migración 032): editar el catálogo nunca puede reescribir lo que ya se
- * capturó. Un capítulo, en la tabla, es lo que resulta de agrupar por este
- * texto — no hay una entidad aparte que pueda quedar vacía ni desincronizarse.
+ * El capítulo va por NOMBRE y no por id porque un capítulo no es una entidad:
+ * en la tabla es lo que resulta de agrupar por este texto, así que no hay fila
+ * aparte que pueda quedar vacía ni desincronizarse de sus renglones. Renombrar
+ * un capítulo es reescribir el texto de los suyos, y no hay más lugar donde
+ * ese nombre viva.
  *
  * **Ninguna cifra total se guarda ni se recalcula aquí.** `budgetedAmount` es
  * cantidad × precio unitario y `paidAmount` es la suma de los pagos, las dos
@@ -726,11 +727,11 @@ export interface BudgetLine {
    * se decide semanas después— así que tener oficio sin proveedor es el estado
    * normal de una obra que se está presupuestando, no un renglón a medias.
    *
-   * Es una COPIA del catálogo, hecha al instanciar y con la herencia capítulo →
-   * partida ya resuelta, igual que el nombre y la unidad: corregir el catálogo
-   * después no la mueve. FILTRA el selector de proveedores por id — antes se
-   * comparaba el nombre del capítulo contra el de las categorías, dos
-   * vocabularios que solo coincidían por casualidad — y nunca restringe.
+   * Vive EN EL RENGLÓN: se teclea al capturarlo, o viaja en la copia cuando el
+   * renglón se copió de otra obra. No lo hereda de ningún lado ni lo sigue
+   * después. FILTRA el selector de proveedores por id — antes se comparaba el
+   * nombre del capítulo contra el de las categorías, dos vocabularios que solo
+   * coincidían por casualidad — y nunca restringe.
    */
   supplierCategoryId: number | null
   supplierId: number | null

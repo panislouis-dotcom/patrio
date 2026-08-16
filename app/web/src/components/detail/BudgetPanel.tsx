@@ -169,10 +169,9 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   const [chapters, setChapters] = useState<string[]>([])
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   /**
-   * Los oficios con los que se contrata. Viajan con el presupuesto y no con el
-   * panel de catálogo porque el oficio se captura EN EL RENGLÓN, en la visita
-   * normal: es lo que se sabe mientras se presupuesta, mucho antes que quién lo
-   * va a hacer.
+   * Los oficios con los que se contrata. Se cargan con el presupuesto porque el
+   * oficio se captura EN EL RENGLÓN, en la visita normal: es lo que se sabe
+   * mientras se presupuesta, mucho antes que quién lo va a hacer.
    */
   const [categories, setCategories] = useState<ProveedorCategory[]>([])
   const [loading, setLoading] = useState(true)
@@ -233,7 +232,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   const [pickedChapters, setPickedChapters] = useState<Set<string> | null>(null)
   /** Copiando ahora mismo: hay N llamadas en vuelo, una tras otra. */
   const [copying, setCopying] = useState(false)
-  const [pushResults, setPushResults] = useState<PushResult[] | null>(null)
+  const [pushResults, setPushResults] = useState<PushResult[]>([])
 
   /**
    * Lo que se cambió y todavía no se manda, por renglón. Las celdas de texto y
@@ -400,7 +399,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     const opening = !pushing
     setPushing(opening)
     if (!opening) return
-    setPushResults(null)
+    setPushResults([])
     // ESTA obra se saca de la lista: copiarse sobre sí misma la rechaza el
     // servidor con un 422, y ofrecer una opción que solo puede dar error es
     // hacer que alguien descubra la regla chocando con ella. Es la misma razón
@@ -444,6 +443,15 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     : copyableChapters.filter(c => pickedChapters.has(c))
 
   /**
+   * Si el botón de copiar hace algo. Una sola definición porque la usan el
+   * `disabled` y el cursor: escritas por separado se desfasaron —el botón
+   * quedaba muerto pero con la manita— y esa mentira la ve el usuario.
+   */
+  const canPush = !copying
+    && pickedTargets.length > 0
+    && (chaptersToPush === null || chaptersToPush.length > 0)
+
+  /**
    * Empujar este presupuesto a las obras elegidas: UNA LLAMADA POR OBRA.
    *
    * No hay ruta de reparto y no es un descuido. Cada presupuesto es
@@ -476,14 +484,14 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
       const base = { propertyId: p.id, name: p.name }
       try {
         const { linesAdded, linesSkipped } = await applyBudgetSource(p.id, budgetId, chaptersToPush)
-        setPushResults(prev => [...(prev ?? []), {
+        setPushResults(prev => [...prev, {
           ...base, error: null, added: linesAdded ?? 0, skipped: linesSkipped ?? 0,
         }])
       } catch (e) {
         // Que una obra falle no cancela las demás: las que ya entraron quedan
         // aplicadas y las que faltan se siguen intentando. Por eso el fallo se
         // guarda CON EL NOMBRE de su obra en vez de tumbar todo el copiado.
-        setPushResults(prev => [...(prev ?? []), {
+        setPushResults(prev => [...prev, {
           ...base, added: 0, skipped: 0,
           error: e instanceof Error ? e.message : 'No se pudo copiar',
         }])
@@ -755,13 +763,9 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
           <div style={panelRow}>
             <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }} />
             <button
-              disabled={copying || pickedTargets.length === 0
-                || (chaptersToPush !== null && chaptersToPush.length === 0)}
+              disabled={!canPush}
               onClick={() => void pushToTargets()}
-              style={{
-                ...ghost,
-                cursor: pickedTargets.length > 0 && !copying ? 'pointer' : 'not-allowed',
-              }}
+              style={{ ...ghost, cursor: canPush ? 'pointer' : 'not-allowed' }}
             >
               {copying ? 'COPIANDO…' : 'COPIAR A ESTAS OBRAS'}
             </button>
@@ -776,7 +780,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
 
           {/* El resultado, OBRA POR OBRA. Un «listo» que escondiera que a una de
               las tres no llegó nada sería peor que un error. */}
-          {pushResults && pushResults.length > 0 && (
+          {pushResults.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {pushResults.map(r => (
                 <div

@@ -78,7 +78,7 @@ COMMENT ON VIEW budget_price_observations IS
 -- devolverle la columna a `budget_lines`.
 DROP VIEW budget_price_observations;
 
-CREATE TABLE budget_chapters (
+CREATE TABLE IF NOT EXISTS budget_chapters (
   id          BIGSERIAL PRIMARY KEY,
   name        TEXT NOT NULL CHECK (name <> ''),
   sort_order  INTEGER NOT NULL DEFAULT 0,
@@ -88,10 +88,10 @@ CREATE TABLE budget_chapters (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_budget_chapters_name
+CREATE UNIQUE INDEX IF NOT EXISTS uq_budget_chapters_name
   ON budget_chapters (lower(name)) WHERE is_active;
 
-CREATE TABLE budget_items (
+CREATE TABLE IF NOT EXISTS budget_items (
   id          BIGSERIAL PRIMARY KEY,
   chapter_id  BIGINT NOT NULL REFERENCES budget_chapters(id),
   name        TEXT NOT NULL CHECK (name <> ''),
@@ -103,9 +103,9 @@ CREATE TABLE budget_items (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_budget_items_name
+CREATE UNIQUE INDEX IF NOT EXISTS uq_budget_items_name
   ON budget_items (chapter_id, lower(name)) WHERE is_active;
-CREATE INDEX idx_budget_items_chapter ON budget_items (chapter_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_budget_items_chapter ON budget_items (chapter_id, sort_order);
 
 CREATE TRIGGER trg_budget_chapters_touch BEFORE UPDATE ON budget_chapters
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
@@ -115,7 +115,7 @@ CREATE TRIGGER trg_budget_items_touch BEFORE UPDATE ON budget_items
 ALTER TABLE budget_lines
   ADD COLUMN item_id BIGINT REFERENCES budget_items(id) ON DELETE SET NULL;
 
-CREATE INDEX idx_budget_lines_item ON budget_lines (item_id) WHERE item_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_budget_lines_item ON budget_lines (item_id) WHERE item_id IS NOT NULL;
 
 -- La vista tal como la dejó la 032, `item_id` incluido.
 CREATE VIEW budget_price_observations AS

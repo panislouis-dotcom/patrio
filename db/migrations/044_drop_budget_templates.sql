@@ -63,7 +63,7 @@ ALTER TABLE budgets ALTER COLUMN property_id SET NOT NULL;
 -- nombre: no cambia qué se rechaza, cambia que el esquema deje de insinuar un
 -- presupuesto huérfano.
 DROP INDEX uq_budgets_property;
-CREATE UNIQUE INDEX uq_budgets_property ON budgets (property_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_budgets_property ON budgets (property_id);
 
 -- La vista de historia de precios filtraba `b.property_id IS NOT NULL` para
 -- dejar fuera las plantillas: una intención no es una observación, y contarla
@@ -107,14 +107,14 @@ COMMENT ON VIEW budget_price_observations IS
 -- plantillas, vacía de las que hubiera.
 
 DROP INDEX uq_budgets_property;
-CREATE UNIQUE INDEX uq_budgets_property ON budgets (property_id) WHERE property_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_budgets_property ON budgets (property_id) WHERE property_id IS NOT NULL;
 
 ALTER TABLE budgets ALTER COLUMN property_id DROP NOT NULL;
 
 ALTER TABLE budgets ADD COLUMN name  TEXT NOT NULL DEFAULT '';
 ALTER TABLE budgets ADD COLUMN notes TEXT NOT NULL DEFAULT '';
 
-CREATE UNIQUE INDEX uq_budgets_template_name
+CREATE UNIQUE INDEX IF NOT EXISTS uq_budgets_template_name
   ON budgets (lower(name)) WHERE property_id IS NULL;
 
 ALTER TABLE budgets ADD CONSTRAINT budgets_template_needs_name
