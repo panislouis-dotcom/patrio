@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from api.lib.prospectus_html import _floorplan_svg, _budget_full, _opportunity, _opportunity_detail, _BODY_CSS, _SVG_SIZE
+from api.lib.prospectus_html import _floorplan_svg, _budget_full, _opportunity, _opportunity_detail, _plan_rows, _BODY_CSS, _SVG_SIZE
 
 ONE_FLOOR = {
     "floors": [{
@@ -445,3 +445,82 @@ def test_the_opportunity_note_is_prose_not_a_rigid_block():
     solo en una hoja casi en blanco."""
     rule = re.search(r"\.opp-note \{[^}]*\}", _BODY_CSS).group()
     assert "break-inside" not in rule
+
+
+# ---------------------------------------------------------------------------
+# _plan_rows — hojas dibujadas + cabezas de render → filas por linaje de piso
+# ---------------------------------------------------------------------------
+
+def _sheet(fid, variant, svg="<svg/>", name="Planta Baja"):
+    return {"floorId": fid, "variant": variant, "floorName": name, "svg": svg}
+
+
+def _render(fid, variant, uri="data:x", name=None):
+    return {"floorId": fid, "sourceVariant": variant, "floorName": name, "dataUri": uri}
+
+
+def test_un_render_empata_por_piso_Y_variante():
+    rows, left = _plan_rows(
+        [_sheet("abc", "original", "<svg>A</svg>"), _sheet("abc", "planned", "<svg>B</svg>")],
+        [_render("abc", "original"), _render("abc", "planned")])
+    assert len(rows) == 1
+    assert len(rows[0]["antes"]["renders"]) == 1
+    assert len(rows[0]["despues"]["renders"]) == 1
+    assert left == []
+
+
+def test_variante_distinta_no_empata_aunque_el_piso_coincida():
+    """Un piso planeado nacido de PARTIR comparte el id del original
+    (LevantamientoPanel.tsx:231): parear solo por floorId pondría un render del
+    original junto al plano del planeado."""
+    rows, left = _plan_rows([_sheet("abc", "planned", "<svg>B</svg>")],
+                            [_render("abc", "original")])
+    assert rows[0]["despues"]["renders"] == []
+    assert len(left) == 1
+
+
+def test_floor_id_nulo_cae_a_la_tira_suelta():
+    rows, left = _plan_rows([_sheet("abc", "original")], [_render(None, None)])
+    assert rows[0]["antes"]["renders"] == []
+    assert len(left) == 1
+
+
+def test_render_de_un_piso_borrado_cae_a_la_tira_suelta():
+    rows, left = _plan_rows([_sheet("abc", "original")], [_render("zzz", "original")])
+    assert len(left) == 1
+
+
+def test_un_render_sin_dataUri_no_entra_a_ningun_lado():
+    rows, left = _plan_rows([_sheet("abc", "original")],
+                            [_render("abc", "original", uri=None)])
+    assert rows[0]["antes"]["renders"] == [] and left == []
+
+
+def test_un_clon_sin_editar_colapsa_a_una_sola_hoja():
+    """Mismo svg = mismo dibujo. Imprimirlo bajo Antes/Después afirmaría una
+    transformación que nadie diseñó."""
+    rows, left = _plan_rows(
+        [_sheet("abc", "original", "<svg>A</svg>"), _sheet("abc", "planned", "<svg>A</svg>")],
+        [_render("abc", "original"), _render("abc", "planned")])
+    assert rows[0]["despues"] is None
+    # los renders del planeado son del MISMO dibujo: se quedan en la fila, no sobran
+    assert len(rows[0]["antes"]["renders"]) == 2
+    assert left == []
+
+
+def test_el_nombre_sale_de_la_hoja_no_del_render():
+    rows, _ = _plan_rows([_sheet("abc", "original", name="Planta Alta")],
+                         [_render("abc", "original", name="Nombre Viejo")])
+    assert rows[0]["floorName"] == "Planta Alta"
+
+
+def test_orden_original_primero_luego_los_pisos_solo_planeados():
+    rows, _ = _plan_rows(
+        [_sheet("a", "original"), _sheet("b", "original"), _sheet("z", "planned")], [])
+    assert len(rows) == 3
+    assert [r["antes"] is not None for r in rows] == [True, True, False]
+
+
+def test_sin_hojas_todo_es_tira_suelta():
+    rows, left = _plan_rows([], [_render("abc", "original")])
+    assert rows == [] and len(left) == 1

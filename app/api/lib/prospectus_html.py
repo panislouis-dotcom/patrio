@@ -451,6 +451,61 @@ def _strip(images, label: str, limit: int) -> str:
     return f'{lab}<div class="strip">{tags}</div>'
 
 
+def _plan_rows(sheets: list[dict], renders: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Las hojas dibujadas + las cabezas de render → filas por LINAJE de piso, más lo
+    que no empató.
+
+    Una fila es un piso a lo largo de sus variantes, no una hoja: un piso planeado
+    nacido de PARTIR/RE-PARTIR comparte el `id` de su contraparte original
+    (`LevantamientoPanel.tsx:231`), y ese id compartido es justo lo que permite
+    alinear el antes con el después sin heurística.
+
+    Por eso mismo un render empata por `(floorId, sourceVariant)`, LAS DOS, nunca solo
+    la primera: el propio comentario de allá lo advirtió por escrito antes de que esta
+    función existiera. Lo que no empata —render de foto, render anterior al 7-ago con
+    columnas NULL (`042` se negó a inventarles piso), render cuyo piso ya se borró—
+    vuelve como `leftovers` y alimenta la `_strip` de siempre. La salida de hoy es el
+    piso de la salida nueva, nunca peor.
+
+    El nombre del piso sale de la HOJA, no del render: `floorName` en el render está
+    congelado para sobrevivir a un renombre, pero si el piso todavía existe manda el
+    vivo. Un render cuyo piso se borró es leftover, y ahí su nombre congelado es la
+    única etiqueta honesta que queda.
+    """
+    by_key = {(s["floorId"], s["variant"]): s for s in sheets}
+    paired: dict[tuple, list] = {key: [] for key in by_key}
+    leftovers = []
+    for r in renders:
+        if not r.get("dataUri"):
+            continue
+        key = (r.get("floorId"), r.get("sourceVariant"))
+        (paired[key] if key in paired else leftovers).append(r)
+
+    order, seen = [], set()
+    for s in sheets:
+        if s["floorId"] not in seen:
+            seen.add(s["floorId"])
+            order.append(s["floorId"])
+
+    rows = []
+    for fid in order:
+        antes, despues = by_key.get((fid, "original")), by_key.get((fid, "planned"))
+        # Un planeado clonado y aún no editado produce el MISMO string —mismo
+        # serializador, misma entrada—. Imprimirlo bajo "Antes / Después" afirmaría una
+        # transformación que nadie diseñó. La igualdad de strings compara exactamente lo
+        # que el lector vería, sin diff geométrico. Sus renders son del mismo dibujo, así
+        # que se quedan en la fila; no son sobrantes.
+        if antes and despues and antes["svg"] == despues["svg"]:
+            paired[(fid, "original")] += paired[(fid, "planned")]
+            despues = None
+        rows.append({
+            "floorName": (antes or despues)["floorName"],
+            "antes": {**antes, "renders": paired[(fid, "original")]} if antes else None,
+            "despues": {**despues, "renders": paired[(fid, "planned")]} if despues else None,
+        })
+    return rows, leftovers
+
+
 def _kv_rows(pairs) -> str:
     """(label, value) rows; a None value drops the row. Labels are escaped here —
     values are emitted as HTML, so the caller must escape anything user-supplied."""
