@@ -5,6 +5,10 @@ COPY app/web/package*.json ./
 RUN npm ci
 COPY app/web/ ./
 RUN VITE_API_BASE="" npm run build
+# El mismo floorToSvg que dibuja el editor, empaquetado aparte: lo evalúa
+# api/lib/plano_js.py en el Chromium del PDF para que el prospecto no tenga una
+# segunda implementación del plano. No lleva VITE_API_BASE — no habla con el API.
+RUN npm run build:plano
 
 # Stage 2: Python API
 FROM python:3.12-slim AS production
@@ -29,6 +33,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 # Application code
 COPY app/api/ ./api/
 COPY app/scraper/ ./scraper/
+
+# Va DESPUÉS de COPY app/api/ a propósito: el bundle es artefacto de build (gitignored),
+# así que el COPY del código fuente lo pisaría si fuera al revés.
+COPY --from=frontend-build /build/dist-plano/plano.iife.js ./api/assets/plano.iife.js
 
 # One-off admin scripts (e.g. scripts/backfill_image_orientation.py), meant to
 # be run with `kubectl exec` against a live pod. Locally scripts/ and app/ are

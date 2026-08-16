@@ -34,3 +34,8 @@ docs/superpowers/.coverage
 
 # Árboles de trabajo aislados (git worktree): son checkouts, no fuente
 .worktrees/
+
+# El bundle del plano es un artefacto de build (make build-plano), no fuente:
+# se genera desde app/web/src/lib/floorplan/planSheets.ts
+app/web/dist-plano/
+app/api/assets/plano.iife.js
