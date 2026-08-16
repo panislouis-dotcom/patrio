@@ -616,14 +616,18 @@ def _no_such_chapters(conn, source_budget_id: int, chapters: list[str]) -> str:
 # ─── Copiar proporcional ──────────────────────────────────────────────────────
 #
 # COPIAR PROPORCIONAL ES COPIAR LA FORMA DEL PRESUPUESTO, DIMENSIONADA AL COSTO
-# QUE SE ESPERA DE ESTA OBRA. El desglose de la obra de al lado sirve; su tamaño
-# no.
+# DE OBRA QUE ESTA PROPIEDAD YA TIENE. El desglose de la obra de al lado sirve;
+# su tamaño no.
 #
-# El costo objetivo es `T = m² de construcción × $/m² de desarrollo` del DESTINO,
-# y no una razón de metrajes: dos obras del mismo tamaño pueden construirse a
-# niveles de costo distintos, y el metraje solo no lo captura.
+# El costo objetivo es `T = el total del presupuesto del DESTINO`, y no una razón
+# de metrajes: dos obras del mismo tamaño pueden construirse a niveles de costo
+# distintos, y el metraje solo no lo captura. Tampoco es un $/m² que llegue en el
+# cuerpo: toda propiedad YA trae su costo de obra —el total de su presupuesto,
+# que por construcción ES `m² × $/m²`, porque de ahí lo sembró la ficha—, así que
+# pedirlo otra vez sería capturar por segunda vez un número que ya existe, con la
+# única consecuencia posible de que las dos capturas discrepen.
 #
-#     T = m² destino × $/m² destino      el costo objetivo
+#     T = el total actual del presupuesto del destino
 #     F = las partidas FIJAS del origen  no escalan
 #     todo lo demás del origen           sí escala
 #
@@ -642,44 +646,31 @@ def _no_such_chapters(conn, source_budget_id: int, chapters: list[str]) -> str:
 # donde `factor·(todo lo demás)` se reparte entre los renglones escalados y el
 # residuo, que aterriza solo en `_settle_residual` como `T − detallado`.
 #
-# T NO SE GUARDA EN NINGÚN LADO, ni el $/m² que lo produjo. El total sigue siendo
-# siempre la suma de los renglones; el $/m² del popup es un insumo transitorio de
-# la CALCULADORA, exactamente como el de la ficha (`_CALCULATOR_FIELDS`), y
-# `constructionCostPerSqm` sigue siendo un derivado que nadie escribe.
+# T NO SE GUARDA EN NINGÚN LADO NUEVO: es el total de siempre, la suma de los
+# renglones. Por eso LAS DOS COPIAS PERSIGUEN EL MISMO OBJETIVO y ninguna de las
+# dos mueve el costo de obra de esta propiedad — lo que cambia entre ellas es a
+# qué TAMAÑO entran los renglones copiados: tal cual los del origen, o
+# dimensionados para caber aquí. Cambiar el costo de obra sigue siendo su propia
+# operación (`set_total`, o la ficha), y no un efecto secundario de copiar.
 
-def _target_cost(conn, property_id: int, cost_per_sqm) -> Decimal:
-    """`m² × $/m²` de la obra destino — el costo objetivo de la copia.
+def _require_cost_of_works(conn, property_id: int, objetivo: Decimal) -> None:
+    """El objetivo de la copia proporcional SE LEE, NO SE RECIBE: es el costo de
+    obra que la propiedad ya tiene. Lo único que hay que exigirle es existir.
 
-    Reusa la misma calculadora que siembra el presupuesto al alta, y SIN
-    OVERHEAD, por la misma razón que la ficha no lo aplica al recalcular
-    (`update_property`): un $/m² tecleado contra una obra que ya existe es una
-    edición directa de un presupuesto real, no un estimado grueso, y
-    multiplicarlo por un 1.3 escondido haría que el número de la pantalla no
-    coincidiera con el que se capturó. El popup pre-llena ese campo con el
-    `constructionCostPerSqm` derivado del destino, que YA trae el overhead
-    adentro: volvérselo a aplicar lo inflaría 30% cada vez que alguien acepta el
-    valor sugerido.
-
-    LOS DOS INSUMOS SE NOMBRAN AL RECHAZAR. Faltar es el caso frecuente —hoy solo
-    3 de 5 propiedades tienen metraje— y un «no se puede copiar proporcional» sin
-    decir cuál de los dos falta obliga a adivinar entre dos campos."""
-    row = conn.execute(
-        "SELECT name, sqm_construction FROM properties WHERE id = %s", (property_id,)
-    ).fetchone()
-    if row is None:
-        raise BudgetNotFound(f"Propiedad {property_id} no encontrada")
-    sqm = to_decimal(row["sqm_construction"])
-    faltan = []
-    if sqm <= 0:
-        faltan.append(f"los m² de construcción de «{row['name']}»")
-    if to_decimal(cost_per_sqm) <= 0:
-        faltan.append("el $/m² de desarrollo que se espera de ella")
-    if faltan:
-        raise BudgetError(
-            "La copia proporcional dimensiona el presupuesto copiado con "
-            f"m² × $/m², y falta capturar {' y '.join(faltan)}. Captúralo y "
-            "vuelve a intentar, o copia el presupuesto tal cual.")
-    return money(calculator_estimate(sqm, cost_per_sqm, construction_overhead=1))
+    En cero no hay nada a qué escalar —el factor daría 0 y la copia entera
+    aterrizaría en importes en cero—, y el arreglo no está en esta pantalla: el
+    costo de obra se captura en la ficha de la propiedad. Ahí manda el rechazo,
+    nombrando la obra."""
+    if objetivo > 0:
+        return
+    nombre = conn.execute(
+        "SELECT name FROM properties WHERE id = %s", (property_id,)
+    ).fetchone()["name"]
+    raise BudgetError(
+        f"«{nombre}» no tiene capturado su costo de obra, y la copia proporcional "
+        f"dimensiona lo copiado a ese costo. Captúralo en la ficha de la obra —con "
+        f"sus m² de construcción y su $/m²— y vuelve a intentar, o copia el "
+        f"presupuesto tal cual.")
 
 
 def _proportional_factor(conn, source_budget_id: int,
@@ -701,8 +692,8 @@ def _proportional_factor(conn, source_budget_id: int,
             f"No se puede copiar proporcional: las partidas fijas del presupuesto "
             f"de origen suman ${fijas:,.0f} y el objetivo de esta obra es "
             f"${objetivo:,.0f}. Una partida fija cuesta lo que cuesta —no encoge "
-            f"con la obra— así que ya no cabe. Sube el $/m², o desmarca las "
-            f"partidas que sí deban escalar.")
+            f"con la obra— así que ya no cabe. Sube el costo de obra de esta "
+            f"propiedad, o desmarca las partidas que sí deban escalar.")
     escalable, _ = _totals(conn, source_budget_id)
     escalable -= fijas
     # Sin nada que escalar el factor no multiplica nada: todo el origen es fijo y
@@ -716,8 +707,7 @@ def _proportional_factor(conn, source_budget_id: int,
 
 def apply_budget(conn, property_id: int, source_budget_id: int,
                  chapters: list[str] | None = None, *,
-                 proportional: bool = False, cost_per_sqm=None
-                 ) -> tuple[int, int, Decimal]:
+                 proportional: bool = False) -> tuple[int, int, Decimal]:
     """Arranca esta obra desde el presupuesto de otra.
 
     Los renglones se SUMAN a lo que ya hubiera: el residuo baja lo que ellos
@@ -734,39 +724,32 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
     aplicó es un «listo» que esconde la mitad del resultado. `chapters` recorta
     el origen a esos capítulos; `None` copia el presupuesto entero.
 
-    LAS DOS COPIAS SON LA MISMA OPERACIÓN CON OTRO OBJETIVO. La directa conserva
-    el total que la obra ya tenía —copiar sale del residuo, igual que detallar a
-    mano—; la PROPORCIONAL lo mueve al costo que se espera de esta obra
-    (`m² × $/m²`) y dimensiona lo copiado para que quepa ahí. De ahí en adelante
-    las dos son el mismo INSERT y el mismo `_settle_residual`.
+    LAS DOS COPIAS SON LA MISMA OPERACIÓN CON OTRO TAMAÑO. Las dos conservan el
+    costo de obra que la propiedad ya tenía —copiar sale del residuo, igual que
+    detallar a mano—; lo que cambia es a qué tamaño entran los renglones: la
+    directa los trae con los importes del origen, la PROPORCIONAL los dimensiona
+    para que la suma quepa exactamente en ese costo. De ahí en adelante las dos
+    son el mismo INSERT y el mismo `_settle_residual`.
 
-    EL FACTOR LO CALCULA ESTE SERVIDOR, siempre, con el metraje del destino y el
-    $/m² que se capturó. Un factor mandado por el cliente volvería la garantía
-    —«la suma da exactamente el objetivo»— imposible de verificar aquí.
+    EL FACTOR LO CALCULA ESTE SERVIDOR, siempre, contra el costo de obra que el
+    destino ya tiene capturado. Un factor mandado por el cliente volvería la
+    garantía —«la suma da exactamente el objetivo»— imposible de verificar aquí.
 
     `budgetIncrease` significa lo mismo en las dos: cuánto REBASÓ el detalle al
-    objetivo. No es «cuánto subió el total», porque en la proporcional el total
-    se mueve a T a propósito, y eso es la operación, no una sorpresa que
-    reportar."""
+    objetivo."""
     budget_id = _require_budget(conn, property_id)
     if source_budget_id == budget_id:
         raise BudgetError("Un presupuesto no se copia sobre sí mismo.")
     if conn.execute("SELECT 1 FROM budgets WHERE id = %s",
                     (source_budget_id,)).fetchone() is None:
         raise BudgetNotFound(f"No existe el presupuesto {source_budget_id} que se quiere copiar")
+    # El objetivo es el mismo en los dos modos —el costo de obra que esta
+    # propiedad ya tiene— y por eso se lee una sola vez, antes de la rama.
+    objetivo, _ = _totals(conn, budget_id)
+    factor = None
     if proportional:
-        objetivo = _target_cost(conn, property_id, cost_per_sqm)
+        _require_cost_of_works(conn, property_id, objetivo)
         factor = _proportional_factor(conn, source_budget_id, chapters, objetivo)
-    else:
-        # Un $/m² capturado que no se use es una copia directa que el usuario
-        # creyó proporcional: el resultado se ve plausible y nadie se entera.
-        if cost_per_sqm is not None:
-            raise BudgetError(
-                "El $/m² solo lo usa la copia proporcional. Pide la copia "
-                "proporcional, o quita el $/m²: no se puede capturar un costo "
-                "objetivo y copiar los importes tal cual.")
-        objetivo, _ = _totals(conn, budget_id)
-        factor = None
     copied, skipped = copy_lines(conn, source_budget_id, budget_id, chapters, factor)
     return copied, skipped, _settle_residual(conn, budget_id, objetivo)
 

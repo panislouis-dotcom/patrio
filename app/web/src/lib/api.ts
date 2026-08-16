@@ -1129,34 +1129,31 @@ export function deleteBudgetPayment(
  *
  * - Omitido —el caso por omisión— es la copia DIRECTA: los renglones entran con
  *   los montos del origen, tal cual.
- * - Presente pide la copia PROPORCIONAL: copiar la FORMA del presupuesto,
- *   dimensionada al costo que se espera del destino. El servidor multiplica el
- *   `costPerSqm` por el metraje de construcción DEL DESTINO —que él ya tiene, y
- *   por eso no viaja— para llegar al costo objetivo, y de ahí saca el factor.
- *   **El cliente nunca manda el factor**: un multiplicador arbitrario volvería
- *   la garantía de que la suma da exactamente el objetivo imposible de verificar
- *   del lado que la sostiene.
+ * - `true` pide la copia PROPORCIONAL: copiar la FORMA del presupuesto,
+ *   dimensionada al costo de obra DEL DESTINO. **Ese objetivo no viaja**: es el
+ *   total del presupuesto que el destino ya tiene, y el servidor lo lee de ahí.
+ *   Mandarlo desde la pantalla sería una segunda definición del mismo número, y
+ *   la que se pudiera teclear encima. **El cliente tampoco manda el factor**: un
+ *   multiplicador arbitrario volvería la garantía de que la suma da exactamente
+ *   el objetivo imposible de verificar del lado que la sostiene.
  *
- * El modo va en un campo PROPIO y no se deduce de que venga un `$/m²`: deducido,
- * un popup mandado sin capturar el costo caería a copia directa en silencio —con
- * el resultado equivocado y sin nada que se vea roto—. Por eso `costPerSqm`
- * puede viajar en `null`: es el servidor quien contesta cuál de los dos insumos
- * falta, en vez de que la pantalla decida callarse.
+ * El modo va en un campo PROPIO y nada más: el cuerpo proporcional es el mismo
+ * de la copia directa con `proportional: true` encima, sin un solo insumo extra.
  *
  * Las partidas marcadas como no proporcionales entran con su monto original; el
- * resto se escala. Si al destino le falta el metraje o el `$/m²`, o si las
- * partidas fijas del origen ya no caben en el objetivo, contesta 422 con el
- * motivo escrito.
+ * resto se escala. Si el destino no tiene costo de obra capturado, o si las
+ * partidas fijas del origen ya no caben en él, contesta 422 con el motivo
+ * escrito.
  */
 export function applyBudgetSource(
   propertyId: number, budgetId: number, chapters: string[] | null = null,
-  proportional: { costPerSqm: number | null } | null = null,
+  proportional = false,
 ): Promise<BudgetWrite> {
   // En directo el cuerpo es EXACTAMENTE el de siempre: la copia que ya
   // funcionaba no cambia de forma por existir la otra.
   return budgetWrite(budgetUrl(propertyId, '/apply'), 'POST', {
     budgetId, chapters,
-    ...(proportional ? { proportional: true, costPerSqm: proportional.costPerSqm } : {}),
+    ...(proportional ? { proportional: true } : {}),
   })
 }
 

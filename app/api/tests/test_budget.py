@@ -924,8 +924,9 @@ def test_an_empty_chapter_list_is_refused_instead_of_copying_nothing(
 # ── Copiar proporcional ─────────────────────────────────────────────────────
 #
 # Copiar proporcional es copiar la FORMA del presupuesto de otra obra,
-# dimensionada al costo que se espera de ÉSTA: `T = m² × $/m²` del destino. El
-# desglose de la obra de al lado sirve; su tamaño no.
+# dimensionada al costo de obra que el destino YA tiene: `T` es el total de su
+# presupuesto, que nadie manda en el cuerpo porque ya está capturado. El desglose
+# de la obra de al lado sirve; su tamaño no.
 #
 # Lo que esta suite fija es que la aritmética CIERRA —la suma final da
 # exactamente T, no «T más lo que se acumuló redondeando»— y que lo que no
@@ -937,7 +938,7 @@ def test_an_empty_chapter_list_is_refused_instead_of_copying_nothing(
 #
 #     origen:   200,000 (lote) + 150,000 (m²) + 50,000 (fija) = 400,000 detallado
 #               total 2,050,000  →  residuo 1,650,000
-#     destino:  200 m² × $20,250 = T = 4,050,000
+#     destino:  200 m² × $20,250 = T = 4,050,000, sembrado por la ficha al alta
 #     factor = (4,050,000 − 50,000) / (2,050,000 − 50,000) = 2
 COSTO_POR_M2 = 20_250
 OBJETIVO = Decimal("4050000")
@@ -964,30 +965,48 @@ def modelo(client):
 
 
 @pytest.fixture
-def sin_metraje(client):
-    """Una obra sin m² de construcción capturados — hoy 2 de las 5 reales están
-    así, y por eso el rechazo tiene que ser legible, no un borde."""
+def destino(client):
+    """La obra a la que se copia: 200 m² a $20,250, o sea $4,050,000 de costo de
+    obra ya capturado.
+
+    Ese total ES el objetivo, y por eso el cuerpo de la copia no lo lleva: la
+    ficha lo sembró al alta como `m² × $/m²` y desde entonces vive en el
+    presupuesto, donde el servidor lo lee."""
     r = client.post("/api/properties", json={
-        "name": "[TEST] Obra Sin Metraje", "address": "Calle Sin 1",
+        "name": "[TEST] Obra Destino", "address": "Calle Destino 1",
+        "city": "Monterrey", "purchasePrice": 1_000_000, "sqmConstruction": 200,
+        "constructionCostPerSqm": COSTO_POR_M2, "constructionOverhead": 1})
+    assert r.status_code == 201, r.text
+    prop = r.json()
+    assert _dec(prop["constructionBudgeted"]) == OBJETIVO
+    yield prop
+    _delete_property(prop["id"])
+
+
+@pytest.fixture
+def sin_costo_de_obra(client):
+    """Una obra sin costo de obra capturado — hoy 2 de las 5 reales están así, y
+    por eso el rechazo tiene que ser legible, no un borde."""
+    r = client.post("/api/properties", json={
+        "name": "[TEST] Obra Sin Costo", "address": "Calle Sin 1",
         "city": "Monterrey", "purchasePrice": 1_000_000})
     assert r.status_code == 201, r.text
     prop = r.json()
-    assert not prop["sqmConstruction"]
+    assert _dec(prop["constructionBudgeted"]) == Decimal("0")
     yield prop
     _delete_property(prop["id"])
 
 
 def _apply_proporcional(client, property_id: int, source_budget_id: int, **body):
-    return _apply(client, property_id, source_budget_id,
-                  proportional=True, costPerSqm=COSTO_POR_M2, **body)
+    return _apply(client, property_id, source_budget_id, proportional=True, **body)
 
 
 def test_a_lump_sum_line_moves_its_price_and_not_its_quantity(
-        client, test_property, modelo):
+        client, destino, modelo):
     """En «lote» escala el PRECIO. El renglón se sigue leyendo «1 lote», solo más
     caro — escalar la cantidad daría «2 lote», que no significa nada, y dejaría
     sin sentido el precio unitario que la historia de precios publica."""
-    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
 
     hidraulica = _detailed(r.json()["budget"])["Hidráulica"]
@@ -996,10 +1015,10 @@ def test_a_lump_sum_line_moves_its_price_and_not_its_quantity(
 
 
 def test_a_measured_line_moves_its_quantity_and_not_its_price(
-        client, test_property, modelo):
+        client, destino, modelo):
     """En m² escala la CANTIDAD: el precio por metro es un hecho de mercado que no
     cambia porque la casa sea más grande. Lo que cambia son los metros."""
-    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
 
     piso = _detailed(r.json()["budget"])["Piso cerámico"]
@@ -1009,12 +1028,12 @@ def test_a_measured_line_moves_its_quantity_and_not_its_price(
 
 
 def test_a_line_that_does_not_grow_with_the_job_is_copied_untouched(
-        client, test_property, modelo):
+        client, destino, modelo):
     """La licencia cuesta lo que cuesta: la casa del doble de tamaño no paga dos
     permisos. Entra con su monto original y la marca VIAJA con la copia, así que
     el presupuesto nuevo ya sabe cuál no escala sin que nadie se lo vuelva a
     decir."""
-    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
 
     licencias = _detailed(r.json()["budget"])["Licencias"]
@@ -1025,17 +1044,17 @@ def test_a_line_that_does_not_grow_with_the_job_is_copied_untouched(
 
 
 def test_the_copied_budget_adds_up_to_the_target_cost_exactly(
-        client, test_property, modelo):
-    """LA PRUEBA DE QUE LA ARITMÉTICA CIERRA. 200 m² × $20,250 = $4,050,000, y el
-    presupuesto da esa cifra al peso: fijas + escalado + residuo, sin un centavo
-    de sobra ni de menos.
+        client, destino, modelo):
+    """LA PRUEBA DE QUE LA ARITMÉTICA CIERRA. El destino ya traía $4,050,000 de
+    costo de obra, y el presupuesto sigue dando esa cifra al peso: fijas +
+    escalado + residuo, sin un centavo de sobra ni de menos.
 
         50,000 + 400,000 + 300,000 + 3,300,000 = 4,050,000
 
     No es una coincidencia de estos números: el residuo se calcula al final como
     `objetivo − detallado`, así que absorbe hasta el último peso que el redondeo
     haya movido."""
-    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
@@ -1044,19 +1063,47 @@ def test_the_copied_budget_adds_up_to_the_target_cost_exactly(
     detalladas = sum(_dec(l["budgetedAmount"]) for l in _detailed(r["budget"]).values())
     assert detalladas == Decimal("750000")
     assert detalladas + _dec(_residual(r["budget"])["budgetedAmount"]) == OBJETIVO
-    # El total se movió a T a propósito: eso es la operación, no un excedente.
+    # Copiar reparte el costo de obra, no lo aumenta: el total quedó donde estaba.
     assert _dec(r["budgetIncrease"]) == Decimal("0")
 
 
+def test_the_target_is_read_from_the_destination_and_never_received(
+        client, destino, modelo):
+    """EL OBJETIVO ES EL TOTAL DE ESTE PRESUPUESTO, LEÍDO AL MOMENTO DE COPIAR.
+    Bajar el costo de obra a $2,050,000 —el mismo que el origen— deja el factor
+    en 1, y los renglones entran con los importes de la otra obra sin que la
+    petición cambie un carácter.
+
+        factor = (2,050,000 − 50,000) / (2,050,000 − 50,000) = 1
+
+    Es la prueba de que no quedó ningún costo objetivo viajando en el cuerpo: si
+    lo hubiera, este mismo llamado seguiría dimensionando contra los $4,050,000
+    viejos."""
+    r = client.put(f"/api/properties/{destino['id']}/budget/total",
+                   json={"amount": 2_050_000})
+    assert r.status_code == 200, r.text
+
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    detalladas = _detailed(r["budget"])
+    assert _dec(detalladas["Hidráulica"]["unitPrice"]) == Decimal("200000")
+    assert _dec(detalladas["Piso cerámico"]["quantity"]) == Decimal("100")
+    assert _dec(detalladas["Licencias"]["unitPrice"]) == Decimal("50000")
+    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("1650000")
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2050000")
+
+
 def test_the_destination_inherits_how_much_is_left_to_detail(
-        client, test_property, modelo):
+        client, destino, modelo):
     """El residuo del origen entra al denominador del factor, y por eso el destino
     hereda TAMBIÉN cuánto le falta por detallar: el modelo está detallado al 19.5%
     y el destino queda igual, con su residuo escalado por el mismo 2.
 
     Un origen 100% detallado dejaría el residuo del destino en cero por la misma
     aritmética, sin un caso especial."""
-    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
@@ -1066,16 +1113,16 @@ def test_the_destination_inherits_how_much_is_left_to_detail(
 
 
 def test_the_proportional_copy_still_skips_what_the_destination_already_has(
-        client, test_property, modelo):
+        client, destino, modelo):
     """La dedup no cambia con el modo: un renglón que ya está aquí se SALTA —no se
     escala, no se actualiza—. Es la misma garantía de siempre, y el factor no la
     toca: el de acá puede traer proveedor, comprometido o pagos, y escalarle el
     precio sería reescribir dinero ya capturado."""
-    linea = _add(client, test_property["id"], chapterName="Instalaciones",
+    linea = _add(client, destino["id"], chapterName="Instalaciones",
                  name="Hidráulica", unit="lote", quantity=1,
                  unitPrice=100_000)["line"]["id"]
 
-    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
@@ -1103,56 +1150,38 @@ def test_the_direct_copy_does_not_scale_a_single_peso(client, test_property, mod
     assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
 
 
-def test_without_metres_the_proportional_copy_is_refused_naming_them(
-        client, modelo, sin_metraje):
-    """Hoy 2 de 5 obras no tienen metraje, así que faltar no es un borde. El
-    rechazo NOMBRA lo que falta y la obra a la que le falta — un «no se puede»
-    genérico deja adivinando entre dos campos."""
-    r = _apply_proporcional(client, sin_metraje["id"], modelo["budgetId"])
+def test_a_destination_without_a_cost_of_works_is_refused_and_sent_to_its_ficha(
+        client, modelo, sin_costo_de_obra):
+    """Sin costo de obra no hay a qué escalar: el factor daría 0 y la copia
+    entera aterrizaría en importes en cero, que se ven capturados y no lo están.
+
+    Hoy 2 de las 5 obras reales están así, o sea que faltar no es un borde, y el
+    rechazo tiene que mandar al lugar donde SÍ se arregla: la ficha de la obra,
+    con sus m² y su $/m². Aquí no se captura — este popup ya no tiene dónde."""
+    r = _apply_proporcional(client, sin_costo_de_obra["id"], modelo["budgetId"])
     assert r.status_code == 422, r.text
     mensaje = r.json()["error"]["message"]
-    assert "m² de construcción" in mensaje
-    assert sin_metraje["name"] in mensaje
-    assert "$/m² de desarrollo" not in mensaje, \
-        "ese sí se capturó: darlo por faltante manda a corregir lo que está bien"
+    assert sin_costo_de_obra["name"] in mensaje
+    assert "costo de obra" in mensaje and "ficha" in mensaje
     # Y no dejó nada a medias en el destino.
-    assert _detailed(_budget(client, sin_metraje["id"])) == {}
-
-
-def test_without_a_cost_per_sqm_the_proportional_copy_is_refused_naming_it(
-        client, test_property, modelo):
-    """El otro insumo, con el mismo trato. Y no cae a copia directa en silencio:
-    copiar los importes de la otra obra cuando se pidió dimensionarlos da un
-    resultado que se ve plausible y que nadie revisa."""
-    r = _apply(client, test_property["id"], modelo["budgetId"], proportional=True)
-    assert r.status_code == 422, r.text
-    mensaje = r.json()["error"]["message"]
-    assert "$/m² de desarrollo" in mensaje
-    assert "m² de construcción" not in mensaje
-    assert _detailed(_budget(client, test_property["id"])) == {}
+    assert _detailed(_budget(client, sin_costo_de_obra["id"])) == {}
 
 
 def test_a_target_that_does_not_fit_the_fixed_lines_is_refused_with_both_amounts(
-        client, test_property, modelo):
-    """La guarda que impide un factor negativo, dicha con los dos números: a
-    $200/m² el objetivo son $40,000 y las licencias solas cuestan $50,000. Un
-    factor negativo habría producido precios en negativo, que la base rechaza con
-    un CHECK y un 500 mudo — o peor, habría cabido."""
-    r = _apply(client, test_property["id"], modelo["budgetId"],
-               proportional=True, costPerSqm=200)
+        client, destino, modelo):
+    """La guarda que impide un factor negativo, dicha con los dos números: con el
+    costo de obra del destino en $40,000, las licencias solas cuestan $50,000 y
+    ya no caben. Un factor negativo habría producido precios en negativo, que la
+    base rechaza con un CHECK y un 500 mudo — o peor, habría cabido."""
+    r = client.put(f"/api/properties/{destino['id']}/budget/total",
+                   json={"amount": 40_000})
+    assert r.status_code == 200, r.text
+
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 422, r.text
     mensaje = r.json()["error"]["message"]
     assert "$50,000" in mensaje and "$40,000" in mensaje
-    assert _detailed(_budget(client, test_property["id"])) == {}
-
-
-def test_a_cost_per_sqm_without_asking_for_the_proportional_copy_is_refused(
-        client, test_property, modelo):
-    """Capturar un costo objetivo y recibir los importes de la otra obra sería el
-    modo equivocado elegido por omisión. Se rechaza en vez de ignorarlo."""
-    r = _apply(client, test_property["id"], modelo["budgetId"], costPerSqm=COSTO_POR_M2)
-    assert r.status_code == 422, r.text
-    assert "copia proporcional" in r.json()["error"]["message"]
+    assert _detailed(_budget(client, destino["id"])) == {}
 
 
 def test_the_mark_is_captured_on_the_line_and_not_on_the_copy(client, test_property):

@@ -94,6 +94,40 @@ es las dos en orden.
 - [x] El metraje que falte se captura EN EL POPUP y se guarda en la ficha de esa obra (`updateProperty`, `sqmConstruction` ya es escribible) **antes** de copiarle — es el momento en que a alguien le importa el dato, en vez de mandarlo a otra pantalla. La caja dice que se guarda: no es un dato de la copia. Si ese guardado falla, esa obra se reporta con su motivo y las demás se copian igual. El bloqueo se queda solo para la caja vacía.
 - [x] Tests de componente para ambas direcciones y para el caso sin metraje.
 
+## Corrección (2026-08-16, probado en vivo con Ed): T se LEE, no se recibe
+
+Ed probó la copia proporcional contra el stack y encontró que el `$/m²` sobra:
+«no estoy seguro por qué el $/m² es un input, debería ser fijo de la propiedad».
+Tiene razón — cada propiedad YA trae su costo de obra: el total de su
+presupuesto, que por construcción *es* `m² × $/m²`, porque de ahí lo sembró la
+ficha (Locales Salon Escobedo: $962,500 y 275 m² → $3,500/m² exacto, y
+`constructionCostPerSqm` se publica como total ÷ metraje). Pedirlo otra vez era
+capturar por segunda vez un número que ya existe, cuya única novedad posible
+era discrepar.
+
+**Esto SUSTITUYE los renglones 13, 24, 71, 80 y 82 de arriba:**
+
+    T = el TOTAL ACTUAL del presupuesto de la obra DESTINO
+
+- [x] `costPerSqm` fuera del contrato: el cuerpo del modo proporcional es
+      `{ budgetId, chapters?, proportional: true }`.
+- [x] `_target_cost` desaparece; el objetivo lo lee `_totals(budget_id)` UNA vez,
+      antes de la rama, porque es el mismo en los dos modos. Con eso ninguna de
+      las dos copias mueve el costo de obra: lo que cambia es a qué TAMAÑO entran
+      los renglones copiados.
+- [x] Se van los 422 de «falta el metraje» y «falta el $/m²» (ya no son insumos)
+      y el de «$/m² sin pedir proporcional». Entra uno nuevo:
+      `_require_cost_of_works` — destino con total en 0 no tiene a qué escalar, y
+      el rechazo nombra la obra y manda a su ficha, que es donde sí se captura.
+- [x] La guarda `T ≤ F` se queda igual, con sus dos montos.
+- [x] La aritmética NO cambia: mismo factor, mismo escalado por unidad, misma
+      dedup que SALTA. Los tests de esas reglas siguen pasando sin tocar una sola
+      aserción — el destino ahora es una obra que ya trae sus $4,050,000 en vez
+      de una que los recibe en el cuerpo.
+- [x] Test nuevo: bajar el total del destino con `set_total` cambia el objetivo
+      de la copia sin que la petición cambie un carácter — la prueba de que T se
+      lee al momento y no viaja en el cuerpo.
+
 ## Verificación final
 - [ ] `pytest` + `tsc --noEmit` + `vitest` verdes
 - [ ] Lint de idempotencia de migraciones corrido LOCAL antes de pushear

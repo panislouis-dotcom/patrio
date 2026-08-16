@@ -3,7 +3,7 @@ import type React from 'react'
 import {
   fetchBudget, createBudgetLine, updateBudgetLine, deleteBudgetLine, setBudgetTotal,
   renameBudgetChapter, deleteBudgetChapter, addBudgetPayment, deleteBudgetPayment, getProveedores,
-  getCategories, fetchBudgetSources, applyBudgetSource, fetchProperties, updateProperty,
+  getCategories, fetchBudgetSources, applyBudgetSource, fetchProperties,
 } from '../../lib/api'
 import type {
   Budget, BudgetLine, BudgetLinePatch,
@@ -58,10 +58,15 @@ interface Props {
     'id' | 'constructionBudgeted' | 'constructionCommitted' | 'constructionPaid'
     | 'constructionPaidVariance'
     /**
-     * Los dos insumos del costo objetivo al copiar PROPORCIONAL hacia esta obra:
-     * `T = m² × $/m²`. El metraje es un dato de la ficha —el servidor lo lee de
-     * ahí, así que no viaja en la llamada— y el `$/m²` derivado solo pre-llena
-     * la caja: se teclea encima cuando se espera construir a otro nivel.
+     * El costo objetivo al copiar PROPORCIONAL hacia esta obra ES
+     * `constructionBudgeted`: el total de su presupuesto, que por construcción
+     * vale `m² × $/m²` —así lo calcula la ficha al dar de alta la propiedad—.
+     * No se teclea en ningún lado: se LEE, aquí y en el servidor.
+     *
+     * El metraje y el `$/m²` viajan solo para ENSEÑAR de dónde sale ese número
+     * («275 m² × $3,500/m² = $962,500»). Ninguna cuenta de dinero los usa: el
+     * producto ya está guardado, y volver a multiplicarlo aquí sería una segunda
+     * respuesta a la misma pregunta.
      */
     | 'sqmConstruction' | 'constructionCostPerSqm'>
   /**
@@ -192,6 +197,14 @@ interface Scope {
  * también cuánto le falta por detallar. Si el origen estaba a medio detallar, el
  * destino también; un origen detallado al 100% deja el residuo del destino en
  * cero sin ningún caso especial.
+ *
+ * **La pregunta por lo fijo es `=== false`, no `!`.** El campo nace en TRUE en la
+ * base, así que su ausencia significa «sí escala»: preguntado por falsedad, un
+ * renglón que llegue sin el campo —datos de antes de que el servidor lo
+ * publicara, una respuesta parcial— contaría como FIJO, que es justo lo
+ * contrario de su default. Eso convertía un presupuesto entero en fijas y
+ * bloqueaba el copiado con «las fijas suman lo mismo que el objetivo» sin que
+ * un solo renglón estuviera marcado.
  */
 function scopeOf(lines: BudgetLine[], chapters: string[] | null): Scope {
   let total = 0
@@ -200,7 +213,7 @@ function scopeOf(lines: BudgetLine[], chapters: string[] | null): Scope {
     total += l.budgetedAmount
     if (l.isResidual) continue
     if (chapters !== null && !chapters.includes(l.chapterName)) continue
-    if (!l.isProportional) fixed += l.budgetedAmount
+    if (l.isProportional === false) fixed += l.budgetedAmount
   }
   return { fixed, scaling: total - fixed }
 }
@@ -214,37 +227,41 @@ function scopeOf(lines: BudgetLine[], chapters: string[] | null): Scope {
  * preview aparta las fijas en vez de enseñar `T` a secas.
  */
 interface Plan {
-  /** T = m² × $/m². El costo objetivo del destino. */
+  /** T — el costo de obra del destino, LEÍDO de su presupuesto. */
   target: number | null
   fixed: number
   scaling: number
-  /** (T − F) / (S + R). Null cuando falta un insumo o no hay nada que escalar. */
+  /** (T − F) / (S + R). Null cuando falta el objetivo o no hay nada que escalar. */
   factor: number | null
   /** Por qué NO se puede copiar proporcional a esta obra. Null cuando sí se puede. */
   blocker: string | null
 }
 
 /**
- * El plan de una obra destino. Los dos insumos que faltan se nombran de uno en
- * uno —«no se puede» sin decir cuál de los dos falta obliga a adivinar— y la
- * guarda de las fijas trae los dos montos, porque «no caben» sin las cifras no
- * dice cuánto hay que subir el objetivo.
+ * El plan de una obra destino, a partir de su costo de obra ya capturado.
+ *
+ * **El objetivo no se teclea: se lee.** Cada propiedad ya tiene el suyo —el
+ * total de su presupuesto, que la ficha calculó como `m² × $/m²` al darla de
+ * alta— y preguntarlo otra vez aquí abriría la puerta a copiar dimensionado a un
+ * número que no es el que esa obra dice costar.
+ *
+ * Por eso queda UN solo insumo que puede faltar, y el bloqueo manda a donde sí
+ * se captura: su ficha. La guarda de las fijas se queda porque es una imposi-
+ * bilidad aritmética real —el servidor la rechaza con 422— y trae los dos montos,
+ * porque «no caben» sin las cifras no dice cuánto le falta al objetivo.
  */
-function planFor(
-  sqm: number | null | undefined, costPerSqm: number | undefined, scope: Scope,
-): Plan {
+function planFor(target: number | null | undefined, scope: Scope): Plan {
   const base = { target: null, fixed: scope.fixed, scaling: scope.scaling, factor: null }
-  if (sqm == null || sqm <= 0) {
-    return { ...base, blocker: 'falta el metraje de construcción de la obra destino' }
+  if (target == null || target <= 0) {
+    return {
+      ...base,
+      blocker: 'esa obra todavía no tiene costo de obra: se captura en su ficha, con su metraje y su $/m²',
+    }
   }
-  if (costPerSqm == null || costPerSqm <= 0) {
-    return { ...base, blocker: 'falta el $/m² de desarrollo de la obra destino' }
-  }
-  const target = Math.round(sqm * costPerSqm)
   if (target <= scope.fixed) {
     return {
       ...base, target,
-      blocker: `las partidas fijas suman ${fmtMXN(scope.fixed)} y el objetivo es ${fmtMXN(target)}`,
+      blocker: `las partidas fijas suman ${fmtMXN(scope.fixed)} y el costo de obra del destino es ${fmtMXN(target)}`,
     }
   }
   return {
@@ -309,24 +326,6 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   const [budgetId, setBudgetId] = useState<number | null>(null)
   const [sourceMode, setSourceMode] = useState<CopyMode>('directo')
   /**
-   * El `$/m²` al que se espera construir ESTA obra, que es el destino cuando se
-   * jala de otra. Se pre-llena con el derivado de la ficha —presupuesto ÷
-   * metraje— y se teclea encima: es un insumo transitorio de esta operación, del
-   * mismo tipo que los de la calculadora de la ficha, y no se guarda en ningún
-   * lado.
-   */
-  const [sourceCost, setSourceCost] = useState<number | undefined>(undefined)
-  /**
-   * El metraje de construcción tecleado aquí, cuando la ficha no lo tiene.
-   *
-   * A diferencia del `$/m²`, esto NO es un insumo transitorio: es un dato de la
-   * propiedad, y se guarda en su ficha antes de copiar. Se captura aquí porque
-   * éste es justo el momento en que a alguien le importa el metraje —mandarlo a
-   * otra pantalla a buscarlo es como se pierde el hilo de lo que venía a hacer—
-   * y la caja lo dice, para que nadie crea que es un dato de la copia.
-   */
-  const [sourceSqm, setSourceSqm] = useState<number | undefined>(undefined)
-  /**
    * El presupuesto del ORIGEN, entero, solo para el preview: sin sus renglones
    * no se sabe cuánto de él NO escala, y un preview que enseñara el objetivo sin
    * apartar las fijas mentiría sobre lo que va a pasar.
@@ -358,19 +357,6 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
    */
   const [pickedChapters, setPickedChapters] = useState<Set<string> | null>(null)
   const [pushMode, setPushMode] = useState<CopyMode>('directo')
-  /**
-   * El `$/m²` objetivo de CADA obra destino, por id. Un mapa y no un campo
-   * porque **cada destino tiene su propio costo objetivo**: dos obras del mismo
-   * tamaño pueden construirse a niveles de costo distintos, y un solo `$/m²`
-   * para todas las copiaría todas al mismo precio por metro sin decirlo.
-   */
-  const [targetCost, setTargetCost] = useState<Map<number, number | undefined>>(new Map())
-  /**
-   * El metraje tecleado para cada obra destino que no lo tenga en su ficha. Se
-   * guarda EN SU FICHA antes de copiarle, no viaja en la copia: el metraje es
-   * de la obra, no de esta operación.
-   */
-  const [targetSqm, setTargetSqm] = useState<Map<number, number | undefined>>(new Map())
   /** Copiando ahora mismo: hay N llamadas en vuelo, una tras otra. */
   const [copying, setCopying] = useState(false)
   const [pushResults, setPushResults] = useState<PushResult[]>([])
@@ -531,14 +517,6 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     const opening = !sourcing
     setSourcing(opening)
     if (!opening) return
-    // Al ABRIR y no al montar: el derivado de la ficha se mueve con cada
-    // renglón que se captura, y pre-llenar con el de hace media hora ofrecería
-    // un número viejo como si fuera el de ahora.
-    setSourceCost(property.constructionCostPerSqm ?? undefined)
-    // El metraje arranca en blanco: no hay nada derivado con qué pre-llenarlo, y
-    // un número tecleado en la sesión pasada —que quizá ya se guardó— se
-    // ofrecería como si siguiera pendiente.
-    setSourceSqm(undefined)
     fetchBudgetSources(propertyId)
       .then(setSources)
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer de dónde copiar'))
@@ -571,19 +549,11 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     //
     // Las archivadas tampoco: `fetchProperties` las deja fuera salvo que se
     // pidan a propósito, y no se le presupuesta una obra a lo que ya se guardó.
+    // Cada obra trae su propio costo de obra en su ficha —el total de su
+    // presupuesto— y ése es su objetivo. No hay nada que pre-llenar ni que
+    // teclear: lo que se lee es lo que se usa.
     fetchProperties()
-      .then(ps => {
-        const otras = ps.filter(p => p.id !== propertyId)
-        setTargets(otras)
-        // Cada obra llega con su propio `$/m²` derivado —presupuesto ÷ metraje—
-        // ya puesto, y vacío la que no tenga presupuesto todavía. Es el número
-        // al que HOY se está construyendo esa obra: el mejor punto de partida
-        // para teclear encima, y una mentira si se rellenara con el de otra.
-        setTargetCost(new Map(otras.map(p => [p.id, p.constructionCostPerSqm ?? undefined])))
-        // El metraje no se pre-llena con nada: o está en la ficha —y entonces no
-        // se pregunta— o se teclea aquí de cero.
-        setTargetSqm(new Map())
-      })
+      .then(ps => setTargets(ps.filter(p => p.id !== propertyId)))
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer a qué obras copiar'))
   }
 
@@ -625,24 +595,16 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   const pushScope = scopeOf(lines, chaptersToPush)
 
   /**
-   * El metraje con el que se va a copiar: el de la ficha, o el que se acaba de
-   * teclear porque la ficha no lo tenía. El de la ficha manda —ya está guardado,
-   * y lo tecleado se vuelve viejo en cuanto se guarda— y por eso el orden de la
-   * coalescencia no es indiferente.
+   * El plan de UNA obra destino, contra SU costo de obra. En directo no hay nada
+   * que planear: se copia tal cual y ninguna obra puede quedar bloqueada.
    */
-  const sqmOf = (p: Property) => p.sqmConstruction ?? targetSqm.get(p.id)
-
-  /**
-   * El plan de UNA obra destino. En directo no hay nada que planear: se copia
-   * tal cual y ninguna obra puede quedar bloqueada por falta de insumos.
-   */
-  const planOf = (p: Property): Plan => planFor(sqmOf(p), targetCost.get(p.id), pushScope)
+  const planOf = (p: Property): Plan => planFor(p.constructionBudgeted, pushScope)
 
   const chosenTargets = targets.filter(p => pickedTargets.includes(p.id))
 
   /**
    * Las obras a las que SÍ se les puede copiar ahora. En proporcional, una obra
-   * sin metraje o sin `$/m²` queda fuera con su motivo a la vista —pero no
+   * sin costo de obra capturado queda fuera con su motivo a la vista —pero no
    * cancela a las demás: cada destino es una llamada independiente, y bloquear
    * las cinco porque a una le falta un dato sería castigar a las que sí están.
    */
@@ -661,8 +623,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
 
   /** Lo que de aquel presupuesto escala y lo que no, y el objetivo de ESTA obra. */
   const sourceScope = scopeOf(sourceBudget?.lines ?? [], null)
-  const sourceSqmUsado = property.sqmConstruction ?? sourceSqm
-  const sourcePlan = planFor(sourceSqmUsado, sourceCost, sourceScope)
+  const sourcePlan = planFor(property.constructionBudgeted, sourceScope)
   /** En directo se copia tal cual; en proporcional hace falta que el plan cierre. */
   const canPull = pickedSource !== ''
     && (sourceMode === 'directo' || sourcePlan.blocker === null)
@@ -709,34 +670,15 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     for (const p of chosen) {
       const base = { propertyId: p.id, name: p.name }
       try {
-        // EL METRAJE PRIMERO, y solo el que se tecleó aquí. El servidor lo lee
-        // de la ficha del destino para calcular su objetivo, así que copiar
-        // antes de guardarlo sería pedirle que dimensione con un dato que
-        // todavía no existe. Va dentro del try de ESTA obra: si el guardado
-        // falla, falla esta obra y las demás siguen.
+        // Una sola llamada por obra, y NADA que escribir antes: el objetivo es
+        // el costo de obra que el destino ya tiene, y el servidor lo lee de su
+        // propio presupuesto.
         //
-        // La respuesta NO va a `onPropertyChange`: es otra propiedad, y pintarla
-        // sustituiría la obra que se está viendo. Se guarda en `targets` para
-        // que el renglón deje de pedir un dato que ya está en su ficha.
-        if (pushMode === 'proporcional' && p.sqmConstruction == null) {
-          const sqm = targetSqm.get(p.id)
-          if (sqm != null) {
-            // Se dice CUÁL de los dos pasos falló: «no se copió» a secas mandaría
-            // a revisar el presupuesto cuando lo que no entró fue el metraje.
-            const guardada = await updateProperty(p.id, { sqmConstruction: sqm })
-              .catch(e => {
-                throw new Error('el metraje no se pudo guardar: '
-                  + (e instanceof Error ? e.message : 'error al escribir la ficha'))
-              })
-            setTargets(prev => prev.map(t => (t.id === p.id ? guardada : t)))
-          }
-        }
-        // El `$/m²` solo viaja en proporcional: en directo la llamada es la
-        // misma de siempre, y mandar un `null` de más sería decirle al servidor
-        // algo sobre un modo que no se pidió.
+        // El modo solo viaja en proporcional: en directo la llamada es la misma
+        // de siempre, y mandar un campo de más sería decirle al servidor algo
+        // sobre un modo que no se pidió.
         const { linesAdded, linesSkipped } = await (pushMode === 'proporcional'
-          ? applyBudgetSource(p.id, budgetId, chaptersToPush,
-                              { costPerSqm: targetCost.get(p.id) ?? null })
+          ? applyBudgetSource(p.id, budgetId, chaptersToPush, true)
           : applyBudgetSource(p.id, budgetId, chaptersToPush))
         setPushResults(prev => [...prev, {
           ...base, error: null, added: linesAdded ?? 0, skipped: linesSkipped ?? 0,
@@ -842,61 +784,34 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   )
 
   /**
-   * El costo objetivo de UNA obra destino: `m² × $/m² = T`, con T moviéndose
-   * mientras se teclea.
+   * El costo objetivo de UNA obra destino, EN SOLO LECTURA.
    *
-   * **El metraje se captura AQUÍ cuando la ficha no lo tiene**, y se guarda en
-   * la ficha de esa obra antes de copiarle. Éste es justo el momento en que a
-   * alguien le importa el metraje: mandarlo a otra pantalla a capturarlo es como
-   * se pierde lo que venía a hacer. Que se guarda lo dice la propia caja —no es
-   * un dato de la copia, es un dato de la propiedad, y la diferencia importa—.
-   * Cuando la ficha sí lo tiene, se ENSEÑA: ahí no hay nada que capturar.
+   * **Aquí no se captura nada.** T es el costo de obra que esa propiedad ya
+   * tiene —el total de su presupuesto—, y el metraje y el `$/m²` se enseñan solo
+   * para que se lea de dónde sale: «275 m² × $3,500/m² = $962,500». Tecleados,
+   * eran una segunda respuesta a una pregunta que la ficha ya contestó, y la
+   * copia podía dimensionarse a un número que esa obra nunca dijo costar.
    *
    * Y el preview APARTA LAS FIJAS. Enseñar solo el objetivo dejaría creer que
    * todo el presupuesto se mueve con el factor, cuando los permisos y las
    * licencias entran con su monto de siempre.
    */
-  const costRow = (opts: {
+  const targetRow = (opts: {
     label: string
-    ariaLabel: string
-    /** El metraje YA GUARDADO en la ficha. Null es lo que abre la caja. */
     sqm: number | null | undefined
-    sqmTyped: number | undefined
-    onSqm: (n: number | undefined) => void
-    sqmAriaLabel: string
-    cost: number | undefined
-    onCost: (n: number | undefined) => void
+    costPerSqm: number | null | undefined
     plan: Plan
   }) => (
     // La etiqueta es el nombre de la obra destino cuando son varias, así que
     // sirve de llave: no hay dos destinos con el mismo renglón.
     <div key={opts.label} style={panelRow}>
       <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>{opts.label}</span>
-      {opts.sqm != null ? (
-        <span style={micro}>{opts.sqm} m²</span>
-      ) : (
-        <>
-          <NumericInput
-            value={opts.sqmTyped}
-            placeholder="m²"
-            ariaLabel={opts.sqmAriaLabel}
-            onChange={opts.onSqm}
-            style={{ ...numInput, width: '70px' }}
-          />
-          {/* Que esto SÍ se guarda —y en la ficha, no en la copia— tiene que
-              estar escrito: es el único campo del popup que deja algo atrás. */}
-          <span style={micro}>m² · SE GUARDA EN SU FICHA</span>
-        </>
+      {/* La descomposición solo si la ficha tiene las dos partes. Sin ellas el
+          costo de obra sigue siendo el mismo número: se enseña a secas en vez de
+          inventar una división que nadie capturó. */}
+      {opts.sqm != null && opts.costPerSqm != null && (
+        <span style={micro}>{opts.sqm} m² × {fmtMXN(opts.costPerSqm)}/m² =</span>
       )}
-      <span style={micro}>×</span>
-      <NumericInput
-        value={opts.cost}
-        placeholder="$/m²"
-        ariaLabel={opts.ariaLabel}
-        onChange={opts.onCost}
-        style={{ ...numInput, width: '100px' }}
-      />
-      <span style={micro}>=</span>
       <span style={{ ...money, fontFamily: fonts.label }}>{fmtMXN(opts.plan.target)}</span>
       {opts.plan.blocker ? (
         <span style={{ ...micro, color: '#c0392b' }}>
@@ -1044,25 +959,13 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                     : '')
                   + 'Se suman a lo que ya hay; los que ya existan aquí se saltan sin tocarlos.',
                 )) return
-                // El `$/m²` solo viaja en proporcional: en directo la llamada es
+                // El modo solo viaja en proporcional: en directo la llamada es
                 // la de siempre, y mandar el modo que no se pidió sería decirle
-                // al servidor algo que nadie contestó.
-                void run(async () => {
-                  // El metraje PRIMERO, porque el servidor lo lee de la ficha
-                  // para calcular el objetivo: copiar antes de guardarlo sería
-                  // pedirle que dimensione con un dato que todavía no existe.
-                  // Solo cuando se tecleó aquí — si la ficha ya lo tenía no hay
-                  // nada que escribir.
-                  if (sourceMode === 'proporcional' && property.sqmConstruction == null
-                      && sourceSqm != null) {
-                    onPropertyChange(await updateProperty(
-                      propertyId, { sqmConstruction: sourceSqm }))
-                  }
-                  return sourceMode === 'proporcional'
-                    ? applyBudgetSource(propertyId, pickedSource, null,
-                                        { costPerSqm: sourceCost ?? null })
-                    : applyBudgetSource(propertyId, pickedSource)
-                })
+                // al servidor algo que nadie contestó. El objetivo no viaja
+                // nunca: es el costo de obra de ESTA obra, que él ya tiene.
+                void run(() => (sourceMode === 'proporcional'
+                  ? applyBudgetSource(propertyId, pickedSource, null, true)
+                  : applyBudgetSource(propertyId, pickedSource)))
                 setPickedSource('')
               }}
               style={{ ...ghost, cursor: canPull ? 'pointer' : 'not-allowed' }}
@@ -1084,15 +987,10 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               copia idéntica. */}
           {modeChoice('de otra obra', sourceMode, setSourceMode)}
 
-          {sourceMode === 'proporcional' && costRow({
-            label: 'COSTO OBJETIVO',
-            ariaLabel: 'Costo por m² de esta obra',
+          {sourceMode === 'proporcional' && targetRow({
+            label: 'COSTO DE OBRA',
             sqm: property.sqmConstruction,
-            sqmTyped: sourceSqm,
-            onSqm: setSourceSqm,
-            sqmAriaLabel: 'Metraje de construcción de esta obra',
-            cost: sourceCost,
-            onCost: setSourceCost,
+            costPerSqm: property.constructionCostPerSqm,
             plan: sourcePlan,
           })}
 
@@ -1167,27 +1065,22 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
 
           {modeChoice('a otras obras', pushMode, setPushMode)}
 
-          {/* CADA DESTINO CON SU PROPIO COSTO OBJETIVO. No es un campo repetido:
-              dos obras del mismo tamaño pueden construirse a niveles de costo
-              distintos, y un solo `$/m²` para todas las copiaría al mismo precio
-              por metro sin decirlo.
+          {/* CADA DESTINO CON SU PROPIO COSTO DE OBRA, leído de su ficha. Dos
+              obras del mismo tamaño pueden construirse a niveles de costo
+              distintos, y por eso el objetivo es de cada una — pero ninguna lo
+              contesta aquí: ya lo dice su presupuesto.
 
-              Solo las elegidas: pedir el costo objetivo de obras a las que no se
-              va a copiar sería captura que nadie usa. */}
+              Solo las elegidas: enseñar el objetivo de obras a las que no se va
+              a copiar sería ruido. */}
           {pushMode === 'proporcional' && (
             chosenTargets.length === 0 ? (
               <span style={micro}>
-                Elige a qué obras copiar para fijarle a cada una su costo objetivo.
+                Elige a qué obras copiar para ver el costo de obra al que entra cada una.
               </span>
-            ) : chosenTargets.map(p => costRow({
+            ) : chosenTargets.map(p => targetRow({
               label: p.name,
-              ariaLabel: `Costo por m² de ${p.name}`,
               sqm: p.sqmConstruction,
-              sqmTyped: targetSqm.get(p.id),
-              onSqm: n => setTargetSqm(prev => new Map(prev).set(p.id, n)),
-              sqmAriaLabel: `Metraje de construcción de ${p.name}`,
-              cost: targetCost.get(p.id),
-              onCost: n => setTargetCost(prev => new Map(prev).set(p.id, n)),
+              costPerSqm: p.constructionCostPerSqm,
               plan: planOf(p),
             }))
           )}
@@ -1472,11 +1365,16 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                     )}
                   </td>
                   {/* Guarda al marcarse, como el proveedor y el oficio: aquí un
-                      cambio ES un cambio, y no hay nada que esperar a soltar. */}
+                      cambio ES un cambio, y no hay nada que esperar a soltar.
+
+                      `=== false` y no la verdad a secas, por lo mismo que
+                      `scopeOf`: el campo nace TRUE, así que un renglón que llegue
+                      sin él está marcado. Preguntado por verdad, además, la
+                      casilla se volvería no controlada al llegar `undefined`. */}
                   <td style={{ ...td, textAlign: 'center' }}>
                     <input
                       type="checkbox"
-                      checked={line.isProportional}
+                      checked={line.isProportional !== false}
                       aria-label={`Proporcional ${line.name}`}
                       onChange={e => editNow(line, { isProportional: e.target.checked })}
                       style={{ accentColor: colors.primary, cursor: 'pointer' }}
