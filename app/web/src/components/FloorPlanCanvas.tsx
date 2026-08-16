@@ -2,11 +2,11 @@
 import { forwardRef, useRef } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../lib/theme'
-import { isGhost, FIXTURE_CATALOG, type FloorSet, type FloorGraph, type FixtureKind } from '../lib/floorplan/types'
+import { isGhost, FIXTURE_CATALOG, ROOM_TYPE_CATALOG, type FloorSet, type FloorGraph, type FixtureKind, type RoomType } from '../lib/floorplan/types'
 import type { ViewTransform } from '../lib/floorplan/viewTransform'
-import type { RoomLabel } from '../lib/floorplan/rooms'
+import type { RoomLabel, RoomPolygon } from '../lib/floorplan/rooms'
 import type { CornerAngle } from '../lib/floorplan/dimensions'
-import { widthHeightChains, cotaEdges, f2 } from '../lib/floorplan/dimensions'
+import { widthHeightChains, cotaEdges, f2, fitRoomLabel, ROOM_LABEL_CHAR_WIDTH } from '../lib/floorplan/dimensions'
 import type { UI } from '../lib/floorplan/reducer'
 import { BASE } from '../lib/api'
 import { edgeAxis } from '../lib/floorplan/geometry'
@@ -14,6 +14,18 @@ import { edgeAxis } from '../lib/floorplan/geometry'
 // Punteado de una división (ghost). Local al canvas a propósito: los demás renderers
 // (PNG de renders, SVG del prospecto, export BIM) EXCLUYEN las fantasmas, no las puntean.
 const GHOST_DASH = '6 4'
+
+// Room name + area labels are drawn at a constant SCREEN size (px), so they never shrink as
+// you zoom the plan in — the whole point of zooming into a space is to read them. Bumped up
+// from 12/11 so they stay legible over a busy plan. fitRoomLabel (dimensions.ts) uses these
+// as a CEILING and shrinks below them only when the room is too small to fit the name/area.
+const ROOM_NAME_FS = 16
+const ROOM_AREA_FS = 14
+// Measurement labels — wall lengths, the width/height dimension chains, and door/window
+// widths — are likewise constant screen-size, bumped from 11/10 so they stay readable when
+// you zoom into a wall to check its dimension.
+const DIM_FS = 14
+const OPENING_FS = 13
 
 // Familia visual mínima por tipo: UN acento sobrio (línea o círculo), nunca un ícono
 // detallado — esto es un plano técnico, no un moodboard. El catálogo (types.ts) es dato de
@@ -77,21 +89,24 @@ export interface CanvasProps {
   floor: FloorGraph
   t: ViewTransform
   rooms: RoomLabel[]
+  polygons: RoomPolygon[]
   angles: CornerAngle[]
   ui: UI
   editName: string
+  editType?: RoomType
   imgNatural?: { w: number; h: number } | null
   calDraft?: { p0: [number, number]; p1: [number, number] } | null
+  dimDraft?: { p0: [number, number]; p1: [number, number] } | null
   onPointerDown: (e: React.PointerEvent<SVGSVGElement>) => void
   onPointerMove: (e: React.PointerEvent<SVGSVGElement>) => void
   onPointerUp: (e: React.PointerEvent<SVGSVGElement>) => void
   onMouseDown: (e: React.MouseEvent<SVGSVGElement>) => void
-  onRoomCommit: (cx: number, cy: number, name: string) => void
+  onRoomCommit: (cx: number, cy: number, name: string, type?: RoomType) => void
   onRoomCancel: () => void
 }
 
 const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPlanCanvas(
-  { model, floor, t, rooms, angles, ui, editName, imgNatural, calDraft,
+  { model, floor, t, rooms, polygons, angles, ui, editName, editType, imgNatural, calDraft, dimDraft,
     onPointerDown, onPointerMove, onPointerUp, onMouseDown, onRoomCommit, onRoomCancel }, ref,
 ) {
   const { px, py, scale } = t
@@ -104,6 +119,11 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
   // unmounts right after Enter/Escape (React's onBlur delegation still sees it), which
   // would otherwise re-commit/wrongly-commit the value a keyboard handler already resolved.
   const roomEditHandledRef = useRef(false)
+  // No controlados (mismo patrón que el input de nombre ya usaba: defaultValue + leer en
+  // el commit, sin useState) — se leen juntos al comprometer, un solo RENAME_ROOM con
+  // nombre y tipo, un solo paso de historia por sesión de edición.
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  const typeSelectRef = useRef<HTMLSelectElement>(null)
 
   // ── reference underlay (bottom layer) ──
   let underlay: React.ReactNode = null
@@ -219,30 +239,62 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
 
   // ── room labels: clickable name (rename) + live net area ──
   // The rename input, shared by an existing label being renamed and a brand-new label
-  // being placed on an open spot (no traced face, no stored room there yet).
+  // being placed on an open spot (no traced face, no stored room there yet). El tipo se
+  // edita junto al nombre, mismo <foreignObject>, mismo commit — nombre y tipo son un solo
+  // dato de identidad del cuarto, no dos sesiones de edición separadas.
+  const commitRoomEdit = (cx: number, cy: number) => {
+    const name = nameInputRef.current?.value ?? ''
+    const type = (typeSelectRef.current?.value || undefined) as RoomType | undefined
+    onRoomCommit(cx, cy, name, type)
+  }
+  const roomEditKeyDown = (cx: number, cy: number) => (e: React.KeyboardEvent) => {
+    e.stopPropagation()
+    if (e.key === 'Enter') { e.preventDefault(); roomEditHandledRef.current = true; commitRoomEdit(cx, cy) }
+    else if (e.key === 'Escape') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCancel() }
+  }
   const roomInput = (cx: number, cy: number, key: string) => {
-    const w = 156, h = 24
+    const w = 156, h = 52
     return (
       <foreignObject key={key} x={px(cx) - w / 2} y={py(cy) - h + 2} width={w} height={h}>
-        <input
-          className="roomedit"
-          defaultValue={editName}
-          autoFocus
-          style={{
-            width: '100%', boxSizing: 'border-box', textAlign: 'center',
-            background: colors.surfaceAlt, border: `1px solid ${colors.primary}`, borderRadius: '2px',
-            color: colors.neutral, fontFamily: fonts.sans, fontSize: '12px', outline: 'none', padding: '2px 4px',
-          }}
-          onKeyDown={e => {
-            e.stopPropagation()
-            if (e.key === 'Enter') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCommit(cx, cy, (e.target as HTMLInputElement).value) }
-            else if (e.key === 'Escape') { e.preventDefault(); roomEditHandledRef.current = true; onRoomCancel() }
-          }}
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}
           onBlur={e => {
+            // El foco moviéndose ENTRE el input y el select (mismo grupo) no compromete
+            // todavía — tabular de nombre a tipo cerraría la edición a medias antes de
+            // que el usuario alcance a elegir. Solo cuando sale del grupo completo se
+            // guarda, igual que el input solo ya hacía por su cuenta.
+            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
             if (roomEditHandledRef.current) { roomEditHandledRef.current = false; return }
-            onRoomCommit(cx, cy, e.target.value)
+            commitRoomEdit(cx, cy)
           }}
-        />
+        >
+          <input
+            ref={nameInputRef}
+            className="roomedit"
+            defaultValue={editName}
+            autoFocus
+            style={{
+              width: '100%', boxSizing: 'border-box', textAlign: 'center',
+              background: colors.surfaceAlt, border: `1px solid ${colors.primary}`, borderRadius: '2px',
+              color: colors.neutral, fontFamily: fonts.sans, fontSize: '14px', outline: 'none', padding: '2px 4px',
+            }}
+            onKeyDown={roomEditKeyDown(cx, cy)}
+          />
+          <select
+            ref={typeSelectRef}
+            className="roomedittype"
+            defaultValue={editType ?? ''}
+            style={{
+              width: '100%', boxSizing: 'border-box', textAlign: 'center',
+              background: colors.surfaceAlt, border: `1px solid ${colors.primary}`, borderRadius: '2px',
+              color: colors.neutral, fontFamily: fonts.sans, fontSize: '11px', outline: 'none', padding: '2px 4px',
+            }}
+            onKeyDown={roomEditKeyDown(cx, cy)}
+          >
+            <option value="">Sin tipo</option>
+            {Object.entries(ROOM_TYPE_CATALOG).map(([k, meta]) => <option key={k} value={k}>{meta.label}</option>)}
+          </select>
+        </div>
       </foreignObject>
     )
   }
@@ -250,22 +302,45 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
   let editingExisting = false
   rooms.forEach((rg, i) => {
     const editing = editRoom != null && Math.abs(rg.cx - editRoom.cx) < 0.05 && Math.abs(rg.cy - editRoom.cy) < 0.05
+    const nm = rg.name
+    // Cuartos CERRADOS (i < polygons.length, mismo orden posicional que roomAreas ya
+    // garantiza — ver rooms.ts) ajustan tamaño/rotación para caber siempre dentro de su
+    // polígono. Labels "libres" (espacio abierto, sin polígono que respetar) se quedan con
+    // el tamaño fijo de siempre. Se calcula SIEMPRE, no solo cuando se muestra el nombre:
+    // el área de abajo también lo necesita (mismo rotate), tanto editando como no.
+    const fit = i < polygons.length ? fitRoomLabel(polygons[i].vertices, nm, scale, ROOM_NAME_FS) : { fontSizePx: ROOM_NAME_FS, rotate: false }
+    const textCx = px(rg.cx), textCy = py(rg.cy) - 5
     if (editing) {
       editingExisting = true
       gel.push(roomInput(rg.cx, rg.cy, `edit${i}`))
     } else {
-      const nm = rg.name
-      const hw = Math.max(64, nm.length * 7 + 16)
-      gel.push(<rect key={`rhit${i}`} x={px(rg.cx) - hw / 2} y={py(rg.cy) - 15} width={hw} height={20}
+      const textLenPx = Math.max(72, nm.length * fit.fontSizePx * ROOM_LABEL_CHAR_WIDTH + 16)
+      const rectW = fit.rotate ? Math.max(28, fit.fontSizePx + 16) : textLenPx
+      const rectH = fit.rotate ? textLenPx : 24
+      gel.push(<rect key={`rhit${i}`} x={px(rg.cx) - rectW / 2} y={py(rg.cy) - rectH / 2} width={rectW} height={rectH}
         fill="transparent" pointerEvents="all" data-el="room" data-cx={rg.cx} data-cy={rg.cy} style={{ cursor: 'text' }} />)
-      gel.push(<text key={`rname${i}`} x={px(rg.cx)} y={py(rg.cy) - 3} textAnchor="middle"
-        fontFamily={fonts.sans} fontSize={12} fill={colors.neutral} data-el="room" data-cx={rg.cx} data-cy={rg.cy}
+      gel.push(<text key={`rname${i}`} x={textCx} y={textCy} textAnchor="middle"
+        fontFamily={fonts.sans} fontSize={fit.fontSizePx} fill={colors.neutral} data-el="room" data-cx={rg.cx} data-cy={rg.cy}
+        transform={fit.rotate ? `rotate(-90 ${textCx} ${textCy})` : undefined}
         style={{ cursor: 'text' }}>{nm}</text>)
     }
     // Open spaces carry a name only — no enclosed face, so no net area to show.
     if (rg.area != null) {
-      gel.push(<text key={`rarea${i}`} x={px(rg.cx)} y={py(rg.cy) + 10} textAnchor="middle"
-        fontFamily={fonts.serif} fontSize={11} fill={colors.secondary}>{f2(rg.area)} m²</text>)
+      const areaText = `${f2(rg.area)} m²`
+      // Mismo fit.rotate que el nombre (rotate depende solo de la geometría del polígono,
+      // nunca del texto — fitRoomLabel siempre coincide entre nombre y área para el mismo
+      // cuarto), pero con su PROPIO tamaño de fuente ajustado a este texto más corto y su
+      // propio techo (ROOM_AREA_FS). Se apila junto al nombre a lo largo del eje ANGOSTO del
+      // cuarto (el que el texto rotado NO usa para correr) en vez de siempre "hacia abajo":
+      // apilar siempre hacia abajo es justo lo que hacía que el área se saliera del cuarto,
+      // igual que el nombre antes de ajustarse — un cuarto angosto y alto ya obligó a rotar
+      // el nombre; el área comparte el ajuste.
+      const areaFit = i < polygons.length ? fitRoomLabel(polygons[i].vertices, areaText, scale, ROOM_AREA_FS) : { fontSizePx: ROOM_AREA_FS, rotate: false }
+      const areaX = fit.rotate ? textCx + 16 : textCx
+      const areaY = fit.rotate ? textCy : textCy + 18
+      gel.push(<text key={`rarea${i}`} x={areaX} y={areaY} textAnchor="middle"
+        fontFamily={fonts.serif} fontSize={areaFit.fontSizePx} fill={colors.secondary}
+        transform={fit.rotate ? `rotate(-90 ${areaX} ${areaY})` : undefined}>{areaText}</text>)
     }
   })
   // A new label being placed on an open spot: no existing label matched editRoom.
@@ -285,7 +360,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
     const y0 = heightMarks[0], y1 = heightMarks[heightMarks.length - 1]
     const dim = (mx: number, my: number, txt: string) =>
       gel.push(<text key={`dim${mx}-${my}-${txt}`} x={mx} y={my} textAnchor="middle"
-        fontFamily={fonts.serif} fontSize={11} fill={colors.secondary}>{txt}</text>)
+        fontFamily={fonts.serif} fontSize={DIM_FS} fill={colors.secondary}>{txt}</text>)
 
     gel.push(<line key="dimw" x1={px(x0)} y1={py(y0) + 40} x2={px(x1)} y2={py(y0) + 40} stroke={colors.border} strokeWidth={0.6} />)
     for (let k = 0; k < widthMarks.length - 1; k++) {
@@ -314,7 +389,7 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
       e.openings.forEach((op, i) => {
         const atM = op.offset * L, cx = p1.x + ux * atM, cy = p1.y + uy * atM
         gel.push(<text key={`opw${e.id}-${i}`} x={px(cx + nx * 0.34)} y={py(cy + ny * 0.34) + 3} textAnchor="middle"
-          fontFamily={fonts.serif} fontSize={10} fill={op.kind === 'door' ? colors.tertiary : colors.accent2}>{f2(op.width)}</text>)
+          fontFamily={fonts.serif} fontSize={OPENING_FS} fill={op.kind === 'door' ? colors.tertiary : colors.accent2}>{f2(op.width)}</text>)
       })
     })
     // corner angles: degree label only (decorative sweep arc deliberately deferred — see note below)
@@ -323,6 +398,57 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
         fill={ca.isRight ? colors.secondary : colors.tertiary}>{Math.round(ca.deg)}°</text>)
     })
   }
+
+  // ── manual dimensions (medidas puestas a mano): SIEMPRE visibles, sin importar showDims —
+  // a diferencia de las cotas automáticas de arriba, que Eduardo pidió apagar por default
+  // porque abarrotaban la pantalla. Mismo lenguaje visual sutil (línea delgada + número) más
+  // un blanco de clic ancho e invisible superpuesto — mismo patrón de trazo-visible-delgado +
+  // blanco-de-clic-ancho que vértices/aberturas ya usan en este canvas.
+  const manualDims = floor.manualDimensions ?? []
+  manualDims.forEach(d => {
+    const on = sel?.t === 'manualDim' && sel.id === d.id
+    const x1 = px(d.p1.x), y1 = py(d.p1.y), x2 = px(d.p2.x), y2 = py(d.p2.y)
+    const L = Math.hypot(d.p2.x - d.p1.x, d.p2.y - d.p1.y)
+    gel.push(<line key={`mdimhit${d.id}`} x1={x1} y1={y1} x2={x2} y2={y2}
+      stroke="transparent" strokeWidth={12} data-el="manualDim" data-id={d.id} style={{ cursor: 'move' }} />)
+    gel.push(<line key={`mdim${d.id}`} x1={x1} y1={y1} x2={x2} y2={y2}
+      stroke={on ? colors.primary : colors.secondary} strokeWidth={on ? 1.5 : 0.8} style={{ pointerEvents: 'none' }} />)
+
+    // El número corre PARALELO a la línea, no siempre horizontal — una cota vertical (o
+    // diagonal) con el número horizontal encima quedaba cruzada por su propia línea, poco
+    // legible. Se desplaza PERPENDICULAR a la línea, no solo "hacia arriba", para despegarse
+    // de ella en cualquier orientación.
+    //
+    // La dirección se CANONIZA (siempre "hacia la derecha", o hacia abajo si es exactamente
+    // vertical) antes de calcular ángulo y desplazamiento: sin esto, el lado del número
+    // dependía de en qué sentido arrastró el usuario al trazarla (p1→p2 o p2→p1) — el mismo
+    // trazo visual podía terminar con el número a la izquierda o a la derecha según el
+    // sentido del gesto, nada natural. Canonizada, dx ≥ 0 siempre, así que atan2 ya cae en
+    // [-90°, 90°] sin necesidad de recortarlo aparte — el texto nunca sale cabeza abajo.
+    let dx = x2 - x1, dy = y2 - y1
+    if (dx < 0 || (dx === 0 && dy < 0)) { dx = -dx; dy = -dy }
+    const segLen = Math.hypot(dx, dy) || 1
+    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI
+    const labelX = (x1 + x2) / 2 + (dy / segLen) * 8
+    const labelY = (y1 + y2) / 2 - (dx / segLen) * 8
+    gel.push(<text key={`mdimlabel${d.id}`} x={labelX} y={labelY} textAnchor="middle"
+      fontFamily={fonts.serif} fontSize={11} fill={on ? colors.primary : colors.secondary}
+      transform={`rotate(${angleDeg} ${labelX} ${labelY})`}
+      style={{ pointerEvents: 'none' }}>{f2(L)} m</text>)
+    // Manijas de extremo: SOLO cuando la cota está seleccionada (a diferencia de los
+    // vértices de muro, siempre visibles) — la medida manual se pidió sutil, así que dos
+    // círculos permanentes por cota sin seleccionar reintroducirían el mismo abarrotamiento
+    // que showDims:false ya resolvió. Arrastrar una manija cambia el largo (mueve solo ese
+    // punto); arrastrar la línea entera (arriba) la traslada sin cambiar el largo.
+    if (on) {
+      gel.push(<circle key={`mdimh1${d.id}`} cx={x1} cy={y1} r={5}
+        fill={colors.dark} stroke={colors.primary} strokeWidth={1.5}
+        data-el="manualDimEndpoint" data-id={d.id} data-which="p1" style={{ cursor: 'move' }} />)
+      gel.push(<circle key={`mdimh2${d.id}`} cx={x2} cy={y2} r={5}
+        fill={colors.dark} stroke={colors.primary} strokeWidth={1.5}
+        data-el="manualDimEndpoint" data-id={d.id} data-which="p2" style={{ cursor: 'move' }} />)
+    }
+  })
 
   // ── snap guides (while dragging) ──
   snapGuides.forEach((gd, i) => {
@@ -350,6 +476,10 @@ const FloorPlanCanvas = forwardRef<SVGSVGElement, CanvasProps>(function FloorPla
       {calDraft && (
         <line x1={px(calDraft.p0[0])} y1={py(calDraft.p0[1])} x2={px(calDraft.p1[0])} y2={py(calDraft.p1[1])}
           stroke={colors.tertiary} strokeWidth={2} strokeDasharray="5 3" style={{ pointerEvents: 'none' }} />
+      )}
+      {dimDraft && (
+        <line x1={px(dimDraft.p0[0])} y1={py(dimDraft.p0[1])} x2={px(dimDraft.p1[0])} y2={py(dimDraft.p1[1])}
+          stroke={colors.secondary} strokeWidth={1.5} strokeDasharray="4 3" style={{ pointerEvents: 'none' }} />
       )}
     </svg>
   )

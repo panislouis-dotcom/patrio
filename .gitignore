@@ -8,13 +8,11 @@ node_modules/
 .playwright-mcp/
 .superpowers/
 
-# Material de trabajo pesado / carpetas ajenas al sitio (no versionar aquí).
+# Documentos de empresa (socios, marca, presentaciones) y trabajo por proyecto:
+# privados — NO se versionan aquí ni se publican en Vercel.
 # Anclado a la raíz con "/" para NO ignorar assets/proyectos (fotos reales del sitio).
-/Modesto415-Patrio.mp4
-/ChatGPT Image*.png
-/Proyecto-Trois/
-/proyectos/
-/memoria-de-obra.html
+/Empresa/
+/Proyectos/
 
 # App (from refigan)
 *.db

@@ -1,21 +1,27 @@
-import type { FloorSet, FloorGraph, VertexId, EdgeId, EdgeKind, Opening, FixtureKind, Fixture, FixtureId } from './types'
+import type {
+  FloorSet, FloorGraph, VertexId, EdgeId, EdgeKind, Opening, FixtureKind, Fixture, FixtureId,
+  ManualDimension, ManualDimensionId, RoomType,
+} from './types'
 import { clone, genId, isGhost, GHOST_THICKNESS_M, FIXTURE_CATALOG } from './types'
 import { deleteVertex, deleteEdge, splitEdgeAtVertex } from './graph'
 import { exteriorEdgeIds } from './rooms'
 import type { Guide } from './snapping'
 import type { Camera } from './viewTransform'
 
-export type Tool = 'select' | 'wall' | 'ghost' | 'door' | 'window' | 'room' | 'delete'
+export type Tool = 'select' | 'wall' | 'ghost' | 'door' | 'window' | 'room' | 'delete' | 'dim'
 export type Sel =
   | { t: 'vertex'; id: VertexId }
   | { t: 'edge'; id: EdgeId }
   | { t: 'opening'; edgeId: EdgeId; index: number }
   | { t: 'fixture'; id: FixtureId }
+  | { t: 'manualDim'; id: ManualDimensionId }
   | null
 
 export interface DragState {
-  kind: 'vertex' | 'edgeBody' | 'opening' | 'fixture'
-  id?: VertexId | EdgeId | FixtureId   // vertex id for 'vertex', edge id for 'edgeBody'/'opening', fixture id for 'fixture'
+  kind: 'vertex' | 'edgeBody' | 'opening' | 'fixture' | 'manualDim' | 'manualDimEndpoint'
+  // vertex id for 'vertex', edge id for 'edgeBody'/'opening', fixture id for 'fixture',
+  // cota manual id for 'manualDim'/'manualDimEndpoint'
+  id?: VertexId | EdgeId | FixtureId | ManualDimensionId
   openingIndex?: number
   // Wall-body drag: drag-start endpoint positions + pointer position, so the wall can be
   // translated by the pointer delta. No axis-lock, no diagonal special-case — see graph.ts's
@@ -25,6 +31,10 @@ export interface DragState {
   startV1?: { x: number; y: number }
   startV2?: { x: number; y: number }
   startPt?: { x: number; y: number }
+  // Solo 'manualDimEndpoint': cuál de los dos puntos de la cota se está arrastrando —
+  // ese punto se reposiciona directo al puntero (con snapping), mismo patrón que 'vertex',
+  // no una traslación por delta como 'manualDim' (que mueve la cota entera).
+  which?: 'p1' | 'p2'
 }
 
 export interface UI {
@@ -58,7 +68,10 @@ const clampScale = (v: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, v))
 export function initialState(model: FloorSet): EditorState {
   return {
     model,
-    ui: { tool: 'select', sel: null, drag: null, editRoom: null, snapGuides: [], showDims: true, calibrating: false, camera: null },
+    // showDims arranca en false: las cadenas de cota automáticas abarrotaban la pantalla
+    // por default — "Dims" sigue existiendo como un "muéstralas todas" temporal, pero las
+    // cotas MANUALES (manualDimensions, más abajo) se ven siempre, sin importar este flag.
+    ui: { tool: 'select', sel: null, drag: null, editRoom: null, snapGuides: [], showDims: false, calibrating: false, camera: null },
     dirty: false,
     past: [], future: [],
     dragBase: null,
@@ -73,18 +86,23 @@ export type Action =
   | { type: 'SET_FLOOR_FIELD'; key: 'name' | 'height_m'; value: string | number }
   | { type: 'SET_FLOOR_PARAM'; key: 'extWall_m' | 'intWall_m'; value: number }
   | { type: 'SET_SLAB'; value: number }
-  | { type: 'RENAME_ROOM'; cx: number; cy: number; name: string }
+  // `roomType`, no `type` — 'type' ya es el discriminante de la acción misma
+  // ('RENAME_ROOM'); un segundo campo `type` en el mismo objeto choca con ese.
+  | { type: 'RENAME_ROOM'; cx: number; cy: number; name: string; roomType?: RoomType }
   | { type: 'DELETE_ROOM'; cx: number; cy: number }
   | { type: 'SET_OPENING_FIELD'; edgeId: EdgeId; index: number; key: 'width'; value: number }
   | { type: 'SET_OPENING_FIELD'; edgeId: EdgeId; index: number; key: 'kind'; value: 'door' | 'window' }
   | { type: 'SET_EDGE_THICKNESS'; edgeId: EdgeId; value: number }
   | { type: 'SET_EDGE_KIND'; edgeId: EdgeId; kind: EdgeKind }
   | { type: 'ADD_OPENING'; edgeId: EdgeId; opening: Opening }
+  | { type: 'SET_EDGE_LENGTH'; edgeId: EdgeId; value: number; anchor: 'v1' | 'v2' }
   | { type: 'SET_VERTEX_POINT'; id: VertexId; x: number; y: number }
   | { type: 'SPLIT_EDGE_AT_POINT'; edgeId: EdgeId; x: number; y: number }
   | { type: 'ADD_FIXTURE'; kind: FixtureKind; x: number; y: number }
   | { type: 'MOVE_FIXTURE'; id: FixtureId; x: number; y: number }
   | { type: 'SET_FIXTURE_PARAM'; id: FixtureId; patch: Partial<Pick<Fixture, 'w_m' | 'h_m' | 'rot'>> }
+  | { type: 'ADD_MANUAL_DIM'; p1: { x: number; y: number }; p2: { x: number; y: number } }
+  | { type: 'SET_MANUAL_DIM_POINT'; id: ManualDimensionId; which: 'p1' | 'p2'; x: number; y: number }
   | { type: 'SET_MODEL'; model: FloorSet }
   | { type: 'DRAG_MODEL'; model: FloorSet }
   | { type: 'UNDO' }
@@ -120,6 +138,14 @@ export function removeFixtureFromFloor(f: FloorGraph, id: FixtureId): void {
   const idx = fixtures.findIndex(fx => fx.id === id)
   if (idx >= 0) fixtures.splice(idx, 1)
   f.fixtures = fixtures
+}
+export function removeManualDimFromFloor(f: FloorGraph, id: ManualDimensionId): void {
+  // Mismo patrón defensivo que removeFixtureFromFloor: un floor sin la clave
+  // `manualDimensions` (blob pre-feature) nunca truena.
+  const dims = f.manualDimensions ?? []
+  const idx = dims.findIndex(d => d.id === id)
+  if (idx >= 0) dims.splice(idx, 1)
+  f.manualDimensions = dims
 }
 
 export function reducer(s: EditorState, a: Action): EditorState {
@@ -219,8 +245,8 @@ export function reducer(s: EditorState, a: Action): EditorState {
       const m = clone(s.model); const f = F(m)
       let best = -1, bd = 0.9
       f.rooms.forEach((r, i) => { const d = Math.hypot(r.cx - a.cx, r.cy - a.cy); if (d < bd) { bd = d; best = i } })
-      if (best >= 0) { f.rooms[best].name = a.name; f.rooms[best].cx = a.cx; f.rooms[best].cy = a.cy }
-      else f.rooms.push({ name: a.name, cx: a.cx, cy: a.cy })
+      if (best >= 0) { f.rooms[best].name = a.name; f.rooms[best].cx = a.cx; f.rooms[best].cy = a.cy; f.rooms[best].type = a.roomType }
+      else f.rooms.push({ name: a.name, cx: a.cx, cy: a.cy, type: a.roomType })
       return { ...modelChange(s, m), ui: { ...s.ui, editRoom: null } }
     }
     case 'DELETE_ROOM': {
@@ -273,6 +299,24 @@ export function reducer(s: EditorState, a: Action): EditorState {
       e.thickness = a.value
       return modelChange(s, m)
     }
+    case 'SET_EDGE_LENGTH': {
+      // Retype a wall's exact length: keep one endpoint fixed and slide the other along the
+      // wall's own direction so |v2-v1| = value (angle preserved). The moving endpoint is a
+      // shared vertex, so any walls meeting it at that corner follow — same as dragging the
+      // point by hand, which keeps rooms closed. anchor picks which end stays put.
+      const m = clone(s.model); const f = F(m)
+      const e = f.edges[a.edgeId]; if (!e) return s
+      const fixed = f.vertices[a.anchor === 'v2' ? e.v2 : e.v1]
+      const moving = f.vertices[a.anchor === 'v2' ? e.v1 : e.v2]
+      if (!fixed || !moving) return s
+      const dx = moving.x - fixed.x, dy = moving.y - fixed.y
+      const L = Math.hypot(dx, dy)
+      if (L < 1e-9) return s   // degenerate wall: no direction to grow along
+      const t = Math.max(0.05, a.value) / L
+      moving.x = fixed.x + dx * t
+      moving.y = fixed.y + dy * t
+      return modelChange(s, m)
+    }
     case 'SET_VERTEX_POINT': {
       const m = clone(s.model); const f = F(m)
       if (!f.vertices[a.id]) return s
@@ -309,6 +353,27 @@ export function reducer(s: EditorState, a: Action): EditorState {
       Object.assign(fx, a.patch)
       return modelChange(s, m)
     }
+    case 'ADD_MANUAL_DIM': {
+      // No-op en un clic sin arrastre real (o un arrastre minúsculo por temblor de mano):
+      // una cota de longitud ~0 no aporta nada y solo ensucia el modelo.
+      const dist = Math.hypot(a.p2.x - a.p1.x, a.p2.y - a.p1.y)
+      if (dist < 0.05) return s
+      const m = clone(s.model); const f = F(m)
+      const id = genId()
+      const dim: ManualDimension = { id, p1: { ...a.p1 }, p2: { ...a.p2 } }
+      f.manualDimensions = [...(f.manualDimensions ?? []), dim]
+      return { ...modelChange(s, m), ui: { ...s.ui, sel: { t: 'manualDim', id } } }
+    }
+    case 'SET_MANUAL_DIM_POINT': {
+      // Mismo patrón que SET_VERTEX_POINT: input preciso desde el panel derecho, un punto
+      // a la vez — el otro extremo no se toca, así que esto SÍ cambia el largo (a diferencia
+      // del arrastre de cuerpo completo, 'manualDim', que traslada ambos puntos igual).
+      const m = clone(s.model); const f = F(m)
+      const dim = (f.manualDimensions ?? []).find(d => d.id === a.id)
+      if (!dim) return s
+      dim[a.which].x = a.x; dim[a.which].y = a.y
+      return modelChange(s, m)
+    }
     case 'DELETE_SEL': {
       const sel = s.ui.sel
       if (!sel) return s
@@ -317,6 +382,7 @@ export function reducer(s: EditorState, a: Action): EditorState {
       else if (sel.t === 'opening') { if (!f.edges[sel.edgeId]) return s; removeOpeningFromFloor(f, sel.edgeId, sel.index) }
       else if (sel.t === 'vertex') { if (!f.vertices[sel.id]) return s; removeVertexFromFloor(f, sel.id) }
       else if (sel.t === 'fixture') { if (!(f.fixtures ?? []).some(fx => fx.id === sel.id)) return s; removeFixtureFromFloor(f, sel.id) }
+      else if (sel.t === 'manualDim') { if (!(f.manualDimensions ?? []).some(d => d.id === sel.id)) return s; removeManualDimFromFloor(f, sel.id) }
       return { ...modelChange(s, m), ui: { ...s.ui, sel: null } }
     }
     case 'SET_REFERENCE_FIELD': {

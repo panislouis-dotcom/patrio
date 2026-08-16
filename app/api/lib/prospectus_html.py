@@ -2,6 +2,7 @@ from pathlib import Path
 import base64
 import json
 import logging
+import math
 import os
 import tempfile
 from markupsafe import escape as _esc
@@ -310,6 +311,12 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    importa es la masa (dónde va cada pieza y qué tan grande es), no el nombre impreso en un
    rect de unos milímetros. Menos ruido visual, mismo dato geométrico. */
 .plano-fixture { fill: var(--border); stroke: var(--sec); stroke-width: 0.4; opacity: 0.6; }
+/* Medidas puestas a mano en el editor (ManualDimension): línea sutil + número,
+   mismo lenguaje visual que el editor en vivo (FloorPlanCanvas.tsx) — SIEMPRE se
+   dibujan, sin el toggle "showDims" del editor, porque ese toggle no persiste al
+   modelo (es puro estado de UI) y aquí no hay pantalla que abarrotar. */
+.plano-dim { stroke: var(--sec); stroke-width: 0.4; }
+.plano-dim-label { font-family: 'Inter', sans-serif; font-size: 6px; fill: var(--sec); }
 
 /* ══ CLOSING ═════════════════════════════════════════════════════════════ */
 .closing { height: 297mm; background: var(--green); color: #fff; padding: 30mm var(--pad);
@@ -656,8 +663,9 @@ def _pick_floors(geometry: dict) -> list:
 def _floorplan_svg(geometry: dict) -> str:
     """El plano de una oportunidad, dibujado con lo único que el modelo crudo del
     editor garantiza siempre: muros (con su grosor) y el nombre de cada cuarto en
-    su punto de etiqueta. Sin polígono relleno — un cuarto puede nombrarse sin
-    estar cerrado por muros, así que el modelo no trae ni su área ni su forma
+    su punto de etiqueta — más muebles y medidas manuales cuando el usuario los
+    puso. Sin polígono relleno — un cuarto puede nombrarse sin estar cerrado por
+    muros, así que el modelo no trae ni su área ni su forma
     (ver docs/plans/2026-08-05-prospecto-plano-renders-presupuesto-design.md).
     Sin pisos → "", el bloque desaparece del mismo modo que un `_strip` vacío.
 
@@ -754,6 +762,42 @@ def _floorplan_svg(geometry: dict) -> str:
                 f'transform="translate({fcx:.1f} {fcy:.1f}) rotate({frot:.1f})" />'
             )
 
+        # Medidas manuales (Eduardo, addendum #5): el editor las guarda siempre pero
+        # solo las muestra a demanda vía "Dims"; ese toggle es puro estado de UI
+        # (`showDims` vive en el reducer, no en el modelo persistido), así que aquí,
+        # sin UI que abarrotar, se dibujan todas — mismo criterio que fixtures/muros.
+        dims = []
+        for dim in floor.get("manualDimensions") or []:
+            p1, p2 = dim.get("p1") or {}, dim.get("p2") or {}
+            x1_m, y1_m, x2_m, y2_m = p1.get("x"), p1.get("y"), p2.get("x"), p2.get("y")
+            if x1_m is None or y1_m is None or x2_m is None or y2_m is None:
+                continue
+            x1, y1, x2, y2 = sx(x1_m), sy(y1_m), sx(x2_m), sy(y2_m)
+            length = math.hypot(x2_m - x1_m, y2_m - y1_m)
+            # El número corre PARALELO a la línea, no siempre horizontal — mismo ajuste que
+            # FloorPlanCanvas.tsx: una cota vertical (o diagonal) con el número horizontal
+            # encima quedaba cruzada por su propia línea. Desplazamiento PERPENDICULAR a la
+            # línea, no solo "hacia arriba", para despegarse de ella en cualquier orientación.
+            #
+            # La dirección se CANONIZA (siempre "hacia la derecha", o hacia abajo si es
+            # exactamente vertical) igual que en el editor: p1/p2 quedan grabados en el orden
+            # en que el usuario los trazó, y sin canonizar el lado del número dependía de ese
+            # sentido de arrastre — mismo trazo visual, número a veces a la izquierda, a veces
+            # a la derecha. Canonizada, ddx ≥ 0 siempre, así que atan2 ya cae en [-90°, 90°]
+            # sin recortarlo aparte — el texto nunca sale cabeza abajo.
+            ddx, ddy = x2 - x1, y2 - y1
+            if ddx < 0 or (ddx == 0 and ddy < 0):
+                ddx, ddy = -ddx, -ddy
+            seg_len = math.hypot(ddx, ddy) or 1
+            angle_deg = math.degrees(math.atan2(ddy, ddx))
+            label_x = (x1 + x2) / 2 + (ddy / seg_len) * 3
+            label_y = (y1 + y2) / 2 - (ddx / seg_len) * 3
+            dims.append(
+                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" class="plano-dim" />'
+                f'<text x="{label_x:.1f}" y="{label_y:.1f}" class="plano-dim-label" text-anchor="middle" '
+                f'transform="rotate({angle_deg:.1f} {label_x:.1f} {label_y:.1f})">{length:.2f} m</text>'
+            )
+
         labels = []
         for room in floor.get("rooms") or []:
             cx, cy = room.get("cx"), room.get("cy")
@@ -768,7 +812,7 @@ def _floorplan_svg(geometry: dict) -> str:
         view_h = height * scale + _SVG_PAD * 2
         blocks.append(f"""<div class="plano-floor">
   <div class="plano-floor-name">{_esc(floor.get("name", ""))}</div>
-  <svg viewBox="0 0 {view_w:.1f} {view_h:.1f}" class="plano-svg">{''.join(lines)}{''.join(fixtures)}{''.join(labels)}</svg>
+  <svg viewBox="0 0 {view_w:.1f} {view_h:.1f}" class="plano-svg">{''.join(lines)}{''.join(fixtures)}{''.join(dims)}{''.join(labels)}</svg>
 </div>""")
     if not blocks:
         return ""

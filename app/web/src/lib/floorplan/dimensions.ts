@@ -92,6 +92,58 @@ export function widthHeightChains(f: FloorGraph): { widthMarks: number[]; height
   return { widthMarks: [x0, ...widthSplits, x1], heightMarks: [y0, ...heightSplits, y1] }
 }
 
+export interface RoomLabelFit { fontSizePx: number; rotate: boolean }
+
+const ROOM_LABEL_DEFAULT_PX = 12
+const ROOM_LABEL_MIN_PX = 7
+// Ancho-por-carácter empírico: el mismo factor que ya usaba el blanco de clic del nombre
+// de cuarto en FloorPlanCanvas.tsx (`nm.length * 9 + 16` a fontSize 16, el techo actual de
+// ROOM_NAME_FS) — no uno inventado aquí. 9/16 ≈ 0.5625 px de ancho por px de fontSize por
+// carácter.
+export const ROOM_LABEL_CHAR_WIDTH = 9 / 16
+// Margen: el presupuesto de ancho real es el 85% del lado disponible del cuarto, no el
+// 100% — deja aire entre el texto y el muro en vez de tocarlo exactamente.
+const ROOM_LABEL_MARGIN = 0.85
+
+/**
+ * Tamaño de fuente y si conviene rotar, para que el nombre de un cuarto siempre quepa
+ * dentro de su polígono — en vez del tamaño fijo de 12px de antes, que se salía del
+ * cuarto en nombres largos sobre espacios angostos.
+ *
+ * Determinista, sin medir el DOM: mismo heurístico de ancho-por-carácter que el código ya
+ * usaba, no una medición exacta de fuente (que exigiría un pase de layout imperativo
+ * separado del render declarativo de este canvas — fuera de alcance, YAGNI).
+ *
+ * Rota 90° cuando el cuarto es más alto que ancho — el texto corre a lo largo del eje que
+ * de verdad tiene más espacio, sin un umbral arbitrario de "cuánto más alto que ancho".
+ *
+ * Caso honesto: un nombre extremadamente largo en un cuarto minúsculo puede seguir sin
+ * caber perfectamente incluso al tamaño mínimo (ROOM_LABEL_MIN_PX) — se acepta como límite
+ * de mejor esfuerzo, no se trunca ni se envuelve el texto.
+ *
+ * `defaultPx` es el TECHO de tamaño (antes de que este ajuste entre a reducirlo) — el
+ * llamador lo pasa explícito (ROOM_NAME_FS/ROOM_AREA_FS en FloorPlanCanvas.tsx, tamaños
+ * fijos de pantalla que no encogen al hacer zoom) porque nombre y área quieren techos
+ * distintos. Sin argumento cae al default de este módulo, para llamadores que no tienen
+ * uno propio.
+ */
+export function fitRoomLabel(
+  vertices: { x: number; y: number }[], name: string, scalePxPerM: number, defaultPx: number = ROOM_LABEL_DEFAULT_PX,
+): RoomLabelFit {
+  if (vertices.length === 0 || name.length === 0) return { fontSizePx: defaultPx, rotate: false }
+  const xs = vertices.map(v => v.x), ys = vertices.map(v => v.y)
+  const wPx = (Math.max(...xs) - Math.min(...xs)) * scalePxPerM
+  const hPx = (Math.max(...ys) - Math.min(...ys)) * scalePxPerM
+  const rotate = hPx > wPx
+  const availPx = Math.max(wPx, hPx) * ROOM_LABEL_MARGIN
+  const naturalWidthAt = (fontPx: number) => name.length * fontPx * ROOM_LABEL_CHAR_WIDTH
+  let fontSizePx = defaultPx
+  if (naturalWidthAt(fontSizePx) > availPx) {
+    fontSizePx = Math.max(ROOM_LABEL_MIN_PX, availPx / (name.length * ROOM_LABEL_CHAR_WIDTH))
+  }
+  return { fontSizePx, rotate }
+}
+
 /** Interior angle at every vertex on the exterior boundary. Uses the traced outer face's
  * own vertex sequence, so it naturally follows however many corners the boundary has —
  * including ones created by T-junction splits along a previously straight exterior wall. */

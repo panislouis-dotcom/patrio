@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
-import { widthHeightChains, cornerAngles, cotaEdges, CORNER_ANGLE_TOL_DEG } from './dimensions'
+import { widthHeightChains, cornerAngles, cotaEdges, CORNER_ANGLE_TOL_DEG, fitRoomLabel } from './dimensions'
 
 /** Triángulo A-B-C con el ángulo en A construido para valer EXACTAMENTE `thetaDeg`: B se
  * coloca sobre +x y C a `thetaDeg` de esa dirección (mismo radio), así que el ángulo entre
@@ -156,5 +156,58 @@ describe('cornerAngles', () => {
     const angle = cornerAngles(f).find(c => c.vertexId === a)!
     expect(angle.deg).toBeCloseTo(92, 6)
     expect(angle.isRight).toBe(false)
+  })
+})
+
+describe('fitRoomLabel', () => {
+  const rect = (w: number, h: number) => [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }]
+
+  it('keeps the default size, unrotated, when a short name fits comfortably', () => {
+    // Cuarto de 4x3m a escala 100px/m = 400x300px. "Sala" (4 letras) a 12px natural mide
+    // 4*12*(7/12) = 28px — cabe de sobra en 400*0.85=340px de presupuesto.
+    const fit = fitRoomLabel(rect(4, 3), 'Sala', 100)
+    expect(fit.fontSizePx).toBe(12)
+    expect(fit.rotate).toBe(false)
+  })
+
+  it('shrinks the font when a long name does not fit at the default size, never below the floor', () => {
+    // Cuarto angosto de 1.5x1.5m (150x150px) con un nombre largo: a 12px natural,
+    // 20 letras * 12 * (7/12) = 140px — cerca del presupuesto de 150*0.85=127.5px, así que
+    // SÍ se pasa y debe achicarse.
+    const longName = 'HABITACION PRINCIPAL' // 21 caracteres
+    const fit = fitRoomLabel(rect(1.5, 1.5), longName, 100)
+    expect(fit.fontSizePx).toBeLessThan(12)
+    expect(fit.fontSizePx).toBeGreaterThanOrEqual(7)
+  })
+
+  it('never grows past the default 12px even in a huge room with a short name', () => {
+    const fit = fitRoomLabel(rect(20, 20), 'PH', 100)
+    expect(fit.fontSizePx).toBe(12)
+  })
+
+  it('clamps to the 7px floor for a name that would not fit even shrunk (best-effort, not truncated)', () => {
+    const veryLongName = 'HABITACION PRINCIPAL CON VESTIDOR Y BAÑO COMPLETO' // 50 caracteres
+    const fit = fitRoomLabel(rect(1, 1), veryLongName, 100) // cuarto de 1x1m = 100x100px
+    expect(fit.fontSizePx).toBe(7)
+  })
+
+  it('rotates when the room is taller than it is wide, so the label runs along the longer axis', () => {
+    const fit = fitRoomLabel(rect(1.5, 4), 'Pasillo', 100) // angosto y alto
+    expect(fit.rotate).toBe(true)
+  })
+
+  it('does not rotate when the room is wider than tall', () => {
+    const fit = fitRoomLabel(rect(4, 1.5), 'Pasillo', 100)
+    expect(fit.rotate).toBe(false)
+  })
+
+  it('does not rotate a perfectly square room (hPx > wPx is strictly false when equal)', () => {
+    const fit = fitRoomLabel(rect(3, 3), 'Baño', 100)
+    expect(fit.rotate).toBe(false)
+  })
+
+  it('falls back to the default, unrotated, for an empty polygon or an empty name — nothing to fit', () => {
+    expect(fitRoomLabel([], 'Sala', 100)).toEqual({ fontSizePx: 12, rotate: false })
+    expect(fitRoomLabel(rect(4, 3), '', 100)).toEqual({ fontSizePx: 12, rotate: false })
   })
 })

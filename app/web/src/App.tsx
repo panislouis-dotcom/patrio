@@ -9,6 +9,7 @@ import { PropertyDetailPage } from './components/PropertyDetailPage'
 import { NewPropertyPage } from './components/NewPropertyPage'
 import { PropiedadesMap } from './components/PropiedadesMap'
 import { SonarTab } from './components/SonarTab'
+import { ScoutingTab } from './components/ScoutingTab'
 import { ProcesosTab } from './components/ProcesosTab'
 import { ProcesoTemplateList } from './components/ProcesoTemplateList'
 import { ProcesoInstanceList } from './components/ProcesoInstanceList'
@@ -64,6 +65,7 @@ function AppShell() {
           <Route path="/propiedades/nueva" element={<ProtectedRoute><NewPropertyPage /></ProtectedRoute>} />
           <Route path="/propiedades/mapa" element={<ProtectedRoute><PropiedadesMap /></ProtectedRoute>} />
           <Route path="/propiedades/sonar" element={<ProtectedRoute><SonarTab /></ProtectedRoute>} />
+          <Route path="/propiedades/scouting" element={<ProtectedRoute><ScoutingTab /></ProtectedRoute>} />
           <Route path="/propiedades/comparables" element={<ProtectedRoute><ComparablesTab /></ProtectedRoute>} />
           <Route path="/propiedades/comparables/nuevo" element={<ProtectedRoute><ComparableForm /></ProtectedRoute>} />
           <Route path="/propiedades/:id" element={<ProtectedRoute><PropertyDetailPage /></ProtectedRoute>} />

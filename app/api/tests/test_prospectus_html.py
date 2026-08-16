@@ -76,6 +76,44 @@ FURNISHED_FLOOR = {
     }],
 }
 
+# Una medida manual (addendum #5, `ManualDimension` en types.ts): línea suelta de dos
+# puntos libres, no atada a un muro. `_floorplan_svg` la dibuja siempre — a diferencia
+# del editor en vivo, aquí no hay toggle "showDims" que apagarla (ese estado es puro UI
+# del reducer, nunca se persiste al modelo).
+MEASURED_FLOOR = {
+    "floors": [{
+        **ONE_FLOOR["floors"][0],
+        "manualDimensions": [
+            {"id": "d1", "p1": {"x": 1, "y": 1}, "p2": {"x": 4, "y": 1}},
+        ],
+    }],
+}
+
+# Misma cota que MEASURED_FLOOR pero VERTICAL: el número debe rotar con la línea (ver
+# test_manual_dimension_label_rotates_with_a_vertical_line) — con el número siempre
+# horizontal quedaba cruzado por su propia línea, ilegible.
+MEASURED_FLOOR_VERTICAL = {
+    "floors": [{
+        **ONE_FLOOR["floors"][0],
+        "manualDimensions": [
+            {"id": "d1", "p1": {"x": 1, "y": 1}, "p2": {"x": 1, "y": 4}},
+        ],
+    }],
+}
+
+# La MISMA cota vertical que MEASURED_FLOOR_VERTICAL, pero con p1/p2 al revés — el orden
+# en que el editor los graba depende de en qué sentido arrastró el usuario, no de la
+# geometría. El número debe quedar del mismo lado en ambas (ver
+# test_manual_dimension_label_side_does_not_depend_on_draw_direction).
+MEASURED_FLOOR_VERTICAL_REVERSED = {
+    "floors": [{
+        **ONE_FLOOR["floors"][0],
+        "manualDimensions": [
+            {"id": "d1", "p1": {"x": 1, "y": 4}, "p2": {"x": 1, "y": 1}},
+        ],
+    }],
+}
+
 # Un piso con una arista 'ghost' (división manual de cuarto): divide para nombres/áreas
 # pero no es muro — _floorplan_svg no debe dibujarle línea alguna.
 GHOST_EDGE_FLOOR = {
@@ -211,6 +249,70 @@ def test_floor_with_empty_fixtures_list_does_not_crash():
     floor = {**ONE_FLOOR["floors"][0], "fixtures": []}
     svg = _floorplan_svg({"floors": [floor]})
     assert 'class="plano-fixture"' not in svg
+    assert "<svg" in svg
+
+
+def test_floor_with_manual_dimension_draws_line_and_label():
+    """`class="plano-dim"`/`class="plano-dim-label"` identifican la línea y su número —
+    misma convención que `plano-fixture` arriba. Se dibuja SIEMPRE, sin depender de
+    ningún toggle: el prospecto no tiene el botón "Dims" del editor, así que no hay
+    nada que apagar aquí."""
+    svg = _floorplan_svg(MEASURED_FLOOR)
+    assert 'class="plano-dim"' in svg
+    assert 'class="plano-dim-label"' in svg
+    assert "3.00 m" in svg  # distancia real entre (1,1) y (4,1)
+
+
+def test_manual_dimension_label_is_upright_on_a_horizontal_line():
+    svg = _floorplan_svg(MEASURED_FLOOR)
+    m = re.search(r'class="plano-dim-label"[^>]*transform="rotate\((-?[\d.]+)', svg)
+    assert m is not None
+    assert float(m.group(1)) == pytest.approx(0, abs=1)
+
+
+def test_manual_dimension_label_rotates_with_a_vertical_line():
+    """Antes el número era siempre horizontal — sobre una cota vertical quedaba escrito
+    ENCIMA de su propia línea, ilegible. Ahora rota con ella (recortado a ±90° para
+    nunca salir cabeza abajo, mismo criterio que FloorPlanCanvas.tsx)."""
+    svg = _floorplan_svg(MEASURED_FLOOR_VERTICAL)
+    m = re.search(r'class="plano-dim-label"[^>]*transform="rotate\((-?[\d.]+)', svg)
+    assert m is not None
+    assert abs(float(m.group(1))) == pytest.approx(90, abs=1)
+    assert "3.00 m" in svg  # distancia real entre (1,1) y (1,4)
+
+
+def _dim_label_tag(svg: str) -> str:
+    m = re.search(r'<text [^>]*class="plano-dim-label"[^>]*>', svg)
+    assert m is not None
+    return m.group(0)
+
+
+def test_manual_dimension_label_side_does_not_depend_on_draw_direction():
+    """El mismo trazo visual (misma cota vertical) podía terminar con el número a la
+    izquierda o a la derecha según en qué sentido arrastró el usuario — p1/p2 se graban
+    en el orden del gesto, no de la geometría. Canonizada la dirección antes de rotar y
+    desplazar, ambos órdenes producen el mismo ángulo y el mismo lado."""
+    tag_fwd = _dim_label_tag(_floorplan_svg(MEASURED_FLOOR_VERTICAL))
+    tag_rev = _dim_label_tag(_floorplan_svg(MEASURED_FLOOR_VERTICAL_REVERSED))
+    x_fwd = float(re.search(r'x="(-?[\d.]+)"', tag_fwd).group(1))
+    x_rev = float(re.search(r'x="(-?[\d.]+)"', tag_rev).group(1))
+    angle_fwd = float(re.search(r'rotate\((-?[\d.]+)', tag_fwd).group(1))
+    angle_rev = float(re.search(r'rotate\((-?[\d.]+)', tag_rev).group(1))
+    assert x_fwd == pytest.approx(x_rev, abs=0.1)
+    assert angle_fwd == pytest.approx(angle_rev, abs=0.1)
+
+
+def test_floor_without_manual_dimensions_key_does_not_crash():
+    """Backward compat: ningún blob previo al addendum #5 trae la clave `manualDimensions`."""
+    svg = _floorplan_svg(ONE_FLOOR)
+    assert 'class="plano-dim"' not in svg
+    assert "<svg" in svg
+
+
+def test_floor_with_empty_manual_dimensions_list_does_not_crash():
+    floor = {**ONE_FLOOR["floors"][0], "manualDimensions": []}
+    svg = _floorplan_svg({"floors": [floor]})
+    assert 'class="plano-dim"' not in svg
     assert "<svg" in svg
 
 

@@ -27,32 +27,45 @@ function FileThumb({ f, onDelete }: { f: NodeFile; onDelete: () => void }) {
   const src = `${BASE}/files/${f.filePath}`
   return (
     <div style={{ position: 'relative', width: 80, height: 80 }}>
-      {isImage ? (
-        <img
-          src={src}
-          alt={f.fileName}
-          style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }}
-        />
-      ) : (
-        <div
-          style={{
-            width: 80,
-            height: 80,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: colors.border,
-            borderRadius: 2,
-            fontSize: '10px',
-            color: colors.secondary,
-            fontFamily: fonts.label,
-            padding: 4,
-            textAlign: 'center',
-          }}
-        >
-          {f.fileName}
-        </div>
-      )}
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`Abrir ${f.fileName} en pestaña nueva`}
+        style={{ display: 'block', width: 80, height: 80, cursor: 'pointer' }}
+      >
+        {isImage ? (
+          <img
+            src={src}
+            alt={f.fileName}
+            style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 80,
+              height: 80,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 3,
+              background: colors.surfaceAlt,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 2,
+              fontSize: '9px',
+              color: colors.neutral,
+              fontFamily: fonts.label,
+              padding: 4,
+              textAlign: 'center',
+              overflow: 'hidden',
+            }}
+          >
+            <span style={{ fontSize: '15px' }}>📄</span>
+            <span style={{ lineHeight: 1.15 }}>{f.fileName}</span>
+          </div>
+        )}
+      </a>
       <button
         onClick={onDelete}
         style={{
@@ -494,7 +507,14 @@ export function ProcesoNodeDetail() {
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {referenceFiles.map(f => (
-              <div key={f.id} style={{ width: 80, height: 80 }}>
+              <a
+                key={f.id}
+                href={`${BASE}/files/${f.filePath}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`Abrir ${f.fileName} en pestaña nueva`}
+                style={{ display: 'block', width: 80, height: 80, cursor: 'pointer' }}
+              >
                 {f.contentType.startsWith('image/') ? (
                   <img
                     src={`${BASE}/files/${f.filePath}`}
@@ -502,11 +522,12 @@ export function ProcesoNodeDetail() {
                     style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 2 }}
                   />
                 ) : (
-                  <div style={{ width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.border, borderRadius: 2, fontSize: '10px', color: colors.secondary, fontFamily: fonts.label, padding: 4, textAlign: 'center' }}>
-                    {f.fileName}
+                  <div style={{ width: 80, height: 80, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderRadius: 2, fontSize: '9px', color: colors.neutral, fontFamily: fonts.label, padding: 4, textAlign: 'center', overflow: 'hidden' }}>
+                    <span style={{ fontSize: '15px' }}>📄</span>
+                    <span style={{ lineHeight: 1.15 }}>{f.fileName}</span>
                   </div>
                 )}
-              </div>
+              </a>
             ))}
           </div>
         </div>

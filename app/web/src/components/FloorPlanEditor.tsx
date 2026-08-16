@@ -4,14 +4,14 @@ import type React from 'react'
 import { colors, fonts } from '../lib/theme'
 import {
   reducer, initialState, removeEdgeFromFloor, removeOpeningFromFloor, removeVertexFromFloor,
-  removeFixtureFromFloor, type Tool,
+  removeFixtureFromFloor, removeManualDimFromFloor, type Tool,
 } from '../lib/floorplan/reducer'
 import {
   emptyFloorSet, clone, genId, isGhost, GHOST_THICKNESS_M, FIXTURE_CATALOG,
-  type FloorSet, type FloorGraph, type FixtureKind,
+  type FloorSet, type FloorGraph, type FixtureKind, type RoomType,
 } from '../lib/floorplan/types'
 import { viewTransform, type Camera } from '../lib/floorplan/viewTransform'
-import { roomAreas, roomLabels } from '../lib/floorplan/rooms'
+import { roomAreas, roomLabels, roomPolygons } from '../lib/floorplan/rooms'
 import { cornerAngles } from '../lib/floorplan/dimensions'
 import { projectAt, pointAt } from '../lib/floorplan/geometry'
 import {
@@ -21,6 +21,7 @@ import {
 import { snapPoint } from '../lib/floorplan/snapping'
 import { calibrationFromLine, modelToPx } from '../lib/floorplan/calibrate'
 import { toGeometryJson } from '../lib/floorplan/export'
+import { floorToSvg } from '../lib/floorplan/exportSvg'
 import { BASE } from '../lib/api'
 import FloorPlanCanvas from './FloorPlanCanvas'
 import FloorPlanPanel from './FloorPlanPanel'
@@ -28,9 +29,9 @@ import { EmptyState, ReferenceControls } from './FloorPlanReference'
 import { btn, btnDisabled } from './floorplanStyles'
 
 const W = 900, H = 560, MARGIN = 48
-const TOOLS: Tool[] = ['select', 'wall', 'ghost', 'door', 'window', 'room', 'delete']
+const TOOLS: Tool[] = ['select', 'wall', 'ghost', 'door', 'window', 'room', 'dim', 'delete']
 // The toolbar shows tool ids verbatim; only these need a friendlier Spanish label.
-const TOOL_LABELS: Partial<Record<Tool, string>> = { ghost: 'división', room: 'nombrar' }
+const TOOL_LABELS: Partial<Record<Tool, string>> = { ghost: 'división', room: 'nombrar', dim: 'medida' }
 const MIN_CAL_PX = 1e-6
 const ZOOM_STEP = 1.25
 const WHEEL_ZOOM_STEP = 1.08
@@ -85,6 +86,12 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   const [calLen, setCalLen] = useState<number | undefined>(undefined)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const calDragRef = useRef(false)
+  // Herramienta "medida" (dim): mismo patrón que calDraft/calDragRef arriba — un trazo
+  // LOCAL del componente mientras dura el gesto de clic-arrastra-suelta, que se vuelve una
+  // ManualDimension real (ADD_MANUAL_DIM) solo al soltar. No vive en el reducer mientras
+  // está a medias: un draft a medio arrastrar no es un dato del modelo todavía.
+  const [dimDraft, setDimDraft] = useState<{ p0: [number, number]; p1: [number, number] } | null>(null)
+  const dimDragRef = useRef(false)
   // One history-creating SET_MODEL per drag gesture; every subsequent pointermove frame in
   // the same gesture uses DRAG_MODEL (no push). Reset once at the top of onPointerDown.
   const dragMovedRef = useRef(false)
@@ -130,6 +137,22 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   }, [])
 
   const doSave = async () => { await onSave(model); dispatch({ type: 'MARK_SAVED' }) }
+
+  // Download the active floor as a clean, print-friendly plan (see exportSvg). SVG for
+  // editing in a vector tool; PDF via a print window (the browser's "Guardar como PDF").
+  const downloadSvg = () => {
+    const blob = new Blob([floorToSvg(floor)], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `plano-${floor.name}.svg`; a.click()
+    URL.revokeObjectURL(url)
+  }
+  const downloadPdf = () => {
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.write(`<!doctype html><html><head><title>plano-${floor.name}</title><style>@page{margin:12mm} html,body{margin:0}</style></head><body>${floorToSvg(floor)}<script>window.onload=function(){window.print()}<\/script></body></html>`)
+    w.document.close()
+  }
 
   const refImageKey = floor.reference?.imageKey
   useEffect(() => {
@@ -200,22 +223,33 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
   const rooms = useMemo(() => roomAreas(floor), [floor])
   // Every drawn label = enclosed rooms (with area) + free named points on open spaces.
   const labels = useMemo(() => roomLabels(floor), [floor])
+  // Polígonos de los cuartos CERRADOS, en el MISMO orden que roomLabels antepone los suyos
+  // (rooms.ts::roomLabels = [...enclosed, ...free] — invariante ya documentado y ya usado
+  // así en planFacts.ts): FloorPlanCanvas empareja por posición, labels[i] <-> polygons[i]
+  // para i < polygons.length, para saber si un nombre cabe en su cuarto real.
+  const polygons = useMemo(() => roomPolygons(floor), [floor])
   const angles = useMemo(() => cornerAngles(floor), [floor])
   const geoJson = useMemo(() => JSON.stringify(toGeometryJson(model), null, 1), [model])
-  const editName = ui.editRoom
-    ? (labels.find(r => Math.abs(r.cx - ui.editRoom!.cx) < 0.05 && Math.abs(r.cy - ui.editRoom!.cy) < 0.05)?.name ?? '')
-    : ''
+  const editingRoom = ui.editRoom
+    ? labels.find(r => Math.abs(r.cx - ui.editRoom!.cx) < 0.05 && Math.abs(r.cy - ui.editRoom!.cy) < 0.05)
+    : undefined
+  const editName = editingRoom?.name ?? ''
+  const editType = editingRoom?.type
 
   function onToolClick(tool: Tool) {
     // 'wall' y 'ghost' no son modos: el clic inserta de inmediato la misma plantilla
     // vertical y vuelve a select para ajustarla. Este es el ÚNICO call site que aparea
     // kind 'ghost' con GHOST_THICKNESS_M — el pairing es disciplina del caller de addEdge.
     if (tool === 'wall' || tool === 'ghost') {
+      // Drop a short 1 m wall where the user is looking — the camera centre when zoomed in,
+      // otherwise the plan's centre — instead of one spanning the whole plan. It's placed
+      // vertically and auto-selected, so you can immediately drag it or retype its length.
+      const cam = state.ui.camera
       const xs = Object.values(floor.vertices).map(v => v.x), ys = Object.values(floor.vertices).map(v => v.y)
-      const cx = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 3
-      const y0 = ys.length ? Math.min(...ys) : 0, y1 = ys.length ? Math.max(...ys) : 4
+      const cx = cam ? cam.centerX : (xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 3)
+      const cy = cam ? cam.centerY : (ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 2)
       const m = clone(model); const f = m.floors[m.activeFloor]
-      const v1 = graphAddVertex(f, cx, y0 + 0.5), v2 = graphAddVertex(f, cx, y1 - 0.5)
+      const v1 = graphAddVertex(f, cx, cy - 0.5), v2 = graphAddVertex(f, cx, cy + 0.5)
       const newEdgeId = tool === 'ghost'
         ? graphAddEdge(f, v1, v2, GHOST_THICKNESS_M, 'ghost')
         : graphAddEdge(f, v1, v2, f.intWall_m)
@@ -306,6 +340,7 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     else if (elk === 'edge') delEdge(attr(target, 'data-id')!)
     else if (elk === 'vertex') delVertex(attr(target, 'data-id')!)
     else if (elk === 'fixture') delFixture(attr(target, 'data-id')!)
+    else if (elk === 'manualDim') delManualDim(attr(target, 'data-id')!)
     else if (elk === 'room') dispatch({ type: 'DELETE_ROOM', cx: +attr(target, 'data-cx')!, cy: +attr(target, 'data-cy')! })
   }
 
@@ -366,6 +401,31 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
         type: 'SET_DRAG',
         drag: { kind: 'fixture', id, startV1: { x: fx.x, y: fx.y }, startPt: { x: pt.x, y: pt.y } },
       })
+    } else if (elk === 'manualDimEndpoint') {
+      // Manija de un extremo (visible solo cuando la cota ya está seleccionada, ver
+      // FloorPlanCanvas.tsx): arrastra ESE punto solo, igual que un vértice — a diferencia
+      // de 'manualDim' abajo, que traslada la cota entera. Esto SÍ cambia el largo: es el
+      // "resize con drag" que 'manualDim' (traslación pura) no ofrece.
+      const id = attr(target, 'data-id')!
+      const which = attr(target, 'data-which') as 'p1' | 'p2'
+      dispatch({ type: 'SET_SEL', sel: { t: 'manualDim', id } })
+      dispatch({ type: 'SET_DRAG', drag: { kind: 'manualDimEndpoint', id, which } })
+    } else if (elk === 'manualDim') {
+      // Mismo patrón que 'edge': selecciona y arranca un arrastre que traslada TODA la
+      // cota (los dos puntos por el mismo delta) — para cambiar el LARGO, arrastra una
+      // manija de extremo ('manualDimEndpoint' arriba) o edita las coordenadas en el panel.
+      const id = attr(target, 'data-id')!
+      const dim = (floor.manualDimensions ?? []).find(d => d.id === id)!
+      dispatch({ type: 'SET_SEL', sel: { t: 'manualDim', id } })
+      dispatch({
+        type: 'SET_DRAG',
+        drag: {
+          kind: 'manualDim', id,
+          startV1: { x: dim.p1.x, y: dim.p1.y },
+          startV2: { x: dim.p2.x, y: dim.p2.y },
+          startPt: { x: pt.x, y: pt.y },
+        },
+      })
     } else {
       const { ux, uy } = pointerToUser(e)
       panRef.current = { startUx: ux, startUy: uy, camera: seedCamera() }
@@ -398,6 +458,16 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     if (elk === 'room' && ui.tool === 'select') { handleRoomTool(e, target, elk, pt); return }
     if (ui.tool === 'door' || ui.tool === 'window') { handleOpeningTool(ui.tool, target, elk, pt); return }
     if (ui.tool === 'delete') { handleDeleteTool(target, elk); return }
+    if (ui.tool === 'dim') {
+      // Mismo patrón que la calibración arriba: un trazo local de dos puntos por
+      // clic-arrastra-suelta, con snapping a vértices/grilla (mismo snapPoint que ya usa
+      // el arrastre de vértice) para poder anclar la medida a una esquina real.
+      const s = snapPoint(floor, pt.x, pt.y, new Set())
+      setDimDraft({ p0: [s.x, s.y], p1: [s.x, s.y] })
+      dimDragRef.current = true
+      capturePointer(e)
+      return
+    }
     handleSelectTool(e, target, elk, pt)
   }
 
@@ -406,6 +476,12 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       if (!calDragRef.current) return
       const p = pointerToWorld(e)
       setCalDraft(d => d ? { p0: d.p0, p1: [p.x, p.y] } : d)
+      return
+    }
+    if (dimDragRef.current) {
+      const p = pointerToWorld(e)
+      const s = snapPoint(floor, p.x, p.y, new Set())
+      setDimDraft(d => d ? { p0: d.p0, p1: [s.x, s.y] } : d)
       return
     }
     if (panRef.current) {
@@ -452,6 +528,21 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       const fx = f.fixtures!.find(x => x.id === drag.id)!
       const dx = pt.x - drag.startPt!.x, dy = pt.y - drag.startPt!.y
       fx.x = drag.startV1!.x + dx; fx.y = drag.startV1!.y + dy
+    } else if (drag.kind === 'manualDim') {
+      // Idéntico a edgeBody: traslada AMBOS puntos por el mismo delta — sin snapping (la
+      // reposición fina se hace borrando y volviendo a trazar, mismo alcance que fixture).
+      const dim = (f.manualDimensions ?? []).find(d => d.id === drag.id)!
+      const dx = pt.x - drag.startPt!.x, dy = pt.y - drag.startPt!.y
+      dim.p1.x = drag.startV1!.x + dx; dim.p1.y = drag.startV1!.y + dy
+      dim.p2.x = drag.startV2!.x + dx; dim.p2.y = drag.startV2!.y + dy
+    } else if (drag.kind === 'manualDimEndpoint') {
+      // Idéntico a 'vertex': el punto se mueve directo al puntero (con el mismo snapPoint
+      // a vértices/grilla), no por delta — el otro extremo de la cota no se toca, así que
+      // esto cambia el largo.
+      const dim = (f.manualDimensions ?? []).find(d => d.id === drag.id)!
+      const s = snapPoint(f, pt.x, pt.y, new Set())
+      dim[drag.which!].x = s.x; dim[drag.which!].y = s.y
+      guides = s.guides
     }
     // Every frame of a gesture — including the first — dispatches DRAG_MODEL, never
     // SET_MODEL: per reducer.ts's own contract, dragBase is captured by the FIRST
@@ -466,6 +557,18 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
 
   const onPointerUp = () => {
     if (ui.calibrating) { calDragRef.current = false; return }
+    if (dimDragRef.current) {
+      // A diferencia de la calibración (que exige un paso aparte porque la escala px→m es
+      // justo lo que se está resolviendo), aquí p0/p1 YA están en metros reales — se puede
+      // comprometer de inmediato al soltar, sin pedir nada más al usuario.
+      dimDragRef.current = false
+      if (dimDraft) {
+        dispatch({ type: 'ADD_MANUAL_DIM', p1: { x: dimDraft.p0[0], y: dimDraft.p0[1] }, p2: { x: dimDraft.p1[0], y: dimDraft.p1[1] } })
+        dispatch({ type: 'SET_TOOL', tool: 'select' })
+      }
+      setDimDraft(null)
+      return
+    }
     if (panRef.current) {
       if (!panMovedRef.current) { dispatch({ type: 'SET_SEL', sel: null }); dispatch({ type: 'SET_DRAG', drag: null }) }
       panRef.current = null
@@ -519,10 +622,14 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
     const m = clone(model); removeFixtureFromFloor(m.floors[m.activeFloor], id)
     dispatch({ type: 'SET_MODEL', model: m }); dispatch({ type: 'SET_SEL', sel: null })
   }
+  const delManualDim = (id: string) => {
+    const m = clone(model); removeManualDimFromFloor(m.floors[m.activeFloor], id)
+    dispatch({ type: 'SET_MODEL', model: m }); dispatch({ type: 'SET_SEL', sel: null })
+  }
 
-  const onRoomCommit = (cx: number, cy: number, name: string) => {
+  const onRoomCommit = (cx: number, cy: number, name: string, type?: RoomType) => {
     const nm = name.trim()
-    if (nm) dispatch({ type: 'RENAME_ROOM', cx, cy, name: nm })
+    if (nm) dispatch({ type: 'RENAME_ROOM', cx, cy, name: nm, roomType: type })
     else dispatch({ type: 'SET_EDIT_ROOM', editRoom: null })
   }
   const onRoomCancel = () => dispatch({ type: 'SET_EDIT_ROOM', editRoom: null })
@@ -542,6 +649,8 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
         <button onClick={() => dispatch({ type: 'REDO' })} disabled={state.future.length === 0}
           style={btnDisabled(state.future.length === 0)}>REDO</button>
         <button onClick={() => dispatch({ type: 'TOGGLE_DIMS' })} style={btn(ui.showDims)}>Dims</button>
+        <button onClick={downloadSvg} style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }} title="Descargar el piso actual como SVG (editable)">↓ SVG</button>
+        <button onClick={downloadPdf} style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }} title="Descargar el piso actual como PDF (imprimir / guardar como PDF)">↓ PDF</button>
         <button onClick={doSave} style={btn(state.dirty)}>Save</button>
       </div>
 
@@ -563,6 +672,13 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
           }}>{f.name}</button>
         ))}
         <button onClick={() => dispatch({ type: 'ADD_FLOOR' })} style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px' }}>+ Floor</button>
+        {model.floors.length > 1 && (
+          <button
+            onClick={() => { if (window.confirm(`¿Eliminar "${floor.name}"? Se borran sus muros. Guarda para que sea permanente.`)) dispatch({ type: 'DEL_FLOOR' }) }}
+            style={{ ...btn(false), textTransform: 'none', fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>
+            ✕ Eliminar piso
+          </button>
+        )}
       </div>
 
       {floor.reference && (
@@ -582,8 +698,8 @@ export default function FloorPlanEditor({ initial, onSave, onUploadImage, onRead
       <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           <FloorPlanCanvas
-            ref={svgRef} model={model} floor={floor} t={t} rooms={labels} angles={angles} ui={ui} editName={editName}
-            imgNatural={imgNatural} calDraft={calDraft}
+            ref={svgRef} model={model} floor={floor} t={t} rooms={labels} polygons={polygons} angles={angles} ui={ui} editName={editName}
+            editType={editType} imgNatural={imgNatural} calDraft={calDraft} dimDraft={dimDraft}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onMouseDown={onMouseDown}
             onRoomCommit={onRoomCommit} onRoomCancel={onRoomCancel}
           />

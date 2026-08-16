@@ -4,56 +4,101 @@
 // §"Prompt base enriquecido". Reemplaza a `planSeed` (RendersPanel.tsx), que solo mandaba
 // nombres de cuarto: sin medidas ni muebles, "amuebla y da acabados" no le decía al modelo
 // NADA sobre el tamaño real del espacio.
-import type { FloorGraph, Vertex } from './types'
-import { FIXTURE_CATALOG } from './types'
+import type { FloorGraph, Vertex, RoomType } from './types'
+import { FIXTURE_CATALOG, ROOM_TYPE_CATALOG } from './types'
 import { roomLabels, roomAreas, roomConnections, roomPolygons, type Connection } from './rooms'
 import { cornerAngles, CORNER_ANGLE_TOL_DEG } from './dimensions'
 import { edgeAxis } from './geometry'
 
 const fmt = (n: number): string => n.toFixed(2)
 
-/** Catálogo explícito palabra-clave → tipo de cuarto (estructura de datos, no regex
- * disperso por la lógica — convención del repo). El usuario nombra sus cuartos como
- * quiere ("HABITACION DP1", "cocina dp1", "ESTANCIA DP2" — ver el diagnóstico de
- * docs/plans/2026-08-11-renders-de-plano-mas-precisos.md), así que el prompt de
- * render necesita inferir el tipo para dar contexto de mobiliario/acabados al modelo
- * de imagen. La lista NO pretende cubrir cada nombre posible en español — nombres
- * fuera del catálogo (p.ej. "RECIBIDOR PA") simplemente no infieren tipo, lo cual es
- * aceptable: `roomType` regresa null y `planFacts` omite la anotación en vez de forzar
- * una categoría inventada. */
+/** Catálogo explícito palabra-clave → `RoomType` (estructura de datos, no regex
+ * disperso por la lógica — convención del repo). Fallback de `resolveRoomType` (abajo)
+ * para levantamientos que aún no traen el campo `Room.type` explícito (ver types.ts) —
+ * el usuario nombra sus cuartos como quiere ("HABITACION DP1", "cocina dp1", "ESTANCIA
+ * DP2" — ver el diagnóstico de docs/plans/2026-08-11-renders-de-plano-mas-precisos.md),
+ * así que sin un tipo explícito el prompt de render necesita inferirlo para dar
+ * contexto de mobiliario/acabados al modelo de imagen. La lista NO pretende cubrir cada
+ * nombre posible en español — arreglo vacío para un `RoomType` sin evidencia real de
+ * nombre todavía (nunca se inventa cobertura sin un nombre real que la necesite); un
+ * nombre fuera de lo cubierto simplemente no infiere tipo, lo cual es aceptable:
+ * `resolveRoomType` regresa `null` y `planFacts` omite la anotación en vez de forzar
+ * una categoría inventada. `Record<RoomType, ...>` (no `Record<string, ...>`): las
+ * claves son las MISMAS que `ROOM_TYPE_CATALOG` (types.ts) — un solo espacio de
+ * nombres, nunca dos vocabularios que puedan divergir. */
 // El orden de las claves también actúa como desempate cuando un nombre trae palabras de
-// dos categorías ("SALA COMEDOR" cae en 'sala', la primera que aparece abajo) — no hay
-// nada más sofisticado que eso, y no hace falta: no es la parte que importa del catálogo.
-const ROOM_TYPE_KEYWORDS: Record<string, string[]> = {
+// dos categorías ("SALA COMEDOR" cae en 'sala', que aparece antes que 'comedor' abajo)
+// — no hay nada más sofisticado que eso, y no hace falta: no es la parte que importa
+// del catálogo.
+const ROOM_TYPE_KEYWORDS: Record<RoomType, string[]> = {
+  recamara: ['recámara', 'recamara', 'habitación', 'habitacion', 'dormitorio'],
+  bano: ['baño', 'bano', 'wc'],
   cocina: ['cocina'],
-  baño: ['baño', 'bano', 'wc'],
-  recámara: ['recámara', 'recamara', 'habitación', 'habitacion', 'dormitorio'],
   sala: ['sala', 'estancia'],
   comedor: ['comedor'],
+  // "escalera" y "vestibulo" (agregadas tras el diagnóstico de Locales Salón Escobedo):
+  // "ESCALERAS ACCESO" y "RECIBIDOR PA", nombres reales de esa propiedad, no caían en
+  // ninguna categoría — el prompt de render no tenía NINGÚN dato sobre su función,
+  // solo sus medidas, la causa raíz más directa del error reportado.
+  vestibulo: ['recibidor', 'vestíbulo', 'vestibulo'],
+  escalera: ['escalera', 'escaleras'],
   patio: ['patio'],
   terraza: ['terraza'],
+  // Sin evidencia real de un nombre que los necesite todavía — alcanzables solo vía
+  // Room.type explícito (el dropdown del editor), no por inferencia de nombre.
+  pasillo: [],
+  closet: [],
+  lavanderia: [],
+  cuarto_servicio: [],
+  cochera: [],
+  jardin: [],
+  azotea: [],
+  otro: [], // nunca se infiere 'otro' por nombre — no tiene keywords a propósito
 }
 
 /** Separa un nombre en palabras completas (letras españolas incl. acentos/ñ; cualquier
- * otro carácter —espacio, dígito, guion— es separador). Usado por `roomType` para
- * comparar por PALABRA, no por subcadena: con `.includes()` plano, la clave sin acento
- * "bano" (de "baño") coincidía dentro de "urbano" — "PATIO URBANO" se etiquetaba
+ * otro carácter —espacio, dígito, guion— es separador). Usado por `roomTypeFromName`
+ * para comparar por PALABRA, no por subcadena: con `.includes()` plano, la clave sin
+ * acento "bano" (de "baño") coincidía dentro de "urbano" — "PATIO URBANO" se etiquetaba
  * "tipo: baño" en vez de "tipo: patio", un dato falso alimentado al prompt de imagen.
  * Un solo tokenizador genérico, reusado por todas las claves — no regex por-palabra
  * disperso por el catálogo. */
 const tokenize = (name: string): string[] =>
   name.toLowerCase().split(/[^a-zàáéíóúñü]+/i).filter(t => t.length > 0)
 
-/** Infiere el tipo de cuarto por palabra clave en su nombre (insensible a mayúsculas,
- * por palabra completa — ver `tokenize`). `null` cuando ninguna categoría del catálogo
+/** Infiere el `RoomType` por palabra clave en el nombre (insensible a mayúsculas, por
+ * palabra completa — ver `tokenize`). `null` cuando ninguna categoría del catálogo
  * aparece en el nombre — no todo nombre de cuarto tiene por qué caer en una categoría
- * conocida. */
-const roomType = (name: string): string | null => {
+ * conocida. Fallback de `resolveRoomType` (abajo) cuando el cuarto no trae un
+ * `RoomType` explícito — ya NO es el mecanismo primario, ver ese comentario. */
+const roomTypeFromName = (name: string): RoomType | null => {
   const tokens = tokenize(name)
-  for (const [type, keywords] of Object.entries(ROOM_TYPE_KEYWORDS)) {
+  for (const [type, keywords] of Object.entries(ROOM_TYPE_KEYWORDS) as [RoomType, string[]][]) {
     if (keywords.some(kw => tokens.includes(kw))) return type
   }
   return null
+}
+
+/** El `RoomType` EFECTIVO de un cuarto: prefiere el campo explícito (`Room.type`,
+ * elegido por el usuario en un dropdown al nivel del plano — ver `ROOM_TYPE_CATALOG`,
+ * types.ts) y solo cae al inferido por palabra clave (`roomTypeFromName`, arriba)
+ * cuando no hay campo explícito o el usuario marcó 'otro'. 'otro' es una decisión
+ * positiva ("miré la lista, ninguna aplica"), no una señal útil para el modelo de
+ * imagen — no debe apagar el mejor esfuerzo por nombre, así que cae al mismo fallback
+ * que "sin tipo capturado todavía".
+ *
+ * Único punto de verdad de "cuál es el tipo de este cuarto", reusado tanto por el
+ * párrafo de texto de aquí abajo como por el relleno de color de la imagen de
+ * referencia (planImage.ts) — así texto e imagen NUNCA pueden describir un tipo
+ * distinto para el mismo cuarto. */
+export const resolveRoomType = (name: string, explicitType: RoomType | undefined): RoomType | null => {
+  if (explicitType && explicitType !== 'otro') return explicitType
+  return roomTypeFromName(name)
+}
+
+const roomTypeText = (name: string, explicitType: RoomType | undefined): string | null => {
+  const type = resolveRoomType(name, explicitType)
+  return type != null ? ROOM_TYPE_CATALOG[type].label.toLowerCase() : null
 }
 
 /** Nombre para mostrar de un lado de una `Connection`: 'exterior' se queda literal, un
@@ -216,7 +261,7 @@ const connectionSentence = (floor: FloorGraph, c: Connection): string => {
  * cuartos, sin muebles) produce un párrafo mínimo pero válido — la altura de piso sola,
  * que siempre existe (`emptyFloorGraph` la nace en 2.60 m).
  */
-export function planFacts(floor: FloorGraph): string {
+export function planFacts(floor: FloorGraph, opts: { includeColorLegend?: boolean } = {}): string {
   const parts: string[] = []
 
   // Cuartos: cerrados (con área y, si tiene polígono, dimensiones) más los libres — el
@@ -241,6 +286,7 @@ export function planFacts(floor: FloorGraph): string {
   const enclosedPolys = roomPolygons(floor)
   const enclosedRooms = enclosedAreas.map((r, i) => ({
     name: r.name,
+    type: r.type,
     area: r.area as number | null,
     vertices: enclosedPolys[i].vertices as { x: number; y: number }[] | undefined,
     enclosed: true as const,
@@ -253,6 +299,7 @@ export function planFacts(floor: FloorGraph): string {
     .filter(r => r.area === null)
     .map(r => ({
       name: r.name,
+      type: r.type,
       area: null as number | null,
       vertices: undefined as { x: number; y: number }[] | undefined,
       enclosed: false as const,
@@ -260,7 +307,7 @@ export function planFacts(floor: FloorGraph): string {
   const rooms = [...enclosedRooms, ...freeRooms].filter(r => r.name.trim())
   if (rooms.length > 0) {
     const roomTexts = rooms.map(r => {
-      const type = roomType(r.name)
+      const type = roomTypeText(r.name, r.type)
       // Sin tipo inferido, el paréntesis se queda solo con medida+dimensiones — nunca
       // "(tipo: )" ni "tipo: null" colgando cuando el nombre no cae en el catálogo.
       const typeSuffix = type != null ? `, tipo: ${type}` : ''
@@ -325,6 +372,32 @@ export function planFacts(floor: FloorGraph): string {
     const fixtureTexts = fixtures.map(fx =>
       `${FIXTURE_CATALOG[fx.kind].label} (${fmt(fx.w_m)} × ${fmt(fx.h_m)} m)`)
     parts.push(`Muebles colocados: ${fixtureTexts.join(', ')}.`)
+  }
+
+  // Leyenda del relleno de color por tipo de cuarto (Fase 2 del diagnóstico de Locales
+  // Salón Escobedo) — SOLO cuando el llamador también pintó ese relleno en la imagen de
+  // referencia (planImage.ts, floorToSvgString con roomTypeFill:true): un párrafo sin
+  // imagen que lo respalde sería una instrucción sin referente. `resolveRoomType` es el
+  // MISMO resolutor que ya decidió el `tipo:` de cada cuarto arriba — texto e imagen no
+  // pueden describir un color/tipo distinto para el mismo cuarto. Lista solo los colores
+  // REALMENTE usados en este piso (no las 16 entradas completas del catálogo): un piso
+  // con 3 tipos no necesita que el modelo lea 13 colores que no aparecen en su imagen.
+  if (opts.includeColorLegend) {
+    const usedTypes = new Set<RoomType>()
+    for (const r of rooms) {
+      const t = resolveRoomType(r.name, r.type)
+      if (t != null) usedTypes.add(t)
+    }
+    const legendItems = [...usedTypes]
+      .filter(t => ROOM_TYPE_CATALOG[t].color)
+      .map(t => `${ROOM_TYPE_CATALOG[t].color} = ${ROOM_TYPE_CATALOG[t].label.toLowerCase()}`)
+    if (legendItems.length > 0) {
+      parts.push(
+        `Colores de referencia en la imagen (SOLO indican qué tipo de cuarto va en cada `
+        + `zona — NO son el acabado final, ignóralos al elegir materiales o colores de `
+        + `pintura): ${legendItems.join(', ')}.`,
+      )
+    }
   }
 
   return parts.join(' ')

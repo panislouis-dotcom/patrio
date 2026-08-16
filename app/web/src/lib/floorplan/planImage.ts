@@ -4,8 +4,9 @@
 // de cuarto — en estilo cenital limpio) y se prueba sin navegador; floorToPngBlob
 // la rasteriza vía canvas y solo corre en el browser.
 import type { FloorGraph } from './types'
-import { isGhost, FIXTURE_CATALOG } from './types'
-import { roomLabels } from './rooms'
+import { isGhost, FIXTURE_CATALOG, ROOM_TYPE_CATALOG } from './types'
+import { roomLabels, roomPolygons } from './rooms'
+import { resolveRoomType } from './planFacts'
 import { edgeAxis } from './geometry'
 import { widthHeightChains, cotaEdges, f2 } from './dimensions'
 
@@ -26,14 +27,24 @@ function escapeXml(s: string): string {
  * contradecía a sí misma. La versión `annotations:false` es la que de verdad se
  * manda a OpenAI (`floorToPngBlob`, más abajo); la versión completa (`true`, el
  * default) sigue existiendo para cualquier otro consumidor que sí quiera ver
- * cotas/nombres — hoy ninguno más la usa, pero la regresión se prueba explícita. */
+ * cotas/nombres — hoy ninguno más la usa, pero la regresión se prueba explícita.
+ *
+ * `opts.roomTypeFill` (default `false`, Fase 2 del diagnóstico de Locales Salón
+ * Escobedo): un relleno de color plano por `RoomType` (`ROOM_TYPE_CATALOG`, types.ts),
+ * bajo las líneas de muro. A diferencia de `annotations`, NO es texto — no tiene
+ * glifos que el modelo pueda reproducir mal, la misma categoría de tarea (copiar
+ * forma/color) que ya funciona hoy para puertas/ventanas/muebles — así que es
+ * independiente de `annotations` y no afecta su contrato. `resolveRoomType`
+ * (planFacts.ts) es el MISMO resolutor que decide el `tipo:` del prompt de texto:
+ * imagen y prosa nunca pueden describir un tipo distinto para el mismo cuarto. */
 export function floorToSvgString(
   floor: FloorGraph,
-  opts: { pad?: number; scale?: number; annotations?: boolean } = {},
+  opts: { pad?: number; scale?: number; annotations?: boolean; roomTypeFill?: boolean } = {},
 ): string {
   const pad = opts.pad ?? 1          // metros de margen
   const scale = opts.scale ?? 100    // px por metro
   const annotations = opts.annotations ?? true
+  const roomTypeFill = opts.roomTypeFill ?? false
   const vs = Object.values(floor.vertices)
   const xs = vs.map(v => v.x), ys = vs.map(v => v.y)
   const minx = Math.min(...xs, 0) - pad, maxx = Math.max(...xs, 1) + pad
@@ -63,6 +74,21 @@ export function floorToSvgString(
   const fixtureFontPx = fontSize(12, 9)
 
   const parts: string[] = [`<rect x="0" y="0" width="${W}" height="${H}" fill="#ffffff"/>`]
+
+  // Relleno por tipo de cuarto, ANTES del loop de muros (más abajo) para que el trazo
+  // negro quede siempre encima, nunca tapado por el relleno. Un cuarto sin tipo
+  // resoluble (ni Room.type explícito ni palabra clave en el nombre) o marcado 'otro'
+  // se queda sin relleno — mismo blanco de siempre, no un color inventado.
+  if (roomTypeFill) {
+    for (const room of roomPolygons(floor)) {
+      const type = resolveRoomType(room.name, room.type)
+      const color = type != null ? ROOM_TYPE_CATALOG[type].color : undefined
+      if (!color) continue
+      const points = room.vertices.map(v => `${px(v.x)},${py(v.y)}`).join(' ')
+      parts.push(`<polygon points="${points}" fill="${color}" />`)
+    }
+  }
+
   for (const e of Object.values(floor.edges)) {
     // Una fantasma es una anotación (divide cuartos para nombres/áreas), no un muro: si se
     // dibujara aquí, el modelo de render vería un muro donde el usuario solo puso una línea
@@ -225,11 +251,12 @@ export function floorToSvgString(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join('')}</svg>`
 }
 
-/** Rasteriza el SVG del plano a un PNG (navegador). `opts.annotations` se reenvía tal
- * cual a `floorToSvgString` — default `true` (SVG completo), los llamadores que
- * generan la imagen de referencia para OpenAI deben pasar `annotations: false`. */
-export async function floorToPngBlob(floor: FloorGraph, opts: { annotations?: boolean } = {}): Promise<Blob> {
-  const svg = floorToSvgString(floor, { annotations: opts.annotations })
+/** Rasteriza el SVG del plano a un PNG (navegador). `opts.annotations`/`opts.roomTypeFill`
+ * se reenvían tal cual a `floorToSvgString` — default `true`/`false` (SVG completo, sin
+ * relleno de color), los llamadores que generan la imagen de referencia para OpenAI deben
+ * pasar `annotations: false, roomTypeFill: true`. */
+export async function floorToPngBlob(floor: FloorGraph, opts: { annotations?: boolean; roomTypeFill?: boolean } = {}): Promise<Blob> {
+  const svg = floorToSvgString(floor, { annotations: opts.annotations, roomTypeFill: opts.roomTypeFill })
   const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
   const img = new Image()
   await new Promise<void>((resolve, reject) => {
