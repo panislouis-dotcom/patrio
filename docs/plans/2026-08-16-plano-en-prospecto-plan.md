@@ -1011,3 +1011,55 @@ según el comentario de `042`). Marca como favorita al menos una propiedad en `o
 - **No le quites el `?? 64` a `margin` cuando no hay `scale`.** La descarga del editor
   depende de que la salida sea byte-idéntica.
 - Si algo se tuerce, para y re-planea — no sigas empujando.
+
+---
+
+# Revisión — qué salió (2026-08-16)
+
+Las nueve tareas quedaron. Commits: `34aa733`, `93e1bb2`, `943c1fe`, `0126d77`,
+`30d574e`, `6b0cd93`, `42eab74`, `0c88ab4`, `dd84059`, `776c4f2`.
+
+**Suites:** Python 619 pasando; web 703 pasando + 1 falla PREEXISTENTE y ajena
+(`TabBar.test.tsx`, `localStorage.getItem is not a function`) — se verificó con
+los cambios en `git stash`: ya fallaba antes de esta rama.
+
+**Se borró:** `_floorplan_svg`, `_pick_floors`, sus constantes, su CSS y sus 22
+pruebas — 576 líneas. Cero referencias colgando. Ya no hay un cuarto dibujo del
+mismo modelo.
+
+## Lo que las pruebas de mutación confirmaron
+
+No basta con que una prueba pase; tiene que poder fallar. Dos se mutaron a
+propósito:
+
+- `file://` → `set_content` en `plano_js.py`: **2 pruebas rojas**. El guard de
+  contexto seguro muerde de verdad.
+- pareo por `floorId` solo, sin `sourceVariant`: **2 pruebas rojas**, incluida la
+  que lleva el nombre del bug. La advertencia de `LevantamientoPanel.tsx:231`
+  queda fijada por prueba, no por comentario.
+
+## Hallazgos que cambiaron el plan sobre la marcha
+
+1. **CI se saltaba la prueba que importa.** El job de API no tenía Node ni
+   navegador, así que `test_plano_js.py` —la única que carga el bundle real—
+   se SALTABA completa. Un bundle roto habría pasado el pipeline en verde.
+   Arreglado en `0126d77`, verificado local con el comando exacto del workflow.
+2. **`pytest-asyncio` no existe en este proyecto.** El plan pedía
+   `@pytest.mark.asyncio`; se usó `asyncio.run()` y no se agregó dependencia.
+3. **`max-height: 85mm` volvía ilegible el plano.** Solo se vio en un PDF real:
+   los dos lotes de la propiedad 5 son angostos y profundos, el tope de ALTO
+   mandaba y el ancho se desplomaba a ~42mm. Ningún assert de texto lo detecta —
+   por eso el paso 9 existe. Arreglado en `776c4f2`.
+
+## Pendientes, no bloqueantes
+
+- **Etiquetas encimadas en plantas apretadas.** Los largos por muro (`px(mx)+11`,
+  `exportSvg.ts`) se montan sobre el muro y sobre nombres largos («ESCALERAS»,
+  «almacén DP2»). Es comportamiento PREEXISTENTE de `floorToSvg`, idéntico en la
+  descarga `↓ SVG` del editor — no lo introdujo este trabajo. Tocarlo cambia
+  también la descarga, así que se deja anotado en vez de cambiarlo de lado.
+- **`TabBar.test.tsx`** sigue rojo por su cuenta.
+- **Antes/Después no se ha visto con datos reales:** ninguna propiedad tiene
+  variante `planned` dibujada todavía. La ruta está probada en unit y en el
+  bundle real, pero nadie la ha visto impresa.
+- **Avisarle a Louis:** `fe302aa` fue decisión suya.
