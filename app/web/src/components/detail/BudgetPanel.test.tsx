@@ -24,6 +24,10 @@ vi.mock('../../lib/api', async importOriginal => {
     fetchBudgetSources: vi.fn(async () => FUENTES),
     applyBudgetSource: vi.fn(),
     fetchProperties: vi.fn(async () => OBRAS),
+    // Mockeada para poder AFIRMAR QUE NO SE LLAMA: copiar ya no escribe la ficha
+    // de nadie. El costo de obra del destino se lee de su presupuesto, y se
+    // captura en su ficha —con su metraje y su $/m²—, nunca desde este popup.
+    updateProperty: vi.fn(),
   }
 })
 
@@ -88,6 +92,9 @@ const line = (over: Partial<BudgetLine>): BudgetLine => ({
   supplierId: null, committedAmount: null, committedOn: null, committedVariance: null,
   actualQuantity: null, paidAmount: null, paidVariance: null, payments: [],
   closedAt: null, sortOrder: 0, notes: '', isResidual: false,
+  // Como nace en la 045: la mayoría de las partidas SÍ crecen con el tamaño de
+  // la obra, así que lo que se captura a mano es la excepción.
+  isProportional: true,
   createdAt: '', updatedAt: '', ...over,
 })
 
@@ -107,8 +114,14 @@ const budget = (lines: BudgetLine[]): Budget => ({
 type PanelProperty = React.ComponentProps<typeof BudgetPanel>['property']
 
 const propiedad = (over: Partial<PanelProperty> = {}): PanelProperty => ({
+  // `constructionBudgeted` ES el costo objetivo cuando ESTA obra es el destino:
+  // el total de su presupuesto, leído, no tecleado.
   id: 7, constructionBudgeted: 1_000_000,
   constructionCommitted: null, constructionPaid: null, constructionPaidVariance: null,
+  // Las dos mitades que solo se ENSEÑAN («275 m² × $3,500/m² = $962,500»). Nacen
+  // vacías porque el 40% de las propiedades reales no tiene metraje: sin ellas
+  // el costo de obra sigue siendo el mismo número, y se enseña a secas.
+  sqmConstruction: null, constructionCostPerSqm: null,
   ...over,
 })
 
@@ -813,5 +826,229 @@ describe('BudgetPanel', () => {
     fireEvent.click(screen.getByLabelText('Copiar capítulo Instalaciones'))
     fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
     expect(api.applyBudgetSource).not.toHaveBeenCalled()
+  })
+
+  // ── Copia PROPORCIONAL ─────────────────────────────────────────────────────
+
+  /**
+   * Un presupuesto con una partida que NO escala. Una licencia cuesta lo mismo
+   * en una casa de 120 m² que en una de 300, y ésa es toda la razón por la que
+   * la marca existe: sin ella, copiar al doble de obra la cobraría al doble.
+   */
+  const CON_FIJA = budget([
+    line({
+      id: 1, chapterName: 'Albañilería', name: 'Muro de block',
+      quantity: 10, unitPrice: 1_000, budgetedAmount: 10_000,
+    }),
+    line({
+      id: 2, chapterName: 'Permisos', name: 'Licencia de construcción',
+      quantity: 1, unitPrice: 90_000, budgetedAmount: 90_000, isProportional: false,
+    }),
+    residual(900_000),
+  ])
+
+  it('la casilla PROPORCIONAL vive en la tabla, no en el popup, y guarda al marcarse', async () => {
+    // Escondida en el popup de copiar nunca se capturaría hasta que ya se lleva
+    // prisa, y ahí se marca todo de corrido. En la tabla se contesta el día que
+    // se teclea la partida, que es cuando se sabe.
+    await renderPanel(CON_FIJA)
+    vi.mocked(api.updateBudgetLine).mockResolvedValue({
+      line: null, budget: CON_FIJA, property: propiedad() as Property, budgetIncrease: 0,
+    })
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+    fireEvent.click(screen.getByLabelText('Abrir Permisos'))
+
+    expect((screen.getByLabelText('Proporcional Muro de block') as HTMLInputElement).checked)
+      .toBe(true)
+    const fija = screen.getByLabelText('Proporcional Licencia de construcción') as HTMLInputElement
+    expect(fija.checked).toBe(false)
+    // El residuo no lleva casilla: escala siempre, y por eso el destino hereda
+    // también cuánto le falta por detallar.
+    expect(screen.queryByLabelText('Proporcional Otros, por detallar')).toBeNull()
+
+    // Un cambio ES un cambio: guarda al marcarse, como el oficio y el proveedor.
+    fireEvent.click(fija)
+    await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalled())
+    expect(vi.mocked(api.updateBudgetLine).mock.calls[0].slice(1))
+      .toEqual([2, { isProportional: true }])
+  })
+
+  /** Abre «copiar de otra obra» y pide la copia PROPORCIONAL. */
+  async function abrirProporcional() {
+    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
+    await screen.findByLabelText('Presupuesto de origen')
+    fireEvent.click(screen.getByLabelText('Copia proporcional de otra obra'))
+  }
+
+  /**
+   * Un renglón COMO LLEGA DE ANTES: sin el campo `isProportional`. El default de
+   * la base es TRUE, así que su ausencia significa «sí escala» — y preguntarlo
+   * por falsedad lo convertía en fijo, que es justo lo contrario.
+   */
+  const sinCampo = (over: Partial<BudgetLine>): BudgetLine => {
+    const { isProportional: _ausente, ...resto } = line(over)
+    return resto as BudgetLine
+  }
+
+  it('un renglón SIN el campo proporcional escala: la ausencia es su default, no su opuesto', async () => {
+    // Pasó de verdad: con los renglones viejos en memoria, las 8 partidas se
+    // contaron como fijas por `!l.isProportional` y el copiado se bloqueó con
+    // «las fijas suman lo mismo que el objetivo» sin una sola marcada en la base.
+    const VIEJO = budget([
+      sinCampo({ id: 1, chapterName: 'Albañilería', name: 'Muro de block', budgetedAmount: 10_000 }),
+      sinCampo({ id: 2, chapterName: 'Albañilería', name: 'Firme', budgetedAmount: 30_000 }),
+      residual(960_000),
+    ])
+    vi.mocked(api.fetchProperties).mockResolvedValue([
+      { id: 3, name: 'Modesto 415', constructionBudgeted: 2_000_000 },
+    ] as Property[])
+    await renderPanel(VIEJO)
+
+    // En la tabla la casilla sale MARCADA, no en blanco ni sin controlar
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+    expect((screen.getByLabelText('Proporcional Muro de block') as HTMLInputElement).checked)
+      .toBe(true)
+
+    await abrirEmpujar()
+    fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+
+    // Nada es fijo: F = $0, S + R = $1,000,000, T = $2,000,000 → ×2.00
+    expect(screen.getByText(/TODO ESCALA · EL RESTO ×2\.00/)).not.toBeNull()
+    expect(screen.queryByText(/las partidas fijas suman/)).toBeNull()
+    expect(screen.queryByText(/se quedan fuera/)).toBeNull()
+  })
+
+  it('el objetivo se LEE del destino y se muestra en solo lectura: no hay nada que teclear', async () => {
+    // El costo de obra de una propiedad ya está capturado —es el total de su
+    // presupuesto, que la ficha calculó como m² × $/m²— y volver a preguntarlo
+    // aquí dejaba copiar dimensionado a un número que esa obra nunca dijo costar.
+    await renderPanel(DETALLADO, propiedad({
+      constructionBudgeted: 962_500, sqmConstruction: 275, constructionCostPerSqm: 3_500,
+    }))
+    await abrirProporcional()
+
+    // Se lee como información, con sus dos mitades a la vista — y el objetivo es
+    // el MISMO número que el total de la tabla, porque es el mismo dato
+    const renglon = screen.getByText('275 m² × $3,500/m² =').closest('div')!
+    expect(within(renglon).getByText('$962,500')).not.toBeNull()
+    // Y ni una caja: ni la del $/m² ni la del metraje
+    expect(screen.queryByLabelText(/Costo por m²/)).toBeNull()
+    expect(screen.queryByLabelText(/Metraje de construcción/)).toBeNull()
+    expect(screen.queryByText(/SE GUARDA EN SU FICHA/)).toBeNull()
+  })
+
+  it('el preview aparta las partidas fijas del monto que escala', async () => {
+    // Sin apartarlas el factor prometería que TODO el presupuesto se mueve
+    // —×3.00— cuando la licencia entra con sus $90,000 de siempre y el resto
+    // carga con la diferencia: ×3.20.
+    await renderPanel(DETALLADO, propiedad({ constructionBudgeted: 3_000_000 }))
+    // Y las lee del ORIGEN, no de esta obra: lo que se va a copiar es aquello.
+    vi.mocked(api.fetchBudget).mockImplementation(async id => (id === 4 ? CON_FIJA : DETALLADO))
+    await abrirProporcional()
+    fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '500' } })
+
+    // F = $90,000 · S + R = $910,000 · factor = (3,000,000 − 90,000) / 910,000
+    expect(await screen.findByText(/NO ESCALAN \$90,000 · EL RESTO ×3\.20/)).not.toBeNull()
+  })
+
+  it('una obra sin costo de obra no se puede copiar proporcional, y se manda a su ficha', async () => {
+    // El objetivo ya no se puede capturar aquí, así que el bloqueo señala el
+    // único lugar donde ese dato existe: la ficha de esa obra, con su metraje y
+    // su $/m². Nada se escribe desde el popup.
+    await renderPanel(DETALLADO, propiedad({ constructionBudgeted: 0 }))
+    await abrirProporcional()
+    fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '500' } })
+
+    expect(await screen.findByText(/todavía no tiene costo de obra: se captura en su ficha/))
+      .not.toBeNull()
+    fireEvent.click(screen.getByText('COPIAR RENGLONES'))
+    await waitFor(() => expect(api.applyBudgetSource).not.toHaveBeenCalled())
+    expect(api.updateProperty).not.toHaveBeenCalled()
+  })
+
+  it('en proporcional viaja el MODO y nada más: ni el objetivo ni el factor', async () => {
+    // El objetivo lo lee el servidor del presupuesto del destino, y el factor lo
+    // calcula él: mandados desde aquí, la garantía de que la suma dé exactamente
+    // el objetivo sería imposible de verificar del lado que la sostiene.
+    await renderPanel(DETALLADO, propiedad({ constructionBudgeted: 3_000_000 }))
+    await abrirProporcional()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(api.applyBudgetSource).mockResolvedValue({
+      line: null, budget: DETALLADO, property: propiedad() as Property,
+      budgetIncrease: 0, linesAdded: 18,
+    })
+
+    fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '500' } })
+    fireEvent.click(screen.getByText('COPIAR RENGLONES'))
+
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 500, null, true))
+    // Y no se escribe la ficha de nadie antes de copiar: no hay nada que guardar
+    expect(api.updateProperty).not.toHaveBeenCalled()
+  })
+
+  it('en PUSH cada obra entra a SU propio costo de obra, y una bloqueada no frena a las demás', async () => {
+    // Dos obras del mismo tamaño pueden construirse a niveles de costo
+    // distintos: el objetivo es de cada una, leído de su propio presupuesto.
+    vi.mocked(api.fetchProperties).mockResolvedValue([
+      {
+        id: 3, name: 'Modesto 415', constructionBudgeted: 2_400_000,
+        sqmConstruction: 200, constructionCostPerSqm: 12_000,
+      },
+      { id: 4, name: 'Zaragoza 100', constructionBudgeted: 0 },
+    ] as Property[])
+    await renderPanel(CON_FIJA)
+    await abrirEmpujar()
+    fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
+    vi.mocked(api.applyBudgetSource).mockResolvedValue(copiado(2, 0))
+
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    fireEvent.click(screen.getByLabelText('Copiar a Zaragoza 100'))
+
+    // T de Modesto es SU costo de obra, con su desglose a la vista, y el preview
+    // aparta las fijas del origen
+    expect(screen.getByText('200 m² × $12,000/m² =')).not.toBeNull()
+    expect(screen.getByText('$2,400,000')).not.toBeNull()
+    expect(screen.getByText(/NO ESCALAN \$90,000/)).not.toBeNull()
+    // Zaragoza queda bloqueada con el motivo a la vista, no en silencio
+    expect(screen.getByText(/todavía no tiene costo de obra/)).not.toBeNull()
+    expect(screen.getByText(/1 de las elegidas se quedan fuera/)).not.toBeNull()
+
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
+
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(api.applyBudgetSource).mock.calls[0]).toEqual([3, 9, null, true])
+    // Ninguna ficha se escribe antes de copiar: el objetivo ya estaba capturado
+    expect(api.updateProperty).not.toHaveBeenCalled()
+    expect(await screen.findByText(/Modesto 415: 2 renglones agregados/)).not.toBeNull()
+    // Y la que no entró se dice por su nombre, junto a las que sí
+    expect(await screen.findByText(/Zaragoza 100: no se copió — esa obra todavía no tiene costo de obra/))
+      .not.toBeNull()
+  })
+
+  it('una obra que falla en proporcional no cancela a las siguientes', async () => {
+    // El aislamiento por destino es el mismo de siempre: cada obra es una
+    // llamada, y el rechazo del servidor se lee junto al nombre de la suya.
+    vi.mocked(api.fetchProperties).mockResolvedValue([
+      { id: 3, name: 'Modesto 415', constructionBudgeted: 2_400_000 },
+      { id: 4, name: 'Zaragoza 100', constructionBudgeted: 3_000_000 },
+    ] as Property[])
+    await renderPanel(CON_FIJA)
+    await abrirEmpujar()
+    fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
+    vi.mocked(api.applyBudgetSource)
+      .mockRejectedValueOnce(new Error('El presupuesto de destino está cerrado.'))
+      .mockResolvedValueOnce(copiado(2, 0))
+
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    fireEvent.click(screen.getByLabelText('Copiar a Zaragoza 100'))
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
+
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.applyBudgetSource).mock.calls)
+      .toEqual([[3, 9, null, true], [4, 9, null, true]])
+    expect(await screen.findByText(/Modesto 415: no se copió — El presupuesto de destino está cerrado\./))
+      .not.toBeNull()
+    expect(await screen.findByText(/Zaragoza 100: 2 renglones agregados/)).not.toBeNull()
   })
 })

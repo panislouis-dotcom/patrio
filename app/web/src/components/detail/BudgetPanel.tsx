@@ -56,7 +56,19 @@ interface Props {
    */
   property: Pick<Property,
     'id' | 'constructionBudgeted' | 'constructionCommitted' | 'constructionPaid'
-    | 'constructionPaidVariance'>
+    | 'constructionPaidVariance'
+    /**
+     * El costo objetivo al copiar PROPORCIONAL hacia esta obra ES
+     * `constructionBudgeted`: el total de su presupuesto, que por construcción
+     * vale `m² × $/m²` —así lo calcula la ficha al dar de alta la propiedad—.
+     * No se teclea en ningún lado: se LEE, aquí y en el servidor.
+     *
+     * El metraje y el `$/m²` viajan solo para ENSEÑAR de dónde sale ese número
+     * («275 m² × $3,500/m² = $962,500»). Ninguna cuenta de dinero los usa: el
+     * producto ya está guardado, y volver a multiplicarlo aquí sería una segunda
+     * respuesta a la misma pregunta.
+     */
+    | 'sqmConstruction' | 'constructionCostPerSqm'>
   /**
    * Toda escritura devuelve la propiedad recalculada: la suma presupuestada ES
    * el costo de obra, así que mover un renglón mueve la inversión total, la
@@ -155,6 +167,110 @@ function preview(line: BudgetLine, patch: BudgetLinePatch): BudgetLine {
   return { ...next, budgetedAmount: Math.round(next.quantity * next.unitPrice) }
 }
 
+/**
+ * Las dos formas de copiar un presupuesto. `directo` copia los montos tal cual;
+ * `proporcional` copia la FORMA, dimensionada al costo que se espera del destino.
+ *
+ * Se llama PROPORCIONAL en el tipo, en la columna y en el popup. Un solo
+ * vocabulario para el mismo concepto: «escala» sería un segundo nombre para
+ * esto mismo, y a la semana nadie sabría si son dos cosas.
+ */
+type CopyMode = 'directo' | 'proporcional'
+
+/** El presupuesto de origen partido en lo que escala y lo que no. */
+interface Scope {
+  /** F — las partidas fijas: entran con su monto original. */
+  fixed: number
+  /** S + R — el resto del origen, residuo incluido: lo que el factor multiplica. */
+  scaling: number
+}
+
+/**
+ * Es la MISMA cuenta que hace `_proportional_factor` en el servidor, y por eso
+ * el denominador es «el total del origen menos las fijas» y no «la suma de lo
+ * proporcional»: las fijas se apartan de las dos puntas de la razón —ni
+ * consumen factor ni lo reciben— y se restan solo sobre los capítulos que esta
+ * copia sí se lleva. Cuando viaja el presupuesto entero, que es el caso normal,
+ * las dos formas de escribirlo dan el mismo número.
+ *
+ * El residuo entra en el total a propósito: es lo que hace que el destino herede
+ * también cuánto le falta por detallar. Si el origen estaba a medio detallar, el
+ * destino también; un origen detallado al 100% deja el residuo del destino en
+ * cero sin ningún caso especial.
+ *
+ * **La pregunta por lo fijo es `=== false`, no `!`.** El campo nace en TRUE en la
+ * base, así que su ausencia significa «sí escala»: preguntado por falsedad, un
+ * renglón que llegue sin el campo —datos de antes de que el servidor lo
+ * publicara, una respuesta parcial— contaría como FIJO, que es justo lo
+ * contrario de su default. Eso convertía un presupuesto entero en fijas y
+ * bloqueaba el copiado con «las fijas suman lo mismo que el objetivo» sin que
+ * un solo renglón estuviera marcado.
+ */
+function scopeOf(lines: BudgetLine[], chapters: string[] | null): Scope {
+  let total = 0
+  let fixed = 0
+  for (const l of lines) {
+    total += l.budgetedAmount
+    if (l.isResidual) continue
+    if (chapters !== null && !chapters.includes(l.chapterName)) continue
+    if (l.isProportional === false) fixed += l.budgetedAmount
+  }
+  return { fixed, scaling: total - fixed }
+}
+
+/**
+ * Lo que va a pasar si se copia proporcional a UNA obra, o por qué no se puede.
+ *
+ * Es la misma cuenta que hace el servidor, y se hace aquí SOLO para enseñarla
+ * antes de apretar: el factor que se aplica de verdad lo calcula él. Lo que la
+ * pantalla no puede hacer es prometer un total y que entre otro, y por eso el
+ * preview aparta las fijas en vez de enseñar `T` a secas.
+ */
+interface Plan {
+  /** T — el costo de obra del destino, LEÍDO de su presupuesto. */
+  target: number | null
+  fixed: number
+  scaling: number
+  /** (T − F) / (S + R). Null cuando falta el objetivo o no hay nada que escalar. */
+  factor: number | null
+  /** Por qué NO se puede copiar proporcional a esta obra. Null cuando sí se puede. */
+  blocker: string | null
+}
+
+/**
+ * El plan de una obra destino, a partir de su costo de obra ya capturado.
+ *
+ * **El objetivo no se teclea: se lee.** Cada propiedad ya tiene el suyo —el
+ * total de su presupuesto, que la ficha calculó como `m² × $/m²` al darla de
+ * alta— y preguntarlo otra vez aquí abriría la puerta a copiar dimensionado a un
+ * número que no es el que esa obra dice costar.
+ *
+ * Por eso queda UN solo insumo que puede faltar, y el bloqueo manda a donde sí
+ * se captura: su ficha. La guarda de las fijas se queda porque es una imposi-
+ * bilidad aritmética real —el servidor la rechaza con 422— y trae los dos montos,
+ * porque «no caben» sin las cifras no dice cuánto le falta al objetivo.
+ */
+function planFor(target: number | null | undefined, scope: Scope): Plan {
+  const base = { target: null, fixed: scope.fixed, scaling: scope.scaling, factor: null }
+  if (target == null || target <= 0) {
+    return {
+      ...base,
+      blocker: 'esa obra todavía no tiene costo de obra: se captura en su ficha, con su metraje y su $/m²',
+    }
+  }
+  if (target <= scope.fixed) {
+    return {
+      ...base, target,
+      blocker: `las partidas fijas suman ${fmtMXN(scope.fixed)} y el costo de obra del destino es ${fmtMXN(target)}`,
+    }
+  }
+  return {
+    target, fixed: scope.fixed, scaling: scope.scaling,
+    factor: scope.scaling > 0 ? (target - scope.fixed) / scope.scaling : null,
+    blocker: null,
+  }
+}
+
 /** Un nombre de capítulo que no choque con los que ya existen. */
 function freshChapterName(taken: string[]): string {
   const base = 'Capítulo nuevo'
@@ -208,6 +324,16 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   const [pickedSource, setPickedSource] = useState<number | ''>('')
   /** El id del PRESUPUESTO de esta obra: es lo que se copia al empujarlo a otras. */
   const [budgetId, setBudgetId] = useState<number | null>(null)
+  const [sourceMode, setSourceMode] = useState<CopyMode>('directo')
+  /**
+   * El presupuesto del ORIGEN, entero, solo para el preview: sin sus renglones
+   * no se sabe cuánto de él NO escala, y un preview que enseñara el objetivo sin
+   * apartar las fijas mentiría sobre lo que va a pasar.
+   *
+   * NO pasa por `receive`: es de otra obra. Se pide al elegir origen y solo en
+   * proporcional — en directo no hay nada que previsualizar.
+   */
+  const [sourceBudget, setSourceBudget] = useState<Budget | null>(null)
 
   /**
    * El panel de EMPUJAR: llevarse este presupuesto a otras obras.
@@ -230,6 +356,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
    * selección cuando llegan los datos.
    */
   const [pickedChapters, setPickedChapters] = useState<Set<string> | null>(null)
+  const [pushMode, setPushMode] = useState<CopyMode>('directo')
   /** Copiando ahora mismo: hay N llamadas en vuelo, una tras otra. */
   const [copying, setCopying] = useState(false)
   const [pushResults, setPushResults] = useState<PushResult[]>([])
@@ -395,6 +522,21 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer de dónde copiar'))
   }
 
+  /**
+   * El presupuesto del origen, para poder apartar sus partidas fijas en el
+   * preview. Solo en proporcional: en directo no hay ninguna cuenta que enseñar,
+   * y traerlo sería una consulta por gusto.
+   */
+  useEffect(() => {
+    const src = sources.find(s => s.id === pickedSource)
+    if (sourceMode !== 'proporcional' || !src) { setSourceBudget(null); return }
+    let vigente = true
+    fetchBudget(src.propertyId)
+      .then(b => { if (vigente) setSourceBudget(b) })
+      .catch(() => { if (vigente) setSourceBudget(null) })
+    return () => { vigente = false }
+  }, [sourceMode, pickedSource, sources])
+
   function togglePush() {
     const opening = !pushing
     setPushing(opening)
@@ -407,6 +549,9 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     //
     // Las archivadas tampoco: `fetchProperties` las deja fuera salvo que se
     // pidan a propósito, y no se le presupuesta una obra a lo que ya se guardó.
+    // Cada obra trae su propio costo de obra en su ficha —el total de su
+    // presupuesto— y ése es su objetivo. No hay nada que pre-llenar ni que
+    // teclear: lo que se lee es lo que se usa.
     fetchProperties()
       .then(ps => setTargets(ps.filter(p => p.id !== propertyId)))
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer a qué obras copiar'))
@@ -443,13 +588,45 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     : copyableChapters.filter(c => pickedChapters.has(c))
 
   /**
+   * Lo que de ESTE presupuesto escala y lo que no, ya acotado a los capítulos
+   * elegidos. Es el origen de todos los planes de empuje: la forma es la misma
+   * para las cinco obras destino, lo que cambia entre ellas es el objetivo.
+   */
+  const pushScope = scopeOf(lines, chaptersToPush)
+
+  /**
+   * El plan de UNA obra destino, contra SU costo de obra. En directo no hay nada
+   * que planear: se copia tal cual y ninguna obra puede quedar bloqueada.
+   */
+  const planOf = (p: Property): Plan => planFor(p.constructionBudgeted, pushScope)
+
+  const chosenTargets = targets.filter(p => pickedTargets.includes(p.id))
+
+  /**
+   * Las obras a las que SÍ se les puede copiar ahora. En proporcional, una obra
+   * sin costo de obra capturado queda fuera con su motivo a la vista —pero no
+   * cancela a las demás: cada destino es una llamada independiente, y bloquear
+   * las cinco porque a una le falta un dato sería castigar a las que sí están.
+   */
+  const readyTargets = pushMode === 'proporcional'
+    ? chosenTargets.filter(p => planOf(p).blocker === null)
+    : chosenTargets
+
+  /**
    * Si el botón de copiar hace algo. Una sola definición porque la usan el
    * `disabled` y el cursor: escritas por separado se desfasaron —el botón
    * quedaba muerto pero con la manita— y esa mentira la ve el usuario.
    */
   const canPush = !copying
-    && pickedTargets.length > 0
+    && readyTargets.length > 0
     && (chaptersToPush === null || chaptersToPush.length > 0)
+
+  /** Lo que de aquel presupuesto escala y lo que no, y el objetivo de ESTA obra. */
+  const sourceScope = scopeOf(sourceBudget?.lines ?? [], null)
+  const sourcePlan = planFor(property.constructionBudgeted, sourceScope)
+  /** En directo se copia tal cual; en proporcional hace falta que el plan cierre. */
+  const canPull = pickedSource !== ''
+    && (sourceMode === 'directo' || sourcePlan.blocker === null)
 
   /**
    * Empujar este presupuesto a las obras elegidas: UNA LLAMADA POR OBRA.
@@ -465,13 +642,16 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
    * copia—, así que no hay nada que refrescar.
    */
   async function pushToTargets() {
-    if (budgetId == null || pickedTargets.length === 0) return
-    const chosen = targets.filter(p => pickedTargets.includes(p.id))
+    if (budgetId == null || readyTargets.length === 0) return
+    const chosen = readyTargets
     const alcance = chaptersToPush === null
       ? 'todo el presupuesto'
       : `${chaptersToPush.length} capítulo${chaptersToPush.length === 1 ? '' : 's'}`
     if (!window.confirm(
       `¿Copiar ${alcance} a ${chosen.length} obra${chosen.length === 1 ? '' : 's'}? `
+      + (pushMode === 'proporcional'
+        ? 'Cada una entra dimensionada a su propio costo objetivo. '
+        : '')
       + 'Los renglones que allá ya existan se saltan: no se sobrescribe nada.',
     )) return
     setError(null)
@@ -479,11 +659,27 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     // Se van pintando conforme responden: con cinco destinos, esperar al último
     // para enseñar el primero deja la pantalla muda justo cuando más está
     // pasando.
-    setPushResults([])
+    //
+    // Las bloqueadas arrancan ya en la lista con su motivo: fueron elegidas y no
+    // se les copió nada, y un resultado que las omitiera dejaría creer que sí.
+    setPushResults(chosenTargets
+      .filter(p => !chosen.includes(p))
+      .map(p => ({
+        propertyId: p.id, name: p.name, added: 0, skipped: 0, error: planOf(p).blocker,
+      })))
     for (const p of chosen) {
       const base = { propertyId: p.id, name: p.name }
       try {
-        const { linesAdded, linesSkipped } = await applyBudgetSource(p.id, budgetId, chaptersToPush)
+        // Una sola llamada por obra, y NADA que escribir antes: el objetivo es
+        // el costo de obra que el destino ya tiene, y el servidor lo lee de su
+        // propio presupuesto.
+        //
+        // El modo solo viaja en proporcional: en directo la llamada es la misma
+        // de siempre, y mandar un campo de más sería decirle al servidor algo
+        // sobre un modo que no se pidió.
+        const { linesAdded, linesSkipped } = await (pushMode === 'proporcional'
+          ? applyBudgetSource(p.id, budgetId, chaptersToPush, true)
+          : applyBudgetSource(p.id, budgetId, chaptersToPush))
         setPushResults(prev => [...prev, {
           ...base, error: null, added: linesAdded ?? 0, skipped: linesSkipped ?? 0,
         }])
@@ -553,6 +749,82 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer',
     fontFamily: fonts.label, fontSize: '10px', padding: '0 2px',
   }
+
+  /**
+   * DIRECTO o PROPORCIONAL. Es la misma pregunta en los dos sentidos del
+   * copiado, así que es una sola función: escritos aparte, los dos bloques se
+   * contestarían distinto a la semana.
+   *
+   * `scope` desambigua los dos grupos de radios cuando los dos paneles están
+   * abiertos —comparten pantalla, y sin `name` distinto serían un solo grupo.
+   */
+  const modeChoice = (scope: string, value: CopyMode, onPick: (m: CopyMode) => void) => (
+    <div style={panelRow}>
+      <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>CÓMO SE COPIA</span>
+      {([
+        ['directo', 'directa', 'Los mismos montos, tal cual.'],
+        ['proporcional', 'proporcional', 'La misma forma, dimensionada al costo de la obra destino.'],
+      ] as const).map(([m, adj, dice]) => (
+        <label key={m} style={checkLabel}>
+          <input
+            type="radio"
+            name={`modo-${scope}`}
+            checked={value === m}
+            aria-label={`Copia ${adj} ${scope}`}
+            onChange={() => onPick(m)}
+            style={{ accentColor: colors.primary, cursor: 'pointer' }}
+          />
+          <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
+            {m.toUpperCase()}
+          </span>
+          {value === m && <span style={micro}>{dice}</span>}
+        </label>
+      ))}
+    </div>
+  )
+
+  /**
+   * El costo objetivo de UNA obra destino, EN SOLO LECTURA.
+   *
+   * **Aquí no se captura nada.** T es el costo de obra que esa propiedad ya
+   * tiene —el total de su presupuesto—, y el metraje y el `$/m²` se enseñan solo
+   * para que se lea de dónde sale: «275 m² × $3,500/m² = $962,500». Tecleados,
+   * eran una segunda respuesta a una pregunta que la ficha ya contestó, y la
+   * copia podía dimensionarse a un número que esa obra nunca dijo costar.
+   *
+   * Y el preview APARTA LAS FIJAS. Enseñar solo el objetivo dejaría creer que
+   * todo el presupuesto se mueve con el factor, cuando los permisos y las
+   * licencias entran con su monto de siempre.
+   */
+  const targetRow = (opts: {
+    label: string
+    sqm: number | null | undefined
+    costPerSqm: number | null | undefined
+    plan: Plan
+  }) => (
+    // La etiqueta es el nombre de la obra destino cuando son varias, así que
+    // sirve de llave: no hay dos destinos con el mismo renglón.
+    <div key={opts.label} style={panelRow}>
+      <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>{opts.label}</span>
+      {/* La descomposición solo si la ficha tiene las dos partes. Sin ellas el
+          costo de obra sigue siendo el mismo número: se enseña a secas en vez de
+          inventar una división que nadie capturó. */}
+      {opts.sqm != null && opts.costPerSqm != null && (
+        <span style={micro}>{opts.sqm} m² × {fmtMXN(opts.costPerSqm)}/m² =</span>
+      )}
+      <span style={{ ...money, fontFamily: fonts.label }}>{fmtMXN(opts.plan.target)}</span>
+      {opts.plan.blocker ? (
+        <span style={{ ...micro, color: '#c0392b' }}>
+          No se puede copiar proporcional: {opts.plan.blocker}.
+        </span>
+      ) : (
+        <span style={micro}>
+          {opts.plan.fixed > 0 ? `NO ESCALAN ${fmtMXN(opts.plan.fixed)}` : 'TODO ESCALA'}
+          {opts.plan.factor != null ? ` · EL RESTO ×${opts.plan.factor.toFixed(2)}` : ''}
+        </span>
+      )}
+    </div>
+  )
 
   /**
    * Comprometido y pagado APILADOS bajo el presupuestado, en tipografía menor.
@@ -670,9 +942,11 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               ))}
             </select>
             <button
-              disabled={pickedSource === ''}
+              disabled={!canPull}
               onClick={() => {
-                if (pickedSource === '') return
+                // `canPull` ya incluye que haya origen elegido, y eso lo sabe
+                // también el compilador: de aquí para abajo `pickedSource` es un id.
+                if (!canPull) return
                 // Se confirma porque escribe en el presupuesto: los renglones se
                 // SUMAN a los que ya hay. Copiar dos veces ya no los duplica —el
                 // servidor salta los que ya existen por capítulo y nombre— pero
@@ -680,12 +954,21 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                 const cual = sources.find(t => t.id === pickedSource)
                 if (!window.confirm(
                   `¿Copiar los ${cual?.lineCount ?? ''} renglones de «${cual?.name ?? ''}» a esta obra? `
+                  + (sourceMode === 'proporcional'
+                    ? `Entran dimensionados a ${fmtMXN(sourcePlan.target)}. `
+                    : '')
                   + 'Se suman a lo que ya hay; los que ya existan aquí se saltan sin tocarlos.',
                 )) return
-                void run(() => applyBudgetSource(propertyId, pickedSource))
+                // El modo solo viaja en proporcional: en directo la llamada es
+                // la de siempre, y mandar el modo que no se pidió sería decirle
+                // al servidor algo que nadie contestó. El objetivo no viaja
+                // nunca: es el costo de obra de ESTA obra, que él ya tiene.
+                void run(() => (sourceMode === 'proporcional'
+                  ? applyBudgetSource(propertyId, pickedSource, null, true)
+                  : applyBudgetSource(propertyId, pickedSource)))
                 setPickedSource('')
               }}
-              style={{ ...ghost, cursor: pickedSource === '' ? 'not-allowed' : 'pointer' }}
+              style={{ ...ghost, cursor: canPull ? 'pointer' : 'not-allowed' }}
             >
               COPIAR RENGLONES
             </button>
@@ -698,6 +981,26 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                 : 'Todavía no hay de dónde copiar. Detalla partidas en otra obra y aparecerá aquí.'}
             </span>
           </div>
+
+          {/* Las dos formas de copiar. El desglose de la obra de al lado sirve;
+              su tamaño no — y por eso hay una segunda opción en vez de una sola
+              copia idéntica. */}
+          {modeChoice('de otra obra', sourceMode, setSourceMode)}
+
+          {sourceMode === 'proporcional' && targetRow({
+            label: 'COSTO DE OBRA',
+            sqm: property.sqmConstruction,
+            costPerSqm: property.constructionCostPerSqm,
+            plan: sourcePlan,
+          })}
+
+          {/* Mientras no se elija origen no se sabe cuánto de él no escala, y
+              enseñar el objetivo a secas haría creer que TODO se mueve. */}
+          {sourceMode === 'proporcional' && pickedSource === '' && (
+            <span style={micro}>
+              Elige la obra de origen para ver cuánto de su presupuesto no escala.
+            </span>
+          )}
         </div>
       )}
 
@@ -760,6 +1063,28 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
             ))}
           </div>
 
+          {modeChoice('a otras obras', pushMode, setPushMode)}
+
+          {/* CADA DESTINO CON SU PROPIO COSTO DE OBRA, leído de su ficha. Dos
+              obras del mismo tamaño pueden construirse a niveles de costo
+              distintos, y por eso el objetivo es de cada una — pero ninguna lo
+              contesta aquí: ya lo dice su presupuesto.
+
+              Solo las elegidas: enseñar el objetivo de obras a las que no se va
+              a copiar sería ruido. */}
+          {pushMode === 'proporcional' && (
+            chosenTargets.length === 0 ? (
+              <span style={micro}>
+                Elige a qué obras copiar para ver el costo de obra al que entra cada una.
+              </span>
+            ) : chosenTargets.map(p => targetRow({
+              label: p.name,
+              sqm: p.sqmConstruction,
+              costPerSqm: p.constructionCostPerSqm,
+              plan: planOf(p),
+            }))
+          )}
+
           <div style={panelRow}>
             <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }} />
             <button
@@ -776,6 +1101,14 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               Se agregan a lo que cada obra ya tenga; los renglones que ya existan allá
               se saltan sin tocarse. El residuo de cada una se reajusta solo.
             </span>
+            {/* Una obra sin metraje no cancela a las demás: se queda fuera con
+                su motivo y las otras se copian igual. */}
+            {pushMode === 'proporcional' && readyTargets.length < chosenTargets.length && (
+              <span style={{ ...micro, color: '#c0392b' }}>
+                {chosenTargets.length - readyTargets.length} de las elegidas se quedan fuera
+                por lo que les falta; a las demás sí se les copia.
+              </span>
+            )}
           </div>
 
           {/* El resultado, OBRA POR OBRA. Un «listo» que escondiera que a una de
@@ -814,7 +1147,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
       {/* El scroll horizontal es de la TABLA, no de la página: en un teléfono se
           arrastra la tabla a un lado y el resto de la ficha se queda quieto. */}
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
               <th style={th}>PARTIDA</th>
@@ -822,6 +1155,16 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               <th style={th}>UNIDAD</th>
               <th style={{ ...th, textAlign: 'right' }}>P. UNIT.</th>
               <th style={{ ...th, textAlign: 'right' }}>MONTOS</th>
+              {/* VISIBLE SIEMPRE, no escondida en el popup de copiar: si solo
+                  apareciera al copiar, nadie la capturaría hasta que ya lleva
+                  prisa, y ahí se marca todo de corrido. Aquí se contesta el día
+                  que se teclea la partida, que es cuando se sabe. */}
+              <th
+                style={{ ...th, textAlign: 'center' }}
+                title="Si la partida crece con el tamaño de la obra. Los permisos y las licencias no."
+              >
+                PROPORCIONAL
+              </th>
               {/* Dos celdas apiladas y un solo encabezado: el oficio y el
                   proveedor son la misma pregunta en dos momentos —qué tipo de
                   persona y luego quién— y separarlos en dos columnas partiría
@@ -875,7 +1218,10 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                       <div style={{ ...money, fontFamily: fonts.label }}>{fmtMXN(r.budgeted)}</div>
                       {executionLine(r)}
                     </td>
-                    <td style={td} />
+                    {/* El capítulo no marca proporcional: la marca es del
+                        RENGLÓN, y una casilla aquí sería una segunda captura del
+                        mismo hecho que se desincroniza con sus partidas. */}
+                    <td style={td} colSpan={2} />
                     <td style={{ ...td, textAlign: 'right' }}>
                       {!locked && (
                         <button
@@ -899,7 +1245,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                 if (isCollapsed(row.chapterName)) return null
                 return (
                   <tr key={`a${row.id}`} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                    <td colSpan={7} style={{ padding: '3px 6px 6px', paddingLeft: `${6 + indent}px` }}>
+                    <td colSpan={8} style={{ padding: '3px 6px 6px', paddingLeft: `${6 + indent}px` }}>
                       <button
                         onClick={() => void run(() => createBudgetLine(propertyId, {
                           chapterName: row.chapterName, name: 'Partida nueva',
@@ -936,7 +1282,10 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                       <div style={{ ...money, color: colors.secondary }}>{fmtMXN(line.budgetedAmount)}</div>
                       <div style={{ ...micro, marginTop: '2px' }}>SE REPARTE AL DETALLAR</div>
                     </td>
-                    <td style={td} colSpan={2} />
+                    {/* El residuo no lleva casilla: escala SIEMPRE, y por eso el
+                        destino hereda también cuánto le falta por detallar. No
+                        es una elección que se pueda contestar de otra manera. */}
+                    <td style={td} colSpan={3} />
                   </tr>
                 )
               }
@@ -1015,6 +1364,22 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                       </div>
                     )}
                   </td>
+                  {/* Guarda al marcarse, como el proveedor y el oficio: aquí un
+                      cambio ES un cambio, y no hay nada que esperar a soltar.
+
+                      `=== false` y no la verdad a secas, por lo mismo que
+                      `scopeOf`: el campo nace TRUE, así que un renglón que llegue
+                      sin él está marcado. Preguntado por verdad, además, la
+                      casilla se volvería no controlada al llegar `undefined`. */}
+                  <td style={{ ...td, textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={line.isProportional !== false}
+                      aria-label={`Proporcional ${line.name}`}
+                      onChange={e => editNow(line, { isProportional: e.target.checked })}
+                      style={{ accentColor: colors.primary, cursor: 'pointer' }}
+                    />
+                  </td>
                   <td style={td}>
                     {/* EL OFICIO ARRIBA, Y NO ES UN ADORNO DEL PROVEEDOR: se
                         sabe semanas antes. Al presupuestar ya se sabe que la
@@ -1076,7 +1441,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
 
                 openPayments === line.id && (
                   <tr key={`p${line.id}`} style={{ borderBottom: `1px solid ${colors.border}`, background: colors.surface }}>
-                    <td colSpan={7} style={{ padding: '6px 10px 8px', paddingLeft: `${20 + indent}px` }}>
+                    <td colSpan={8} style={{ padding: '6px 10px 8px', paddingLeft: `${20 + indent}px` }}>
                       <div style={{ ...micro, letterSpacing: '0.1em', marginBottom: '4px' }}>
                         PAGOS DE {line.name.toUpperCase()}
                       </div>
@@ -1179,7 +1544,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                 </div>
                 {executionLine(totalRollup)}
               </td>
-              <td style={td} colSpan={2} />
+              <td style={td} colSpan={3} />
             </tr>
           </tbody>
         </table>

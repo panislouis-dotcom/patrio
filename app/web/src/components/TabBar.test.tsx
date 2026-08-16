@@ -7,6 +7,12 @@ beforeEach(() => {
   // ApiKeysSection fetches the key list on mount; hand it an empty list so the panel mounts
   // cleanly regardless of network.
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => [] }))
+  // Y lee el token para armar el encabezado de esa petición. Mismo motivo que el `fetch`:
+  // sin esto el efecto de montaje truena antes de que el panel exista, y la prueba falla
+  // por un motivo que no es el que mira.
+  vi.stubGlobal('localStorage', {
+    getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {},
+  })
 })
 
 describe('TabBar settings panel', () => {

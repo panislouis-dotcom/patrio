@@ -1124,11 +1124,37 @@ export function deleteBudgetPayment(
  * tenga (mismo capítulo y mismo nombre) se SALTAN y jamás se sobrescriben:
  * podrían traer proveedor, comprometido o pagos ya capturados. Cuántos entraron
  * y cuántos se saltaron vienen en `linesAdded` y `linesSkipped`.
+ *
+ * `proportional` es lo que separa las DOS formas de copiar:
+ *
+ * - Omitido —el caso por omisión— es la copia DIRECTA: los renglones entran con
+ *   los montos del origen, tal cual.
+ * - `true` pide la copia PROPORCIONAL: copiar la FORMA del presupuesto,
+ *   dimensionada al costo de obra DEL DESTINO. **Ese objetivo no viaja**: es el
+ *   total del presupuesto que el destino ya tiene, y el servidor lo lee de ahí.
+ *   Mandarlo desde la pantalla sería una segunda definición del mismo número, y
+ *   la que se pudiera teclear encima. **El cliente tampoco manda el factor**: un
+ *   multiplicador arbitrario volvería la garantía de que la suma da exactamente
+ *   el objetivo imposible de verificar del lado que la sostiene.
+ *
+ * El modo va en un campo PROPIO y nada más: el cuerpo proporcional es el mismo
+ * de la copia directa con `proportional: true` encima, sin un solo insumo extra.
+ *
+ * Las partidas marcadas como no proporcionales entran con su monto original; el
+ * resto se escala. Si el destino no tiene costo de obra capturado, o si las
+ * partidas fijas del origen ya no caben en él, contesta 422 con el motivo
+ * escrito.
  */
 export function applyBudgetSource(
   propertyId: number, budgetId: number, chapters: string[] | null = null,
+  proportional = false,
 ): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, '/apply'), 'POST', { budgetId, chapters })
+  // En directo el cuerpo es EXACTAMENTE el de siempre: la copia que ya
+  // funcionaba no cambia de forma por existir la otra.
+  return budgetWrite(budgetUrl(propertyId, '/apply'), 'POST', {
+    budgetId, chapters,
+    ...(proportional ? { proportional: true } : {}),
+  })
 }
 
 /**
