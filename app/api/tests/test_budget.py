@@ -921,6 +921,258 @@ def test_an_empty_chapter_list_is_refused_instead_of_copying_nothing(
     assert "al menos uno" in r.json()["error"]["message"]
 
 
+# ── Copiar proporcional ─────────────────────────────────────────────────────
+#
+# Copiar proporcional es copiar la FORMA del presupuesto de otra obra,
+# dimensionada al costo que se espera de ÉSTA: `T = m² × $/m²` del destino. El
+# desglose de la obra de al lado sirve; su tamaño no.
+#
+# Lo que esta suite fija es que la aritmética CIERRA —la suma final da
+# exactamente T, no «T más lo que se acumuló redondeando»— y que lo que no
+# escala no se movió. Las dos se rompen sin que nada se vea roto: un presupuesto
+# con los permisos inflados al doble se ve igual de plausible que uno correcto.
+
+# Los números están elegidos para que el factor dé EXACTAMENTE 2 y cada cifra se
+# pueda verificar a mano:
+#
+#     origen:   200,000 (lote) + 150,000 (m²) + 50,000 (fija) = 400,000 detallado
+#               total 2,050,000  →  residuo 1,650,000
+#     destino:  200 m² × $20,250 = T = 4,050,000
+#     factor = (4,050,000 − 50,000) / (2,050,000 − 50,000) = 2
+COSTO_POR_M2 = 20_250
+OBJETIVO = Decimal("4050000")
+
+
+@pytest.fixture
+def modelo(client):
+    """La obra de la que se copia la forma: una partida de suma alzada, una
+    medida en m² y una fija, para que cada regla del escalado tenga su renglón."""
+    r = client.post("/api/properties", json={
+        "name": "[TEST] Obra Modelo", "address": "Calle Modelo 1", "city": "Monterrey",
+        "purchasePrice": 1_000_000, "sqmConstruction": 100,
+        "constructionCostPerSqm": 20_500, "constructionOverhead": 1})
+    assert r.status_code == 201, r.text
+    prop = r.json()
+    _add(client, prop["id"], chapterName="Instalaciones", name="Hidráulica",
+         unit="lote", quantity=1, unitPrice=200_000)
+    _add(client, prop["id"], chapterName="Acabados", name="Piso cerámico",
+         unit="m2", quantity=100, unitPrice=1_500)
+    _add(client, prop["id"], chapterName="Trámites", name="Licencias",
+         unit="lote", quantity=1, unitPrice=50_000, isProportional=False)
+    yield {"propertyId": prop["id"], "budgetId": _budget(client, prop["id"])["id"]}
+    _delete_property(prop["id"])
+
+
+@pytest.fixture
+def sin_metraje(client):
+    """Una obra sin m² de construcción capturados — hoy 2 de las 5 reales están
+    así, y por eso el rechazo tiene que ser legible, no un borde."""
+    r = client.post("/api/properties", json={
+        "name": "[TEST] Obra Sin Metraje", "address": "Calle Sin 1",
+        "city": "Monterrey", "purchasePrice": 1_000_000})
+    assert r.status_code == 201, r.text
+    prop = r.json()
+    assert not prop["sqmConstruction"]
+    yield prop
+    _delete_property(prop["id"])
+
+
+def _apply_proporcional(client, property_id: int, source_budget_id: int, **body):
+    return _apply(client, property_id, source_budget_id,
+                  proportional=True, costPerSqm=COSTO_POR_M2, **body)
+
+
+def test_a_lump_sum_line_moves_its_price_and_not_its_quantity(
+        client, test_property, modelo):
+    """En «lote» escala el PRECIO. El renglón se sigue leyendo «1 lote», solo más
+    caro — escalar la cantidad daría «2 lote», que no significa nada, y dejaría
+    sin sentido el precio unitario que la historia de precios publica."""
+    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    assert r.status_code == 201, r.text
+
+    hidraulica = _detailed(r.json()["budget"])["Hidráulica"]
+    assert _dec(hidraulica["unitPrice"]) == Decimal("400000")
+    assert _dec(hidraulica["quantity"]) == Decimal("1")
+
+
+def test_a_measured_line_moves_its_quantity_and_not_its_price(
+        client, test_property, modelo):
+    """En m² escala la CANTIDAD: el precio por metro es un hecho de mercado que no
+    cambia porque la casa sea más grande. Lo que cambia son los metros."""
+    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    assert r.status_code == 201, r.text
+
+    piso = _detailed(r.json()["budget"])["Piso cerámico"]
+    assert _dec(piso["quantity"]) == Decimal("200")
+    assert _dec(piso["unitPrice"]) == Decimal("1500")
+    assert _dec(piso["budgetedAmount"]) == Decimal("300000")
+
+
+def test_a_line_that_does_not_grow_with_the_job_is_copied_untouched(
+        client, test_property, modelo):
+    """La licencia cuesta lo que cuesta: la casa del doble de tamaño no paga dos
+    permisos. Entra con su monto original y la marca VIAJA con la copia, así que
+    el presupuesto nuevo ya sabe cuál no escala sin que nadie se lo vuelva a
+    decir."""
+    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    assert r.status_code == 201, r.text
+
+    licencias = _detailed(r.json()["budget"])["Licencias"]
+    assert _dec(licencias["unitPrice"]) == Decimal("50000")
+    assert _dec(licencias["quantity"]) == Decimal("1")
+    assert licencias["isProportional"] is False
+    assert _detailed(r.json()["budget"])["Hidráulica"]["isProportional"] is True
+
+
+def test_the_copied_budget_adds_up_to_the_target_cost_exactly(
+        client, test_property, modelo):
+    """LA PRUEBA DE QUE LA ARITMÉTICA CIERRA. 200 m² × $20,250 = $4,050,000, y el
+    presupuesto da esa cifra al peso: fijas + escalado + residuo, sin un centavo
+    de sobra ni de menos.
+
+        50,000 + 400,000 + 300,000 + 3,300,000 = 4,050,000
+
+    No es una coincidencia de estos números: el residuo se calcula al final como
+    `objetivo − detallado`, así que absorbe hasta el último peso que el redondeo
+    haya movido."""
+    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    assert r["linesAdded"] == 3
+    assert _dec(r["property"]["constructionBudgeted"]) == OBJETIVO
+    detalladas = sum(_dec(l["budgetedAmount"]) for l in _detailed(r["budget"]).values())
+    assert detalladas == Decimal("750000")
+    assert detalladas + _dec(_residual(r["budget"])["budgetedAmount"]) == OBJETIVO
+    # El total se movió a T a propósito: eso es la operación, no un excedente.
+    assert _dec(r["budgetIncrease"]) == Decimal("0")
+
+
+def test_the_destination_inherits_how_much_is_left_to_detail(
+        client, test_property, modelo):
+    """El residuo del origen entra al denominador del factor, y por eso el destino
+    hereda TAMBIÉN cuánto le falta por detallar: el modelo está detallado al 19.5%
+    y el destino queda igual, con su residuo escalado por el mismo 2.
+
+    Un origen 100% detallado dejaría el residuo del destino en cero por la misma
+    aritmética, sin un caso especial."""
+    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("3300000")
+    origen = _budget(client, modelo["propertyId"])
+    assert _dec(_residual(origen)["budgetedAmount"]) == Decimal("1650000")
+
+
+def test_the_proportional_copy_still_skips_what_the_destination_already_has(
+        client, test_property, modelo):
+    """La dedup no cambia con el modo: un renglón que ya está aquí se SALTA —no se
+    escala, no se actualiza—. Es la misma garantía de siempre, y el factor no la
+    toca: el de acá puede traer proveedor, comprometido o pagos, y escalarle el
+    precio sería reescribir dinero ya capturado."""
+    linea = _add(client, test_property["id"], chapterName="Instalaciones",
+                 name="Hidráulica", unit="lote", quantity=1,
+                 unitPrice=100_000)["line"]["id"]
+
+    r = _apply_proporcional(client, test_property["id"], modelo["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    assert (r["linesAdded"], r["linesSkipped"]) == (2, 1)
+    hidraulica = _line_by_id(r["budget"], linea)
+    assert _dec(hidraulica["unitPrice"]) == Decimal("100000")   # ni escalado ni pisado
+    # Y el total sigue dando el objetivo: el residuo cuadra lo que el saltado dejó.
+    assert _dec(r["property"]["constructionBudgeted"]) == OBJETIVO
+
+
+def test_the_direct_copy_does_not_scale_a_single_peso(client, test_property, modelo):
+    """Sin pedir la copia proporcional no se mueve nada: los importes llegan tal
+    cual y el total del destino sigue donde estaba, que es lo que copiar hizo
+    siempre."""
+    r = _apply(client, test_property["id"], modelo["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    detalladas = _detailed(r["budget"])
+    assert _dec(detalladas["Hidráulica"]["unitPrice"]) == Decimal("200000")
+    assert _dec(detalladas["Piso cerámico"]["quantity"]) == Decimal("100")
+    assert _dec(detalladas["Licencias"]["unitPrice"]) == Decimal("50000")
+    assert detalladas["Licencias"]["isProportional"] is False
+    # El total no se movió: 400,000 detallados salieron del residuo de 2,340,000.
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
+
+
+def test_without_metres_the_proportional_copy_is_refused_naming_them(
+        client, modelo, sin_metraje):
+    """Hoy 2 de 5 obras no tienen metraje, así que faltar no es un borde. El
+    rechazo NOMBRA lo que falta y la obra a la que le falta — un «no se puede»
+    genérico deja adivinando entre dos campos."""
+    r = _apply_proporcional(client, sin_metraje["id"], modelo["budgetId"])
+    assert r.status_code == 422, r.text
+    mensaje = r.json()["error"]["message"]
+    assert "m² de construcción" in mensaje
+    assert sin_metraje["name"] in mensaje
+    assert "$/m² de desarrollo" not in mensaje, \
+        "ese sí se capturó: darlo por faltante manda a corregir lo que está bien"
+    # Y no dejó nada a medias en el destino.
+    assert _detailed(_budget(client, sin_metraje["id"])) == {}
+
+
+def test_without_a_cost_per_sqm_the_proportional_copy_is_refused_naming_it(
+        client, test_property, modelo):
+    """El otro insumo, con el mismo trato. Y no cae a copia directa en silencio:
+    copiar los importes de la otra obra cuando se pidió dimensionarlos da un
+    resultado que se ve plausible y que nadie revisa."""
+    r = _apply(client, test_property["id"], modelo["budgetId"], proportional=True)
+    assert r.status_code == 422, r.text
+    mensaje = r.json()["error"]["message"]
+    assert "$/m² de desarrollo" in mensaje
+    assert "m² de construcción" not in mensaje
+    assert _detailed(_budget(client, test_property["id"])) == {}
+
+
+def test_a_target_that_does_not_fit_the_fixed_lines_is_refused_with_both_amounts(
+        client, test_property, modelo):
+    """La guarda que impide un factor negativo, dicha con los dos números: a
+    $200/m² el objetivo son $40,000 y las licencias solas cuestan $50,000. Un
+    factor negativo habría producido precios en negativo, que la base rechaza con
+    un CHECK y un 500 mudo — o peor, habría cabido."""
+    r = _apply(client, test_property["id"], modelo["budgetId"],
+               proportional=True, costPerSqm=200)
+    assert r.status_code == 422, r.text
+    mensaje = r.json()["error"]["message"]
+    assert "$50,000" in mensaje and "$40,000" in mensaje
+    assert _detailed(_budget(client, test_property["id"])) == {}
+
+
+def test_a_cost_per_sqm_without_asking_for_the_proportional_copy_is_refused(
+        client, test_property, modelo):
+    """Capturar un costo objetivo y recibir los importes de la otra obra sería el
+    modo equivocado elegido por omisión. Se rechaza en vez de ignorarlo."""
+    r = _apply(client, test_property["id"], modelo["budgetId"], costPerSqm=COSTO_POR_M2)
+    assert r.status_code == 422, r.text
+    assert "copia proporcional" in r.json()["error"]["message"]
+
+
+def test_the_mark_is_captured_on_the_line_and_not_on_the_copy(client, test_property):
+    """«Los permisos no crecen con la obra» es verdad de la PARTIDA, no de una
+    copia: se captura una vez, en su renglón, con el mismo autoguardado de celda
+    que el resto de la tabla."""
+    linea = _add(client, test_property["id"], name="Licencias")["line"]
+    assert linea["isProportional"] is True
+
+    r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{linea['id']}",
+                     json={"isProportional": False})
+    assert r.status_code == 200, r.text
+    assert _line_by_id(r.json()["budget"], linea["id"])["isProportional"] is False
+
+    r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{linea['id']}",
+                     json={"isProportional": None})
+    assert r.status_code == 422, r.text
+    assert "no se vacía" in r.json()["error"]["message"]
+
+
 # ── De dónde puedo copiar ───────────────────────────────────────────────────
 #
 # `apply` siempre aceptó el id de cualquier presupuesto, pero sin esta lista

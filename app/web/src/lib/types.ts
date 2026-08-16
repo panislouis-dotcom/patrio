@@ -756,6 +756,20 @@ export interface BudgetLine {
    * por su nombre sería amarrar una regla de dinero a una cadena de texto.
    */
   isResidual: boolean
+  /**
+   * Si esta partida CRECE con el tamaño de la obra. Los permisos, las licencias
+   * y las conexiones no: cuestan lo mismo en una casa de 120 m² que en una de
+   * 300, y escalarlas al copiar el presupuesto a otra obra inventaría dinero.
+   *
+   * Vive EN EL RENGLÓN y no en la copia: «los permisos no crecen» es una verdad
+   * de la partida, no de un copiado, y preguntarlo cada vez sería preguntar lo
+   * mismo para siempre. Viaja con la copia, así que un presupuesto copiado nace
+   * sabiendo cuáles no escalan.
+   *
+   * `true` por omisión: la mayoría de las partidas sí escalan, y en positivo se
+   * lee sin dobles negaciones.
+   */
+  isProportional: boolean
   createdAt: string
   updatedAt: string
 }
@@ -793,6 +807,8 @@ export interface BudgetLinePatch {
   committedAmount?: number | null
   committedOn?: string | null
   actualQuantity?: number | null
+  /** Si la partida crece con el tamaño de la obra. Se captura en la tabla. */
+  isProportional?: boolean
   notes?: string
 }
 

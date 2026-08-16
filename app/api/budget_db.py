@@ -35,11 +35,16 @@ from decimal import Decimal
 from api.db import _row_to_dict
 from api.finance.quantize import money, money0, to_decimal
 
+# SUMA ALZADA: «1 lote» de algo, sin una medida detrás. Es la unidad de todo
+# renglón real de hoy —nadie mide en m² ni en piezas— y también la del residuo,
+# por la misma razón: lo que falta por detallar no se mide, se estima entero.
+LUMP_SUM_UNIT = "lote"
+
 # El renglón que absorbe lo que todavía no se detalla. Nace con el presupuesto y
 # no se borra nunca: sin él, detallar una partida no tendría de dónde restar.
 RESIDUAL_CHAPTER = "Otros"
 RESIDUAL_NAME = "Otros, por detallar"
-RESIDUAL_UNIT = "lote"
+RESIDUAL_UNIT = LUMP_SUM_UNIT
 
 # El multiplicador de indirectos que la calculadora aplica al producir el primer
 # renglón. Vive aquí y no entre los supuestos del underwriting porque ya no es
@@ -417,9 +422,13 @@ def _norm(column: str) -> str:
 # `supplier_category_id` SÍ viaja: el OFICIO es parte de la forma del plan
 # —«esta partida la hace un plomero» vale para cualquier obra que la copie—
 # mientras que el PROVEEDOR es a quién se le dio ésta.
+#
+# `is_proportional` SÍ viaja, por lo mismo que el oficio: «los permisos no crecen
+# con la obra» es verdad de la PARTIDA, no de una copia. Al viajar, un
+# presupuesto copiado nace sabiendo cuáles no escalan — aprender sin catálogo.
 _COPIED_LINE_COLUMNS = ("chapter_name", "name", "unit",
                         "quantity", "unit_price", "supplier_category_id",
-                        "sort_order", "notes")
+                        "sort_order", "notes", "is_proportional")
 
 
 # Qué renglones del origen entran a la copia. `NULL` es «todos los capítulos»,
@@ -430,8 +439,72 @@ _COPIED_LINE_COLUMNS = ("chapter_name", "name", "unit",
 # (`get_budget` → `chapters`), no se teclea, igual que en `rename_chapter` y
 # `delete_chapter`. Normalizar aquí no arreglaría ningún error real y volvería
 # «Acabados» y «acabados» —dos capítulos que el origen sí distingue— uno solo.
+#
+# Va como fragmento porque el factor de la copia proporcional se calcula sobre
+# EXACTAMENTE este conjunto de renglones y no sobre otro parecido: dos WHERE
+# tecleados por separado se despegan un carácter y el factor deja de cuadrar con
+# lo que se copió, que es un descuadre sin nada roto a la vista.
+_CANDIDATES = (
+    "  FROM budget_lines l"
+    " WHERE l.budget_id = %s AND NOT l.is_residual"
+    "   AND (%s::text[] IS NULL OR l.chapter_name = ANY(%s::text[]))"
+)
+
+
+# QUÉ MUEVE EL FACTOR, SEGÚN LA UNIDAD — el único condicional del escalado.
+#
+# En «lote» —suma alzada, sin medida detrás— escala el PRECIO: el renglón se
+# sigue leyendo «1 lote», solo más caro. Escalar la cantidad daría «1.5 lote»,
+# que no significa nada, y dejaría sin sentido el precio unitario que
+# `budget_price_observations` publica como historia de precios.
+#
+# En cualquier otra unidad (m², ml, pza) escala la CANTIDAD: el precio por m² es
+# un hecho de mercado que no cambia porque la casa sea más grande; lo que cambia
+# son los metros. Hoy todos los renglones reales son «lote», pero el día que
+# alguien mida, esta rama es la que evita que la copia corrompa un precio unitario.
+#
+# Las dos condiciones se escriben ENTERAS y ninguna es la negación de la otra,
+# porque el renglón fijo no está en ninguna de las dos: si una fuera el `ELSE` de
+# la otra, la partida fija en m² se llevaría el factor en la cantidad — sin error
+# y sin pista, solo dos licencias donde había una.
+_ES_SUMA_ALZADA = f"{_norm('l.unit')} = '{LUMP_SUM_UNIT}'"
+_SCALES_ITS_PRICE = f"l.is_proportional AND {_ES_SUMA_ALZADA}"
+_SCALES_ITS_QUANTITY = f"l.is_proportional AND NOT {_ES_SUMA_ALZADA}"
+
+# El escalado, en las mismas dos columnas y con el redondeo de cada una: pesos
+# enteros en el precio (`money0`) y las tres decimales de la columna en la
+# cantidad. Redondear a más decimales de los que la columna guarda sería
+# redondear dos veces —una aquí y otra al asignar— y las dos rondas no siempre
+# dan lo mismo.
+#
+# Lo que el redondeo mueva NO descuadra el total: el residuo del destino se
+# calcula DESPUÉS, como `objetivo − detallado`, así que absorbe hasta el último
+# peso (ver `_settle_residual`). Por eso la suma final da el objetivo exacto y no
+# «el objetivo más lo que se acumuló redondeando».
+_SCALED_COLUMN = {
+    "quantity": f"CASE WHEN {_SCALES_ITS_QUANTITY} THEN round(l.quantity * %s, 3)"
+                "      ELSE l.quantity END AS quantity",
+    "unit_price": f"CASE WHEN {_SCALES_ITS_PRICE} THEN round(l.unit_price * %s, 0)"
+                  "      ELSE l.unit_price END AS unit_price",
+}
+
+
+def _candidate_columns(factor) -> tuple[str, list]:
+    """Las columnas del origen TAL COMO SE VAN A INSERTAR, con sus parámetros.
+
+    Sin factor no se toca ni una: la copia directa es literalmente el SELECT de
+    siempre, sin un `round()` de más que le mueva un centavo a un precio que
+    nadie pidió escalar. Con factor, el mismo valor entra tantas veces como
+    `%s` haya en las columnas escaladas —el conteo sale del SQL y no de una
+    constante que haya que acordarse de mover."""
+    if factor is None:
+        return ", ".join(f"l.{c}" for c in _COPIED_LINE_COLUMNS), []
+    sql = ", ".join(_SCALED_COLUMN.get(c, f"l.{c}") for c in _COPIED_LINE_COLUMNS)
+    return sql, [factor] * sql.count("%s")
+
+
 def copy_lines(conn, source_budget_id: int, target_budget_id: int,
-               chapters: list[str] | None = None) -> tuple[int, int]:
+               chapters: list[str] | None = None, factor=None) -> tuple[int, int]:
     """Copia los renglones de un presupuesto a otro, sin repetir los que el
     destino ya tiene. Devuelve `(copiados, saltados)`.
 
@@ -457,7 +530,14 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
     normalizados con `_norm`.
 
     `chapters` recorta el origen a esos capítulos; `None` los copia todos, que es
-    el comportamiento de siempre."""
+    el comportamiento de siempre.
+
+    `factor` dimensiona lo copiado al costo que se espera de la obra destino;
+    `None` copia los importes tal cual, que es la copia de siempre. Los renglones
+    con `is_proportional = FALSE` pasan intactos aunque haya factor: su monto es
+    propio. Y EL FACTOR NO TOCA LA DEDUP — un renglón que el destino ya tiene se
+    salta igual, ni escalado ni actualizado, porque el de acá puede traer dinero
+    ya capturado y escalarlo sería reescribirlo."""
     if chapters is not None and not chapters:
         raise BudgetError(
             "Copiar «solo estos capítulos» necesita al menos uno. Para copiar el "
@@ -469,16 +549,21 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
     # quedaba tecleado dos veces y bastaba con que se despegaran un carácter para
     # que un hecho se volviera una estimación. Aquí se escribe una vez, en `cand`,
     # y el INSERT no puede leer nada más.
+    #
+    # El escalado vive en `cand` y no en el INSERT: así `cand` produce las filas
+    # EXACTAMENTE como van a quedar, el INSERT sigue siendo el mismo `SELECT
+    # l.<columna>` de siempre para las dos copias, y la lista de columnas
+    # insertadas no puede despegarse de la lista de valores.
     columns = ", ".join(_COPIED_LINE_COLUMNS)
     source = ", ".join(f"l.{c}" for c in _COPIED_LINE_COLUMNS)
+    candidatas, escalado = _candidate_columns(factor)
     row = conn.execute(
         # `l.id` viaja en `cand` sin copiarse: solo desempata el ORDER BY, para
         # que el orden de inserción —y por lo tanto los `id` nuevos— sea el mismo
         # que el del origen y no el que le toque al planeador.
         f"WITH cand AS ("
-        f"     SELECT l.id, {source} FROM budget_lines l"
-        "       WHERE l.budget_id = %s AND NOT l.is_residual"
-        "         AND (%s::text[] IS NULL OR l.chapter_name = ANY(%s::text[]))"
+        f"     SELECT l.id, {candidatas}"
+        f"     {_CANDIDATES}"
         "), ins AS ("
         f"     INSERT INTO budget_lines (budget_id, {columns})"
         f"     SELECT %s, {source} FROM cand l"
@@ -490,7 +575,8 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
         "     RETURNING 1"
         ") SELECT (SELECT count(*) FROM cand) AS candidatos,"
         "         (SELECT count(*) FROM ins) AS copiados",
-        (source_budget_id, chapters, chapters, target_budget_id, target_budget_id),
+        escalado + [source_budget_id, chapters, chapters,
+                    target_budget_id, target_budget_id],
     ).fetchone()
     candidatos, copied = row["candidatos"], row["copiados"]
     # El rechazo va DESPUÉS de insertar y sigue siendo el mismo rechazo: sin
@@ -527,8 +613,111 @@ def _no_such_chapters(conn, source_budget_id: int, chapters: list[str]) -> str:
             f"Los suyos son: «" + "», «".join(disponibles) + "».")
 
 
+# ─── Copiar proporcional ──────────────────────────────────────────────────────
+#
+# COPIAR PROPORCIONAL ES COPIAR LA FORMA DEL PRESUPUESTO, DIMENSIONADA AL COSTO
+# QUE SE ESPERA DE ESTA OBRA. El desglose de la obra de al lado sirve; su tamaño
+# no.
+#
+# El costo objetivo es `T = m² de construcción × $/m² de desarrollo` del DESTINO,
+# y no una razón de metrajes: dos obras del mismo tamaño pueden construirse a
+# niveles de costo distintos, y el metraje solo no lo captura.
+#
+#     T = m² destino × $/m² destino      el costo objetivo
+#     F = las partidas FIJAS del origen  no escalan
+#     todo lo demás del origen           sí escala
+#
+#     factor = (T − F) / (total del origen − F)
+#
+# El denominador es TODO LO DEMÁS del origen —sus partidas proporcionales, su
+# residuo, y los capítulos que esta copia no se lleva—, y eso es lo que hace que
+# el destino herede también CUÁNTO LE FALTA POR DETALLAR: si el origen estaba a
+# medio detallar, el destino también, sin un solo caso especial. Un origen 100%
+# detallado deja el residuo del destino en cero por la misma aritmética.
+#
+# Y la suma cierra exacta en T sin que nadie la fuerce:
+#
+#     F + factor·(todo lo demás)  =  F + (T − F)  =  T
+#
+# donde `factor·(todo lo demás)` se reparte entre los renglones escalados y el
+# residuo, que aterriza solo en `_settle_residual` como `T − detallado`.
+#
+# T NO SE GUARDA EN NINGÚN LADO, ni el $/m² que lo produjo. El total sigue siendo
+# siempre la suma de los renglones; el $/m² del popup es un insumo transitorio de
+# la CALCULADORA, exactamente como el de la ficha (`_CALCULATOR_FIELDS`), y
+# `constructionCostPerSqm` sigue siendo un derivado que nadie escribe.
+
+def _target_cost(conn, property_id: int, cost_per_sqm) -> Decimal:
+    """`m² × $/m²` de la obra destino — el costo objetivo de la copia.
+
+    Reusa la misma calculadora que siembra el presupuesto al alta, y SIN
+    OVERHEAD, por la misma razón que la ficha no lo aplica al recalcular
+    (`update_property`): un $/m² tecleado contra una obra que ya existe es una
+    edición directa de un presupuesto real, no un estimado grueso, y
+    multiplicarlo por un 1.3 escondido haría que el número de la pantalla no
+    coincidiera con el que se capturó. El popup pre-llena ese campo con el
+    `constructionCostPerSqm` derivado del destino, que YA trae el overhead
+    adentro: volvérselo a aplicar lo inflaría 30% cada vez que alguien acepta el
+    valor sugerido.
+
+    LOS DOS INSUMOS SE NOMBRAN AL RECHAZAR. Faltar es el caso frecuente —hoy solo
+    3 de 5 propiedades tienen metraje— y un «no se puede copiar proporcional» sin
+    decir cuál de los dos falta obliga a adivinar entre dos campos."""
+    row = conn.execute(
+        "SELECT name, sqm_construction FROM properties WHERE id = %s", (property_id,)
+    ).fetchone()
+    if row is None:
+        raise BudgetNotFound(f"Propiedad {property_id} no encontrada")
+    sqm = to_decimal(row["sqm_construction"])
+    faltan = []
+    if sqm <= 0:
+        faltan.append(f"los m² de construcción de «{row['name']}»")
+    if to_decimal(cost_per_sqm) <= 0:
+        faltan.append("el $/m² de desarrollo que se espera de ella")
+    if faltan:
+        raise BudgetError(
+            "La copia proporcional dimensiona el presupuesto copiado con "
+            f"m² × $/m², y falta capturar {' y '.join(faltan)}. Captúralo y "
+            "vuelve a intentar, o copia el presupuesto tal cual.")
+    return money(calculator_estimate(sqm, cost_per_sqm, construction_overhead=1))
+
+
+def _proportional_factor(conn, source_budget_id: int,
+                         chapters: list[str] | None, objetivo: Decimal) -> Decimal:
+    """Por cuánto se multiplica lo que sí escala del origen para que la copia
+    quepa en `objetivo`.
+
+    Las fijas se apartan de las dos puntas de la razón: entran al destino con su
+    monto original, así que ni consumen factor ni lo reciben. Se suman sobre los
+    MISMOS candidatos que se van a copiar (`_CANDIDATES`), no sobre el origen
+    entero, porque una fija de un capítulo que esta copia no se lleva no va a
+    cobrarle nada al destino."""
+    fijas = money(conn.execute(
+        "SELECT coalesce(sum(l.quantity * l.unit_price)"
+        "         FILTER (WHERE NOT l.is_proportional), 0) AS fijas"
+        + _CANDIDATES, (source_budget_id, chapters, chapters)).fetchone()["fijas"])
+    if objetivo <= fijas:
+        raise BudgetError(
+            f"No se puede copiar proporcional: las partidas fijas del presupuesto "
+            f"de origen suman ${fijas:,.0f} y el objetivo de esta obra es "
+            f"${objetivo:,.0f}. Una partida fija cuesta lo que cuesta —no encoge "
+            f"con la obra— así que ya no cabe. Sube el $/m², o desmarca las "
+            f"partidas que sí deban escalar.")
+    escalable, _ = _totals(conn, source_budget_id)
+    escalable -= fijas
+    # Sin nada que escalar el factor no multiplica nada: todo el origen es fijo y
+    # su residuo está en cero. Devolver 1 evita una división entre cero para
+    # dejar exactamente el mismo resultado —las fijas entran tal cual y el
+    # objetivo lo cuadra el residuo del destino—.
+    if escalable <= 0:
+        return Decimal(1)
+    return (objetivo - fijas) / escalable
+
+
 def apply_budget(conn, property_id: int, source_budget_id: int,
-                 chapters: list[str] | None = None) -> tuple[int, int, Decimal]:
+                 chapters: list[str] | None = None, *,
+                 proportional: bool = False, cost_per_sqm=None
+                 ) -> tuple[int, int, Decimal]:
     """Arranca esta obra desde el presupuesto de otra.
 
     Los renglones se SUMAN a lo que ya hubiera: el residuo baja lo que ellos
@@ -543,16 +732,43 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
     son los renglones que el destino YA tenía y que por eso quedaron intactos —
     ver `copy_lines`—, y viajan de vuelta porque aplicar sin decir cuánto no se
     aplicó es un «listo» que esconde la mitad del resultado. `chapters` recorta
-    el origen a esos capítulos; `None` copia el presupuesto entero."""
+    el origen a esos capítulos; `None` copia el presupuesto entero.
+
+    LAS DOS COPIAS SON LA MISMA OPERACIÓN CON OTRO OBJETIVO. La directa conserva
+    el total que la obra ya tenía —copiar sale del residuo, igual que detallar a
+    mano—; la PROPORCIONAL lo mueve al costo que se espera de esta obra
+    (`m² × $/m²`) y dimensiona lo copiado para que quepa ahí. De ahí en adelante
+    las dos son el mismo INSERT y el mismo `_settle_residual`.
+
+    EL FACTOR LO CALCULA ESTE SERVIDOR, siempre, con el metraje del destino y el
+    $/m² que se capturó. Un factor mandado por el cliente volvería la garantía
+    —«la suma da exactamente el objetivo»— imposible de verificar aquí.
+
+    `budgetIncrease` significa lo mismo en las dos: cuánto REBASÓ el detalle al
+    objetivo. No es «cuánto subió el total», porque en la proporcional el total
+    se mueve a T a propósito, y eso es la operación, no una sorpresa que
+    reportar."""
     budget_id = _require_budget(conn, property_id)
     if source_budget_id == budget_id:
         raise BudgetError("Un presupuesto no se copia sobre sí mismo.")
     if conn.execute("SELECT 1 FROM budgets WHERE id = %s",
                     (source_budget_id,)).fetchone() is None:
         raise BudgetNotFound(f"No existe el presupuesto {source_budget_id} que se quiere copiar")
-    total_antes, _ = _totals(conn, budget_id)
-    copied, skipped = copy_lines(conn, source_budget_id, budget_id, chapters)
-    return copied, skipped, _settle_residual(conn, budget_id, total_antes)
+    if proportional:
+        objetivo = _target_cost(conn, property_id, cost_per_sqm)
+        factor = _proportional_factor(conn, source_budget_id, chapters, objetivo)
+    else:
+        # Un $/m² capturado que no se use es una copia directa que el usuario
+        # creyó proporcional: el resultado se ve plausible y nadie se entera.
+        if cost_per_sqm is not None:
+            raise BudgetError(
+                "El $/m² solo lo usa la copia proporcional. Pide la copia "
+                "proporcional, o quita el $/m²: no se puede capturar un costo "
+                "objetivo y copiar los importes tal cual.")
+        objetivo, _ = _totals(conn, budget_id)
+        factor = None
+    copied, skipped = copy_lines(conn, source_budget_id, budget_id, chapters, factor)
+    return copied, skipped, _settle_residual(conn, budget_id, objetivo)
 
 
 # ─── De dónde se puede copiar ─────────────────────────────────────────────────
@@ -619,7 +835,7 @@ def list_sources(conn, exclude_property_id: int | None = None) -> list[dict]:
 LINE_FIELDS = frozenset({
     "chapterName", "name", "unit", "quantity", "unitPrice",
     "supplierCategoryId", "supplierId", "committedAmount", "committedOn",
-    "actualQuantity", "notes",
+    "actualQuantity", "notes", "isProportional",
 })
 
 _LINE_COLUMNS = {
@@ -628,7 +844,7 @@ _LINE_COLUMNS = {
     "supplierCategoryId": "supplier_category_id",
     "supplierId": "supplier_id", "committedAmount": "committed_amount",
     "committedOn": "committed_on", "actualQuantity": "actual_quantity",
-    "notes": "notes",
+    "notes": "notes", "isProportional": "is_proportional",
 }
 
 # Los campos donde un `null` es un MENSAJE —«quítalo»— y no una omisión.
@@ -672,6 +888,10 @@ _REQUIRED_VALUE = {
     "quantity": "La cantidad no se vacía; se pone en 0.",
     "unitPrice": "El precio unitario no se vacía; se pone en 0.",
     "notes": "Las notas se dejan en blanco, no se vacían.",
+    # Toda partida contesta si crece con la obra, y por eso la columna es NOT
+    # NULL con default TRUE: no hay «todavía no se sabe». Un null aquí llegaría
+    # hasta la base y volvería como un 500 mudo.
+    "isProportional": "Una partida crece con la obra o no: la marca no se vacía.",
 }
 
 

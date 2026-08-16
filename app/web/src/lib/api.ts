@@ -1124,11 +1124,40 @@ export function deleteBudgetPayment(
  * tenga (mismo capítulo y mismo nombre) se SALTAN y jamás se sobrescriben:
  * podrían traer proveedor, comprometido o pagos ya capturados. Cuántos entraron
  * y cuántos se saltaron vienen en `linesAdded` y `linesSkipped`.
+ *
+ * `proportional` es lo que separa las DOS formas de copiar:
+ *
+ * - Omitido —el caso por omisión— es la copia DIRECTA: los renglones entran con
+ *   los montos del origen, tal cual.
+ * - Presente pide la copia PROPORCIONAL: copiar la FORMA del presupuesto,
+ *   dimensionada al costo que se espera del destino. El servidor multiplica el
+ *   `costPerSqm` por el metraje de construcción DEL DESTINO —que él ya tiene, y
+ *   por eso no viaja— para llegar al costo objetivo, y de ahí saca el factor.
+ *   **El cliente nunca manda el factor**: un multiplicador arbitrario volvería
+ *   la garantía de que la suma da exactamente el objetivo imposible de verificar
+ *   del lado que la sostiene.
+ *
+ * El modo va en un campo PROPIO y no se deduce de que venga un `$/m²`: deducido,
+ * un popup mandado sin capturar el costo caería a copia directa en silencio —con
+ * el resultado equivocado y sin nada que se vea roto—. Por eso `costPerSqm`
+ * puede viajar en `null`: es el servidor quien contesta cuál de los dos insumos
+ * falta, en vez de que la pantalla decida callarse.
+ *
+ * Las partidas marcadas como no proporcionales entran con su monto original; el
+ * resto se escala. Si al destino le falta el metraje o el `$/m²`, o si las
+ * partidas fijas del origen ya no caben en el objetivo, contesta 422 con el
+ * motivo escrito.
  */
 export function applyBudgetSource(
   propertyId: number, budgetId: number, chapters: string[] | null = null,
+  proportional: { costPerSqm: number | null } | null = null,
 ): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, '/apply'), 'POST', { budgetId, chapters })
+  // En directo el cuerpo es EXACTAMENTE el de siempre: la copia que ya
+  // funcionaba no cambia de forma por existir la otra.
+  return budgetWrite(budgetUrl(propertyId, '/apply'), 'POST', {
+    budgetId, chapters,
+    ...(proportional ? { proportional: true, costPerSqm: proportional.costPerSqm } : {}),
+  })
 }
 
 /**

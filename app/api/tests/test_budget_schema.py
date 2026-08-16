@@ -72,6 +72,11 @@ def test_no_total_is_stored():
         # se sabe mucho antes que el proveedor. Captura manual, como el nombre y
         # la unidad — no hay catálogo del que heredarlo.
         "supplier_category_id",
+        # `is_proportional` es qué CLASE de partida es: una que crece con el
+        # tamaño de la obra o una que cuesta lo que cuesta. Es lo que la copia
+        # proporcional necesita saber para dimensionar sin inflar los permisos, y
+        # vive en el renglón —no en la copia— porque es verdad de la partida.
+        "is_proportional",
     }
     assert _columns("budget_line_payments") == {
         "id", "line_id", "amount", "paid_on", "notes", "created_at",

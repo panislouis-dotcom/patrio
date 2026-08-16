@@ -59,6 +59,10 @@ class LineCreate(BaseModel):
     committedOn: Optional[str] = None
     actualQuantity: Optional[float] = None
     notes: str = ""
+    # ¿Crece con el tamaño de la obra? Casi todas sí —de ahí el default— y las
+    # que no (permisos, licencias, conexiones) cuestan lo que cuestan. Se captura
+    # aquí y no al copiar porque es verdad de la partida, no de una copia.
+    isProportional: bool = True
 
 
 class LineUpdate(BaseModel):
@@ -88,6 +92,7 @@ class LineUpdate(BaseModel):
     committedOn: Optional[str] = None
     actualQuantity: Optional[float] = None
     notes: Optional[str] = None
+    isProportional: Optional[bool] = None
 
 
 class PaymentCreate(BaseModel):
@@ -115,9 +120,28 @@ class BudgetApply(BaseModel):
     Copiar a VARIAS obras es esta misma ruta llamada una vez por destino, no un
     `broadcast`. Cada presupuesto es independiente y la atomicidad correcta es
     por propiedad: si el cuarto destino falla, revertir los otros tres sería
-    incorrecto, no seguro."""
+    incorrecto, no seguro.
+
+    `proportional` pide la copia DIMENSIONADA: los importes del origen se ajustan
+    al costo que se espera de esta obra, `m² de construcción × costPerSqm`. Es un
+    campo aparte y no «vino un $/m², luego es proporcional» porque entonces el
+    modo se elegiría por omisión: un popup mandado sin capturar el $/m² caería a
+    copia directa en silencio, con el resultado equivocado y sin nada que se vea
+    roto. Así, el modo se pide y lo que falte se rechaza nombrándolo.
+
+    `costPerSqm` es un insumo TRANSITORIO de la calculadora, del mismo tipo que
+    el de la ficha: no se guarda en ningún lado, no crea un campo nuevo y no
+    resucita la columna que la 032 retiró. `constructionCostPerSqm` sigue siendo
+    un derivado (presupuesto ÷ metraje) que nadie escribe — el popup lo usa nada
+    más para pre-llenar esta caja.
+
+    EL COSTO OBJETIVO TAMPOCO SE GUARDA. El total del presupuesto sigue siendo la
+    suma de sus renglones; lo que la copia proporcional hace es dejar el residuo
+    en el número que hace que esa suma dé el objetivo, igual que `set_total`."""
     budgetId: int
     chapters: Optional[list[str]] = None
+    proportional: bool = False
+    costPerSqm: Optional[float] = None
 
 
 # ─── La respuesta ─────────────────────────────────────────────────────────────
@@ -226,10 +250,21 @@ def apply_budget(property_id: int, body: BudgetApply,
 
     Y no se hace en silencio: `linesAdded` dice cuántos entraron y `linesSkipped`
     cuántos ya estaban. Un copiado que contesta «listo» sin decir que se saltó la
-    mitad es peor que uno que falla."""
+    mitad es peor que uno que falla.
+
+    CON `proportional` LA COPIA VIENE DIMENSIONADA a lo que se espera que cueste
+    esta obra —`m² de construcción × costPerSqm`— en vez de traer los importes
+    de la otra. Las partidas marcadas como no proporcionales entran con su monto
+    original, y el resto se ajusta para que la suma dé exactamente ese costo. El
+    factor lo calcula el servidor: el cliente manda el $/m², nunca un
+    multiplicador.
+
+    LA DEDUP NO CAMBIA EN NINGUNO DE LOS DOS MODOS. Un renglón que ya está aquí
+    se salta —no se escala, no se actualiza— por la misma razón de siempre."""
     with get_db() as conn:
         copied, skipped, increase = budget_db.apply_budget(
-            conn, property_id, body.budgetId, body.chapters)
+            conn, property_id, body.budgetId, body.chapters,
+            proportional=body.proportional, cost_per_sqm=body.costPerSqm)
         budget = budget_db.get_budget(conn, property_id)
     return {**_written(property_id, budget, None, increase),
             "linesAdded": copied, "linesSkipped": skipped}

@@ -250,6 +250,7 @@ CREATE TABLE public.budget_lines (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     is_residual boolean DEFAULT false NOT NULL,
     supplier_category_id bigint,
+    is_proportional boolean DEFAULT true NOT NULL,
     CONSTRAINT budget_lines_actual_quantity_check CHECK ((actual_quantity >= (0)::numeric)),
     CONSTRAINT budget_lines_chapter_name_check CHECK ((chapter_name <> ''::text)),
     CONSTRAINT budget_lines_closed_needs_actual_quantity CHECK (((closed_at IS NULL) OR ((actual_quantity IS NOT NULL) AND (actual_quantity > (0)::numeric)))),
@@ -274,6 +275,13 @@ COMMENT ON COLUMN public.budget_lines.is_residual IS 'El renglón que absorbe lo
 --
 
 COMMENT ON COLUMN public.budget_lines.supplier_category_id IS 'El oficio que este renglón requiere, COPIADO del catálogo al instanciar como el nombre, la unidad y el precio: editar el catálogo después no lo mueve. FILTRA el selector de proveedores por id —no por el nombre del capítulo, que era una coincidencia de textos— y nunca restringe: el día que el plomero haga albañilería tiene que poder capturarse. Que un renglón tenga oficio y todavía no proveedor es el estado normal mientras se presupuesta.';
+
+
+--
+-- Name: COLUMN budget_lines.is_proportional; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.budget_lines.is_proportional IS '¿Esta partida crece con el tamaño de la obra? TRUE es el caso común y por eso es el default: la casa del doble de tamaño lleva el doble de piso. FALSE es la partida de monto propio —permisos, licencias, conexiones—: cuesta lo que cuesta y la copia proporcional la deja intacta, con su importe original. Es verdad de la PARTIDA, no de una copia, y por eso se guarda y VIAJA con ella: un presupuesto copiado nace sabiendo cuáles no escalan. Qué mueve el factor lo decide la unidad: en «lote» —suma alzada, sin medida detrás— escala el PRECIO, y el renglón se sigue leyendo «1 lote»; en m², ml o pza escala la CANTIDAD, porque el precio por unidad es un hecho de mercado que no cambia porque la casa sea más grande.';
 
 
 --
@@ -3261,4 +3269,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('041'),
     ('042'),
     ('043'),
-    ('044');
+    ('044'),
+    ('045');
