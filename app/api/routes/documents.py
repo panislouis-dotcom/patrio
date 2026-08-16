@@ -12,6 +12,7 @@ from api.db import get_db
 from api.properties_db import get_properties, get_property
 from api.lib.prospectus_html import build_prospectus_html, render_to_pdf
 from api.lib.term_sheet_html import build_term_sheet_html
+from api.lib import plano_js
 from api.auth import get_current_user
 from api import storage, renders_db, budget_db
 
@@ -111,6 +112,15 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
     await asyncio.to_thread(_embed_images, favorites)
     await asyncio.to_thread(_embed_renders, favorites)
     opportunities = _by_status(favorites, "oferta", "prospecto")
+    # El plano solo entra a las páginas de oportunidad: es lo único a lo que un
+    # inversionista todavía puede entrar. `geometry` ya viene en la fila (_FETCH_SQL es
+    # SELECT p.*), así que esto no es una segunda lectura del mismo dato. No va en
+    # to_thread: render_plan_sheets ya es I/O asíncrona, y lanza UN Chromium para todo
+    # el prospecto, no uno por propiedad.
+    sheets = await plano_js.render_plan_sheets(
+        {p["id"]: (p.get("geometry") or {}) for p in opportunities})
+    for p in opportunities:
+        p["planSheets"] = sheets.get(p["id"], [])
     await asyncio.to_thread(_embed_opportunity_extras, opportunities)
     # Cómo lee el prospecto una propiedad, por etapa. El track record es lo que
     # la firma ya hizo, y llega en dos cubetas porque una vendida se presume con
