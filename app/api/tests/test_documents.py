@@ -48,28 +48,59 @@ def _sold(client, property_id: int, sale_price) -> dict:
     return r.json()
 
 
-def _capture(client, path: str, body: dict | None = None) -> str:
+@pytest.fixture(autouse=True)
+def no_browser_for_planos():
+    """Ningún test de este archivo dibuja planos de verdad.
+
+    El endpoint llama a `plano_js.render_plan_sheets`, que lanza un Chromium real y
+    carga el bundle de `make build-plano`. Falsearlo aquí, para TODOS los tests del
+    archivo, es deliberado: si no, cada prospecto de esta suite arrancaría un
+    navegador —lento— y dependería del estado del build.
+
+    `test_plano_js.py` es el único que carga el bundle real en un navegador real. La
+    división es a propósito: si aquél también falseara, un bundle roto pasaría todo
+    en verde y nadie se enteraría hasta el PDF de un cliente."""
+    async def _no_sheets(geometries: dict) -> dict:
+        return {}
+
+    with mock.patch("api.routes.documents.plano_js.render_plan_sheets", new=_no_sheets):
+        yield
+
+
+def _capture(client, path: str, body: dict | None = None, *,
+             plan_sheets: dict | None = None,
+             geometries_seen: dict | None = None) -> str:
     """The HTML the endpoint actually handed to the renderer — the only way to
-    test what the *router* decided (partition, order, subject)."""
+    test what the *router* decided (partition, order, subject).
+
+    `plan_sheets` inyecta las hojas que el navegador falso devuelve, por id de
+    propiedad; `geometries_seen`, si se pasa, recibe el dict de geometrías que el
+    router le entregó — que es la única forma de probar A QUIÉN le pidió planos."""
     seen = {}
 
     async def _render(html: str) -> bytes:
         seen["html"] = html
         return b"%PDF-stub"
 
-    with mock.patch("api.routes.documents.render_to_pdf", new=_render):
+    async def _sheets(geometries: dict) -> dict:
+        if geometries_seen is not None:
+            geometries_seen.update(geometries)
+        return plan_sheets or {}
+
+    with mock.patch("api.routes.documents.render_to_pdf", new=_render), \
+            mock.patch("api.routes.documents.plano_js.render_plan_sheets", new=_sheets):
         r = client.post(path, json=body)
     assert r.status_code == 200, r.text
     return seen["html"]
 
 
-def _capture_favorites(client, *properties) -> str:
+def _capture_favorites(client, *properties, **kwargs) -> str:
     """El prospecto que sale del endpoint con esas propiedades marcadas — la
     partición y el orden los decide el router, no el test."""
     for prop in properties:
         r = client.patch(f"/api/properties/{prop['id']}", json={"isFavorite": True})
         assert r.status_code == 200, r.text
-    return _capture(client, "/api/documents/prospectus")
+    return _capture(client, "/api/documents/prospectus", **kwargs)
 
 
 @pytest.fixture
@@ -540,3 +571,35 @@ def test_prospectus_endpoint_enriches_the_opportunities_it_draws(client, test_pr
     html = _capture_favorites(client, test_property)
     assert '<div class="opp-detail">' in html
     assert "Albañilería" in html
+
+
+def test_el_prospecto_dibuja_el_plano_de_una_oportunidad(client, test_property):
+    """Una oportunidad con levantamiento imprime su plano en el detalle."""
+    html = _capture_favorites(client, test_property, plan_sheets={
+        test_property["id"]: [{"floorId": "abc", "variant": "original",
+                               "floorName": "Planta Baja", "svg": "<svg>PLANO</svg>"}],
+    })
+    assert "PLANO" in html
+    # El elemento, no la regla: `.plan-row` vive en la hoja de estilo siempre.
+    assert '<div class="plan-row">' in html
+    assert "Planta Baja" in html
+
+
+def test_solo_las_oportunidades_reciben_planos(client, make_property, rented_property):
+    """El plano solo entra a las páginas de oportunidad: es lo único a lo que un
+    inversionista todavía puede entrar. Una vendida/en renta no lo pide."""
+    opportunity = make_property(name="[TEST] Oferta Con Plano")
+    r = client.post(f"/api/properties/{opportunity['id']}/transition", json={"to": "oferta"})
+    assert r.status_code == 200, r.text
+
+    geometries: dict = {}
+    _capture_favorites(client, opportunity, rented_property, geometries_seen=geometries)
+    assert set(geometries) == {opportunity["id"]}
+
+
+def test_una_oportunidad_sin_geometria_no_rompe_el_prospecto(client, test_property):
+    """render_plan_sheets devolviendo {} —bundle ausente, Chromium caído— deja el
+    deck entero intacto, sin plano. Un PDF no se muere porque un plano no dibujó."""
+    html = _capture_favorites(client, test_property, plan_sheets={})
+    assert '<div class="plan-row">' not in html
+    assert "[TEST] Lote Prueba" in html
