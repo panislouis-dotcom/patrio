@@ -16,6 +16,8 @@ import pytest
 from api import budget_db
 from api.db import get_db
 
+from .conftest import _delete_property
+
 
 def _get(client, property_id: int) -> dict:
     r = client.get(f"/api/properties/{property_id}")
@@ -710,6 +712,270 @@ def test_the_residual_chapter_is_not_deleted(client, test_property):
     r = client.delete(
         f"/api/properties/{test_property['id']}/budget/chapters/{budget_db.RESIDUAL_CHAPTER}")
     assert r.status_code == 422
+
+
+# ── Copiar de otro presupuesto ──────────────────────────────────────────────
+#
+# Aplicar un presupuesto sobre otro es la única puerta por la que entran
+# renglones que nadie tecleó en esta obra, y por eso es donde se paga la regla
+# central: LO QUE ESTA OBRA YA TIENE NO SE TOCA. Un renglón repetido se salta —
+# nunca se actualiza— porque el de acá puede traer proveedor, comprometido,
+# pagos o cierre, y pisarle el precio reescribiría dinero ya capturado sin que
+# nada se vea roto: solo números distintos que parecen plausibles, la misma
+# forma de falla que el resto de este archivo vigila.
+
+@pytest.fixture
+def origen(client):
+    """Una obra con tres renglones en dos capítulos, para copiar de ella.
+
+    Se borra con `_delete_property` y no con el DELETE del API: sus partidas
+    detalladas son captura, y la ruta las retiene con un 422 a propósito."""
+    r = client.post("/api/properties", json={
+        "name": "[TEST] Obra Origen", "address": "Calle Origen 1", "city": "Monterrey",
+        "purchasePrice": 1_000_000, "sqmConstruction": 200,
+        "constructionCostPerSqm": 9_000, "constructionOverhead": 1.3})
+    assert r.status_code == 201, r.text
+    prop = r.json()
+    for chapter, name, price in (("Instalaciones", "Hidráulica", 200_000),
+                                 ("Instalaciones", "Eléctrica", 300_000),
+                                 ("Acabados", "Piso cerámico", 150_000)):
+        _add(client, prop["id"], chapterName=chapter, name=name, quantity=1, unitPrice=price)
+    yield {"propertyId": prop["id"], "budgetId": _budget(client, prop["id"])["id"]}
+    _delete_property(prop["id"])
+
+
+def _apply(client, property_id: int, source_budget_id: int, **body):
+    return client.post(f"/api/properties/{property_id}/budget/apply",
+                       json={"budgetId": source_budget_id, **body})
+
+
+def _detailed(budget: dict) -> dict:
+    """Los renglones detallados por nombre — el residuo no es una partida."""
+    return {line["name"]: line for line in budget["lines"] if not line["isResidual"]}
+
+
+def test_applying_a_whole_budget_copies_every_line_and_never_the_residual(
+        client, test_property, origen):
+    """El comportamiento de siempre, sin `chapters`: entran los tres renglones,
+    el residuo del origen se queda en su obra y el total de ésta no se mueve —
+    650,000 detallados salen de los 2,340,000 sin detallar."""
+    r = _apply(client, test_property["id"], origen["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    assert r["linesAdded"] == 3
+    assert r["linesSkipped"] == 0
+    assert set(_detailed(r["budget"])) == {"Hidráulica", "Eléctrica", "Piso cerámico"}
+    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("1690000")
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
+    assert _dec(r["budgetIncrease"]) == Decimal("0")
+
+
+def test_only_the_chapters_asked_for_are_copied(client, test_property, origen):
+    """Copiar UNA sección: llega lo de «Acabados» y nada de «Instalaciones». Un
+    capítulo no es una entidad —es el nombre que copian sus renglones— así que
+    copiar una sección es la misma copia con un WHERE."""
+    r = _apply(client, test_property["id"], origen["budgetId"], chapters=["Acabados"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    assert r["linesAdded"] == 1
+    assert r["linesSkipped"] == 0
+    assert set(_detailed(r["budget"])) == {"Piso cerámico"}
+    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("2190000")
+
+
+def test_applying_the_same_source_twice_adds_nothing_the_second_time(
+        client, test_property, origen):
+    """La deduplicación, dicha como la vive quien copia a diez obras y no se
+    acuerda de a cuáles ya les había copiado: la segunda pasada no duplica un
+    solo renglón, y lo DICE — 0 agregados, 3 saltados — en vez de contestar
+    «listo» como si hubiera hecho algo."""
+    primera = _apply(client, test_property["id"], origen["budgetId"]).json()
+    assert primera["linesAdded"] == 3
+
+    r = _apply(client, test_property["id"], origen["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    assert r["linesAdded"] == 0
+    assert r["linesSkipped"] == 3
+    assert len(_detailed(r["budget"])) == 3
+    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("1690000")
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
+
+
+def test_the_same_line_in_other_case_or_with_stray_spaces_is_still_the_same_line(
+        client, test_property, origen):
+    """«  instalación ELÉCTRICA » no entra si ya hay «Instalación eléctrica»: la
+    comparación normaliza minúsculas y espacios de orilla, con el MISMO `_norm`
+    con el que una plantilla decide si ya existe.
+
+    Lo que NO hace es quitar acentos —fusionar «ceramico» con «cerámico» sería
+    fusionar por máquina— y por eso el capítulo padeado y el limpio sí son el
+    mismo, pero nada más por eso."""
+    _add(client, test_property["id"], chapterName="Instalaciones",
+         name="Instalación eléctrica", quantity=1, unitPrice=400_000)
+    _add(client, origen["propertyId"], chapterName="  INSTALACIONES  ",
+         name="  instalación ELÉCTRICA  ", quantity=1, unitPrice=900_000)
+
+    r = _apply(client, test_property["id"], origen["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    assert r["linesAdded"] == 3
+    assert r["linesSkipped"] == 1
+    detalladas = _detailed(r["budget"])
+    assert "  instalación ELÉCTRICA  " not in detalladas
+    # Y el que ya estaba sigue con SU precio, no con el del origen.
+    assert _dec(detalladas["Instalación eléctrica"]["budgetedAmount"]) == Decimal("400000")
+
+
+def test_a_line_with_money_captured_is_skipped_and_left_untouched(
+        client, test_property, origen):
+    """La garantía central, con dinero encima: el renglón del destino trae
+    proveedor firmado y un pago hecho, y el del origen trae otro precio. Se
+    SALTA, no se actualiza.
+
+    Actualizar habría sido igual de fácil de escribir y habría reescrito un
+    contrato y un pago que ya ocurrieron, sin error y sin pista — el precio
+    presupuestado quedaría en 200,000 contra un pago de 40,000 y una variación
+    inventada. Lo que se copia es un plan; lo que ya tiene ejecución no es un
+    plan que se pueda volver a proponer."""
+    linea = _add(client, test_property["id"], chapterName="Instalaciones",
+                 name="Hidráulica", quantity=1, unitPrice=100_000)["line"]["id"]
+    client.patch(f"/api/properties/{test_property['id']}/budget/lines/{linea}",
+                 json={"committedAmount": 90_000})
+    r = client.post(f"/api/properties/{test_property['id']}/budget/lines/{linea}/payments",
+                    json={"amount": 40_000, "paidOn": "2026-06-01"})
+    assert r.status_code == 201, r.text
+
+    r = _apply(client, test_property["id"], origen["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+    assert r["linesAdded"] == 2
+    assert r["linesSkipped"] == 1
+
+    # Ni el renglón ni un peso de lo capturado se movieron: es la MISMA fila.
+    hidraulica = _line_by_id(r["budget"], linea)
+    assert hidraulica["name"] == "Hidráulica"
+    assert _dec(hidraulica["unitPrice"]) == Decimal("100000")
+    assert _dec(hidraulica["quantity"]) == Decimal("1")
+    assert _dec(hidraulica["committedAmount"]) == Decimal("90000")
+    assert [_dec(p["amount"]) for p in hidraulica["payments"]] == [Decimal("40000")]
+    # Y no entró una segunda «Hidráulica» con el precio del origen.
+    assert [line["name"] for line in r["budget"]["lines"]].count("Hidráulica") == 1
+    assert _dec(r["property"]["constructionPaid"]) == Decimal("40000")
+
+
+def test_copying_beyond_the_total_grows_the_budget_and_says_so(client, test_property, origen):
+    """`budgetIncrease` se comporta igual que en toda escritura: copiar sale del
+    residuo y no mueve el total, salvo cuando lo copiado lo rebasa — y entonces
+    eso es aumentar el presupuesto, no detallarlo, y se reporta."""
+    r = client.put(f"/api/properties/{test_property['id']}/budget/total",
+                   json={"amount": 400_000})
+    assert r.status_code == 200, r.text
+
+    r = _apply(client, test_property["id"], origen["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+    assert _dec(r["budgetIncrease"]) == Decimal("250000")     # 650,000 − 400,000
+    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("0")
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("650000")
+
+
+def test_a_chapter_the_source_does_not_have_simply_contributes_nothing(
+        client, test_property, origen):
+    """Pedir un capítulo de más no es un error: se puede copiar «Acabados y
+    Cimentación» a diez obras y que solo algunas tengan las dos. El conteo ya
+    dice qué entró."""
+    r = _apply(client, test_property["id"], origen["budgetId"],
+               chapters=["Acabados", "Cimentación"])
+    assert r.status_code == 201, r.text
+    assert r.json()["linesAdded"] == 1
+    assert set(_detailed(r.json()["budget"])) == {"Piso cerámico"}
+
+
+def test_asking_only_for_chapters_that_do_not_exist_is_refused_with_the_ones_that_do(
+        client, test_property, origen):
+    """Cuando NINGUNO existe sí se rechaza, y ahí está la diferencia: el 201 que
+    quedaría diría «0 agregados, 0 saltados», indistinguible de «ya lo tenías
+    todo». El rechazo trae los capítulos que el origen sí tiene, que es lo que
+    hace falta para corregirlo sin adivinar."""
+    r = _apply(client, test_property["id"], origen["budgetId"], chapters=["Cimentación"])
+    assert r.status_code == 422, r.text
+    mensaje = r.json()["error"]["message"]
+    assert "Cimentación" in mensaje
+    assert "Acabados" in mensaje and "Instalaciones" in mensaje
+    # Y no dejó nada a medias en el destino.
+    assert _detailed(_budget(client, test_property["id"])) == {}
+
+
+def test_an_empty_chapter_list_is_refused_instead_of_copying_nothing(
+        client, test_property, origen):
+    """`[]` no es `null`. Ausente significa «el presupuesto completo»; una lista
+    vacía es un formulario mandado sin marcar nada, y copiar cero renglones en
+    silencio sería contestar «listo» a algo que no se hizo."""
+    r = _apply(client, test_property["id"], origen["budgetId"], chapters=[])
+    assert r.status_code == 422, r.text
+    assert "al menos uno" in r.json()["error"]["message"]
+
+
+# ── De dónde puedo copiar ───────────────────────────────────────────────────
+#
+# `apply` siempre aceptó el id de cualquier presupuesto, pero sin esta lista
+# «arrancar desde otra obra» era una capacidad que nadie podía encontrar. Desde
+# que murieron las plantillas es la lista COMPLETA de puntos de partida que no
+# son captura manual, así que lo que deja fuera es tan importante como lo que
+# trae.
+
+def _sources(client, **params) -> list[dict]:
+    r = client.get("/api/budget/sources", params=params)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_the_sources_list_is_jobs_and_only_jobs(client, test_property, origen):
+    """Cada fuente es una obra: trae el nombre de SU propiedad —el presupuesto no
+    tiene uno propio que pueda contradecirlo— y un `propertyId` que siempre es un
+    número. El `null` que alguna vez significó «es una plantilla» ya no existe, y
+    el cliente puede dejar de ramificar por él."""
+    fuentes = _sources(client)
+    assert fuentes, "el origen tiene tres renglones detallados: algo tiene que salir"
+    assert all(f["propertyId"] is not None for f in fuentes)
+
+    fuente = next(f for f in fuentes if f["id"] == origen["budgetId"])
+    assert fuente["propertyId"] == origen["propertyId"]
+    assert fuente["name"] == _get(client, origen["propertyId"])["name"]
+    assert (fuente["lineCount"], _dec(fuente["total"])) == (3, Decimal("650000"))
+    # `lineCount` es un NÚMERO aquí y `lines` es el arreglo en el detalle: un
+    # mismo nombre con dos tipos se paga en el cliente.
+    assert "lines" not in fuente
+
+
+def test_a_source_counts_only_what_it_would_actually_copy(client, test_property, origen):
+    """El residuo no se copia, así que contarlo prometería un renglón que nunca
+    llega — y una obra apenas capturada es SOLO su residuo. Sin el filtro el
+    selector serían dieciocho renglones en cero con las obras útiles perdidas
+    entre ellos."""
+    propio = _budget(client, test_property["id"])
+    assert len(propio["lines"]) == 1 and propio["lines"][0]["isResidual"]
+    assert all(f["id"] != propio["id"] for f in _sources(client)), \
+        "una obra sin detallar no es una respuesta a «de dónde copio»"
+
+    # El origen tiene CUATRO renglones —los tres detallados y su residuo— y solo
+    # los tres viajan.
+    assert len(_budget(client, origen["propertyId"])["lines"]) == 4
+    assert next(f for f in _sources(client)
+                if f["id"] == origen["budgetId"])["lineCount"] == 3
+
+
+def test_a_job_is_not_offered_as_a_source_to_itself(client, test_property, origen):
+    """`apply` ya lo rechaza con un 422; ofrecerlo en el selector sería hacer que
+    el usuario descubra la regla chocando con ella."""
+    assert any(f["id"] == origen["budgetId"] for f in _sources(client))
+    assert all(f["id"] != origen["budgetId"]
+               for f in _sources(client, excludePropertyId=origen["propertyId"]))
 
 
 # ── Invariantes que sostienen la resta ──────────────────────────────────────

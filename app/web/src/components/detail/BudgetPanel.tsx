@@ -3,18 +3,16 @@ import type React from 'react'
 import {
   fetchBudget, createBudgetLine, updateBudgetLine, deleteBudgetLine, setBudgetTotal,
   renameBudgetChapter, deleteBudgetChapter, addBudgetPayment, deleteBudgetPayment, getProveedores,
-  getCategories, fetchBudgetCatalog, fetchBudgetSources, applyBudgetSource, applyCatalogChapter,
-  createBudgetTemplate,
+  getCategories, fetchBudgetSources, applyBudgetSource, fetchProperties,
 } from '../../lib/api'
 import type {
-  Budget, BudgetCatalogChapter, BudgetItemSuggestion, BudgetLine, BudgetLinePatch,
+  Budget, BudgetLine, BudgetLinePatch,
   BudgetSource, BudgetWrite, Property, Proveedor, ProveedorCategory,
 } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
 import { fmtMXN } from '../../lib/fmt'
 import { computeDepths } from '../../lib/treeUtils'
 import { NumericInput } from '../NumericInput'
-import { DedupeNameCell } from '../budget/DedupeNameCell'
 
 /**
  * El presupuesto de obra de una propiedad: capítulos y partidas, con las tres
@@ -81,6 +79,23 @@ type Row =
   | { kind: 'add'; id: number; parentId: number; chapterName: string }
 
 /**
+ * Lo que le pasó al presupuesto de UNA obra destino al copiarle éste.
+ *
+ * Es por obra y no un resumen sumado porque el copiado es una llamada por
+ * destino: uno puede fallar mientras los otros entran, y «se copiaron 40
+ * renglones» no diría a cuál de las tres obras no llegó nada. `added` y
+ * `skipped` distinguen lo que entró de lo que ya estaba allá y no se tocó.
+ */
+interface PushResult {
+  propertyId: number
+  name: string
+  /** El mensaje del servidor cuando esta obra falló; null cuando entró. */
+  error: string | null
+  added: number
+  skipped: number
+}
+
+/**
  * Los tres montos de un conjunto de renglones, y su brecha. Un capítulo nunca
  * los captura: los deriva de sus partidas, como `getProgress()` deriva el avance
  * y como `totalInvestment` deriva el capital.
@@ -140,17 +155,6 @@ function preview(line: BudgetLine, patch: BudgetLinePatch): BudgetLine {
   return { ...next, budgetedAmount: Math.round(next.quantity * next.unitPrice) }
 }
 
-/**
- * Plantillas y obras vienen en la MISMA lista porque son la misma cosa, y el
- * servidor ya las manda ordenadas —plantillas primero, cada bloque alfabético—.
- * Aquí solo se parten en dos para enseñarlas, que es donde la diferencia sí
- * importa: «Remodelación casa antigua» y «Modesto 415» no se eligen por la
- * misma razón, aunque se copien con la misma línea de código.
- */
-function sourceGroup(sources: BudgetSource[], kind: 'template' | 'property'): BudgetSource[] {
-  return sources.filter(f => (f.propertyId == null) === (kind === 'template'))
-}
-
 /** Un nombre de capítulo que no choque con los que ya existen. */
 function freshChapterName(taken: string[]): string {
   const base = 'Capítulo nuevo'
@@ -165,10 +169,9 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   const [chapters, setChapters] = useState<string[]>([])
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   /**
-   * Los oficios con los que se contrata. Viajan con el presupuesto y no con el
-   * panel de catálogo porque el oficio se captura EN EL RENGLÓN, en la visita
-   * normal: es lo que se sabe mientras se presupuesta, mucho antes que quién lo
-   * va a hacer.
+   * Los oficios con los que se contrata. Se cargan con el presupuesto porque el
+   * oficio se captura EN EL RENGLÓN, en la visita normal: es lo que se sabe
+   * mientras se presupuesta, mucho antes que quién lo va a hacer.
    */
   const [categories, setCategories] = useState<ProveedorCategory[]>([])
   const [loading, setLoading] = useState(true)
@@ -193,21 +196,43 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   const [newTotal, setNewTotal] = useState<number | undefined>(undefined)
 
   /**
-   * El panel de catálogo y plantillas, y lo que necesita.
+   * El panel de arrancar desde otra obra, y lo que necesita.
    *
-   * Se pide al ABRIRLO y no al entrar a la pestaña: el catálogo y los
-   * presupuestos de los que se puede copiar no son de esta propiedad, y casi
-   * toda visita es a capturar un renglón, no a arrancar de cero. Traerlos
-   * siempre serían dos consultas más en la ficha para el caso raro.
+   * Se pide al ABRIRLO y no al entrar a la pestaña: los presupuestos de los que
+   * se puede copiar no son de esta propiedad, y casi toda visita es a capturar
+   * un renglón, no a arrancar de cero. Traerlos siempre sería una consulta más
+   * en la ficha para el caso raro.
    */
   const [sourcing, setSourcing] = useState(false)
-  const [catalog, setCatalog] = useState<BudgetCatalogChapter[]>([])
   const [sources, setSources] = useState<BudgetSource[]>([])
-  const [pickedChapter, setPickedChapter] = useState<number | ''>('')
   const [pickedSource, setPickedSource] = useState<number | ''>('')
-  const [templateName, setTemplateName] = useState('')
-  /** El id del PRESUPUESTO, que es lo que se copia al guardarlo como plantilla. */
+  /** El id del PRESUPUESTO de esta obra: es lo que se copia al empujarlo a otras. */
   const [budgetId, setBudgetId] = useState<number | null>(null)
+
+  /**
+   * El panel de EMPUJAR: llevarse este presupuesto a otras obras.
+   *
+   * Es la otra dirección de «arrancar desde», no otra operación: ahí se jala un
+   * presupuesto ajeno hacia ésta, aquí se lleva el de ésta hacia varias. El
+   * servidor es el mismo `apply` con otro `property_id`, así que lo único que
+   * cambia de verdad es de dónde sale el `budgetId` y cuántas veces se llama.
+   *
+   * Las obras destino se piden al ABRIRLO, por lo mismo que las fuentes: casi
+   * toda visita al presupuesto es a capturar un renglón.
+   */
+  const [pushing, setPushing] = useState(false)
+  const [targets, setTargets] = useState<Property[]>([])
+  const [pickedTargets, setPickedTargets] = useState<number[]>([])
+  /**
+   * Qué capítulos viajan. `null` = nadie ha tocado una casilla, y entonces van
+   * TODOS —el presupuesto entero, que es lo que se quiere copiar casi siempre—.
+   * Es la misma convención que `collapsed`, y evita un efecto que llene la
+   * selección cuando llegan los datos.
+   */
+  const [pickedChapters, setPickedChapters] = useState<Set<string> | null>(null)
+  /** Copiando ahora mismo: hay N llamadas en vuelo, una tras otra. */
+  const [copying, setCopying] = useState(false)
+  const [pushResults, setPushResults] = useState<PushResult[]>([])
 
   /**
    * Lo que se cambió y todavía no se manda, por renglón. Las celdas de texto y
@@ -254,7 +279,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   async function run(op: () => Promise<BudgetWrite>) {
     setError(null)
     try {
-      const { budget, property: updated, budgetIncrease, linesAdded } = await op()
+      const { budget, property: updated, budgetIncrease, linesAdded, linesSkipped } = await op()
       receive(budget)
       onPropertyChange(updated)
       // Detallar reparte un total que no se mueve. Cuando el detalle lo rebasa,
@@ -262,14 +287,18 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
       // detallar sino aumentar el presupuesto. Se dice en vez de dejar que el
       // total suba en silencio.
       //
-      // `linesAdded` solo llega al copiar, y se dice porque copiar es la única
-      // escritura cuyo efecto no se ve entero en pantalla: los renglones caen
-      // dentro de capítulos que están colapsados.
+      // `linesAdded` y `linesSkipped` solo llegan al copiar, y se dicen porque
+      // copiar es la única escritura cuyo efecto no se ve entero en pantalla:
+      // los renglones caen dentro de capítulos que están colapsados. Los
+      // saltados se dicen aparte porque son lo que NO pasó: el destino ya los
+      // tenía y no se sobrescriben nunca.
       setNotice([
         linesAdded != null
-          ? (linesAdded > 0
-              ? `Se copiaron ${linesAdded} renglones.`
-              : 'No había nada nuevo que copiar: esas partidas ya estaban.')
+          ? ([
+              linesAdded > 0 ? `Se copiaron ${linesAdded} renglones.` : null,
+              linesSkipped ? `Se saltaron ${linesSkipped} que ya estaban aquí: no se sobrescribe nada.` : null,
+            ].filter(Boolean).join(' ')
+              || 'No había nada nuevo que copiar: esas partidas ya estaban.')
           : null,
         budgetIncrease > 0
           ? `El detalle rebasó el estimado: el presupuesto de obra subió ${fmtMXN(budgetIncrease)}.`
@@ -297,29 +326,6 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
   function editNow(line: BudgetLine, patch: BudgetLinePatch) {
     edit(line, patch)
     commit(line.id)
-  }
-
-  /**
-   * Adoptar la partida que el aviso de duplicado propuso.
-   *
-   * Copia el TEXTO —nombre y unidad— y la procedencia solo cuando la sugerencia
-   * viene del catálogo. Tres cosas que a propósito NO hace:
-   *
-   * - **No mueve el renglón de capítulo**, aunque la partida del catálogo viva
-   *   en otro. `chapterName` es una copia del renglón, no una referencia; y
-   *   reorganizar la tabla debajo de quien está capturando por haber contestado
-   *   una pregunta es exactamente el estorbo que hunde el módulo.
-   * - **No toca cantidad ni precio.** El catálogo no guarda precio a propósito,
-   *   y pisar el que alguien acaba de teclear sería inventarle uno.
-   * - **No liga nada cuando la sugerencia es un renglón suelto** — no hay a qué
-   *   ligarse todavía. Lo que consigue ahí es que los dos se escriban igual, que
-   *   es lo que hace que lleguen juntos a la cola de promoción.
-   */
-  function adopt(line: BudgetLine, s: BudgetItemSuggestion) {
-    editNow(line, {
-      name: s.name, unit: s.unit,
-      ...(s.itemId != null ? { itemId: s.itemId } : {}),
-    })
   }
 
   /**
@@ -384,32 +390,114 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     const opening = !sourcing
     setSourcing(opening)
     if (!opening) return
-    Promise.all([fetchBudgetCatalog(), fetchBudgetSources(propertyId)])
-      .then(([c, f]) => { setCatalog(c); setSources(f) })
-      .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer el catálogo'))
+    fetchBudgetSources(propertyId)
+      .then(setSources)
+      .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer de dónde copiar'))
+  }
+
+  function togglePush() {
+    const opening = !pushing
+    setPushing(opening)
+    if (!opening) return
+    setPushResults([])
+    // ESTA obra se saca de la lista: copiarse sobre sí misma la rechaza el
+    // servidor con un 422, y ofrecer una opción que solo puede dar error es
+    // hacer que alguien descubra la regla chocando con ella. Es la misma razón
+    // por la que `fetchBudgetSources` recibe a quién excluir.
+    //
+    // Las archivadas tampoco: `fetchProperties` las deja fuera salvo que se
+    // pidan a propósito, y no se le presupuesta una obra a lo que ya se guardó.
+    fetchProperties()
+      .then(ps => setTargets(ps.filter(p => p.id !== propertyId)))
+      .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer a qué obras copiar'))
   }
 
   /**
-   * Guardar esta obra como plantilla. Es el ÚNICO de los tres copiados que no
-   * pasa por `run`: no devuelve un presupuesto ni una propiedad porque no toca
-   * ninguno de los dos —lo que escribe es un presupuesto nuevo, sin propiedad, y
-   * la obra de la que salió queda exactamente igual.
+   * Los capítulos que SÍ se pueden copiar. El del residuo queda fuera: es lo que
+   * a ESTA obra le falta por detallar, y en la de al lado sería una partida que
+   * le come su propio residuo. El servidor nunca lo copia —por eso `lineCount`
+   * cuenta lo copiable— así que ofrecerlo sería una casilla que no hace nada.
    */
-  async function saveTemplate() {
-    const name = templateName.trim()
-    if (!name || budgetId == null) return
+  const copyableChapters = useMemo(
+    () => chapters.filter(c => lines.some(l => l.chapterName === c && !l.isResidual)),
+    [chapters, lines],
+  )
+
+  const chapterPicked = (name: string) => (pickedChapters === null ? true : pickedChapters.has(name))
+
+  function toggleChapter(name: string) {
+    setPickedChapters(prev => {
+      const next = new Set(prev ?? copyableChapters)
+      next.has(name) ? next.delete(name) : next.add(name)
+      return next
+    })
+  }
+
+  /**
+   * Lo que se manda en `chapters`. `null` cuando nadie tocó una casilla, y eso
+   * es literal: no se eligieron capítulos, se copia el presupuesto entero. Con
+   * casillas tocadas viaja la lista, en el orden de lectura del presupuesto.
+   */
+  const chaptersToPush = pickedChapters === null
+    ? null
+    : copyableChapters.filter(c => pickedChapters.has(c))
+
+  /**
+   * Si el botón de copiar hace algo. Una sola definición porque la usan el
+   * `disabled` y el cursor: escritas por separado se desfasaron —el botón
+   * quedaba muerto pero con la manita— y esa mentira la ve el usuario.
+   */
+  const canPush = !copying
+    && pickedTargets.length > 0
+    && (chaptersToPush === null || chaptersToPush.length > 0)
+
+  /**
+   * Empujar este presupuesto a las obras elegidas: UNA LLAMADA POR OBRA.
+   *
+   * No hay ruta de reparto y no es un descuido. Cada presupuesto es
+   * independiente, así que si el tercer destino falla, deshacer los dos que ya
+   * entraron sería incorrecto y no seguro; la atomicidad correcta es por
+   * propiedad, y ésa ya la da el endpoint.
+   *
+   * Y NO pasa por `run`: la respuesta trae el presupuesto y la propiedad DEL
+   * DESTINO. Pintarla aquí sustituiría esta obra por otra en la pantalla y en la
+   * ficha. Lo que esta obra tiene no cambia con esto —de aquí solo sale una
+   * copia—, así que no hay nada que refrescar.
+   */
+  async function pushToTargets() {
+    if (budgetId == null || pickedTargets.length === 0) return
+    const chosen = targets.filter(p => pickedTargets.includes(p.id))
+    const alcance = chaptersToPush === null
+      ? 'todo el presupuesto'
+      : `${chaptersToPush.length} capítulo${chaptersToPush.length === 1 ? '' : 's'}`
+    if (!window.confirm(
+      `¿Copiar ${alcance} a ${chosen.length} obra${chosen.length === 1 ? '' : 's'}? `
+      + 'Los renglones que allá ya existan se saltan: no se sobrescribe nada.',
+    )) return
     setError(null)
-    try {
-      // Contesta el DETALLE —con `lines`, sin `lineCount`— así que la lista se
-      // vuelve a leer en vez de meterle esta respuesta dentro: son dos formas
-      // distintas de una plantilla, y la de la lista es la que el selector pinta.
-      const created = await createBudgetTemplate({ name, fromBudgetId: budgetId })
-      setSources(await fetchBudgetSources(propertyId))
-      setTemplateName('')
-      setNotice(`Se guardó «${created.name}» como plantilla, con ${created.lines.length} renglones.`)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo guardar la plantilla')
+    setCopying(true)
+    // Se van pintando conforme responden: con cinco destinos, esperar al último
+    // para enseñar el primero deja la pantalla muda justo cuando más está
+    // pasando.
+    setPushResults([])
+    for (const p of chosen) {
+      const base = { propertyId: p.id, name: p.name }
+      try {
+        const { linesAdded, linesSkipped } = await applyBudgetSource(p.id, budgetId, chaptersToPush)
+        setPushResults(prev => [...prev, {
+          ...base, error: null, added: linesAdded ?? 0, skipped: linesSkipped ?? 0,
+        }])
+      } catch (e) {
+        // Que una obra falle no cancela las demás: las que ya entraron quedan
+        // aplicadas y las que faltan se siguen intentando. Por eso el fallo se
+        // guarda CON EL NOMBRE de su obra en vez de tumbar todo el copiado.
+        setPushResults(prev => [...prev, {
+          ...base, added: 0, skipped: 0,
+          error: e instanceof Error ? e.message : 'No se pudo copiar',
+        }])
+      }
     }
+    setCopying(false)
   }
 
   function renameChapter(from: string, to: string) {
@@ -448,6 +536,18 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
     cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.06em',
     padding: '2px 8px',
+  }
+  /** El bloque que se despliega bajo los botones. Los dos copiados usan el mismo. */
+  const panelBox: React.CSSProperties = {
+    border: `1px solid ${colors.border}`, background: colors.surface,
+    padding: '10px 12px', marginBottom: '10px',
+    display: 'flex', flexDirection: 'column', gap: '10px',
+  }
+  const panelRow: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px',
+  }
+  const checkLabel: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer',
   }
   const kill: React.CSSProperties = {
     background: 'transparent', border: 'none', color: colors.secondary, cursor: 'pointer',
@@ -530,58 +630,26 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
             + CAPÍTULO
           </button>
           <button onClick={toggleSourcing} style={ghost}>
-            CATÁLOGO Y PLANTILLAS {sourcing ? '▾' : '▸'}
+            COPIAR DE OTRA OBRA {sourcing ? '▾' : '▸'}
+          </button>
+          {/* La otra dirección, y por eso es otro botón: «arrancar desde» jala
+              un presupuesto ajeno hacia esta obra, esto se lleva el de esta obra
+              hacia otras. Meterlas en el mismo bloque haría que se pareciera un
+              copiado que trae a uno que manda. */}
+          <button onClick={togglePush} style={ghost}>
+            COPIAR A OTRAS OBRAS {pushing ? '▾' : '▸'}
           </button>
         </div>
       </div>
 
-      {/* Las tres formas de no empezar en blanco, juntas porque las tres son la
-          MISMA operación —copiar— usada en tres direcciones. Una plantilla es un
-          presupuesto sin propiedad, así que arrancar desde una plantilla y
-          arrancar desde la obra de al lado no se distinguen ni aquí ni en el
-          servidor: son un renglón de este panel con dos grupos en su selector. */}
+      {/* ARRANCAR DESDE: la única forma de no empezar en blanco que no es
+          capturar a mano. Ya no hay plantillas —solo valían curadas, y eso pide
+          que alguien las mantenga, mientras que la obra parecida más reciente
+          está más actualizada sin que nadie haga nada— así que el selector es
+          una sola lista de obras. */}
       {sourcing && (
-        <div style={{
-          border: `1px solid ${colors.border}`, background: colors.surface,
-          padding: '10px 12px', marginBottom: '10px',
-          display: 'flex', flexDirection: 'column', gap: '10px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-            <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>
-              BAJAR UN CAPÍTULO
-            </span>
-            <select
-              value={pickedChapter}
-              aria-label="Capítulo del catálogo"
-              onChange={e => setPickedChapter(e.target.value ? Number(e.target.value) : '')}
-              style={{ ...cellInput, width: '220px' }}
-            >
-              <option value="">— Elegir capítulo del catálogo</option>
-              {catalog.map(c => (
-                <option key={c.id} value={c.id}>{c.name} ({c.items.length})</option>
-              ))}
-            </select>
-            <button
-              disabled={pickedChapter === ''}
-              onClick={() => {
-                if (pickedChapter === '') return
-                void run(() => applyCatalogChapter(propertyId, pickedChapter))
-                setPickedChapter('')
-              }}
-              style={{ ...ghost, cursor: pickedChapter === '' ? 'not-allowed' : 'pointer' }}
-            >
-              BAJAR
-            </button>
-            {/* Se dice aquí porque es lo que más sorprende: el esqueleto no
-                mueve un peso, y no es un defecto. */}
-            <span style={micro}>Nacen en cantidad 0 — el catálogo no guarda precio.</span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-            {/* Plantilla y obra son la MISMA llamada con el id del presupuesto
-                que sea: el servidor no las distingue porque una plantilla es un
-                presupuesto sin propiedad. Aquí se separan solo para elegirlas,
-                que es donde la diferencia sí importa. */}
+        <div style={panelBox}>
+          <div style={panelRow}>
             <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>
               ARRANCAR DESDE
             </span>
@@ -591,38 +659,28 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               onChange={e => setPickedSource(e.target.value ? Number(e.target.value) : '')}
               style={{ ...cellInput, width: '220px' }}
             >
-              <option value="">— Elegir plantilla u obra</option>
-              {sourceGroup(sources, 'template').length > 0 && (
-                <optgroup label="Plantillas">
-                  {sourceGroup(sources, 'template').map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} · {f.lineCount} renglones · {fmtMXN(f.total)}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {sourceGroup(sources, 'property').length > 0 && (
-                <optgroup label="Otras obras">
-                  {sourceGroup(sources, 'property').map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} · {f.lineCount} renglones · {fmtMXN(f.total)}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
+              {/* Una sola clase de origen, así que la lista va PLANA: un
+                  `optgroup` con todo adentro sería un encabezado que no separa
+                  de nada. */}
+              <option value="">— Elegir obra</option>
+              {sources.map(f => (
+                <option key={f.id} value={f.id}>
+                  {f.name} · {f.lineCount} renglones · {fmtMXN(f.total)}
+                </option>
+              ))}
             </select>
             <button
               disabled={pickedSource === ''}
               onClick={() => {
                 if (pickedSource === '') return
-                // A diferencia de bajar un capítulo, esto NO es idempotente:
-                // copiar dos veces duplica los renglones, porque dos renglones
-                // con el mismo nombre pueden ser dos renglones legítimos y el
-                // servidor no puede saber cuál es el caso. Lo sabe quien copia.
+                // Se confirma porque escribe en el presupuesto: los renglones se
+                // SUMAN a los que ya hay. Copiar dos veces ya no los duplica —el
+                // servidor salta los que ya existen por capítulo y nombre— pero
+                // tampoco es una operación que se quiera disparar de un dedazo.
                 const cual = sources.find(t => t.id === pickedSource)
                 if (!window.confirm(
                   `¿Copiar los ${cual?.lineCount ?? ''} renglones de «${cual?.name ?? ''}» a esta obra? `
-                  + 'Se suman a lo que ya hay; copiar dos veces los duplica.',
+                  + 'Se suman a lo que ya hay; los que ya existan aquí se saltan sin tocarlos.',
                 )) return
                 void run(() => applyBudgetSource(propertyId, pickedSource))
                 setPickedSource('')
@@ -637,33 +695,108 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
             <span style={micro}>
               {sources.length > 0
                 ? 'Se suman a lo que ya hay; el residuo baja y el total no se mueve.'
-                : 'Todavía no hay de dónde copiar. Detalla partidas en una obra, o guárdala como plantilla, y aparecerá aquí.'}
+                : 'Todavía no hay de dónde copiar. Detalla partidas en otra obra y aparecerá aquí.'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* EMPUJAR: de esta obra hacia otras. Mismo endpoint que «arrancar desde»
+          —el `property_id` de la URL es siempre el destino— llamado una vez por
+          obra elegida. */}
+      {pushing && (
+        <div style={panelBox}>
+          <div style={panelRow}>
+            <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>
+              A QUÉ OBRAS
+            </span>
+            {targets.length === 0 ? (
+              <span style={micro}>
+                No hay otras obras a las que copiar todavía.
+              </span>
+            ) : targets.map(p => (
+              <label key={p.id} style={checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={pickedTargets.includes(p.id)}
+                  aria-label={`Copiar a ${p.name}`}
+                  onChange={() => setPickedTargets(prev => (
+                    prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
+                  ))}
+                  style={{ accentColor: colors.primary, cursor: 'pointer' }}
+                />
+                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
+                  {p.name}
+                </span>
+              </label>
+            ))}
+          </div>
+
+          {/* Los capítulos salen del presupuesto que ya está en pantalla: el
+              servidor los manda con `get_budget`, en su orden de lectura. Todos
+              marcados, porque copiar el presupuesto entero es lo normal y
+              elegir capítulos es la excepción. */}
+          <div style={panelRow}>
+            <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>
+              QUÉ SE COPIA
+            </span>
+            {copyableChapters.length === 0 ? (
+              <span style={micro}>
+                Todavía no hay partidas detalladas que copiar: el residuo no viaja.
+              </span>
+            ) : copyableChapters.map(c => (
+              <label key={c} style={checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={chapterPicked(c)}
+                  aria-label={`Copiar capítulo ${c}`}
+                  onChange={() => toggleChapter(c)}
+                  style={{ accentColor: colors.primary, cursor: 'pointer' }}
+                />
+                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
+                  {c}
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <div style={panelRow}>
+            <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }} />
+            <button
+              disabled={!canPush}
+              onClick={() => void pushToTargets()}
+              style={{ ...ghost, cursor: canPush ? 'pointer' : 'not-allowed' }}
+            >
+              {copying ? 'COPIANDO…' : 'COPIAR A ESTAS OBRAS'}
+            </button>
+            {/* Lo que hay que saber ANTES de apretar: que no pisa nada. Un
+                renglón que ya existe allá puede traer proveedor, comprometido o
+                pagos, y sobrescribirlo reescribiría dinero ya capturado. */}
+            <span style={micro}>
+              Se agregan a lo que cada obra ya tenga; los renglones que ya existan allá
+              se saltan sin tocarse. El residuo de cada una se reajusta solo.
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-            <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>
-              GUARDAR COMO
-            </span>
-            <input
-              value={templateName}
-              placeholder="Nombre de la plantilla"
-              aria-label="Nombre de la plantilla"
-              onChange={e => setTemplateName(e.target.value)}
-              style={{ ...cellInput, width: '220px' }}
-            />
-            <button
-              disabled={!templateName.trim()}
-              onClick={() => void saveTemplate()}
-              style={{ ...ghost, cursor: templateName.trim() ? 'pointer' : 'not-allowed' }}
-            >
-              GUARDAR PLANTILLA
-            </button>
-            {/* El residuo no viaja: es lo que a ESTA obra le falta por detallar,
-                y en una plantilla sería una partida que le come el residuo a la
-                siguiente. */}
-            <span style={micro}>Copia las partidas detalladas, sin proveedores ni pagos.</span>
-          </div>
+          {/* El resultado, OBRA POR OBRA. Un «listo» que escondiera que a una de
+              las tres no llegó nada sería peor que un error. */}
+          {pushResults.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {pushResults.map(r => (
+                <div
+                  key={r.propertyId}
+                  style={{
+                    fontFamily: fonts.sans, fontSize: '11px',
+                    color: r.error ? '#c0392b' : colors.tertiary,
+                  }}
+                >
+                  {r.error
+                    ? `${r.name}: no se copió — ${r.error}`
+                    : `${r.name}: ${r.added} renglones agregados · ${r.skipped} saltados por ya existir`}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -813,18 +946,13 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
               return [
                 <tr key={line.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                   <td style={{ ...td, paddingLeft: `${6 + indent}px` }}>
-                    {/* La celda que evita que el catálogo se pudra. Sugiere
-                        mientras se escribe y no bloquea nada: el renglón se
-                        guarda al soltar la caja, conteste o no quien captura. */}
-                    <DedupeNameCell
+                    <input
                       value={line.name}
-                      ariaLabel={`Partida ${line.name}`}
-                      style={cellInput}
-                      lineId={line.id}
-                      linked={line.itemId != null}
-                      onChange={name => edit(line, { name })}
+                      aria-label={`Partida ${line.name}`}
+                      onChange={e => edit(line, { name: e.target.value })}
+                      onFocus={e => e.target.select()}
                       onBlur={() => commitText(line.id, 'name')}
-                      onAdopt={s => adopt(line, s)}
+                      style={cellInput}
                     />
                   </td>
                   <td style={td}>

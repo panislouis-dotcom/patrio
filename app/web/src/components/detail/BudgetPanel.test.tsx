@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import type {
-  Budget, BudgetCatalogChapter, BudgetItemSuggestion, BudgetLine, BudgetSource, Property,
+  Budget, BudgetLine, BudgetSource, Property,
   Proveedor,
 } from '../../lib/types'
 import { BudgetPanel } from './BudgetPanel'
@@ -21,15 +21,9 @@ vi.mock('../../lib/api', async importOriginal => {
     deleteBudgetChapter: vi.fn(),
     addBudgetPayment: vi.fn(),
     deleteBudgetPayment: vi.fn(),
-    // Inerte por omisión: el aviso de duplicado no debe cambiar el resultado de
-    // ninguna prueba que no vaya sobre él. Que sea así ES la propiedad que se
-    // quiere —sugiere y no bloquea— y las pruebas la ejercen abajo.
-    suggestBudgetItems: vi.fn(async () => []),
-    fetchBudgetCatalog: vi.fn(async () => CATALOGO),
     fetchBudgetSources: vi.fn(async () => FUENTES),
-    applyCatalogChapter: vi.fn(),
     applyBudgetSource: vi.fn(),
-    createBudgetTemplate: vi.fn(),
+    fetchProperties: vi.fn(async () => OBRAS),
   }
 })
 
@@ -55,26 +49,26 @@ const OFICIOS = [
 
 const categoria = (id: number, name: string) => ({ id, name, description: '', createdAt: '' })
 
-/** El catálogo, para el panel de CATÁLOGO Y PLANTILLAS. */
-const CATALOGO: BudgetCatalogChapter[] = [
-  {
-    id: 1, name: 'Acabados', sortOrder: 0, isActive: true, supplierCategoryId: null,
-    items: [
-      { id: 11, chapterId: 1, name: 'Piso cerámico 60×60', unit: 'm²', sortOrder: 0, isActive: true, supplierCategoryId: null, usedInLines: 4 },
-      { id: 12, chapterId: 1, name: 'Pintura vinílica', unit: 'm²', sortOrder: 1, isActive: true, supplierCategoryId: null, usedInLines: 1 },
-    ],
-  },
+/**
+ * De dónde se puede copiar: los presupuestos de LAS OTRAS OBRAS, ya ordenados
+ * por el servidor. Ya no hay plantillas — copiar de la obra parecida más
+ * reciente es el único punto de partida que no es captura manual.
+ */
+const FUENTES: BudgetSource[] = [
+  { id: 500, name: 'Zaragoza 100', propertyId: 4, lineCount: 18, total: 1_800_000 },
+  { id: 501, name: 'Modesto 415', propertyId: 3, lineCount: 22, total: 2_300_000 },
 ]
 
 /**
- * De dónde se puede copiar. Plantillas y obras llegan en UNA lista porque son la
- * misma cosa —una plantilla es un presupuesto sin propiedad— ya ordenada por el
- * servidor, plantillas primero.
+ * El inventario, que es de donde salen las obras DESTINO al empujar. La 7 es la
+ * que se está viendo: tiene que quedar fuera de la lista, porque copiarse sobre
+ * sí misma la rechaza el servidor con un 422.
  */
-const FUENTES: BudgetSource[] = [
-  { id: 500, name: 'Remodelación casa antigua', propertyId: null, lineCount: 18, total: 1_800_000 },
-  { id: 501, name: 'Modesto 415', propertyId: 3, lineCount: 22, total: 2_300_000 },
-]
+const OBRAS = [
+  { id: 3, name: 'Modesto 415' },
+  { id: 4, name: 'Zaragoza 100' },
+  { id: 7, name: 'Esta misma obra' },
+] as Property[]
 
 const PROVEEDORES: Proveedor[] = [
   proveedor({ id: 11, name: 'Albañiles del Norte', categories: [categoria(7, 'Albañilería')] }),
@@ -86,7 +80,7 @@ const PROVEEDORES: Proveedor[] = [
 ]
 
 const line = (over: Partial<BudgetLine>): BudgetLine => ({
-  id: 1, budgetId: 9, itemId: null, chapterName: 'Albañilería', name: 'Muro de block',
+  id: 1, budgetId: 9, chapterName: 'Albañilería', name: 'Muro de block',
   unit: 'm²', quantity: 10, unitPrice: 1_000, budgetedAmount: 10_000,
   // Sin oficio: es como nace un renglón tecleado a mano, y el estado en el que
   // vive la mayor parte de un presupuesto que apenas se está capturando.
@@ -148,10 +142,9 @@ describe('BudgetPanel', () => {
     // hace depender del orden en que corren. Reponer los valores por omisión
     // aquí es lo que las mantiene independientes.
     vi.clearAllMocks()
-    vi.mocked(api.fetchBudgetCatalog).mockResolvedValue(CATALOGO)
     vi.mocked(api.fetchBudgetSources).mockResolvedValue(FUENTES)
-    vi.mocked(api.suggestBudgetItems).mockResolvedValue([])
     vi.mocked(api.getCategories).mockResolvedValue(OFICIOS)
+    vi.mocked(api.fetchProperties).mockResolvedValue(OBRAS)
   })
 
   it('abre con los capítulos colapsados: la vista inicial son renglones, no cuarenta', async () => {
@@ -598,124 +591,29 @@ describe('BudgetPanel', () => {
     ))
   })
 
-  // ── El catálogo que aprende ───────────────────────────────────────────────
+  // ── Arrancar desde otra obra ───────────────────────────────────────────────
 
-  it('adoptar la del catálogo copia el texto y la procedencia, y ningún importe', async () => {
-    // Reconocer una partida no puede reescribir lo que ya se capturó: el
-    // catálogo no guarda precio, y el que alguien acaba de teclear se queda.
-    const b = budget([
-      line({ id: 1, name: 'Piso ceramico', unit: 'm2', unitPrice: 1_200, quantity: 40 }),
-      residual(0),
-    ])
-    await renderPanel(b)
-    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
-    vi.mocked(api.suggestBudgetItems).mockResolvedValue([{
-      source: 'catalog', itemId: 11, chapterId: 1, chapterName: 'Acabados',
-      name: 'Piso cerámico 60×60', unit: 'm²', similarity: 0.72, usedInLines: 4,
-    } satisfies BudgetItemSuggestion])
-    vi.mocked(api.updateBudgetLine).mockResolvedValue({
-      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
-    })
-
-    fireEvent.change(screen.getByLabelText('Partida Piso ceramico'), {
-      target: { value: 'Piso ceramico 60x60' },
-    })
-    fireEvent.click(await screen.findByText('USAR LA DEL CATÁLOGO'))
-
-    await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalled())
-    // El nombre, la unidad y la procedencia. Ni precio, ni cantidad, ni capítulo:
-    // mover el renglón a otro capítulo reorganizaría la tabla debajo de quien
-    // está capturando por haber contestado una pregunta.
-    expect(vi.mocked(api.updateBudgetLine).mock.calls[0][2]).toEqual({
-      name: 'Piso cerámico 60×60', unit: 'm²', itemId: 11,
-    })
-  })
-
-  it('un renglón que ya viene del catálogo no vuelve a preguntar', async () => {
-    await renderPanel(budget([
-      line({ id: 1, name: 'Piso cerámico 60×60', itemId: 11 }),
-      residual(0),
-    ]))
-    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
-
-    fireEvent.change(screen.getByLabelText('Partida Piso cerámico 60×60'), {
-      target: { value: 'Piso cerámico 60×60 rectificado' },
-    })
-    await new Promise(r => setTimeout(r, 320))
-
-    expect(api.suggestBudgetItems).not.toHaveBeenCalled()
-  })
-
-  it('una partida dada de baja en el catálogo no rompe el renglón que la usó', async () => {
-    // La otra mitad de la baja lógica, y la razón de que el borrado físico no
-    // exista: apagar una partida la saca de la obra NUEVA, y los renglones que
-    // ya la citan siguen enteros y editables, con su importe intacto.
-    const b = budget([
-      line({
-        id: 1, name: 'Pintura vinílica', itemId: 12, unit: 'm²',
-        quantity: 80, unitPrice: 150, budgetedAmount: 12_000,
-      }),
-      residual(0),
-    ])
-    // El catálogo ya no la ofrece
-    vi.mocked(api.fetchBudgetCatalog).mockResolvedValue([
-      { ...CATALOGO[0], items: [CATALOGO[0].items[0]] },
-    ])
-    await renderPanel(b)
-    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
-
-    const fila = screen.getByLabelText('Partida Pintura vinílica').closest('tr')!
-    expect(within(fila).getByText('$12,000')).not.toBeNull()
-
-    // Y se sigue capturando encima con toda normalidad
-    vi.mocked(api.updateBudgetLine).mockResolvedValue({
-      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
-    })
-    const caja = screen.getByLabelText('Precio unitario de Pintura vinílica')
-    fireEvent.change(caja, { target: { value: '175' } })
-    fireEvent.blur(caja)
-
-    await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalledWith(7, 1, { unitPrice: 175 }))
-  })
-
-  it('bajar un capítulo del catálogo trae el esqueleto, sin mover un peso', async () => {
-    const onChange = await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
-    await screen.findByLabelText('Capítulo del catálogo')
-    vi.mocked(api.applyCatalogChapter).mockResolvedValue({
-      line: null, budget: DETALLADO, property: propiedad() as Property, budgetIncrease: 0,
-    })
-
-    fireEvent.change(screen.getByLabelText('Capítulo del catálogo'), { target: { value: '1' } })
-    fireEvent.click(screen.getByText('BAJAR'))
-
-    await waitFor(() => expect(api.applyCatalogChapter).toHaveBeenCalledWith(7, 1))
-    await waitFor(() => expect(onChange).toHaveBeenCalled())
-    // Se dice en pantalla, porque es lo que más sorprende
-    expect(screen.getByText(/Nacen en cantidad 0 — el catálogo no guarda precio/)).not.toBeNull()
-  })
-
-  it('arrancar desde una plantilla copia sus renglones por su id de presupuesto', async () => {
-    // El id de una plantilla ES un id de presupuesto: el mismo campo por el que
-    // viajaría el de otra obra. El servidor no distingue las dos, y con razón.
+  it('arrancar desde otra obra copia sus renglones por su id de presupuesto', async () => {
+    // Lo que viaja es el id del PRESUPUESTO de la obra origen, no el de la obra.
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
     const selector = await screen.findByLabelText('Presupuesto de origen')
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.applyBudgetSource).mockResolvedValue({
       line: null, budget: DETALLADO, property: propiedad() as Property, budgetIncrease: 0,
     })
 
-    // Las dos salen del MISMO selector, en dos secciones: el servidor no las
-    // distingue y la llamada es una sola.
-    expect(within(selector).getByRole('group', { name: 'Plantillas' })).not.toBeNull()
-    expect(within(selector).getByRole('group', { name: 'Otras obras' })).not.toBeNull()
+    // Una sola clase de origen: la lista va PLANA, sin encabezados de sección
+    // que no separarían de nada.
+    expect(within(selector).queryAllByRole('group')).toHaveLength(0)
+    expect(within(selector).getByRole('option', { name: /Zaragoza 100/ })).not.toBeNull()
+    expect(within(selector).getByRole('option', { name: /Modesto 415/ })).not.toBeNull()
 
     fireEvent.change(selector, { target: { value: '500' } })
     fireEvent.click(screen.getByText('COPIAR RENGLONES'))
     await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 500))
 
-    // Y arrancar desde la obra de al lado es la misma llamada con otro id
+    // Y otra obra es la misma llamada con otro id
     fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '501' } })
     fireEvent.click(screen.getByText('COPIAR RENGLONES'))
     await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 501))
@@ -728,7 +626,7 @@ describe('BudgetPanel', () => {
     // `apply` rechaza copiarse sobre sí mismo con un 422, y ofrecer una opción
     // que solo puede dar error es hacer que alguien descubra la regla chocando.
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
     await screen.findByLabelText('Presupuesto de origen')
 
     expect(api.fetchBudgetSources).toHaveBeenCalledWith(7)
@@ -739,17 +637,19 @@ describe('BudgetPanel', () => {
     // defecto: no tiene nada que dar. El vacío de un selector se lee como roto.
     vi.mocked(api.fetchBudgetSources).mockResolvedValue([])
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
 
     expect(await screen.findByText(/Todavía no hay de dónde copiar/)).not.toBeNull()
   })
 
-  it('copiar un presupuesto se confirma, porque copiar dos veces duplica', async () => {
-    // No es idempotente, al revés que bajar un capítulo del catálogo: dos
-    // renglones con el mismo nombre pueden ser dos renglones legítimos y el
-    // servidor no puede saber cuál es el caso. Lo sabe quien copia.
+  it('copiar un presupuesto se confirma: es una escritura en masa que no se ve', async () => {
+    // NO se confirma porque duplique: el servidor compara (capítulo, nombre)
+    // normalizados y salta los que ya están, así que copiar dos veces deja el
+    // presupuesto igual. Se confirma porque mete decenas de renglones de un
+    // clic y caen dentro de capítulos colapsados: el efecto no está en
+    // pantalla, y una escritura así no se dispara de un dedazo.
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
     const selector = await screen.findByLabelText('Presupuesto de origen')
     vi.spyOn(window, 'confirm').mockReturnValue(false)
 
@@ -758,12 +658,12 @@ describe('BudgetPanel', () => {
 
     expect(api.applyBudgetSource).not.toHaveBeenCalled()
     expect(vi.mocked(window.confirm).mock.calls[0][0])
-      .toMatch(/los 18 renglones de «Remodelación casa antigua»/)
+      .toMatch(/los 18 renglones de «Zaragoza 100»/)
   })
 
   it('copiar dice cuántos renglones cayeron: no se ven, los capítulos están cerrados', async () => {
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
     await screen.findByLabelText('Presupuesto de origen')
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.applyBudgetSource).mockResolvedValue({
@@ -777,49 +677,141 @@ describe('BudgetPanel', () => {
     expect(await screen.findByText(/Se copiaron 18 renglones/)).not.toBeNull()
   })
 
-  it('bajar dos veces el mismo capítulo no duplica, y lo dice', async () => {
-    // `apply-chapter` SÍ es idempotente: `item_id` da identidad exacta. Por eso
-    // el botón se puede dejar siempre activo sin confirmación.
-    await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
-    await screen.findByLabelText('Capítulo del catálogo')
-    vi.mocked(api.applyCatalogChapter).mockResolvedValue({
-      line: null, budget: DETALLADO, property: propiedad() as Property,
-      budgetIncrease: 0, linesAdded: 0,
-    })
+  // ── Copiar a otras obras (la dirección contraria: empujar) ─────────────────
 
-    fireEvent.change(screen.getByLabelText('Capítulo del catálogo'), { target: { value: '1' } })
-    fireEvent.click(screen.getByText('BAJAR'))
+  /** Abre el bloque de empujar y espera a que lleguen las obras destino. */
+  async function abrirEmpujar() {
+    fireEvent.click(screen.getByText(/COPIAR A OTRAS OBRAS/))
+    await screen.findByLabelText('Copiar a Modesto 415')
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  }
 
-    expect(await screen.findByText(/No había nada nuevo que copiar/)).not.toBeNull()
+  /** Lo que contesta `apply` en el DESTINO: lo que entró y lo que ya estaba. */
+  const copiado = (added: number, skipped: number) => ({
+    line: null, budget: DETALLADO, property: propiedad() as Property,
+    budgetIncrease: 0, linesAdded: added, linesSkipped: skipped,
   })
 
-  it('guardar como plantilla copia ESTE presupuesto y no toca la obra', async () => {
+  it('empuja con UNA llamada por obra destino, con los capítulos elegidos', async () => {
+    // No hay ruta de reparto y es a propósito: cada presupuesto es independiente,
+    // así que si el segundo destino falla el primero tiene que quedar aplicado.
+    // La atomicidad correcta es por propiedad, y ésa ya la da el endpoint.
+    await renderPanel(DETALLADO)
+    await abrirEmpujar()
+    vi.mocked(api.applyBudgetSource).mockResolvedValue(copiado(2, 0))
+
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    fireEvent.click(screen.getByLabelText('Copiar a Zaragoza 100'))
+    // Todos los capítulos vienen marcados; se desmarca uno para copiar el otro
+    fireEvent.click(screen.getByLabelText('Copiar capítulo Instalaciones'))
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
+
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledTimes(2))
+    // El id de la URL es el DESTINO y el `budgetId` el del presupuesto de ESTA
+    // obra: la misma llamada de «arrancar desde», al revés.
+    expect(vi.mocked(api.applyBudgetSource).mock.calls).toEqual([
+      [3, 9, ['Albañilería']],
+      [4, 9, ['Albañilería']],
+    ])
+  })
+
+  it('sin tocar una casilla viaja el presupuesto entero, no una lista armada aquí', async () => {
+    // `null` no es «ninguno»: es «no se eligieron capítulos», que el servidor lee
+    // como el presupuesto completo. Mandar la lista de todos sería una segunda
+    // definición del mismo hecho, que se desincroniza el día que se renombre uno.
+    await renderPanel(DETALLADO)
+    await abrirEmpujar()
+    vi.mocked(api.applyBudgetSource).mockResolvedValue(copiado(3, 0))
+
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
+
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(3, 9, null))
+  })
+
+  it('dice OBRA POR OBRA cuántos renglones entraron y cuántos ya estaban', async () => {
+    // Deduplicar es SALTAR, nunca actualizar: un renglón que ya existe allá puede
+    // traer proveedor o pagos. Un «listo» que escondiera que a una obra no le
+    // entró nada sería peor que un error.
+    await renderPanel(DETALLADO)
+    await abrirEmpujar()
+    vi.mocked(api.applyBudgetSource)
+      .mockResolvedValueOnce(copiado(3, 0))
+      .mockResolvedValueOnce(copiado(0, 3))
+
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    fireEvent.click(screen.getByLabelText('Copiar a Zaragoza 100'))
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
+
+    expect(await screen.findByText(/Modesto 415: 3 renglones agregados · 0 saltados/)).not.toBeNull()
+    expect(await screen.findByText(/Zaragoza 100: 0 renglones agregados · 3 saltados/)).not.toBeNull()
+  })
+
+  it('una obra que falla no cancela las demás ni se traga su nombre', async () => {
+    // Las que ya entraron quedan aplicadas, las que faltan se siguen intentando,
+    // y el rechazo se lee tal como lo escribió el servidor —junto al nombre de la
+    // obra a la que NO llegó nada.
+    await renderPanel(DETALLADO)
+    await abrirEmpujar()
+    vi.mocked(api.applyBudgetSource)
+      .mockRejectedValueOnce(new Error('El presupuesto de destino está cerrado.'))
+      .mockResolvedValueOnce(copiado(4, 1))
+
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    fireEvent.click(screen.getByLabelText('Copiar a Zaragoza 100'))
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
+
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText(/Modesto 415: no se copió — El presupuesto de destino está cerrado\./))
+      .not.toBeNull()
+    expect(await screen.findByText(/Zaragoza 100: 4 renglones agregados · 1 saltados/)).not.toBeNull()
+  })
+
+  it('la respuesta es del DESTINO: no repinta esta obra ni su ficha', async () => {
+    // `apply` contesta el presupuesto y la propiedad de la obra a la que se
+    // copió. Pasarla por `run` sustituiría esta obra por otra en la pantalla.
+    // De aquí solo sale una copia: no hay nada que refrescar.
     const onChange = await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/CATÁLOGO Y PLANTILLAS/))
-    await screen.findByLabelText('Nombre de la plantilla')
-    // El servidor contesta el DETALLE: `lines` es el ARREGLO de renglones y NO
-    // trae `lineCount`. Fijarlo con la forma real es lo que impide que la
-    // pantalla vuelva a leer el conteo de la lista en la respuesta de la
-    // escritura — que se pinta «undefined renglones» sin que falle nada.
-    vi.mocked(api.createBudgetTemplate).mockResolvedValue({
-      id: 600, name: 'Obra nueva', notes: '', createdAt: '', updatedAt: '',
-      lines: [line({ id: 1 }), line({ id: 2 }), line({ id: 3 })],
+    await abrirEmpujar()
+    vi.mocked(api.applyBudgetSource).mockResolvedValue({
+      ...copiado(3, 0),
+      property: { ...propiedad({ constructionBudgeted: 99 }), name: 'la otra obra' } as Property,
     })
 
-    fireEvent.change(screen.getByLabelText('Nombre de la plantilla'), { target: { value: '  Obra nueva  ' } })
-    fireEvent.click(screen.getByText('GUARDAR PLANTILLA'))
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
 
-    // El id del PRESUPUESTO, que es lo que se copia
-    await waitFor(() => expect(api.createBudgetTemplate).toHaveBeenCalledWith({
-      name: 'Obra nueva', fromBudgetId: 9,
-    }))
-    expect(await screen.findByText(/Se guardó «Obra nueva» como plantilla, con 3 renglones/))
-      .not.toBeNull()
-    // Y la lista se vuelve a leer en vez de meterle dentro la respuesta del
-    // detalle: son dos formas distintas de una plantilla.
-    await waitFor(() => expect(api.fetchBudgetSources).toHaveBeenCalledTimes(2))
-    // La obra de la que salió queda exactamente igual: nada que refrescar
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalled())
     expect(onChange).not.toHaveBeenCalled()
+    const total = screen.getByText('TOTAL · ES EL COSTO DE OBRA').closest('tr')!
+    expect(within(total).getByText('$1,000,000')).not.toBeNull()
+  })
+
+  it('esta obra no se ofrece como destino, y el residuo no se ofrece como capítulo', async () => {
+    // Copiarse sobre sí misma da 422, y ofrecer una opción que solo puede fallar
+    // es hacer que alguien descubra la regla chocando con ella. El capítulo del
+    // residuo tampoco viaja nunca, así que su casilla no haría nada.
+    await renderPanel(DETALLADO)
+    await abrirEmpujar()
+
+    expect(screen.queryByLabelText('Copiar a Esta misma obra')).toBeNull()
+    expect(screen.getByLabelText('Copiar capítulo Albañilería')).not.toBeNull()
+    expect(screen.getByLabelText('Copiar capítulo Instalaciones')).not.toBeNull()
+    expect(screen.queryByLabelText('Copiar capítulo Otros')).toBeNull()
+  })
+
+  it('sin obra elegida no se copia: el botón no dispara nada', async () => {
+    await renderPanel(DETALLADO)
+    await abrirEmpujar()
+
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
+    expect(api.applyBudgetSource).not.toHaveBeenCalled()
+
+    // Ni con obra pero sin un solo capítulo marcado: no hay nada que mandar.
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    fireEvent.click(screen.getByLabelText('Copiar capítulo Albañilería'))
+    fireEvent.click(screen.getByLabelText('Copiar capítulo Instalaciones'))
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
+    expect(api.applyBudgetSource).not.toHaveBeenCalled()
   })
 })
