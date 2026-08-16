@@ -96,6 +96,21 @@ jobs:
           chmod +x /usr/local/bin/dbmate
       - name: Generate CI secrets
         run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      # El prospecto dibuja los planos evaluando un bundle de TypeScript en Chromium
+      # (api/lib/plano_js.py). Sin estos tres pasos, test_plano_js.py se SALTA en CI por
+      # falta de bundle — y es la única prueba de toda la suite que carga el bundle real
+      # en un navegador real. Saltándose, un bundle roto pasa el pipeline en verde y el
+      # prospecto sale a producción sin planos, en silencio. Ese es justo el modo de falla
+      # que esa prueba existe para cazar, así que aquí tiene que correr de verdad.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: app/web/package-lock.json
+      - name: Build the plano bundle
+        run: cd app/web && npm ci && npm run build:plano && mkdir -p ../api/assets && cp dist-plano/plano.iife.js ../api/assets/plano.iife.js
+      - name: Install Chromium for the plano/PDF renderer
+        run: python -m playwright install --with-deps chromium
       - name: Run API tests
         run: python -m pytest app/api/tests/ -q
 
