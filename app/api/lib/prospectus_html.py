@@ -2,7 +2,6 @@ from pathlib import Path
 import base64
 import json
 import logging
-import math
 import os
 import tempfile
 from markupsafe import escape as _esc
@@ -16,11 +15,6 @@ _MESES = [
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ]
 
-# Lienzo del plano, en unidades del viewBox: el SVG se escala solo al ancho de
-# su columna, así que el número no es un tamaño impreso sino la resolución con
-# la que se dibujan los muros.
-_SVG_SIZE = 260.0
-_SVG_PAD = 14.0
 
 def _font_b64(name: str) -> str:
     path = (_FONTS_DIR / name).resolve()
@@ -284,39 +278,6 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    nueva dejaba media hoja en blanco. Ahora fluye después de los renders como
    cualquier otra sección; si algún día uno muy largo no cupiera, Chromium
    brinca solo, sin partir renglones (break-inside:avoid en table.kv tr). */
-.plano { display: flex; flex-wrap: wrap; gap: 6mm; }
-/* max-width limita a la mitad de la columna: sin esto, un piso solo (o un
-   número impar que deja uno solo en la última fila) hereda todo el ancho de
-   flex:1 y, como el viewBox del SVG ahora respeta la proporción real del
-   piso en vez de forzar un cuadrado, un piso angosto podía crecer alto sin
-   límite — la misma familia de bug que una página casi en blanco. */
-.plano-floor { flex: 1; min-width: 70mm; max-width: calc(50% - 3mm);
-               break-inside: avoid; page-break-inside: avoid; }
-.plano-floor-name { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 600;
-  color: var(--sec); margin-bottom: 2mm; }
-/* max-height es el otro lado de la misma pinza que max-width en .plano-floor:
-   un lote angosto y PROFUNDO (más alto que ancho) sigue siendo respetado en
-   su proporción real por el viewBox, así que topar solo el ancho no basta —
-   comprobado con datos reales: un piso así medía ~130mm de alto ya topado en
-   ancho, y esos ~130mm de más bastaban para correr el presupuesto (dos
-   renglones) a una tercera página casi en blanco. Con max-height, el SVG se
-   encoge dentro de su caja preservando su proporción (preserveAspectRatio por
-   default no distorsiona) en vez de estirar la página. */
-.plano-svg { width: 100%; height: auto; max-height: 100mm;
-             border: 1px solid var(--border); background: var(--warm); }
-.plano-room { font-family: 'Inter', sans-serif; font-size: 7px; fill: var(--sec); }
-/* Muebles: rect tenue, SIN label. planImage.ts sí nombra cada mueble ("cama queen") porque
-   ahí el lector es un modelo de render que necesita saber qué está viendo; aquí el lector
-   es un inversionista viendo un plano técnico en miniatura dentro de un pitch deck — lo que
-   importa es la masa (dónde va cada pieza y qué tan grande es), no el nombre impreso en un
-   rect de unos milímetros. Menos ruido visual, mismo dato geométrico. */
-.plano-fixture { fill: var(--border); stroke: var(--sec); stroke-width: 0.4; opacity: 0.6; }
-/* Medidas puestas a mano en el editor (ManualDimension): línea sutil + número,
-   mismo lenguaje visual que el editor en vivo (FloorPlanCanvas.tsx) — SIEMPRE se
-   dibujan, sin el toggle "showDims" del editor, porque ese toggle no persiste al
-   modelo (es puro estado de UI) y aquí no hay pantalla que abarrotar. */
-.plano-dim { stroke: var(--sec); stroke-width: 0.4; }
-.plano-dim-label { font-family: 'Inter', sans-serif; font-size: 6px; fill: var(--sec); }
 
 /* ══ Plano junto a su render ══════════════════════════════════════════════ */
 .plan-row { margin: 0 0 7mm 0; break-inside: avoid; }
@@ -733,187 +694,6 @@ def _development_card(p: dict, kicker: str) -> str:
         _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy. s/ inversión"),
     ])
     return _card(p, kicker, _projected_hold_tail(p), metrics)
-
-
-def _pick_floors(geometry: dict) -> list:
-    """Los pisos que el prospecto debe dibujar, aceptando los dos shapes que
-    persiste el editor (types.ts): v2 trae `floors` en la raíz; v3 los anida
-    en `variants.original` / `variants.planned`. El prospecto es el pitch al
-    inversionista: muestra la PROPUESTA (el levantamiento planeado) cuando
-    existe, y el original queda como el registro de respaldo.
-
-    "Existe" exige geometría dibujada — CUALQUIER piso del planeado con al
-    menos un vértice — porque "EMPEZAR EN BLANCO" persiste un planeado con un
-    piso vacío, y ese lienzo en blanco no es propuesta todavía: no le gana a
-    un original dibujado. Cualquier otro shape (v1, basura, vacío) regresa []
-    y el bloque desaparece, igual que siempre."""
-    geometry = geometry or {}
-    if geometry.get("schemaVersion") != 3:
-        return geometry.get("floors") or []
-    variants = geometry.get("variants") or {}
-    planned = (variants.get("planned") or {}).get("floors") or []
-    if any(floor.get("vertices") for floor in planned):
-        return planned
-    return (variants.get("original") or {}).get("floors") or []
-
-
-def _floorplan_svg(geometry: dict) -> str:
-    """El plano de una oportunidad, dibujado con lo único que el modelo crudo del
-    editor garantiza siempre: muros (con su grosor) y el nombre de cada cuarto en
-    su punto de etiqueta — más muebles y medidas manuales cuando el usuario los
-    puso. Sin polígono relleno — un cuarto puede nombrarse sin estar cerrado por
-    muros, así que el modelo no trae ni su área ni su forma
-    (ver docs/plans/2026-08-05-prospecto-plano-renders-presupuesto-design.md).
-    Sin pisos → "", el bloque desaparece del mismo modo que un `_strip` vacío.
-
-    Una sola escala para TODOS los pisos del edificio, no una por piso: dos
-    plantas de la MISMA construcción tienen que leerse a un tamaño comparable
-    — un muro de 15cm es el mismo grosor de línea en planta baja y en planta
-    alta. Escalar cada piso por separado (como hacía antes) dibuja edificios
-    distintos a "el mismo tamaño de página" en vez de a la misma escala, que
-    es precisamente lo que un plano técnico no puede hacer.
-
-    El viewBox de cada piso ya no es un cuadrado fijo: mide el ancho y el alto
-    reales de ESE piso a la escala compartida. Antes el cuadrado forzaba
-    `.plano-svg { width:100%; height:auto }` a un 1:1 sin importar la forma
-    real del piso — un lote angosto y profundo se dibujaba con casi la mitad
-    del lienzo vacía, y un piso solo (o uno impar sobrante en la fila) podía
-    estirarse a 170mm de alto por pura coincidencia geométrica, no por su
-    contenido. Con el viewBox real, el alto que ocupa en la página es el alto
-    que el piso de verdad necesita."""
-    floors = _pick_floors(geometry)
-    extents = []
-    for floor in floors:
-        vertices = floor.get("vertices") or {}
-        if not vertices:
-            extents.append(None)
-            continue
-        xs = [v["x"] for v in vertices.values()]
-        ys = [v["y"] for v in vertices.values()]
-        # El piso degenerado (un solo vértice) tiene extensión cero: el mínimo
-        # evita la división entre cero, no dibuja nada de más.
-        width = max(max(xs) - min(xs), 0.01)
-        height = max(max(ys) - min(ys), 0.01)
-        extents.append((width, height, min(xs), max(ys)))
-
-    real = [e for e in extents if e is not None]
-    if not real:
-        return ""
-    # La escala compartida se fija por el piso MÁS GRANDE del edificio, para
-    # que ningún piso se salga de su columna de 82mm — el mismo criterio que
-    # ya se usaba por piso, ahora aplicado al edificio completo.
-    scale = _SVG_SIZE / max(max(w, h) for w, h, _, _ in real)
-
-    blocks = []
-    for floor, extent in zip(floors, extents):
-        if extent is None:
-            continue
-        width, height, min_x, max_y = extent
-        vertices = floor.get("vertices") or {}
-
-        def sx(x, min_x=min_x):
-            return (x - min_x) * scale + _SVG_PAD
-
-        # La y del modelo apunta hacia ARRIBA (viewTransform.ts la niega en sus
-        # dos cámaras, y userToWorld la vuelve a invertir); la del SVG apunta
-        # hacia abajo. Sin este volteo el plano se imprime espejeado de arriba
-        # a abajo respecto de lo que el usuario dibujó en el editor.
-        def sy(y, max_y=max_y):
-            return (max_y - y) * scale + _SVG_PAD
-
-        lines = []
-        for edge in (floor.get("edges") or {}).values():
-            # Una fantasma (kind 'ghost') es una división manual de cuarto, no un muro: no
-            # puede traer aberturas (motor lo impide), así que basta este skip temprano —
-            # sin él el prospecto dibujaría un muro donde el usuario solo puso una división.
-            if edge.get("kind") == "ghost":
-                continue
-            v1 = vertices.get(edge.get("v1"))
-            v2 = vertices.get(edge.get("v2"))
-            if v1 is None or v2 is None:
-                continue
-            stroke = max(_num(edge.get("thickness")) * scale, 1)
-            lines.append(
-                f'<line x1="{sx(v1["x"]):.1f}" y1="{sy(v1["y"]):.1f}" '
-                f'x2="{sx(v2["x"]):.1f}" y2="{sy(v2["y"]):.1f}" '
-                f'stroke="#1A1A1A" stroke-width="{stroke:.1f}" stroke-linecap="square" />'
-            )
-
-        # Muebles (Task 12): rect tenue por mueble, sin label (ver .plano-fixture arriba).
-        # `?? []` en TS es `or []` aquí — ningún blob previo a Task 10 trae esta clave, y
-        # no puede tratarse como error: es "sin muebles", no un plano roto.
-        fixtures = []
-        for fx in floor.get("fixtures") or []:
-            fx_x, fx_y = fx.get("x"), fx.get("y")
-            if fx_x is None or fx_y is None:
-                continue
-            fcx, fcy = sx(fx_x), sy(fx_y)
-            fw, fh = _num(fx.get("w_m")) * scale, _num(fx.get("h_m")) * scale
-            # Mismo signo que planImage.ts y FloorPlanCanvas.tsx: rot es CCW en coordenadas
-            # de MUNDO (y hacia arriba); sy() niega el eje Y igual que py() allá, así que la
-            # rotación se niega aquí también — si no, un mueble rotado saldría al revés.
-            frot = -_num(fx.get("rot"))
-            fixtures.append(
-                f'<rect class="plano-fixture" x="{-fw / 2:.1f}" y="{-fh / 2:.1f}" '
-                f'width="{fw:.1f}" height="{fh:.1f}" '
-                f'transform="translate({fcx:.1f} {fcy:.1f}) rotate({frot:.1f})" />'
-            )
-
-        # Medidas manuales (Eduardo, addendum #5): el editor las guarda siempre pero
-        # solo las muestra a demanda vía "Dims"; ese toggle es puro estado de UI
-        # (`showDims` vive en el reducer, no en el modelo persistido), así que aquí,
-        # sin UI que abarrotar, se dibujan todas — mismo criterio que fixtures/muros.
-        dims = []
-        for dim in floor.get("manualDimensions") or []:
-            p1, p2 = dim.get("p1") or {}, dim.get("p2") or {}
-            x1_m, y1_m, x2_m, y2_m = p1.get("x"), p1.get("y"), p2.get("x"), p2.get("y")
-            if x1_m is None or y1_m is None or x2_m is None or y2_m is None:
-                continue
-            x1, y1, x2, y2 = sx(x1_m), sy(y1_m), sx(x2_m), sy(y2_m)
-            length = math.hypot(x2_m - x1_m, y2_m - y1_m)
-            # El número corre PARALELO a la línea, no siempre horizontal — mismo ajuste que
-            # FloorPlanCanvas.tsx: una cota vertical (o diagonal) con el número horizontal
-            # encima quedaba cruzada por su propia línea. Desplazamiento PERPENDICULAR a la
-            # línea, no solo "hacia arriba", para despegarse de ella en cualquier orientación.
-            #
-            # La dirección se CANONIZA (siempre "hacia la derecha", o hacia abajo si es
-            # exactamente vertical) igual que en el editor: p1/p2 quedan grabados en el orden
-            # en que el usuario los trazó, y sin canonizar el lado del número dependía de ese
-            # sentido de arrastre — mismo trazo visual, número a veces a la izquierda, a veces
-            # a la derecha. Canonizada, ddx ≥ 0 siempre, así que atan2 ya cae en [-90°, 90°]
-            # sin recortarlo aparte — el texto nunca sale cabeza abajo.
-            ddx, ddy = x2 - x1, y2 - y1
-            if ddx < 0 or (ddx == 0 and ddy < 0):
-                ddx, ddy = -ddx, -ddy
-            seg_len = math.hypot(ddx, ddy) or 1
-            angle_deg = math.degrees(math.atan2(ddy, ddx))
-            label_x = (x1 + x2) / 2 + (ddy / seg_len) * 3
-            label_y = (y1 + y2) / 2 - (ddx / seg_len) * 3
-            dims.append(
-                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" class="plano-dim" />'
-                f'<text x="{label_x:.1f}" y="{label_y:.1f}" class="plano-dim-label" text-anchor="middle" '
-                f'transform="rotate({angle_deg:.1f} {label_x:.1f} {label_y:.1f})">{length:.2f} m</text>'
-            )
-
-        labels = []
-        for room in floor.get("rooms") or []:
-            cx, cy = room.get("cx"), room.get("cy")
-            if cx is None or cy is None:
-                continue
-            labels.append(
-                f'<text x="{sx(cx):.1f}" y="{sy(cy):.1f}" '
-                f'class="plano-room" text-anchor="middle">{_esc(room.get("name", ""))}</text>'
-            )
-
-        view_w = width * scale + _SVG_PAD * 2
-        view_h = height * scale + _SVG_PAD * 2
-        blocks.append(f"""<div class="plano-floor">
-  <div class="plano-floor-name">{_esc(floor.get("name", ""))}</div>
-  <svg viewBox="0 0 {view_w:.1f} {view_h:.1f}" class="plano-svg">{''.join(lines)}{''.join(fixtures)}{''.join(dims)}{''.join(labels)}</svg>
-</div>""")
-    if not blocks:
-        return ""
-    return f'<div class="plano">{"".join(blocks)}</div>'
 
 
 def _budget_full(lines: list[dict], chapters: list[str]) -> str:

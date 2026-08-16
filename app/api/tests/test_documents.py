@@ -500,29 +500,6 @@ def test_embed_image_list_marks_failures_with_none_data_uri(monkeypatch):
 
 # ── Página compañera de una oportunidad ──────────────────────────────────────
 
-def test_the_prospectus_omits_the_technical_plano(client, test_property):
-    """El plano TÉCNICO (SVG de muros) NO va en el deck aunque la propiedad
-    tenga geometría: pedido de Louis — al cliente no le interesan los planos
-    técnicos; la distribución la comunica el render 2D amueblado, no este dibujo."""
-    from api.properties_db import set_geometry
-    geometry = {
-        "floors": [{
-            "name": "Planta Baja",
-            "vertices": {"v1": {"id": "v1", "x": 0, "y": 0},
-                        "v2": {"id": "v2", "x": 5, "y": 0}},
-            "edges": {"e1": {"id": "e1", "v1": "v1", "v2": "v2", "thickness": 0.15}},
-            "rooms": [{"name": "Sala", "cx": 2.5, "cy": 0.5}],
-        }],
-    }
-    set_geometry(test_property["id"], geometry)
-    p = get_property(test_property["id"])
-    from api.routes.documents import _embed_opportunity_extras
-    _embed_opportunity_extras([p])
-    html = build_prospectus_html([], [], [], [p])
-    assert "<svg" not in html   # el plano técnico no se dibuja
-    assert "Sala" not in html   # ni sus nombres de cuarto
-
-
 def test_prospectus_shows_the_budget_chapters_for_an_opportunity(client, test_property):
     client.post(f"/api/properties/{test_property['id']}/budget/lines", json={
         "chapterName": "Albañilería", "name": "Cocina", "unit": "m2",
