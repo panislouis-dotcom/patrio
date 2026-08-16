@@ -25,6 +25,46 @@ MAX_EDGE_PHOTO = 1536
 # etiquetas del plano ilegibles. Sube el techo solo para este camino.
 MAX_EDGE_PLAN = 2048
 
+
+def composite_enabled() -> bool:
+    """¿Se pega la geometría exacta encima de lo que devolvió la IA?
+
+    APAGADO por default desde 2026-08-16. Se lee en cada llamada, no al
+    importar, para que una prueba o un experimento puedan cambiarlo sin
+    recargar el módulo.
+
+    El compositing se construyó (Task 37) sobre una medición real: `images.edit`
+    trata la referencia como SESGO, no como restricción, y llegaba a inventar
+    muros. Lo que no se volvió a revisar es que esa misma medición traía el
+    remedio: el modelo se descarrila cuando la referencia lleva ~64% de lienzo
+    vacío (desplazamiento 87-261px), y se queda quieto cuando el encuadre está
+    ajustado (0-18px). O sea, el compositing estaba compensando un INPUT malo,
+    no un techo del modelo.
+
+    Con el encuadre arreglado (`planImage.ts`, el bbox ya no arrastra el origen
+    del mundo al lienzo) y sin etiquetas de texto en la referencia, se midió el
+    render 42 de la propiedad 5: la IA colocó los 4 muros interiores con error
+    medio de 1.9px y máximo de 2.8px sobre un edificio de 1138px de ancho
+    — 0.17%. La garantía que compraba el overlay vale ~2px.
+
+    Y cuesta caro: pega un trazo plano y opaco `#111111` encima de un render
+    fotorrealista donde la IA ya dibujó SUS propios muros, con acabado y
+    sombreado. Aunque el afín esté perfecto (render 42: desviación -0.68%/+1.05%
+    contra la razón del lienzo), dos sistemas de muro en la misma imagen se leen
+    como cinta pegada: bandas negras dobles con rendijas blancas en el borde
+    inferior, muro doble en la escalera, un tick negro suelto. Peor todavía, el
+    overlay no ESCONDE el error geométrico del modelo, lo EXHIBE: sin él nadie
+    puede notar que un muro se corrió; con él aparecen los dos muros juntos y el
+    desfase salta a la vista. Los renders crudos anteriores a Task 37 (ids 7 y 12
+    de la propiedad 5) se ven limpios justamente porque nadie les pegó nada.
+
+    `RENDER_PLAN_COMPOSITE=1` lo vuelve a encender. Vale la pena si alguna vez se
+    mide deriva real: el ancho de las barras negras que deja `_composite_geometry`
+    en el borde es un diagnóstico gratis del error de escala (3px = alineado,
+    95px = roto), así que se puede asertar sobre él en vez de componer siempre.
+    """
+    return os.environ.get("RENDER_PLAN_COMPOSITE", "0").strip().lower() in {"1", "true", "yes"}
+
 # ── La cláusula que ningún prompt puede olvidar ───────────────────────────────
 # No vive en la biblioteca de prompts a propósito. Si cada prompt tuviera que
 # repetirla, tarde o temprano uno no la repetiría — y ese render sería de otra
@@ -53,10 +93,19 @@ _PLAN_CLAUSE = (
     "Es una vista de planta arquitectónica (cenital, desde arriba). Conserva "
     "exactamente la distribución: mismos muros y divisiones, mismos vanos de "
     "puertas y ventanas en las mismas posiciones, mismo contorno. No agregues, "
-    "quites ni muevas cuartos ni paredes. Amuebla cada espacio y agrega acabados "
-    "de piso y vegetación según la instrucción. Resultado en estilo de plano "
-    "amueblado 2D, limpio y legible, no una fotografía 3D. Sin texto ni marcas "
-    "de agua."
+    "quites ni muevas cuartos ni paredes. Los rectángulos grises que ya ves "
+    "dibujados en la referencia son muebles reales, en su posición, tamaño y "
+    "rotación reales — el texto te dice qué tipo de mueble es cada uno y en qué "
+    "cuarto está. Dibuja cada uno ahí mismo, como ese mueble, en vez de inventar "
+    "un mobiliario o una distribución distinta. La referencia también trae "
+    "etiquetas de texto (nombre de cada cuarto, tipo de cada mueble): son SOLO "
+    "para que tú identifiques qué es cada espacio y cada pieza — información de "
+    "consulta, no contenido a dibujar. Tu resultado final NO debe contener ningún "
+    "texto, letra, número ni etiqueta de ningún tipo, ni siquiera una versión "
+    "aproximada o estilizada de las palabras de la referencia. Agrega acabados de "
+    "piso y vegetación según la instrucción. Resultado en estilo de plano "
+    "amueblado 2D, limpio y legible, no una fotografía 3D. Sin texto ni marcas de "
+    "agua de ningún tipo en la imagen final."
 )
 
 
@@ -354,7 +403,7 @@ def generate_image(image_bytes: bytes, content_type: str, prompt: str, *,
     # Task 37: solo el camino de plano tiene una referencia limpia de línea
     # (Task 34) cuya geometría se pueda componer con garantía — una foto no
     # tiene un "trazo verdadero" equivalente que componer encima.
-    if match_aspect:
+    if match_aspect and composite_enabled():
         raw = _composite_geometry(image_bytes, raw)
 
     return raw, "image/png"

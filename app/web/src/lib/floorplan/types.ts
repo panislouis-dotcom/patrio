@@ -103,24 +103,49 @@ export interface Fixture {
   w_m: number; h_m: number  // editables; el catálogo solo da el default
 }
 
-// Dimensiones reales por defecto (metros). El catálogo es dato, no lógica: agregar un
-// mueble nuevo es agregar una entrada, sin tocar el reducer ni el canvas.
-export const FIXTURE_CATALOG: Record<FixtureKind, { label: string; w_m: number; h_m: number }> = {
-  cama_individual:  { label: 'Cama individual',  w_m: 1.00, h_m: 1.90 },
-  cama_matrimonial: { label: 'Cama matrimonial', w_m: 1.40, h_m: 1.90 },
-  cama_queen:       { label: 'Cama queen',       w_m: 1.60, h_m: 2.00 },
-  cama_king:        { label: 'Cama king',        w_m: 1.93, h_m: 2.03 },
-  silla:            { label: 'Silla',            w_m: 0.45, h_m: 0.45 },
-  mesa:             { label: 'Mesa',             w_m: 1.60, h_m: 0.90 },
-  escritorio:       { label: 'Escritorio',       w_m: 1.20, h_m: 0.60 },
-  sillon:           { label: 'Sillón',           w_m: 2.00, h_m: 0.90 },
-  inodoro:          { label: 'Inodoro',          w_m: 0.40, h_m: 0.65 },
-  lavabo:           { label: 'Lavabo',           w_m: 0.55, h_m: 0.45 },
-  regadera:         { label: 'Regadera',         w_m: 0.90, h_m: 0.90 },
-  tina:             { label: 'Tina',             w_m: 0.80, h_m: 1.70 },
-  lavadora:         { label: 'Lavadora',         w_m: 0.60, h_m: 0.60 },
-  estufa:           { label: 'Estufa',           w_m: 0.76, h_m: 0.66 },
-  refrigerador:     { label: 'Refrigerador',     w_m: 0.90, h_m: 0.80 },
+// Familia visual mínima por tipo — antes vivía privada en FloorPlanCanvas.tsx ("es de
+// dibujo, no de dimensiones"), pero planImage.ts (la imagen de referencia que ve el
+// modelo de render) ahora también necesita la MISMA agrupación para el relleno de color
+// por familia — dos consumidores de la misma taxonomía, así que se mueve aquí en vez de
+// duplicarse (el mismo criterio ya aplicado a ROOM_TYPE_CATALOG).
+export type FixtureFamily =
+  | 'bed' | 'seat' | 'plain' | 'toilet' | 'sink' | 'shower' | 'tub' | 'laundry' | 'stove' | 'fridge'
+
+// Nombre en español de cada familia — usado por la leyenda de color de planFacts.ts
+// (fixtureFamilyFill), mismo papel que ROOM_TYPE_CATALOG[t].label ya cumple para la
+// leyenda de color de tipo de cuarto.
+export const FIXTURE_FAMILY_LABEL: Record<FixtureFamily, string> = {
+  bed: 'cama', seat: 'asiento', plain: 'mesa o escritorio', toilet: 'inodoro',
+  sink: 'lavabo', shower: 'regadera', tub: 'tina', laundry: 'lavadora',
+  stove: 'estufa', fridge: 'refrigerador',
+}
+
+// Dimensiones reales por defecto (metros), familia visual y color de relleno por familia.
+// El catálogo es dato, no lógica: agregar un mueble nuevo es agregar una entrada, sin tocar
+// el reducer ni el canvas. `color`: paleta HSL (Python, S=0.55, L=0.65, 10 tonos a 36° de
+// separación — misma rigurosidad que ROOM_TYPE_CATALOG.color, S=0.55/L=0.82 ahí) deliberada-
+// mente más oscura/saturada que la de tipo de cuarto: un mueble es un objeto PEQUEÑO encima
+// de un relleno de cuarto, no otra zona de área, y tiene que leerse como categoría visual
+// distinta. Verificada contra los umbrales reales de app/api/renders.py: luminancia mínima
+// 133.9 (margen de 73.9 sobre WALL_LUMINANCE_MAX=60 — igual que el trazo actual `#555555`
+// ≈85, deliberadamente por encima de ese umbral, ningún relleno de mueble se compone jamás
+// como muro) y máxima 197.8 (margen de 47.2 bajo `_BBOX_BG_THRESHOLD=245`).
+export const FIXTURE_CATALOG: Record<FixtureKind, { label: string; w_m: number; h_m: number; family: FixtureFamily; color: string }> = {
+  cama_individual:  { label: 'Cama individual',  w_m: 1.00, h_m: 1.90, family: 'bed',     color: '#D77575' },
+  cama_matrimonial: { label: 'Cama matrimonial', w_m: 1.40, h_m: 1.90, family: 'bed',     color: '#D77575' },
+  cama_queen:       { label: 'Cama queen',       w_m: 1.60, h_m: 2.00, family: 'bed',     color: '#D77575' },
+  cama_king:        { label: 'Cama king',        w_m: 1.93, h_m: 2.03, family: 'bed',     color: '#D77575' },
+  silla:            { label: 'Silla',            w_m: 0.45, h_m: 0.45, family: 'seat',    color: '#D7B075' },
+  sillon:           { label: 'Sillón',           w_m: 2.00, h_m: 0.90, family: 'seat',    color: '#D7B075' },
+  mesa:             { label: 'Mesa',             w_m: 1.60, h_m: 0.90, family: 'plain',   color: '#C3D775' },
+  escritorio:       { label: 'Escritorio',       w_m: 1.20, h_m: 0.60, family: 'plain',   color: '#C3D775' },
+  inodoro:          { label: 'Inodoro',          w_m: 0.40, h_m: 0.65, family: 'toilet',  color: '#88D775' },
+  lavabo:           { label: 'Lavabo',           w_m: 0.55, h_m: 0.45, family: 'sink',    color: '#75D79C' },
+  regadera:         { label: 'Regadera',         w_m: 0.90, h_m: 0.90, family: 'shower',  color: '#75D7D7' },
+  tina:             { label: 'Tina',             w_m: 0.80, h_m: 1.70, family: 'tub',     color: '#759CD7' },
+  lavadora:         { label: 'Lavadora',         w_m: 0.60, h_m: 0.60, family: 'laundry', color: '#8875D7' },
+  estufa:           { label: 'Estufa',           w_m: 0.76, h_m: 0.66, family: 'stove',   color: '#C375D7' },
+  refrigerador:     { label: 'Refrigerador',     w_m: 0.90, h_m: 0.80, family: 'fridge',  color: '#D775B0' },
 }
 
 // Una cota MANUAL: el usuario la coloca donde quiere ver una medida, con dos puntos

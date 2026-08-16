@@ -228,6 +228,26 @@ describe('FIXTURE_CATALOG', () => {
     expect(entry.w_m).toBeCloseTo(spec.w_m)
     expect(entry.h_m).toBeCloseTo(spec.h_m)
   })
+
+  it('cada entrada trae un color hex válido (paleta de familia, planImage.ts::fixtureFamilyFill)', () => {
+    const HEX = /^#[0-9A-F]{6}$/
+    for (const kind of Object.keys(FIXTURE_CATALOG) as (keyof typeof FIXTURE_CATALOG)[]) {
+      expect(FIXTURE_CATALOG[kind].color).toMatch(HEX)
+    }
+  })
+
+  it('las 10 familias de mueble tienen 10 colores distintos entre sí', () => {
+    const colorByFamily = new Map<string, string>()
+    for (const kind of Object.keys(FIXTURE_CATALOG) as (keyof typeof FIXTURE_CATALOG)[]) {
+      const { family, color } = FIXTURE_CATALOG[kind]
+      const prev = colorByFamily.get(family)
+      // Mismo family siempre debe traer el MISMO color — dos camas nunca deben verse
+      // de colores distintos en la referencia solo porque son cama_queen vs cama_king.
+      if (prev) expect(color).toBe(prev)
+      colorByFamily.set(family, color)
+    }
+    expect(new Set(colorByFamily.values()).size).toBe(10)
+  })
 })
 
 describe('ROOM_TYPE_CATALOG', () => {

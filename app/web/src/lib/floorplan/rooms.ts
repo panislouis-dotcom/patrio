@@ -99,13 +99,44 @@ function interiorPolygons(f: FloorGraph): Pt[][] {
     .map(face => face.vertexIds.map(id => [f.vertices[id].x, f.vertices[id].y] as Pt))
 }
 
+/** Punto de anclaje de un cuarto — el mismo punto que se usa para dibujar su label, como
+ * blanco de clic para (re)nombrarlo, Y como coordenada donde se guarda un nombre nuevo. Por
+ * default es el centroide (`polygonCentroid`), pero para un polígono NO convexo (un cuarto
+ * en L o Z — el caso normal cuando un muro nuevo divide un cuarto sin dejarlo rectangular)
+ * el centroide geométrico puede caer FUERA de su propio contorno — la fórmula sigue siendo
+ * el centroide correcto, solo que "correcto" no implica "adentro" para una forma cóncava.
+ * Bug real, verificado: un cuarto de escaleras en L cuyo centroide caía fuera de su propio
+ * polígono hacía que CUALQUIER intento de nombrarlo se perdiera en silencio — el nombre se
+ * guardaba en ese punto exterior, y `roomInside` (que exige `pointInPolygon`) nunca volvía a
+ * encontrarlo para ESTE cuarto, dejando visible el nombre viejo de un punto ajeno que sí
+ * calificaba. Fallback cuando el centroide cae afuera: el punto medio del par de vértices
+ * MÁS LEJANO entre sí cuyo punto medio SÍ cae dentro — barrido O(n²), sobra para un polígono
+ * de cuarto (pocas decenas de vértices cuando mucho) y encuentra un punto interior estable
+ * para cualquier forma rectilínea real (el caso normal de un levantamiento). */
+function anchorPoint(poly: Pt[]): Pt {
+  const centroid = polygonCentroid(poly)
+  if (pointInPolygon(centroid[0], centroid[1], poly)) return centroid
+  let best: Pt | null = null, bestLen = -1
+  for (let i = 0; i < poly.length; i++) {
+    for (let j = i + 1; j < poly.length; j++) {
+      const mid: Pt = [(poly[i][0] + poly[j][0]) / 2, (poly[i][1] + poly[j][1]) / 2]
+      if (!pointInPolygon(mid[0], mid[1], poly)) continue
+      const len = Math.hypot(poly[i][0] - poly[j][0], poly[i][1] - poly[j][1])
+      if (len > bestLen) { bestLen = len; best = mid }
+    }
+  }
+  // Nunca debería pasar para un polígono simple de ≥3 vértices, pero si ningún par
+  // califica, el centroide (aunque exterior) sigue siendo mejor que reventar.
+  return best ?? centroid
+}
+
 /** Rooms = every enclosed face. Named by the user-assigned point that lies INSIDE it
- * (nearest to the centroid if several do); un-named otherwise. Resolving by containment,
+ * (nearest to the anchor if several do); un-named otherwise. Resolving by containment,
  * not by nearest-without-bound, keeps the name sticky across edits without letting a name
  * dropped on an open space bleed onto an unrelated enclosed room. */
 export function roomAreas(f: FloorGraph): RoomArea[] {
   return interiorPolygons(f).map(pts => {
-    const [cx, cy] = polygonCentroid(pts)
+    const [cx, cy] = anchorPoint(pts)
     const room = roomInside(f, pts)
     return { cx, cy, area: shoelace(pts), name: room?.name ?? '', type: room?.type }
   })
@@ -140,9 +171,12 @@ export function roomPolygons(f: FloorGraph): RoomPolygon[] {
 }
 
 /** El punto de nombre de cuarto (con su tipo, si lo trae) que cae DENTRO de `poly`, más
- * cercano a su centroide; `null` si ninguno cae ahí. */
+ * cercano a su punto de anclaje (`anchorPoint` — el centroide, o su fallback si ese cae
+ * fuera del polígono); `null` si ninguno cae ahí. Mismo punto de referencia que `roomAreas`
+ * usa para dibujar el label — si difirieran, el criterio de "más cercano al centro" de esta
+ * función y la posición real del label podrían apuntar a candidatos distintos. */
 function roomInside(f: FloorGraph, poly: Pt[]): Room | null {
-  const [cx, cy] = polygonCentroid(poly)
+  const [cx, cy] = anchorPoint(poly)
   let best: Room | null = null, bd = Infinity
   for (const r of f.rooms) {
     if (!pointInPolygon(r.cx, r.cy, poly)) continue

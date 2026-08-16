@@ -148,14 +148,21 @@ export function LevantamientoPanel({
   const handleGeneratePlan = useCallback(async (req: {
     promptId: number | null; promptText: string; floorId: string; floorName: string
   }) => {
-    // Task 34: la referencia que ve la IA es la versión SIN anotaciones — `_PLAN_CLAUSE`
-    // (app/api/renders.py) le pide "sin texto ni marcas de agua", instrucción que se
-    // contradecía a sí misma cuando la imagen sí llevaba nombres/cotas/etiquetas.
+    // Task 34: la referencia que ve la IA nunca lleva cotas — `_PLAN_CLAUSE`
+    // (app/api/renders.py) le pide "sin texto ni marcas de agua" en SU salida.
     // roomTypeFill:true (Fase 2 del diagnóstico de Locales Salón Escobedo, validado con
     // un experimento real): relleno de color por tipo de cuarto — no es texto, así que
-    // no choca con `_PLAN_CLAUSE`. RendersPanel.tsx pasa el `includeColorLegend` gemelo
-    // a `planFacts` para el mismo piso — texto e imagen nunca deben describir tipos
+    // no choca con `_PLAN_CLAUSE`. RendersPanel.tsx pasa el `includeColorLegend` gemelo a
+    // `planFacts` para el mismo piso — texto e imagen nunca deben describir tipos
     // distintos, ver el comentario de `resolveRoomType` en planFacts.ts.
+    //
+    // nameLabels se probó en producción y se REVIRTIÓ (2026-08-16, auditoría de 4 agentes).
+    // El texto de nombre de cuarto sobresale del muro exterior, y `_content_bbox`
+    // (app/api/renders.py) lo cuenta como edificio para calibrar el compositing: la
+    // referencia mide 4.59% más ancha de lo que es y ese ancho inflado entra directo a
+    // `scale_x`. A/B natural con `prompt_text` IDÉNTICO byte a byte (renders 38 vs 41 de la
+    // propiedad 5): sin etiquetas scale_x=1.5621 y 6 columnas negras; con etiquetas
+    // scale_x=1.4360, 118 columnas negras y muros hasta 45px fuera contra un trazo de 15px.
     const blob = await floorToPngBlob(selectedFloor!, { annotations: false, roomTypeFill: true })
     return onGenerateRender(variant, { ...req, plan: blob })
   }, [selectedFloor, variant, onGenerateRender])
@@ -169,9 +176,7 @@ export function LevantamientoPanel({
   // RENDERS. Sin `promptId`: el lote no nace de un preset guardado, nace de los
   // hechos de cada piso.
   const generateOneFloor = useCallback(async (floor: FloorGraph) => {
-    // Task 34: mismo motivo que handleGeneratePlan — la IA nunca ve la versión anotada.
-    // roomTypeFill/includeColorLegend: mismo par gemelo que handleGeneratePlan arriba,
-    // para ESTE piso — nunca uno sin el otro.
+    // Mismos flags que handleGeneratePlan arriba, para ESTE piso — nunca unos sin otros.
     const blob = await floorToPngBlob(floor, { annotations: false, roomTypeFill: true })
     return onGenerateRender(variant, {
       promptId: null, promptText: planFacts(floor, { includeColorLegend: true }), plan: blob, floorId: floor.id, floorName: floor.name,

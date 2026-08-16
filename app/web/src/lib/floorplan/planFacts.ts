@@ -4,11 +4,11 @@
 // §"Prompt base enriquecido". Reemplaza a `planSeed` (RendersPanel.tsx), que solo mandaba
 // nombres de cuarto: sin medidas ni muebles, "amuebla y da acabados" no le decía al modelo
 // NADA sobre el tamaño real del espacio.
-import type { FloorGraph, Vertex, RoomType } from './types'
-import { FIXTURE_CATALOG, ROOM_TYPE_CATALOG } from './types'
+import type { FloorGraph, Vertex, RoomType, FixtureFamily } from './types'
+import { FIXTURE_CATALOG, FIXTURE_FAMILY_LABEL, ROOM_TYPE_CATALOG } from './types'
 import { roomLabels, roomAreas, roomConnections, roomPolygons, type Connection } from './rooms'
 import { cornerAngles, CORNER_ANGLE_TOL_DEG } from './dimensions'
-import { edgeAxis } from './geometry'
+import { edgeAxis, pointInPolygon, type Pt } from './geometry'
 
 const fmt = (n: number): string => n.toFixed(2)
 
@@ -248,6 +248,39 @@ const connectionSentence = (floor: FloorGraph, c: Connection): string => {
   return `${a} y ${b} comparten una ventana interior${position}.`
 }
 
+/** El cuarto CERRADO (con polígono) que contiene el punto `(x, y)`, o `null` si no cae en
+ * ninguno — mismo criterio de punto-en-polígono que `roomLabels`/`roomInside` (rooms.ts)
+ * ya usan para lo mismo, aplicado aquí a la posición de un mueble en vez de a un punto de
+ * nombre de cuarto. Recorre TODOS los cuartos cerrados, con nombre o sin él — un mueble
+ * puesto en un cuarto cerrado sin nombre sigue teniendo un cuarto que reportar (ver
+ * `roomDisplay`), así que filtrar por nombre aquí perdería esa información sin motivo. */
+const containingRoom = (
+  rooms: { name: string; vertices?: { x: number; y: number }[] }[],
+  x: number, y: number,
+): { name: string; vertices: { x: number; y: number }[] } | null => {
+  for (const r of rooms) {
+    if (r.vertices && pointInPolygon(x, y, r.vertices.map(v => [v.x, v.y] as Pt))) {
+      return { name: r.name, vertices: r.vertices }
+    }
+  }
+  return null
+}
+
+/** Posición de un mueble relativo al bounding box de SU cuarto — mismo nivel de
+ * simplificación por bounding box que `boundingBoxText` ya acepta para el cuarto entero, y
+ * el mismo estilo de distancia métrica (no un cualificador vago) que `openingPositionClause`
+ * ya usa para aberturas: el modelo de imagen puede verificar "a 1.20 m del muro izquierdo"
+ * contra lo que ve, no "cerca de la esquina". */
+const fixtureRoomPosition = (
+  fx: { x: number; y: number },
+  room: { name: string; vertices: { x: number; y: number }[] },
+): string => {
+  const xs = room.vertices.map(v => v.x), ys = room.vertices.map(v => v.y)
+  const dLeft = fx.x - Math.min(...xs)
+  const dTop = Math.max(...ys) - fx.y
+  return `, en ${roomDisplay(room.name)}, a ${fmt(dLeft)} m del muro izquierdo y ${fmt(dTop)} m del muro superior del cuarto`
+}
+
 /**
  * Datos duros del piso ACTIVO de un levantamiento, en un párrafo listo para anteponerse
  * al prompt de estilo. Toma un `FloorGraph` (un piso ya elegido) y no un `FloorSet`
@@ -261,7 +294,10 @@ const connectionSentence = (floor: FloorGraph, c: Connection): string => {
  * cuartos, sin muebles) produce un párrafo mínimo pero válido — la altura de piso sola,
  * que siempre existe (`emptyFloorGraph` la nace en 2.60 m).
  */
-export function planFacts(floor: FloorGraph, opts: { includeColorLegend?: boolean } = {}): string {
+export function planFacts(
+  floor: FloorGraph,
+  opts: { includeColorLegend?: boolean; includeFixtureColorLegend?: boolean } = {},
+): string {
   const parts: string[] = []
 
   // Cuartos: cerrados (con área y, si tiene polígono, dimensiones) más los libres — el
@@ -366,11 +402,22 @@ export function planFacts(floor: FloorGraph, opts: { includeColorLegend?: boolea
 
   // Muebles: la medida REAL guardada en el fixture (w_m/h_m), nunca el default del
   // catálogo — un mueble se puede redimensionar después de colocarse (types.ts,
-  // Fixture.w_m/h_m son "editables; el catálogo solo da el default").
+  // Fixture.w_m/h_m son "editables; el catálogo solo da el default"). Cada mueble se ata a
+  // SU cuarto y a una posición métrica dentro de él — antes esta lista no decía ni a qué
+  // cuarto pertenecía cada pieza ni dónde caía, así que el modelo de imagen no tenía forma
+  // de emparejar un mueble descrito aquí con el rectángulo que ya ve dibujado en la
+  // referencia (planImage.ts) — la causa raíz reportada de que a veces "se equivoque en lo
+  // que pone en cada cuarto o cómo las pone". Un mueble que no cae en ningún cuarto cerrado
+  // (hueco entre cuartos, área abierta) cae a coordenadas absolutas del plano — mismo
+  // fallback que `irregularCorners`, más abajo, ya usa cuando no hay cuarto de referencia.
   const fixtures = floor.fixtures ?? []
   if (fixtures.length > 0) {
-    const fixtureTexts = fixtures.map(fx =>
-      `${FIXTURE_CATALOG[fx.kind].label} (${fmt(fx.w_m)} × ${fmt(fx.h_m)} m)`)
+    const fixtureTexts = fixtures.map(fx => {
+      const dims = `${fmt(fx.w_m)} × ${fmt(fx.h_m)} m`
+      const room = containingRoom(enclosedRooms, fx.x, fx.y)
+      const location = room ? fixtureRoomPosition(fx, room) : `, en (${fmt(fx.x)}, ${fmt(fx.y)}) del plano`
+      return `${FIXTURE_CATALOG[fx.kind].label} (${dims}${location})`
+    })
     parts.push(`Muebles colocados: ${fixtureTexts.join(', ')}.`)
   }
 
@@ -396,6 +443,29 @@ export function planFacts(floor: FloorGraph, opts: { includeColorLegend?: boolea
         `Colores de referencia en la imagen (SOLO indican qué tipo de cuarto va en cada `
         + `zona — NO son el acabado final, ignóralos al elegir materiales o colores de `
         + `pintura): ${legendItems.join(', ')}.`,
+      )
+    }
+  }
+
+  // Leyenda del relleno de color por familia de mueble — mismo criterio gemelo que la
+  // leyenda de tipo de cuarto de arriba: solo aparece cuando el llamador también pintó ese
+  // relleno en la imagen (planImage.ts, floorToSvgString con fixtureFamilyFill:true), y
+  // solo lista las familias REALMENTE presentes en este piso (nunca las 10 completas si
+  // el piso solo tiene, digamos, camas y un lavabo).
+  if (opts.includeFixtureColorLegend) {
+    const usedFamilies = new Set<FixtureFamily>()
+    for (const fx of fixtures) usedFamilies.add(FIXTURE_CATALOG[fx.kind].family)
+    const colorByFamily = new Map<FixtureFamily, string>()
+    for (const kind of Object.keys(FIXTURE_CATALOG) as (keyof typeof FIXTURE_CATALOG)[]) {
+      const entry = FIXTURE_CATALOG[kind]
+      if (!colorByFamily.has(entry.family)) colorByFamily.set(entry.family, entry.color)
+    }
+    const legendItems = [...usedFamilies]
+      .map(fam => `${colorByFamily.get(fam)} = ${FIXTURE_FAMILY_LABEL[fam]}`)
+    if (legendItems.length > 0) {
+      parts.push(
+        `Colores de mueble en la imagen (SOLO indican qué TIPO de mueble es cada `
+        + `rectángulo — NO son el acabado final): ${legendItems.join(', ')}.`,
       )
     }
   }

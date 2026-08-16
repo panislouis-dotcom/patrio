@@ -36,19 +36,70 @@ function escapeXml(s: string): string {
  * forma/color) que ya funciona hoy para puertas/ventanas/muebles — así que es
  * independiente de `annotations` y no afecta su contrato. `resolveRoomType`
  * (planFacts.ts) es el MISMO resolutor que decide el `tipo:` del prompt de texto:
- * imagen y prosa nunca pueden describir un tipo distinto para el mismo cuarto. */
+ * imagen y prosa nunca pueden describir un tipo distinto para el mismo cuarto.
+ *
+ * `opts.fixtureFamilyFill` (default `false`, mismo espíritu que `roomTypeFill` — un
+ * mueble no dibujaba ninguna señal de QUÉ tipo de objeto es más allá de su etiqueta de
+ * texto, que se omite en la versión limpia; el modelo veía un rectángulo gris genérico
+ * sin forma de distinguir una cama de una estufa). Con `true`, el `fill` de cada
+ * silueta de mueble usa el color de su familia (`FIXTURE_CATALOG[fx.kind].color`,
+ * types.ts — 10 familias, paleta distinta de la de tipo de cuarto para no confundir "esto
+ * es un mueble" con "esto es otra zona de cuarto") en vez del gris plano de siempre. El
+ * `stroke` no cambia.
+ *
+ * `opts.nameLabels` (default `false`): dibuja SOLO el nombre de cada cuarto y la etiqueta
+ * de cada mueble — un subconjunto de lo que `annotations:true` dibujaba, independiente de
+ * ese flag (las cotas/cadenas de dimensión NO se activan con esto, siguen exclusivas de
+ * `annotations`). Pedido explícito de Eduardo tras ver que un rectángulo gris sin ninguna
+ * marca es indistinguible a simple vista ("no es posible saber qué es qué"): a diferencia
+ * del intento anterior (Task 34, revertido — el modelo repetía el texto, garabateado, en
+ * SU salida), aquí el texto va acompañado de una instrucción explícita en `_PLAN_CLAUSE`
+ * (`app/api/renders.py`) de que estas etiquetas son SOLO referencia para el modelo, nunca
+ * texto a reproducir.
+ *
+ * SE VALIDÓ CON UN RENDER REAL Y FALLÓ (2026-08-16, auditoría de 4 agentes). No por el
+ * motivo que se temía: el modelo puede o no reproducir el texto —nunca se comprobó, la
+ * salida cruda pre-compositing no se persiste— pero el daño medido es otro y es nuestro.
+ * (1) El texto de nombre sobresale del muro exterior y `_content_bbox` (renders.py) lo
+ * cuenta como edificio al calibrar el compositing: la referencia mide 4.59% más ancha de
+ * lo que es y ese ancho inflado entra directo a `scale_x`. (2) El propio `#333333` de la
+ * etiqueta es luminancia 51, dentro de la rampa de `_wall_alpha` (25-60), así que NUESTRO
+ * compositor estampa las etiquetas en la salida a alpha 66. A/B natural con `prompt_text`
+ * idéntico byte a byte (renders 38 vs 41 de la propiedad 5): sin etiquetas scale_x=1.5621
+ * y 6 columnas negras; con etiquetas scale_x=1.4360, 118 columnas negras y muros hasta
+ * 45px fuera contra un trazo de 15px. Si vuelve a hacer falta distinguir muebles, la vía
+ * es `fixtureFamilyFill` (color, sin glifos, sin contaminar el bbox). */
 export function floorToSvgString(
   floor: FloorGraph,
-  opts: { pad?: number; scale?: number; annotations?: boolean; roomTypeFill?: boolean } = {},
+  opts: {
+    pad?: number; scale?: number; annotations?: boolean
+    roomTypeFill?: boolean; fixtureFamilyFill?: boolean; nameLabels?: boolean
+  } = {},
 ): string {
   const pad = opts.pad ?? 1          // metros de margen
   const scale = opts.scale ?? 100    // px por metro
   const annotations = opts.annotations ?? true
   const roomTypeFill = opts.roomTypeFill ?? false
+  const fixtureFamilyFill = opts.fixtureFamilyFill ?? false
+  // annotations:true implica nameLabels (el conjunto completo incluye el subconjunto).
+  const nameLabels = (opts.nameLabels ?? false) || annotations
   const vs = Object.values(floor.vertices)
   const xs = vs.map(v => v.x), ys = vs.map(v => v.y)
-  const minx = Math.min(...xs, 0) - pad, maxx = Math.max(...xs, 1) + pad
-  const miny = Math.min(...ys, 0) - pad, maxy = Math.max(...ys, 1) + pad
+  // El encuadre se ajusta al edificio REAL, no al origen del mundo. Sembrar el bbox con
+  // `Math.min(...xs, 0)` / `Math.max(...xs, 1)` metía el origen (0,0) en el lienzo aunque el
+  // inmueble estuviera dibujado lejos de él: en los levantamientos reales de la propiedad 5
+  // eso dejaba al edificio ocupando solo 63-67% de la imagen, el resto margen en blanco que
+  // no es parte del inmueble. No es cosmético — medido contra la API real (2026-08-12,
+  // n=3 vs n=4): con encuadre ajustado el modelo deja el edificio quieto (desplazamiento
+  // 0-18px, escala 0.993-1.014); con ~64% de lienzo vacío lo MUEVE Y LO REESCALA
+  // (desplazamiento 87-261px, escala hasta 1.279x1.424, anisotrópica). El 0/1 solo sobrevive
+  // como piso para un floor SIN vértices, que es lo único que esa semilla protegía de verdad.
+  const seeded = (pick: (a: number[]) => number, values: number[], fallback: number) =>
+    values.length ? pick(values) : fallback
+  const minx = seeded(a => Math.min(...a), xs, 0) - pad
+  const maxx = seeded(a => Math.max(...a), xs, 1) + pad
+  const miny = seeded(a => Math.min(...a), ys, 0) - pad
+  const maxy = seeded(a => Math.max(...a), ys, 1) + pad
   const W = Math.max(1, (maxx - minx) * scale), H = Math.max(1, (maxy - miny) * scale)
   const px = (x: number) => (x - minx) * scale
   const py = (y: number) => (maxy - y) * scale   // Y del mundo hacia arriba = pantalla hacia abajo
@@ -182,33 +233,37 @@ export function floorToSvgString(
     const meta = FIXTURE_CATALOG[fx.kind]
     const cx = px(fx.x), cy = py(fx.y)
     const w2 = fx.w_m * scale, h2 = fx.h_m * scale
+    const fill = fixtureFamilyFill ? meta.color : '#e8e8e8'
     parts.push(
       `<rect data-fixture="${fx.id}" x="${-w2 / 2}" y="${-h2 / 2}" width="${w2}" height="${h2}" ` +
-      `fill="#e8e8e8" stroke="#555555" stroke-width="1" ` +
+      `fill="${fill}" stroke="#555555" stroke-width="1" ` +
       `transform="translate(${cx} ${cy}) rotate(${-fx.rot})"/>`,
     )
     // La silueta del mueble (el <rect> de arriba) va SIEMPRE — el modelo de render necesita
-    // verla a escala real sin importar `annotations`. Su etiqueta de texto es la que se omite
-    // en la versión limpia (Task 34): es exactamente el tipo de texto que `_PLAN_CLAUSE` le
-    // pide al modelo que no reproduzca.
-    if (annotations) {
+    // verla a escala real sin importar `annotations`/`nameLabels`. Su etiqueta de texto es la
+    // que se omite en la versión limpia por default (Task 34: el modelo la repetía,
+    // garabateada, en su salida) — `nameLabels:true` la trae de vuelta, pero acompañada de la
+    // instrucción explícita en `_PLAN_CLAUSE` de que es solo referencia, no texto a copiar.
+    if (nameLabels) {
       parts.push(
         `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-family="sans-serif" font-size="${fixtureFontPx}" fill="#333333">${escapeXml(meta.label)}</text>`,
       )
     }
   }
-  if (annotations) {
+  if (nameLabels) {
     for (const r of roomLabels(floor)) {
       const t = (r.name || '').trim()
       if (!t) continue
       parts.push(`<text x="${px(r.cx)}" y="${py(r.cy)}" text-anchor="middle" font-family="sans-serif" font-size="${roomFontPx}" fill="#333333">${escapeXml(t)}</text>`)
     }
-
+  }
+  if (annotations) {
     // Cotas: antes el export no mandaba NINGUNA dimensión en la imagen (solo vivían en el
     // texto del prompt) — mismas cadenas ancho/alto y misma convención visual que el editor
     // (FloorPlanCanvas.tsx, sección "── dimensions ──"), adaptada a este módulo sin JSX.
     // Task 34: toda esta sección es TEXTO — se omite por completo en la versión limpia que se
     // manda a OpenAI (las cotas y nombres solo importan para un humano viendo el SVG completo).
+    // Nunca se activó junto con `nameLabels` en producción — nadie pidió las cotas de vuelta.
     const dimText = (x: number, y: number, txt: string) =>
       parts.push(`<text x="${x}" y="${y}" text-anchor="middle" font-family="serif" font-size="${dimFontPx}" fill="#333333">${escapeXml(txt)}</text>`)
     const { widthMarks, heightMarks } = widthHeightChains(floor)
@@ -251,12 +306,20 @@ export function floorToSvgString(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join('')}</svg>`
 }
 
-/** Rasteriza el SVG del plano a un PNG (navegador). `opts.annotations`/`opts.roomTypeFill`
- * se reenvían tal cual a `floorToSvgString` — default `true`/`false` (SVG completo, sin
- * relleno de color), los llamadores que generan la imagen de referencia para OpenAI deben
- * pasar `annotations: false, roomTypeFill: true`. */
-export async function floorToPngBlob(floor: FloorGraph, opts: { annotations?: boolean; roomTypeFill?: boolean } = {}): Promise<Blob> {
-  const svg = floorToSvgString(floor, { annotations: opts.annotations, roomTypeFill: opts.roomTypeFill })
+/** Rasteriza el SVG del plano a un PNG (navegador). `opts.annotations`/`opts.roomTypeFill`/
+ * `opts.fixtureFamilyFill`/`opts.nameLabels` se reenvían tal cual a `floorToSvgString` —
+ * default `true`/`false`/`false`/`false` (SVG completo, sin relleno de color), los
+ * llamadores que generan la imagen de referencia para OpenAI deben pasar
+ * `annotations: false, roomTypeFill: true, nameLabels: true` (`fixtureFamilyFill` sigue
+ * fuera del default de producción hasta validarse con un experimento real — ver docs/plans). */
+export async function floorToPngBlob(
+  floor: FloorGraph,
+  opts: { annotations?: boolean; roomTypeFill?: boolean; fixtureFamilyFill?: boolean; nameLabels?: boolean } = {},
+): Promise<Blob> {
+  const svg = floorToSvgString(floor, {
+    annotations: opts.annotations, roomTypeFill: opts.roomTypeFill,
+    fixtureFamilyFill: opts.fixtureFamilyFill, nameLabels: opts.nameLabels,
+  })
   const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
   const img = new Image()
   await new Promise<void>((resolve, reject) => {
