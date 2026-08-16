@@ -227,3 +227,23 @@ def test_los_renders_sin_piso_conservan_la_tira_de_siempre():
 
 def test_sin_plano_sin_render_y_sin_presupuesto_no_hay_detalle():
     assert _opportunity_detail({"planSheets": [], "renderHeads": [], "budget": {}}) == ""
+
+
+def test_solo_dos_renders_caben_junto_a_una_hoja_el_resto_baja_a_la_tira():
+    """Tres renders apilados junto a un plano lo encogen a un cuarto de su columna
+    (la propiedad 5 tiene exactamente ese caso). El excedente no se tira: baja a la
+    tira suelta, que es donde ya viven los que no empataron."""
+    rows, left = _plan_rows(
+        [_sheet("abc", "original")],
+        [_render("abc", "original", uri=f"data:{i}") for i in range(5)])
+    assert len(rows[0]["antes"]["renders"]) == 2
+    assert len(left) == 3
+    # se conservan los MÁS RECIENTES: list_render_heads ordena created_at DESC
+    assert [r["dataUri"] for r in rows[0]["antes"]["renders"]] == ["data:0", "data:1"]
+
+
+def test_el_recorte_no_revienta_cuando_un_piso_no_tiene_planeado():
+    """`paired` solo trae llaves de variantes CON hoja: recortar a ciegas
+    (fid, 'planned') en un piso sin propuesta sería un KeyError."""
+    rows, left = _plan_rows([_sheet("abc", "original")], [_render("abc", "original")])
+    assert rows[0]["despues"] is None and left == []
