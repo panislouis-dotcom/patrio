@@ -62,6 +62,28 @@ jobs:
       - name: Type check
         run: cd app/web && npx tsc --noEmit
 
+  # Las pruebas unitarias del front NO corrían en ningún job: `npm test` de la línea
+  # ~219 es Playwright (app/e2e), no vitest. Por eso un TabBar.test.tsx rojo del PR #36
+  # sobrevivió sin que nadie lo viera hasta que alguien corrió vitest a mano al mezclar
+  # main. Un pipeline que no ejecuta una prueba es un pipeline que no la tiene.
+  # Job aparte y no un paso más en `typecheck`: así el check «Type check» sigue
+  # significando lo mismo que hoy y no se rompe ninguna protección de rama que lo nombre.
+  web-tests:
+    name: Web unit tests
+    runs-on: ubuntu-latest
+    needs: [migrate-smoke]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: app/web/package-lock.json
+      - name: Install web deps
+        run: cd app/web && npm ci
+      - name: Run vitest
+        run: cd app/web && npm test
+
   api-tests:
     name: API tests
     runs-on: ubuntu-latest
@@ -102,7 +124,9 @@ jobs:
   e2e:
     name: E2E tests
     runs-on: ubuntu-latest
-    needs: [migrate-smoke, typecheck]
+    # También espera a las unitarias del front: si están rojas, e2e —el job más caro
+    # del pipeline— no tiene por qué gastarse levantando un stack completo.
+    needs: [migrate-smoke, typecheck, web-tests]
     permissions:
       contents: read
       pull-requests: write
