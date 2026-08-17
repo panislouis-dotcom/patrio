@@ -1066,7 +1066,7 @@ export function PropertyDetailPage() {
               ),
             },
             {
-              label: 'levantamiento planeado',
+              label: 'plano de proyecto',
               panel: (
                 <LevantamientoPanel
                   key="levantamiento-planeado"

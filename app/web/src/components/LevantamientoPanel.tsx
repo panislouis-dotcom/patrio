@@ -237,7 +237,7 @@ export function LevantamientoPanel({
       setGeneration(g => g + 1)
       setConfirmReclone(false)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo escribir el planeado')
+      setError(e instanceof Error ? e.message : 'No se pudo escribir el plano de proyecto')
     } finally {
       setPending(null)
     }
@@ -248,9 +248,9 @@ export function LevantamientoPanel({
     return (
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: 'center', gap: '12px', background: colors.dark, padding: '32px' }}>
-        <div style={label}>SIN LEVANTAMIENTO PLANEADO</div>
+        <div style={label}>SIN PLANO DE PROYECTO</div>
         <div style={{ fontFamily: fonts.sans, fontSize: '12px', color: colors.secondary, textAlign: 'center', maxWidth: '360px' }}>
-          El planeado es cómo va a quedar la propiedad. Nace clonando el original
+          El plano de proyecto es cómo va a quedar la propiedad. Nace clonando el original
           y de ahí divergen, o se dibuja desde cero.
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -293,7 +293,7 @@ export function LevantamientoPanel({
         {error && <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>{error}</span>}
         {originalHasFloors && (confirmReclone ? (
           <>
-            <span style={label}>SE DESCARTA EL PLANEADO ACTUAL</span>
+            <span style={label}>SE DESCARTA EL PLANO DE PROYECTO ACTUAL</span>
             {/* Desactivado en vuelo: la escritura ya se despachó y no se puede
                 detener — un CANCELAR clicable escondería la confirmación
                 mientras el planeado igual se reemplaza. */}
