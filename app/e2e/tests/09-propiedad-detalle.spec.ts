@@ -350,7 +350,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     // propuesta de cómo va a quedar (PLANEADO). Los dos se ofrecen siempre,
     // sin compuerta de etapa.
     await expect(page.getByRole('button', { name: 'LEVANTAMIENTO ORIGINAL' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'LEVANTAMIENTO PLANEADO' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'PLANO DE PROYECTO' })).toBeVisible()
     // MAPA is the default panel — the fixture carries coordinates
     await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 10_000 })
   })
@@ -393,11 +393,11 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(page.getByRole('button', { name: 'Fit to screen' })).toBeVisible()
   })
 
-  test('LEVANTAMIENTO PLANEADO lands on its own empty state', async ({ page }) => {
+  test('PLANO DE PROYECTO lands on its own empty state', async ({ page }) => {
     await gotoProperty(page, id)
-    await page.getByRole('button', { name: 'LEVANTAMIENTO PLANEADO' }).click()
+    await page.getByRole('button', { name: 'PLANO DE PROYECTO' }).click()
 
-    await expect(page.getByText('SIN LEVANTAMIENTO PLANEADO')).toBeVisible()
+    await expect(page.getByText('SIN PLANO DE PROYECTO')).toBeVisible()
     await expect(page.getByRole('button', { name: 'EMPEZAR EN BLANCO' })).toBeVisible()
     // La fixture no tiene original dibujado, así que clonarlo no se ofrece —
     // PARTIR DEL ORIGINAL solo existe cuando hay pisos que clonar. Y a propósito
@@ -687,7 +687,7 @@ test.describe('Levantamiento planeado: clonar, y sus herramientas nuevas', () =>
 
     // El original nace sin pisos: no hay nada que clonar todavía, así que la
     // acción ni se ofrece — es la misma guarda que prueba el empty state de arriba.
-    await page.getByRole('button', { name: 'LEVANTAMIENTO PLANEADO' }).click()
+    await page.getByRole('button', { name: 'PLANO DE PROYECTO' }).click()
     await expect(page.getByRole('button', { name: 'PARTIR DEL ORIGINAL' })).toHaveCount(0)
 
     // Basta con entrar en blanco y guardar (sin dibujar nada) para que el original
@@ -701,7 +701,7 @@ test.describe('Levantamiento planeado: clonar, y sus herramientas nuevas', () =>
     await geometrySaved
 
     // Con el original guardado, el planeado ya puede partir de él.
-    await page.getByRole('button', { name: 'LEVANTAMIENTO PLANEADO' }).click()
+    await page.getByRole('button', { name: 'PLANO DE PROYECTO' }).click()
     await expect(page.getByRole('button', { name: 'PARTIR DEL ORIGINAL' })).toBeVisible()
     await page.getByRole('button', { name: 'PARTIR DEL ORIGINAL' }).click()
     await expect(page.getByRole('button', { name: 'Fit to screen' })).toBeVisible()
