@@ -291,6 +291,13 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    desploma a ~42mm — el plano se dibujaba a un cuarto de su columna y las cotas y los
    m² quedaban ilegibles, que es justo lo único que este plano viene a aportar. */
 .plan-sheet svg { width: 100%; height: auto; max-height: 165mm; }
+/* `_photo_block` mete una FOTO (etiqueta img) en este mismo hueco — antes solo lo
+   llenaba un plano en SVG, que ya trae su propia proporción en el viewBox. Una
+   imagen sin ancho ni alto explícitos se dibuja a su tamaño de píxeles real (miles
+   de px de una foto de cámara) dentro de un flex angosto: el layout la desborda y
+   no se ve nada. Mismo tope que la regla vecina de SVG, con object-fit porque, a
+   diferencia del plano, una foto sí puede desbordar su caja en cualquier proporción. */
+.plan-sheet img { width: 100%; height: auto; max-height: 165mm; object-fit: contain; }
 .plan-renders { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; gap: 2mm; }
 /* 78mm × 2 + hueco ≈ el alto del plano de al lado: la pareja se lee como una banda,
    no como una columna corta junto a una torre de imágenes. */
