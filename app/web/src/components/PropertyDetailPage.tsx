@@ -7,6 +7,7 @@ import {
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
   listRenderPrompts, listPropertyRenders, generatePropertyRender, generatePropertyRenderFromPlan,
   editPropertyRender, createRenderPrompt, deletePropertyRender,
+  choosePropertyRender, unchoosePropertyRender,
 } from '../lib/api'
 import type {
   AssumptionField,
@@ -277,6 +278,22 @@ export function PropertyDetailPage() {
   async function onDeleteRenderItem(renderId: number): Promise<void> {
     await deletePropertyRender(propertyId, renderId)
     setRenders(prev => prev.filter(r => r.id !== renderId))
+  }
+  async function onChooseRender(renderId: number): Promise<void> {
+    const chosen = await choosePropertyRender(propertyId, renderId)
+    // El servidor ya apagó los demás del grupo en la base de datos; esto solo
+    // evita esperar el próximo fetch para verlo reflejado en pantalla.
+    setRenders(prev => prev.map(r => {
+      if (r.id === chosen.id) return chosen
+      const sameFloorGroup = chosen.floorId != null
+        && r.floorId === chosen.floorId && r.sourceVariant === chosen.sourceVariant
+      const samePhotoGroup = chosen.sourceImageId != null && r.sourceImageId === chosen.sourceImageId
+      return (sameFloorGroup || samePhotoGroup) ? { ...r, isChosen: false } : r
+    }))
+  }
+  async function onUnchooseRender(renderId: number): Promise<void> {
+    const updated = await unchoosePropertyRender(propertyId, renderId)
+    setRenders(prev => prev.map(r => r.id === updated.id ? updated : r))
   }
 
   /**
@@ -1036,6 +1053,8 @@ export function PropertyDetailPage() {
                   onEdit={onEditRender}
                   onSavePrompt={onSaveRenderPrompt}
                   onDeleteRender={onDeleteRenderItem}
+                  onChoose={onChooseRender}
+                  onUnchoose={onUnchooseRender}
                 />
               ),
             },
@@ -1062,6 +1081,8 @@ export function PropertyDetailPage() {
                   onEdit={onEditRender}
                   onSavePrompt={onSaveRenderPrompt}
                   onDeleteRender={onDeleteRenderItem}
+                  onChoose={onChooseRender}
+                  onUnchoose={onUnchooseRender}
                 />
               ),
             },
@@ -1083,6 +1104,8 @@ export function PropertyDetailPage() {
                   onEdit={onEditRender}
                   onSavePrompt={onSaveRenderPrompt}
                   onDeleteRender={onDeleteRenderItem}
+                  onChoose={onChooseRender}
+                  onUnchoose={onUnchooseRender}
                 />
               ),
             },

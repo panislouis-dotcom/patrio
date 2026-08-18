@@ -331,14 +331,26 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _metric("$3.5M", "Inversión total") in html
 
 
-def test_the_opportunity_detail_shows_render_heads_labeled_as_proposal(client, test_property):
-    """Los renders van en la sección de detalle (junto al plano, con espacio),
-    rotulados como propuesta — nunca disfrazados de foto real."""
+def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):
+    """Un render elegido (isChosen) se imprime junto a la foto de la que nació,
+    rotulado como propuesta — nunca disfrazado de foto real."""
     p = get_property(test_property["id"])
-    p["renderHeads"] = [{"filePath": "r/1.png", "dataUri": "data:image/jpeg;base64,AAAA"}]
+    p["images"] = [{"id": 7, "dataUri": "data:image/jpeg;base64,FOTO"}]
+    p["renderHeads"] = [{"sourceImageId": 7, "isChosen": True, "floorId": None,
+                         "sourceVariant": None, "dataUri": "data:image/jpeg;base64,AAAA"}]
     html = build_prospectus_html([], [], [], [p])
-    assert "Renders · propuesta de diseño" in html
+    assert "Fotos y propuesta" in html
     assert "data:image/jpeg;base64,AAAA" in html
+
+
+def test_a_render_without_a_star_does_not_print_anywhere(client, test_property):
+    p = get_property(test_property["id"])
+    p["images"] = [{"id": 7, "dataUri": "data:image/jpeg;base64,FOTO"}]
+    p["renderHeads"] = [{"sourceImageId": 7, "isChosen": False, "floorId": None,
+                         "sourceVariant": None, "dataUri": "data:image/jpeg;base64,AAAA"}]
+    html = build_prospectus_html([], [], [], [p])
+    assert "Fotos y propuesta" not in html
+    assert "data:image/jpeg;base64,AAAA" not in html
 
 
 def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, test_property):
@@ -525,7 +537,7 @@ def test_prospectus_has_no_companion_section_without_plano_or_budget_beyond_resi
     en test_prospectus_html.py) — vive en el mismo flujo que `_opportunity`,
     justo después de la nota. Los renders NO son parte de esta sección —
     viven en `_opportunity`, vía `renderHeads`
-    (ver test_the_opportunity_detail_shows_render_heads_labeled_as_proposal)."""
+    (ver test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo)."""
     p = get_property(test_property["id"])
     from api.routes.documents import _embed_opportunity_extras
     _embed_opportunity_extras([p])

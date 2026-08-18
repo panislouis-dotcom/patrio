@@ -226,3 +226,49 @@ def delete_render(render_id: int, property_id: int) -> str:
     if row is None:
         raise NotFound(f"Render {render_id} no encontrado en la propiedad {property_id}")
     return row["file_path"]
+
+
+class NoGroup(RuntimeError):
+    """El render no tiene piso NI foto — su piso o su foto se borraron. No hay
+    grupo dentro del cual «elegirlo» tenga sentido."""
+
+
+def choose_render(property_id: int, render_id: int) -> dict:
+    """Marca este render y apaga cualquier otro del MISMO grupo (piso+variante, o
+    foto fuente) en un solo bloque de conexión — mismo patrón que
+    `select_cotizacion` (db_proveedores.py). El índice único parcial es la red de
+    seguridad si algo se cuela entre las dos sentencias; esta transacción es la
+    primera línea."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT floor_id, source_variant, source_image_id FROM property_renders"
+            " WHERE id = %s AND property_id = %s", (render_id, property_id)).fetchone()
+        if row is None:
+            raise NotFound(f"Render {render_id} no encontrado en la propiedad {property_id}")
+        if row["floor_id"] is not None:
+            conn.execute(
+                "UPDATE property_renders SET is_chosen = FALSE"
+                " WHERE property_id = %s AND floor_id = %s AND source_variant = %s",
+                (property_id, row["floor_id"], row["source_variant"]))
+        elif row["source_image_id"] is not None:
+            conn.execute(
+                "UPDATE property_renders SET is_chosen = FALSE"
+                " WHERE property_id = %s AND source_image_id = %s",
+                (property_id, row["source_image_id"]))
+        else:
+            raise NoGroup(f"Render {render_id} no tiene piso ni foto — no se puede elegir")
+        chosen = conn.execute(
+            "UPDATE property_renders SET is_chosen = TRUE WHERE id = %s RETURNING *",
+            (render_id,)).fetchone()
+    return _row_to_dict(chosen)
+
+
+def unchoose_render(property_id: int, render_id: int) -> dict:
+    with get_db() as conn:
+        row = conn.execute(
+            "UPDATE property_renders SET is_chosen = FALSE"
+            " WHERE id = %s AND property_id = %s RETURNING *",
+            (render_id, property_id)).fetchone()
+    if row is None:
+        raise NotFound(f"Render {render_id} no encontrado en la propiedad {property_id}")
+    return _row_to_dict(row)

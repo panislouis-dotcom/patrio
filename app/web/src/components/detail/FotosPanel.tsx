@@ -18,6 +18,8 @@ interface Props {
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
   onSavePrompt: (p: { name: string; body: string; kind: RenderPromptKind }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
+  onChoose: (renderId: number) => Promise<void>
+  onUnchoose: (renderId: number) => Promise<void>
 }
 
 type SubTab = 'galeria' | 'renders'
@@ -41,7 +43,7 @@ const SUB_TABS: readonly [SubTab, string][] = [['galeria', 'GALERÍA'], ['render
  */
 export function FotosPanel({
   images, base, onUpload, onDelete, onChangeType, onReorder,
-  prompts, renders, onGenerate, onEdit, onSavePrompt, onDeleteRender,
+  prompts, renders, onGenerate, onEdit, onSavePrompt, onDeleteRender, onChoose, onUnchoose,
 }: Props) {
   const [tab, setTab] = useState<SubTab>('galeria')
 
@@ -67,7 +69,8 @@ export function FotosPanel({
           onChangeType={onChangeType} onReorder={onReorder} />
       ) : (
         <RendersPanel source="photos" images={images} prompts={prompts} renders={renders} base={base}
-          onGenerate={onGenerate} onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender} />
+          onGenerate={onGenerate} onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender}
+          onChoose={onChoose} onUnchoose={onUnchoose} />
       )}
     </div>
   )

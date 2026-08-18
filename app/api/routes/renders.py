@@ -265,7 +265,13 @@ def edit_property_render(property_id: int, render_id: int, body: RenderEditReque
 
     return renders_db.add_render(
         property_id=property_id,
-        source_image_id=None,
+        # Mismo patrón que source_variant/floor_id de aquí abajo: el hijo hereda
+        # de qué FOTO nació el padre, no la pierde — un render de foto editado
+        # sigue siendo de esa foto. Antes de la migración 047 esto se mandaba
+        # `None` a secas, y cada edición desconectaba la cadena de su foto
+        # fuente: la cabeza (la única que se muestra) quedaba sin grupo al que
+        # la estrella (migración 046) pudiera pertenecer, y no se ofrecía.
+        source_image_id=parent["sourceImageId"],
         file_path=relative_path,
         content_type=content_type,
         prompt_id=None,
@@ -289,5 +295,27 @@ def delete_property_render(property_id: int, render_id: int,
                            _: dict = Depends(get_current_user)):
     try:
         storage.delete(renders_db.delete_render(render_id, property_id))
+    except renders_db.NotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/api/properties/{property_id}/renders/{render_id}/choose",
+            operation_id="property_render_choose")
+def choose_property_render(property_id: int, render_id: int,
+                           _: dict = Depends(get_current_user)):
+    try:
+        return renders_db.choose_render(property_id, render_id)
+    except renders_db.NotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except renders_db.NoGroup as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/api/properties/{property_id}/renders/{render_id}/choose",
+               operation_id="property_render_unchoose")
+def unchoose_property_render(property_id: int, render_id: int,
+                             _: dict = Depends(get_current_user)):
+    try:
+        return renders_db.unchoose_render(property_id, render_id)
     except renders_db.NotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

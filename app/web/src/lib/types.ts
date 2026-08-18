@@ -81,6 +81,11 @@ export interface PropertyRender {
   provider: string
   model: string
   createdAt: string
+  /** Si este render es EL elegido para imprimirse en el prospecto — de su piso
+   * (floorId+sourceVariant) o de su foto (sourceImageId), lo que aplique. Cuando
+   * mucho un render por grupo trae esto en `true` (migración 046, índice único
+   * parcial). */
+  isChosen: boolean
 }
 
 export interface Issue {

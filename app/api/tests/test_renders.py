@@ -165,8 +165,10 @@ def test_a_rotated_plan_is_straightened_for_both_of_its_uses(
 def test_editing_a_render_builds_on_it_and_chains_to_it(
     client, test_property, source_image, fake_openai,
 ):
-    """Editar avanza sobre la MISMA imagen: la fuente es el render padre (no una
-    foto), y el hijo cuelga de él para poder caminar el historial."""
+    """Editar avanza sobre la MISMA imagen: los PÍXELES que se mandan a editar son
+    los del render padre, no la foto — pero `sourceImageId` no es "de dónde salió
+    el pixel", es a qué foto PERTENECE la cadena (mismo patrón que
+    `sourceVariant`/`floorId`, migración 047): el hijo lo hereda, no lo pierde."""
     parent = client.post(
         f"/api/properties/{test_property['id']}/renders",
         json={"sourceImageId": source_image["id"], "promptText": "Jardín inicial."},
@@ -177,8 +179,8 @@ def test_editing_a_render_builds_on_it_and_chains_to_it(
     )
     assert r.status_code == 201, r.text
     child = r.json()
-    assert child["parentRenderId"] == parent["id"]   # cuelga del padre
-    assert child["sourceImageId"] is None            # su fuente es el render, no una foto
+    assert child["parentRenderId"] == parent["id"]              # cuelga del padre
+    assert child["sourceImageId"] == source_image["id"]         # pero sigue siendo de esa foto
     # Editó ENCIMA de la imagen del padre: esos bytes fueron los que se mandaron.
     assert fake_openai[-1]["image"] == b"RENDERED-BYTES"
 
@@ -1021,3 +1023,139 @@ def test_a_render_from_a_photo_has_no_floor_identity(
                        json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
     assert body["floorId"] is None
     assert body["floorName"] is None
+
+
+# ─── Elegir el render (Task 2) ─────────────────────────────────────────────────
+
+@pytest.fixture
+def make_property(client):
+    """Una segunda propiedad para probar que elegir está acotado por propiedad.
+    Local a este archivo: la de test_documents.py vive allá con sus propios
+    números de underwriting, que aquí no significan nada."""
+    from api.db import get_db
+
+    created: list[int] = []
+
+    def _make(**fields) -> dict:
+        r = client.post("/api/properties", json={
+            "name": "[TEST] Otra Propiedad", "address": "Calle Dos 2", "city": "Monterrey",
+            "purchasePrice": 1_000_000, "acquisitionCostPct": 0.0, "permitsCost": 0,
+            "subdivisionCost": 0, "sqmLand": 300, "sqmConstruction": 0,
+            "holdMonths": 12, "projectedSale": 2_000_000, **fields})
+        assert r.status_code == 201, r.text
+        created.append(r.json()["id"])
+        return r.json()
+
+    yield _make
+    with get_db() as conn:
+        for property_id in created:
+            conn.execute("DELETE FROM budgets WHERE property_id = %s", (property_id,))
+            conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
+
+
+def test_choose_a_photo_render_marks_it_and_unmarks_siblings(client, test_property, source_image, fake_openai):
+    a = client.post(f"/api/properties/{test_property['id']}/renders",
+                    json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    b = client.post(f"/api/properties/{test_property['id']}/renders",
+                    json={"sourceImageId": source_image["id"], "promptText": "y"}).json()
+    r = client.put(f"/api/properties/{test_property['id']}/renders/{a['id']}/choose")
+    assert r.status_code == 200, r.text
+    assert r.json()["isChosen"] is True
+
+    r = client.put(f"/api/properties/{test_property['id']}/renders/{b['id']}/choose")
+    assert r.status_code == 200, r.text
+    assert r.json()["isChosen"] is True
+    renders = {r["id"]: r for r in client.get(f"/api/properties/{test_property['id']}/renders").json()}
+    assert renders[a["id"]]["isChosen"] is False   # b lo apagó
+
+
+def test_choosing_one_photo_does_not_touch_another_photos_choice(
+        client, test_property, source_image, fake_openai):
+    second_photo = client.post(
+        f"/api/properties/{test_property['id']}/images",
+        files={"file": ("2.jpg", io.BytesIO(_png_bytes()), "image/jpeg")}).json()
+    a = client.post(f"/api/properties/{test_property['id']}/renders",
+                    json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    c = client.post(f"/api/properties/{test_property['id']}/renders",
+                    json={"sourceImageId": second_photo["id"], "promptText": "z"}).json()
+    client.put(f"/api/properties/{test_property['id']}/renders/{a['id']}/choose")
+    client.put(f"/api/properties/{test_property['id']}/renders/{c['id']}/choose")
+    renders = {r["id"]: r for r in client.get(f"/api/properties/{test_property['id']}/renders").json()}
+    assert renders[a["id"]]["isChosen"] is True
+    assert renders[c["id"]]["isChosen"] is True
+
+
+def test_unchoose_removes_the_mark_without_choosing_another(
+        client, test_property, source_image, fake_openai):
+    a = client.post(f"/api/properties/{test_property['id']}/renders",
+                    json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    client.put(f"/api/properties/{test_property['id']}/renders/{a['id']}/choose")
+    r = client.delete(f"/api/properties/{test_property['id']}/renders/{a['id']}/choose")
+    assert r.status_code == 200, r.text
+    assert r.json()["isChosen"] is False
+
+
+def test_choosing_a_plan_render_scopes_by_floor_and_variant(client, test_property, fake_openai):
+    a = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "x", "variant": "original", "floorId": "f1", "floorName": "Planta Baja"},
+    ).json()
+    other_variant = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "y", "variant": "planned", "floorId": "f1", "floorName": "Planta Baja"},
+    ).json()
+    client.put(f"/api/properties/{test_property['id']}/renders/{a['id']}/choose")
+    r = client.put(f"/api/properties/{test_property['id']}/renders/{other_variant['id']}/choose")
+    assert r.status_code == 200, r.text
+    renders = {r["id"]: r for r in client.get(f"/api/properties/{test_property['id']}/renders").json()}
+    assert renders[a["id"]]["isChosen"] is True     # variante distinta: no lo tocó
+    assert renders[other_variant["id"]]["isChosen"] is True
+
+
+def test_choosing_a_render_without_floor_or_photo_is_rejected(client, test_property, fake_openai):
+    """Un render huérfano (su foto o su piso se borraron) no pertenece a ningún
+    grupo — no hay «los demás» que apagar, así que elegirlo no tiene sentido."""
+    from api import renders_db
+    render = renders_db.add_render(test_property["id"], None, "x.png", "image/png",
+                                   None, "x", "openai", "gpt-image-2")
+    r = client.put(f"/api/properties/{test_property['id']}/renders/{render['id']}/choose")
+    assert r.status_code == 422
+
+
+def test_choosing_a_render_from_another_property_404s(client, test_property, make_property,
+                                                        source_image, fake_openai):
+    other = make_property()
+    a = client.post(f"/api/properties/{test_property['id']}/renders",
+                    json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    r = client.put(f"/api/properties/{other['id']}/renders/{a['id']}/choose")
+    assert r.status_code == 404
+
+
+# ─── Editar un render de foto no debe perder la liga a su foto fuente (migración 047) ──
+
+def test_editing_a_photo_render_keeps_its_source_image(client, test_property, source_image, fake_openai):
+    a = client.post(f"/api/properties/{test_property['id']}/renders",
+                    json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    assert a["sourceImageId"] == source_image["id"]
+
+    b = client.post(f"/api/properties/{test_property['id']}/renders/{a['id']}/edit",
+                    json={"promptText": "más luz natural"}).json()
+    assert b["sourceImageId"] == source_image["id"]
+
+    # Y por lo tanto SÍ se puede elegir con estrella — antes del arreglo, un
+    # render sin sourceImageId ni floorId no pertenece a ningún grupo (422).
+    r = client.put(f"/api/properties/{test_property['id']}/renders/{b['id']}/choose")
+    assert r.status_code == 200, r.text
+    assert r.json()["isChosen"] is True
+
+
+def test_a_chain_of_edits_keeps_the_original_source_image(client, test_property, source_image, fake_openai):
+    a = client.post(f"/api/properties/{test_property['id']}/renders",
+                    json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    b = client.post(f"/api/properties/{test_property['id']}/renders/{a['id']}/edit",
+                    json={"promptText": "y"}).json()
+    c = client.post(f"/api/properties/{test_property['id']}/renders/{b['id']}/edit",
+                    json={"promptText": "z"}).json()
+    assert c["sourceImageId"] == source_image["id"]
