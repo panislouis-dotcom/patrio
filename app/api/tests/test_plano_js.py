@@ -62,3 +62,36 @@ def test_bundle_ausente_degrada_a_vacio_y_avisa(monkeypatch, caplog):
     with caplog.at_level("WARNING"):
         assert asyncio.run(plano_js.render_plan_sheets({7: V2_SIN_IDS})) == {}
     assert "make build-plano" in caplog.text
+
+
+# ─── backfill_floor_ids — el mismo migrateGeometry, para persistir el id efímero ────
+
+def test_rellena_el_id_de_un_piso_v2_que_nunca_lo_tuvo():
+    out = asyncio.run(plano_js.backfill_floor_ids({7: V2_SIN_IDS}))
+    floors = out[7]["variants"]["original"]["floors"]
+    assert len(floors) == 1 and floors[0]["id"]
+    # v2 sube a v3 al mismo tiempo — es el mismo migrateGeometry que ya lee el editor.
+    assert out[7]["schemaVersion"] == 3
+
+
+def test_un_blob_ya_bien_formado_conserva_su_id():
+    out = asyncio.run(plano_js.backfill_floor_ids({7: V3}))
+    assert out[7]["variants"]["original"]["floors"][0]["id"] == "abc"
+    assert out[7]["variants"]["planned"]["floors"][0]["id"] == "abc"
+
+
+def test_geometria_vacia_o_ilegible_no_se_repara_sola():
+    out = asyncio.run(plano_js.backfill_floor_ids({7: {}, 9: {"schemaVersion": 1}}))
+    assert out[7] is None and out[9] is None
+
+
+def test_backfill_sin_geometrias_no_lanza_navegador():
+    assert asyncio.run(plano_js.backfill_floor_ids({})) == {}
+
+
+def test_backfill_bundle_ausente_lanza_en_vez_de_degradar(monkeypatch):
+    """A diferencia de render_plan_sheets, un script de reparación de datos no puede
+    fallar en silencio: eso dejaría creer que la reparación corrió cuando no tocó nada."""
+    monkeypatch.setattr(plano_js, "_BUNDLE", plano_js._BUNDLE.with_name("no-existe.js"))
+    with pytest.raises(RuntimeError, match="make build-plano"):
+        asyncio.run(plano_js.backfill_floor_ids({7: V2_SIN_IDS}))
