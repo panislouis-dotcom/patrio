@@ -104,6 +104,24 @@ def test_apply_persiste_el_id_relleno(make_property):
     assert floor["id"]
 
 
+def test_main_con_apply_y_yes_no_pide_confirmacion(make_property, monkeypatch):
+    """El Job de deploy (PreSync, sin terminal) corre --apply --yes: un input()
+    ahí colgaría el Job hasta el activeDeadlineSeconds. --property-id acota el
+    recorrido de main() a esta sola propiedad — nunca a la tabla entera."""
+    pid = make_property(V2_SIN_ID)
+
+    def _blows_up_if_called(*a, **k):
+        raise AssertionError("no debía pedir confirmación con --yes")
+    monkeypatch.setattr("builtins.input", _blows_up_if_called)
+
+    code = job.main(["--apply", "--yes", "--property-id", str(pid)])
+    assert code == 0
+
+    with get_db() as conn:
+        row = conn.execute("SELECT geometry FROM properties WHERE id = %s", (pid,)).fetchone()
+    assert row["geometry"]["variants"]["original"]["floors"][0]["id"]
+
+
 def test_reparar_una_propiedad_no_toca_otra(make_property):
     """apply() solo escribe las filas listadas en to_fix — nunca toda la tabla."""
     fixed = make_property(V2_SIN_ID)

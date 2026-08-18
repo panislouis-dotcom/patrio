@@ -22,14 +22,16 @@ Correrlo dos veces no reescribe nada la segunda vez: una propiedad ya reparada v
 del round-trip idéntica y se salta.
 
 Lee el entorno de la API (`.env` vía `api.config`), así que trabaja sobre la base
-que ese entorno configure. Pensado para correr con `kubectl exec` contra un pod vivo
-—mismo patrón que scripts/backfill_image_orientation.py— porque necesita el bundle
-`plano.iife.js` y Chromium que ya vienen horneados en la imagen del API, no una copia
-aparte del schema.
+que ese entorno configure. Corre dentro de la imagen del API (necesita el bundle
+`plano.iife.js` y Chromium que ya vienen horneados ahí) — tanto a mano vía
+`kubectl exec` como automático en un Job de deploy junto a `refigan-migrate`
+(edg-infra), con --yes para saltarse la confirmación interactiva que un Job sin
+terminal no puede responder.
 
-    python scripts/backfill_floor_ids.py                     # simulación
-    python scripts/backfill_floor_ids.py --property-id 42    # sólo esa
-    python scripts/backfill_floor_ids.py --apply              # persiste
+    python scripts/backfill_floor_ids.py                       # simulación
+    python scripts/backfill_floor_ids.py --property-id 42      # sólo esa
+    python scripts/backfill_floor_ids.py --apply                # persiste, confirma a mano
+    python scripts/backfill_floor_ids.py --apply --yes          # persiste sin confirmar (CI)
 """
 import argparse
 import asyncio
@@ -94,6 +96,11 @@ def main(argv=None) -> int:
                         help="persiste los ids; sin esta bandera sólo reporta")
     parser.add_argument("--property-id", type=int,
                         help="limita el recorrido a una sola propiedad")
+    # Sin la confirmación interactiva: para el Job de deploy (PreSync, sin
+    # terminal — un input() ahí cuelga el Job hasta el activeDeadlineSeconds).
+    # A mano seguís usando --apply solo, que sí confirma.
+    parser.add_argument("--yes", action="store_true",
+                        help="con --apply, no pide confirmación (uso no interactivo/CI)")
     args = parser.parse_args(argv)
 
     by_id = fetch_geometries(args.property_id)
@@ -116,7 +123,7 @@ def main(argv=None) -> int:
         return 0
     if not to_fix:
         return 0
-    if not _confirmed(len(to_fix)):
+    if not args.yes and not _confirmed(len(to_fix)):
         print("Cancelado: no se escribió nada.")
         return 0
 
