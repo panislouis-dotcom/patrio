@@ -302,7 +302,16 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    no se ve nada. Mismo tope que la regla vecina de SVG, con object-fit porque, a
    diferencia del plano, una foto sí puede desbordar su caja en cualquier proporción. */
 .plan-sheet img { width: 100%; height: auto; max-height: 110mm; object-fit: contain; }
-.plan-renders { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; gap: 2mm; }
+/* El plano trae su nombre de piso DIBUJADO dentro del propio SVG (floorToSvg — el
+   mismo que usa el botón ↓ SVG del editor, no se toca aquí para no cambiarle la
+   descarga) — el margen que le hace lugar a ese título es ~8.5% de su alto, medido
+   sobre las 4 hojas reales de las propiedades 5 y 10. A los 110mm de tope que ya
+   toca un piso angosto, eso es ~9mm de aire antes de que empiecen los muros. El
+   render de al lado no trae ese margen —la imagen ocupa el cuadro completo—, así
+   que sin este padding sus dos "arribas" no coinciden: el plano se ve corrido hacia
+   abajo respecto al render. Este padding empuja el render esos mismos ~9mm.  */
+.plan-renders { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; gap: 2mm;
+                padding-top: 9mm; }
 /* 78mm × 2 + hueco ≈ el alto del plano de al lado: la pareja se lee como una banda,
    no como una columna corta junto a una torre de imágenes. */
 .plan-renders img { width: 100%; height: auto; max-height: 78mm; object-fit: contain; }
