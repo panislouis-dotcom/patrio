@@ -25,7 +25,7 @@ const renderRow: PropertyRender = {
   floorId: null, floorName: null,
   parentRenderId: null, filePath: 'r/1.png', contentType: 'image/png', promptId: 1,
   promptText: 'Mezquite y agaves.', provider: 'openai', model: 'gpt-image-2',
-  createdAt: '2026-08-02T00:00:00Z',
+  createdAt: '2026-08-02T00:00:00Z', isChosen: false,
 }
 
 function setup(over: Partial<Parameters<typeof FotosPanel>[0]> = {}) {
@@ -42,6 +42,8 @@ function setup(over: Partial<Parameters<typeof FotosPanel>[0]> = {}) {
     onEdit: vi.fn().mockResolvedValue(renderRow),
     onSavePrompt: vi.fn().mockResolvedValue(prompt),
     onDeleteRender: vi.fn().mockResolvedValue(undefined),
+    onChoose: vi.fn().mockResolvedValue(undefined),
+    onUnchoose: vi.fn().mockResolvedValue(undefined),
     ...over,
   }
   render(<FotosPanel {...props} />)
@@ -91,6 +93,14 @@ describe('FotosPanel', () => {
         onSavePrompt: props.onSavePrompt, onDeleteRender: props.onDeleteRender,
       }),
       {},
+    )
+  })
+
+  it('reenvía onChoose/onUnchoose a RendersPanel — la estrella la maneja la página', () => {
+    const props = setup()
+    fireEvent.click(screen.getByText('RENDERS'))
+    expect(vi.mocked(RendersPanel)).toHaveBeenCalledWith(
+      expect.objectContaining({ onChoose: props.onChoose, onUnchoose: props.onUnchoose }), {},
     )
   })
 })

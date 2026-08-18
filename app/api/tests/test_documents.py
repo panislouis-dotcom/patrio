@@ -48,28 +48,59 @@ def _sold(client, property_id: int, sale_price) -> dict:
     return r.json()
 
 
-def _capture(client, path: str, body: dict | None = None) -> str:
+@pytest.fixture(autouse=True)
+def no_browser_for_planos():
+    """Ningún test de este archivo dibuja planos de verdad.
+
+    El endpoint llama a `plano_js.render_plan_sheets`, que lanza un Chromium real y
+    carga el bundle de `make build-plano`. Falsearlo aquí, para TODOS los tests del
+    archivo, es deliberado: si no, cada prospecto de esta suite arrancaría un
+    navegador —lento— y dependería del estado del build.
+
+    `test_plano_js.py` es el único que carga el bundle real en un navegador real. La
+    división es a propósito: si aquél también falseara, un bundle roto pasaría todo
+    en verde y nadie se enteraría hasta el PDF de un cliente."""
+    async def _no_sheets(geometries: dict) -> dict:
+        return {}
+
+    with mock.patch("api.routes.documents.plano_js.render_plan_sheets", new=_no_sheets):
+        yield
+
+
+def _capture(client, path: str, body: dict | None = None, *,
+             plan_sheets: dict | None = None,
+             geometries_seen: dict | None = None) -> str:
     """The HTML the endpoint actually handed to the renderer — the only way to
-    test what the *router* decided (partition, order, subject)."""
+    test what the *router* decided (partition, order, subject).
+
+    `plan_sheets` inyecta las hojas que el navegador falso devuelve, por id de
+    propiedad; `geometries_seen`, si se pasa, recibe el dict de geometrías que el
+    router le entregó — que es la única forma de probar A QUIÉN le pidió planos."""
     seen = {}
 
     async def _render(html: str) -> bytes:
         seen["html"] = html
         return b"%PDF-stub"
 
-    with mock.patch("api.routes.documents.render_to_pdf", new=_render):
+    async def _sheets(geometries: dict) -> dict:
+        if geometries_seen is not None:
+            geometries_seen.update(geometries)
+        return plan_sheets or {}
+
+    with mock.patch("api.routes.documents.render_to_pdf", new=_render), \
+            mock.patch("api.routes.documents.plano_js.render_plan_sheets", new=_sheets):
         r = client.post(path, json=body)
     assert r.status_code == 200, r.text
     return seen["html"]
 
 
-def _capture_favorites(client, *properties) -> str:
+def _capture_favorites(client, *properties, **kwargs) -> str:
     """El prospecto que sale del endpoint con esas propiedades marcadas — la
     partición y el orden los decide el router, no el test."""
     for prop in properties:
         r = client.patch(f"/api/properties/{prop['id']}", json={"isFavorite": True})
         assert r.status_code == 200, r.text
-    return _capture(client, "/api/documents/prospectus")
+    return _capture(client, "/api/documents/prospectus", **kwargs)
 
 
 @pytest.fixture
@@ -300,14 +331,26 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _metric("$3.5M", "Inversión total") in html
 
 
-def test_the_opportunity_detail_shows_render_heads_labeled_as_proposal(client, test_property):
-    """Los renders van en la sección de detalle (junto al plano, con espacio),
-    rotulados como propuesta — nunca disfrazados de foto real."""
+def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):
+    """Un render elegido (isChosen) se imprime junto a la foto de la que nació,
+    rotulado como propuesta — nunca disfrazado de foto real."""
     p = get_property(test_property["id"])
-    p["renderHeads"] = [{"filePath": "r/1.png", "dataUri": "data:image/jpeg;base64,AAAA"}]
+    p["images"] = [{"id": 7, "dataUri": "data:image/jpeg;base64,FOTO"}]
+    p["renderHeads"] = [{"sourceImageId": 7, "isChosen": True, "floorId": None,
+                         "sourceVariant": None, "dataUri": "data:image/jpeg;base64,AAAA"}]
     html = build_prospectus_html([], [], [], [p])
-    assert "Renders · propuesta de diseño" in html
+    assert "Fotos y propuesta" in html
     assert "data:image/jpeg;base64,AAAA" in html
+
+
+def test_a_render_without_a_star_does_not_print_anywhere(client, test_property):
+    p = get_property(test_property["id"])
+    p["images"] = [{"id": 7, "dataUri": "data:image/jpeg;base64,FOTO"}]
+    p["renderHeads"] = [{"sourceImageId": 7, "isChosen": False, "floorId": None,
+                         "sourceVariant": None, "dataUri": "data:image/jpeg;base64,AAAA"}]
+    html = build_prospectus_html([], [], [], [p])
+    assert "Fotos y propuesta" not in html
+    assert "data:image/jpeg;base64,AAAA" not in html
 
 
 def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, test_property):
@@ -469,29 +512,6 @@ def test_embed_image_list_marks_failures_with_none_data_uri(monkeypatch):
 
 # ── Página compañera de una oportunidad ──────────────────────────────────────
 
-def test_the_prospectus_omits_the_technical_plano(client, test_property):
-    """El plano TÉCNICO (SVG de muros) NO va en el deck aunque la propiedad
-    tenga geometría: pedido de Louis — al cliente no le interesan los planos
-    técnicos; la distribución la comunica el render 2D amueblado, no este dibujo."""
-    from api.properties_db import set_geometry
-    geometry = {
-        "floors": [{
-            "name": "Planta Baja",
-            "vertices": {"v1": {"id": "v1", "x": 0, "y": 0},
-                        "v2": {"id": "v2", "x": 5, "y": 0}},
-            "edges": {"e1": {"id": "e1", "v1": "v1", "v2": "v2", "thickness": 0.15}},
-            "rooms": [{"name": "Sala", "cx": 2.5, "cy": 0.5}],
-        }],
-    }
-    set_geometry(test_property["id"], geometry)
-    p = get_property(test_property["id"])
-    from api.routes.documents import _embed_opportunity_extras
-    _embed_opportunity_extras([p])
-    html = build_prospectus_html([], [], [], [p])
-    assert "<svg" not in html   # el plano técnico no se dibuja
-    assert "Sala" not in html   # ni sus nombres de cuarto
-
-
 def test_prospectus_shows_the_budget_chapters_for_an_opportunity(client, test_property):
     client.post(f"/api/properties/{test_property['id']}/budget/lines", json={
         "chapterName": "Albañilería", "name": "Cocina", "unit": "m2",
@@ -517,7 +537,7 @@ def test_prospectus_has_no_companion_section_without_plano_or_budget_beyond_resi
     en test_prospectus_html.py) — vive en el mismo flujo que `_opportunity`,
     justo después de la nota. Los renders NO son parte de esta sección —
     viven en `_opportunity`, vía `renderHeads`
-    (ver test_the_opportunity_detail_shows_render_heads_labeled_as_proposal)."""
+    (ver test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo)."""
     p = get_property(test_property["id"])
     from api.routes.documents import _embed_opportunity_extras
     _embed_opportunity_extras([p])
@@ -540,3 +560,35 @@ def test_prospectus_endpoint_enriches_the_opportunities_it_draws(client, test_pr
     html = _capture_favorites(client, test_property)
     assert '<div class="opp-detail">' in html
     assert "Albañilería" in html
+
+
+def test_el_prospecto_dibuja_el_plano_de_una_oportunidad(client, test_property):
+    """Una oportunidad con levantamiento imprime su plano en el detalle."""
+    html = _capture_favorites(client, test_property, plan_sheets={
+        test_property["id"]: [{"floorId": "abc", "variant": "original",
+                               "floorName": "Planta Baja", "svg": "<svg>PLANO</svg>"}],
+    })
+    assert "PLANO" in html
+    # El elemento, no la regla: `.plan-row` vive en la hoja de estilo siempre.
+    assert '<div class="plan-row">' in html
+    assert "Planta Baja" in html
+
+
+def test_solo_las_oportunidades_reciben_planos(client, make_property, rented_property):
+    """El plano solo entra a las páginas de oportunidad: es lo único a lo que un
+    inversionista todavía puede entrar. Una vendida/en renta no lo pide."""
+    opportunity = make_property(name="[TEST] Oferta Con Plano")
+    r = client.post(f"/api/properties/{opportunity['id']}/transition", json={"to": "oferta"})
+    assert r.status_code == 200, r.text
+
+    geometries: dict = {}
+    _capture_favorites(client, opportunity, rented_property, geometries_seen=geometries)
+    assert set(geometries) == {opportunity["id"]}
+
+
+def test_una_oportunidad_sin_geometria_no_rompe_el_prospecto(client, test_property):
+    """render_plan_sheets devolviendo {} —bundle ausente, Chromium caído— deja el
+    deck entero intacto, sin plano. Un PDF no se muere porque un plano no dibujó."""
+    html = _capture_favorites(client, test_property, plan_sheets={})
+    assert '<div class="plan-row">' not in html
+    assert "[TEST] Lote Prueba" in html

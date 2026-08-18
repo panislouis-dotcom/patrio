@@ -50,6 +50,8 @@ interface Props {
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
   onSavePrompt: (p: { name: string; body: string; kind: RenderPromptKind }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
+  onChoose: (renderId: number) => Promise<void>
+  onUnchoose: (renderId: number) => Promise<void>
 }
 
 type SubTab = 'plano' | 'renders'
@@ -76,6 +78,7 @@ type PendingWrite = 'partir' | 'blanco' | 'repartir'
 export function LevantamientoPanel({
   variant, geometry, onSave, onUploadImage, onReady, onDirtyChange,
   base, prompts, renders, onGenerateRender, onEdit, onSavePrompt, onDeleteRender,
+  onChoose, onUnchoose,
 }: Props) {
   const [confirmReclone, setConfirmReclone] = useState(false)
   const [pending, setPending] = useState<PendingWrite | null>(null)
@@ -389,7 +392,8 @@ export function LevantamientoPanel({
         floorId={selectedFloor?.id ?? null} floorName={selectedFloor?.name ?? null}
         floorCount={floorCount} base={base}
         prompts={prompts} renders={renders} onGeneratePlan={handleGeneratePlan}
-        onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender} />
+        onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender}
+        onChoose={onChoose} onUnchoose={onUnchoose} />
     </div>
   )
 

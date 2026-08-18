@@ -22,17 +22,29 @@ function edgeAxis(p1: { x: number; y: number }, p2: { x: number; y: number }) {
   return { L, ux, uy, nx: -uy, ny: ux }
 }
 
-export interface ExportOpts { width?: number; height?: number; margin?: number }
+export interface ExportOpts { width?: number; height?: number; margin?: number; scale?: number }
 
 /** Serialize one floor to a standalone, print-friendly SVG string. */
 export function floorToSvg(floor: FloorGraph, opts: ExportOpts = {}): string {
-  const width = opts.width ?? 1200, height = opts.height ?? 900, margin = opts.margin ?? 64
+  // `scale` (px por metro) invierte la relación: el LIENZO se dimensiona desde la escala,
+  // en vez de la escala desde el lienzo. Es lo que hace comparables a dos variantes del
+  // mismo piso — un antes de 4.2 m y un después de 5.0 m ajustados cada uno a su propia
+  // caja se dibujan casi del mismo ancho (1085.9 vs 1112.0 px medidos) y el muro hasta
+  // adelgaza (37.4 → 32.2 px): un Antes/Después así afirma que no cambió nada.
+  // El margen sube a 96 con `scale`: las cadenas de cota llegan hasta px(x1)+64 más el
+  // medio ancho de su texto, y con 64 quedarían cortadas contra el borde del lienzo.
+  // Sin `scale` no cambia absolutamente nada — `↓ SVG` y `↓ PDF` del editor son byte
+  // por byte lo que eran.
+  const margin = opts.margin ?? (opts.scale != null ? 96 : 64)
   const verts = Object.values(floor.vertices)
   const xs = verts.map(v => v.x), ys = verts.map(v => v.y)
   const minx = Math.min(...xs, 0), maxx = Math.max(...xs, 1)
   const miny = Math.min(...ys, 0), maxy = Math.max(...ys, 1)
   const spanx = maxx - minx || 1, spany = maxy - miny || 1
-  const scale = Math.min((width - 2 * margin) / spanx, (height - 2 * margin) / spany)
+  const fitW = opts.width ?? 1200, fitH = opts.height ?? 900
+  const scale = opts.scale ?? Math.min((fitW - 2 * margin) / spanx, (fitH - 2 * margin) / spany)
+  const width = opts.scale == null ? fitW : Math.round(spanx * scale + 2 * margin)
+  const height = opts.scale == null ? fitH : Math.round(spany * scale + 2 * margin)
   const px = (x: number) => margin + (x - minx) * scale
   const py = (y: number) => height - margin - (y - miny) * scale
 

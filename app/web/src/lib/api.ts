@@ -276,6 +276,18 @@ export async function deletePropertyRender(id: number, renderId: number): Promis
   if (!res.ok) throw new Error(await detail(res))
 }
 
+export async function choosePropertyRender(id: number, renderId: number): Promise<PropertyRender> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}/choose`, { method: 'PUT' })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export async function unchoosePropertyRender(id: number, renderId: number): Promise<PropertyRender> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}/choose`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
 export type SonarRunEvent =
   | { type: 'start';           portals: string[]; total: number; cves: string[] }
   | { type: 'portal_start';    portal: string }

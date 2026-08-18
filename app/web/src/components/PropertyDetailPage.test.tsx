@@ -771,7 +771,7 @@ describe('PropertyDetailPage', () => {
     floorId: 'floor-1', floorName: 'Planta Original',
     parentRenderId: null, filePath: 'r/99.png', contentType: 'image/png', promptId: null,
     promptText: 'Estilo minimalista.', provider: 'openai', model: 'gpt-image-2',
-    createdAt: '2026-08-01T00:00:00Z',
+    createdAt: '2026-08-01T00:00:00Z', isChosen: false,
   })
 
   it('generar RENDERS desde el PLANEADO llama a generatePropertyRenderFromPlan con variant: "planned" y el piso', async () => {

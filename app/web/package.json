@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:plano": "vite build --config vite.plano.config.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -3,328 +3,10 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-import pytest
-
-from api.lib.prospectus_html import _floorplan_svg, _budget_full, _opportunity, _opportunity_detail, _BODY_CSS, _SVG_SIZE
-
-ONE_FLOOR = {
-    "floors": [{
-        "name": "Planta Baja",
-        "vertices": {
-            "v1": {"id": "v1", "x": 0, "y": 0},
-            "v2": {"id": "v2", "x": 5, "y": 0},
-            "v3": {"id": "v3", "x": 5, "y": 4},
-        },
-        "edges": {
-            "e1": {"id": "e1", "v1": "v1", "v2": "v2", "thickness": 0.15},
-            "e2": {"id": "e2", "v1": "v2", "v2": "v3", "thickness": 0.15},
-        },
-        "rooms": [{"name": "Sala", "cx": 2.5, "cy": 2.0}],
-    }],
-}
-
-TWO_FLOORS = {
-    "floors": [
-        ONE_FLOOR["floors"][0],
-        {**ONE_FLOOR["floors"][0], "name": "Planta Alta"},
-    ],
-}
-
-DANGLING_EDGE = {
-    "floors": [{
-        "name": "Planta Baja",
-        "vertices": {"v1": {"id": "v1", "x": 0, "y": 0}},
-        "edges": {"e1": {"id": "e1", "v1": "v1", "v2": "ghost", "thickness": 0.15}},
-        "rooms": [],
-    }],
-}
-
-# Variantes v3 (envelope del frontend, types.ts): cada una es un FloorSet completo.
-ORIGINAL_SET = {"slab_m": 0.15, "activeFloor": 0, "floors": ONE_FLOOR["floors"]}
-
-PLANNED_SET = {
-    "slab_m": 0.15,
-    "activeFloor": 0,
-    "floors": [{
-        "name": "Planta Planeada",
-        "vertices": {
-            "v1": {"id": "v1", "x": 0, "y": 0},
-            "v2": {"id": "v2", "x": 8, "y": 0},
-        },
-        "edges": {"e1": {"id": "e1", "v1": "v1", "v2": "v2", "thickness": 0.15}},
-        "rooms": [{"name": "Recámara Nueva", "cx": 4.0, "cy": 0.5}],
-    }],
-}
-
-# Lo que persiste "EMPEZAR EN BLANCO": un planned con un piso sin un solo vértice. Nombrado
-# distinto a ORIGINAL_SET ("Planta Baja") a propósito: si el nombre fuera el mismo, el
-# assert de "no se esconde el original dibujado" pasaría aunque el blanco se colara.
-BLANK_SET = {
-    "slab_m": 0.15,
-    "activeFloor": 0,
-    "floors": [{"name": "Planta en Blanco", "vertices": {}, "edges": {}, "rooms": []}],
-}
-
-# Un piso amueblado (Task 12): un mueble con medidas reales (`kind`, `x`, `y`, `rot`,
-# `w_m`, `h_m` — types.ts `Fixture`). `_floorplan_svg` lo dibuja como rect tenue.
-FURNISHED_FLOOR = {
-    "floors": [{
-        **ONE_FLOOR["floors"][0],
-        "fixtures": [
-            {"id": "fx1", "kind": "cama_queen", "x": 2, "y": 1, "rot": 0, "w_m": 1.6, "h_m": 2.0},
-        ],
-    }],
-}
-
-# Una medida manual (addendum #5, `ManualDimension` en types.ts): línea suelta de dos
-# puntos libres, no atada a un muro. `_floorplan_svg` la dibuja siempre — a diferencia
-# del editor en vivo, aquí no hay toggle "showDims" que apagarla (ese estado es puro UI
-# del reducer, nunca se persiste al modelo).
-MEASURED_FLOOR = {
-    "floors": [{
-        **ONE_FLOOR["floors"][0],
-        "manualDimensions": [
-            {"id": "d1", "p1": {"x": 1, "y": 1}, "p2": {"x": 4, "y": 1}},
-        ],
-    }],
-}
-
-# Misma cota que MEASURED_FLOOR pero VERTICAL: el número debe rotar con la línea (ver
-# test_manual_dimension_label_rotates_with_a_vertical_line) — con el número siempre
-# horizontal quedaba cruzado por su propia línea, ilegible.
-MEASURED_FLOOR_VERTICAL = {
-    "floors": [{
-        **ONE_FLOOR["floors"][0],
-        "manualDimensions": [
-            {"id": "d1", "p1": {"x": 1, "y": 1}, "p2": {"x": 1, "y": 4}},
-        ],
-    }],
-}
-
-# La MISMA cota vertical que MEASURED_FLOOR_VERTICAL, pero con p1/p2 al revés — el orden
-# en que el editor los graba depende de en qué sentido arrastró el usuario, no de la
-# geometría. El número debe quedar del mismo lado en ambas (ver
-# test_manual_dimension_label_side_does_not_depend_on_draw_direction).
-MEASURED_FLOOR_VERTICAL_REVERSED = {
-    "floors": [{
-        **ONE_FLOOR["floors"][0],
-        "manualDimensions": [
-            {"id": "d1", "p1": {"x": 1, "y": 4}, "p2": {"x": 1, "y": 1}},
-        ],
-    }],
-}
-
-# Un piso con una arista 'ghost' (división manual de cuarto): divide para nombres/áreas
-# pero no es muro — _floorplan_svg no debe dibujarle línea alguna.
-GHOST_EDGE_FLOOR = {
-    "floors": [{
-        "name": "Planta Baja",
-        "vertices": {
-            "v1": {"id": "v1", "x": 0, "y": 0},
-            "v2": {"id": "v2", "x": 5, "y": 0},
-            "v3": {"id": "v3", "x": 5, "y": 4},
-        },
-        "edges": {
-            "e1": {"id": "e1", "v1": "v1", "v2": "v2", "thickness": 0.15},
-            "e2": {"id": "e2", "v1": "v2", "v2": "v3", "thickness": 0.15},
-            "e3": {"id": "e3", "v1": "v1", "v2": "v3", "thickness": 0.05, "kind": "ghost"},
-        },
-        "rooms": [{"name": "Sala", "cx": 2.5, "cy": 2.0}],
-    }],
-}
-
-
-def _v3(original, planned):
-    return {"schemaVersion": 3, "variants": {"original": original, "planned": planned}}
+from api.lib.prospectus_html import (_budget_full, _opportunity, _opportunity_detail, _photo_block,
+                                     _photo_rows, _plan_block, _plan_rows, _BODY_CSS)
 
 BASE_PROPERTY = {"name": "[TEST] Casa Prueba"}
-
-
-def test_empty_geometry_renders_nothing():
-    assert _floorplan_svg({}) == ""
-    assert _floorplan_svg(None) == ""
-    assert _floorplan_svg({"floors": []}) == ""
-
-
-def test_one_floor_draws_walls_and_room_name():
-    svg = _floorplan_svg(ONE_FLOOR)
-    assert "<svg" in svg
-    assert svg.count("<line") == 2
-    assert "Sala" in svg
-    assert "Planta Baja" in svg
-
-
-def test_two_floors_stack_both_with_their_names():
-    svg = _floorplan_svg(TWO_FLOORS)
-    assert "Planta Baja" in svg
-    assert "Planta Alta" in svg
-    assert svg.count("<svg") == 2
-
-
-def test_v3_with_only_original_renders_the_original():
-    svg = _floorplan_svg(_v3(ORIGINAL_SET, None))
-    assert "<svg" in svg
-    assert "Sala" in svg
-    assert "Planta Baja" in svg
-
-
-def test_v3_with_a_drawn_planned_renders_the_planned_not_the_original():
-    """El prospecto es el pitch al inversionista: muestra la propuesta."""
-    svg = _floorplan_svg(_v3(ORIGINAL_SET, PLANNED_SET))
-    assert "Recámara Nueva" in svg
-    assert "Planta Planeada" in svg
-    assert "Sala" not in svg
-
-
-def test_v3_blank_planned_does_not_hide_a_drawn_original():
-    """"EMPEZAR EN BLANCO" persiste un planned con un piso sin vértices: eso
-    no es una propuesta todavía — el original dibujado sigue mandando."""
-    svg = _floorplan_svg(_v3(ORIGINAL_SET, BLANK_SET))
-    assert "Sala" in svg
-    assert "Planta Baja" in svg
-    assert "Planta en Blanco" not in svg
-
-    # Mismo caso con un planned sin ni un piso (en vez del piso vacío que persiste el
-    # botón "EMPEZAR EN BLANCO"): el original dibujado sigue ganando igual.
-    assert "Sala" in _floorplan_svg(_v3(ORIGINAL_SET, {"floors": []}))
-
-
-def test_v3_planned_wins_if_any_of_its_floors_has_vertices():
-    """"Tiene geometría dibujada" es CUALQUIER piso con al menos un vértice,
-    no "la lista de pisos no está vacía"."""
-    planned = {**PLANNED_SET,
-               "floors": BLANK_SET["floors"] + PLANNED_SET["floors"]}
-    svg = _floorplan_svg(_v3(ORIGINAL_SET, planned))
-    assert "Recámara Nueva" in svg
-    assert "Sala" not in svg
-
-
-def test_v3_with_garbage_variants_renders_nothing():
-    assert _floorplan_svg({"schemaVersion": 3}) == ""
-    assert _floorplan_svg({"schemaVersion": 3, "variants": {}}) == ""
-    assert _floorplan_svg(_v3(None, None)) == ""
-    assert _floorplan_svg(_v3({"floors": []}, None)) == ""
-
-
-def test_a_wall_with_a_missing_vertex_is_skipped_not_fatal():
-    svg = _floorplan_svg(DANGLING_EDGE)
-    assert "<line" not in svg
-    assert "<svg" in svg  # el piso se dibuja igual, solo sin ese muro
-
-
-def test_ghost_edges_are_not_drawn_as_walls():
-    """Una fantasma (división manual de cuarto, `kind: 'ghost'`) divide para nombres/áreas
-    pero NO es muro: si se dibujara aquí, el modelo de render vería un muro que no existe."""
-    svg = _floorplan_svg(GHOST_EDGE_FLOOR)
-    assert svg.count("<line") == 2   # los 2 muros reales (e1, e2); e3 (ghost) no se dibuja
-    assert "Sala" in svg             # el cuarto sigue nombrado
-
-
-def test_furnished_floor_draws_a_muted_rect_for_the_fixture():
-    """`class="plano-fixture"` (no un <rect> a secas: el fondo del SVG también es un rect)
-    identifica el elemento; sin label — a diferencia de planImage.ts (que sí nombra cada
-    mueble para el modelo de render), aquí el lector es un inversionista viendo un plano
-    técnico en miniatura: importa la masa, no que diga "cama queen" en 7px."""
-    svg = _floorplan_svg(FURNISHED_FLOOR)
-    assert 'class="plano-fixture"' in svg
-    m = re.search(r'class="plano-fixture" x="(-?[\d.]+)" y="(-?[\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg)
-    assert m is not None
-    x, y, w, h = (float(g) for g in m.groups())
-    scale = _SVG_SIZE / 5  # ONE_FLOOR mide 5x4, el lado mayor (5) fija la escala compartida
-    assert w == pytest.approx(1.6 * scale, abs=0.5)
-    assert h == pytest.approx(2.0 * scale, abs=0.5)
-    assert x == pytest.approx(-w / 2, abs=0.5)   # rect centrado, se traslada con transform
-    assert y == pytest.approx(-h / 2, abs=0.5)
-    assert "cama_queen" not in svg
-
-
-def test_floor_without_fixtures_key_does_not_crash():
-    """Backward compat: ningún blob anterior a Task 10 trae la clave `fixtures`."""
-    svg = _floorplan_svg(ONE_FLOOR)
-    assert 'class="plano-fixture"' not in svg
-    assert "<svg" in svg
-
-
-def test_floor_with_empty_fixtures_list_does_not_crash():
-    floor = {**ONE_FLOOR["floors"][0], "fixtures": []}
-    svg = _floorplan_svg({"floors": [floor]})
-    assert 'class="plano-fixture"' not in svg
-    assert "<svg" in svg
-
-
-def test_floor_with_manual_dimension_draws_line_and_label():
-    """`class="plano-dim"`/`class="plano-dim-label"` identifican la línea y su número —
-    misma convención que `plano-fixture` arriba. Se dibuja SIEMPRE, sin depender de
-    ningún toggle: el prospecto no tiene el botón "Dims" del editor, así que no hay
-    nada que apagar aquí."""
-    svg = _floorplan_svg(MEASURED_FLOOR)
-    assert 'class="plano-dim"' in svg
-    assert 'class="plano-dim-label"' in svg
-    assert "3.00 m" in svg  # distancia real entre (1,1) y (4,1)
-
-
-def test_manual_dimension_label_is_upright_on_a_horizontal_line():
-    svg = _floorplan_svg(MEASURED_FLOOR)
-    m = re.search(r'class="plano-dim-label"[^>]*transform="rotate\((-?[\d.]+)', svg)
-    assert m is not None
-    assert float(m.group(1)) == pytest.approx(0, abs=1)
-
-
-def test_manual_dimension_label_rotates_with_a_vertical_line():
-    """Antes el número era siempre horizontal — sobre una cota vertical quedaba escrito
-    ENCIMA de su propia línea, ilegible. Ahora rota con ella (recortado a ±90° para
-    nunca salir cabeza abajo, mismo criterio que FloorPlanCanvas.tsx)."""
-    svg = _floorplan_svg(MEASURED_FLOOR_VERTICAL)
-    m = re.search(r'class="plano-dim-label"[^>]*transform="rotate\((-?[\d.]+)', svg)
-    assert m is not None
-    assert abs(float(m.group(1))) == pytest.approx(90, abs=1)
-    assert "3.00 m" in svg  # distancia real entre (1,1) y (1,4)
-
-
-def _dim_label_tag(svg: str) -> str:
-    m = re.search(r'<text [^>]*class="plano-dim-label"[^>]*>', svg)
-    assert m is not None
-    return m.group(0)
-
-
-def test_manual_dimension_label_side_does_not_depend_on_draw_direction():
-    """El mismo trazo visual (misma cota vertical) podía terminar con el número a la
-    izquierda o a la derecha según en qué sentido arrastró el usuario — p1/p2 se graban
-    en el orden del gesto, no de la geometría. Canonizada la dirección antes de rotar y
-    desplazar, ambos órdenes producen el mismo ángulo y el mismo lado."""
-    tag_fwd = _dim_label_tag(_floorplan_svg(MEASURED_FLOOR_VERTICAL))
-    tag_rev = _dim_label_tag(_floorplan_svg(MEASURED_FLOOR_VERTICAL_REVERSED))
-    x_fwd = float(re.search(r'x="(-?[\d.]+)"', tag_fwd).group(1))
-    x_rev = float(re.search(r'x="(-?[\d.]+)"', tag_rev).group(1))
-    angle_fwd = float(re.search(r'rotate\((-?[\d.]+)', tag_fwd).group(1))
-    angle_rev = float(re.search(r'rotate\((-?[\d.]+)', tag_rev).group(1))
-    assert x_fwd == pytest.approx(x_rev, abs=0.1)
-    assert angle_fwd == pytest.approx(angle_rev, abs=0.1)
-
-
-def test_floor_without_manual_dimensions_key_does_not_crash():
-    """Backward compat: ningún blob previo al addendum #5 trae la clave `manualDimensions`."""
-    svg = _floorplan_svg(ONE_FLOOR)
-    assert 'class="plano-dim"' not in svg
-    assert "<svg" in svg
-
-
-def test_floor_with_empty_manual_dimensions_list_does_not_crash():
-    floor = {**ONE_FLOOR["floors"][0], "manualDimensions": []}
-    svg = _floorplan_svg({"floors": [floor]})
-    assert 'class="plano-dim"' not in svg
-    assert "<svg" in svg
-
-
-def test_the_plan_is_not_printed_upside_down():
-    """La y del modelo apunta hacia arriba (viewTransform.ts la niega); la del
-    SVG hacia abajo. El muro que en el editor SUBE tiene que subir en el papel."""
-    svg = _floorplan_svg(ONE_FLOOR)
-    walls = re.findall(r'<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)"', svg)
-    vertical = [w for w in walls if w[0] == w[2]]  # el muro de (5,0) a (5,4)
-    assert len(vertical) == 1
-    _, y1, _, y2 = vertical[0]
-    assert float(y1) > float(y2)
 
 
 def test_budget_full_empty_lines_returns_empty_string():
@@ -367,19 +49,6 @@ def test_budget_full_skips_the_subtotal_for_a_single_line_chapter():
 
 def test_opportunity_detail_is_empty_without_plano_or_budget():
     assert _opportunity_detail(BASE_PROPERTY) == ""
-
-
-def test_opportunity_detail_omits_the_technical_plano():
-    """El plano TÉCNICO (SVG de muros) ya no se dibuja aunque la propiedad tenga
-    geometría: pedido de Louis — al cliente no le interesan los planos técnicos;
-    la distribución la comunica el render 2D amueblado, no este dibujo."""
-    p = {**BASE_PROPERTY, "geometry": ONE_FLOOR, "budget": {
-        "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
-        "chapters": ["Otros"],
-    }}
-    html = _opportunity_detail(p)
-    assert "<svg" not in html   # el plano técnico no se dibuja...
-    assert "$156,000" in html   # ...aunque el presupuesto sí (la sección no está vacía)
 
 
 def test_opportunity_detail_shows_only_the_budget_section():
@@ -445,3 +114,166 @@ def test_the_opportunity_note_is_prose_not_a_rigid_block():
     solo en una hoja casi en blanco."""
     rule = re.search(r"\.opp-note \{[^}]*\}", _BODY_CSS).group()
     assert "break-inside" not in rule
+
+
+# ---------------------------------------------------------------------------
+# _plan_rows — hojas dibujadas + cabezas de render → filas por linaje de piso
+# ---------------------------------------------------------------------------
+
+def _sheet(fid, variant, svg="<svg/>", name="Planta Baja"):
+    return {"floorId": fid, "variant": variant, "floorName": name, "svg": svg}
+
+
+def _render(fid=None, variant=None, uri="data:x", name=None, chosen=False, image_id=None):
+    return {"floorId": fid, "sourceVariant": variant, "floorName": name,
+            "dataUri": uri, "isChosen": chosen, "sourceImageId": image_id}
+
+
+def test_el_elegido_se_empareja_su_lado():
+    rows = _plan_rows(
+        [_sheet("abc", "original", "<svg>A</svg>"), _sheet("abc", "planned", "<svg>B</svg>")],
+        [_render("abc", "original", chosen=True), _render("abc", "planned", chosen=True)])
+    assert len(rows[0]["antes"]["renders"]) == 1
+    assert len(rows[0]["despues"]["renders"]) == 1
+
+
+def test_sin_estrella_el_lado_no_tiene_renders_pero_el_plano_sigue():
+    """El plano es el ancla dimensional (PR #45) — se imprime CON o SIN render
+    elegido. Solo el hueco de render queda vacío."""
+    rows = _plan_rows([_sheet("abc", "original")], [_render("abc", "original", chosen=False)])
+    assert rows[0]["antes"] is not None
+    assert rows[0]["antes"]["renders"] == []
+
+
+def test_variante_distinta_no_empata_aunque_el_piso_coincida():
+    """Un piso planeado nacido de PARTIR comparte el id del original
+    (LevantamientoPanel.tsx:231): elegir por floorId solo pondría el elegido del
+    original junto al plano del planeado."""
+    rows = _plan_rows([_sheet("abc", "planned")], [_render("abc", "original", chosen=True)])
+    assert rows[0]["despues"]["renders"] == []
+
+
+def test_floor_id_nulo_no_empata_con_nada():
+    rows = _plan_rows([_sheet("abc", "original")], [_render(None, None, chosen=True)])
+    assert rows[0]["antes"]["renders"] == []
+
+
+def test_un_render_sin_dataUri_nunca_cuenta_aunque_este_elegido():
+    rows = _plan_rows([_sheet("abc", "original")], [_render("abc", "original", uri=None, chosen=True)])
+    assert rows[0]["antes"]["renders"] == []
+
+
+def test_un_clon_sin_editar_colapsa_a_una_sola_hoja():
+    """Mismo svg = mismo dibujo. Imprimirlo bajo Antes/Después afirmaría una
+    transformación que nadie diseñó."""
+    rows = _plan_rows(
+        [_sheet("abc", "original", "<svg>A</svg>"), _sheet("abc", "planned", "<svg>A</svg>")],
+        [_render("abc", "original", chosen=True)])
+    assert rows[0]["despues"] is None
+    assert len(rows[0]["antes"]["renders"]) == 1
+
+
+def test_el_nombre_sale_de_la_hoja_no_del_render():
+    rows = _plan_rows([_sheet("abc", "original", name="Planta Alta")],
+                      [_render("abc", "original", name="Nombre Viejo", chosen=True)])
+    assert rows[0]["floorName"] == "Planta Alta"
+
+
+def test_orden_original_primero_luego_los_pisos_solo_planeados():
+    rows = _plan_rows([_sheet("a", "original"), _sheet("b", "original"), _sheet("z", "planned")], [])
+    assert len(rows) == 3
+    assert [r["antes"] is not None for r in rows] == [True, True, False]
+
+
+def test_sin_hojas_no_hay_filas():
+    assert _plan_rows([], [_render("abc", "original", chosen=True)]) == []
+
+
+# ─── _photo_rows — foto fuente + su render elegido ─────────────────────────
+
+def _photo(image_id, data_uri="data:foto"):
+    return {"id": image_id, "dataUri": data_uri}
+
+
+def test_una_foto_con_estrella_imprime_su_fila():
+    rows = _photo_rows([_photo(7)], [_render(image_id=7, chosen=True)])
+    assert len(rows) == 1
+    assert len(rows[0]["renders"]) == 1
+
+
+def test_una_foto_sin_estrella_no_imprime_fila():
+    rows = _photo_rows([_photo(7)], [_render(image_id=7, chosen=False)])
+    assert rows == []
+
+
+def test_estrella_de_otra_foto_no_empata():
+    rows = _photo_rows([_photo(7)], [_render(image_id=9, chosen=True)])
+    assert rows == []
+
+
+def test_sin_fotos_no_hay_filas():
+    assert _photo_rows([], [_render(image_id=7, chosen=True)]) == []
+
+
+def test_la_pareja_de_una_foto_lleva_la_clase_que_apaga_el_padding_del_titulo():
+    """El plano trae su título DENTRO del propio SVG — `.plan-renders` le suma
+    9mm de padding-top para que su render alinee con eso (ver el CSS). Una foto
+    no trae ese título: sin la clase `plan-pair--photo` que apaga ese padding
+    para este caso, el render de la foto arrancaría más abajo que la foto misma."""
+    rows = _photo_rows([_photo(7)], [_render(image_id=7, chosen=True)])
+    html = _photo_block(rows)
+    assert "plan-pair--photo" in html
+
+
+def test_la_pareja_de_un_plano_no_lleva_esa_clase():
+    p = {"planSheets": [_sheet("abc", "original", "<svg>PLANO</svg>")],
+         "renderHeads": [_render("abc", "original", chosen=True)]}
+    html = _plan_block(_plan_rows(p["planSheets"], p["renderHeads"]))
+    assert "plan-pair--photo" not in html
+
+
+# ---------------------------------------------------------------------------
+# _opportunity_detail — el plano impreso junto al render que ancla
+# ---------------------------------------------------------------------------
+
+def test_el_detalle_imprime_el_plano_junto_a_su_render_elegido():
+    p = {"planSheets": [_sheet("abc", "original", "<svg>PLANO</svg>")],
+         "renderHeads": [_render("abc", "original", uri="data:ELEGIDO", chosen=True)], "budget": {}}
+    html = _opportunity_detail(p)
+    assert "PLANO" in html and "plan-row" in html
+    assert "data:ELEGIDO" in html
+
+
+def test_una_sola_variante_no_lleva_etiquetas_antes_despues():
+    p = {"planSheets": [_sheet("abc", "original")], "renderHeads": [], "budget": {}}
+    html = _opportunity_detail(p)
+    assert "Antes" not in html and "Después" not in html
+
+
+def test_dos_variantes_distintas_llevan_antes_y_despues():
+    p = {"planSheets": [_sheet("abc", "original", "<svg>A</svg>"),
+                        _sheet("abc", "planned", "<svg>B</svg>")],
+         "renderHeads": [], "budget": {}}
+    html = _opportunity_detail(p)
+    assert "Antes" in html and "Después" in html
+
+
+def test_un_render_sin_hoja_ni_foto_no_imprime_nada():
+    """Ya no hay tira suelta de respaldo: un render que no empata con una hoja
+    ni con una foto —ninguna estrella, o un piso ya borrado— simplemente no
+    tiene dónde salir."""
+    p = {"planSheets": [], "images": [], "renderHeads": [_render(None, None, chosen=True)],
+         "budget": {}}
+    assert _opportunity_detail(p) == ""
+
+
+def test_la_foto_elegida_se_imprime_en_su_propia_seccion():
+    p = {"planSheets": [], "images": [{"id": 7, "dataUri": "data:FOTO"}],
+         "renderHeads": [_render(uri="data:ELEGIDO", chosen=True, image_id=7)], "budget": {}}
+    html = _opportunity_detail(p)
+    assert "Fotos y propuesta" in html
+    assert "data:FOTO" in html and "data:ELEGIDO" in html
+
+
+def test_sin_plano_sin_render_y_sin_presupuesto_no_hay_detalle():
+    assert _opportunity_detail({"planSheets": [], "renderHeads": [], "budget": {}}) == ""

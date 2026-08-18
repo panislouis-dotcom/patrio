@@ -2,7 +2,6 @@ from pathlib import Path
 import base64
 import json
 import logging
-import math
 import os
 import tempfile
 from markupsafe import escape as _esc
@@ -16,11 +15,6 @@ _MESES = [
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ]
 
-# Lienzo del plano, en unidades del viewBox: el SVG se escala solo al ancho de
-# su columna, así que el número no es un tamaño impreso sino la resolución con
-# la que se dibujan los muros.
-_SVG_SIZE = 260.0
-_SVG_PAD = 14.0
 
 def _font_b64(name: str) -> str:
     path = (_FONTS_DIR / name).resolve()
@@ -284,39 +278,50 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    nueva dejaba media hoja en blanco. Ahora fluye después de los renders como
    cualquier otra sección; si algún día uno muy largo no cupiera, Chromium
    brinca solo, sin partir renglones (break-inside:avoid en table.kv tr). */
-.plano { display: flex; flex-wrap: wrap; gap: 6mm; }
-/* max-width limita a la mitad de la columna: sin esto, un piso solo (o un
-   número impar que deja uno solo en la última fila) hereda todo el ancho de
-   flex:1 y, como el viewBox del SVG ahora respeta la proporción real del
-   piso en vez de forzar un cuadrado, un piso angosto podía crecer alto sin
-   límite — la misma familia de bug que una página casi en blanco. */
-.plano-floor { flex: 1; min-width: 70mm; max-width: calc(50% - 3mm);
-               break-inside: avoid; page-break-inside: avoid; }
-.plano-floor-name { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 600;
-  color: var(--sec); margin-bottom: 2mm; }
-/* max-height es el otro lado de la misma pinza que max-width en .plano-floor:
-   un lote angosto y PROFUNDO (más alto que ancho) sigue siendo respetado en
-   su proporción real por el viewBox, así que topar solo el ancho no basta —
-   comprobado con datos reales: un piso así medía ~130mm de alto ya topado en
-   ancho, y esos ~130mm de más bastaban para correr el presupuesto (dos
-   renglones) a una tercera página casi en blanco. Con max-height, el SVG se
-   encoge dentro de su caja preservando su proporción (preserveAspectRatio por
-   default no distorsiona) en vez de estirar la página. */
-.plano-svg { width: 100%; height: auto; max-height: 100mm;
-             border: 1px solid var(--border); background: var(--warm); }
-.plano-room { font-family: 'Inter', sans-serif; font-size: 7px; fill: var(--sec); }
-/* Muebles: rect tenue, SIN label. planImage.ts sí nombra cada mueble ("cama queen") porque
-   ahí el lector es un modelo de render que necesita saber qué está viendo; aquí el lector
-   es un inversionista viendo un plano técnico en miniatura dentro de un pitch deck — lo que
-   importa es la masa (dónde va cada pieza y qué tan grande es), no el nombre impreso en un
-   rect de unos milímetros. Menos ruido visual, mismo dato geométrico. */
-.plano-fixture { fill: var(--border); stroke: var(--sec); stroke-width: 0.4; opacity: 0.6; }
-/* Medidas puestas a mano en el editor (ManualDimension): línea sutil + número,
-   mismo lenguaje visual que el editor en vivo (FloorPlanCanvas.tsx) — SIEMPRE se
-   dibujan, sin el toggle "showDims" del editor, porque ese toggle no persiste al
-   modelo (es puro estado de UI) y aquí no hay pantalla que abarrotar. */
-.plano-dim { stroke: var(--sec); stroke-width: 0.4; }
-.plano-dim-label { font-family: 'Inter', sans-serif; font-size: 6px; fill: var(--sec); }
+
+/* ══ Plano junto a su render ══════════════════════════════════════════════ */
+.plan-row { margin: 0 0 7mm 0; break-inside: avoid; }
+.plan-side { margin-bottom: 3mm; }
+.plan-side-label { font-family: 'Inter', sans-serif; font-size: 7pt; letter-spacing: .12em;
+                   text-transform: uppercase; color: #7A7A7A; margin-bottom: 1.5mm; }
+.plan-pair { display: flex; gap: 4mm; align-items: flex-start; }
+.plan-sheet { flex: 1 1 50%; min-width: 0; }
+/* 110mm, no 165: con 165mm cada piso ocupaba solo su columna de ~83mm de ancho pero
+   ~171mm de alto de fila — más de la mitad de una A4 (297mm) — así que nunca cabían
+   2 pisos en la misma página. Medido con el arnés real de Chromium contra los 4 pisos
+   reales de las propiedades 5 y 10 (viewBox más angosto: alto/ancho 2.02): a 110mm dos
+   filas miden ~232mm juntas —caben en la página— y el plano dibujado sigue midiendo
+   ~55-60mm de ancho visible. Not 85mm: ahí el ancho visible cae a ~42-46mm, medido
+   ilegible en un PDF real (cotas y m² encimados) — 110mm es el primer escalón donde
+   caben 2 por página sin repetir ese problema. */
+.plan-sheet svg { width: 100%; height: auto; max-height: 110mm; }
+/* `_photo_block` mete una FOTO (etiqueta img) en este mismo hueco — antes solo lo
+   llenaba un plano en SVG, que ya trae su propia proporción en el viewBox. Una
+   imagen sin ancho ni alto explícitos se dibuja a su tamaño de píxeles real (miles
+   de px de una foto de cámara) dentro de un flex angosto: el layout la desborda y
+   no se ve nada. Mismo tope que la regla vecina de SVG, con object-fit porque, a
+   diferencia del plano, una foto sí puede desbordar su caja en cualquier proporción. */
+.plan-sheet img { width: 100%; height: auto; max-height: 110mm; object-fit: contain; }
+/* El plano trae su nombre de piso DIBUJADO dentro del propio SVG (floorToSvg — el
+   mismo que usa el botón ↓ SVG del editor, no se toca aquí para no cambiarle la
+   descarga) — el margen que le hace lugar a ese título es ~8.5% de su alto, medido
+   sobre las 4 hojas reales de las propiedades 5 y 10. A los 110mm de tope que ya
+   toca un piso angosto, eso es ~9mm de aire antes de que empiecen los muros. El
+   render de al lado no trae ese margen —la imagen ocupa el cuadro completo—, así
+   que sin este padding sus dos "arribas" no coinciden: el plano se ve corrido hacia
+   abajo respecto al render. Este padding empuja el render esos mismos ~9mm.  */
+.plan-renders { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; gap: 2mm;
+                padding-top: 9mm; }
+/* La FOTO (a diferencia del plano) no trae título dibujado adentro — ocupa el
+   cuadro completo desde su borde superior. Con el mismo padding-top de arriba el
+   render quedaba ~9mm más abajo que la foto: las dos "arribas" ya no coincidían,
+   al revés del problema que ese padding arregla para el plano. */
+.plan-pair--photo .plan-renders { padding-top: 0; }
+/* 78mm × 2 + hueco ≈ el alto del plano de al lado: la pareja se lee como una banda,
+   no como una columna corta junto a una torre de imágenes. */
+.plan-renders img { width: 100%; height: auto; max-height: 78mm; object-fit: contain; }
+/* Una hoja sin render no debe estirarse a media página: sin pareja se queda a su ancho. */
+.plan-pair > .plan-sheet:only-child { flex: 0 0 62%; }
 
 /* ══ CLOSING ═════════════════════════════════════════════════════════════ */
 .closing { height: 297mm; background: var(--green); color: #fff; padding: 30mm var(--pad);
@@ -449,6 +454,125 @@ def _strip(images, label: str, limit: int) -> str:
     tags = "".join(f'<img src="{i["dataUri"]}" alt="">' for i in imgs)
     lab = f'<div class="strip-label">{_esc(label)}</div>' if label else ""
     return f'{lab}<div class="strip">{tags}</div>'
+
+
+def _plan_rows(sheets: list[dict], renders: list[dict]) -> list[dict]:
+    """Las hojas dibujadas + las cabezas de render → filas por LINAJE de piso.
+
+    Una fila es un piso a lo largo de sus variantes, no una hoja: un piso planeado
+    nacido de PARTIR/RE-PARTIR comparte el `id` de su contraparte original
+    (`LevantamientoPanel.tsx:231`), y ese id compartido es justo lo que permite
+    alinear el antes con el después sin heurística.
+
+    De los renders de cada (floorId, sourceVariant) solo entra el que trae
+    `isChosen` — nunca hay más de uno, porque el índice único de la base de
+    datos ya lo garantiza (migración 046). Sin estrella, ese lado queda con
+    `renders: []`: el PLANO se imprime de todos modos (es el ancla dimensional
+    de la PR #45, no depende de que exista un render), solo el hueco de imagen
+    queda vacío. No hay tira suelta ni «el más reciente» de respaldo — si nadie
+    eligió, el documento no adivina.
+
+    Por eso mismo un render empata por `(floorId, sourceVariant)`, LAS DOS, nunca
+    solo la primera: el propio comentario de `LevantamientoPanel.tsx` lo advirtió
+    por escrito antes de que esta función existiera.
+
+    El nombre del piso sale de la HOJA, no del render: `floorName` en el render
+    está congelado para sobrevivir a un renombre, pero el piso vivo siempre
+    existe si hay una hoja que mostrar.
+    """
+    chosen_by_key = {
+        (r["floorId"], r["sourceVariant"]): r
+        for r in renders
+        if r.get("dataUri") and r.get("isChosen") and r.get("floorId") is not None
+    }
+    by_key = {(s["floorId"], s["variant"]): s for s in sheets}
+
+    order, seen = [], set()
+    for s in sheets:
+        if s["floorId"] not in seen:
+            seen.add(s["floorId"])
+            order.append(s["floorId"])
+
+    rows = []
+    for fid in order:
+        antes, despues = by_key.get((fid, "original")), by_key.get((fid, "planned"))
+        antes_r = chosen_by_key.get((fid, "original"))
+        despues_r = chosen_by_key.get((fid, "planned"))
+        # Un planeado clonado y aún no editado produce el MISMO string —mismo
+        # serializador, misma entrada—. Imprimirlo bajo "Antes / Después" afirmaría
+        # una transformación que nadie diseñó. Si las dos variantes tenían estrella
+        # propia, se queda con la del lado "antes" — arbitrario entre dos iguales,
+        # pero determinista.
+        if antes and despues and antes["svg"] == despues["svg"]:
+            despues = None
+        rows.append({
+            "floorName": (antes or despues)["floorName"],
+            "antes": {**antes, "renders": [antes_r] if antes_r else []} if antes else None,
+            "despues": {**despues, "renders": [despues_r] if despues_r else []} if despues else None,
+        })
+    return rows
+
+
+def _photo_rows(images: list[dict], renders: list[dict]) -> list[dict]:
+    """Foto fuente + su render elegido — mismo principio que `_plan_rows`, sin
+    Antes/Después porque una foto no tiene variantes. Sin estrella, esa foto no
+    imprime fila: a diferencia del plano, una foto sin su render elegido no tiene
+    nada propio que decir aquí (la foto en sí ya se ve en la galería de arriba)."""
+    chosen_by_image = {
+        r["sourceImageId"]: r for r in renders
+        if r.get("dataUri") and r.get("isChosen") and r.get("sourceImageId") is not None
+    }
+    rows = []
+    for img in images:
+        r = chosen_by_image.get(img["id"])
+        if r is not None:
+            rows.append({"svg": f'<img src="{img["dataUri"]}" alt="">', "renders": [r]})
+    return rows
+
+
+def _plan_side(side: dict | None, label: str, show_label: bool, is_photo: bool = False) -> str:
+    """Un lado de una fila: la hoja (o foto) y, a su derecha, su render elegido.
+
+    `show_label` solo es cierto cuando la fila trae las DOS variantes: un piso sin
+    propuesta no necesita que le digan "Antes" de qué.
+
+    `is_photo` distingue una FOTO de un PLANO: solo el plano trae su título dibujado
+    dentro del propio SVG (ver `.plan-renders`), así que solo él necesita el padding
+    que alinea el render con eso. Una foto no trae ese título — sin la clase
+    `plan-pair--photo` que apaga ese padding, el render de al lado empieza más abajo
+    que la foto misma."""
+    if side is None:
+        return ""
+    lab = f'<div class="plan-side-label">{_esc(label)}</div>' if show_label else ""
+    imgs = "".join(f'<img src="{r["dataUri"]}" alt="">' for r in side["renders"])
+    renders = f'<div class="plan-renders">{imgs}</div>' if imgs else ""
+    pair_class = "plan-pair plan-pair--photo" if is_photo else "plan-pair"
+    return (f'<div class="plan-side">{lab}<div class="{pair_class}">'
+            f'<div class="plan-sheet">{side["svg"]}</div>{renders}</div></div>')
+
+
+def _plan_block(rows: list[dict]) -> str:
+    """La medida junto a la imagen que la aproxima. Sin filas → "", el bloque
+    desaparece: si está va, si no está no va."""
+    if not rows:
+        return ""
+    out = []
+    for row in rows:
+        both = row["antes"] is not None and row["despues"] is not None
+        out.append(f'<div class="plan-row"><div class="col-label">{_esc(row["floorName"])}</div>'
+                   + _plan_side(row["antes"], "Antes", both)
+                   + _plan_side(row["despues"], "Después", both)
+                   + '</div>')
+    return "".join(out)
+
+
+def _photo_block(rows: list[dict]) -> str:
+    """Foto + su render elegido, mismo layout de pareja que `_plan_block` pero sin
+    encabezado de piso — una foto no tiene nombre que anunciar."""
+    if not rows:
+        return ""
+    return "".join(f'<div class="plan-row">{_plan_side(row, "", False, is_photo=True)}</div>'
+                   for row in rows)
 
 
 def _kv_rows(pairs) -> str:
@@ -636,187 +760,6 @@ def _development_card(p: dict, kicker: str) -> str:
         _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy. s/ inversión"),
     ])
     return _card(p, kicker, _projected_hold_tail(p), metrics)
-
-
-def _pick_floors(geometry: dict) -> list:
-    """Los pisos que el prospecto debe dibujar, aceptando los dos shapes que
-    persiste el editor (types.ts): v2 trae `floors` en la raíz; v3 los anida
-    en `variants.original` / `variants.planned`. El prospecto es el pitch al
-    inversionista: muestra la PROPUESTA (el levantamiento planeado) cuando
-    existe, y el original queda como el registro de respaldo.
-
-    "Existe" exige geometría dibujada — CUALQUIER piso del planeado con al
-    menos un vértice — porque "EMPEZAR EN BLANCO" persiste un planeado con un
-    piso vacío, y ese lienzo en blanco no es propuesta todavía: no le gana a
-    un original dibujado. Cualquier otro shape (v1, basura, vacío) regresa []
-    y el bloque desaparece, igual que siempre."""
-    geometry = geometry or {}
-    if geometry.get("schemaVersion") != 3:
-        return geometry.get("floors") or []
-    variants = geometry.get("variants") or {}
-    planned = (variants.get("planned") or {}).get("floors") or []
-    if any(floor.get("vertices") for floor in planned):
-        return planned
-    return (variants.get("original") or {}).get("floors") or []
-
-
-def _floorplan_svg(geometry: dict) -> str:
-    """El plano de una oportunidad, dibujado con lo único que el modelo crudo del
-    editor garantiza siempre: muros (con su grosor) y el nombre de cada cuarto en
-    su punto de etiqueta — más muebles y medidas manuales cuando el usuario los
-    puso. Sin polígono relleno — un cuarto puede nombrarse sin estar cerrado por
-    muros, así que el modelo no trae ni su área ni su forma
-    (ver docs/plans/2026-08-05-prospecto-plano-renders-presupuesto-design.md).
-    Sin pisos → "", el bloque desaparece del mismo modo que un `_strip` vacío.
-
-    Una sola escala para TODOS los pisos del edificio, no una por piso: dos
-    plantas de la MISMA construcción tienen que leerse a un tamaño comparable
-    — un muro de 15cm es el mismo grosor de línea en planta baja y en planta
-    alta. Escalar cada piso por separado (como hacía antes) dibuja edificios
-    distintos a "el mismo tamaño de página" en vez de a la misma escala, que
-    es precisamente lo que un plano técnico no puede hacer.
-
-    El viewBox de cada piso ya no es un cuadrado fijo: mide el ancho y el alto
-    reales de ESE piso a la escala compartida. Antes el cuadrado forzaba
-    `.plano-svg { width:100%; height:auto }` a un 1:1 sin importar la forma
-    real del piso — un lote angosto y profundo se dibujaba con casi la mitad
-    del lienzo vacía, y un piso solo (o uno impar sobrante en la fila) podía
-    estirarse a 170mm de alto por pura coincidencia geométrica, no por su
-    contenido. Con el viewBox real, el alto que ocupa en la página es el alto
-    que el piso de verdad necesita."""
-    floors = _pick_floors(geometry)
-    extents = []
-    for floor in floors:
-        vertices = floor.get("vertices") or {}
-        if not vertices:
-            extents.append(None)
-            continue
-        xs = [v["x"] for v in vertices.values()]
-        ys = [v["y"] for v in vertices.values()]
-        # El piso degenerado (un solo vértice) tiene extensión cero: el mínimo
-        # evita la división entre cero, no dibuja nada de más.
-        width = max(max(xs) - min(xs), 0.01)
-        height = max(max(ys) - min(ys), 0.01)
-        extents.append((width, height, min(xs), max(ys)))
-
-    real = [e for e in extents if e is not None]
-    if not real:
-        return ""
-    # La escala compartida se fija por el piso MÁS GRANDE del edificio, para
-    # que ningún piso se salga de su columna de 82mm — el mismo criterio que
-    # ya se usaba por piso, ahora aplicado al edificio completo.
-    scale = _SVG_SIZE / max(max(w, h) for w, h, _, _ in real)
-
-    blocks = []
-    for floor, extent in zip(floors, extents):
-        if extent is None:
-            continue
-        width, height, min_x, max_y = extent
-        vertices = floor.get("vertices") or {}
-
-        def sx(x, min_x=min_x):
-            return (x - min_x) * scale + _SVG_PAD
-
-        # La y del modelo apunta hacia ARRIBA (viewTransform.ts la niega en sus
-        # dos cámaras, y userToWorld la vuelve a invertir); la del SVG apunta
-        # hacia abajo. Sin este volteo el plano se imprime espejeado de arriba
-        # a abajo respecto de lo que el usuario dibujó en el editor.
-        def sy(y, max_y=max_y):
-            return (max_y - y) * scale + _SVG_PAD
-
-        lines = []
-        for edge in (floor.get("edges") or {}).values():
-            # Una fantasma (kind 'ghost') es una división manual de cuarto, no un muro: no
-            # puede traer aberturas (motor lo impide), así que basta este skip temprano —
-            # sin él el prospecto dibujaría un muro donde el usuario solo puso una división.
-            if edge.get("kind") == "ghost":
-                continue
-            v1 = vertices.get(edge.get("v1"))
-            v2 = vertices.get(edge.get("v2"))
-            if v1 is None or v2 is None:
-                continue
-            stroke = max(_num(edge.get("thickness")) * scale, 1)
-            lines.append(
-                f'<line x1="{sx(v1["x"]):.1f}" y1="{sy(v1["y"]):.1f}" '
-                f'x2="{sx(v2["x"]):.1f}" y2="{sy(v2["y"]):.1f}" '
-                f'stroke="#1A1A1A" stroke-width="{stroke:.1f}" stroke-linecap="square" />'
-            )
-
-        # Muebles (Task 12): rect tenue por mueble, sin label (ver .plano-fixture arriba).
-        # `?? []` en TS es `or []` aquí — ningún blob previo a Task 10 trae esta clave, y
-        # no puede tratarse como error: es "sin muebles", no un plano roto.
-        fixtures = []
-        for fx in floor.get("fixtures") or []:
-            fx_x, fx_y = fx.get("x"), fx.get("y")
-            if fx_x is None or fx_y is None:
-                continue
-            fcx, fcy = sx(fx_x), sy(fx_y)
-            fw, fh = _num(fx.get("w_m")) * scale, _num(fx.get("h_m")) * scale
-            # Mismo signo que planImage.ts y FloorPlanCanvas.tsx: rot es CCW en coordenadas
-            # de MUNDO (y hacia arriba); sy() niega el eje Y igual que py() allá, así que la
-            # rotación se niega aquí también — si no, un mueble rotado saldría al revés.
-            frot = -_num(fx.get("rot"))
-            fixtures.append(
-                f'<rect class="plano-fixture" x="{-fw / 2:.1f}" y="{-fh / 2:.1f}" '
-                f'width="{fw:.1f}" height="{fh:.1f}" '
-                f'transform="translate({fcx:.1f} {fcy:.1f}) rotate({frot:.1f})" />'
-            )
-
-        # Medidas manuales (Eduardo, addendum #5): el editor las guarda siempre pero
-        # solo las muestra a demanda vía "Dims"; ese toggle es puro estado de UI
-        # (`showDims` vive en el reducer, no en el modelo persistido), así que aquí,
-        # sin UI que abarrotar, se dibujan todas — mismo criterio que fixtures/muros.
-        dims = []
-        for dim in floor.get("manualDimensions") or []:
-            p1, p2 = dim.get("p1") or {}, dim.get("p2") or {}
-            x1_m, y1_m, x2_m, y2_m = p1.get("x"), p1.get("y"), p2.get("x"), p2.get("y")
-            if x1_m is None or y1_m is None or x2_m is None or y2_m is None:
-                continue
-            x1, y1, x2, y2 = sx(x1_m), sy(y1_m), sx(x2_m), sy(y2_m)
-            length = math.hypot(x2_m - x1_m, y2_m - y1_m)
-            # El número corre PARALELO a la línea, no siempre horizontal — mismo ajuste que
-            # FloorPlanCanvas.tsx: una cota vertical (o diagonal) con el número horizontal
-            # encima quedaba cruzada por su propia línea. Desplazamiento PERPENDICULAR a la
-            # línea, no solo "hacia arriba", para despegarse de ella en cualquier orientación.
-            #
-            # La dirección se CANONIZA (siempre "hacia la derecha", o hacia abajo si es
-            # exactamente vertical) igual que en el editor: p1/p2 quedan grabados en el orden
-            # en que el usuario los trazó, y sin canonizar el lado del número dependía de ese
-            # sentido de arrastre — mismo trazo visual, número a veces a la izquierda, a veces
-            # a la derecha. Canonizada, ddx ≥ 0 siempre, así que atan2 ya cae en [-90°, 90°]
-            # sin recortarlo aparte — el texto nunca sale cabeza abajo.
-            ddx, ddy = x2 - x1, y2 - y1
-            if ddx < 0 or (ddx == 0 and ddy < 0):
-                ddx, ddy = -ddx, -ddy
-            seg_len = math.hypot(ddx, ddy) or 1
-            angle_deg = math.degrees(math.atan2(ddy, ddx))
-            label_x = (x1 + x2) / 2 + (ddy / seg_len) * 3
-            label_y = (y1 + y2) / 2 - (ddx / seg_len) * 3
-            dims.append(
-                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" class="plano-dim" />'
-                f'<text x="{label_x:.1f}" y="{label_y:.1f}" class="plano-dim-label" text-anchor="middle" '
-                f'transform="rotate({angle_deg:.1f} {label_x:.1f} {label_y:.1f})">{length:.2f} m</text>'
-            )
-
-        labels = []
-        for room in floor.get("rooms") or []:
-            cx, cy = room.get("cx"), room.get("cy")
-            if cx is None or cy is None:
-                continue
-            labels.append(
-                f'<text x="{sx(cx):.1f}" y="{sy(cy):.1f}" '
-                f'class="plano-room" text-anchor="middle">{_esc(room.get("name", ""))}</text>'
-            )
-
-        view_w = width * scale + _SVG_PAD * 2
-        view_h = height * scale + _SVG_PAD * 2
-        blocks.append(f"""<div class="plano-floor">
-  <div class="plano-floor-name">{_esc(floor.get("name", ""))}</div>
-  <svg viewBox="0 0 {view_w:.1f} {view_h:.1f}" class="plano-svg">{''.join(lines)}{''.join(fixtures)}{''.join(dims)}{''.join(labels)}</svg>
-</div>""")
-    if not blocks:
-        return ""
-    return f'<div class="plano">{"".join(blocks)}</div>'
 
 
 def _budget_full(lines: list[dict], chapters: list[str]) -> str:
@@ -1007,12 +950,17 @@ def _opportunity(p: dict) -> str:
 
 
 def _opportunity_detail(p: dict) -> str:
-    """Renders (propuesta de diseño) y desglose del presupuesto de obra de una
-    oportunidad. "" si no hay ninguno de los dos.
+    """Plano, renders (propuesta de diseño) y desglose del presupuesto de obra de
+    una oportunidad. "" si no hay ninguno de los tres.
 
-    El plano TÉCNICO (`_floorplan_svg`) NO va aquí — pedido de Louis: al cliente
-    no le interesan los planos técnicos; la distribución la comunica el render 2D
-    amueblado, que sí entra.
+    El plano SÍ va aquí, junto al render que ancla. El render de IA no es
+    dimensionalmente exacto —mueve muros interiores, estira cuartos— así que no
+    puede ser el único portador de la distribución: el lector necesita la medida
+    al lado de la imagen que la aproxima. Lo que entra NO es el plano técnico en
+    blanco y negro que `fe302aa` quitó (aquel sí era ruido para el cliente), sino
+    el dibujo que carga m² por cuarto, largo de muros, cotas y abatimiento de
+    puertas. Se empareja por piso y variante (`_plan_rows`), y cada hoja se
+    imprime al lado de sus propios renders, no en una sección aparte.
 
     Vive en el mismo flujo que la tarjeta principal, justo después de la nota
     — ya no en su propia page-block. Forzar un salto de página aquí, sin
@@ -1026,24 +974,36 @@ def _opportunity_detail(p: dict) -> str:
     Los renders son la cabeza de cada cadena (`renderHeads`, una por línea, la
     propuesta vigente de cada idea, sin pasos intermedios) — INCLUIDOS los
     planos-render 2D amueblados, que son los que muestran la distribución. Viven
-    aquí, no junto al hero, donde la tira quedaba apretada y no se veía. Antes
-    esta sección traía `renders` sin deduplicar por cadena —el mismo diseño dos
-    veces, con borradores ya editados encima—; ahora es `renderHeads`."""
-    render_heads = [r for r in p.get("renderHeads", []) if r.get("dataUri")]
-    renders_html = _strip(render_heads, "", 3) if render_heads else ""
+    aquí, no junto al hero, donde la tira quedaba apretada y no se veía.
+
+    De todas esas cabezas se imprime SOLO la que alguien marcó con estrella
+    (`isChosen`), y siempre pegada a su fuente: la del piso junto a su hoja
+    ("Plano y propuesta", `_plan_rows`), la de una foto junto a esa foto ("Fotos
+    y propuesta", `_photo_rows`). Ya no hay tira suelta de sobrantes ni
+    «los dos más recientes» de respaldo — un prospecto con tres ideas por piso
+    salía ilegible, y adivinar cuál enseñar nunca fue del documento. Sin
+    estrella, la hoja se imprime igual (es el ancla dimensional) y la foto no
+    imprime nada: ya se ve en la galería de arriba."""
+    rows = _plan_rows(p.get("planSheets") or [], p.get("renderHeads") or [])
+    plan_html = _plan_block(rows)
+
+    photo_rows = _photo_rows(p.get("images") or [], p.get("renderHeads") or [])
+    photos_html = _photo_block(photo_rows)
 
     budget = p.get("budget") or {}
     budget_html = _budget_full(budget.get("lines", []), budget.get("chapters", []))
 
-    if not (renders_html or budget_html):
+    if not (plan_html or photos_html or budget_html):
         return ""
 
-    # El plano TÉCNICO (muros/nombres de cuarto, `_floorplan_svg`) NO se muestra:
-    # pedido explícito de Louis — al cliente no le interesa ver planos técnicos;
-    # lo que comunica la distribución es el render 2D amueblado, que sí entra abajo.
     sections = "".join([
-        f'<div class="detail-section"><div class="col-label">Renders · propuesta de diseño</div>{renders_html}</div>'
-        if renders_html else "",
+        f'<div class="detail-section"><div class="col-label">Plano y propuesta</div>{plan_html}</div>'
+        if plan_html else "",
+        # Solo lo que alguien eligió de verdad: sin estrella marcada en ninguna
+        # foto de la propiedad, esta sección no existe — no hay tira suelta
+        # esperando a los que no se eligieron.
+        f'<div class="detail-section"><div class="col-label">Fotos y propuesta</div>{photos_html}</div>'
+        if photos_html else "",
         # El presupuesto fluye después de los renders, en la misma hoja (pedido
         # de Louis): un presupuesto de obra típico es corto y cabe en el ~70% de
         # hoja que dejan los renders. Ya no fuerza su propia página.

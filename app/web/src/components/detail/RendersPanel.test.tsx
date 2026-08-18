@@ -37,7 +37,7 @@ const renderRow = (id: number): PropertyRender => ({
   id, propertyId: 7, sourceImageId: 10, sourcePlanPath: null, sourceVariant: null, parentRenderId: null,
   floorId: null, floorName: null,
   filePath: `r/${id}.png`, contentType: 'image/png', promptId: 1, promptText: 'Mezquite y agaves.',
-  provider: 'openai', model: 'gpt-image-2', createdAt: '2026-08-02T00:00:00Z',
+  provider: 'openai', model: 'gpt-image-2', createdAt: '2026-08-02T00:00:00Z', isChosen: false,
 })
 
 /** Render nacido del PLANO: sin foto, con `sourcePlanPath`/`sourceVariant` puestos y su
@@ -66,6 +66,8 @@ const planBase = {
   base: '',
   onSavePrompt: vi.fn().mockResolvedValue(planPrompts[0]),
   onDeleteRender: vi.fn().mockResolvedValue(undefined),
+  onChoose: vi.fn().mockResolvedValue(undefined),
+  onUnchoose: vi.fn().mockResolvedValue(undefined),
 }
 
 // Los tests mezclan campos de las dos ramas de la unión discriminada a propósito
@@ -573,6 +575,26 @@ describe('RendersPanel', () => {
 
     await screen.findByText(/boom/)
     expect(screen.queryByText(/generando render/i)).toBeNull()
+  })
+
+  it('la estrella vacía llama a onChoose con el id del render', async () => {
+    const onChoose = vi.fn().mockResolvedValue(undefined)
+    setup({ renders: [renderRow(1)], onChoose, onUnchoose: vi.fn().mockResolvedValue(undefined) })
+    fireEvent.click(screen.getByRole('button', { name: 'Elegir este render' }))
+    await waitFor(() => expect(onChoose).toHaveBeenCalledWith(1))
+  })
+
+  it('la estrella llena llama a onUnchoose', async () => {
+    const onUnchoose = vi.fn().mockResolvedValue(undefined)
+    setup({ renders: [{ ...renderRow(1), isChosen: true }], onChoose: vi.fn().mockResolvedValue(undefined), onUnchoose })
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar como elegido' }))
+    await waitFor(() => expect(onUnchoose).toHaveBeenCalledWith(1))
+  })
+
+  it('un render sin piso ni foto no muestra el botón de elegir', () => {
+    setup({ renders: [{ ...renderRow(1), sourceImageId: null }], onChoose: vi.fn(), onUnchoose: vi.fn() })
+    expect(screen.queryByRole('button', { name: 'Elegir este render' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Quitar como elegido' })).toBeNull()
   })
 })
 

@@ -50,6 +50,10 @@ api: ## Start FastAPI backend (port 8000)
 dev: ## Start React frontend (port 5173)
 	cd app/web && npm run dev
 
+build-plano: ## Empaquetar floorToSvg para que el API dibuje los planos del prospecto
+	cd app/web && npm run build:plano
+	mkdir -p app/api/assets && cp app/web/dist-plano/plano.iife.js app/api/assets/plano.iife.js
+
 test: ## Run Python test suite
 	PYTHONPATH=.:app .venv/bin/pytest app/api/tests/ -v
 

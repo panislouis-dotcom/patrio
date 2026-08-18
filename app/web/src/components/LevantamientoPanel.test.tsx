@@ -59,7 +59,7 @@ function planRenderRow(id: number, variant: VariantKey, floorId: string | null =
     floorId, floorName: floorId,
     parentRenderId: null, filePath: `r/${id}.png`, contentType: 'image/png', promptId: null,
     promptText: 'Estilo minimalista.', provider: 'openai', model: 'gpt-image-2',
-    createdAt: '2026-08-01T00:00:00Z',
+    createdAt: '2026-08-01T00:00:00Z', isChosen: false,
   }
 }
 
@@ -96,6 +96,8 @@ function renderPanel(
       onGenerateRender={onGenerateRender}
       onSavePrompt={vi.fn().mockResolvedValue({ id: 1, name: 'x', body: 'y', kind: 'plan', isDefault: false, createdAt: '2026-08-01T00:00:00Z' })}
       onDeleteRender={vi.fn().mockResolvedValue(undefined)}
+      onChoose={vi.fn().mockResolvedValue(undefined)}
+      onUnchoose={vi.fn().mockResolvedValue(undefined)}
     />
   )
   const { rerender } = render(buildElement(geometry))
