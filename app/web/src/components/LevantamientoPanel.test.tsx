@@ -96,6 +96,8 @@ function renderPanel(
       onGenerateRender={onGenerateRender}
       onSavePrompt={vi.fn().mockResolvedValue({ id: 1, name: 'x', body: 'y', kind: 'plan', isDefault: false, createdAt: '2026-08-01T00:00:00Z' })}
       onDeleteRender={vi.fn().mockResolvedValue(undefined)}
+      onChoose={vi.fn().mockResolvedValue(undefined)}
+      onUnchoose={vi.fn().mockResolvedValue(undefined)}
     />
   )
   const { rerender } = render(buildElement(geometry))
