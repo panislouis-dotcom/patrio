@@ -286,18 +286,22 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
                    text-transform: uppercase; color: #7A7A7A; margin-bottom: 1.5mm; }
 .plan-pair { display: flex; gap: 4mm; align-items: flex-start; }
 .plan-sheet { flex: 1 1 50%; min-width: 0; }
-/* 165mm, no 85: un lote angosto y profundo (los dos reales de la propiedad 5 lo son)
-   tiene viewBox vertical, así que con un tope de 85mm el ALTO manda y el ancho se
-   desploma a ~42mm — el plano se dibujaba a un cuarto de su columna y las cotas y los
-   m² quedaban ilegibles, que es justo lo único que este plano viene a aportar. */
-.plan-sheet svg { width: 100%; height: auto; max-height: 165mm; }
+/* 110mm, no 165: con 165mm cada piso ocupaba solo su columna de ~83mm de ancho pero
+   ~171mm de alto de fila — más de la mitad de una A4 (297mm) — así que nunca cabían
+   2 pisos en la misma página. Medido con el arnés real de Chromium contra los 4 pisos
+   reales de las propiedades 5 y 10 (viewBox más angosto: alto/ancho 2.02): a 110mm dos
+   filas miden ~232mm juntas —caben en la página— y el plano dibujado sigue midiendo
+   ~55-60mm de ancho visible. Not 85mm: ahí el ancho visible cae a ~42-46mm, medido
+   ilegible en un PDF real (cotas y m² encimados) — 110mm es el primer escalón donde
+   caben 2 por página sin repetir ese problema. */
+.plan-sheet svg { width: 100%; height: auto; max-height: 110mm; }
 /* `_photo_block` mete una FOTO (etiqueta img) en este mismo hueco — antes solo lo
    llenaba un plano en SVG, que ya trae su propia proporción en el viewBox. Una
    imagen sin ancho ni alto explícitos se dibuja a su tamaño de píxeles real (miles
    de px de una foto de cámara) dentro de un flex angosto: el layout la desborda y
    no se ve nada. Mismo tope que la regla vecina de SVG, con object-fit porque, a
    diferencia del plano, una foto sí puede desbordar su caja en cualquier proporción. */
-.plan-sheet img { width: 100%; height: auto; max-height: 165mm; object-fit: contain; }
+.plan-sheet img { width: 100%; height: auto; max-height: 110mm; object-fit: contain; }
 .plan-renders { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; gap: 2mm; }
 /* 78mm × 2 + hueco ≈ el alto del plano de al lado: la pareja se lee como una banda,
    no como una columna corta junto a una torre de imágenes. */
