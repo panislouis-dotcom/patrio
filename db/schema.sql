@@ -1178,6 +1178,7 @@ CREATE TABLE public.property_renders (
     source_variant text,
     floor_id text,
     floor_name text,
+    is_chosen boolean DEFAULT false NOT NULL,
     CONSTRAINT property_renders_file_path_check CHECK ((file_path <> ''::text)),
     CONSTRAINT property_renders_prompt_text_check CHECK ((prompt_text <> ''::text)),
     CONSTRAINT property_renders_source_variant_check CHECK ((source_variant = ANY (ARRAY['original'::text, 'planned'::text])))
@@ -2690,6 +2691,20 @@ CREATE INDEX idx_proveedor_photos_prov ON public.proveedor_photos USING btree (p
 
 
 --
+-- Name: idx_render_chosen_per_floor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_render_chosen_per_floor ON public.property_renders USING btree (property_id, floor_id, source_variant) WHERE (is_chosen AND (floor_id IS NOT NULL));
+
+
+--
+-- Name: idx_render_chosen_per_photo; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_render_chosen_per_photo ON public.property_renders USING btree (property_id, source_image_id) WHERE (is_chosen AND (source_image_id IS NOT NULL));
+
+
+--
 -- Name: idx_render_prompts_name_active; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3270,4 +3285,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('042'),
     ('043'),
     ('044'),
-    ('045');
+    ('045'),
+    ('046');
