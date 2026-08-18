@@ -1,13 +1,6 @@
 import { migrateGeometry, type FloorGraph, type VariantKey } from './types'
 import { floorToSvg } from './exportSvg'
 
-// Reexportada tal cual: el backfill de ids de piso en el servidor (`plano_js.py`,
-// script de reparación) necesita el MISMO backfill que ya corre en memoria cada vez
-// que el editor abre un blob — no un cálculo paralelo en Python que podría divergir
-// del schema (v2/v3, variantes anidadas). Ver el comentario de `migrateGeometry`
-// para el porqué del backfill en sí.
-export { migrateGeometry }
-
 /** Una hoja dibujada: un piso de una variante, ya en SVG. */
 export interface PlanSheet { variant: VariantKey; floorId: string; floorName: string; svg: string }
 
