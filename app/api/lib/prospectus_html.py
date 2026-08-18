@@ -312,6 +312,11 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    abajo respecto al render. Este padding empuja el render esos mismos ~9mm.  */
 .plan-renders { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; gap: 2mm;
                 padding-top: 9mm; }
+/* La FOTO (a diferencia del plano) no trae título dibujado adentro — ocupa el
+   cuadro completo desde su borde superior. Con el mismo padding-top de arriba el
+   render quedaba ~9mm más abajo que la foto: las dos "arribas" ya no coincidían,
+   al revés del problema que ese padding arregla para el plano. */
+.plan-pair--photo .plan-renders { padding-top: 0; }
 /* 78mm × 2 + hueco ≈ el alto del plano de al lado: la pareja se lee como una banda,
    no como una columna corta junto a una torre de imágenes. */
 .plan-renders img { width: 100%; height: auto; max-height: 78mm; object-fit: contain; }
@@ -525,17 +530,24 @@ def _photo_rows(images: list[dict], renders: list[dict]) -> list[dict]:
     return rows
 
 
-def _plan_side(side: dict | None, label: str, show_label: bool) -> str:
+def _plan_side(side: dict | None, label: str, show_label: bool, is_photo: bool = False) -> str:
     """Un lado de una fila: la hoja (o foto) y, a su derecha, su render elegido.
 
     `show_label` solo es cierto cuando la fila trae las DOS variantes: un piso sin
-    propuesta no necesita que le digan "Antes" de qué."""
+    propuesta no necesita que le digan "Antes" de qué.
+
+    `is_photo` distingue una FOTO de un PLANO: solo el plano trae su título dibujado
+    dentro del propio SVG (ver `.plan-renders`), así que solo él necesita el padding
+    que alinea el render con eso. Una foto no trae ese título — sin la clase
+    `plan-pair--photo` que apaga ese padding, el render de al lado empieza más abajo
+    que la foto misma."""
     if side is None:
         return ""
     lab = f'<div class="plan-side-label">{_esc(label)}</div>' if show_label else ""
     imgs = "".join(f'<img src="{r["dataUri"]}" alt="">' for r in side["renders"])
     renders = f'<div class="plan-renders">{imgs}</div>' if imgs else ""
-    return (f'<div class="plan-side">{lab}<div class="plan-pair">'
+    pair_class = "plan-pair plan-pair--photo" if is_photo else "plan-pair"
+    return (f'<div class="plan-side">{lab}<div class="{pair_class}">'
             f'<div class="plan-sheet">{side["svg"]}</div>{renders}</div></div>')
 
 
@@ -559,7 +571,8 @@ def _photo_block(rows: list[dict]) -> str:
     encabezado de piso — una foto no tiene nombre que anunciar."""
     if not rows:
         return ""
-    return "".join(f'<div class="plan-row">{_plan_side(row, "", False)}</div>' for row in rows)
+    return "".join(f'<div class="plan-row">{_plan_side(row, "", False, is_photo=True)}</div>'
+                   for row in rows)
 
 
 def _kv_rows(pairs) -> str:

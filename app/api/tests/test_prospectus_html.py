@@ -3,8 +3,8 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-from api.lib.prospectus_html import (_budget_full, _opportunity, _opportunity_detail, _photo_rows,
-                                     _plan_rows, _BODY_CSS)
+from api.lib.prospectus_html import (_budget_full, _opportunity, _opportunity_detail, _photo_block,
+                                     _photo_rows, _plan_block, _plan_rows, _BODY_CSS)
 
 BASE_PROPERTY = {"name": "[TEST] Casa Prueba"}
 
@@ -213,6 +213,23 @@ def test_estrella_de_otra_foto_no_empata():
 
 def test_sin_fotos_no_hay_filas():
     assert _photo_rows([], [_render(image_id=7, chosen=True)]) == []
+
+
+def test_la_pareja_de_una_foto_lleva_la_clase_que_apaga_el_padding_del_titulo():
+    """El plano trae su título DENTRO del propio SVG — `.plan-renders` le suma
+    9mm de padding-top para que su render alinee con eso (ver el CSS). Una foto
+    no trae ese título: sin la clase `plan-pair--photo` que apaga ese padding
+    para este caso, el render de la foto arrancaría más abajo que la foto misma."""
+    rows = _photo_rows([_photo(7)], [_render(image_id=7, chosen=True)])
+    html = _photo_block(rows)
+    assert "plan-pair--photo" in html
+
+
+def test_la_pareja_de_un_plano_no_lleva_esa_clase():
+    p = {"planSheets": [_sheet("abc", "original", "<svg>PLANO</svg>")],
+         "renderHeads": [_render("abc", "original", chosen=True)]}
+    html = _plan_block(_plan_rows(p["planSheets"], p["renderHeads"]))
+    assert "plan-pair--photo" not in html
 
 
 # ---------------------------------------------------------------------------
