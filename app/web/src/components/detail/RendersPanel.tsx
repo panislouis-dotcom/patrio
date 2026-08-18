@@ -29,10 +29,6 @@ interface CommonProps {
 interface PhotosProps extends CommonProps {
   source: 'photos'
   images: PropertyImage[]
-  /** La foto SELECCIONADA — el selector vive en `FotosPanel` (dueño de la lista
-   * de fotos), no aquí, mismo reparto de responsabilidad que `floorId` en
-   * `PlanProps`. `null` mientras no haya ninguna foto que seleccionar. */
-  selectedImageId: number | null
   onGenerate: (req: { sourceImageId: number; promptId: number | null; promptText: string })
     => Promise<PropertyRender>
   plan?: never
@@ -151,7 +147,6 @@ export function RendersPanel(props: Props) {
   // Identidad del piso SELECCIONADO (Task 30) — null exactamente cuando `plan` es
   // null. `floorCount` decide, más abajo, cómo agrupar los renders con `floorId`
   // NULL (legado): bajo el único piso si es 1, aparte si son 2+.
-  const selectedImageId = props.source === 'photos' ? props.selectedImageId : null
   const selectedFloorId = props.source === 'plan' ? props.floorId : null
   const selectedFloorName = props.source === 'plan' ? props.floorName : null
   const floorCount = props.source === 'plan' ? props.floorCount : 0
@@ -194,17 +189,16 @@ export function RendersPanel(props: Props) {
   // piso no hay ambigüedad y se cuela aquí; con 2+ pisos es ambiguo y se cuenta
   // aparte en `unassigned`, nunca en la lista de un piso concreto.
   //
-  // Modo fotos agrega el suyo (Task 32): la foto SELECCIONADA en `FotosPanel`,
-  // porque la estrella marca un elegido POR FOTO y no se puede escoger dentro de
-  // una lista revuelta. `sourceImageId` NULL es el render huérfano (su foto base
-  // se borró): no pertenece a ninguna foto, así que se enseña siempre en vez de
-  // volverse inalcanzable — sigue diciendo "fuente base borrada" y se puede leer
-  // y borrar. No hay sección aparte para él como `unassigned` en plano.
+  // Modo fotos NO filtra por foto (revertido — la estrella marca un elegido POR
+  // FOTO igual, pero cada tarjeta ya enseña su propia "Foto base" en línea, así
+  // que aislar una foto a la vez antes de poder elegir era una fila de más sin
+  // trabajo que hacer: la exclusividad la garantiza el servidor por grupo
+  // (`sourceImageId`), no una vista aislada).
   const scoped = useMemo(() => {
     const byVariant = renders.filter(r => (source === 'photos' ? r.sourceVariant == null : r.sourceVariant === variant))
-    if (source === 'photos') return byVariant.filter(r => r.sourceImageId === selectedImageId || r.sourceImageId === null)
+    if (source === 'photos') return byVariant
     return byVariant.filter(r => r.floorId === selectedFloorId || (r.floorId === null && floorCount <= 1))
-  }, [renders, source, variant, selectedImageId, selectedFloorId, floorCount])
+  }, [renders, source, variant, selectedFloorId, floorCount])
 
   // Renders de plano con `floorId` NULL cuando el levantamiento tiene 2+ pisos:
   // ambiguos — a cuál piso pertenecen no se puede reconstruir — así que se
