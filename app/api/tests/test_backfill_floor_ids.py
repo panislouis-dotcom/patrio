@@ -1,19 +1,25 @@
-"""El job de reparación de app/api/jobs/backfill_floor_ids.py: clasifica propiedades
-en ilegibles / ya bien / por reparar, y solo escribe las del tercer grupo.
+"""El script de reparación de scripts/backfill_floor_ids.py: clasifica propiedades en
+ilegibles / ya bien / por reparar, y solo escribe las del tercer grupo.
 `plano_js.backfill_floor_ids` (el migrateGeometry real) ya se prueba en
-test_plano_js.py — esta suite prueba la parte propia del job: el diff y el escrito.
+test_plano_js.py — esta suite prueba la parte propia del script: el diff y el escrito.
 
 Nunca se llama `job.main()` aquí: fetch_geometries() lee TODA la tabla properties, y
 en una base de pruebas compartida eso arrastraría filas de otras fixtures — cada
 prueba compone `plan()`/`apply()` a mano sobre un `by_id` acotado a su propia
 propiedad, nunca sobre la base entera."""
 import asyncio
+import sys
+from pathlib import Path
 
 import pytest
 from psycopg2.extras import Json
 
 from api.db import get_db
-from api.jobs import backfill_floor_ids as job
+
+_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_ROOT / "scripts"))
+
+import backfill_floor_ids as job  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
     not job.plano_js._BUNDLE.exists(), reason="corre `make build-plano` primero")
