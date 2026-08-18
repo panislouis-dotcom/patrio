@@ -3,7 +3,8 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-from api.lib.prospectus_html import _budget_full, _opportunity, _opportunity_detail, _plan_rows, _BODY_CSS
+from api.lib.prospectus_html import (_budget_full, _opportunity, _opportunity_detail, _photo_rows,
+                                     _plan_rows, _BODY_CSS)
 
 BASE_PROPERTY = {"name": "[TEST] Casa Prueba"}
 
@@ -123,86 +124,107 @@ def _sheet(fid, variant, svg="<svg/>", name="Planta Baja"):
     return {"floorId": fid, "variant": variant, "floorName": name, "svg": svg}
 
 
-def _render(fid, variant, uri="data:x", name=None):
-    return {"floorId": fid, "sourceVariant": variant, "floorName": name, "dataUri": uri}
+def _render(fid=None, variant=None, uri="data:x", name=None, chosen=False, image_id=None):
+    return {"floorId": fid, "sourceVariant": variant, "floorName": name,
+            "dataUri": uri, "isChosen": chosen, "sourceImageId": image_id}
 
 
-def test_un_render_empata_por_piso_Y_variante():
-    rows, left = _plan_rows(
+def test_el_elegido_se_empareja_su_lado():
+    rows = _plan_rows(
         [_sheet("abc", "original", "<svg>A</svg>"), _sheet("abc", "planned", "<svg>B</svg>")],
-        [_render("abc", "original"), _render("abc", "planned")])
-    assert len(rows) == 1
+        [_render("abc", "original", chosen=True), _render("abc", "planned", chosen=True)])
     assert len(rows[0]["antes"]["renders"]) == 1
     assert len(rows[0]["despues"]["renders"]) == 1
-    assert left == []
+
+
+def test_sin_estrella_el_lado_no_tiene_renders_pero_el_plano_sigue():
+    """El plano es el ancla dimensional (PR #45) — se imprime CON o SIN render
+    elegido. Solo el hueco de render queda vacío."""
+    rows = _plan_rows([_sheet("abc", "original")], [_render("abc", "original", chosen=False)])
+    assert rows[0]["antes"] is not None
+    assert rows[0]["antes"]["renders"] == []
 
 
 def test_variante_distinta_no_empata_aunque_el_piso_coincida():
     """Un piso planeado nacido de PARTIR comparte el id del original
-    (LevantamientoPanel.tsx:231): parear solo por floorId pondría un render del
+    (LevantamientoPanel.tsx:231): elegir por floorId solo pondría el elegido del
     original junto al plano del planeado."""
-    rows, left = _plan_rows([_sheet("abc", "planned", "<svg>B</svg>")],
-                            [_render("abc", "original")])
+    rows = _plan_rows([_sheet("abc", "planned")], [_render("abc", "original", chosen=True)])
     assert rows[0]["despues"]["renders"] == []
-    assert len(left) == 1
 
 
-def test_floor_id_nulo_cae_a_la_tira_suelta():
-    rows, left = _plan_rows([_sheet("abc", "original")], [_render(None, None)])
+def test_floor_id_nulo_no_empata_con_nada():
+    rows = _plan_rows([_sheet("abc", "original")], [_render(None, None, chosen=True)])
     assert rows[0]["antes"]["renders"] == []
-    assert len(left) == 1
 
 
-def test_render_de_un_piso_borrado_cae_a_la_tira_suelta():
-    rows, left = _plan_rows([_sheet("abc", "original")], [_render("zzz", "original")])
-    assert len(left) == 1
-
-
-def test_un_render_sin_dataUri_no_entra_a_ningun_lado():
-    rows, left = _plan_rows([_sheet("abc", "original")],
-                            [_render("abc", "original", uri=None)])
-    assert rows[0]["antes"]["renders"] == [] and left == []
+def test_un_render_sin_dataUri_nunca_cuenta_aunque_este_elegido():
+    rows = _plan_rows([_sheet("abc", "original")], [_render("abc", "original", uri=None, chosen=True)])
+    assert rows[0]["antes"]["renders"] == []
 
 
 def test_un_clon_sin_editar_colapsa_a_una_sola_hoja():
     """Mismo svg = mismo dibujo. Imprimirlo bajo Antes/Después afirmaría una
     transformación que nadie diseñó."""
-    rows, left = _plan_rows(
+    rows = _plan_rows(
         [_sheet("abc", "original", "<svg>A</svg>"), _sheet("abc", "planned", "<svg>A</svg>")],
-        [_render("abc", "original"), _render("abc", "planned")])
+        [_render("abc", "original", chosen=True)])
     assert rows[0]["despues"] is None
-    # los renders del planeado son del MISMO dibujo: se quedan en la fila, no sobran
-    assert len(rows[0]["antes"]["renders"]) == 2
-    assert left == []
+    assert len(rows[0]["antes"]["renders"]) == 1
 
 
 def test_el_nombre_sale_de_la_hoja_no_del_render():
-    rows, _ = _plan_rows([_sheet("abc", "original", name="Planta Alta")],
-                         [_render("abc", "original", name="Nombre Viejo")])
+    rows = _plan_rows([_sheet("abc", "original", name="Planta Alta")],
+                      [_render("abc", "original", name="Nombre Viejo", chosen=True)])
     assert rows[0]["floorName"] == "Planta Alta"
 
 
 def test_orden_original_primero_luego_los_pisos_solo_planeados():
-    rows, _ = _plan_rows(
-        [_sheet("a", "original"), _sheet("b", "original"), _sheet("z", "planned")], [])
+    rows = _plan_rows([_sheet("a", "original"), _sheet("b", "original"), _sheet("z", "planned")], [])
     assert len(rows) == 3
     assert [r["antes"] is not None for r in rows] == [True, True, False]
 
 
-def test_sin_hojas_todo_es_tira_suelta():
-    rows, left = _plan_rows([], [_render("abc", "original")])
-    assert rows == [] and len(left) == 1
+def test_sin_hojas_no_hay_filas():
+    assert _plan_rows([], [_render("abc", "original", chosen=True)]) == []
+
+
+# ─── _photo_rows — foto fuente + su render elegido ─────────────────────────
+
+def _photo(image_id, data_uri="data:foto"):
+    return {"id": image_id, "dataUri": data_uri}
+
+
+def test_una_foto_con_estrella_imprime_su_fila():
+    rows = _photo_rows([_photo(7)], [_render(image_id=7, chosen=True)])
+    assert len(rows) == 1
+    assert len(rows[0]["renders"]) == 1
+
+
+def test_una_foto_sin_estrella_no_imprime_fila():
+    rows = _photo_rows([_photo(7)], [_render(image_id=7, chosen=False)])
+    assert rows == []
+
+
+def test_estrella_de_otra_foto_no_empata():
+    rows = _photo_rows([_photo(7)], [_render(image_id=9, chosen=True)])
+    assert rows == []
+
+
+def test_sin_fotos_no_hay_filas():
+    assert _photo_rows([], [_render(image_id=7, chosen=True)]) == []
 
 
 # ---------------------------------------------------------------------------
 # _opportunity_detail — el plano impreso junto al render que ancla
 # ---------------------------------------------------------------------------
 
-def test_el_detalle_imprime_el_plano_junto_a_su_render():
+def test_el_detalle_imprime_el_plano_junto_a_su_render_elegido():
     p = {"planSheets": [_sheet("abc", "original", "<svg>PLANO</svg>")],
-         "renderHeads": [_render("abc", "original")], "budget": {}}
+         "renderHeads": [_render("abc", "original", uri="data:ELEGIDO", chosen=True)], "budget": {}}
     html = _opportunity_detail(p)
     assert "PLANO" in html and "plan-row" in html
+    assert "data:ELEGIDO" in html
 
 
 def test_una_sola_variante_no_lleva_etiquetas_antes_despues():
@@ -219,31 +241,22 @@ def test_dos_variantes_distintas_llevan_antes_y_despues():
     assert "Antes" in html and "Después" in html
 
 
-def test_los_renders_sin_piso_conservan_la_tira_de_siempre():
-    p = {"planSheets": [], "renderHeads": [_render(None, None)], "budget": {}}
+def test_un_render_sin_hoja_ni_foto_no_imprime_nada():
+    """Ya no hay tira suelta de respaldo: un render que no empata con una hoja
+    ni con una foto —ninguna estrella, o un piso ya borrado— simplemente no
+    tiene dónde salir."""
+    p = {"planSheets": [], "images": [], "renderHeads": [_render(None, None, chosen=True)],
+         "budget": {}}
+    assert _opportunity_detail(p) == ""
+
+
+def test_la_foto_elegida_se_imprime_en_su_propia_seccion():
+    p = {"planSheets": [], "images": [{"id": 7, "dataUri": "data:FOTO"}],
+         "renderHeads": [_render(uri="data:ELEGIDO", chosen=True, image_id=7)], "budget": {}}
     html = _opportunity_detail(p)
-    assert 'class="strip"' in html
+    assert "Fotos y propuesta" in html
+    assert "data:FOTO" in html and "data:ELEGIDO" in html
 
 
 def test_sin_plano_sin_render_y_sin_presupuesto_no_hay_detalle():
     assert _opportunity_detail({"planSheets": [], "renderHeads": [], "budget": {}}) == ""
-
-
-def test_solo_dos_renders_caben_junto_a_una_hoja_el_resto_baja_a_la_tira():
-    """Tres renders apilados junto a un plano lo encogen a un cuarto de su columna
-    (la propiedad 5 tiene exactamente ese caso). El excedente no se tira: baja a la
-    tira suelta, que es donde ya viven los que no empataron."""
-    rows, left = _plan_rows(
-        [_sheet("abc", "original")],
-        [_render("abc", "original", uri=f"data:{i}") for i in range(5)])
-    assert len(rows[0]["antes"]["renders"]) == 2
-    assert len(left) == 3
-    # se conservan los MÁS RECIENTES: list_render_heads ordena created_at DESC
-    assert [r["dataUri"] for r in rows[0]["antes"]["renders"]] == ["data:0", "data:1"]
-
-
-def test_el_recorte_no_revienta_cuando_un_piso_no_tiene_planeado():
-    """`paired` solo trae llaves de variantes CON hoja: recortar a ciegas
-    (fid, 'planned') en un piso sin propuesta sería un KeyError."""
-    rows, left = _plan_rows([_sheet("abc", "original")], [_render("abc", "original")])
-    assert rows[0]["despues"] is None and left == []

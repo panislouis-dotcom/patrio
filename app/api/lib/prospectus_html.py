@@ -431,40 +431,36 @@ def _strip(images, label: str, limit: int) -> str:
     return f'{lab}<div class="strip">{tags}</div>'
 
 
-# Cuántos renders caben junto a una hoja sin encogerla. El excedente baja a la tira
-# suelta; no se pierde ninguno.
-_PAIRED_RENDERS_MAX = 2
-
-
-def _plan_rows(sheets: list[dict], renders: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Las hojas dibujadas + las cabezas de render → filas por LINAJE de piso, más lo
-    que no empató.
+def _plan_rows(sheets: list[dict], renders: list[dict]) -> list[dict]:
+    """Las hojas dibujadas + las cabezas de render → filas por LINAJE de piso.
 
     Una fila es un piso a lo largo de sus variantes, no una hoja: un piso planeado
     nacido de PARTIR/RE-PARTIR comparte el `id` de su contraparte original
     (`LevantamientoPanel.tsx:231`), y ese id compartido es justo lo que permite
     alinear el antes con el después sin heurística.
 
-    Por eso mismo un render empata por `(floorId, sourceVariant)`, LAS DOS, nunca solo
-    la primera: el propio comentario de allá lo advirtió por escrito antes de que esta
-    función existiera. Lo que no empata —render de foto, render anterior al 7-ago con
-    columnas NULL (`042` se negó a inventarles piso), render cuyo piso ya se borró—
-    vuelve como `leftovers` y alimenta la `_strip` de siempre. La salida de hoy es el
-    piso de la salida nueva, nunca peor.
+    De los renders de cada (floorId, sourceVariant) solo entra el que trae
+    `isChosen` — nunca hay más de uno, porque el índice único de la base de
+    datos ya lo garantiza (migración 046). Sin estrella, ese lado queda con
+    `renders: []`: el PLANO se imprime de todos modos (es el ancla dimensional
+    de la PR #45, no depende de que exista un render), solo el hueco de imagen
+    queda vacío. No hay tira suelta ni «el más reciente» de respaldo — si nadie
+    eligió, el documento no adivina.
 
-    El nombre del piso sale de la HOJA, no del render: `floorName` en el render está
-    congelado para sobrevivir a un renombre, pero si el piso todavía existe manda el
-    vivo. Un render cuyo piso se borró es leftover, y ahí su nombre congelado es la
-    única etiqueta honesta que queda.
+    Por eso mismo un render empata por `(floorId, sourceVariant)`, LAS DOS, nunca
+    solo la primera: el propio comentario de `LevantamientoPanel.tsx` lo advirtió
+    por escrito antes de que esta función existiera.
+
+    El nombre del piso sale de la HOJA, no del render: `floorName` en el render
+    está congelado para sobrevivir a un renombre, pero el piso vivo siempre
+    existe si hay una hoja que mostrar.
     """
+    chosen_by_key = {
+        (r["floorId"], r["sourceVariant"]): r
+        for r in renders
+        if r.get("dataUri") and r.get("isChosen") and r.get("floorId") is not None
+    }
     by_key = {(s["floorId"], s["variant"]): s for s in sheets}
-    paired: dict[tuple, list] = {key: [] for key in by_key}
-    leftovers = []
-    for r in renders:
-        if not r.get("dataUri"):
-            continue
-        key = (r.get("floorId"), r.get("sourceVariant"))
-        (paired[key] if key in paired else leftovers).append(r)
 
     order, seen = [], set()
     for s in sheets:
@@ -475,35 +471,42 @@ def _plan_rows(sheets: list[dict], renders: list[dict]) -> tuple[list[dict], lis
     rows = []
     for fid in order:
         antes, despues = by_key.get((fid, "original")), by_key.get((fid, "planned"))
+        antes_r = chosen_by_key.get((fid, "original"))
+        despues_r = chosen_by_key.get((fid, "planned"))
         # Un planeado clonado y aún no editado produce el MISMO string —mismo
-        # serializador, misma entrada—. Imprimirlo bajo "Antes / Después" afirmaría una
-        # transformación que nadie diseñó. La igualdad de strings compara exactamente lo
-        # que el lector vería, sin diff geométrico. Sus renders son del mismo dibujo, así
-        # que se quedan en la fila; no son sobrantes.
+        # serializador, misma entrada—. Imprimirlo bajo "Antes / Después" afirmaría
+        # una transformación que nadie diseñó. Si las dos variantes tenían estrella
+        # propia, se queda con la del lado "antes" — arbitrario entre dos iguales,
+        # pero determinista.
         if antes and despues and antes["svg"] == despues["svg"]:
-            paired[(fid, "original")] += paired[(fid, "planned")]
             despues = None
-        # Al lado de una hoja solo caben DOS renders sin encogerla: la propiedad 5 tiene
-        # tres por piso y la pareja salía como un plano chico junto a una torre de
-        # imágenes, con dos tercios de la columna izquierda en blanco. Los excedentes no
-        # se tiran — bajan a la tira suelta, donde ya viven los que no empataron.
-        # `list_render_heads` ordena por created_at DESC, así que los que se quedan
-        # arriba son los más recientes.
-        for key in ((fid, "original"), (fid, "planned")):
-            if key not in paired:      # esa variante no tiene hoja: no hay pareja que recortar
-                continue
-            leftovers.extend(paired[key][_PAIRED_RENDERS_MAX:])
-            paired[key] = paired[key][:_PAIRED_RENDERS_MAX]
         rows.append({
             "floorName": (antes or despues)["floorName"],
-            "antes": {**antes, "renders": paired[(fid, "original")]} if antes else None,
-            "despues": {**despues, "renders": paired[(fid, "planned")]} if despues else None,
+            "antes": {**antes, "renders": [antes_r] if antes_r else []} if antes else None,
+            "despues": {**despues, "renders": [despues_r] if despues_r else []} if despues else None,
         })
-    return rows, leftovers
+    return rows
+
+
+def _photo_rows(images: list[dict], renders: list[dict]) -> list[dict]:
+    """Foto fuente + su render elegido — mismo principio que `_plan_rows`, sin
+    Antes/Después porque una foto no tiene variantes. Sin estrella, esa foto no
+    imprime fila: a diferencia del plano, una foto sin su render elegido no tiene
+    nada propio que decir aquí (la foto en sí ya se ve en la galería de arriba)."""
+    chosen_by_image = {
+        r["sourceImageId"]: r for r in renders
+        if r.get("dataUri") and r.get("isChosen") and r.get("sourceImageId") is not None
+    }
+    rows = []
+    for img in images:
+        r = chosen_by_image.get(img["id"])
+        if r is not None:
+            rows.append({"svg": f'<img src="{img["dataUri"]}" alt="">', "renders": [r]})
+    return rows
 
 
 def _plan_side(side: dict | None, label: str, show_label: bool) -> str:
-    """Un lado de una fila: la hoja y, a su derecha, los renders que le tocan.
+    """Un lado de una fila: la hoja (o foto) y, a su derecha, su render elegido.
 
     `show_label` solo es cierto cuando la fila trae las DOS variantes: un piso sin
     propuesta no necesita que le digan "Antes" de qué."""
@@ -529,6 +532,14 @@ def _plan_block(rows: list[dict]) -> str:
                    + _plan_side(row["despues"], "Después", both)
                    + '</div>')
     return "".join(out)
+
+
+def _photo_block(rows: list[dict]) -> str:
+    """Foto + su render elegido, mismo layout de pareja que `_plan_block` pero sin
+    encabezado de piso — una foto no tiene nombre que anunciar."""
+    if not rows:
+        return ""
+    return "".join(f'<div class="plan-row">{_plan_side(row, "", False)}</div>' for row in rows)
 
 
 def _kv_rows(pairs) -> str:
@@ -930,27 +941,36 @@ def _opportunity_detail(p: dict) -> str:
     Los renders son la cabeza de cada cadena (`renderHeads`, una por línea, la
     propuesta vigente de cada idea, sin pasos intermedios) — INCLUIDOS los
     planos-render 2D amueblados, que son los que muestran la distribución. Viven
-    aquí, no junto al hero, donde la tira quedaba apretada y no se veía. Antes
-    esta sección traía `renders` sin deduplicar por cadena —el mismo diseño dos
-    veces, con borradores ya editados encima—; ahora es `renderHeads`."""
-    rows, leftovers = _plan_rows(p.get("planSheets") or [], p.get("renderHeads") or [])
+    aquí, no junto al hero, donde la tira quedaba apretada y no se veía.
+
+    De todas esas cabezas se imprime SOLO la que alguien marcó con estrella
+    (`isChosen`), y siempre pegada a su fuente: la del piso junto a su hoja
+    ("Plano y propuesta", `_plan_rows`), la de una foto junto a esa foto ("Fotos
+    y propuesta", `_photo_rows`). Ya no hay tira suelta de sobrantes ni
+    «los dos más recientes» de respaldo — un prospecto con tres ideas por piso
+    salía ilegible, y adivinar cuál enseñar nunca fue del documento. Sin
+    estrella, la hoja se imprime igual (es el ancla dimensional) y la foto no
+    imprime nada: ya se ve en la galería de arriba."""
+    rows = _plan_rows(p.get("planSheets") or [], p.get("renderHeads") or [])
     plan_html = _plan_block(rows)
-    renders_html = _strip(leftovers, "", 3) if leftovers else ""
+
+    photo_rows = _photo_rows(p.get("images") or [], p.get("renderHeads") or [])
+    photos_html = _photo_block(photo_rows)
 
     budget = p.get("budget") or {}
     budget_html = _budget_full(budget.get("lines", []), budget.get("chapters", []))
 
-    if not (plan_html or renders_html or budget_html):
+    if not (plan_html or photos_html or budget_html):
         return ""
 
     sections = "".join([
         f'<div class="detail-section"><div class="col-label">Plano y propuesta</div>{plan_html}</div>'
         if plan_html else "",
-        # Los renders que no empataron con ninguna hoja (de foto, anteriores al
-        # 7-ago con columnas NULL, o de un piso ya borrado) conservan la tira de
-        # siempre: la salida de hoy es el piso de la salida nueva.
-        f'<div class="detail-section"><div class="col-label">Renders · propuesta de diseño</div>{renders_html}</div>'
-        if renders_html else "",
+        # Solo lo que alguien eligió de verdad: sin estrella marcada en ninguna
+        # foto de la propiedad, esta sección no existe — no hay tira suelta
+        # esperando a los que no se eligieron.
+        f'<div class="detail-section"><div class="col-label">Fotos y propuesta</div>{photos_html}</div>'
+        if photos_html else "",
         # El presupuesto fluye después de los renders, en la misma hoja (pedido
         # de Louis): un presupuesto de obra típico es corto y cabe en el ~70% de
         # hoja que dejan los renders. Ya no fuerza su propia página.
