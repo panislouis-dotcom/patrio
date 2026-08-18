@@ -291,3 +291,25 @@ def delete_property_render(property_id: int, render_id: int,
         storage.delete(renders_db.delete_render(render_id, property_id))
     except renders_db.NotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/api/properties/{property_id}/renders/{render_id}/choose",
+            operation_id="property_render_choose")
+def choose_property_render(property_id: int, render_id: int,
+                           _: dict = Depends(get_current_user)):
+    try:
+        return renders_db.choose_render(property_id, render_id)
+    except renders_db.NotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except renders_db.NoGroup as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/api/properties/{property_id}/renders/{render_id}/choose",
+               operation_id="property_render_unchoose")
+def unchoose_property_render(property_id: int, render_id: int,
+                             _: dict = Depends(get_current_user)):
+    try:
+        return renders_db.unchoose_render(property_id, render_id)
+    except renders_db.NotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
