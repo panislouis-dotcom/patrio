@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import type React from 'react'
 import { colors, fonts } from '../../lib/theme'
 import type { ImageType, PropertyImage, PropertyRender, RenderPrompt, RenderPromptKind } from '../../lib/types'
 import { PhotoGallery } from '../PhotoGallery'
+import { btn as photoBtn } from '../floorplanStyles'
 import { RendersPanel } from './RendersPanel'
 
 interface Props {
@@ -18,11 +20,18 @@ interface Props {
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
   onSavePrompt: (p: { name: string; body: string; kind: RenderPromptKind }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
+  onChoose: (renderId: number) => Promise<void>
+  onUnchoose: (renderId: number) => Promise<void>
 }
 
 type SubTab = 'galeria' | 'renders'
 
 const SUB_TABS: readonly [SubTab, string][] = [['galeria', 'GALERÍA'], ['renders', 'RENDERS']]
+
+// Mismo rótulo de tira que el selector de piso de `LevantamientoPanel`; ahí es
+// un `const` local, no exportado, así que se repite el objeto en vez de sacar un
+// módulo compartido por dos usos.
+const label: React.CSSProperties = { fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.secondary }
 
 /**
  * FOTOS: GALERÍA (la obra, en fotos reales) y RENDERS (propuestas nacidas de esas
@@ -41,9 +50,16 @@ const SUB_TABS: readonly [SubTab, string][] = [['galeria', 'GALERÍA'], ['render
  */
 export function FotosPanel({
   images, base, onUpload, onDelete, onChangeType, onReorder,
-  prompts, renders, onGenerate, onEdit, onSavePrompt, onDeleteRender,
+  prompts, renders, onGenerate, onEdit, onSavePrompt, onDeleteRender, onChoose, onUnchoose,
 }: Props) {
   const [tab, setTab] = useState<SubTab>('galeria')
+  // La foto cuyos renders se enseñan. Vive aquí —dueño de `images`— y no dentro
+  // de `RendersPanel`, igual que el selector de piso vive en `LevantamientoPanel`.
+  // Nada que ver con el escogedor de "Fuente" de `RendersPanel`: ese dice de qué
+  // foto NACE un render nuevo; este, cuáles ya existentes se ENSEÑAN. Null =
+  // todavía nadie eligió; abajo cae a la primera foto para no abrir en blanco.
+  const [selectedImageId, setSelectedImageId] = useState<number | null>(null)
+  const shownImageId = selectedImageId ?? images[0]?.id ?? null
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -66,8 +82,25 @@ export function FotosPanel({
         <PhotoGallery images={images} base={base} onUpload={onUpload} onDelete={onDelete}
           onChangeType={onChangeType} onReorder={onReorder} />
       ) : (
-        <RendersPanel source="photos" images={images} prompts={prompts} renders={renders} base={base}
-          onGenerate={onGenerate} onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender} />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {images.length > 0 && (
+            <div style={{ flexShrink: 0, display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap',
+                          padding: '6px 16px', borderBottom: `1px solid ${colors.border}` }}>
+              <span style={label}>FOTO</span>
+              {images.map(img => (
+                <button key={img.id} onClick={() => setSelectedImageId(img.id)}
+                  style={{ ...photoBtn(img.id === shownImageId), textTransform: 'none', letterSpacing: '0.04em',
+                           fontFamily: fonts.sans, fontSize: '11px' }}>
+                  {img.fileName}
+                </button>
+              ))}
+            </div>
+          )}
+          <RendersPanel source="photos" images={images} prompts={prompts} renders={renders} base={base}
+            selectedImageId={shownImageId}
+            onGenerate={onGenerate} onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender}
+            onChoose={onChoose} onUnchoose={onUnchoose} />
+        </div>
       )}
     </div>
   )

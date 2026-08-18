@@ -84,6 +84,9 @@ function setup(over: Record<string, unknown> = {}) {
   const props = {
     source: 'photos' as const,
     images: [photo(10, 'fachada.jpg'), photo(11, 'jardin.jpg')],
+    // La foto seleccionada la manda `FotosPanel` (Task 32); por omisión la
+    // primera, que es de donde cuelga el `renderRow` de fábrica.
+    selectedImageId: 10,
     prompts,
     renders: [] as PropertyRender[],
     base: '',
@@ -589,6 +592,24 @@ describe('RendersPanel', () => {
     setup({ renders: [{ ...renderRow(1), isChosen: true }], onChoose: vi.fn().mockResolvedValue(undefined), onUnchoose })
     fireEvent.click(screen.getByRole('button', { name: 'Quitar como elegido' }))
     await waitFor(() => expect(onUnchoose).toHaveBeenCalledWith(1))
+  })
+
+  // ── Alcance por foto (Task 32) ──────────────────────────────────────────────
+  it('en modo fotos solo lista los renders de la foto seleccionada', () => {
+    setup({
+      selectedImageId: 11,
+      renders: [renderRow(1), { ...renderRow(2), sourceImageId: 11 }],
+    })
+    expect(screen.getByAltText('Render 2')).not.toBeNull()
+    expect(screen.queryByAltText('Render 1')).toBeNull()
+  })
+
+  it('el render huérfano se enseña con cualquier foto — si no, nadie podría borrarlo', () => {
+    // Sin foto base no pertenece a ninguna foto: esconderlo bajo el filtro lo
+    // volvería inalcanzable para siempre, en vez de solo desagrupado.
+    setup({ selectedImageId: 11, renders: [{ ...renderRow(1), sourceImageId: null }] })
+    expect(screen.getByAltText('Render 1')).not.toBeNull()
+    expect(screen.getByText(/fuente base borrada/i)).not.toBeNull()
   })
 
   it('un render sin piso ni foto no muestra el botón de elegir', () => {

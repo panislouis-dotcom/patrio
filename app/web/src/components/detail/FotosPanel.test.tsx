@@ -42,6 +42,8 @@ function setup(over: Partial<Parameters<typeof FotosPanel>[0]> = {}) {
     onEdit: vi.fn().mockResolvedValue(renderRow),
     onSavePrompt: vi.fn().mockResolvedValue(prompt),
     onDeleteRender: vi.fn().mockResolvedValue(undefined),
+    onChoose: vi.fn().mockResolvedValue(undefined),
+    onUnchoose: vi.fn().mockResolvedValue(undefined),
     ...over,
   }
   render(<FotosPanel {...props} />)
@@ -92,5 +94,60 @@ describe('FotosPanel', () => {
       }),
       {},
     )
+  })
+
+  // ── Selector de foto (Task 32) ───────────────────────────────────────────────
+  // La estrella marca UN elegido POR FOTO, así que RENDERS tiene que poder
+  // aislar "los renders de ESTA foto". El selector vive aquí —dueño de la lista
+  // de fotos— y no dentro de `RendersPanel`, mismo reparto que el selector de
+  // piso de `LevantamientoPanel`. No se confunde con el escogedor de "Fuente"
+  // de `RendersPanel`: ese elige de qué foto NACE un render nuevo; este elige
+  // cuáles ya existentes se ENSEÑAN.
+  describe('selector de foto en RENDERS', () => {
+    it('ofrece un botón por foto, con su nombre de archivo', () => {
+      const props = setup()
+      fireEvent.click(screen.getByText('RENDERS'))
+      for (const img of props.images) expect(screen.getByRole('button', { name: img.fileName })).not.toBeNull()
+    })
+
+    it('no lo enseña en GALERÍA — ahí las fotos ya se ven todas', () => {
+      const props = setup()
+      expect(screen.queryByRole('button', { name: props.images[0].fileName })).toBeNull()
+    })
+
+    it('arranca en la primera foto, para que RENDERS nunca abra en blanco', () => {
+      setup()
+      fireEvent.click(screen.getByText('RENDERS'))
+      expect(vi.mocked(RendersPanel)).toHaveBeenCalledWith(
+        expect.objectContaining({ selectedImageId: 10 }), {},
+      )
+    })
+
+    it('elegir otra foto cambia la foto que RendersPanel tiene que mostrar', () => {
+      setup()
+      fireEvent.click(screen.getByText('RENDERS'))
+      vi.mocked(RendersPanel).mockClear()
+      fireEvent.click(screen.getByRole('button', { name: '11.jpg' }))
+      expect(vi.mocked(RendersPanel)).toHaveBeenCalledWith(
+        expect.objectContaining({ selectedImageId: 11 }), {},
+      )
+    })
+
+    it('sin fotos no hay selector, y RendersPanel lo sabe (null, no un id inventado)', () => {
+      setup({ images: [] })
+      fireEvent.click(screen.getByText('RENDERS'))
+      expect(screen.queryByRole('button', { name: /\.jpg$/ })).toBeNull()
+      expect(vi.mocked(RendersPanel)).toHaveBeenCalledWith(
+        expect.objectContaining({ selectedImageId: null }), {},
+      )
+    })
+
+    it('reenvía onChoose/onUnchoose a RendersPanel — la estrella la maneja la página', () => {
+      const props = setup()
+      fireEvent.click(screen.getByText('RENDERS'))
+      expect(vi.mocked(RendersPanel)).toHaveBeenCalledWith(
+        expect.objectContaining({ onChoose: props.onChoose, onUnchoose: props.onUnchoose }), {},
+      )
+    })
   })
 })
