@@ -265,7 +265,13 @@ def edit_property_render(property_id: int, render_id: int, body: RenderEditReque
 
     return renders_db.add_render(
         property_id=property_id,
-        source_image_id=None,
+        # Mismo patrón que source_variant/floor_id de aquí abajo: el hijo hereda
+        # de qué FOTO nació el padre, no la pierde — un render de foto editado
+        # sigue siendo de esa foto. Antes de la migración 047 esto se mandaba
+        # `None` a secas, y cada edición desconectaba la cadena de su foto
+        # fuente: la cabeza (la única que se muestra) quedaba sin grupo al que
+        # la estrella (migración 046) pudiera pertenecer, y no se ofrecía.
+        source_image_id=parent["sourceImageId"],
         file_path=relative_path,
         content_type=content_type,
         prompt_id=None,
