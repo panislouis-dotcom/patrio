@@ -17,6 +17,12 @@ interface CommonProps {
    * puede terminar en el catálogo de foto ni viceversa. */
   onSavePrompt: (p: { name: string; body: string; kind: RenderPromptKind }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
+  /** La estrella: marca este render como EL elegido de su grupo (piso+variante, o
+   * foto). El servidor apaga cualquier otro del mismo grupo — este callback solo
+   * dispara la llamada; RendersPanel actualiza el estado local (vía las props
+   * `renders` que le llegan de arriba) cuando la promesa resuelve. */
+  onChoose: (renderId: number) => Promise<void>
+  onUnchoose: (renderId: number) => Promise<void>
 }
 
 /** FOTOS (Tarea 16): la fuente es una foto real de la propiedad — flujo actual. */
@@ -128,7 +134,7 @@ function replaceFacts(text: string, oldFacts: string, newFacts: string): string 
  * garantía se vuelve visible para quien la está mirando.
  */
 export function RendersPanel(props: Props) {
-  const { source, prompts, renders, base, onEdit, onSavePrompt, onDeleteRender } = props
+  const { source, prompts, renders, base, onEdit, onSavePrompt, onDeleteRender, onChoose, onUnchoose } = props
   // Narrowed a mano y no por destructuring directo: una vez que `plan`/`variant`/
   // `onGenerate*` salen del objeto `props` pierden la liga con `source` — el
   // discriminante — y TS ya no puede probar que están presentes en su rama. Leerlos
@@ -482,6 +488,7 @@ export function RendersPanel(props: Props) {
           )}
           <RenderCards heads={heads} renderById={renderById} photosById={photosById} base={base}
             onDeleteRender={onDeleteRender} onEdit={onEdit}
+            onChoose={onChoose} onUnchoose={onUnchoose}
             onReuse={h => { setPromptId(h.promptId); setText(h.promptText) }} />
         </div>
       </div>
@@ -497,6 +504,7 @@ export function RendersPanel(props: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, marginTop: spacing.sm }}>
             <RenderCards heads={unassignedHeads} renderById={unassignedById} photosById={photosById} base={base}
               onDeleteRender={onDeleteRender} onEdit={onEdit}
+              onChoose={onChoose} onUnchoose={onUnchoose}
               onReuse={h => { setPromptId(h.promptId); setText(h.promptText) }} />
           </div>
         </div>
@@ -532,7 +540,7 @@ function ancestryIn(byId: Map<number, PropertyRender>) {
 
 /** Las tarjetas de una sección de renders (un piso, o "Sin piso identificado") —
  * misma pinta en las dos, así que es un componente y no dos copias del `.map`. */
-function RenderCards({ heads, renderById, photosById, base, onDeleteRender, onReuse, onEdit }: {
+function RenderCards({ heads, renderById, photosById, base, onDeleteRender, onReuse, onEdit, onChoose, onUnchoose }: {
   heads: PropertyRender[]
   renderById: Map<number, PropertyRender>
   photosById: Map<number, PropertyImage>
@@ -540,6 +548,8 @@ function RenderCards({ heads, renderById, photosById, base, onDeleteRender, onRe
   onDeleteRender: (renderId: number) => Promise<void>
   onReuse: (r: PropertyRender) => void
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
+  onChoose: (renderId: number) => Promise<void>
+  onUnchoose: (renderId: number) => Promise<void>
 }) {
   const ancestry = ancestryIn(renderById)
   return (
@@ -551,6 +561,8 @@ function RenderCards({ heads, renderById, photosById, base, onDeleteRender, onRe
                     history={ancestry(h)}
                     base={base} onDelete={() => onDeleteRender(h.id)}
                     onReuse={() => onReuse(h)}
+                    onChoose={() => onChoose(h.id)}
+                    onUnchoose={() => onUnchoose(h.id)}
                     onEdit={onEdit ? (promptText: string) => onEdit(h.id, promptText).then(() => {}) : undefined} />
       ))}
     </>
@@ -566,7 +578,7 @@ function RenderCards({ heads, renderById, photosById, base, onDeleteRender, onRe
  * lo único que explica de dónde salió. Y el par foto→propuesta es el argumento
  * mismo: una propuesta sin su antes no dice nada.
  */
-function RenderCard({ render, source, parent, history, base, onDelete, onReuse, onEdit }: {
+function RenderCard({ render, source, parent, history, base, onDelete, onReuse, onEdit, onChoose, onUnchoose }: {
   render: PropertyRender
   source: PropertyImage | null
   parent: PropertyRender | null
@@ -575,6 +587,8 @@ function RenderCard({ render, source, parent, history, base, onDelete, onReuse, 
   onDelete: () => void
   onReuse: () => void
   onEdit?: (promptText: string) => Promise<void>
+  onChoose: () => Promise<void>
+  onUnchoose: () => Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
@@ -618,6 +632,17 @@ function RenderCard({ render, source, parent, history, base, onDelete, onReuse, 
             {fmtDia(render.createdAt)} · {render.model}
           </span>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: spacing.sm }}>
+            {/* Sin piso ni foto no hay grupo al cual pertenecer: el servidor no
+                sabría a quién apagar, así que no se ofrece la estrella. */}
+            {(render.floorId != null || render.sourceImageId != null) && (
+              <button
+                onClick={() => (render.isChosen ? onUnchoose() : onChoose())}
+                style={linkBtn}
+                aria-label={render.isChosen ? 'Quitar como elegido' : 'Elegir este render'}
+              >
+                {render.isChosen ? '★' : '☆'}
+              </button>
+            )}
             {onEdit && (
               <button onClick={() => setEditing(v => !v)} style={linkBtn}>Trabajar sobre este</button>
             )}
