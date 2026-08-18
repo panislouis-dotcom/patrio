@@ -59,7 +59,7 @@ function planRenderRow(id: number, variant: VariantKey, floorId: string | null =
     floorId, floorName: floorId,
     parentRenderId: null, filePath: `r/${id}.png`, contentType: 'image/png', promptId: null,
     promptText: 'Estilo minimalista.', provider: 'openai', model: 'gpt-image-2',
-    createdAt: '2026-08-01T00:00:00Z',
+    createdAt: '2026-08-01T00:00:00Z', isChosen: false,
   }
 }
 

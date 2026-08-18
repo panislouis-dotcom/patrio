@@ -37,7 +37,7 @@ const renderRow = (id: number): PropertyRender => ({
   id, propertyId: 7, sourceImageId: 10, sourcePlanPath: null, sourceVariant: null, parentRenderId: null,
   floorId: null, floorName: null,
   filePath: `r/${id}.png`, contentType: 'image/png', promptId: 1, promptText: 'Mezquite y agaves.',
-  provider: 'openai', model: 'gpt-image-2', createdAt: '2026-08-02T00:00:00Z',
+  provider: 'openai', model: 'gpt-image-2', createdAt: '2026-08-02T00:00:00Z', isChosen: false,
 })
 
 /** Render nacido del PLANO: sin foto, con `sourcePlanPath`/`sourceVariant` puestos y su
