@@ -261,7 +261,7 @@ def test_a_property_under_construction_shows_only_its_projection(client, desarro
     toca, porque esa igualdad no es un avalúo que alguien haya hecho."""
     html = build_prospectus_html([], [], [get_property(desarrollo_property["id"])], [])
     assert "En Desarrollo · 01" in html
-    assert _metric("$3.5M", "Inversión total") in html
+    assert _metric("$3.5M", "Inversión sin comisiones") in html
     assert _metric("$2.5M", "Venta proyectada") in html
     assert "Valuación" not in html
 
@@ -283,7 +283,7 @@ def test_a_sold_property_reports_its_realized_result(client, sold_property):
     html = build_prospectus_html([sold_property], [], [], [])
     assert "Track Record · 01 · Resultado final" in html
     assert "Vendida · jul 2026" in html
-    assert _metric("$3.5M", "Inversión total") in html
+    assert _metric("$3.5M", "Inversión sin comisiones") in html
     assert _metric("$5.0M", "Precio de venta") in html
     # 5,000,000 - 3,480,000 = 1,520,000 sobre 3,480,000 = 43.7%
     assert _metric('$1.5M <small>43.7%</small>', "Ganancia realizada") in html
@@ -328,7 +328,7 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _kv_row("Precio de compra", "$1,000,000") in html
     assert _kv_row("Costos de adquisición", "$65,000") in html
     assert _kv_row("Obra, permisos y subdivisión", "$2,415,000") in html
-    assert _metric("$3.5M", "Inversión total") in html
+    assert _metric("$3.5M", "Inversión sin comisiones") in html
 
 
 def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):

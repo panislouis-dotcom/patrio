@@ -3,10 +3,52 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-from api.lib.prospectus_html import (_budget_full, _opportunity, _opportunity_detail, _photo_block,
-                                     _photo_rows, _plan_block, _plan_rows, _BODY_CSS)
+from api.lib.prospectus_html import (_budget_full, _development_card, _opportunity, _opportunity_detail,
+                                     _photo_block, _photo_rows, _plan_block, _plan_rows, _rented_card,
+                                     _sold_card, _BODY_CSS)
 
 BASE_PROPERTY = {"name": "[TEST] Casa Prueba"}
+
+
+# ---------------------------------------------------------------------------
+# Inversión sin/con comisiones — las cinco tarjetas de inversión del prospecto
+# viven todas en una rejilla .metrics-5 de ancho FIJO (grid-template-columns:
+# repeat(5, 1fr), sin regla .metrics-6): no hay dónde imprimir una sexta cifra
+# sin un cambio de layout aparte. Por eso ninguna tarjeta agrega "Inversión
+# con comisiones" — solo relabelea la existente a "Inversión sin comisiones",
+# y esa cifra con comisiones queda pendiente de una decisión de diseño.
+# ---------------------------------------------------------------------------
+
+def test_sold_card_relabels_inversion_sin_comisiones():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000}
+    html = _sold_card(p, "Kicker")
+    assert "Inversión sin comisiones" in html
+    assert "Inversión total" not in html
+    assert "Inversión con comisiones" not in html
+
+
+def test_rented_card_relabels_inversion_sin_comisiones():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000}
+    html = _rented_card(p, "Kicker")
+    assert "Inversión sin comisiones" in html
+    assert "Inversión total" not in html
+    assert "Inversión con comisiones" not in html
+
+
+def test_development_card_relabels_inversion_sin_comisiones():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000}
+    html = _development_card(p, "Kicker")
+    assert "Inversión sin comisiones" in html
+    assert "Inversión total" not in html
+    assert "Inversión con comisiones" not in html
+
+
+def test_opportunity_card_relabels_inversion_sin_comisiones():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000}
+    html = _opportunity(p)
+    assert "Inversión sin comisiones" in html
+    assert "Inversión total" not in html
+    assert "Inversión con comisiones" not in html
 
 
 def test_budget_full_empty_lines_returns_empty_string():
