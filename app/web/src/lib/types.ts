@@ -12,6 +12,12 @@ export const STRATEGY_TYPE_LABEL: Record<string, string> = {
   flip: 'Flip', hold: 'Renta',
 }
 
+// Espeja el CHECK de properties.exit_strategy (migración 049). Sin default: a
+// diferencia de ASSET_TYPES/STRATEGY_TYPES, null significa que nadie ha
+// decidido todavía, no "el modelo asumió uno" — ver `exitStrategy` en Property.
+export const EXIT_STRATEGIES = ['venta', 'renta'] as const
+export const EXIT_STRATEGY_LABEL: Record<string, string> = { venta: 'Venta', renta: 'Renta' }
+
 import type { PropertyStatus } from './status'
 export type { PropertyStatus }
 

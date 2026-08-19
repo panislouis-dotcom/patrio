@@ -61,12 +61,25 @@ const BASE_PROPERTY: Property = {
   constructionCostPerSqm: 15_600,
   projectedSale: 9_000_000, holdMonths: 12,
   rentMonthlyProjected: 30_000, rentMonthlyActual: null,
-  // Son DOS: el overhead se retiró del contrato con la fórmula que multiplicaba.
+  // Nadie ha decidido todavía el camino de salida (migración 049): sin
+  // exitStrategy, exitFee no se puede calcular — feesMissingInputs lo dice.
+  exitStrategy: null,
+  landCommissionPct: 0.05, constructionCommissionPct: 0.15,
+  exitSaleCommissionPct: 0.05, exitRentMonths: 3,
+  // Son SEIS: el overhead se retiró del contrato con la fórmula que multiplicaba.
   assumptions: {
     acquisitionCostPct: { value: 0.065, source: 'captured' },
     holdMonths: { value: 12, source: 'captured' },
+    landCommissionPct: { value: 0.05, source: 'default' },
+    constructionCommissionPct: { value: 0.15, source: 'default' },
+    exitSaleCommissionPct: { value: 0.05, source: 'default' },
+    exitRentMonths: { value: 3, source: 'default' },
   },
   totalInvestment: 7_295_000,
+  // landFee = 3,000,000 × 5%; constructionFee = 3,900,000 × 15%. exitFee no
+  // existe sin exitStrategy, y sin él tampoco hay total con comisiones.
+  landFee: 150_000, constructionFee: 585_000, exitFee: null, exitFeeMode: null,
+  totalFees: null, totalInvestmentWithFees: null, feesMissingInputs: ['exitStrategy'],
   totalUnits: null, acquisitionDate: null, firstRentDate: null,
   valuationDate: null, currentValuation: null, saleDate: null, salePrice: null,
   acquisitionCosts: 195_000, acquisitionTotal: 3_195_000,
@@ -299,6 +312,7 @@ describe('PropertyDetailPage', () => {
     await renderPage({
       ...BASE_PROPERTY,
       assumptions: {
+        ...BASE_PROPERTY.assumptions,
         acquisitionCostPct: { value: 0.065, source: 'default' },
         holdMonths: { value: 12, source: 'captured' },
       },
@@ -307,7 +321,8 @@ describe('PropertyDetailPage', () => {
     // Sin entrar a edición: eran invisibles y aun así cobraban.
     expect(screen.getByText('SUPUESTOS')).not.toBeNull()
     expect(screen.getByText('COSTOS ADQ. (%)')).not.toBeNull()
-    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(1)
+    // acquisitionCostPct + las cuatro comisiones del fondo, ninguna capturada.
+    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(5)
     expect(screen.getAllByText('CAPTURADO')).toHaveLength(1)
     // Y el overhead no está entre ellos: dejó de mover dinero, así que dejó de
     // ser un supuesto. Un número que se puede editar sin que cambie un peso es
@@ -357,6 +372,28 @@ describe('PropertyDetailPage', () => {
     expect(screen.queryByLabelText('INVERSIÓN')).toBeNull()
     expect(screen.getByText('$7,295,000')).not.toBeNull()
     expect(screen.getByText('SUMA DEL DESGLOSE')).not.toBeNull()
+  })
+
+  it('muestra INVERSIÓN CON COMISIONES cuando totalInvestmentWithFees existe', async () => {
+    await renderPage({
+      ...BASE_PROPERTY,
+      exitStrategy: 'venta',
+      exitFee: 450_000, exitFeeMode: 'venta',
+      totalFees: 1_185_000, totalInvestmentWithFees: 8_480_000, feesMissingInputs: [],
+    })
+
+    expect(screen.getByText('INVERSIÓN SIN COMISIONES')).not.toBeNull()
+    expect(screen.getByText('INVERSIÓN CON COMISIONES')).not.toBeNull()
+    expect(screen.getByText('$8,480,000')).not.toBeNull()
+  })
+
+  it('no muestra INVERSIÓN CON COMISIONES cuando falta exitStrategy', async () => {
+    // BASE_PROPERTY ya trae exitStrategy: null y totalInvestmentWithFees: null
+    // — el estado real de una propiedad a la que nadie le ha decidido la salida.
+    await renderPage(BASE_PROPERTY)
+
+    expect(screen.getByText('INVERSIÓN SIN COMISIONES')).not.toBeNull()
+    expect(screen.queryByText('INVERSIÓN CON COMISIONES')).toBeNull()
   })
 
   it('la renta cobrada se pide vacía: confirmar sin leer ya no borra la proyección', async () => {
@@ -586,7 +623,8 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('COSTOS ADQ. (%)')).not.toBeNull()
     expect(screen.getByText('0.0%')).not.toBeNull()
     expect(screen.getAllByText('CAPTURADO')).toHaveLength(2)
-    expect(screen.queryByText('SUPUESTO POR OMISIÓN')).toBeNull()
+    // Las cuatro comisiones del fondo siguen en su default: ALL_IN no las tocó.
+    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(4)
     // Y el 0 tampoco se cuela como barra de $0 en el desglose.
     expect(screen.queryByText('COSTOS ADQ.')).toBeNull()
   })

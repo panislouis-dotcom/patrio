@@ -15,7 +15,10 @@ import type {
   PropertyInvestor, Investor, ProfitWaterfall, ProcessInstance, TeamMember,
   RenderPrompt, RenderPromptKind, PropertyRender,
 } from '../lib/types'
-import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
+import {
+  ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL,
+  EXIT_STRATEGIES, EXIT_STRATEGY_LABEL,
+} from '../lib/types'
 import {
   ALLOWED_TRANSITIONS, PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL,
   hasScore, takesInvestors, takesTasks, hasProfitSplit,
@@ -396,6 +399,9 @@ export function PropertyDetailPage() {
   const warnings = p.issues.filter(i => i.severity === 'warning')
   const url = field('url') ?? ''
   const acquisitionCostPct = field('acquisitionCostPct')
+  const landCommissionPct = field('landCommissionPct')
+  const constructionCommissionPct = field('constructionCommissionPct')
+  const exitSaleCommissionPct = field('exitSaleCommissionPct')
 
   // Un supuesto siempre tiene un valor en uso; lo que cambia es quién lo puso.
   // Vaciarlo solo es una operación cuando hay una captura que quitar — de otro
@@ -715,11 +721,23 @@ export function PropertyDetailPage() {
                   Un total all-in se dice donde siempre estuvo su lugar: precio
                   de compra, con los costos de adquisición en 0. */}
               <EditableRow
-                label="INVERSIÓN"
+                label="INVERSIÓN SIN COMISIONES"
                 editing={editing}
                 value={fmtMXN(p.totalInvestment)}
                 hint="SUMA DEL DESGLOSE"
               />
+              {/* Ausente —no un guion— mientras exitStrategy no esté capturado:
+                  feesMissingInputs dice por qué, y "—" leería como "cero
+                  comisiones", que no es lo mismo que "no se puede calcular
+                  todavía". */}
+              {p.totalInvestmentWithFees != null && (
+                <EditableRow
+                  label="INVERSIÓN CON COMISIONES"
+                  editing={editing}
+                  value={fmtMXN(p.totalInvestmentWithFees)}
+                  hint="SIN COMISIONES + COMISIONES DEL FONDO"
+                />
+              )}
               {numRow('VALUACIÓN', 'currentValuation', fmtMXN, { clearable: 'currentValuation' })}
               {/* La ESTIMADA se fue a SUPUESTOS: es una apuesta sobre el futuro,
                   no un hecho. La COBRADA se queda — es lo que de verdad entró,
@@ -816,6 +834,81 @@ export function PropertyDetailPage() {
                     ariaLabel="COSTOS ADQ. (%)"
                     style={fieldInput}
                   />
+                }
+              />
+              {/* Las cuatro comisiones del fondo: % sobre terreno y sobre obra
+                  siempre aplican, y son supuestos como acquisitionCostPct —
+                  mismo badge CAPTURADO/SUPUESTO POR OMISIÓN. */}
+              <EditableRow
+                label="COMISIÓN COMPRA TERRENO (%)"
+                editing={editing}
+                value={fmtPct(landCommissionPct)}
+                hint={assumptionHint('landCommissionPct')}
+                onClear={isCaptured('landCommissionPct') ? () => clearField('landCommissionPct') : undefined}
+                input={
+                  <NumericInput
+                    value={landCommissionPct != null ? landCommissionPct * 100 : undefined}
+                    onChange={n => setField('landCommissionPct', n != null ? n / 100 : undefined)}
+                    step={0.1}
+                    ariaLabel="COMISIÓN COMPRA TERRENO (%)"
+                    style={fieldInput}
+                  />
+                }
+              />
+              <EditableRow
+                label="COMISIÓN OBRA (%)"
+                editing={editing}
+                value={fmtPct(constructionCommissionPct)}
+                hint={assumptionHint('constructionCommissionPct')}
+                onClear={isCaptured('constructionCommissionPct') ? () => clearField('constructionCommissionPct') : undefined}
+                input={
+                  <NumericInput
+                    value={constructionCommissionPct != null ? constructionCommissionPct * 100 : undefined}
+                    onChange={n => setField('constructionCommissionPct', n != null ? n / 100 : undefined)}
+                    step={0.1}
+                    ariaLabel="COMISIÓN OBRA (%)"
+                    style={fieldInput}
+                  />
+                }
+              />
+              <EditableRow
+                label="COMISIÓN VENTA (%)"
+                editing={editing}
+                value={fmtPct(exitSaleCommissionPct)}
+                hint={assumptionHint('exitSaleCommissionPct')}
+                onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
+                input={
+                  <NumericInput
+                    value={exitSaleCommissionPct != null ? exitSaleCommissionPct * 100 : undefined}
+                    onChange={n => setField('exitSaleCommissionPct', n != null ? n / 100 : undefined)}
+                    step={0.1}
+                    ariaLabel="COMISIÓN VENTA (%)"
+                    style={fieldInput}
+                  />
+                }
+              />
+              {numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
+                clearable: isCaptured('exitRentMonths') ? 'exitRentMonths' : undefined,
+                hint: assumptionHint('exitRentMonths'),
+              })}
+              {/* De qué camino saldrá exitFee: sin default (migración 049), así
+                  que sin badge CAPTURADO/SUPUESTO POR OMISIÓN — a diferencia de
+                  las cuatro comisiones de arriba, nadie lo asume por ti. */}
+              <EditableRow
+                label="ESTRATEGIA DE SALIDA"
+                editing={editing}
+                value={EXIT_STRATEGY_LABEL[field('exitStrategy') ?? ''] ?? '—'}
+                onClear={p.exitStrategy != null ? () => clearField('exitStrategy') : undefined}
+                input={
+                  <select
+                    value={field('exitStrategy') ?? ''}
+                    onChange={e => setField('exitStrategy', e.target.value === '' ? null : e.target.value as 'venta' | 'renta')}
+                    aria-label="ESTRATEGIA DE SALIDA"
+                    style={{ ...fieldInput, cursor: 'pointer' }}
+                  >
+                    <option value="">— sin definir —</option>
+                    {EXIT_STRATEGIES.map(t => <option key={t} value={t}>{EXIT_STRATEGY_LABEL[t]}</option>)}
+                  </select>
                 }
               />
               {/* El overhead de obra ya no está, y no es un descuido: dejó de
