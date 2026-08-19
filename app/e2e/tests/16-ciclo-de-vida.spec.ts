@@ -443,7 +443,7 @@ test.describe.serial('Archivar una propiedad', () => {
     // 1,065,000 (1,000,000 más el 6.5% de costos de adquisición supuesto).
     await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+12.7%')
     await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$135,000')
-    await expect(detailRow(page, 'INVERSIÓN')).toContainText('$1,065,000')
+    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('$1,065,000')
   })
 
   test('la tabla la esconde hasta que se piden las archivadas', async ({ page }) => {

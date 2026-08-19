@@ -113,7 +113,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
   test('DATOS shows what is known and leaves the post-purchase rows empty', async ({ page }) => {
     await gotoProperty(page, id)
 
-    await expect(detailRow(page, 'INVERSIÓN')).toContainText(INVESTMENT)
+    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText(INVESTMENT)
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('$20,000')
     await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText(CAP_RATE)
     await expect(detailRow(page, 'TIPO DE ACTIVO')).toContainText('Casa')
@@ -202,14 +202,14 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await enterEditMode(page)
 
     // El desglose es el único origen del total: el sistema lo suma, nadie lo teclea
-    await expect(detailRow(page, 'INVERSIÓN')).toContainText('SUMA DEL DESGLOSE')
+    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('SUMA DEL DESGLOSE')
     // Y la fila donde antes se tecleaba tampoco aparece al editar
     await expect(fieldInput(page, 'INVERSIÓN CAPTURADA')).toHaveCount(0)
     await expect(detailRow(page, 'PLAZO REAL')).toContainText('DERIVADO DE FECHAS')
     // The stage has its own door, and the row says which one
     await expect(detailRow(page, 'ETAPA')).toContainText('SE MUEVE CON AVANZAR A')
 
-    for (const label of ['INVERSIÓN', 'CAP RATE PROY. S/ INVERSIÓN', 'PLAZO REAL']) {
+    for (const label of ['INVERSIÓN SIN COMISIONES', 'CAP RATE PROY. S/ INVERSIÓN', 'PLAZO REAL']) {
       await expect(fieldInput(page, label)).toHaveCount(0)
     }
   })
@@ -445,7 +445,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
 
     // Nace sin obra: el presupuesto sembrado vale 0 —la fixture no da metros ni
     // precio por m²— y una barra de $0 no se dibuja.
-    await expect(detailRow(page, 'INVERSIÓN')).toContainText(INVESTMENT)
+    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText(INVESTMENT)
     await expect(page.getByText('OBRA A EJECUTAR', { exact: true })).toHaveCount(0)
 
     await page.getByRole('button', { name: 'PRESUPUESTO', exact: true }).click()
@@ -467,7 +467,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     // La barra aparece con lo capturado, y la inversión sube exactamente eso:
     // 2,130,000 + 500,000. Una sola escritura movió las dos columnas.
     await expect(page.getByText('OBRA A EJECUTAR', { exact: true })).toBeVisible()
-    await expect(detailRow(page, 'INVERSIÓN')).toContainText('$2,630,000')
+    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('$2,630,000')
   })
 
   test('/propiedades/nueva renders the full capture form, not the detail shell', async ({ page }) => {
@@ -556,8 +556,8 @@ test.describe('Ficha de propiedad — una en renta', () => {
 
     // 5,000,000 × (1 + 0) — un total all-in vive en el desglose como cualquier
     // otro, y llega a la ficha por el mismo camino que una compra desglosada.
-    await expect(detailRow(page, 'INVERSIÓN')).toContainText('$5,000,000')
-    await expect(detailRow(page, 'INVERSIÓN')).toContainText('SUMA DEL DESGLOSE')
+    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('$5,000,000')
+    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('SUMA DEL DESGLOSE')
     await expect(detailRow(page, 'UNIDADES')).toContainText('4')
     await expect(detailRow(page, 'ETAPA')).toContainText('EN RENTA')
     // El 0% está capturado, no supuesto: es la mitad del idioma, y sin ella el
@@ -569,7 +569,7 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await enterEditMode(page)
     // El total nunca es editable. Lo que se corrige es el componente: aquí el
     // precio de compra, que es donde se tecleó el all-in.
-    await expect(fieldInput(page, 'INVERSIÓN')).toHaveCount(0)
+    await expect(fieldInput(page, 'INVERSIÓN SIN COMISIONES')).toHaveCount(0)
     await expect(fieldInput(page, 'PRECIO DE COMPRA')).toHaveValue('5,000,000')
   })
 
