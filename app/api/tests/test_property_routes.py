@@ -77,6 +77,38 @@ def test_create_cannot_choose_its_status(client):
         _delete_property(r.json()["id"])
 
 
+def test_patch_sets_and_clears_a_fee_percentage(client, test_property):
+    pid = test_property["id"]
+    r = client.patch(f"/api/properties/{pid}", json={"landCommissionPct": 0.08})
+    assert r.status_code == 200, r.text
+    assert r.json()["landCommissionPct"] == 0.08
+    assert r.json()["assumptions"]["landCommissionPct"]["source"] == "captured"
+
+    r = client.post(f"/api/properties/{pid}/clear-fields", json={"fields": ["landCommissionPct"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["landCommissionPct"] == 0.05  # el default del modelo
+    assert r.json()["assumptions"]["landCommissionPct"]["source"] == "default"
+
+
+def test_patch_sets_exit_strategy_and_it_unlocks_the_exit_fee(client, test_property):
+    pid = test_property["id"]
+    client.patch(f"/api/properties/{pid}", json={
+        "purchasePrice": 1000000,
+        "projectedSale": 2000000,
+    })
+    r = client.patch(f"/api/properties/{pid}", json={"exitStrategy": "venta"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["exitStrategy"] == "venta"
+    assert body["exitFee"] is not None
+    assert "exitStrategy" not in body["feesMissingInputs"]
+
+
+def test_invalid_exit_strategy_is_rejected(client, test_property):
+    r = client.patch(f"/api/properties/{test_property['id']}", json={"exitStrategy": "alquiler"})
+    assert r.status_code == 422
+
+
 def test_delete(client, test_property):
     assert client.delete(f"/api/properties/{test_property['id']}").status_code == 204
     assert client.get(f"/api/properties/{test_property['id']}").status_code == 404

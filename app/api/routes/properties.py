@@ -41,6 +41,10 @@ class PropertyCreate(BaseModel):
     sqmConstruction: Optional[float] = None
     purchasePrice: Optional[float] = None
     acquisitionCostPct: Optional[float] = None
+    landCommissionPct: Optional[float] = None
+    constructionCommissionPct: Optional[float] = None
+    exitSaleCommissionPct: Optional[float] = None
+    exitRentMonths: Optional[float] = None
     permitsCost: Optional[float] = None
     subdivisionCost: Optional[float] = None
     constructionCostPerSqm: Optional[float] = None
@@ -67,6 +71,11 @@ class PropertyUpdate(BaseModel):
     sqmConstruction: Optional[float] = None
     purchasePrice: Optional[float] = None
     acquisitionCostPct: Optional[float] = None
+    landCommissionPct: Optional[float] = None
+    constructionCommissionPct: Optional[float] = None
+    exitSaleCommissionPct: Optional[float] = None
+    exitRentMonths: Optional[float] = None
+    exitStrategy: Optional[str] = None
     permitsCost: Optional[float] = None
     subdivisionCost: Optional[float] = None
     constructionCostPerSqm: Optional[float] = None
