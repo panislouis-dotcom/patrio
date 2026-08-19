@@ -3,11 +3,16 @@
 — no una copia a mano que pudiera divergir de lo que de verdad corre en
 producción. Ver el comentario de la migración para el porqué completo.
 """
+import threading
+import time
 from pathlib import Path
 
+import psycopg2
+import psycopg2.errors
 import pytest
 from psycopg2.extras import Json
 
+from api.config import DATABASE_URL
 from api.db import get_db
 
 
@@ -239,3 +244,50 @@ def test_correr_la_migracion_dos_veces_es_idempotente(make_property):
     _run_migration()
     assert _geometry(pid) == geometry_after_first
     assert _floor_id(r) == floor_id_after_first
+
+
+# ─── lock_timeout: una colisión de verdad falla rápido, no cuelga el deploy ──
+
+def test_una_fila_bloqueada_falla_rapido_por_lock_timeout_no_se_cuelga(make_property):
+    """`properties.geometry` no es una columna fría — el editor la escribe en vivo
+    cada guardado. Sin `SET LOCAL lock_timeout`, un choque con un guardado real en
+    prod se queda esperando en silencio hasta el activeDeadlineSeconds del Job de
+    deploy (PreSync — congela el deploy ENTERO, no solo esta migración). Esta
+    prueba reproduce esa colisión de verdad —dos conexiones reales, un lock real
+    en un `properties.id` real— y confirma que la migración falla en segundos con
+    un error identificable (55P03), no que se queda colgada."""
+    pid = make_property("[TEST048] bloqueada", {"schemaVersion": 2, "slab_m": 0.15,
+                                                 "activeFloor": 0, "floors": [_floor("PB")]})
+
+    ready, release = threading.Event(), threading.Event()
+
+    def _hold_the_row():
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = False
+        cur = conn.cursor()
+        cur.execute("UPDATE properties SET name = name WHERE id = %s", (pid,))
+        ready.set()
+        release.wait(10)
+        conn.rollback()
+        conn.close()
+
+    holder = threading.Thread(target=_hold_the_row)
+    holder.start()
+    ready.wait(5)
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = False
+        cur = conn.cursor()
+        start = time.time()
+        with pytest.raises(psycopg2.errors.LockNotAvailable):
+            cur.execute(_migration_up_sql())
+        elapsed = time.time() - start
+        conn.rollback()
+        conn.close()
+        # El lock_timeout de la migración es 5s — 15s da margen de sobra a la
+        # infraestructura de CI sin dejar pasar una regresión real (colgarse
+        # hasta el activeDeadlineSeconds de 180s del Job de deploy).
+        assert elapsed < 15, f"tardó {elapsed:.1f}s — ¿se perdió el SET LOCAL lock_timeout?"
+    finally:
+        release.set()
+        holder.join()
