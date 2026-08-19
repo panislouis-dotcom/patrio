@@ -456,6 +456,10 @@ def test_a_new_property_assumes_nothing_it_can_be_asked_about(client):
         assert {k: v["source"] for k, v in p["assumptions"].items()} == {
             "acquisitionCostPct": "default",
             "holdMonths": "default",
+            "landCommissionPct": "default",
+            "constructionCommissionPct": "default",
+            "exitSaleCommissionPct": "default",
+            "exitRentMonths": "default",
         }
         assert Decimal(str(p["totalInvestment"])) == Decimal("2130000")
     finally:

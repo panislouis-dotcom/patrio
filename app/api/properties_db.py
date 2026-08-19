@@ -56,7 +56,7 @@ from psycopg2.extras import Json
 from api import budget_db
 from api.checks import run_checks, stage_requirements
 from api.db import get_db, _camel_to_snake, _row_to_dict, _snake_to_camel
-from api.finance import underwriting
+from api.finance import fees, underwriting
 from api.finance.analysis import months_between, parse_date, roi_cagr
 from api.finance.quantize import frac4, money, money0, to_decimal
 
@@ -168,6 +168,8 @@ WRITABLE_FIELDS = frozenset({
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
     "currentValuation", "valuationDate", "milestones",
     "notes", "isFavorite",
+    "landCommissionPct", "constructionCommissionPct", "exitSaleCommissionPct",
+    "exitRentMonths", "exitStrategy",
 })
 
 # Emptying a field is its own operation (POST /clear-fields): PATCH uses
@@ -186,6 +188,8 @@ CLEARABLE_FIELDS = frozenset({
     "rentMonthlyProjected", "rentMonthlyActual",
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
     "currentValuation", "valuationDate",
+    "landCommissionPct", "constructionCommissionPct", "exitSaleCommissionPct",
+    "exitRentMonths", "exitStrategy",
 })
 
 _DATE_FIELDS = frozenset({"acquisitionDate", "firstRentDate", "saleDate", "valuationDate"})
@@ -235,6 +239,16 @@ _CONSTRAINT_MESSAGES = {
         "La renta mensual estimada se captura positiva; «no renta» se expresa dejándola vacía.",
     "properties_rent_monthly_actual_check":
         "La renta mensual cobrada se captura positiva; «no renta» se expresa dejándola vacía.",
+    "properties_land_commission_pct_check":
+        "La comisión de compra de terreno no puede ser un porcentaje negativo.",
+    "properties_construction_commission_pct_check":
+        "La comisión sobre obra no puede ser un porcentaje negativo.",
+    "properties_exit_sale_commission_pct_check":
+        "La comisión de venta no puede ser un porcentaje negativo.",
+    "properties_exit_rent_months_check":
+        "Los meses de renta de la comisión de salida no pueden ser negativos.",
+    "properties_exit_strategy_check":
+        "Estrategia de salida inválida: se espera venta o renta.",
     # Realidad post-compra
     "properties_total_units_check": "El número de unidades debe ser mayor que cero.",
     "properties_sale_price_check": "El precio de venta no puede ser negativo.",
@@ -480,10 +494,18 @@ def metrics(row: dict) -> dict:
     basis = underwriting.basis(row)
     stack = underwriting.metrics(row)
     held = hold_months_actual(row)
+    fee_lines = fees.compute_fees(row, basis)
 
     out: dict = {
         "totalInvestment": money0(basis) if basis is not None else None,
         "holdMonthsActual": held,
+        "landFee": fee_lines["landFee"],
+        "constructionFee": fee_lines["constructionFee"],
+        "exitFee": fee_lines["exitFee"],
+        "exitFeeMode": fee_lines["exitFeeMode"],
+        "totalFees": fee_lines["totalFees"],
+        "totalInvestmentWithFees": fee_lines["totalInvestmentWithFees"],
+        "feesMissingInputs": fee_lines["missingInputs"],
     }
 
     # Not gated by status: an assumption is in force in every stage, and the
