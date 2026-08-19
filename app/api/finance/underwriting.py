@@ -74,6 +74,13 @@ COST_KEYS = (
 ASSUMPTION_DEFAULTS: dict[str, Decimal | int] = {
     "acquisition_cost_pct": Decimal("0.065"),
     "hold_months": 12,
+    # Comisiones del fondo — ver finance/fees.py, que es quien de verdad las
+    # aplica. Viven aquí y no allá por la misma regla que las dos de arriba:
+    # un solo lugar con nombre para todo default que mueve dinero.
+    "land_commission_pct": Decimal("0.05"),
+    "construction_commission_pct": Decimal("0.15"),
+    "exit_sale_commission_pct": Decimal("0.05"),
+    "exit_rent_months": Decimal("3"),
 }
 
 ASSUMPTION_KEYS = tuple(ASSUMPTION_DEFAULTS)

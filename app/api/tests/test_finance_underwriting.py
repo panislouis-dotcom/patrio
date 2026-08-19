@@ -208,6 +208,10 @@ def test_a_stored_assumption_is_a_decision_and_says_so():
     assert uw.assumptions(row) == {
         "acquisition_cost_pct": {"value": 0.08, "source": "captured"},
         "hold_months": {"value": 24, "source": "captured"},
+        "land_commission_pct": {"value": Decimal("0.05"), "source": "default"},
+        "construction_commission_pct": {"value": Decimal("0.15"), "source": "default"},
+        "exit_sale_commission_pct": {"value": Decimal("0.05"), "source": "default"},
+        "exit_rent_months": {"value": Decimal("3"), "source": "default"},
     }
 
 
@@ -218,7 +222,11 @@ def test_the_overhead_is_no_longer_an_assumption():
     importe. Publicarlo seguiría poniendo en la ficha una cifra editable que no
     mueve un peso."""
     assert "construction_overhead" not in uw.assumptions({})
-    assert tuple(uw.ASSUMPTION_KEYS) == ("acquisition_cost_pct", "hold_months")
+    assert tuple(uw.ASSUMPTION_KEYS) == (
+        "acquisition_cost_pct", "hold_months",
+        "land_commission_pct", "construction_commission_pct",
+        "exit_sale_commission_pct", "exit_rent_months",
+    )
 
 
 def test_capturing_the_default_value_changes_only_the_provenance():
