@@ -76,6 +76,25 @@ def test_sin_basis_no_hay_total_investment_with_fees():
     assert out["landFee"] == Decimal("50000")
 
 
+def test_venta_sin_projected_sale_ni_sale_price_nombra_el_faltante():
+    out = fees.compute_fees(
+        _row(exit_strategy="venta", projected_sale=None, sale_price=None), basis=Decimal("1500000"))
+    assert out["exitFee"] is None
+    assert out["totalFees"] is None
+    assert out["totalInvestmentWithFees"] is None
+    assert "salePrice" in out["missingInputs"]
+
+
+def test_renta_sin_ninguna_renta_nombra_el_faltante():
+    out = fees.compute_fees(
+        _row(exit_strategy="renta", rent_monthly_projected=None, rent_monthly_actual=None),
+        basis=Decimal("1500000"))
+    assert out["exitFee"] is None
+    assert out["totalFees"] is None
+    assert out["totalInvestmentWithFees"] is None
+    assert "rentMonthly" in out["missingInputs"]
+
+
 def test_locked_oracle():
     """Números de mano, congelados — mismo patrón que test_metrics_matches_locked_oracle."""
     row = _row(

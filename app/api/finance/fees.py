@@ -51,10 +51,18 @@ def compute_fees(row: dict, basis: Decimal | None) -> dict:
     exit_fee: Decimal | None
     if exit_strategy == "venta":
         sale_value = _resolve_sale_value(row)
-        exit_fee = sale_value * sale_pct if sale_value is not None else None
+        if sale_value is None:
+            exit_fee = None
+            missing.append("salePrice")
+        else:
+            exit_fee = sale_value * sale_pct
     elif exit_strategy == "renta":
         rent = _resolve_rent(row)
-        exit_fee = rent * rent_months if rent is not None else None
+        if rent is None:
+            exit_fee = None
+            missing.append("rentMonthly")
+        else:
+            exit_fee = rent * rent_months
     else:
         exit_fee = None
         missing.append("exitStrategy")
