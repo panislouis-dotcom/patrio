@@ -464,3 +464,48 @@ def test_a_new_property_assumes_nothing_it_can_be_asked_about(client):
         assert Decimal(str(p["totalInvestment"])) == Decimal("2130000")
     finally:
         client.delete(f"/api/properties/{p['id']}")
+
+
+# ── Fees ─────────────────────────────────────────────────────────────────────
+# fees.py itself is unit-tested against compute_fees() directly
+# (test_finance_fees.py). These two prove the WIRING: that metrics() actually
+# calls it and merges its seven keys into the real payload a client reads —
+# a test on `assumptions` alone would keep passing even if the
+# `fees.compute_fees(...)` call in metrics() were deleted outright.
+#
+# exit_strategy is set with a direct UPDATE, not a PATCH: the write surface
+# for it lands in routes/properties.py's Pydantic schema (Task 5, not this
+# one), so PATCH would silently drop it today — same reason
+# test_no_modeled_sale_means_no_projected_gain above reaches for get_db().
+
+def test_fee_lines_reach_the_property_payload_once_an_exit_strategy_is_captured(
+        client, test_property):
+    """test_property trae el desglose completo (compra 1,000,000, obra
+    presupuestada 2,340,000, base 3,480,000) y una venta proyectada de
+    2,500,000 sin comisiones capturadas — así que las cuatro corren con el
+    default del modelo: terreno 5%, obra 15%, venta 5%."""
+    with get_db() as conn:
+        conn.execute("UPDATE properties SET exit_strategy = 'venta' WHERE id = %s",
+                     (test_property["id"],))
+    p = _get(client, test_property["id"])
+    assert Decimal(str(p["landFee"])) == Decimal("50000")            # 5% de 1,000,000
+    assert Decimal(str(p["constructionFee"])) == Decimal("351000")   # 15% de 2,340,000
+    assert Decimal(str(p["exitFee"])) == Decimal("125000")           # 5% de 2,500,000 proyectada
+    assert p["exitFeeMode"] == "venta"
+    assert Decimal(str(p["totalFees"])) == Decimal("526000")
+    assert Decimal(str(p["totalInvestmentWithFees"])) == Decimal("4006000")
+    assert p["feesMissingInputs"] == []
+
+
+def test_fees_missing_inputs_names_the_gap_and_totals_stay_none(client, test_property):
+    """test_property nunca captura exitStrategy: landFee y constructionFee no
+    dependen de la salida y siguen resolviendo, pero exitFee y los dos totales
+    salen None mientras nadie decide venta o renta, y el hueco se nombra."""
+    p = _get(client, test_property["id"])
+    assert p["exitFeeMode"] is None
+    assert p["exitFee"] is None
+    assert p["totalFees"] is None
+    assert p["totalInvestmentWithFees"] is None
+    assert p["feesMissingInputs"] == ["exitStrategy"]
+    assert Decimal(str(p["landFee"])) == Decimal("50000")
+    assert Decimal(str(p["constructionFee"])) == Decimal("351000")

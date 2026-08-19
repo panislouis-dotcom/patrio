@@ -177,9 +177,13 @@ WRITABLE_FIELDS = frozenset({
 # way to happen. Everything nullable is listed; whether a *particular* row may
 # lose a *particular* field is decided by stage_requirements, not by this set.
 #
-# The three assumptions are clearable like anything else, and clearing one is a
-# real operation with a visible meaning: it hands the field back to the model's
-# default and the ficha starts labelling it «supuesto por omisión».
+# The six assumptions (acquisitionCostPct, holdMonths, and the four
+# commission/exit-timing ones the fund's fee structure needs) are clearable
+# like anything else, and clearing one is a real operation with a visible
+# meaning: it hands the field back to the model's default and the ficha starts
+# labelling it «supuesto por omisión». exitStrategy is clearable too but is not
+# one of the six — it is a captured fact with no default (migration 049), so
+# clearing it means «nadie ha decidido todavía», not «vuelve al modelo».
 CLEARABLE_FIELDS = frozenset({
     "assetType", "strategyType",
     "sqmLand", "sqmConstruction", "purchasePrice", "acquisitionCostPct",
