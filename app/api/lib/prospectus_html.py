@@ -447,6 +447,18 @@ def _metric(value: str, label: str) -> str:
             f'<div class="l">{_esc(label)}</div></div>')
 
 
+def _inv_value(total_inv, with_fees) -> str:
+    """La inversión sin comisiones, y —cuando existe— la cifra con comisiones
+    como sub-línea `<small>` en la misma celda: mismo patrón que ya usan
+    `gain_v` (Ganancia realizada) y `gain_value` (Ganancia proyectada) para su
+    detalle secundario, sin abrir una sexta columna en la rejilla fija de
+    métricas. Sin `with_fees` no hay sub-línea — no se adivina."""
+    v = _fmt_mxn_compact_or_dash(total_inv)
+    if with_fees is not None:
+        v += f' <small>{_fmt_mxn_compact(with_fees)} c/comisiones</small>'
+    return v
+
+
 def _strip(images, label: str, limit: int) -> str:
     imgs = images[:limit]
     if not imgs:
@@ -720,11 +732,8 @@ def _sold_card(p: dict, kicker: str) -> str:
               if gain is not None and gain_pct is not None else "—")
     hold = int(_num(p.get("holdMonthsActual")))
     month = _fmt_month(p.get("saleDate"))
-    # TODO(comisiones): "Inversión con comisiones" no cabe aquí sin romper la
-    # rejilla fija de 5 columnas (.metrics-5, sin regla .metrics-6) — pendiente
-    # de una decisión de layout, no de una línea de Python.
     metrics = "".join([
-        _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión sin comisiones"),
+        _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFees")), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(p.get("salePrice")), "Precio de venta"),
         _metric(gain_v, "Ganancia realizada"),
         _metric(_fmt_pct_or_dash(p.get("realizedRoi")), "ROI real anual"),
@@ -740,11 +749,8 @@ def _rented_card(p: dict, kicker: str) -> str:
     la renta efectivamente cobrada sobre el capital — el track record no publica
     lo que se estimó cobrar."""
     val_month = _fmt_month(p.get("valuationDate"))
-    # TODO(comisiones): "Inversión con comisiones" no cabe aquí sin romper la
-    # rejilla fija de 5 columnas (.metrics-5, sin regla .metrics-6) — pendiente
-    # de una decisión de layout, no de una línea de Python.
     metrics = "".join([
-        _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión sin comisiones"),
+        _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFees")), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
                 f"Valuación · {val_month}" if val_month else "Valuación actual"),
         _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
@@ -758,11 +764,8 @@ def _development_card(p: dict, kicker: str) -> str:
     """En desarrollo: SOLO cifras del underwriting, todas etiquetadas como
     proyección. La valuación inicial de una propiedad recién comprada nace
     igualada al costo, y publicarla leería como un avalúo que nadie hizo."""
-    # TODO(comisiones): "Inversión con comisiones" no cabe aquí sin romper la
-    # rejilla fija de 5 columnas (.metrics-5, sin regla .metrics-6) — pendiente
-    # de una decisión de layout, no de una línea de Python.
     metrics = "".join([
-        _metric(_fmt_mxn_compact_or_dash(p.get("totalInvestment")), "Inversión sin comisiones"),
+        _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFees")), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(p.get("projectedSale"))), "Venta proyectada"),
         _metric(_fmt_pct_or_dash(p.get("projectedRoi")), "ROI proy. anual"),
         _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Ganancia proyectada %"),
@@ -829,11 +832,18 @@ def _summary_card(sold: list[dict], rented: list[dict]) -> str:
     resume, y cada renglón desaparece cuando su etapa está vacía."""
     track = sold + rented
     inv = sum(_num(p.get("totalInvestment")) for p in track)
+    # Con comisiones, solo si CADA propiedad del track record trae la cifra: una
+    # suma parcial (falta una, cuenta como $0) publicaría un total con comisiones
+    # más bajo que el real, más engañoso que no mostrarlo. gain/gain_pct siguen
+    # sin comisiones abajo — el desempeño del portafolio queda fuera de alcance.
+    fee_values = [p.get("totalInvestmentWithFees") for p in track]
+    inv_with_fees = (sum(_num(v) for v in fee_values)
+                      if track and all(v is not None for v in fee_values) else None)
     sales = sum(_num(p.get("salePrice")) for p in sold)
     marks = sum(_num(p.get("currentValuation")) for p in rented)
     gain = sales + marks - inv
 
-    cells = [(str(len(track)), "Propiedades"), (_fmt_mxn_compact(inv), "Capital invertido")]
+    cells = [(str(len(track)), "Propiedades"), (_inv_value(inv, inv_with_fees), "Capital invertido")]
     if sold:
         cells.append((_fmt_mxn_compact(sales), "Ventas realizadas"))
     if rented:
@@ -897,12 +907,9 @@ def _opportunity(p: dict) -> str:
     # Inversión total de la tarjeta.
     dev_investment = _num(total_inv) - _num(p.get("acquisitionTotal"))
 
-    # TODO(comisiones): "Inversión con comisiones" no cabe aquí sin romper la
-    # rejilla fija de 5 columnas (.metrics-5, sin regla .metrics-6) — pendiente
-    # de una decisión de layout, no de una línea de Python.
     metrics = "".join([
         _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
-        _metric(_fmt_mxn_compact_or_dash(total_inv), "Inversión sin comisiones"),
+        _metric(_inv_value(total_inv, p.get("totalInvestmentWithFees")), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
         _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ inversión"),
