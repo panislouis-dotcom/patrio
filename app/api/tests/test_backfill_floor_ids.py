@@ -70,6 +70,12 @@ def _geometry(pid):
             "SELECT geometry FROM properties WHERE id = %s", (pid,)).fetchone()["geometry"]
 
 
+def _is_chosen(rid):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT is_chosen FROM property_renders WHERE id = %s", (rid,)).fetchone()["is_chosen"]
+
+
 def _floor_id(rid):
     with get_db() as conn:
         return conn.execute(
@@ -291,3 +297,64 @@ def test_una_fila_bloqueada_falla_rapido_por_lock_timeout_no_se_cuelga(make_prop
     finally:
         release.set()
         holder.join()
+
+
+# ─── is_chosen: repointing puede DESTAPAR una colisión, no debe tronar ──────
+
+def test_dos_renders_elegidos_del_mismo_piso_bajo_ids_efimeros_distintos_se_desmarcan(make_property):
+    """El caso real que reventó en prod (propiedad 10, "Levantamiento"): dos
+    renders de la MISMA propiedad y variante, cada uno con su propio id efímero
+    distinto, ambos is_chosen=true — el índice único de la migración 046 nunca
+    los vio como el mismo piso porque, hasta este momento, no lo eran. En
+    cuanto el repointing los re-liga al mismo piso real, competirían por el
+    mismo (property_id, floor_id, source_variant); esta migración los desmarca
+    a los DOS antes de que eso pase, en vez de tronar a mitad de camino."""
+    pid = make_property("[TEST048] colision real", {"schemaVersion": 3, "variants": {
+        "original": {"slab_m": 0.15, "activeFloor": 0,
+                     "floors": [_floor("Levantamiento"), _floor("Planta Alta")]},
+        "planned": None}})
+    with get_db() as conn:
+        r23 = _insert_render(conn, pid, file_path="r23.png", source_variant="original",
+                             floor_id="ephemeral-AAA", floor_name="Levantamiento", is_chosen=True)
+        r24 = _insert_render(conn, pid, file_path="r24.png", source_variant="original",
+                             floor_id="ephemeral-BBB", floor_name="Planta Alta", is_chosen=True)
+        r25 = _insert_render(conn, pid, file_path="r25.png", source_variant="original",
+                             floor_id="ephemeral-CCC", floor_name="Levantamiento", is_chosen=True)
+
+    _run_migration()  # no debe lanzar — antes de este arreglo, esto tronaba con 23505
+
+    baja_id = _geometry(pid)["variants"]["original"]["floors"][0]["id"]
+    assert _floor_id(r23) == _floor_id(r25) == baja_id
+    assert _is_chosen(r23) is False and _is_chosen(r25) is False
+    # el que no compite por nada sigue eligido y repuntado normalmente
+    assert _is_chosen(r24) is True
+    assert _floor_id(r24) == _geometry(pid)["variants"]["original"]["floors"][1]["id"]
+
+
+def test_un_render_ya_elegido_sin_conflicto_no_se_desmarca(make_property):
+    pid = make_property("[TEST048] sin conflicto", {"schemaVersion": 2, "slab_m": 0.15,
+                                                     "activeFloor": 0, "floors": [_floor("PB")]})
+    with get_db() as conn:
+        r = _insert_render(conn, pid, file_path="r.png", source_variant="original",
+                           floor_id="ephemeral-x", floor_name="PB", is_chosen=True)
+
+    _run_migration()
+    assert _is_chosen(r) is True
+
+
+def test_nombre_ambiguo_con_is_chosen_no_se_toca_ni_el_id_ni_la_estrella(make_property):
+    """`_final_floor_id` regresa NULL cuando el nombre no resuelve a un único
+    piso — ni el repointing ni la resolución de colisiones deben tocar nada
+    ahí, mismo "no adivina" que ya prueba test_nombre_de_piso_ambiguo_no_adivina
+    para el floor_id; esta prueba cubre que is_chosen tampoco se toca."""
+    pid = make_property("[TEST048] ambiguo elegido", {"schemaVersion": 3, "variants": {
+        "original": {"slab_m": 0.15, "activeFloor": 0,
+                     "floors": [_floor("PB"), _floor("PB")]},
+        "planned": None}})
+    with get_db() as conn:
+        r = _insert_render(conn, pid, file_path="r.png", source_variant="original",
+                           floor_id="ephemeral-ddd", floor_name="PB", is_chosen=True)
+
+    _run_migration()
+    assert _floor_id(r) == "ephemeral-ddd"
+    assert _is_chosen(r) is True
