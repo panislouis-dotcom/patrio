@@ -27,6 +27,19 @@
 --    re-liga a su piso por nombre, dentro de la MISMA propiedad y variante, y
 --    SOLO si hay un único piso con ese nombre — un nombre duplicado es
 --    ambigüedad real, no una adivinanza que valga la pena arriesgar.
+--
+-- `properties.geometry` no es una columna fría: el editor de plano la escribe en
+-- vivo cada vez que alguien guarda (mismo comentario de arriba). Sin lock_timeout,
+-- un UPDATE de esta migración que choca con un guardado real en curso se queda
+-- esperando el lock EN SILENCIO hasta el activeDeadlineSeconds del Job de deploy
+-- (edg-infra/k8s/apps/refigan/templates/migrate-job.yaml) — y como ese Job es un
+-- hook PreSync, el deploy entero se congela sin ningún error legible. Con
+-- lock_timeout, la misma colisión falla rápido y ruidoso (55P03), reintenta con
+-- el backoffLimit del Job en vez de agotar el presupuesto completo en un solo
+-- intento colgado. 5s alcanza de sobra para un guardado normal (los otros
+-- statements de esta transacción corren en milisegundos, medido contra datos
+-- reales) sin acercarse al límite del Job.
+SET LOCAL lock_timeout = '5s';
 
 CREATE OR REPLACE FUNCTION pg_temp._backfill_floor_set(fs jsonb) RETURNS jsonb AS $$
   SELECT jsonb_set(fs, '{floors}', COALESCE((

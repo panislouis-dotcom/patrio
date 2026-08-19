@@ -37,3 +37,37 @@ jobs:
           docker push "$IMAGE:$SHA"
           docker push "$IMAGE:latest"
           docker push "$IMAGE:qa-$SHA"
+
+  # Sin esto, un PreSync hook atorado en el cluster (el fallo real detrás del
+  # incidente del 2026-08-19: refigan-migrate se quedó esperando un lock sin
+  # lock_timeout, congeló el sync de prod, y nadie se dio cuenta hasta que se
+  # notó a mano 15+ minutos después) deja el workflow en verde aunque prod
+  # nunca se haya movido — ArgoCD Image Updater ya escribió el tag nuevo en
+  # git en minutos, así que "el build pasó" no prueba que la app en vivo lo
+  # sirva. Solo prod: qa vive detrás de `vpnOnly: true`
+  # (edg-infra/k8s/apps/qa/refigan/values.yaml) — un runner de GitHub Actions,
+  # sin VPN, no puede alcanzarlo, y no hay forma honesta de verificarlo desde aquí.
+  verify-prod-live:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll prod until it serves this sha
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          got=""
+          for i in $(seq 1 40); do
+            got=$(curl -fsS --max-time 10 https://admin.refigan.com/api/version \
+                  | grep -o '"sha":"[a-f0-9]*"' | cut -d'"' -f4 || true)
+            if [ "$got" = "$SHA" ]; then
+              echo "prod is live at $SHA"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::prod never picked up $SHA (still at '${got:-unknown}' after 10 minutes)." \
+               "The image was built and ArgoCD Image Updater normally writes the new tag to" \
+               "edg-infra within a few minutes — this usually means the refigan-migrate PreSync" \
+               "hook is stuck or failing on the prod cluster and blocking the sync." >&2
+          exit 1
