@@ -77,6 +77,46 @@ def test_create_cannot_choose_its_status(client):
         _delete_property(r.json()["id"])
 
 
+def test_patch_sets_and_clears_a_fee_percentage(client, test_property):
+    pid = test_property["id"]
+    r = client.patch(f"/api/properties/{pid}", json={"landCommissionPct": 0.08})
+    assert r.status_code == 200, r.text
+    assert r.json()["landCommissionPct"] == 0.08
+    assert r.json()["assumptions"]["landCommissionPct"]["source"] == "captured"
+
+    r = client.post(f"/api/properties/{pid}/clear-fields", json={"fields": ["landCommissionPct"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["landCommissionPct"] == 0.05  # el default del modelo
+    assert r.json()["assumptions"]["landCommissionPct"]["source"] == "default"
+
+
+def test_patch_still_accepts_exit_strategy_though_it_no_longer_gates_the_exit_fee(client, test_property):
+    """exit_strategy sigue viajando por PATCH y guardándose — la columna se
+    queda, por si sirve para otro uso más adelante — pero ya no decide qué
+    comisión de salida calcular: compute_fees() (fees.py) calcula venta y
+    renta siempre que haya con qué, exit_strategy capturado o no."""
+    pid = test_property["id"]
+    client.patch(f"/api/properties/{pid}", json={
+        "purchasePrice": 1000000,
+        "projectedSale": 2000000,
+    })
+    before = client.get(f"/api/properties/{pid}").json()
+    assert before["exitFeeVenta"] is not None
+    assert before["exitStrategy"] is None
+
+    r = client.patch(f"/api/properties/{pid}", json={"exitStrategy": "venta"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["exitStrategy"] == "venta"
+    assert body["exitFeeVenta"] == before["exitFeeVenta"]
+    assert body["exitFeeRenta"] == before["exitFeeRenta"]
+
+
+def test_invalid_exit_strategy_is_rejected(client, test_property):
+    r = client.patch(f"/api/properties/{test_property['id']}", json={"exitStrategy": "alquiler"})
+    assert r.status_code == 422
+
+
 def test_delete(client, test_property):
     assert client.delete(f"/api/properties/{test_property['id']}").status_code == 204
     assert client.get(f"/api/properties/{test_property['id']}").status_code == 404

@@ -104,18 +104,22 @@ export interface Assumption {
   source: AssumptionSource
 }
 
-// Son DOS. `constructionOverhead` era el tercero y se retiró del contrato: dejó
-// de multiplicar nada. Se aplica una sola vez, al calcular el primer renglón del
-// presupuesto, y desde ahí vive dentro del importe. Un supuesto que no mueve
-// dinero no es un supuesto — publicarlo dejaría en la ficha un número que se
-// puede leer, comparar y editar sin que mueva un peso, que es el defecto «NO SE
-// USA» otra vez y con otro nombre.
+// Son SEIS: costo de adquisición, plazo de tenencia, y las cuatro comisiones
+// del fondo (ver finance/fees.py). `constructionOverhead` era otro y se
+// retiró del contrato: dejó de multiplicar nada. Se aplica una sola vez, al
+// calcular el primer renglón del presupuesto, y desde ahí vive dentro del
+// importe. Un supuesto que no mueve dinero no es un supuesto — publicarlo
+// dejaría en la ficha un número que se puede leer, comparar y editar sin que
+// mueva un peso, que es el defecto «NO SE USA» otra vez y con otro nombre.
 // Lista y no unión suelta: un tipo no se puede comparar contra nada en tiempo de
 // ejecución, y este espejo YA se desincronizó una vez —`constructionOverhead`
 // sobrevivió aquí después de que el servidor lo retirara, y la ficha se caía con
 // un `undefined.source` que ninguna prueba veía. Con la lista, `contract.test.ts`
 // la contrasta contra `ASSUMPTION_DEFAULTS` de underwriting.py.
-export const ASSUMPTION_FIELDS = ['acquisitionCostPct', 'holdMonths'] as const
+export const ASSUMPTION_FIELDS = [
+  'acquisitionCostPct', 'holdMonths',
+  'landCommissionPct', 'constructionCommissionPct', 'exitSaleCommissionPct', 'exitRentMonths',
+] as const
 export type AssumptionField = typeof ASSUMPTION_FIELDS[number]
 
 export type Assumptions = Record<AssumptionField, Assumption>
@@ -164,6 +168,11 @@ export interface Property {
   permitsCost: number | null
   subdivisionCost: number | null
   projectedSale: number | null
+  // Ya no decide qué comisión de salida se calcula — compute_fees() (fees.py)
+  // calcula venta y renta siempre, sin importar este campo. Se sigue
+  // capturando y guardando (migración 049) por si sirve para otro uso más
+  // adelante, pero la ficha no ofrece un control para editarlo.
+  exitStrategy: 'venta' | 'renta' | null
   // Renta estimada por el underwriting frente a renta efectivamente cobrada.
   // Son dos columnas para que se puedan comparar: la segunda no pisa a la
   // primera al entrar en renta.
@@ -175,10 +184,17 @@ export interface Property {
   // dice cuál de los dos casos es, que es lo único que la ficha necesita para
   // no volver a computar dinero con un número invisible.
   //
-  // Son DOS. `constructionOverhead` se retiró del contrato con la fórmula que
+  // Son SEIS. `constructionOverhead` se retiró del contrato con la fórmula que
   // multiplicaba: ver AssumptionField.
   acquisitionCostPct: number
   holdMonths: number
+  // Comisiones del fondo (ver finance/fees.py): % sobre el terreno, % sobre la
+  // obra, y las dos entradas posibles de la comisión de salida — venta y
+  // renta se calculan siempre las dos, no una según una estrategia elegida.
+  landCommissionPct: number
+  constructionCommissionPct: number
+  exitSaleCommissionPct: number
+  exitRentMonths: number
   assumptions: Assumptions
 
   // --- Base de capital (viva en toda etapa: es historia, no proyección) ---
@@ -188,6 +204,22 @@ export interface Property {
   // por su nombre. Había una segunda columna con el total a mano y con ella la
   // pregunta de cuál de los dos números creer.
   totalInvestment: number | null
+
+  // --- Comisiones del fondo (ver finance/fees.py) ---
+  // landFee/constructionFee no dependen de la salida, nunca faltan. Los dos
+  // escenarios de salida (venta, renta) se calculan siempre que haya con
+  // qué — no hace falta elegir un camino para ver su número — así que cada
+  // uno trae su propio total y su propio motivo cuando falta.
+  landFee: number | null
+  constructionFee: number | null
+  exitFeeVenta: number | null
+  exitFeeRenta: number | null
+  totalFeesVenta: number | null
+  totalFeesRenta: number | null
+  totalInvestmentWithFeesVenta: number | null
+  totalInvestmentWithFeesRenta: number | null
+  feesMissingInputsVenta: string[]
+  feesMissingInputsRenta: string[]
 
   // --- Datos que solo existen tras comprar ---
   totalUnits: number | null
@@ -286,6 +318,8 @@ export const RAW_PROPERTY_FIELDS = [
   'rentMonthlyProjected', 'rentMonthlyActual',
   'totalUnits', 'acquisitionDate', 'firstRentDate', 'valuationDate',
   'currentValuation', 'saleDate', 'salePrice',
+  'landCommissionPct', 'constructionCommissionPct', 'exitSaleCommissionPct',
+  'exitRentMonths', 'exitStrategy',
 ] as const
 
 export type RawPropertyFields = Pick<Property, typeof RAW_PROPERTY_FIELDS[number]>
@@ -319,6 +353,13 @@ export interface PropertyCreate {
   sqmConstruction?: number
   purchasePrice?: number
   acquisitionCostPct?: number
+  // Las cuatro comisiones del fondo (ver finance/fees.py). `exitStrategy` NO
+  // está: es un hecho que se decide después, no algo con lo que una propiedad
+  // pueda nacer.
+  landCommissionPct?: number
+  constructionCommissionPct?: number
+  exitSaleCommissionPct?: number
+  exitRentMonths?: number
   permitsCost?: number
   subdivisionCost?: number
   // Los dos insumos de la CALCULADORA con la que nace el presupuesto —junto a
@@ -348,6 +389,8 @@ export const CLEARABLE_FIELDS = [
   'rentMonthlyProjected', 'rentMonthlyActual',
   'totalUnits', 'acquisitionDate', 'firstRentDate', 'saleDate', 'salePrice',
   'currentValuation', 'valuationDate',
+  'landCommissionPct', 'constructionCommissionPct', 'exitSaleCommissionPct',
+  'exitRentMonths', 'exitStrategy',
 ] as const
 export type ClearableField = typeof CLEARABLE_FIELDS[number]
 

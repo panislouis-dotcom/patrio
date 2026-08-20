@@ -29,12 +29,14 @@ then on. Applying it again here would inflate every construction cost by 30%
 with nothing looking broken — which is why this module no longer knows the word
 «overhead» and no longer takes a multiplier it could re-apply.
 
-Two of the inputs are ASSUMPTIONS, not costs: `acquisition_cost_pct` and
-`hold_months`. They are never stored at capture time, so NULL means "nobody
-chose one — the model applies its default" and a stored value means "a person
-captured this". The defaults live here, in one place, and every reader gets them
-together with their provenance, because a number that moves money has to be
-visible to whoever reads the money.
+Six of the inputs are ASSUMPTIONS, not costs: `acquisition_cost_pct` and
+`hold_months`, plus the four commission/exit assumptions the fund's fee
+structure needs (`land_commission_pct`, `construction_commission_pct`,
+`exit_sale_commission_pct`, `exit_rent_months`). They are never stored at
+capture time, so NULL means "nobody chose one — the model applies its default"
+and a stored value means "a person captured this". The defaults live here, in
+one place, and every reader gets them together with their provenance, because a
+number that moves money has to be visible to whoever reads the money.
 
 Descends from the prospect_metrics view (migration 019) and still matches it
 formula-for-formula except for cap_rate: as of 2026-07 cap rate is *yield on
@@ -63,17 +65,26 @@ COST_KEYS = (
     "purchase_price", "permits_cost", "subdivision_cost", "construction_budgeted",
 )
 
-# The two ASSUMPTIONS and what the model applies when nobody chose. They are
-# deliberately absent from the capture defaults: writing 0.065 into the column
-# at birth makes "the system assumed it" indistinguishable from "somebody picked
-# it", and both produce visible money or a visible deadline.
+# The six ASSUMPTIONS — acquisition cost, hold period, and the fund's four
+# commission/exit assumptions — and what the model applies when nobody chose.
+# They are deliberately absent from the capture defaults: writing 0.065 into
+# the column at birth makes "the system assumed it" indistinguishable from
+# "somebody picked it", and both produce visible money or a visible deadline.
 #
-# `construction_overhead` was the third and is gone: it multiplies nothing here
-# any more. An assumption that moves no money is not an assumption, and leaving
-# it published would be a field the ficha shows and nothing reads.
+# `construction_overhead` used to be one of them and is gone: it multiplies
+# nothing here any more. An assumption that moves no money is not an
+# assumption, and leaving it published would be a field the ficha shows and
+# nothing reads.
 ASSUMPTION_DEFAULTS: dict[str, Decimal | int] = {
     "acquisition_cost_pct": Decimal("0.065"),
     "hold_months": 12,
+    # Comisiones del fondo — ver finance/fees.py, que es quien de verdad las
+    # aplica. Viven aquí y no allá por la misma regla que las dos de arriba:
+    # un solo lugar con nombre para todo default que mueve dinero.
+    "land_commission_pct": Decimal("0.05"),
+    "construction_commission_pct": Decimal("0.15"),
+    "exit_sale_commission_pct": Decimal("0.05"),
+    "exit_rent_months": Decimal("3"),
 }
 
 ASSUMPTION_KEYS = tuple(ASSUMPTION_DEFAULTS)

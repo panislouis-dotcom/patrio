@@ -15,7 +15,9 @@ import type {
   PropertyInvestor, Investor, ProfitWaterfall, ProcessInstance, TeamMember,
   RenderPrompt, RenderPromptKind, PropertyRender,
 } from '../lib/types'
-import { ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL } from '../lib/types'
+import {
+  ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL,
+} from '../lib/types'
 import {
   ALLOWED_TRANSITIONS, PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL,
   hasScore, takesInvestors, takesTasks, hasProfitSplit,
@@ -77,6 +79,22 @@ const roiColorOf = (roi: number | null | undefined) =>
  */
 const fmtGain = (amount: number | null | undefined, pct: number | null | undefined) =>
   `${fmtMXN(amount)} ${fmtPctSigned(pct)}`
+
+/**
+ * El hint de COMISIÓN VENTA ($) / COMISIÓN RENTA ($): describe la fórmula que
+ * corrió si el monto ya existe, o nombra el insumo que falta si no.
+ *
+ * Los dos escenarios se calculan siempre, sin depender de una estrategia de
+ * salida elegida (`compute_fees()` en fees.py ya no lee `exit_strategy` para
+ * decidir cuál correr) — así que cada uno solo puede faltar por su propio
+ * insumo: `missingInputsVenta` siempre trae exactamente `salePrice` cuando
+ * falta, `missingInputsRenta` siempre `rentMonthly`. No hace falta
+ * inspeccionar el arreglo: el modo ya dice cuál es.
+ */
+function exitFeeHint(fee: number | null, mode: 'venta' | 'renta'): string {
+  if (fee != null) return mode === 'venta' ? '% SOBRE PRECIO/PROYECCIÓN DE VENTA' : 'MESES × RENTA COBRADA/ESTIMADA'
+  return mode === 'venta' ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)' : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
+}
 
 /** Las dos cifras grandes de la ficha, ya formateadas. */
 interface Heroes {
@@ -396,6 +414,9 @@ export function PropertyDetailPage() {
   const warnings = p.issues.filter(i => i.severity === 'warning')
   const url = field('url') ?? ''
   const acquisitionCostPct = field('acquisitionCostPct')
+  const landCommissionPct = field('landCommissionPct')
+  const constructionCommissionPct = field('constructionCommissionPct')
+  const exitSaleCommissionPct = field('exitSaleCommissionPct')
 
   // Un supuesto siempre tiene un valor en uso; lo que cambia es quién lo puso.
   // Vaciarlo solo es una operación cuando hay una captura que quitar — de otro
@@ -433,13 +454,14 @@ export function PropertyDetailPage() {
    */
   const numRow = (
     label: string, key: NumKey, format: (n: number | null | undefined) => string,
-    opts: { step?: number; clearable?: ClearableField; readOnly?: boolean; hint?: string } = {},
+    opts: { step?: number; clearable?: ClearableField; readOnly?: boolean; hint?: string; stacked?: boolean } = {},
   ) => (
     <EditableRow
       label={label}
       editing={editing}
       value={format(field(key))}
       hint={opts.hint}
+      stacked={opts.stacked}
       onClear={opts.clearable && p[opts.clearable] != null ? () => clearField(opts.clearable!) : undefined}
       input={opts.readOnly ? undefined : (
         <NumericInput
@@ -715,11 +737,17 @@ export function PropertyDetailPage() {
                   Un total all-in se dice donde siempre estuvo su lugar: precio
                   de compra, con los costos de adquisición en 0. */}
               <EditableRow
-                label="INVERSIÓN"
+                label="INVERSIÓN SIN COMISIONES"
                 editing={editing}
                 value={fmtMXN(p.totalInvestment)}
                 hint="SUMA DEL DESGLOSE"
               />
+              {/* La fila CON COMISIONES ya no vive aquí: sin una estrategia de
+                  salida elegida —el pedido explícito es no obligar a elegir una—
+                  no hay UNA cifra que este resumen terso pueda promover sin
+                  fingir que un escenario le gana al otro. Los dos, venta y
+                  renta, se comparan en COMISIONES DEL FONDO, donde hay espacio
+                  para las dos lado a lado. */}
               {numRow('VALUACIÓN', 'currentValuation', fmtMXN, { clearable: 'currentValuation' })}
               {/* La ESTIMADA se fue a SUPUESTOS: es una apuesta sobre el futuro,
                   no un hecho. La COBRADA se queda — es lo que de verdad entró,
@@ -938,6 +966,163 @@ export function PropertyDetailPage() {
                   REAL en DATOS. Una sección que solo puede repetir lo que ya está
                   en pantalla no organiza nada: solo hace dudar de si son la misma
                   cifra o dos parecidas. */}
+
+              <SectionDivider label="COMISIONES DEL FONDO" />
+              {/* Las mismas 4 filas que antes vivían en SUPUESTOS, mudadas aquí: son
+                  supuestos del fondo, no del inmueble, y perdidas entre COSTOS ADQ. /
+                  PLAZO PROYECTADO / VENTA PROYECTADA nadie las encontraba. Cada
+                  comisión enseña su % (editable, mismo badge CAPTURADO/SUPUESTO POR
+                  OMISIÓN de siempre) seguido de su monto en pesos — que el backend ya
+                  calculaba y la ficha nunca pintaba.
+
+                  Ya no hay un selector ESTRATEGIA DE SALIDA (feedback en vivo del
+                  dueño del producto: obligar a elegir venta o renta para ver su
+                  comisión pedía una decisión que nadie tiene tomada de antemano).
+                  COMISIÓN VENTA (%) y MESES DE RENTA se ven siempre las dos, cada
+                  una con su propio monto — compute_fees() (fees.py) calcula los dos
+                  escenarios siempre que haya con qué, sin depender de una estrategia
+                  elegida. `exitStrategy` sigue en la BD (migración 049) por si sirve
+                  para otro uso, pero ya no tiene control aquí.
+
+                  Esta sección repite a propósito INVERSIÓN SIN COMISIONES, que ya
+                  vive en DATOS — la única excepción a «cada cifra vive en un solo
+                  lugar» de la nota de arriba. Ahí es una regla real: DATOS es un
+                  resumen terso. Aquí el cierre de la sección compara los dos
+                  escenarios lado a lado — ver más abajo. */}
+              {/* Ocho filas en dos columnas cuando el ancho lo permite, con el mismo
+                  `narrow` que ya parte la página entera en dos (línea ~682) — no un
+                  breakpoint nuevo. En angosto siguen apiladas. Cada fila usa
+                  `stacked` (feedback en vivo, segunda ronda): etiqueta+hint arriba,
+                  valor/input abajo, alineados a la izquierda — el renglón normal de
+                  `EditableRow` se amontona en media columna de grid. Por default
+                  sigue apagada — ningún otro renglón de la ficha cambió.
+
+                  El orden empareja %/$ de cada comisión, una comisión por renglón
+                  del grid: terreno, obra, venta, renta — simétrico, sin huecos ni
+                  filas que compartan renglón por necesidad. */}
+              <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
+                <EditableRow
+                  label="COMISIÓN COMPRA TERRENO (%)"
+                  editing={editing}
+                  value={fmtPct(landCommissionPct)}
+                  hint={assumptionHint('landCommissionPct')}
+                  stacked
+                  onClear={isCaptured('landCommissionPct') ? () => clearField('landCommissionPct') : undefined}
+                  input={
+                    <NumericInput
+                      value={landCommissionPct != null ? landCommissionPct * 100 : undefined}
+                      onChange={n => setField('landCommissionPct', n != null ? n / 100 : undefined)}
+                      step={0.1}
+                      ariaLabel="COMISIÓN COMPRA TERRENO (%)"
+                      style={fieldInput}
+                    />
+                  }
+                />
+                <EditableRow
+                  label="COMISIÓN COMPRA TERRENO ($)"
+                  editing={editing}
+                  value={fmtMXN(p.landFee)}
+                  hint="% SOBRE PRECIO DE COMPRA"
+                  stacked
+                />
+                <EditableRow
+                  label="COMISIÓN OBRA (%)"
+                  editing={editing}
+                  value={fmtPct(constructionCommissionPct)}
+                  hint={assumptionHint('constructionCommissionPct')}
+                  stacked
+                  onClear={isCaptured('constructionCommissionPct') ? () => clearField('constructionCommissionPct') : undefined}
+                  input={
+                    <NumericInput
+                      value={constructionCommissionPct != null ? constructionCommissionPct * 100 : undefined}
+                      onChange={n => setField('constructionCommissionPct', n != null ? n / 100 : undefined)}
+                      step={0.1}
+                      ariaLabel="COMISIÓN OBRA (%)"
+                      style={fieldInput}
+                    />
+                  }
+                />
+                <EditableRow
+                  label="COMISIÓN OBRA ($)"
+                  editing={editing}
+                  value={fmtMXN(p.constructionFee)}
+                  hint="% SOBRE OBRA A EJECUTAR"
+                  stacked
+                />
+                <EditableRow
+                  label="COMISIÓN VENTA (%)"
+                  editing={editing}
+                  value={fmtPct(exitSaleCommissionPct)}
+                  hint={assumptionHint('exitSaleCommissionPct')}
+                  stacked
+                  onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
+                  input={
+                    <NumericInput
+                      value={exitSaleCommissionPct != null ? exitSaleCommissionPct * 100 : undefined}
+                      onChange={n => setField('exitSaleCommissionPct', n != null ? n / 100 : undefined)}
+                      step={0.1}
+                      ariaLabel="COMISIÓN VENTA (%)"
+                      style={fieldInput}
+                    />
+                  }
+                />
+                <EditableRow
+                  label="COMISIÓN VENTA ($)"
+                  editing={editing}
+                  value={p.exitFeeVenta != null ? fmtMXN(p.exitFeeVenta) : '—'}
+                  hint={exitFeeHint(p.exitFeeVenta, 'venta')}
+                  stacked
+                />
+                {numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
+                  clearable: isCaptured('exitRentMonths') ? 'exitRentMonths' : undefined,
+                  hint: assumptionHint('exitRentMonths'),
+                  stacked: true,
+                })}
+                <EditableRow
+                  label="COMISIÓN RENTA ($)"
+                  editing={editing}
+                  value={p.exitFeeRenta != null ? fmtMXN(p.exitFeeRenta) : '—'}
+                  hint={exitFeeHint(p.exitFeeRenta, 'renta')}
+                  stacked
+                />
+              </div>
+              {/* El cierre de la sección, no una celda más del grid (feedback en
+                  vivo del dueño del producto, dos rondas: primero que la cifra final
+                  se perdía entre once renglones chicos, luego que quería ver los dos
+                  escenarios —venta y renta— lado a lado, no uno elegido). SIN
+                  COMISIONES es una sola cifra —no depende de la salida— y va chica y
+                  centrada arriba; las dos CON COMISIONES son las cifras grandes,
+                  una por columna, sin nada más compitiendo por la vista. */}
+              <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}`, textAlign: 'center' }}>
+                {/* `label` es un <span>, no un <div>: las pruebas ubican cada
+                    cifra con `getByText(label).closest('div')`, que en un
+                    <span> sube hasta ESTE contenedor —el mismo truco que ya usa
+                    `EditableRow` en su modo normal. */}
+                <div style={{ marginBottom: '20px' }}>
+                  <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN SIN COMISIONES</span>
+                  <div style={{ fontFamily: fonts.serif, fontSize: '22px', color: colors.secondary, marginTop: '8px' }}>{fmtMXN(p.totalInvestment)}</div>
+                </div>
+                <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
+                  <div>
+                    <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN CON COMISIONES (VENTA)</span>
+                    <div style={{ fontFamily: fonts.serif, fontSize: '30px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
+                      {p.totalInvestmentWithFeesVenta != null ? fmtMXN(p.totalInvestmentWithFeesVenta) : '—'}
+                    </div>
+                    <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
+                      {p.totalInvestmentWithFeesVenta != null ? 'SIN COMISIONES + COMISIONES (VENTA)' : 'FALTA PRECIO DE VENTA (VER ARRIBA)'}
+                    </span>
+                  </div>
+                  <div style={narrow ? { marginTop: '20px' } : undefined}>
+                    <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN CON COMISIONES (RENTA)</span>
+                    <div style={{ fontFamily: fonts.serif, fontSize: '30px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
+                      {p.totalInvestmentWithFeesRenta != null ? fmtMXN(p.totalInvestmentWithFeesRenta) : '—'}
+                    </div>
+                    <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
+                      {p.totalInvestmentWithFeesRenta != null ? 'SIN COMISIONES + COMISIONES (RENTA)' : 'FALTA RENTA MENSUAL (VER ARRIBA)'}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
               {p.issues.length > 0 && (
                 <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
