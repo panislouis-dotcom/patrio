@@ -84,13 +84,14 @@ body { font-family: 'Inter', sans-serif; background: #FFFFFF; color: var(--ink);
 .metrics-5 { grid-template-columns: repeat(5, 1fr); }
 .metric { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
           padding: 5mm 5mm 5.5mm; }
-/* Una celda que vale por dos — ver _opportunity_exit_value(): los dos
-   escenarios de salida unidos por "o" necesitan el ancho de dos columnas
-   para no apretar "$4.6M venta o $4.4M renta" contra el borde. */
-.metric-wide { grid-column: span 2; }
 .metric .v { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 20pt;
              color: var(--green-dark); line-height: 1; }
-.metric .v small { font-size: 11pt; color: var(--green); }
+/* white-space:nowrap — sin esto, Chromium parte "3 meses" (la única
+   anotación de esta rejilla con un espacio) en dos líneas y la continuación
+   pierde el font-size chico, quedando del mismo tamaño que el valor
+   principal. Con nowrap la anotación brinca completa a su propia línea en
+   vez de partirse a la mitad. */
+.metric .v small { font-size: 11pt; color: var(--green); white-space: nowrap; }
 .metric .l { font-family: 'Inter', sans-serif; font-size: 5.8pt; font-weight: 600;
              letter-spacing: 0.15em; text-transform: uppercase; color: var(--sec); margin-top: 6px; }
 
@@ -457,11 +458,8 @@ def _imgs_by_type(images, kind=None):
     return out
 
 
-def _metric(value: str, label: str, *, wide: bool = False) -> str:
-    """`wide` ocupa dos columnas de la rejilla en vez de una — ver `.metric-wide`
-    (CSS) y `_opportunity_exit_value()`, su único llamador hoy."""
-    cls = "metric metric-wide" if wide else "metric"
-    return (f'<div class="{cls}"><div class="v">{value}</div>'
+def _metric(value: str, label: str) -> str:
+    return (f'<div class="metric"><div class="v">{value}</div>'
             f'<div class="l">{_esc(label)}</div></div>')
 
 
@@ -504,60 +502,51 @@ def _fee_scenario_missing(reasons: list[str] | None) -> str:
     return f'— <small>{_esc(text)}</small>' if text else "—"
 
 
-def _opportunity_exit_value(p: dict) -> str:
-    """Los dos escenarios de salida en UN SOLO valor, unidos por "o": pedido
-    explícito, tras ver las dos celdas sueltas lado a lado — se leían como si
-    las dos comisiones corrieran a la vez, cuando en realidad son una
-    alternativa. Nunca van a pasar los dos: la propiedad se vende O se renta,
-    nunca las dos cosas, así que el valor tiene que decir eso mismo en vez de
-    dejar que dos cifras adyacentes lo insinúen.
-
-    Si falta uno de los dos, se enseña el que sí hay, solo — no tiene sentido
-    forzar un "o" contra un guion. Si faltan los dos, se combinan los motivos
-    de cada lado (reutilizando el mismo vocabulario que `_fee_scenario_missing`
-    usa para una celda individual) en un solo guion con su porqué."""
-    venta, renta = p.get("totalInvestmentWithFeesVenta"), p.get("totalInvestmentWithFeesRenta")
-    parts = []
-    if venta is not None:
-        parts.append(f'{_fmt_mxn_compact(venta)} <small>venta</small>')
-    if renta is not None:
-        parts.append(f'{_fmt_mxn_compact(renta)} <small>renta</small>')
-    if parts:
-        return " o ".join(parts)
-    reasons = [_FEE_MISSING_LABEL[r] for r in
-               (p.get("feesMissingInputsVenta") or []) + (p.get("feesMissingInputsRenta") or [])
-               if r in _FEE_MISSING_LABEL]
-    return f'— <small>{" y ".join(reasons)}</small>' if reasons else "—"
-
-
 def _opportunity_fees_metrics(p: dict) -> str:
     """Comisiones del fondo, en su propia fila. Solo en _opportunity(): es la
     única etapa donde el camino de salida sigue genuinamente indeciso Y la
     única con espacio de sobra (página completa, sin el alto fijo de .proj
-    que aprieta a las demás). No lleva CSS nuevo para su tamaño base: hereda
-    el de `.metric` (padding 5mm, valor a 20pt) — el mismo que ya usa
-    cualquier otra fila de 4 del documento (p.ej. `_summary_card()` sin
-    ventas). Eso la deja MÁS GRANDE que la fila principal justo arriba, que es
-    una de 5 y por eso sí lleva el override a 16pt (`.opp .metrics-5`, ver el
-    comentario ahí arriba) — no es el mismo peso visual: la de arriba está
-    recortada para caber sus cinco columnas, esta no necesita recorte con
-    solo tres celdas (la tercera, doble ancho — ver abajo).
+    que aprieta a las demás). No lleva CSS nuevo: hereda el tamaño base de
+    `.metric` (padding 5mm, valor a 20pt) — el mismo que ya usa cualquier
+    otra fila de 4 del documento (p.ej. `_summary_card()` sin ventas). Eso la
+    deja MÁS GRANDE que la fila principal justo arriba, que es una de 5 y por
+    eso sí lleva el override a 16pt (`.opp .metrics-5`, ver el comentario ahí
+    arriba) — no es el mismo peso visual: la de arriba está recortada para
+    caber sus cinco columnas, esta no necesita recorte.
+
+    Seis celdas en una rejilla de 4 columnas: la fila se envuelve sola en dos
+    renglones, sin tocar el grid. El orden importa — primero las CUATRO
+    comisiones que se cobran (terreno, obra, salida·venta, salida·renta),
+    luego los DOS totales que resultan de sumarlas a la inversión (venta,
+    renta): cada renglón es su propio grupo, no una mezcla intercalada.
 
     Terreno y obra nunca faltan — siempre hay una base y un % (el default si
     nadie lo capturó), así que sus dos celdas acceden a `landFee`/
     `constructionFee` con corchetes, no `.get()`: un KeyError aquí sería una
     señal real de que compute_fees() (fees.py) dejó de cumplir esa garantía,
-    no un dato opcional que la tarjeta deba tolerar en silencio.
-
-    La comisión de salida ya NO son dos celdas (venta y renta lado a lado):
-    es una sola, del doble de ancho (`wide=True`, `.metric-wide`), con los
-    dos escenarios unidos por "o" — ver `_opportunity_exit_value()` para el
-    porqué. Tres celdas en una rejilla de 4 columnas (terreno 1, obra 1,
-    salida 2) sin necesidad de ningún ajuste al grid en sí."""
+    no un dato opcional que la tarjeta deba tolerar en silencio. Las cuatro
+    restantes sí pueden faltar, cada una por su cuenta (sin precio de venta
+    no hay comisión de venta NI total con comisiones de venta), y entonces
+    nombran su propio insumo ausente vía `_fee_scenario_missing()`."""
+    salida_venta = (f'{_fmt_mxn_compact(p["exitFeeVenta"])} <small>{_fmt_pct(p.get("exitSaleCommissionPct"))}</small>'
+                    if p.get("exitFeeVenta") is not None
+                    else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
+    salida_renta = (f'{_fmt_mxn_compact(p["exitFeeRenta"])} <small>{int(_num(p.get("exitRentMonths")))} meses</small>'
+                    if p.get("exitFeeRenta") is not None
+                    else _fee_scenario_missing(p.get("feesMissingInputsRenta")))
+    total_venta = (_fmt_mxn_compact(p["totalInvestmentWithFeesVenta"])
+                   if p.get("totalInvestmentWithFeesVenta") is not None
+                   else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
+    total_renta = (_fmt_mxn_compact(p["totalInvestmentWithFeesRenta"])
+                   if p.get("totalInvestmentWithFeesRenta") is not None
+                   else _fee_scenario_missing(p.get("feesMissingInputsRenta")))
     return "".join([
         _metric(f'{_fmt_mxn_compact(p["landFee"])} <small>{_fmt_pct(p.get("landCommissionPct"))}</small>', "Comisión compra terreno"),
         _metric(f'{_fmt_mxn_compact(p["constructionFee"])} <small>{_fmt_pct(p.get("constructionCommissionPct"))}</small>', "Comisión de obra"),
-        _metric(_opportunity_exit_value(p), "Inversión con comisiones — venta o renta", wide=True),
+        _metric(salida_venta, "Comisión de salida · venta"),
+        _metric(salida_renta, "Comisión de salida · renta"),
+        _metric(total_venta, "Inversión c/comisiones · venta"),
+        _metric(total_renta, "Inversión c/comisiones · renta"),
     ])
 
 

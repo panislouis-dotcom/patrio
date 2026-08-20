@@ -4,7 +4,7 @@ reach the right property) lives in test_documents.py."""
 import re
 
 from api.lib.prospectus_html import (_budget_full, _development_card, _fee_scenario_missing,
-                                     _fmt_mxn, _opportunity, _opportunity_detail, _opportunity_exit_value,
+                                     _fmt_mxn, _opportunity, _opportunity_detail,
                                      _opportunity_fees_metrics,
                                      _photo_block, _photo_rows, _plan_block, _plan_rows, _rented_card,
                                      _sold_card, _summary_card, _BODY_CSS, _BUDGET_TWO_COLUMN_THRESHOLD)
@@ -154,51 +154,61 @@ def test_opportunity_fees_metrics_shows_terreno_and_obra_as_their_own_cells():
     assert "Comisión de obra" in html
 
 
-def test_opportunity_exit_value_joins_both_scenarios_with_o():
-    """Pedido explícito: las dos celdas sueltas (venta y renta lado a lado) se
-    leían como si las dos comisiones corrieran a la vez — se funden en un solo
-    valor, con "o" entre las dos, porque la propiedad se vende O se renta,
-    nunca las dos."""
+def test_opportunity_fees_metrics_shows_the_exit_fee_venta_and_renta_as_their_own_cells():
+    """La comisión de salida no venía desglosada en ningún lado — a diferencia
+    de terreno y obra, que sí muestran su propio $ — así que cada escenario
+    necesita su propia celda con el monto que se cobra."""
+    p = {**BASE_PROPERTY,
+         "exitFeeVenta": 195_000, "exitSaleCommissionPct": 0.05,
+         "exitFeeRenta": 144_000, "exitRentMonths": 3}
+    html = _opportunity_fees_metrics(p)
+    assert '$195K <small>5.0%</small>' in html
+    assert "Comisión de salida · venta" in html
+    assert '$144K <small>3 meses</small>' in html
+    assert "Comisión de salida · renta" in html
+
+
+def test_opportunity_fees_metrics_names_the_reason_when_an_exit_fee_is_missing():
+    p = {**BASE_PROPERTY,
+         "exitFeeVenta": None, "feesMissingInputsVenta": ["salePrice"],
+         "exitFeeRenta": 144_000, "exitRentMonths": 3}
+    html = _opportunity_fees_metrics(p)
+    assert '— <small>falta precio de venta</small>' in html
+    assert '$144K <small>3 meses</small>' in html
+
+
+def test_opportunity_fees_metrics_shows_the_two_totals_as_separate_cells():
+    """El pedido del usuario: los totales quedan tal cual estaban, cada uno en
+    su propia celda — no se funden en una sola."""
     p = {**BASE_PROPERTY,
          "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": 3_900_000}
-    value = _opportunity_exit_value(p)
-    assert value == '$4.0M <small>venta</small> o $3.9M <small>renta</small>'
+    html = _opportunity_fees_metrics(p)
+    assert '<div class="v">$4.0M</div><div class="l">Inversión c/comisiones · venta</div>' in html
+    assert '<div class="v">$3.9M</div><div class="l">Inversión c/comisiones · renta</div>' in html
+    assert "metric-wide" not in html
 
 
-def test_opportunity_exit_value_shows_just_the_side_that_exists_without_an_o():
-    """Forzar un "o" contra un guion no tiene sentido — si solo un escenario
-    corrió, se enseña ese, solo."""
+def test_opportunity_fees_metrics_names_the_reason_when_a_total_is_missing():
     p = {**BASE_PROPERTY,
          "totalInvestmentWithFeesVenta": None, "feesMissingInputsVenta": ["salePrice"],
          "totalInvestmentWithFeesRenta": 3_900_000, "feesMissingInputsRenta": []}
-    value = _opportunity_exit_value(p)
-    assert value == '$3.9M <small>renta</small>'
-    assert " o " not in value
-
-
-def test_opportunity_exit_value_both_scenarios_missing_combines_both_reasons():
-    p = {**BASE_PROPERTY,
-         "totalInvestmentWithFeesVenta": None, "feesMissingInputsVenta": ["salePrice"],
-         "totalInvestmentWithFeesRenta": None, "feesMissingInputsRenta": ["rentMonthly"]}
-    value = _opportunity_exit_value(p)
-    assert value == '— <small>falta precio de venta y falta renta mensual</small>'
+    html = _opportunity_fees_metrics(p)
+    assert '— <small>falta precio de venta</small>' in html
+    assert '<div class="v">$3.9M</div><div class="l">Inversión c/comisiones · renta</div>' in html
 
 
 def test_opportunity_card_wires_the_fee_metrics_row_after_opp_cols():
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
-         "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": None,
-         "feesMissingInputsRenta": ["rentMonthly"]}
+         "exitFeeVenta": 195_000, "exitSaleCommissionPct": 0.05,
+         "exitFeeRenta": None, "feesMissingInputsRenta": ["rentMonthly"],
+         "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": None}
     html = _opportunity(p)
     assert "Comisión compra terreno" in html
     assert "Comisión de obra" in html
-    assert '<div class="metric metric-wide">' in html
-    assert "Inversión con comisiones — venta o renta" in html
-    # Solo venta corrió — se enseña sola, sin "o" ni mención de por qué falta
-    # renta (eso ya lo cubre test_opportunity_exit_value_shows_just_the_side_
-    # that_exists_without_an_o de forma aislada).
-    match = re.search(r'<div class="metric metric-wide"><div class="v">(.*?)</div>', html)
-    assert match is not None
-    assert match.group(1) == "$4.0M <small>venta</small>"
+    assert "Comisión de salida · venta" in html
+    assert "Comisión de salida · renta" in html
+    assert "Inversión c/comisiones · venta" in html
+    assert "Inversión c/comisiones · renta" in html
     assert html.index('class="opp-cols"') < html.index("Comisión compra terreno")
 
 
