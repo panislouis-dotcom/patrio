@@ -81,6 +81,25 @@ const roiColorOf = (roi: number | null | undefined) =>
 const fmtGain = (amount: number | null | undefined, pct: number | null | undefined) =>
   `${fmtMXN(amount)} ${fmtPctSigned(pct)}`
 
+/**
+ * El hint de COMISIÓN DE SALIDA ($): describe la fórmula que corrió si
+ * `exitFee` ya existe, o nombra el insumo que falta si no.
+ *
+ * `exitFeeMode` NO sirve como señal de "ya corrió": `compute_fees()`
+ * (fees.py) lo fija en cuanto se elige `exitStrategy`, sin esperar a que
+ * `exitFee` se calcule — con 'venta' elegida pero sin precio de venta, el
+ * servidor manda `exitFeeMode: 'venta'` Y `exitFee: null` a la vez. Por eso el
+ * chequeo va primero por `exitFee != null`, y solo ahí se usa `exitFeeMode`
+ * para nombrar la fórmula; con `exitFee` ausente, quien manda es
+ * `feesMissingInputs`, nunca se adivina.
+ */
+function exitFeeHint(p: Property): string {
+  if (p.exitFee != null) return p.exitFeeMode === 'venta' ? '% SOBRE PRECIO/PROYECCIÓN DE VENTA' : 'MESES × RENTA COBRADA/ESTIMADA'
+  if (p.feesMissingInputs.includes('exitStrategy')) return 'FALTA ESTRATEGIA DE SALIDA'
+  if (p.feesMissingInputs.includes('salePrice')) return 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)'
+  return 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
+}
+
 /** Las dos cifras grandes de la ficha, ya formateadas. */
 interface Heroes {
   label: string; value: string; color: string; barPct?: number; caption?: string
@@ -963,7 +982,18 @@ export function PropertyDetailPage() {
                   PLAZO PROYECTADO / VENTA PROYECTADA nadie las encontraba. Cada
                   comisión enseña su % (editable, mismo badge CAPTURADO/SUPUESTO POR
                   OMISIÓN de siempre) seguido de su monto en pesos — que el backend ya
-                  calculaba y la ficha nunca pintaba. */}
+                  calculaba y la ficha nunca pintaba. Salvo VENTA: su monto no sigue
+                  directo, sale combinado con MESES DE RENTA en COMISIÓN DE SALIDA ($)
+                  más abajo, porque solo una de las dos corre según ESTRATEGIA DE
+                  SALIDA.
+
+                  Esta sección repite a propósito INVERSIÓN SIN/CON COMISIONES, que
+                  ya viven en DATOS — la única excepción a «cada cifra vive en un solo
+                  lugar» de la nota de arriba. Ahí es una regla real: DATOS es un
+                  resumen terso que se esconde cuando falta el insumo. Aquí el punto
+                  es justo lo contrario — el guion más el porqué NUNCA debe
+                  desaparecer, así que necesita su propia fila que no comparta la
+                  condición que oculta la de DATOS. */}
               {/* De qué camino saldrá exitFee: sin default (migración 049), así
                   que sin badge CAPTURADO/SUPUESTO POR OMISIÓN — a diferencia de
                   las cuatro comisiones de abajo, nadie lo asume por ti. */}
@@ -1052,30 +1082,18 @@ export function PropertyDetailPage() {
                   ESTRATEGIA DE SALIDA arriba (% sobre venta, o meses de renta), nunca
                   las dos a la vez — exitFeeMode dice cuál corrió. Sin exitFee todavía
                   se ve "—" con el porqué al lado: feesMissingInputs lo nombra, nunca
-                  se adivina.
-
-                  exitFeeMode se fija al elegir la estrategia (compute_fees en
-                  fees.py) y NO espera a que exitFee se calcule: 'venta' con precio
-                  de venta ausente ya trae exitFeeMode='venta' pero exitFee=None.
-                  Por eso el chequeo va primero por exitFee != null — solo con un
-                  valor real tiene sentido describir la fórmula que lo produjo — y
-                  exitFeeMode nunca decide qué falta, eso lo dice feesMissingInputs. */}
+                  se adivina. Ver `exitFeeHint` para el porqué del orden. */}
               <EditableRow
                 label="COMISIÓN DE SALIDA ($)"
                 editing={editing}
                 value={p.exitFee != null ? fmtMXN(p.exitFee) : '—'}
-                hint={
-                  p.exitFee != null
-                    ? (p.exitFeeMode === 'venta' ? '% SOBRE PRECIO/PROYECCIÓN DE VENTA' : 'MESES × RENTA COBRADA/ESTIMADA')
-                    : p.feesMissingInputs.includes('exitStrategy') ? 'FALTA ESTRATEGIA DE SALIDA'
-                    : p.feesMissingInputs.includes('salePrice') ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)'
-                    : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
-                }
+                hint={exitFeeHint(p)}
               />
               <EditableRow
                 label="TOTAL COMISIONES ($)"
                 editing={editing}
                 value={p.totalFees != null ? fmtMXN(p.totalFees) : '—'}
+                hint="SUMA DE LAS TRES COMISIONES"
               />
               <EditableRow
                 label="INVERSIÓN SIN COMISIONES"

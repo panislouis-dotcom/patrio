@@ -421,13 +421,15 @@ describe('PropertyDetailPage', () => {
     await renderPage(BASE_PROPERTY)
 
     expect(screen.getByText('COMISIONES DEL FONDO')).not.toBeNull()
-    expect(screen.getByText('COMISIÓN COMPRA TERRENO ($)')).not.toBeNull()
-    // $150,000 también es PERMISOS en InvestmentBreakdown — coincide con
-    // landFee por construcción de este fixture, no por regla del dominio.
+
+    // Cada monto se busca dentro de su propia fila: $150,000 también es
+    // PERMISOS en InvestmentBreakdown (coincide con landFee por construcción
+    // de este fixture, no por regla del dominio), así que ambas cifras se
+    // buscan igual de acotadas, aunque solo una tenga con qué chocar hoy.
     const landFeeRow = screen.getByText('COMISIÓN COMPRA TERRENO ($)').closest('div')!
     expect(within(landFeeRow).getByText('$150,000')).not.toBeNull()
-    expect(screen.getByText('COMISIÓN OBRA ($)')).not.toBeNull()
-    expect(screen.getByText('$585,000')).not.toBeNull()
+    const constructionFeeRow = screen.getByText('COMISIÓN OBRA ($)').closest('div')!
+    expect(within(constructionFeeRow).getByText('$585,000')).not.toBeNull()
 
     // Sin exitStrategy no hay comisión de salida que calcular, y el guion dice
     // por qué en vez de leerse como "cero comisión".
