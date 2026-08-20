@@ -4,9 +4,9 @@ reach the right property) lives in test_documents.py."""
 import re
 
 from api.lib.prospectus_html import (_budget_full, _development_card, _fee_scenario_missing,
-                                     _opportunity, _opportunity_detail, _opportunity_fees_metrics,
+                                     _fmt_mxn, _opportunity, _opportunity_detail, _opportunity_fees_metrics,
                                      _photo_block, _photo_rows, _plan_block, _plan_rows, _rented_card,
-                                     _sold_card, _summary_card, _BODY_CSS)
+                                     _sold_card, _summary_card, _BODY_CSS, _BUDGET_TWO_COLUMN_THRESHOLD)
 
 BASE_PROPERTY = {
     "name": "[TEST] Casa Prueba",
@@ -256,6 +256,59 @@ def test_budget_full_skips_the_subtotal_for_a_single_line_chapter():
     html = _budget_full(lines, ["Otros"])
     assert "$156,000" in html
     assert "budget-subtotal" not in html
+
+
+def test_budget_full_stays_single_column_below_the_threshold():
+    """Feedback en vivo: un presupuesto real de docenas de renglones ocupaba
+    hasta tres páginas — pero la mayoría de las propiedades solo tienen "Otros,
+    por detallar", una sola línea. Forzar dos columnas ahí dejaría la segunda
+    visiblemente vacía, así que el umbral solo aplica arriba de
+    _BUDGET_TWO_COLUMN_THRESHOLD."""
+    lines = [{"chapterName": "Otros", "name": "Otros, por detallar", "budgetedAmount": 156_000,
+              "quantity": 1, "unit": "lote"}]
+    html = _budget_full(lines, ["Otros"])
+    assert "budget-columns" not in html
+
+
+def test_budget_full_switches_to_two_columns_above_the_threshold():
+    """Un presupuesto de verdad, con capítulos de sobra, sí gana las dos
+    columnas — Chromium reparte los capítulos entre columnas, esta prueba solo
+    confirma que el contenedor aparece y sigue llevando cada capítulo, no
+    cómo se balancean visualmente (eso es CSS, no Python)."""
+    lines = [
+        {"chapterName": f"Capítulo {i}", "name": f"Partida {i}", "budgetedAmount": 1_000,
+         "quantity": 1, "unit": "lote"}
+        for i in range(_BUDGET_TWO_COLUMN_THRESHOLD + 1)
+    ]
+    chapters = [f"Capítulo {i}" for i in range(_BUDGET_TWO_COLUMN_THRESHOLD + 1)]
+    html = _budget_full(lines, chapters)
+    assert '<div class="budget-columns">' in html
+    for i in range(_BUDGET_TWO_COLUMN_THRESHOLD + 1):
+        assert f"Partida {i}" in html
+    # El total sigue fuera del contenedor de columnas, a lo ancho completo.
+    assert html.rindex("budget-columns") < html.index("budget-grand-total")
+
+
+def test_budget_full_total_is_never_inside_the_two_column_container():
+    """El Total es la respuesta, no un renglón más — se agrega FUERA de
+    .budget-columns aunque el presupuesto sea largo, para no leerse metido a
+    media columna. `_budget_full` arma el resultado como `body + total`, así
+    que si el total de verdad quedó afuera, la tabla del Total es un SUFIJO
+    literal del html completo — no hace falta parsear la anidación de <div>
+    para probarlo."""
+    n = _BUDGET_TWO_COLUMN_THRESHOLD + 1
+    lines = [
+        {"chapterName": f"Capítulo {i}", "name": f"Partida {i}", "budgetedAmount": 1_000,
+         "quantity": 1, "unit": "lote"}
+        for i in range(n)
+    ]
+    chapters = [f"Capítulo {i}" for i in range(n)]
+    html = _budget_full(lines, chapters)
+    expected_total_table = (
+        f'<table class="kv budget-grand-total"><tr><td>Total</td>'
+        f'<td class="n">{_fmt_mxn(n * 1_000)}</td></tr></table>'
+    )
+    assert html.endswith(expected_total_table)
 
 
 def test_opportunity_detail_is_empty_without_plano_or_budget():

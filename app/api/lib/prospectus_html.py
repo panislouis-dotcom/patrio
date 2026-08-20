@@ -126,12 +126,23 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
              margin-bottom: 9px; break-after: avoid; page-break-after: avoid; }
 
 /* ── Presupuesto, renglón por renglón ────────────────────────────────────── */
-.budget-chapter { margin-bottom: 5mm; }
+/* Dos columnas por CSS puro (Python solo decide SI aplica — ver
+   _BUDGET_TWO_COLUMN_THRESHOLD — nunca cuáles capítulos van en cuál columna).
+   column-gap en vez de un borde/padding manual entre columnas: es lo que ya
+   separa .opp-cols del mismo documento. */
+.budget-columns { columns: 2; column-gap: 8mm; }
+/* Sin break-inside:avoid-column a propósito: mismo motivo que table.kv ya
+   documenta para páginas — un capítulo largo puede partirse entre columnas
+   como cualquier tabla de un libro. Lo único protegido sigue siendo el
+   renglón (table.kv tr) y el título pegado a su primer renglón
+   (budget-chapter-name, abajo). */
+.budget-chapter { margin-bottom: 3mm; }
 .budget-chapter:last-of-type { margin-bottom: 0; }
-.budget-chapter-name { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 600;
-                        color: var(--sec); margin-bottom: 2mm;
+.budget-chapter-name { font-family: 'Inter', sans-serif; font-size: 6.5pt; font-weight: 600;
+                        color: var(--sec); margin-bottom: 1.5mm;
                         break-after: avoid; page-break-after: avoid; }
-.budget-qty { font-size: 7.5pt; color: var(--sec); font-weight: 400; }
+.budget-columns table.kv td { font-size: 7.5pt; padding: 3px 0; }
+.budget-qty { font-size: 7pt; color: var(--sec); font-weight: 400; }
 .budget-subtotal td { font-weight: 600; border-top: 1px solid var(--ink); }
 .budget-grand-total { margin-top: 3mm; }
 .budget-grand-total td { font-size: 10pt; font-weight: 600; padding-top: 6px;
@@ -837,6 +848,12 @@ def _development_card(p: dict, kicker: str) -> str:
     return _card(p, kicker, _projected_hold_tail(p), metrics)
 
 
+# Doce renglones es aproximadamente media página a una columna con el tipo
+# compacto de .budget-columns — por debajo de eso, partir en dos columnas
+# dejaría la segunda visiblemente vacía en vez de ahorrar espacio.
+_BUDGET_TWO_COLUMN_THRESHOLD = 12
+
+
 def _budget_full(lines: list[dict], chapters: list[str]) -> str:
     """El presupuesto renglón por renglón, agrupado por capítulo (en el orden
     que `chapters` ya trae — residuo al final, ver budget_db._chapters), con
@@ -847,14 +864,27 @@ def _budget_full(lines: list[dict], chapters: list[str]) -> str:
 
     Sin subtotal cuando un capítulo trae un solo renglón: repetir la misma
     cifra dos veces (la partida y "Subtotal" idénticos) no añade información,
-    solo la impresión de que el presupuesto no está costeado a detalle."""
+    solo la impresión de que el presupuesto no está costeado a detalle.
+
+    A dos columnas cuando hay suficientes renglones (feedback en vivo: un
+    presupuesto real, con capítulos de verdad, ocupaba hasta tres páginas).
+    `columns: 2` en CSS, no una división manual aquí — Chromium reparte los
+    capítulos entre columnas él solo, y balancea mejor de lo que cualquier
+    heurística de "la mitad de los capítulos a la izquierda" lograría con
+    capítulos de tamaños desiguales. Los capítulos NO llevan
+    `break-inside: avoid`: el comentario de `table.kv` ya explica por qué un
+    capítulo largo puede partirse — aquí igual, entre columnas y no solo entre
+    páginas — mientras cada renglón (`table.kv tr`) y el título de capítulo
+    pegado a su primer renglón sigan intactos. Un presupuesto corto (la
+    mayoría: una sola línea "Otros, por detallar") se queda en una columna —
+    dos columnas ahí solo dejarían una segunda columna vacía."""
     if not lines:
         return ""
     by_chapter: dict[str, list[dict]] = {}
     for line in lines:
         by_chapter.setdefault(line.get("chapterName") or "", []).append(line)
 
-    sections = []
+    chapter_sections = []
     grand_total = 0.0
     for chapter in chapters:
         chapter_lines = by_chapter.get(chapter)
@@ -875,14 +905,16 @@ def _budget_full(lines: list[dict], chapters: list[str]) -> str:
         if len(chapter_lines) > 1:
             rows.append(f'<tr class="budget-subtotal"><td>Subtotal</td><td class="n">{_fmt_mxn(subtotal)}</td></tr>')
         grand_total += subtotal
-        sections.append(
+        chapter_sections.append(
             f'<div class="budget-chapter"><div class="budget-chapter-name">{_esc(chapter)}</div>'
             f'<table class="kv">{"".join(rows)}</table></div>'
         )
-    sections.append(
-        f'<table class="kv budget-grand-total"><tr><td>Total</td><td class="n">{_fmt_mxn(grand_total)}</td></tr></table>'
-    )
-    return "".join(sections)
+
+    body = "".join(chapter_sections)
+    if len(lines) > _BUDGET_TWO_COLUMN_THRESHOLD:
+        body = f'<div class="budget-columns">{body}</div>'
+    total = f'<table class="kv budget-grand-total"><tr><td>Total</td><td class="n">{_fmt_mxn(grand_total)}</td></tr></table>'
+    return body + total
 
 
 def _summary_card(sold: list[dict], rented: list[dict]) -> str:
