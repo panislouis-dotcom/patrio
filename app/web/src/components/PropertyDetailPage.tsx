@@ -458,13 +458,14 @@ export function PropertyDetailPage() {
    */
   const numRow = (
     label: string, key: NumKey, format: (n: number | null | undefined) => string,
-    opts: { step?: number; clearable?: ClearableField; readOnly?: boolean; hint?: string } = {},
+    opts: { step?: number; clearable?: ClearableField; readOnly?: boolean; hint?: string; stacked?: boolean } = {},
   ) => (
     <EditableRow
       label={label}
       editing={editing}
       value={format(field(key))}
       hint={opts.hint}
+      stacked={opts.stacked}
       onClear={opts.clearable && p[opts.clearable] != null ? () => clearField(opts.clearable!) : undefined}
       input={opts.readOnly ? undefined : (
         <NumericInput
@@ -1010,9 +1011,17 @@ export function PropertyDetailPage() {
                   tiene su propio $ aparte — el suyo sale combinado en COMISIÓN DE
                   SALIDA ($), que por eso comparte renglón con TOTAL COMISIONES ($):
                   las dos son totales en pesos, no un %. Por último, el par de
-                  INVERSIÓN cierra la sección. `EditableRow` no cambió — cada una
-                  sigue con su propio `borderBottom`, que en dos columnas solo cubre
-                  su celda; es el patrón esperado, no algo que arreglar aquí. */}
+                  INVERSIÓN cierra la sección. Cada una sigue con su propio
+                  `borderBottom`, que en dos columnas solo cubre su celda; es el
+                  patrón esperado, no algo que arreglar aquí.
+
+                  Layout apretado en vivo (segundo feedback del dueño del producto):
+                  el renglón normal de `EditableRow` — etiqueta a la izquierda, valor
+                  a la derecha con columna de ancho fijo — se amontona en media
+                  columna de grid. Cada fila de esta sección usa `stacked`, la
+                  variante nueva de `EditableRow`: etiqueta+hint arriba, valor/input
+                  abajo, los dos alineados a la izquierda, sin columna de ancho fijo.
+                  Por default sigue apagada — ningún otro renglón de la ficha cambió. */}
               <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
                 {/* De qué camino saldrá exitFee: sin default (migración 049), así
                     que sin badge CAPTURADO/SUPUESTO POR OMISIÓN — a diferencia de
@@ -1022,6 +1031,7 @@ export function PropertyDetailPage() {
                     label="ESTRATEGIA DE SALIDA"
                     editing={editing}
                     value={EXIT_STRATEGY_LABEL[field('exitStrategy') ?? ''] ?? '—'}
+                    stacked
                     onClear={p.exitStrategy != null ? () => clearField('exitStrategy') : undefined}
                     input={
                       <select
@@ -1041,6 +1051,7 @@ export function PropertyDetailPage() {
                   editing={editing}
                   value={fmtPct(landCommissionPct)}
                   hint={assumptionHint('landCommissionPct')}
+                  stacked
                   onClear={isCaptured('landCommissionPct') ? () => clearField('landCommissionPct') : undefined}
                   input={
                     <NumericInput
@@ -1057,12 +1068,14 @@ export function PropertyDetailPage() {
                   editing={editing}
                   value={fmtMXN(p.landFee)}
                   hint="% SOBRE PRECIO DE COMPRA"
+                  stacked
                 />
                 <EditableRow
                   label="COMISIÓN OBRA (%)"
                   editing={editing}
                   value={fmtPct(constructionCommissionPct)}
                   hint={assumptionHint('constructionCommissionPct')}
+                  stacked
                   onClear={isCaptured('constructionCommissionPct') ? () => clearField('constructionCommissionPct') : undefined}
                   input={
                     <NumericInput
@@ -1079,12 +1092,14 @@ export function PropertyDetailPage() {
                   editing={editing}
                   value={fmtMXN(p.constructionFee)}
                   hint="% SOBRE OBRA A EJECUTAR"
+                  stacked
                 />
                 <EditableRow
                   label="COMISIÓN VENTA (%)"
                   editing={editing}
                   value={fmtPct(exitSaleCommissionPct)}
                   hint={assumptionHint('exitSaleCommissionPct')}
+                  stacked
                   onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
                   input={
                     <NumericInput
@@ -1099,6 +1114,7 @@ export function PropertyDetailPage() {
                 {numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
                   clearable: isCaptured('exitRentMonths') ? 'exitRentMonths' : undefined,
                   hint: assumptionHint('exitRentMonths'),
+                  stacked: true,
                 })}
                 {/* Una sola fila para la comisión de salida: usa la que aplique según
                     ESTRATEGIA DE SALIDA arriba (% sobre venta, o meses de renta), nunca
@@ -1110,24 +1126,28 @@ export function PropertyDetailPage() {
                   editing={editing}
                   value={p.exitFee != null ? fmtMXN(p.exitFee) : '—'}
                   hint={exitFeeHint(p)}
+                  stacked
                 />
                 <EditableRow
                   label="TOTAL COMISIONES ($)"
                   editing={editing}
                   value={p.totalFees != null ? fmtMXN(p.totalFees) : '—'}
                   hint="SUMA DE LAS TRES COMISIONES"
+                  stacked
                 />
                 <EditableRow
                   label="INVERSIÓN SIN COMISIONES"
                   editing={editing}
                   value={fmtMXN(p.totalInvestment)}
                   hint="SUMA DEL DESGLOSE"
+                  stacked
                 />
                 <EditableRow
                   label="INVERSIÓN CON COMISIONES"
                   editing={editing}
                   value={p.totalInvestmentWithFees != null ? fmtMXN(p.totalInvestmentWithFees) : '—'}
                   hint={p.totalInvestmentWithFees != null ? 'SIN COMISIONES + COMISIONES DEL FONDO' : 'FALTA COMISIÓN DE SALIDA (VER ARRIBA)'}
+                  stacked
                 />
               </div>
 
