@@ -363,9 +363,10 @@ describe('PropertyDetailPage', () => {
     // existir era avisar que no servía. Con un solo origen la pregunta muere.
     await renderPage(BASE_PROPERTY)
 
-    // La cifra y su hint aparecen dos veces: una vez en DATOS y otra vez —nunca
-    // escondida— en COMISIONES DEL FONDO.
-    expect(screen.getAllByText('SUMA DEL DESGLOSE')).toHaveLength(2)
+    // El hint solo vive en DATOS: el cierre grande y centrado de COMISIONES DEL
+    // FONDO (INVERSIÓN SIN/CON COMISIONES) no lleva "SUMA DEL DESGLOSE" — es la
+    // cifra la que se promueve ahí, sin el hint compitiendo por la vista.
+    expect(screen.getAllByText('SUMA DEL DESGLOSE')).toHaveLength(1)
     // Y $7,295,000 sale una tercera vez del propio total de InvestmentBreakdown,
     // que solo se pinta fuera de edición. La fila INVERSIÓN y el total del
     // DESGLOSE son la misma cifra por construcción: 3,000,000 + 195,000 +
@@ -379,7 +380,7 @@ describe('PropertyDetailPage', () => {
     // En edición InvestmentBreakdown no se pinta, así que solo quedan las dos
     // filas de solo lectura: DATOS y COMISIONES DEL FONDO.
     expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
-    expect(screen.getAllByText('SUMA DEL DESGLOSE')).toHaveLength(2)
+    expect(screen.getAllByText('SUMA DEL DESGLOSE')).toHaveLength(1)
   })
 
   it('muestra INVERSIÓN CON COMISIONES cuando totalInvestmentWithFees existe', async () => {

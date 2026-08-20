@@ -1145,20 +1145,33 @@ export function PropertyDetailPage() {
                   hint="SUMA DE LAS TRES COMISIONES"
                   stacked
                 />
-                <EditableRow
-                  label="INVERSIÓN SIN COMISIONES"
-                  editing={editing}
-                  value={fmtMXN(p.totalInvestment)}
-                  hint="SUMA DEL DESGLOSE"
-                  stacked
-                />
-                <EditableRow
-                  label="INVERSIÓN CON COMISIONES"
-                  editing={editing}
-                  value={p.totalInvestmentWithFees != null ? fmtMXN(p.totalInvestmentWithFees) : '—'}
-                  hint={p.totalInvestmentWithFees != null ? 'SIN COMISIONES + COMISIONES DEL FONDO' : 'FALTA COMISIÓN DE SALIDA (VER ARRIBA)'}
-                  stacked
-                />
+              </div>
+              {/* El cierre de la sección, no una celda más del grid (feedback en
+                  vivo del dueño del producto: entre once renglones chicos, el
+                  número que de verdad decide cuánto poner se perdía). SIN
+                  COMISIONES queda chico y secundario — ya se lee arriba, en
+                  DATOS — y CON COMISIONES es la cifra grande: es la respuesta a
+                  «cuánto entra de verdad», y por eso es la más grande de toda la
+                  sección, centrada, sin nada más compitiendo por la vista en su
+                  renglón. */}
+              <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}`, textAlign: 'center' }}>
+                {/* `label` es un <span>, no un <div>: las pruebas ubican cada
+                    cifra con `getByText(label).closest('div')`, que en un
+                    <span> sube hasta ESTE contenedor —el mismo truco que ya usa
+                    `EditableRow` en su modo normal. */}
+                <div style={{ marginBottom: '20px' }}>
+                  <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN SIN COMISIONES</span>
+                  <div style={{ fontFamily: fonts.serif, fontSize: '22px', color: colors.secondary, marginTop: '8px' }}>{fmtMXN(p.totalInvestment)}</div>
+                </div>
+                <div>
+                  <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN CON COMISIONES</span>
+                  <div style={{ fontFamily: fonts.serif, fontSize: '36px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
+                    {p.totalInvestmentWithFees != null ? fmtMXN(p.totalInvestmentWithFees) : '—'}
+                  </div>
+                  <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
+                    {p.totalInvestmentWithFees != null ? 'SIN COMISIONES + COMISIONES DEL FONDO' : 'FALTA COMISIÓN DE SALIDA (VER ARRIBA)'}
+                  </span>
+                </div>
               </div>
 
               {p.issues.length > 0 && (
