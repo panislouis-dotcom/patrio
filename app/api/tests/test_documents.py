@@ -352,8 +352,11 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     # aplicado una sola vez) x 15%.
     assert _metric('$50K <small>5.0%</small>', "Comisión compra terreno") in html
     assert _metric('$351K <small>15.0%</small>', "Comisión de obra") in html
-    assert _metric("$4.0M", "Inversión c/comisiones · venta") in html
-    assert _metric("$3.9M", "Inversión c/comisiones · renta") in html
+    # Los dos escenarios de salida se funden en un solo valor, unidos por
+    # "o" (pedido explícito) — una sola celda, del doble de ancho.
+    assert _metric('$4.0M <small>venta</small> o $3.9M <small>renta</small>',
+                    "Inversión con comisiones — venta o renta") in html
+    assert '<div class="metric metric-wide">' in html
 
 
 def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):
