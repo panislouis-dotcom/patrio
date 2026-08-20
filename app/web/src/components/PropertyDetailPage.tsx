@@ -1051,19 +1051,25 @@ export function PropertyDetailPage() {
               {/* Una sola fila para la comisión de salida: usa la que aplique según
                   ESTRATEGIA DE SALIDA arriba (% sobre venta, o meses de renta), nunca
                   las dos a la vez — exitFeeMode dice cuál corrió. Sin exitFee todavía
-                  (nadie decidió la estrategia, o falta el precio/renta del que depende)
                   se ve "—" con el porqué al lado: feesMissingInputs lo nombra, nunca
-                  se adivina. */}
+                  se adivina.
+
+                  exitFeeMode se fija al elegir la estrategia (compute_fees en
+                  fees.py) y NO espera a que exitFee se calcule: 'venta' con precio
+                  de venta ausente ya trae exitFeeMode='venta' pero exitFee=None.
+                  Por eso el chequeo va primero por exitFee != null — solo con un
+                  valor real tiene sentido describir la fórmula que lo produjo — y
+                  exitFeeMode nunca decide qué falta, eso lo dice feesMissingInputs. */}
               <EditableRow
                 label="COMISIÓN DE SALIDA ($)"
                 editing={editing}
                 value={p.exitFee != null ? fmtMXN(p.exitFee) : '—'}
                 hint={
-                  p.exitFeeMode === 'venta' ? '% SOBRE PRECIO/PROYECCIÓN DE VENTA'
-                    : p.exitFeeMode === 'renta' ? 'MESES × RENTA COBRADA/ESTIMADA'
+                  p.exitFee != null
+                    ? (p.exitFeeMode === 'venta' ? '% SOBRE PRECIO/PROYECCIÓN DE VENTA' : 'MESES × RENTA COBRADA/ESTIMADA')
+                    : p.feesMissingInputs.includes('exitStrategy') ? 'FALTA ESTRATEGIA DE SALIDA'
                     : p.feesMissingInputs.includes('salePrice') ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)'
-                    : p.feesMissingInputs.includes('rentMonthly') ? 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
-                    : 'FALTA ESTRATEGIA DE SALIDA'
+                    : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
                 }
               />
               <EditableRow

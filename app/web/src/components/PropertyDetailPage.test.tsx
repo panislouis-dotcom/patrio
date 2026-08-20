@@ -465,19 +465,38 @@ describe('PropertyDetailPage', () => {
     expect(within(salida).getByText('MESES × RENTA COBRADA/ESTIMADA')).not.toBeNull()
   })
 
-  it('COMISIÓN DE SALIDA ($) nombra el insumo que falta cuando la estrategia ya se eligió', async () => {
-    // exitStrategy ya está decidido pero exitFee sigue sin poderse calcular:
-    // feesMissingInputs dice cuál de los dos insumos falta, nunca se adivina.
+  it('COMISIÓN DE SALIDA ($) nombra el precio de venta ausente, aunque exitFeeMode ya diga "venta"', async () => {
+    // compute_fees() (fees.py) fija exitFeeMode en cuanto se elige la
+    // estrategia, SIN esperar a que exitFee se calcule: con 'venta' elegida
+    // pero sin precio de venta, el servidor manda exitFeeMode='venta' Y
+    // exitFee=None a la vez. Leer exitFeeMode primero describiría la fórmula
+    // como si hubiera corrido; el hint tiene que mirar exitFee (o su ausencia)
+    // antes que el modo.
     await renderPage({
       ...BASE_PROPERTY,
       exitStrategy: 'venta',
-      exitFee: null, exitFeeMode: null,
+      exitFee: null, exitFeeMode: 'venta',
       totalFees: null, totalInvestmentWithFees: null, feesMissingInputs: ['salePrice'],
     })
 
     const salida = screen.getByText('COMISIÓN DE SALIDA ($)').closest('div')!
     expect(within(salida).getByText('—')).not.toBeNull()
     expect(within(salida).getByText('FALTA PRECIO DE VENTA (REAL O PROYECTADO)')).not.toBeNull()
+  })
+
+  it('COMISIÓN DE SALIDA ($) nombra la renta ausente, aunque exitFeeMode ya diga "renta"', async () => {
+    // El mismo caso que arriba, del lado de 'renta': exitFeeMode='renta' con
+    // exitFee=None porque falta la renta mensual (real o proyectada).
+    await renderPage({
+      ...BASE_PROPERTY,
+      exitStrategy: 'renta',
+      exitFee: null, exitFeeMode: 'renta',
+      totalFees: null, totalInvestmentWithFees: null, feesMissingInputs: ['rentMonthly'],
+    })
+
+    const salida = screen.getByText('COMISIÓN DE SALIDA ($)').closest('div')!
+    expect(within(salida).getByText('—')).not.toBeNull()
+    expect(within(salida).getByText('FALTA RENTA MENSUAL (REAL O PROYECTADA)')).not.toBeNull()
   })
 
   it('la renta cobrada se pide vacía: confirmar sin leer ya no borra la proyección', async () => {
