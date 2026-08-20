@@ -994,119 +994,142 @@ export function PropertyDetailPage() {
                   es justo lo contrario — el guion más el porqué NUNCA debe
                   desaparecer, así que necesita su propia fila que no comparta la
                   condición que oculta la de DATOS. */}
-              {/* De qué camino saldrá exitFee: sin default (migración 049), así
-                  que sin badge CAPTURADO/SUPUESTO POR OMISIÓN — a diferencia de
-                  las cuatro comisiones de abajo, nadie lo asume por ti. */}
-              <EditableRow
-                label="ESTRATEGIA DE SALIDA"
-                editing={editing}
-                value={EXIT_STRATEGY_LABEL[field('exitStrategy') ?? ''] ?? '—'}
-                onClear={p.exitStrategy != null ? () => clearField('exitStrategy') : undefined}
-                input={
-                  <select
-                    value={field('exitStrategy') ?? ''}
-                    onChange={e => setField('exitStrategy', e.target.value === '' ? null : e.target.value as 'venta' | 'renta')}
-                    aria-label="ESTRATEGIA DE SALIDA"
-                    style={{ ...fieldInput, cursor: 'pointer' }}
-                  >
-                    <option value="">— sin definir —</option>
-                    {EXIT_STRATEGIES.map(t => <option key={t} value={t}>{EXIT_STRATEGY_LABEL[t]}</option>)}
-                  </select>
-                }
-              />
-              <EditableRow
-                label="COMISIÓN COMPRA TERRENO (%)"
-                editing={editing}
-                value={fmtPct(landCommissionPct)}
-                hint={assumptionHint('landCommissionPct')}
-                onClear={isCaptured('landCommissionPct') ? () => clearField('landCommissionPct') : undefined}
-                input={
-                  <NumericInput
-                    value={landCommissionPct != null ? landCommissionPct * 100 : undefined}
-                    onChange={n => setField('landCommissionPct', n != null ? n / 100 : undefined)}
-                    step={0.1}
-                    ariaLabel="COMISIÓN COMPRA TERRENO (%)"
-                    style={fieldInput}
+              {/* Once filas apiladas se sentían muy largas (feedback en vivo del
+                  dueño del producto): en ancho se acomodan en dos columnas, con
+                  el mismo `narrow` que ya parte la página entera en dos (línea
+                  ~682) — no un breakpoint nuevo. En angosto siguen apiladas: el
+                  contenedor pierde el grid y cada EditableRow vuelve a ser un
+                  bloque normal, exactamente el layout de antes de este cambio.
+
+                  El orden no es un auto-flow ciego: cada renglón del grid empareja
+                  algo que se lee junto. ESTRATEGIA DE SALIDA abre sola, a lo ancho
+                  — fija el contexto y no tiene una pareja %/$ con la que compartir
+                  renglón. Luego cada comisión va %/$ una junto a la otra. VENTA (%)
+                  y MESES DE RENTA comparten renglón porque son las dos entradas de
+                  ESTRATEGIA DE SALIDA (una corre o la otra, nunca las dos) y ninguna
+                  tiene su propio $ aparte — el suyo sale combinado en COMISIÓN DE
+                  SALIDA ($), que por eso comparte renglón con TOTAL COMISIONES ($):
+                  las dos son totales en pesos, no un %. Por último, el par de
+                  INVERSIÓN cierra la sección. `EditableRow` no cambió — cada una
+                  sigue con su propio `borderBottom`, que en dos columnas solo cubre
+                  su celda; es el patrón esperado, no algo que arreglar aquí. */}
+              <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
+                {/* De qué camino saldrá exitFee: sin default (migración 049), así
+                    que sin badge CAPTURADO/SUPUESTO POR OMISIÓN — a diferencia de
+                    las cuatro comisiones de abajo, nadie lo asume por ti. */}
+                <div style={narrow ? undefined : { gridColumn: '1 / -1' }}>
+                  <EditableRow
+                    label="ESTRATEGIA DE SALIDA"
+                    editing={editing}
+                    value={EXIT_STRATEGY_LABEL[field('exitStrategy') ?? ''] ?? '—'}
+                    onClear={p.exitStrategy != null ? () => clearField('exitStrategy') : undefined}
+                    input={
+                      <select
+                        value={field('exitStrategy') ?? ''}
+                        onChange={e => setField('exitStrategy', e.target.value === '' ? null : e.target.value as 'venta' | 'renta')}
+                        aria-label="ESTRATEGIA DE SALIDA"
+                        style={{ ...fieldInput, cursor: 'pointer' }}
+                      >
+                        <option value="">— sin definir —</option>
+                        {EXIT_STRATEGIES.map(t => <option key={t} value={t}>{EXIT_STRATEGY_LABEL[t]}</option>)}
+                      </select>
+                    }
                   />
-                }
-              />
-              <EditableRow
-                label="COMISIÓN COMPRA TERRENO ($)"
-                editing={editing}
-                value={fmtMXN(p.landFee)}
-                hint="% SOBRE PRECIO DE COMPRA"
-              />
-              <EditableRow
-                label="COMISIÓN OBRA (%)"
-                editing={editing}
-                value={fmtPct(constructionCommissionPct)}
-                hint={assumptionHint('constructionCommissionPct')}
-                onClear={isCaptured('constructionCommissionPct') ? () => clearField('constructionCommissionPct') : undefined}
-                input={
-                  <NumericInput
-                    value={constructionCommissionPct != null ? constructionCommissionPct * 100 : undefined}
-                    onChange={n => setField('constructionCommissionPct', n != null ? n / 100 : undefined)}
-                    step={0.1}
-                    ariaLabel="COMISIÓN OBRA (%)"
-                    style={fieldInput}
-                  />
-                }
-              />
-              <EditableRow
-                label="COMISIÓN OBRA ($)"
-                editing={editing}
-                value={fmtMXN(p.constructionFee)}
-                hint="% SOBRE OBRA A EJECUTAR"
-              />
-              <EditableRow
-                label="COMISIÓN VENTA (%)"
-                editing={editing}
-                value={fmtPct(exitSaleCommissionPct)}
-                hint={assumptionHint('exitSaleCommissionPct')}
-                onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
-                input={
-                  <NumericInput
-                    value={exitSaleCommissionPct != null ? exitSaleCommissionPct * 100 : undefined}
-                    onChange={n => setField('exitSaleCommissionPct', n != null ? n / 100 : undefined)}
-                    step={0.1}
-                    ariaLabel="COMISIÓN VENTA (%)"
-                    style={fieldInput}
-                  />
-                }
-              />
-              {numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
-                clearable: isCaptured('exitRentMonths') ? 'exitRentMonths' : undefined,
-                hint: assumptionHint('exitRentMonths'),
-              })}
-              {/* Una sola fila para la comisión de salida: usa la que aplique según
-                  ESTRATEGIA DE SALIDA arriba (% sobre venta, o meses de renta), nunca
-                  las dos a la vez — exitFeeMode dice cuál corrió. Sin exitFee todavía
-                  se ve "—" con el porqué al lado: feesMissingInputs lo nombra, nunca
-                  se adivina. Ver `exitFeeHint` para el porqué del orden. */}
-              <EditableRow
-                label="COMISIÓN DE SALIDA ($)"
-                editing={editing}
-                value={p.exitFee != null ? fmtMXN(p.exitFee) : '—'}
-                hint={exitFeeHint(p)}
-              />
-              <EditableRow
-                label="TOTAL COMISIONES ($)"
-                editing={editing}
-                value={p.totalFees != null ? fmtMXN(p.totalFees) : '—'}
-                hint="SUMA DE LAS TRES COMISIONES"
-              />
-              <EditableRow
-                label="INVERSIÓN SIN COMISIONES"
-                editing={editing}
-                value={fmtMXN(p.totalInvestment)}
-                hint="SUMA DEL DESGLOSE"
-              />
-              <EditableRow
-                label="INVERSIÓN CON COMISIONES"
-                editing={editing}
-                value={p.totalInvestmentWithFees != null ? fmtMXN(p.totalInvestmentWithFees) : '—'}
-                hint={p.totalInvestmentWithFees != null ? 'SIN COMISIONES + COMISIONES DEL FONDO' : 'FALTA COMISIÓN DE SALIDA (VER ARRIBA)'}
-              />
+                </div>
+                <EditableRow
+                  label="COMISIÓN COMPRA TERRENO (%)"
+                  editing={editing}
+                  value={fmtPct(landCommissionPct)}
+                  hint={assumptionHint('landCommissionPct')}
+                  onClear={isCaptured('landCommissionPct') ? () => clearField('landCommissionPct') : undefined}
+                  input={
+                    <NumericInput
+                      value={landCommissionPct != null ? landCommissionPct * 100 : undefined}
+                      onChange={n => setField('landCommissionPct', n != null ? n / 100 : undefined)}
+                      step={0.1}
+                      ariaLabel="COMISIÓN COMPRA TERRENO (%)"
+                      style={fieldInput}
+                    />
+                  }
+                />
+                <EditableRow
+                  label="COMISIÓN COMPRA TERRENO ($)"
+                  editing={editing}
+                  value={fmtMXN(p.landFee)}
+                  hint="% SOBRE PRECIO DE COMPRA"
+                />
+                <EditableRow
+                  label="COMISIÓN OBRA (%)"
+                  editing={editing}
+                  value={fmtPct(constructionCommissionPct)}
+                  hint={assumptionHint('constructionCommissionPct')}
+                  onClear={isCaptured('constructionCommissionPct') ? () => clearField('constructionCommissionPct') : undefined}
+                  input={
+                    <NumericInput
+                      value={constructionCommissionPct != null ? constructionCommissionPct * 100 : undefined}
+                      onChange={n => setField('constructionCommissionPct', n != null ? n / 100 : undefined)}
+                      step={0.1}
+                      ariaLabel="COMISIÓN OBRA (%)"
+                      style={fieldInput}
+                    />
+                  }
+                />
+                <EditableRow
+                  label="COMISIÓN OBRA ($)"
+                  editing={editing}
+                  value={fmtMXN(p.constructionFee)}
+                  hint="% SOBRE OBRA A EJECUTAR"
+                />
+                <EditableRow
+                  label="COMISIÓN VENTA (%)"
+                  editing={editing}
+                  value={fmtPct(exitSaleCommissionPct)}
+                  hint={assumptionHint('exitSaleCommissionPct')}
+                  onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
+                  input={
+                    <NumericInput
+                      value={exitSaleCommissionPct != null ? exitSaleCommissionPct * 100 : undefined}
+                      onChange={n => setField('exitSaleCommissionPct', n != null ? n / 100 : undefined)}
+                      step={0.1}
+                      ariaLabel="COMISIÓN VENTA (%)"
+                      style={fieldInput}
+                    />
+                  }
+                />
+                {numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
+                  clearable: isCaptured('exitRentMonths') ? 'exitRentMonths' : undefined,
+                  hint: assumptionHint('exitRentMonths'),
+                })}
+                {/* Una sola fila para la comisión de salida: usa la que aplique según
+                    ESTRATEGIA DE SALIDA arriba (% sobre venta, o meses de renta), nunca
+                    las dos a la vez — exitFeeMode dice cuál corrió. Sin exitFee todavía
+                    se ve "—" con el porqué al lado: feesMissingInputs lo nombra, nunca
+                    se adivina. Ver `exitFeeHint` para el porqué del orden. */}
+                <EditableRow
+                  label="COMISIÓN DE SALIDA ($)"
+                  editing={editing}
+                  value={p.exitFee != null ? fmtMXN(p.exitFee) : '—'}
+                  hint={exitFeeHint(p)}
+                />
+                <EditableRow
+                  label="TOTAL COMISIONES ($)"
+                  editing={editing}
+                  value={p.totalFees != null ? fmtMXN(p.totalFees) : '—'}
+                  hint="SUMA DE LAS TRES COMISIONES"
+                />
+                <EditableRow
+                  label="INVERSIÓN SIN COMISIONES"
+                  editing={editing}
+                  value={fmtMXN(p.totalInvestment)}
+                  hint="SUMA DEL DESGLOSE"
+                />
+                <EditableRow
+                  label="INVERSIÓN CON COMISIONES"
+                  editing={editing}
+                  value={p.totalInvestmentWithFees != null ? fmtMXN(p.totalInvestmentWithFees) : '—'}
+                  hint={p.totalInvestmentWithFees != null ? 'SIN COMISIONES + COMISIONES DEL FONDO' : 'FALTA COMISIÓN DE SALIDA (VER ARRIBA)'}
+                />
+              </div>
 
               {p.issues.length > 0 && (
                 <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>
