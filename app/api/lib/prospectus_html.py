@@ -82,6 +82,7 @@ body { font-family: 'Inter', sans-serif; background: #FFFFFF; color: var(--ink);
 .metrics { display: grid; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
 .metrics-4 { grid-template-columns: repeat(4, 1fr); }
 .metrics-5 { grid-template-columns: repeat(5, 1fr); }
+.metrics-6 { grid-template-columns: repeat(6, 1fr); }
 .metric { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
           padding: 5mm 5mm 5.5mm; }
 .metric .v { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 20pt;
@@ -245,6 +246,12 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    la fila de 4 el mismo patrón cabe en uno. */
 .opp .metrics-5 .metric { padding: 3.6mm 3mm; }
 .opp .metrics-5 .metric .v { font-size: 16pt; }
+/* Las 6 comisiones/totales en un solo renglón — mismo motivo que la de 5 de
+   arriba, un paso más apretado: 6 columnas en el mismo ancho de página no
+   caben con el padding/tamaño de una fila de 4, ni siquiera con el de una
+   de 5. */
+.opp .metrics-6 .metric { padding: 3mm 2.5mm; }
+.opp .metrics-6 .metric .v { font-size: 13pt; }
 .opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
             break-inside: avoid; page-break-inside: avoid; }
 /* Sin break-inside:avoid a propósito: una nota es prosa, no una foto ni una
@@ -504,21 +511,21 @@ def _fee_scenario_missing(reasons: list[str] | None) -> str:
 
 def _opportunity_fees_metrics(p: dict) -> str:
     """Comisiones del fondo, en su propia fila. Solo en _opportunity(): es la
-    única etapa donde el camino de salida sigue genuinamente indeciso Y la
-    única con espacio de sobra (página completa, sin el alto fijo de .proj
-    que aprieta a las demás). No lleva CSS nuevo: hereda el tamaño base de
-    `.metric` (padding 5mm, valor a 20pt) — el mismo que ya usa cualquier
-    otra fila de 4 del documento (p.ej. `_summary_card()` sin ventas). Eso la
-    deja MÁS GRANDE que la fila principal justo arriba, que es una de 5 y por
-    eso sí lleva el override a 16pt (`.opp .metrics-5`, ver el comentario ahí
-    arriba) — no es el mismo peso visual: la de arriba está recortada para
-    caber sus cinco columnas, esta no necesita recorte.
+    única etapa donde el camino de salida sigue genuinamente indeciso.
 
-    Seis celdas en una rejilla de 4 columnas: la fila se envuelve sola en dos
-    renglones, sin tocar el grid. El orden importa — primero las CUATRO
-    comisiones que se cobran (terreno, obra, salida·venta, salida·renta),
-    luego los DOS totales que resultan de sumarlas a la inversión (venta,
-    renta): cada renglón es su propio grupo, no una mezcla intercalada.
+    Seis celdas en un solo renglón — pedido explícito, tras ver la primera
+    versión partida en dos: se leía como si las cuatro comisiones y los dos
+    totales fueran grupos distintos, cuando en realidad son la misma
+    cuenta de principio a fin. `.metrics-6` (CSS) + el override
+    `.opp .metrics-6` (padding y tamaño de valor recortados, ver el
+    comentario ahí arriba) es lo que hace caber seis columnas donde la fila
+    de arriba solo necesita cinco.
+
+    El orden importa aunque ya no haya renglones que lo marquen: primero las
+    CUATRO comisiones que se cobran (terreno, obra, salida·venta,
+    salida·renta), luego los DOS totales que resultan de sumarlas a la
+    inversión (venta, renta) — se lee como el desglose seguido de su suma,
+    no como una mezcla intercalada.
 
     Terreno y obra nunca faltan — siempre hay una base y un % (el default si
     nadie lo capturó), así que sus dos celdas acceden a `landFee`/
@@ -1080,7 +1087,7 @@ def _opportunity(p: dict) -> str:
       <div><div class="col-label">Financieros</div>{financieros}</div>
       <div><div class="col-label">Propiedad</div>{ubicacion}</div>
     </div>
-    <div class="metrics metrics-4">{_opportunity_fees_metrics(p)}</div>
+    <div class="metrics metrics-6">{_opportunity_fees_metrics(p)}</div>
     {strip}
     {note_html}
     {detail_html}
