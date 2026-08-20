@@ -149,7 +149,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText(`$870,000 ${PROJECTED_ROI}`)
 
     // Y lo que queda en la sección es lo que el héroe no subió
-    await expect(page.getByText('PROYECCIÓN')).toBeVisible()
+    await expect(page.getByText('PROYECCIÓN', { exact: true })).toBeVisible()
     await expect(detailRow(page, 'VENTA PROYECTADA')).toContainText('$3,000,000')
     await expect(detailRow(page, 'RENTA ANUAL ESTIMADA')).toContainText('$240,000')
     // Un héroe es una promoción, no una copia: cada cifra queda una sola vez.
@@ -609,7 +609,7 @@ test.describe('Ficha de propiedad — una en renta', () => {
   test('the projection it was bought on is still readable', async ({ page }) => {
     await gotoProperty(page, id)
 
-    await expect(page.getByText('PROYECCIÓN')).toBeVisible()
+    await expect(page.getByText('PROYECCIÓN', { exact: true })).toBeVisible()
     await expect(detailRow(page, 'VENTA PROYECTADA')).toContainText('$9,000,000')
     // El plazo lo dice SUPUESTOS con su origen, que es más de lo que decía la
     // fila de PROYECCIÓN. Repetido, era además lo único que esa sección siempre
