@@ -18,7 +18,7 @@ from .conftest import _delete_property
 
 # El expediente. Sin ventana: aparece cuando sus insumos están, en la etapa que sea.
 RECORD = ("acquisitionCosts", "acquisitionTotal", "constructionBudgeted",
-          "constructionCostPerSqm", "investmentPerSqm",
+          "constructionCostPerSqm",
           "projectedProfit", "projectedRoi", "projectedRoiTotal", "capRate", "rentAnnual")
 # El yield de la renta COBRADA. Va aparte porque su insumo aparece más tarde: una
 # propiedad en desarrollo tiene todo el resto del expediente y no tiene esto.
@@ -76,18 +76,21 @@ def test_projection_matches_the_underwriting_engine(client, test_property):
         ("totalInvestment", "total_investment"), ("acquisitionCosts", "acquisition_costs"),
         ("acquisitionTotal", "acquisition_total"), ("projectedProfit", "profit"),
         ("projectedRoi", "roi"), ("projectedRoiTotal", "roi_total"), ("capRate", "cap_rate"),
-        ("investmentPerSqm", "investment_per_sqm"), ("rentAnnual", "rent_annual"),
+        ("rentAnnual", "rent_annual"),
     ]:
         assert Decimal(str(p[camel])) == expected[snake], camel
 
 
-def test_purchase_and_sale_per_sqm_are_gone_the_ficha_was_their_only_reader(client, test_property):
-    """`investmentPerSqm` se queda —lo sigue leyendo el PDF del prospecto—
-    pero estos dos no tenían más lector que la sección MÉTRICAS que se quitó."""
+def test_purchase_sale_and_investment_per_sqm_are_all_gone_they_ran_out_of_readers(client, test_property):
+    """`purchasePricePerSqm` y `salePerSqm` no tenían más lector que la sección
+    MÉTRICAS de la ficha, que se quitó. `investmentPerSqm` sobrevivió más —el
+    PDF del prospecto lo leía en su columna "Financieros"— pero perdió a ese
+    último lector también (pedido explícito), así que ahora los tres están
+    fuera del contrato."""
     p = _get(client, test_property["id"])
     assert "purchasePricePerSqm" not in p
     assert "salePerSqm" not in p
-    assert "investmentPerSqm" in p
+    assert "investmentPerSqm" not in p
 
 
 def test_no_modeled_sale_means_no_projected_gain(client, test_property):
@@ -129,9 +132,6 @@ def test_clearing_one_cost_subtracts_it_instead_of_breaking_the_basis(client, te
                 json={"fields": ["permitsCost"]})
     p = _get(client, test_property["id"])
     assert Decimal(str(p["totalInvestment"])) == Decimal("3430000")
-    # …y toda cifra que divide entre la base la sigue, en vez de reportar un
-    # total de una fuente y un por-m² de otra. 3,430,000 / 300 m² = 11,433.33.
-    assert Decimal(str(p["investmentPerSqm"])) == Decimal("11433.33")
 
 
 def test_an_all_in_total_is_captured_as_a_purchase_price(client, test_property):
@@ -160,7 +160,6 @@ def test_an_empty_cost_stack_is_no_basis_at_all(client, test_property):
     p = _get(client, test_property["id"])
     assert p["totalInvestment"] is None
     assert p["projectedProfit"] is None
-    assert p["investmentPerSqm"] is None
 
 
 # ── Realized ─────────────────────────────────────────────────────────────────

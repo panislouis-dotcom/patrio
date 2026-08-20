@@ -254,9 +254,9 @@ export interface Property {
   constructionCommittedVariance: number | null
   constructionPaidVariance: number | null
   // `purchasePricePerSqm`, `salePerSqm` e `investmentPerSqm` no están: la
-  // ficha era su único lector en este cliente y su sección MÉTRICAS se quitó.
-  // El servidor sigue mandando `investmentPerSqm` — lo lee el PDF del
-  // prospecto (prospectus_html.py), en Python, sin pasar por este tipo.
+  // ficha fue la primera en dejar de mostrar los dos primeros (se quitó
+  // MÉTRICAS), y el prospecto en PDF —su último lector, en Python, sin pasar
+  // por este tipo— dejó de mostrar el tercero. El servidor ya no lo calcula.
   projectedProfit: number | null
   projectedRoi: number | null
   projectedRoiTotal: number | null

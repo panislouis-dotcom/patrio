@@ -58,7 +58,7 @@ from api.checks import run_checks, stage_requirements
 from api.db import get_db, _camel_to_snake, _row_to_dict, _snake_to_camel
 from api.finance import fees, underwriting
 from api.finance.analysis import months_between, parse_date, roi_cagr
-from api.finance.quantize import frac4, money, money0, to_decimal
+from api.finance.quantize import frac4, money0, to_decimal
 
 
 # ─── Lifecycle vocabulary ─────────────────────────────────────────────────────
@@ -397,11 +397,11 @@ _RECORD_KEYS = (
     # Derivada, no capturada: presupuesto ÷ metraje. Se publica para mostrarse y
     # nada la vuelve a leer para calcular dinero.
     "constructionCostPerSqm",
-    # `purchasePricePerSqm` y `salePerSqm` no sobrevivieron: la ficha era su
-    # único lector y dejó de mostrarlos. `investmentPerSqm` sí se queda —lo
-    # sigue leyendo el prospecto en PDF (prospectus_html.py)— aunque la ficha
-    # ya no lo enseñe.
-    "investmentPerSqm",
+    # `purchasePricePerSqm`, `salePerSqm` e `investmentPerSqm` no sobrevivieron:
+    # la ficha fue la primera en dejar de mostrar los dos primeros, y el
+    # prospecto en PDF —su último lector— dejó de mostrar el tercero
+    # (`_opportunity()` en prospectus_html.py, pedido explícito: "Financieros"
+    # no necesitaba esa fila).
     "projectedProfit", "projectedRoi", "projectedRoiTotal",
     "capRate", "rentAnnual", "capRateActual", "rentAnnualActual",
 )
@@ -422,15 +422,6 @@ METRIC_KEYS = _RECORD_KEYS + _MARK_KEYS + _EXIT_KEYS + _ASSUMPTION_KEYS + (
 def _cagr(basis, exit_value, months) -> Decimal | None:
     annual = roi_cagr(basis, exit_value, months)
     return frac4(annual) if annual is not None else None
-
-
-def _per_sqm(amount, sqm_land) -> Decimal | None:
-    """Unit price over the capital base, None when there is no base to divide.
-    underwriting.metrics() divides its own raw cost stack, which is a Decimal 0
-    where nothing was captured; this one divides the resolved base, so a
-    property with nothing captured reports «—» here instead of $0/m²."""
-    sqm = to_decimal(sqm_land)
-    return money(to_decimal(amount) / sqm) if (amount is not None and sqm > 0) else None
 
 
 def hold_months_actual(row: dict) -> int | None:
@@ -541,7 +532,6 @@ def metrics(row: dict) -> dict:
     out.update({
         "acquisitionCosts": stack["acquisition_costs"],
         "acquisitionTotal": stack["acquisition_total"],
-        "investmentPerSqm": _per_sqm(basis, row.get("sqm_land")),
         "projectedProfit": underwriting.gain(basis, sale),
         "projectedRoiTotal": underwriting.gain_pct(basis, sale),
         "projectedRoi": _cagr(basis, sale, underwriting.assumption(row, "hold_months")[0]),

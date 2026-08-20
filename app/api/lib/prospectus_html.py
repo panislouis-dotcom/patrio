@@ -992,7 +992,6 @@ def _opportunity(p: dict) -> str:
     rent_a = p.get("rentAnnual")
     sqm_land = _num(p.get("sqmLand"))
     sqm_con = _num(p.get("sqmConstruction"))
-    inv_ppsqm = p.get("investmentPerSqm")
     purchase_price = p.get("purchasePrice")
     acq_costs = p.get("acquisitionCosts")
     # Todo lo que se invierte encima de adquirir la propiedad, que son exactamente
@@ -1025,7 +1024,6 @@ def _opportunity(p: dict) -> str:
         ("Obra, permisos y subdivisión", _fmt_mxn(dev_investment) if dev_investment > 0 else None),
         ("Renta mensual estimada", _fmt_mxn(rent_m) if _num(rent_m) else None),
         ("Renta anual estimada", _fmt_mxn(rent_a) if _num(rent_a) else None),
-        ("Inversión / m²", _fmt_mxn(inv_ppsqm) if _num(inv_ppsqm) else None),
     ])
     # Sin Dirección ni Ciudad aquí: la banda verde de arriba ya las imprime
     # ({address} · {city}), palabra por palabra — repetirlas en la tabla no
