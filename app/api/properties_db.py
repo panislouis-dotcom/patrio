@@ -505,11 +505,14 @@ def metrics(row: dict) -> dict:
         "holdMonthsActual": held,
         "landFee": fee_lines["landFee"],
         "constructionFee": fee_lines["constructionFee"],
-        "exitFee": fee_lines["exitFee"],
-        "exitFeeMode": fee_lines["exitFeeMode"],
-        "totalFees": fee_lines["totalFees"],
-        "totalInvestmentWithFees": fee_lines["totalInvestmentWithFees"],
-        "feesMissingInputs": fee_lines["missingInputs"],
+        "exitFeeVenta": fee_lines["exitFeeVenta"],
+        "exitFeeRenta": fee_lines["exitFeeRenta"],
+        "totalFeesVenta": fee_lines["totalFeesVenta"],
+        "totalFeesRenta": fee_lines["totalFeesRenta"],
+        "totalInvestmentWithFeesVenta": fee_lines["totalInvestmentWithFeesVenta"],
+        "totalInvestmentWithFeesRenta": fee_lines["totalInvestmentWithFeesRenta"],
+        "feesMissingInputsVenta": fee_lines["missingInputsVenta"],
+        "feesMissingInputsRenta": fee_lines["missingInputsRenta"],
     }
 
     # Not gated by status: an assumption is in force in every stage, and the

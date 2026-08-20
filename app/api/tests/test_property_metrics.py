@@ -469,43 +469,62 @@ def test_a_new_property_assumes_nothing_it_can_be_asked_about(client):
 # ── Fees ─────────────────────────────────────────────────────────────────────
 # fees.py itself is unit-tested against compute_fees() directly
 # (test_finance_fees.py). These two prove the WIRING: that metrics() actually
-# calls it and merges its seven keys into the real payload a client reads —
-# a test on `assumptions` alone would keep passing even if the
+# calls it and merges its ten keys into the real payload a client reads — a
+# test on `assumptions` alone would keep passing even if the
 # `fees.compute_fees(...)` call in metrics() were deleted outright.
 #
-# exit_strategy is set with a direct UPDATE, not a PATCH: the write surface
-# for it lands in routes/properties.py's Pydantic schema (Task 5, not this
-# one), so PATCH would silently drop it today — same reason
-# test_no_modeled_sale_means_no_projected_gain above reaches for get_db().
+# exit_strategy no longer gates the exit fee (venta y renta se calculan
+# siempre, sin importar si alguien capturó una estrategia) — se sigue
+# escribiendo aquí con un UPDATE directo, no una PATCH, únicamente porque
+# routes/properties.py sigue aceptando el campo en su esquema y una prueba de
+# wiring no necesita pasar por esa ruta para probar metrics().
 
-def test_fee_lines_reach_the_property_payload_once_an_exit_strategy_is_captured(
+def test_fee_lines_reach_the_property_payload_regardless_of_exit_strategy(
         client, test_property):
     """test_property trae el desglose completo (compra 1,000,000, obra
-    presupuestada 2,340,000, base 3,480,000) y una venta proyectada de
-    2,500,000 sin comisiones capturadas — así que las cuatro corren con el
-    default del modelo: terreno 5%, obra 15%, venta 5%."""
-    with get_db() as conn:
-        conn.execute("UPDATE properties SET exit_strategy = 'venta' WHERE id = %s",
-                     (test_property["id"],))
+    presupuestada 2,340,000, base 3,480,000), una venta proyectada de
+    2,500,000 y una renta proyectada de 18,000/mes, sin comisiones
+    capturadas — así que las cuatro corren con el default del modelo: terreno
+    5%, obra 15%, venta 5%, renta 3 meses. Los dos escenarios de salida
+    llegan siempre, exit_strategy capturado o no."""
     p = _get(client, test_property["id"])
     assert Decimal(str(p["landFee"])) == Decimal("50000")            # 5% de 1,000,000
     assert Decimal(str(p["constructionFee"])) == Decimal("351000")   # 15% de 2,340,000
-    assert Decimal(str(p["exitFee"])) == Decimal("125000")           # 5% de 2,500,000 proyectada
-    assert p["exitFeeMode"] == "venta"
-    assert Decimal(str(p["totalFees"])) == Decimal("526000")
-    assert Decimal(str(p["totalInvestmentWithFees"])) == Decimal("4006000")
-    assert p["feesMissingInputs"] == []
+    assert Decimal(str(p["exitFeeVenta"])) == Decimal("125000")      # 5% de 2,500,000 proyectada
+    assert Decimal(str(p["exitFeeRenta"])) == Decimal("54000")       # 18,000 * 3 meses
+    assert Decimal(str(p["totalFeesVenta"])) == Decimal("526000")
+    assert Decimal(str(p["totalFeesRenta"])) == Decimal("455000")
+    assert Decimal(str(p["totalInvestmentWithFeesVenta"])) == Decimal("4006000")
+    assert Decimal(str(p["totalInvestmentWithFeesRenta"])) == Decimal("3935000")
+    assert p["feesMissingInputsVenta"] == []
+    assert p["feesMissingInputsRenta"] == []
+
+    # Y capturar una estrategia no cambia ninguno de los dos números — ya no
+    # es un interruptor de esta cuenta.
+    with get_db() as conn:
+        conn.execute("UPDATE properties SET exit_strategy = 'venta' WHERE id = %s",
+                     (test_property["id"],))
+    p_with_strategy = _get(client, test_property["id"])
+    assert p_with_strategy["exitFeeVenta"] == p["exitFeeVenta"]
+    assert p_with_strategy["exitFeeRenta"] == p["exitFeeRenta"]
 
 
-def test_fees_missing_inputs_names_the_gap_and_totals_stay_none(client, test_property):
-    """test_property nunca captura exitStrategy: landFee y constructionFee no
-    dependen de la salida y siguen resolviendo, pero exitFee y los dos totales
-    salen None mientras nadie decide venta o renta, y el hueco se nombra."""
+def test_fees_missing_inputs_names_the_gap_per_scenario_and_that_totals_stay_none(client, test_property):
+    """Sin precio de venta NI renta capturados, cada escenario nombra su
+    propio insumo faltante por separado — landFee y constructionFee no
+    dependen de la salida y siguen resolviendo de cualquier forma."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE properties SET projected_sale = NULL, rent_monthly_projected = NULL WHERE id = %s",
+            (test_property["id"],))
     p = _get(client, test_property["id"])
-    assert p["exitFeeMode"] is None
-    assert p["exitFee"] is None
-    assert p["totalFees"] is None
-    assert p["totalInvestmentWithFees"] is None
-    assert p["feesMissingInputs"] == ["exitStrategy"]
+    assert p["exitFeeVenta"] is None
+    assert p["exitFeeRenta"] is None
+    assert p["totalFeesVenta"] is None
+    assert p["totalFeesRenta"] is None
+    assert p["totalInvestmentWithFeesVenta"] is None
+    assert p["totalInvestmentWithFeesRenta"] is None
+    assert p["feesMissingInputsVenta"] == ["salePrice"]
+    assert p["feesMissingInputsRenta"] == ["rentMonthly"]
     assert Decimal(str(p["landFee"])) == Decimal("50000")
     assert Decimal(str(p["constructionFee"])) == Decimal("351000")

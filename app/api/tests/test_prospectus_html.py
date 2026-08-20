@@ -14,87 +14,113 @@ BASE_PROPERTY = {"name": "[TEST] Casa Prueba"}
 # Inversión sin/con comisiones — las cuatro tarjetas de inversión del prospecto
 # viven en una rejilla .metrics-5 de ancho FIJO (grid-template-columns:
 # repeat(5, 1fr), sin regla .metrics-6): no hay dónde imprimir una sexta
-# celda. La cifra con comisiones va como sub-línea `<small>` dentro de la
+# celda. Las cifras con comisiones van como sub-línea `<small>` dentro de la
 # MISMA celda de "Inversión sin comisiones" — el mismo patrón que ya usan
 # "Ganancia realizada" y "Ganancia proyectada" para su detalle secundario.
-# Sin `totalInvestmentWithFees` no hay sub-línea: no se adivina.
+#
+# Ya no hay una sola cifra "con comisiones": compute_fees() (fees.py) calcula
+# venta y renta siempre, sin depender de una estrategia de salida elegida, así
+# que la sub-línea puede traer las dos ("V $X · R $Y"), una sola, o ninguna —
+# nunca se adivina cuál mostrar.
 # ---------------------------------------------------------------------------
 
-def test_sold_card_shows_the_with_fees_figure_as_a_sub_line():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000}
+def test_sold_card_shows_both_with_fees_scenarios_as_a_sub_line():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
     html = _sold_card(p, "Kicker")
     assert "Inversión sin comisiones" in html
     assert "Inversión total" not in html
-    assert "<small>$1.1M c/comisiones</small>" in html
+    assert "<small>V $1.1M · R $1.2M c/comisiones</small>" in html
 
 
-def test_sold_card_omits_the_sub_line_without_the_with_fees_figure():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": None}
+def test_sold_card_shows_only_the_venta_scenario_when_renta_is_missing():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": None}
+    html = _sold_card(p, "Kicker")
+    assert "<small>V $1.1M c/comisiones</small>" in html
+
+
+def test_sold_card_omits_the_sub_line_without_either_with_fees_figure():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": None}
     html = _sold_card(p, "Kicker")
     assert "Inversión sin comisiones" in html
     assert "c/comisiones" not in html
 
 
-def test_rented_card_shows_the_with_fees_figure_as_a_sub_line():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000}
+def test_rented_card_shows_both_with_fees_scenarios_as_a_sub_line():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
     html = _rented_card(p, "Kicker")
     assert "Inversión sin comisiones" in html
     assert "Inversión total" not in html
-    assert "<small>$1.1M c/comisiones</small>" in html
+    assert "<small>V $1.1M · R $1.2M c/comisiones</small>" in html
 
 
-def test_rented_card_omits_the_sub_line_without_the_with_fees_figure():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": None}
+def test_rented_card_omits_the_sub_line_without_either_with_fees_figure():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": None}
     html = _rented_card(p, "Kicker")
     assert "c/comisiones" not in html
 
 
-def test_development_card_shows_the_with_fees_figure_as_a_sub_line():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000}
+def test_development_card_shows_both_with_fees_scenarios_as_a_sub_line():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
     html = _development_card(p, "Kicker")
     assert "Inversión sin comisiones" in html
     assert "Inversión total" not in html
-    assert "<small>$1.1M c/comisiones</small>" in html
+    assert "<small>V $1.1M · R $1.2M c/comisiones</small>" in html
 
 
-def test_development_card_omits_the_sub_line_without_the_with_fees_figure():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": None}
+def test_development_card_omits_the_sub_line_without_either_with_fees_figure():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": None}
     html = _development_card(p, "Kicker")
     assert "c/comisiones" not in html
 
 
-def test_opportunity_card_shows_the_with_fees_figure_as_a_sub_line():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000}
+def test_opportunity_card_shows_both_with_fees_scenarios_as_a_sub_line():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
     html = _opportunity(p)
     assert "Inversión sin comisiones" in html
     assert "Inversión total" not in html
-    assert "<small>$1.1M c/comisiones</small>" in html
+    assert "<small>V $1.1M · R $1.2M c/comisiones</small>" in html
 
 
-def test_opportunity_card_omits_the_sub_line_without_the_with_fees_figure():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": None}
+def test_opportunity_card_omits_the_sub_line_without_either_with_fees_figure():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": None}
     html = _opportunity(p)
     assert "c/comisiones" not in html
 
 
-def test_summary_card_shows_the_with_fees_sum_when_every_property_has_it():
-    sold = [{**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000,
+def test_summary_card_shows_each_with_fees_sum_when_every_property_has_it():
+    sold = [{**BASE_PROPERTY, "totalInvestment": 1_000_000,
+             "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_180_000,
              "salePrice": 2_000_000}]
-    rented = [{**BASE_PROPERTY, "totalInvestment": 500_000, "totalInvestmentWithFees": 550_000,
+    rented = [{**BASE_PROPERTY, "totalInvestment": 500_000,
+               "totalInvestmentWithFeesVenta": 550_000, "totalInvestmentWithFeesRenta": 560_000,
                "currentValuation": 700_000}]
     html = _summary_card(sold, rented)
-    assert "<small>$1.7M c/comisiones</small>" in html
+    assert "<small>V $1.7M · R $1.7M c/comisiones</small>" in html
 
 
-def test_summary_card_omits_the_with_fees_sum_when_any_property_is_missing_it():
+def test_summary_card_omits_one_scenarios_sum_when_any_property_is_missing_it():
     """Una suma parcial (la que falta cuenta como $0) publicaría un total con
-    comisiones más bajo que el real — más engañoso que no mostrarlo."""
-    sold = [{**BASE_PROPERTY, "totalInvestment": 1_000_000, "totalInvestmentWithFees": 1_150_000,
+    comisiones más bajo que el real — más engañoso que no mostrarlo. Venta y
+    renta se evalúan por separado: falta renta en una propiedad no apaga
+    venta si esa sí trae el dato completo en todo el track record."""
+    sold = [{**BASE_PROPERTY, "totalInvestment": 1_000_000,
+             "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_180_000,
              "salePrice": 2_000_000}]
-    rented = [{**BASE_PROPERTY, "totalInvestment": 500_000, "totalInvestmentWithFees": None,
+    rented = [{**BASE_PROPERTY, "totalInvestment": 500_000,
+               "totalInvestmentWithFeesVenta": 550_000, "totalInvestmentWithFeesRenta": None,
                "currentValuation": 700_000}]
     html = _summary_card(sold, rented)
-    assert "c/comisiones" not in html
+    assert "<small>V $1.7M c/comisiones</small>" in html
+    assert "R $" not in html
 
 
 def test_budget_full_empty_lines_returns_empty_string():

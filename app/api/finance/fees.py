@@ -6,11 +6,20 @@ cuesta operar el fondo sobre ella. `basis` llega ya resuelto (Decimal, sin
 redondear — mismo criterio que gain()/cap_rate(): todo lo derivado redondea
 una sola vez), nunca se recalcula aquí.
 
-exitFee es la única línea que puede faltar: sin exit_strategy no hay forma
-honesta de saber si aplica el % de venta o los meses de renta, y no se
-adivina — se nombra en missingInputs, igual que un exit_price ausente en
-waterfall.py. landFee y constructionFee nunca faltan: siempre hay una base
-(aunque sea 0) y un % (el default si nadie capturó uno).
+La comisión de salida (venta o renta) YA NO depende de `exit_strategy`
+capturado: antes había que elegir un camino para ver su comisión, y nadie
+sabe de antemano si va a vender o rentar — obligarlo a elegir para poder ver
+el número era pedir una decisión que el pedido real no necesita. Ahora se
+calculan LOS DOS escenarios siempre que haya con qué, y quien lee la ficha
+compara — `exit_strategy` capturado queda en la fila, pero ya no es un
+interruptor de esta cuenta.
+
+landFee y constructionFee nunca faltan: siempre hay una base (aunque sea 0)
+y un % (el default si nadie capturó uno). exitFeeVenta/exitFeeRenta sí
+pueden faltar cada uno por su cuenta — sin precio de venta (real o
+proyectado) no hay honestamente forma de cobrar un % de algo que no existe,
+y no se adivina: se nombra en missingInputsVenta/missingInputsRenta, igual
+que un exit_price ausente en waterfall.py.
 """
 from decimal import Decimal
 
@@ -45,39 +54,35 @@ def compute_fees(row: dict, basis: Decimal | None) -> dict:
 
     land_fee = to_decimal(row.get("purchase_price")) * land_pct
     construction_fee = to_decimal(row.get("construction_budgeted")) * construction_pct
+    base_fees = land_fee + construction_fee
 
-    missing: list[str] = []
-    exit_strategy = row.get("exit_strategy")
-    exit_fee: Decimal | None
-    if exit_strategy == "venta":
-        sale_value = _resolve_sale_value(row)
-        if sale_value is None:
-            exit_fee = None
-            missing.append("salePrice")
-        else:
-            exit_fee = sale_value * sale_pct
-    elif exit_strategy == "renta":
-        rent = _resolve_rent(row)
-        if rent is None:
-            exit_fee = None
-            missing.append("rentMonthly")
-        else:
-            exit_fee = rent * rent_months
-    else:
-        exit_fee = None
-        missing.append("exitStrategy")
+    sale_value = _resolve_sale_value(row)
+    exit_fee_venta = sale_value * sale_pct if sale_value is not None else None
+    missing_venta = [] if exit_fee_venta is not None else ["salePrice"]
 
-    total_fees = None if exit_fee is None else land_fee + construction_fee + exit_fee
-    total_with_fees = (
-        None if (basis is None or total_fees is None) else basis + total_fees
-    )
+    rent = _resolve_rent(row)
+    exit_fee_renta = rent * rent_months if rent is not None else None
+    missing_renta = [] if exit_fee_renta is not None else ["rentMonthly"]
+
+    total_fees_venta = None if exit_fee_venta is None else base_fees + exit_fee_venta
+    total_fees_renta = None if exit_fee_renta is None else base_fees + exit_fee_renta
+
+    def _with_basis(total_fees: Decimal | None) -> Decimal | None:
+        return None if (basis is None or total_fees is None) else basis + total_fees
 
     return {
         "landFee": money0(land_fee),
         "constructionFee": money0(construction_fee),
-        "exitFee": money0(exit_fee) if exit_fee is not None else None,
-        "exitFeeMode": exit_strategy,
-        "totalFees": money0(total_fees) if total_fees is not None else None,
-        "totalInvestmentWithFees": money0(total_with_fees) if total_with_fees is not None else None,
-        "missingInputs": missing,
+        "exitFeeVenta": money0(exit_fee_venta) if exit_fee_venta is not None else None,
+        "exitFeeRenta": money0(exit_fee_renta) if exit_fee_renta is not None else None,
+        "totalFeesVenta": money0(total_fees_venta) if total_fees_venta is not None else None,
+        "totalFeesRenta": money0(total_fees_renta) if total_fees_renta is not None else None,
+        "totalInvestmentWithFeesVenta": (
+            money0(v) if (v := _with_basis(total_fees_venta)) is not None else None
+        ),
+        "totalInvestmentWithFeesRenta": (
+            money0(v) if (v := _with_basis(total_fees_renta)) is not None else None
+        ),
+        "missingInputsVenta": missing_venta,
+        "missingInputsRenta": missing_renta,
     }

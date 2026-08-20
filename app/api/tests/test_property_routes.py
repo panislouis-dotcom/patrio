@@ -90,18 +90,26 @@ def test_patch_sets_and_clears_a_fee_percentage(client, test_property):
     assert r.json()["assumptions"]["landCommissionPct"]["source"] == "default"
 
 
-def test_patch_sets_exit_strategy_and_it_unlocks_the_exit_fee(client, test_property):
+def test_patch_still_accepts_exit_strategy_though_it_no_longer_gates_the_exit_fee(client, test_property):
+    """exit_strategy sigue viajando por PATCH y guardándose — la columna se
+    queda, por si sirve para otro uso más adelante — pero ya no decide qué
+    comisión de salida calcular: compute_fees() (fees.py) calcula venta y
+    renta siempre que haya con qué, exit_strategy capturado o no."""
     pid = test_property["id"]
     client.patch(f"/api/properties/{pid}", json={
         "purchasePrice": 1000000,
         "projectedSale": 2000000,
     })
+    before = client.get(f"/api/properties/{pid}").json()
+    assert before["exitFeeVenta"] is not None
+    assert before["exitStrategy"] is None
+
     r = client.patch(f"/api/properties/{pid}", json={"exitStrategy": "venta"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["exitStrategy"] == "venta"
-    assert body["exitFee"] is not None
-    assert "exitStrategy" not in body["feesMissingInputs"]
+    assert body["exitFeeVenta"] == before["exitFeeVenta"]
+    assert body["exitFeeRenta"] == before["exitFeeRenta"]
 
 
 def test_invalid_exit_strategy_is_rejected(client, test_property):
