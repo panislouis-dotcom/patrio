@@ -228,7 +228,7 @@ def test_en_renta_keeps_projecting_and_marking(client, desarrollo_property):
     assert Decimal(str(p["capRate"])) == Decimal("0.0864")   # 216,000 / 2,500,000
     # …y el realizado por la cobrada (20,000/mes), sin que una pise a la otra.
     assert Decimal(str(p["rentMonthlyProjected"])) == Decimal("18000")
-    assert Decimal(str(p["capRateActual"])) == Decimal("0.096")  # 240,000 / 2,500,000
+    assert Decimal(str(p["capRateActual"])) == Decimal("0.0571")  # 240,000 / 4,200,000 (valuación, no venta)
 
 
 def test_the_hold_freezes_at_the_first_rent(client, desarrollo_property):

@@ -591,9 +591,9 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await gotoProperty(page, id)
 
     await expect(detailRow(page, 'RENTA/MES COBRADA')).toContainText('$50,000')
-    // 50,000 × 12 / 9,000,000 — the yield against the projected sale, not the
-    // 5,000,000 investment: the property is worth more than it cost
-    await expect(detailRow(page, 'CAP RATE REAL S/ VENTA')).toContainText('6.7%')
+    // 50,000 × 12 / 8,000,000 — the yield against the current valuation, not
+    // the 9,000,000 projected sale: what it's actually worth today
+    await expect(detailRow(page, 'CAP RATE')).toContainText('7.5%')
     // Nothing was ever modelled, so the projected pair has nothing to report —
     // and says so rather than borrowing the collected rent
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('—')

@@ -761,7 +761,7 @@ export function PropertyDetailPage() {
                   ficha. Esto la devuelve, del lado que le toca. */}
               {(p.capRateActual != null || p.rentMonthlyActual != null) && (
                 <>
-                  <EditableRow label="CAP RATE REAL S/ VENTA" editing={editing} value={fmtPct(p.capRateActual)} />
+                  <EditableRow label="CAP RATE" editing={editing} value={fmtPct(p.capRateActual)} />
                   <EditableRow label="RENTA ANUAL COBRADA" editing={editing} value={fmtMXN(p.rentAnnualActual)} />
                 </>
               )}

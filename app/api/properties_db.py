@@ -535,13 +535,19 @@ def metrics(row: dict) -> dict:
         "projectedProfit": underwriting.gain(basis, sale),
         "projectedRoiTotal": underwriting.gain_pct(basis, sale),
         "projectedRoi": _cagr(basis, sale, underwriting.assumption(row, "hold_months")[0]),
-        # NOI / venta proyectada off the MODELED rent — "what did the underwriting
-        # promise?" — next to the same formula fed the rent actually collected.
-        # Both against the SAME value (`sale`, not `basis`): the pair only means
-        # something if the only thing that changes between them is the rent.
+        # capRate (proyectado) es NOI modelada / venta proyectada: la apuesta.
+        # capRateActual (real) es NOI cobrada / valuación actual, no venta
+        # proyectada: una vez que la propiedad renta, lo que vale hoy —no lo que
+        # se apostó que valdría al vender— es la cifra contra la que se mide un
+        # cobro real. Cada una empareja lo real con lo real y lo proyectado con
+        # lo proyectado; forzarlas al mismo denominador habría sido comparar la
+        # renta YA cobrada contra un precio de salida que sigue siendo una
+        # apuesta. Sin valuación capturada —comprar no produce un avalúo— no hay
+        # honestamente contra qué medir, y `cap_rate()` lo dice con None, no con
+        # la venta proyectada como relevo.
         "capRate": underwriting.cap_rate(row.get("rent_monthly_projected"), sale),
         "rentAnnual": underwriting.rent_annual(row.get("rent_monthly_projected")),
-        "capRateActual": underwriting.cap_rate(rent_actual, sale),
+        "capRateActual": underwriting.cap_rate(rent_actual, row.get("current_valuation")),
         "rentAnnualActual": underwriting.rent_annual(rent_actual),
     })
 

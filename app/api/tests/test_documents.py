@@ -302,8 +302,7 @@ def test_a_sold_property_reports_its_realized_result(client, sold_property):
 def test_a_sold_property_shows_no_projection_and_no_live_mark(client, sold_property):
     html = build_prospectus_html([sold_property], [], [], [])
     for label in ("Valuación actual", "ROI anual", "Ganancia no realizada %",
-                  "Cap rate real s/ venta", "Venta proyectada",
-                  "ROI proy. anual", "Ganancia proyectada %",
+                  "Venta proyectada", "ROI proy. anual", "Ganancia proyectada %",
                   "Cap rate proy. s/ venta"):
         assert _metric_label(label) not in html
     assert '<div class="l">Valuación · ' not in html
@@ -329,8 +328,8 @@ def test_a_rented_property_reports_its_mark_with_the_valuation_date(client, desa
     assert _metric("$6.0M", "Valuación · ene 2026") in html
     # (6,000,000 - 3,480,000) / 3,480,000
     assert _metric("72.4%", "Ganancia no realizada %") in html
-    # 360,000 de renta anual sobre 2,500,000 de venta proyectada
-    assert _metric("14.4%", "Cap rate real s/ venta") in html
+    # 360,000 de renta anual sobre 6,000,000 de valuación actual, no venta proyectada
+    assert _metric("6.0%", "Cap rate") in html
     assert _metric_label("Precio de venta") not in html
     assert _metric_label("Ganancia realizada") not in html
 
@@ -455,7 +454,7 @@ def test_the_cover_counts_only_the_units_still_in_rent(client, sold_property, re
 def test_the_cover_averages_the_cap_rate_of_what_it_rents(client, desarrollo_property):
     rented = _rented(client, desarrollo_property["id"], 30000, 6_000_000)
     html = build_prospectus_html([], [rented], [], [])
-    assert _cover_item("14.4%", "Cap rate promedio")  in html  # 360,000 / 2,500,000
+    assert _cover_item("6.0%", "Cap rate promedio")  in html  # 360,000 / 6,000,000 de valuación
 
 
 def test_the_cover_roi_average_counts_what_was_sold(client, sold_property):

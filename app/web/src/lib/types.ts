@@ -262,8 +262,8 @@ export interface Property {
   projectedRoiTotal: number | null
   capRate: number | null      // renta ESTIMADA anual / venta proyectada
   rentAnnual: number | null   // 12 × renta estimada
-  capRateActual: number | null      // las mismas dos fórmulas, con la renta
-  rentAnnualActual: number | null   // que de verdad se cobra
+  capRateActual: number | null      // renta COBRADA anual / valuación actual
+  rentAnnualActual: number | null   // 12 × renta cobrada
 
   // --- La marca viva (desarrollo, en_renta, archivada; null al vender) ---
   // Una vendida no tiene ganancia «no realizada»: la realizó.

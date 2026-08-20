@@ -248,9 +248,9 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(detailRow(page, 'ETAPA')).toContainText('EN RENTA')
     await expect(detailRow(page, 'PRIMERA RENTA')).toContainText(FIRST_RENT_SHOWN)
     await expect(detailRow(page, 'RENTA/MES COBRADA')).toContainText('$40,000')
-    // 40,000 × 12 / 7,000,000 — the yield against the projected sale, the value
-    // the property is actually producing that rent on
-    await expect(detailRow(page, 'CAP RATE REAL S/ VENTA')).toContainText('6.9%')
+    // 40,000 × 12 / 5,000,000 — the yield against the current valuation (set
+    // earlier, in the previous test), the value the property is worth today
+    await expect(detailRow(page, 'CAP RATE')).toContainText('9.6%')
     await expect(detailRow(page, 'RENTA ANUAL COBRADA')).toContainText('$480,000')
     // Nothing was ever modelled, so the projected pair stays empty rather than
     // quietly adopting the collected rent

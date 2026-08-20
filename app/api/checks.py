@@ -166,7 +166,7 @@ def run_checks(row: dict, computed: dict, today: date | None = None) -> list[Iss
         issues += _valuation_warnings(row, today)
         if computed.get("capRateActual") is None:
             issues.append(Issue("capRateActual",
-                                "Sin cap rate real: falta la renta cobrada o la inversión total",
+                                "Sin cap rate real: falta la renta cobrada o la valuación actual",
                                 "warning"))
     elif status == "vendida":
         if row.get("acquisition_date") is None:

@@ -47,11 +47,12 @@ haircut was correct, but dropping the value denominator along with it wasn't —
 "yield on cost" answers a real question ("what does this return on the money I
 put in?") but it isn't a cap rate, and calling it one read as wrong to anyone
 who knows the term. Cap rate now means NOI / value again, still gross (no opex
-haircut — net-of-opex belongs in the analyzer, which models real NOI), still
-paired with capRateActual by the SAME denominator so the pair stays an
-apples-to-apples comparison of collected vs. modeled rent (see
-properties_db.py). rent_annual diverges from the view the same way: None
-where the view reported 0, because a property that does not rent has no rent.
+haircut — net-of-opex belongs in the analyzer, which models real NOI). capRate
+and capRateActual each pick the value that matches their rent — projected sale
+for the modeled rent, current valuation for the collected one — rather than
+sharing one denominator (see properties_db.py). rent_annual diverges from the
+view the same way: None where the view reported 0, because a property that
+does not rent has no rent.
 """
 from decimal import Decimal
 
@@ -213,12 +214,14 @@ def rent_annual(rent_monthly) -> Decimal | None:
 
 def cap_rate(rent_monthly, market_value) -> Decimal | None:
     """Gross annual rent / market value — the textbook cap rate, NOI over what the
-    asset is worth, not over what it cost. `market_value` is the projected sale:
-    the one value figure underwriting captures in every stage, so capRate and
-    capRateActual (fed the same value, different rent) stay comparable. None
-    unless both sides are positive — a property that does not rent has no cap
-    rate, and 0 would read as a real (terrible) yield. Same rule as rent_annual
-    about *which* rent."""
+    asset is worth, not over what it cost. `market_value` is whichever value
+    figure matches the rent: the caller (properties_db.py) pairs projected rent
+    with the projected sale for capRate, and collected rent with the current
+    valuation for capRateActual — proyectado against proyectado, real against
+    real, never a real number measured against a still-hypothetical exit price.
+    None unless both sides are positive — a property that does not rent, or has
+    no value captured to measure against, has no cap rate, and 0 would read as a
+    real (terrible) yield. Same rule as rent_annual about *which* rent."""
     rent = to_decimal(rent_monthly)
     value = to_decimal(market_value)
     if rent <= 0 or value <= 0:
