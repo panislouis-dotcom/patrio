@@ -318,6 +318,14 @@ def test_a_rented_property_reports_its_mark_with_the_valuation_date(client, desa
     rented = _rented(client, desarrollo_property["id"], 30000, 6_000_000)
     html = build_prospectus_html([], [rented], [], [])
     assert "Track Record · 01 · En renta" in html
+    # Solo renta aparece en la sub-línea de comisiones: venta es
+    # contrafactual — esta propiedad nunca se vendió, aunque
+    # compute_fees() la calcule igual con la venta proyectada
+    # (2,500,000). Renta usa la renta REAL ya cobrada (30,000 x 3 meses +
+    # terreno/obra = 3,971,000, que redondea igual que la venta a "$4.0M").
+    # Este es el mismo bug que se corrigió en _sold_card(), en espejo.
+    assert _metric('$3.5M <small>R $4.0M c/comisiones</small>', "Inversión sin comisiones") in html
+    assert "V $" not in html
     assert _metric("$6.0M", "Valuación · ene 2026") in html
     # (6,000,000 - 3,480,000) / 3,480,000
     assert _metric("72.4%", "Ganancia no realizada %") in html

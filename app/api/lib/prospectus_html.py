@@ -485,17 +485,24 @@ def _fee_scenario_missing(reasons: list[str] | None) -> str:
 
 
 def _opportunity_fees_metrics(p: dict) -> str:
-    """Comisiones del fondo, en su propia fila — mismo peso visual que la fila
-    principal de la tarjeta. Solo en _opportunity(): es la única etapa donde
-    el camino de salida sigue genuinamente indeciso Y la única con espacio de
-    sobra (página completa, sin el alto fijo de .proj que aprieta a las
-    demás). No lleva CSS nuevo: .metrics-4 dentro de .opp ya existe y no
-    tiene el override de .metrics-5 a 16pt — hereda el tamaño base de 20pt,
-    el mismo peso que la fila de arriba.
+    """Comisiones del fondo, en su propia fila. Solo en _opportunity(): es la
+    única etapa donde el camino de salida sigue genuinamente indeciso Y la
+    única con espacio de sobra (página completa, sin el alto fijo de .proj
+    que aprieta a las demás). No lleva CSS nuevo: hereda el tamaño base de
+    `.metric` (padding 5mm, valor a 20pt) — el mismo que ya usa cualquier
+    otra fila de 4 del documento (p.ej. `_summary_card()` sin ventas). Eso la
+    deja MÁS GRANDE que la fila principal justo arriba, que es una de 5 y por
+    eso sí lleva el override a 16pt (`.opp .metrics-5`, ver el comentario ahí
+    arriba) — no es el mismo peso visual: la de arriba está recortada para
+    caber sus cinco columnas, esta no necesita recorte con solo cuatro.
 
     Terreno y obra nunca faltan — siempre hay una base y un % (el default si
-    nadie lo capturó). Los dos finales sí pueden faltar, cada uno por su
-    cuenta, y entonces nombran su propio insumo ausente."""
+    nadie lo capturó), así que sus dos celdas acceden a `landFee`/
+    `constructionFee` con corchetes, no `.get()`: un KeyError aquí sería una
+    señal real de que compute_fees() (fees.py) dejó de cumplir esa garantía,
+    no un dato opcional que la tarjeta deba tolerar en silencio. Los dos
+    finales sí pueden faltar, cada uno por su cuenta, y entonces nombran su
+    propio insumo ausente."""
     venta = (_fmt_mxn_compact(p["totalInvestmentWithFeesVenta"])
              if p.get("totalInvestmentWithFeesVenta") is not None
              else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
@@ -784,6 +791,9 @@ def _sold_card(p: dict, kicker: str) -> str:
     hold = int(_num(p.get("holdMonthsActual")))
     month = _fmt_month(p.get("saleDate"))
     metrics = "".join([
+        # renta es contrafactual en una vendida — nunca se pasa, aunque el
+        # dato exista (compute_fees() lo calcula igual, con la renta
+        # proyectada, porque nunca hay una real que cobrar).
         _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFeesVenta"), None), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(p.get("salePrice")), "Precio de venta"),
         _metric(gain_v, "Ganancia realizada"),
@@ -801,6 +811,8 @@ def _rented_card(p: dict, kicker: str) -> str:
     lo que se estimó cobrar."""
     val_month = _fmt_month(p.get("valuationDate"))
     metrics = "".join([
+        # venta es contrafactual en una rentada — nunca se pasa, aunque el
+        # dato exista: es el espejo del mismo criterio en _sold_card().
         _metric(_inv_value(p.get("totalInvestment"), None, p.get("totalInvestmentWithFeesRenta")), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
                 f"Valuación · {val_month}" if val_month else "Valuación actual"),
@@ -893,7 +905,8 @@ def _summary_card(sold: list[dict], rented: list[dict]) -> str:
     # hubiera rentado" no es una cifra que ningún inversionista pregunte —
     # mezclaría dinero realizado con dinero hipotético en un solo número,
     # exactamente lo que este mismo renglón ya evita a propósito para
-    # `sales`/`marks` (ver la nota de "Sumarlas en una sola cifra..." abajo).
+    # `sales`/`marks` (ver la nota de "Sumarlas en una sola cifra..." arriba,
+    # en el docstring de la función).
     cells = [(str(len(track)), "Propiedades"), (_fmt_mxn_compact_or_dash(inv), "Capital invertido")]
     if sold:
         cells.append((_fmt_mxn_compact(sales), "Ventas realizadas"))
@@ -960,6 +973,9 @@ def _opportunity(p: dict) -> str:
 
     metrics = "".join([
         _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
+        # el detalle vive en _opportunity_fees_metrics() más abajo — aquí
+        # solo la cifra plana, para no repetir las mismas cifras dos veces
+        # en la misma página.
         _metric(_inv_value(total_inv, None, None), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
