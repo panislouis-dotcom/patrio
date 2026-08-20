@@ -707,9 +707,9 @@ def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
     #   · Unidades en renta — solo las que siguen en renta. La leyenda dice
     #     "operando hoy" y lo vendido dejó de operar para nosotros.
     #   · Cap rate promedio — solo en renta, y de `capRateActual`: renta COBRADA
-    #     sobre capital. El `capRate` a secas sale del underwriting, así que
-    #     promediarlo aquí publicaría lo que se estimó como si fuera lo que se
-    #     cobra. Una vendida sí trae ambos (el expediente ya no se apaga en la
+    #     sobre venta proyectada. El `capRate` a secas sale del underwriting, así
+    #     que promediarlo aquí publicaría lo que se estimó como si fuera lo que
+    #     se cobra. Una vendida sí trae ambos (el expediente ya no se apaga en la
     #     venta), pero ya no cobra renta: por eso queda fuera del promedio.
     #   · ROI promedio — en renta y vendidas: el rendimiento que la firma ya
     #     entregó o lleva marcado. Ninguna proyección entra aquí; por eso
@@ -736,7 +736,7 @@ def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
     <div class="vp">
       <div class="vp-item"><div class="vp-v">{units_v}</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
       <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">anualizado · vendidas y en renta</div></div>
-      <div class="vp-item"><div class="vp-v">{cap_avg}</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">renta cobrada sobre inversión</div></div>
+      <div class="vp-item"><div class="vp-v">{cap_avg}</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">renta cobrada sobre venta proyectada</div></div>
     </div>
   </div>
   <div class="cover-foot">
@@ -847,8 +847,8 @@ def _sold_card(p: dict, kicker: str) -> str:
 def _rented_card(p: dict, kicker: str) -> str:
     """En renta: la marca viva. La valuación lleva su fecha de corte encima
     porque es una estimación con fecha, no un hecho; el cap rate es `capRateActual`,
-    la renta efectivamente cobrada sobre el capital — el track record no publica
-    lo que se estimó cobrar."""
+    la renta efectivamente cobrada sobre la venta proyectada — el track record no
+    publica lo que se estimó cobrar."""
     val_month = _fmt_month(p.get("valuationDate"))
     metrics = "".join([
         # venta es contrafactual en una rentada — nunca se pasa, aunque el
@@ -858,7 +858,7 @@ def _rented_card(p: dict, kicker: str) -> str:
                 f"Valuación · {val_month}" if val_month else "Valuación actual"),
         _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
         _metric(_fmt_pct_or_dash(p.get("unrealizedGainPct")), "Ganancia no realizada %"),
-        _metric(_fmt_pct_or_dash(p.get("capRateActual")), "Cap rate real s/ inversión"),
+        _metric(_fmt_pct_or_dash(p.get("capRateActual")), "Cap rate real s/ venta"),
     ])
     return _card(p, f"{kicker} · En renta", _hold_tail(p), metrics)
 
@@ -872,7 +872,7 @@ def _development_card(p: dict, kicker: str) -> str:
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(p.get("projectedSale"))), "Venta proyectada"),
         _metric(_fmt_pct_or_dash(p.get("projectedRoi")), "ROI proy. anual"),
         _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Ganancia proyectada %"),
-        _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy. s/ inversión"),
+        _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy. s/ venta"),
     ])
     return _card(p, kicker, _projected_hold_tail(p), metrics)
 
@@ -1039,7 +1039,7 @@ def _opportunity(p: dict) -> str:
         _metric(_inv_value(total_inv, None, None), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
-        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ inversión"),
+        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ venta"),
     ])
 
     # La ganancia proyectada, monto y porcentaje, ya vive en su métrica de arriba:

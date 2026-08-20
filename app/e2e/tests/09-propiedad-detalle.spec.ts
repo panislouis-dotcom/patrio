@@ -49,8 +49,8 @@ const PROSPECTO = {
 
 // purchase 2,000,000 + the assumed 6.5% acquisition cost, 130,000
 const INVESTMENT = '$2,130,000'
-// 20,000 × 12 / 2,130,000 — the modelled rent, so the projected yield
-const CAP_RATE = '11.3%'
+// 20,000 × 12 / 3,000,000 — the modelled rent over the projected sale
+const CAP_RATE = '8.0%'
 // (3,000,000 − 2,130,000) over the twelve modelled months
 const PROJECTED_ROI = '+40.8%'
 
@@ -115,7 +115,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
 
     await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText(INVESTMENT)
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('$20,000')
-    await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText(CAP_RATE)
+    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText(CAP_RATE)
     await expect(detailRow(page, 'TIPO DE ACTIVO')).toContainText('Casa')
     await expect(detailRow(page, 'ETAPA')).toContainText('PROSPECTO')
     // Nothing has been bought, so nothing has been held
@@ -209,7 +209,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     // The stage has its own door, and the row says which one
     await expect(detailRow(page, 'ETAPA')).toContainText('SE MUEVE CON AVANZAR A')
 
-    for (const label of ['INVERSIÓN SIN COMISIONES', 'CAP RATE PROY. S/ INVERSIÓN', 'PLAZO REAL']) {
+    for (const label of ['INVERSIÓN SIN COMISIONES', 'CAP RATE PROY. S/ VENTA', 'PLAZO REAL']) {
       await expect(fieldInput(page, label)).toHaveCount(0)
     }
   })
@@ -304,15 +304,15 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await gotoProperty(page, id)
     await enterEditMode(page)
 
-    // 30,000 × 12 / 2,130,000 — the investment is pinned by the breakdown
+    // 30,000 × 12 / 3,000,000 — the projected sale, not the investment, is the denominator now
     await setNumericField(page, 'RENTA/MES ESTIMADA', '30000')
     await saveEdits(page)
 
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('$30,000')
-    await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText('16.9%')
+    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText('12.0%')
 
     await page.reload()
-    await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText('16.9%')
+    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText('12.0%')
   })
 
   test('✕ empties the field through clear-fields, and the cap rate goes with it', async ({ page }) => {
@@ -327,7 +327,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await page.getByRole('button', { name: 'VER', exact: true }).click()
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('—')
     // No rent, no yield — and an empty rent is not a zero rent
-    await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText('—')
+    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText('—')
 
     await page.reload()
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('—')
@@ -336,7 +336,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await enterEditMode(page)
     await setNumericField(page, 'RENTA/MES ESTIMADA', '20000')
     await saveEdits(page)
-    await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText(CAP_RATE)
+    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText(CAP_RATE)
   })
 
   // ── Columna central ─────────────────────────────────────────────────────────
@@ -591,12 +591,13 @@ test.describe('Ficha de propiedad — una en renta', () => {
     await gotoProperty(page, id)
 
     await expect(detailRow(page, 'RENTA/MES COBRADA')).toContainText('$50,000')
-    // 50,000 × 12 / 5,000,000 — the yield the property is actually producing
-    await expect(detailRow(page, 'CAP RATE REAL S/ INVERSIÓN')).toContainText('12.0%')
+    // 50,000 × 12 / 9,000,000 — the yield against the projected sale, not the
+    // 5,000,000 investment: the property is worth more than it cost
+    await expect(detailRow(page, 'CAP RATE REAL S/ VENTA')).toContainText('6.7%')
     // Nothing was ever modelled, so the projected pair has nothing to report —
     // and says so rather than borrowing the collected rent
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('—')
-    await expect(detailRow(page, 'CAP RATE PROY. S/ INVERSIÓN')).toContainText('—')
+    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText('—')
   })
 
   test('the dates of the purchase are on the record', async ({ page }) => {

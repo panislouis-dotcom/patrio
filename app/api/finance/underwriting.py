@@ -39,13 +39,18 @@ one place, and every reader gets them together with their provenance, because a
 number that moves money has to be visible to whoever reads the money.
 
 Descends from the prospect_metrics view (migration 019) and still matches it
-formula-for-formula except for cap_rate: as of 2026-07 cap rate is *yield on
-cost* — gross annual rent over total investment — replacing the view's
-rent*12*0.70 / projected_sale. One formula now serves prospects, projects and
-the investor prospectus, and it answers the question an investor actually asks
-("what does this yield on the money I put in?") without the fabricated 30% opex
-haircut. The 0.70 factor is gone; net-of-opex cap rate belongs in the analyzer,
-which models real NOI. rent_annual diverges from the view the same way: None
+formula-for-formula except for cap_rate: as of 2026-08 cap rate is the
+textbook definition again — gross annual rent over MARKET VALUE (projected
+sale), not over cost. It briefly lived as *yield on cost* (rent / total
+investment, 2026-07 through 2026-08): dropping the view's fabricated 30% opex
+haircut was correct, but dropping the value denominator along with it wasn't —
+"yield on cost" answers a real question ("what does this return on the money I
+put in?") but it isn't a cap rate, and calling it one read as wrong to anyone
+who knows the term. Cap rate now means NOI / value again, still gross (no opex
+haircut — net-of-opex belongs in the analyzer, which models real NOI), still
+paired with capRateActual by the SAME denominator so the pair stays an
+apples-to-apples comparison of collected vs. modeled rent (see
+properties_db.py). rent_annual diverges from the view the same way: None
 where the view reported 0, because a property that does not rent has no rent.
 """
 from decimal import Decimal
@@ -206,15 +211,19 @@ def rent_annual(rent_monthly) -> Decimal | None:
     return money0(rent * Decimal(12)) if rent > 0 else None
 
 
-def cap_rate(rent_monthly, total_investment) -> Decimal | None:
-    """Yield on cost: gross annual rent / total investment. None unless both sides
-    are positive — a property that does not rent has no cap rate, and 0 would read
-    as a real (terrible) yield. Same rule as rent_annual about *which* rent."""
+def cap_rate(rent_monthly, market_value) -> Decimal | None:
+    """Gross annual rent / market value — the textbook cap rate, NOI over what the
+    asset is worth, not over what it cost. `market_value` is the projected sale:
+    the one value figure underwriting captures in every stage, so capRate and
+    capRateActual (fed the same value, different rent) stay comparable. None
+    unless both sides are positive — a property that does not rent has no cap
+    rate, and 0 would read as a real (terrible) yield. Same rule as rent_annual
+    about *which* rent."""
     rent = to_decimal(rent_monthly)
-    inv = to_decimal(total_investment)
-    if rent <= 0 or inv <= 0:
+    value = to_decimal(market_value)
+    if rent <= 0 or value <= 0:
         return None
-    return frac4(rent * Decimal(12) / inv)
+    return frac4(rent * Decimal(12) / value)
 
 
 def metrics(inputs: dict) -> dict:
@@ -246,7 +255,7 @@ def metrics(inputs: dict) -> dict:
         "profit": gain(inv_raw, ps),
         "roi": frac4(roi) if roi is not None else None,
         "roi_total": gain_pct(inv_raw, ps),
-        "cap_rate": cap_rate(g["rent_monthly_projected"], inv_raw),
+        "cap_rate": cap_rate(g["rent_monthly_projected"], ps),
         "purchase_price_per_sqm": money(pp / sqm_land) if sqm_land > 0 else None,
         "sale_per_sqm": money(ps / sqm_land) if sqm_land > 0 else None,
         "investment_per_sqm": money(inv_raw / sqm_land) if sqm_land > 0 else None,

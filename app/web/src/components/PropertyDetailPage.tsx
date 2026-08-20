@@ -761,7 +761,7 @@ export function PropertyDetailPage() {
                   ficha. Esto la devuelve, del lado que le toca. */}
               {(p.capRateActual != null || p.rentMonthlyActual != null) && (
                 <>
-                  <EditableRow label="CAP RATE REAL S/ INVERSIÓN" editing={editing} value={fmtPct(p.capRateActual)} />
+                  <EditableRow label="CAP RATE REAL S/ VENTA" editing={editing} value={fmtPct(p.capRateActual)} />
                   <EditableRow label="RENTA ANUAL COBRADA" editing={editing} value={fmtMXN(p.rentAnnualActual)} />
                 </>
               )}
@@ -877,7 +877,7 @@ export function PropertyDetailPage() {
                 ['GANANCIA PROYECTADA', p.projectedProfit, v => fmtGain(v, p.projectedRoiTotal)],
                 ['ROI PROY. ANUAL', p.projectedRoi, fmtPctSigned],
                 ['RENTA ANUAL ESTIMADA', p.rentAnnual, fmtMXN],
-              ], <EditableRow label="CAP RATE PROY. S/ INVERSIÓN" editing={editing} value={fmtPct(p.capRate)} />)}
+              ], <EditableRow label="CAP RATE PROY. S/ VENTA" editing={editing} value={fmtPct(p.capRate)} />)}
 
               {/* El desglose se captura en cualquier etapa: es el modelo que se
                   compara contra la realidad, no un formulario de prospecto.
@@ -1297,8 +1297,9 @@ export function PropertyDetailPage() {
             {
               // Cada escritura del presupuesto devuelve la propiedad
               // recalculada: la suma presupuestada ES el costo de obra, así que
-              // tocar un renglón mueve la inversión, el ROI y el cap rate. Un
-              // solo setProperty y la ficha entera queda al día.
+              // tocar un renglón mueve la inversión y el ROI (el cap rate no —
+              // ya no es función del costo, ver underwriting.py). Un solo
+              // setProperty y la ficha entera queda al día.
               label: 'presupuesto',
               panel: <BudgetPanel property={p} onPropertyChange={setProperty} />,
             },

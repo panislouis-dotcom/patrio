@@ -535,11 +535,13 @@ def metrics(row: dict) -> dict:
         "projectedProfit": underwriting.gain(basis, sale),
         "projectedRoiTotal": underwriting.gain_pct(basis, sale),
         "projectedRoi": _cagr(basis, sale, underwriting.assumption(row, "hold_months")[0]),
-        # Yield on cost off the MODELED rent — "what did the underwriting
+        # NOI / venta proyectada off the MODELED rent — "what did the underwriting
         # promise?" — next to the same formula fed the rent actually collected.
-        "capRate": underwriting.cap_rate(row.get("rent_monthly_projected"), basis),
+        # Both against the SAME value (`sale`, not `basis`): the pair only means
+        # something if the only thing that changes between them is the rent.
+        "capRate": underwriting.cap_rate(row.get("rent_monthly_projected"), sale),
         "rentAnnual": underwriting.rent_annual(row.get("rent_monthly_projected")),
-        "capRateActual": underwriting.cap_rate(rent_actual, basis),
+        "capRateActual": underwriting.cap_rate(rent_actual, sale),
         "rentAnnualActual": underwriting.rent_annual(rent_actual),
     })
 

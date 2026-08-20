@@ -225,10 +225,10 @@ def test_en_renta_keeps_projecting_and_marking(client, desarrollo_property):
     assert _all_present(p, MARK + RECORD_RENT)
     assert _all_none(p, EXIT)
     # La proyección sigue contestando por la renta estimada (18,000/mes)…
-    assert Decimal(str(p["capRate"])) == Decimal("0.0621")   # 216,000 / 3,480,000
+    assert Decimal(str(p["capRate"])) == Decimal("0.0864")   # 216,000 / 2,500,000
     # …y el realizado por la cobrada (20,000/mes), sin que una pise a la otra.
     assert Decimal(str(p["rentMonthlyProjected"])) == Decimal("18000")
-    assert Decimal(str(p["capRateActual"])) == Decimal("0.069")  # 240,000 / 3,480,000
+    assert Decimal(str(p["capRateActual"])) == Decimal("0.096")  # 240,000 / 2,500,000
 
 
 def test_the_hold_freezes_at_the_first_rent(client, desarrollo_property):

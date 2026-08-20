@@ -44,7 +44,7 @@ export const FIELD_LABEL: Record<string, string> = {
   constructionBudgeted: 'Obra presupuestada',
   projectedRoi: 'ROI proy. anual',
   projectedProfit: 'Ganancia proyectada',
-  capRateActual: 'Cap rate real sobre inversión',
+  capRateActual: 'Cap rate real sobre venta proyectada',
 }
 
 /** La etiqueta del campo, o el identificador si alguien agregó uno sin nombre. */

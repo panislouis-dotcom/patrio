@@ -260,7 +260,7 @@ export interface Property {
   projectedProfit: number | null
   projectedRoi: number | null
   projectedRoiTotal: number | null
-  capRate: number | null      // yield on cost de la renta ESTIMADA
+  capRate: number | null      // renta ESTIMADA anual / venta proyectada
   rentAnnual: number | null   // 12 × renta estimada
   capRateActual: number | null      // las mismas dos fórmulas, con la renta
   rentAnnualActual: number | null   // que de verdad se cobra

@@ -302,9 +302,9 @@ def test_a_sold_property_reports_its_realized_result(client, sold_property):
 def test_a_sold_property_shows_no_projection_and_no_live_mark(client, sold_property):
     html = build_prospectus_html([sold_property], [], [], [])
     for label in ("Valuación actual", "ROI anual", "Ganancia no realizada %",
-                  "Cap rate real s/ inversión", "Venta proyectada",
+                  "Cap rate real s/ venta", "Venta proyectada",
                   "ROI proy. anual", "Ganancia proyectada %",
-                  "Cap rate proy. s/ inversión"):
+                  "Cap rate proy. s/ venta"):
         assert _metric_label(label) not in html
     assert '<div class="l">Valuación · ' not in html
     # Ni con otro sufijo: ninguna tarjeta de una vendida lleva cap rate. (La
@@ -329,8 +329,8 @@ def test_a_rented_property_reports_its_mark_with_the_valuation_date(client, desa
     assert _metric("$6.0M", "Valuación · ene 2026") in html
     # (6,000,000 - 3,480,000) / 3,480,000
     assert _metric("72.4%", "Ganancia no realizada %") in html
-    # 360,000 de renta anual sobre 3,480,000 invertidos
-    assert _metric("10.3%", "Cap rate real s/ inversión") in html
+    # 360,000 de renta anual sobre 2,500,000 de venta proyectada
+    assert _metric("14.4%", "Cap rate real s/ venta") in html
     assert _metric_label("Precio de venta") not in html
     assert _metric_label("Ganancia realizada") not in html
 
@@ -401,9 +401,9 @@ def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, tes
 
 
 def test_the_opportunity_cap_rate_comes_from_the_api(client, test_property):
-    # 216,000 de renta anual sobre 3,480,000 invertidos = 6.2%
+    # 216,000 de renta anual sobre 2,500,000 de venta proyectada = 8.6%
     html = build_prospectus_html([], [], [], [get_property(test_property["id"])])
-    assert _metric("6.2%", "Cap rate proy. s/ inversión") in html
+    assert _metric("8.6%", "Cap rate proy. s/ venta") in html
 
 
 def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
@@ -411,7 +411,7 @@ def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
                 json={"fields": ["rentMonthlyProjected"]})
     p = get_property(test_property["id"])
     assert p["capRate"] is None
-    assert _metric("—", "Cap rate proy. s/ inversión") in build_prospectus_html([], [], [], [p])
+    assert _metric("—", "Cap rate proy. s/ venta") in build_prospectus_html([], [], [], [p])
 
 
 def test_the_document_translates_the_enums(client, make_property):
@@ -455,7 +455,7 @@ def test_the_cover_counts_only_the_units_still_in_rent(client, sold_property, re
 def test_the_cover_averages_the_cap_rate_of_what_it_rents(client, desarrollo_property):
     rented = _rented(client, desarrollo_property["id"], 30000, 6_000_000)
     html = build_prospectus_html([], [rented], [], [])
-    assert _cover_item("10.3%", "Cap rate promedio")  in html  # 360,000 / 3,480,000
+    assert _cover_item("14.4%", "Cap rate promedio")  in html  # 360,000 / 2,500,000
 
 
 def test_the_cover_roi_average_counts_what_was_sold(client, sold_property):
