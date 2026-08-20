@@ -1006,14 +1006,16 @@ export function PropertyDetailPage() {
                   algo que se lee junto. ESTRATEGIA DE SALIDA abre sola, a lo ancho
                   — fija el contexto y no tiene una pareja %/$ con la que compartir
                   renglón. Luego cada comisión va %/$ una junto a la otra. VENTA (%)
-                  y MESES DE RENTA comparten renglón porque son las dos entradas de
-                  ESTRATEGIA DE SALIDA (una corre o la otra, nunca las dos) y ninguna
-                  tiene su propio $ aparte — el suyo sale combinado en COMISIÓN DE
-                  SALIDA ($), que por eso comparte renglón con TOTAL COMISIONES ($):
-                  las dos son totales en pesos, no un %. Por último, el par de
-                  INVERSIÓN cierra la sección. Cada una sigue con su propio
-                  `borderBottom`, que en dos columnas solo cubre su celda; es el
-                  patrón esperado, no algo que arreglar aquí.
+                  y MESES DE RENTA nunca están las dos en pantalla — cuál se enseña
+                  lo decide ESTRATEGIA DE SALIDA, ver el comentario junto a esas
+                  filas — así que el grid nunca les reserva dos celdas propias:
+                  cualquiera de las dos que aparezca cae junto a lo que venga
+                  después, sin hueco. Ninguna tiene su propio $ aparte — el suyo
+                  sale combinado en COMISIÓN DE SALIDA ($), que por eso comparte
+                  renglón con TOTAL COMISIONES ($): las dos son totales en pesos,
+                  no un %. Por último, el par de INVERSIÓN cierra la sección. Cada
+                  una sigue con su propio `borderBottom`, que en dos columnas solo
+                  cubre su celda; es el patrón esperado, no algo que arreglar aquí.
 
                   Layout apretado en vivo (segundo feedback del dueño del producto):
                   el renglón normal de `EditableRow` — etiqueta a la izquierda, valor
@@ -1094,24 +1096,32 @@ export function PropertyDetailPage() {
                   hint="% SOBRE OBRA A EJECUTAR"
                   stacked
                 />
-                <EditableRow
-                  label="COMISIÓN VENTA (%)"
-                  editing={editing}
-                  value={fmtPct(exitSaleCommissionPct)}
-                  hint={assumptionHint('exitSaleCommissionPct')}
-                  stacked
-                  onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
-                  input={
-                    <NumericInput
-                      value={exitSaleCommissionPct != null ? exitSaleCommissionPct * 100 : undefined}
-                      onChange={n => setField('exitSaleCommissionPct', n != null ? n / 100 : undefined)}
-                      step={0.1}
-                      ariaLabel="COMISIÓN VENTA (%)"
-                      style={fieldInput}
-                    />
-                  }
-                />
-                {numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
+                {/* La comisión de venta y los meses de renta son las DOS entradas
+                    posibles de una sola comisión — la de salida — nunca las dos a
+                    la vez: cuál se enseña lo decide ESTRATEGIA DE SALIDA de arriba,
+                    no cuál tiene un valor. Sin estrategia elegida no se enseña
+                    ninguna — un % o unos meses para un camino que nadie escogió
+                    todavía no es un dato, es una pregunta sin hacer. */}
+                {field('exitStrategy') === 'venta' && (
+                  <EditableRow
+                    label="COMISIÓN VENTA (%)"
+                    editing={editing}
+                    value={fmtPct(exitSaleCommissionPct)}
+                    hint={assumptionHint('exitSaleCommissionPct')}
+                    stacked
+                    onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
+                    input={
+                      <NumericInput
+                        value={exitSaleCommissionPct != null ? exitSaleCommissionPct * 100 : undefined}
+                        onChange={n => setField('exitSaleCommissionPct', n != null ? n / 100 : undefined)}
+                        step={0.1}
+                        ariaLabel="COMISIÓN VENTA (%)"
+                        style={fieldInput}
+                      />
+                    }
+                  />
+                )}
+                {field('exitStrategy') === 'renta' && numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
                   clearable: isCaptured('exitRentMonths') ? 'exitRentMonths' : undefined,
                   hint: assumptionHint('exitRentMonths'),
                   stacked: true,

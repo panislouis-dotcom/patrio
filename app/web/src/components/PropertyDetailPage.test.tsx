@@ -321,8 +321,10 @@ describe('PropertyDetailPage', () => {
     // Sin entrar a edición: eran invisibles y aun así cobraban.
     expect(screen.getByText('SUPUESTOS')).not.toBeNull()
     expect(screen.getByText('COSTOS ADQ. (%)')).not.toBeNull()
-    // acquisitionCostPct + las cuatro comisiones del fondo, ninguna capturada.
-    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(5)
+    // acquisitionCostPct + terreno + obra, ninguna capturada. exitSaleCommissionPct
+    // y exitRentMonths no cuentan aquí: BASE_PROPERTY no tiene exitStrategy, y sin
+    // ella ninguna de las dos filas se pinta — ver el test de abajo para esas dos.
+    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(3)
     expect(screen.getAllByText('CAPTURADO')).toHaveLength(1)
     // Y el overhead no está entre ellos: dejó de mover dinero, así que dejó de
     // ser un supuesto. Un número que se puede editar sin que cambie un peso es
@@ -499,6 +501,28 @@ describe('PropertyDetailPage', () => {
     const salida = screen.getByText('COMISIÓN DE SALIDA ($)').closest('div')!
     expect(within(salida).getByText('—')).not.toBeNull()
     expect(within(salida).getByText('FALTA RENTA MENSUAL (REAL O PROYECTADA)')).not.toBeNull()
+  })
+
+  it('sin exitStrategy no se pinta ni COMISIÓN VENTA (%) ni MESES DE RENTA', async () => {
+    // Antes vivían siempre las dos, sin importar la estrategia elegida — se leía
+    // como 4 comisiones (terreno, obra, venta, renta) en vez de 3 (terreno, obra,
+    // salida). Cuál se enseña lo decide exitStrategy, no si tiene un valor —
+    // BASE_PROPERTY no trae una todavía, así que ninguna de las dos aparece.
+    await renderPage(BASE_PROPERTY)
+    expect(screen.queryByText('COMISIÓN VENTA (%)')).toBeNull()
+    expect(screen.queryByText('MESES DE RENTA (COMISIÓN SALIDA)')).toBeNull()
+  })
+
+  it('COMISIÓN VENTA (%) aparece sola cuando la estrategia es venta', async () => {
+    await renderPage({ ...BASE_PROPERTY, exitStrategy: 'venta' })
+    expect(screen.getByText('COMISIÓN VENTA (%)')).not.toBeNull()
+    expect(screen.queryByText('MESES DE RENTA (COMISIÓN SALIDA)')).toBeNull()
+  })
+
+  it('MESES DE RENTA (COMISIÓN SALIDA) aparece sola cuando la estrategia es renta', async () => {
+    await renderPage({ ...BASE_PROPERTY, exitStrategy: 'renta' })
+    expect(screen.getByText('MESES DE RENTA (COMISIÓN SALIDA)')).not.toBeNull()
+    expect(screen.queryByText('COMISIÓN VENTA (%)')).toBeNull()
   })
 
   it('la renta cobrada se pide vacía: confirmar sin leer ya no borra la proyección', async () => {
@@ -728,8 +752,10 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('COSTOS ADQ. (%)')).not.toBeNull()
     expect(screen.getByText('0.0%')).not.toBeNull()
     expect(screen.getAllByText('CAPTURADO')).toHaveLength(2)
-    // Las cuatro comisiones del fondo siguen en su default: ALL_IN no las tocó.
-    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(4)
+    // Terreno y obra siguen en su default: ALL_IN no las tocó. La comisión de
+    // salida no cuenta — ALL_IN tampoco trae exitStrategy, así que ni COMISIÓN
+    // VENTA (%) ni MESES DE RENTA se pintan.
+    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(2)
     // Y el 0 tampoco se cuela como barra de $0 en el desglose.
     expect(screen.queryByText('COSTOS ADQ.')).toBeNull()
   })
