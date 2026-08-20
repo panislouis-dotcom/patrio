@@ -448,16 +448,22 @@ def _metric(value: str, label: str) -> str:
 
 
 def _inv_value(total_inv, with_fees_venta, with_fees_renta) -> str:
-    """La inversión sin comisiones, y —cuando existen— los dos escenarios con
-    comisiones (venta y renta) como sub-línea `<small>` en la misma celda:
-    mismo patrón que ya usan `gain_v` (Ganancia realizada) y `gain_value`
-    (Ganancia proyectada) para su detalle secundario, sin abrir columnas
-    nuevas en la rejilla fija de métricas.
+    """La inversión sin comisiones, y —cuando el llamador los pasa— hasta dos
+    escenarios con comisiones (venta y renta) como sub-línea `<small>` en la
+    misma celda: mismo patrón que ya usan `gain_v` (Ganancia realizada) y
+    `gain_value` (Ganancia proyectada) para su detalle secundario, sin abrir
+    columnas nuevas en la rejilla fija de métricas.
 
-    Cada escenario se calcula siempre que haya con qué —ya no depende de una
-    estrategia de salida elegida (compute_fees() en fees.py calcula los dos
-    sin importar exit_strategy)— así que pueden aparecer los dos, uno solo, o
-    ninguno; nunca se adivina cuál mostrar."""
+    `compute_fees()` (fees.py) calcula los dos escenarios siempre, sin
+    importar `exit_strategy` — pero esta función no decide cuál mostrar, solo
+    imprime lo que le pasan. Esa decisión es de cada CALLER, por etapa:
+    vendida solo pasa venta (renta ya es contrafactual, nunca se cobró),
+    rentada solo pasa renta (venta es el espejo), desarrollo pasa los dos (la
+    salida sigue genuinamente indecisa), oportunidad no pasa ninguno (el
+    detalle vive en su propia fila, `_opportunity_fees_metrics()`) y resumen
+    ya no llama a esta función. Por eso aquí pueden llegar los dos, uno solo,
+    o ninguno — nunca por ambigüedad, siempre porque el llamador ya resolvió
+    cuál escenario es real para su propia tarjeta."""
     v = _fmt_mxn_compact_or_dash(total_inv)
     parts = []
     if with_fees_venta is not None:
@@ -467,6 +473,41 @@ def _inv_value(total_inv, with_fees_venta, with_fees_renta) -> str:
     if parts:
         v += f' <small>{" · ".join(parts)} c/comisiones</small>'
     return v
+
+
+def _fee_scenario_missing(reasons: list[str] | None) -> str:
+    """El guion, con el porqué al lado — nunca solo, se leería como cero
+    comisión. `reasons` siempre trae exactamente un elemento cuando no está
+    vacío: compute_fees() (fees.py) nombra un solo insumo por escenario."""
+    labels = {"salePrice": "falta precio de venta", "rentMonthly": "falta renta mensual"}
+    text = " · ".join(labels[r] for r in (reasons or []) if r in labels)
+    return f'— <small>{_esc(text)}</small>' if text else "—"
+
+
+def _opportunity_fees_metrics(p: dict) -> str:
+    """Comisiones del fondo, en su propia fila — mismo peso visual que la fila
+    principal de la tarjeta. Solo en _opportunity(): es la única etapa donde
+    el camino de salida sigue genuinamente indeciso Y la única con espacio de
+    sobra (página completa, sin el alto fijo de .proj que aprieta a las
+    demás). No lleva CSS nuevo: .metrics-4 dentro de .opp ya existe y no
+    tiene el override de .metrics-5 a 16pt — hereda el tamaño base de 20pt,
+    el mismo peso que la fila de arriba.
+
+    Terreno y obra nunca faltan — siempre hay una base y un % (el default si
+    nadie lo capturó). Los dos finales sí pueden faltar, cada uno por su
+    cuenta, y entonces nombran su propio insumo ausente."""
+    venta = (_fmt_mxn_compact(p["totalInvestmentWithFeesVenta"])
+             if p.get("totalInvestmentWithFeesVenta") is not None
+             else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
+    renta = (_fmt_mxn_compact(p["totalInvestmentWithFeesRenta"])
+             if p.get("totalInvestmentWithFeesRenta") is not None
+             else _fee_scenario_missing(p.get("feesMissingInputsRenta")))
+    return "".join([
+        _metric(f'{_fmt_mxn_compact(p["landFee"])} <small>{_fmt_pct(p.get("landCommissionPct"))}</small>', "Comisión compra terreno"),
+        _metric(f'{_fmt_mxn_compact(p["constructionFee"])} <small>{_fmt_pct(p.get("constructionCommissionPct"))}</small>', "Comisión de obra"),
+        _metric(venta, "Inversión c/comisiones · venta"),
+        _metric(renta, "Inversión c/comisiones · renta"),
+    ])
 
 
 def _strip(images, label: str, limit: int) -> str:
@@ -743,7 +784,7 @@ def _sold_card(p: dict, kicker: str) -> str:
     hold = int(_num(p.get("holdMonthsActual")))
     month = _fmt_month(p.get("saleDate"))
     metrics = "".join([
-        _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFeesVenta"), p.get("totalInvestmentWithFeesRenta")), "Inversión sin comisiones"),
+        _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFeesVenta"), None), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(p.get("salePrice")), "Precio de venta"),
         _metric(gain_v, "Ganancia realizada"),
         _metric(_fmt_pct_or_dash(p.get("realizedRoi")), "ROI real anual"),
@@ -760,7 +801,7 @@ def _rented_card(p: dict, kicker: str) -> str:
     lo que se estimó cobrar."""
     val_month = _fmt_month(p.get("valuationDate"))
     metrics = "".join([
-        _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFeesVenta"), p.get("totalInvestmentWithFeesRenta")), "Inversión sin comisiones"),
+        _metric(_inv_value(p.get("totalInvestment"), None, p.get("totalInvestmentWithFeesRenta")), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
                 f"Valuación · {val_month}" if val_month else "Valuación actual"),
         _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
@@ -842,22 +883,18 @@ def _summary_card(sold: list[dict], rented: list[dict]) -> str:
     resume, y cada renglón desaparece cuando su etapa está vacía."""
     track = sold + rented
     inv = sum(_num(p.get("totalInvestment")) for p in track)
-    # Con comisiones, solo si CADA propiedad del track record trae la cifra de
-    # ESE escenario: una suma parcial (falta una, cuenta como $0) publicaría un
-    # total con comisiones más bajo que el real, más engañoso que no
-    # mostrarlo. Venta y renta se evalúan por separado — el track record puede
-    # tener el dato completo para uno y no para el otro. gain/gain_pct siguen
-    # sin comisiones abajo — el desempeño del portafolio queda fuera de alcance.
-    def _all_or_nothing(key: str):
-        values = [p.get(key) for p in track]
-        return sum(_num(v) for v in values) if track and all(v is not None for v in values) else None
-    inv_with_fees_venta = _all_or_nothing("totalInvestmentWithFeesVenta")
-    inv_with_fees_renta = _all_or_nothing("totalInvestmentWithFeesRenta")
     sales = sum(_num(p.get("salePrice")) for p in sold)
     marks = sum(_num(p.get("currentValuation")) for p in rented)
     gain = sales + marks - inv
 
-    cells = [(str(len(track)), "Propiedades"), (_inv_value(inv, inv_with_fees_venta, inv_with_fees_renta), "Capital invertido")]
+    # Sin sub-línea de comisiones aquí (a diferencia de las tarjetas
+    # individuales): un track record mixto nunca va a "ser" ni todo venta ni
+    # todo renta, así que sumar "si todo se hubiera vendido" + "si todo se
+    # hubiera rentado" no es una cifra que ningún inversionista pregunte —
+    # mezclaría dinero realizado con dinero hipotético en un solo número,
+    # exactamente lo que este mismo renglón ya evita a propósito para
+    # `sales`/`marks` (ver la nota de "Sumarlas en una sola cifra..." abajo).
+    cells = [(str(len(track)), "Propiedades"), (_fmt_mxn_compact_or_dash(inv), "Capital invertido")]
     if sold:
         cells.append((_fmt_mxn_compact(sales), "Ventas realizadas"))
     if rented:
@@ -923,7 +960,7 @@ def _opportunity(p: dict) -> str:
 
     metrics = "".join([
         _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
-        _metric(_inv_value(total_inv, p.get("totalInvestmentWithFeesVenta"), p.get("totalInvestmentWithFeesRenta")), "Inversión sin comisiones"),
+        _metric(_inv_value(total_inv, None, None), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
         _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ inversión"),
@@ -975,6 +1012,7 @@ def _opportunity(p: dict) -> str:
       <div><div class="col-label">Financieros</div>{financieros}</div>
       <div><div class="col-label">Propiedad</div>{ubicacion}</div>
     </div>
+    <div class="metrics metrics-4">{_opportunity_fees_metrics(p)}</div>
     {strip}
     {note_html}
     {detail_html}
