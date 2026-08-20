@@ -12,12 +12,6 @@ export const STRATEGY_TYPE_LABEL: Record<string, string> = {
   flip: 'Flip', hold: 'Renta',
 }
 
-// Espeja el CHECK de properties.exit_strategy (migración 049). Sin default: a
-// diferencia de ASSET_TYPES/STRATEGY_TYPES, null significa que nadie ha
-// decidido todavía, no "el modelo asumió uno" — ver `exitStrategy` en Property.
-export const EXIT_STRATEGIES = ['venta', 'renta'] as const
-export const EXIT_STRATEGY_LABEL: Record<string, string> = { venta: 'Venta', renta: 'Renta' }
-
 import type { PropertyStatus } from './status'
 export type { PropertyStatus }
 
@@ -174,10 +168,10 @@ export interface Property {
   permitsCost: number | null
   subdivisionCost: number | null
   projectedSale: number | null
-  // De qué camino de salida saldrá exitFee: 'venta' aplica exitSaleCommissionPct
-  // sobre el precio, 'renta' aplica exitRentMonths sobre la renta mensual. Sin
-  // default (migración 049): null significa que nadie lo ha decidido todavía,
-  // no "el modelo asumió uno".
+  // Ya no decide qué comisión de salida se calcula — compute_fees() (fees.py)
+  // calcula venta y renta siempre, sin importar este campo. Se sigue
+  // capturando y guardando (migración 049) por si sirve para otro uso más
+  // adelante, pero la ficha no ofrece un control para editarlo.
   exitStrategy: 'venta' | 'renta' | null
   // Renta estimada por el underwriting frente a renta efectivamente cobrada.
   // Son dos columnas para que se puedan comparar: la segunda no pisa a la
@@ -195,8 +189,8 @@ export interface Property {
   acquisitionCostPct: number
   holdMonths: number
   // Comisiones del fondo (ver finance/fees.py): % sobre el terreno, % sobre la
-  // obra, y las dos del camino de salida, una de las cuales aplica según
-  // `exitStrategy` más abajo.
+  // obra, y las dos entradas posibles de la comisión de salida — venta y
+  // renta se calculan siempre las dos, no una según una estrategia elegida.
   landCommissionPct: number
   constructionCommissionPct: number
   exitSaleCommissionPct: number
@@ -212,13 +206,20 @@ export interface Property {
   totalInvestment: number | null
 
   // --- Comisiones del fondo (ver finance/fees.py) ---
+  // landFee/constructionFee no dependen de la salida, nunca faltan. Los dos
+  // escenarios de salida (venta, renta) se calculan siempre que haya con
+  // qué — no hace falta elegir un camino para ver su número — así que cada
+  // uno trae su propio total y su propio motivo cuando falta.
   landFee: number | null
   constructionFee: number | null
-  exitFee: number | null
-  exitFeeMode: 'venta' | 'renta' | null
-  totalFees: number | null
-  totalInvestmentWithFees: number | null
-  feesMissingInputs: string[]
+  exitFeeVenta: number | null
+  exitFeeRenta: number | null
+  totalFeesVenta: number | null
+  totalFeesRenta: number | null
+  totalInvestmentWithFeesVenta: number | null
+  totalInvestmentWithFeesRenta: number | null
+  feesMissingInputsVenta: string[]
+  feesMissingInputsRenta: string[]
 
   // --- Datos que solo existen tras comprar ---
   totalUnits: number | null

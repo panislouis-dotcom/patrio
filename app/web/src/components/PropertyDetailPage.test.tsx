@@ -61,8 +61,9 @@ const BASE_PROPERTY: Property = {
   constructionCostPerSqm: 15_600,
   projectedSale: 9_000_000, holdMonths: 12,
   rentMonthlyProjected: 30_000, rentMonthlyActual: null,
-  // Nadie ha decidido todavía el camino de salida (migración 049): sin
-  // exitStrategy, exitFee no se puede calcular — feesMissingInputs lo dice.
+  // Nadie ha decidido todavía el camino de salida (migración 049), y ya no
+  // hace falta: los dos escenarios (venta, renta) se calculan siempre que
+  // haya con qué, sin depender de este campo.
   exitStrategy: null,
   landCommissionPct: 0.05, constructionCommissionPct: 0.15,
   exitSaleCommissionPct: 0.05, exitRentMonths: 3,
@@ -76,10 +77,15 @@ const BASE_PROPERTY: Property = {
     exitRentMonths: { value: 3, source: 'default' },
   },
   totalInvestment: 7_295_000,
-  // landFee = 3,000,000 × 5%; constructionFee = 3,900,000 × 15%. exitFee no
-  // existe sin exitStrategy, y sin él tampoco hay total con comisiones.
-  landFee: 150_000, constructionFee: 585_000, exitFee: null, exitFeeMode: null,
-  totalFees: null, totalInvestmentWithFees: null, feesMissingInputs: ['exitStrategy'],
+  // landFee = 3,000,000 × 5%; constructionFee = 3,900,000 × 15%. Los dos
+  // escenarios de salida se calculan siempre que haya con qué — no dependen
+  // de exitStrategy: venta 5% de 9,000,000 proyectada, renta 3 meses de
+  // 30,000 proyectada.
+  landFee: 150_000, constructionFee: 585_000,
+  exitFeeVenta: 450_000, exitFeeRenta: 90_000,
+  totalFeesVenta: 1_185_000, totalFeesRenta: 825_000,
+  totalInvestmentWithFeesVenta: 8_480_000, totalInvestmentWithFeesRenta: 8_120_000,
+  feesMissingInputsVenta: [], feesMissingInputsRenta: [],
   totalUnits: null, acquisitionDate: null, firstRentDate: null,
   valuationDate: null, currentValuation: null, saleDate: null, salePrice: null,
   acquisitionCosts: 195_000, acquisitionTotal: 3_195_000,
@@ -321,10 +327,10 @@ describe('PropertyDetailPage', () => {
     // Sin entrar a edición: eran invisibles y aun así cobraban.
     expect(screen.getByText('SUPUESTOS')).not.toBeNull()
     expect(screen.getByText('COSTOS ADQ. (%)')).not.toBeNull()
-    // acquisitionCostPct + terreno + obra, ninguna capturada. exitSaleCommissionPct
-    // y exitRentMonths no cuentan aquí: BASE_PROPERTY no tiene exitStrategy, y sin
-    // ella ninguna de las dos filas se pinta — ver el test de abajo para esas dos.
-    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(3)
+    // acquisitionCostPct + las cuatro comisiones del fondo (terreno, obra,
+    // venta, renta), ninguna capturada — las cuatro se ven siempre, sin
+    // depender de exitStrategy.
+    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(5)
     expect(screen.getAllByText('CAPTURADO')).toHaveLength(1)
     // Y el overhead no está entre ellos: dejó de mover dinero, así que dejó de
     // ser un supuesto. Un número que se puede editar sin que cambie un peso es
@@ -383,44 +389,23 @@ describe('PropertyDetailPage', () => {
     expect(screen.getAllByText('SUMA DEL DESGLOSE')).toHaveLength(1)
   })
 
-  it('muestra INVERSIÓN CON COMISIONES cuando totalInvestmentWithFees existe', async () => {
-    await renderPage({
-      ...BASE_PROPERTY,
-      exitStrategy: 'venta',
-      exitFee: 450_000, exitFeeMode: 'venta',
-      totalFees: 1_185_000, totalInvestmentWithFees: 8_480_000, feesMissingInputs: [],
-    })
-
-    // Las dos etiquetas viven ahora en dos lugares: DATOS (arriba, terso) y
-    // COMISIONES DEL FONDO (el detalle, que nunca se esconde).
-    expect(screen.getAllByText('INVERSIÓN SIN COMISIONES')).toHaveLength(2)
-    expect(screen.getAllByText('INVERSIÓN CON COMISIONES')).toHaveLength(2)
-    // La cifra se repite: una vez en DATOS, otra en COMISIONES DEL FONDO.
-    expect(screen.getAllByText('$8,480,000')).toHaveLength(2)
-  })
-
-  it('no muestra INVERSIÓN CON COMISIONES cuando falta exitStrategy', async () => {
-    // BASE_PROPERTY ya trae exitStrategy: null y totalInvestmentWithFees: null
-    // — el estado real de una propiedad a la que nadie le ha decidido la salida.
+  it('DATOS ya no ofrece una sola cifra CON COMISIONES: los dos escenarios se comparan en COMISIONES DEL FONDO', async () => {
+    // Obligar a un resumen terso a elegir entre venta y renta sería fingir que
+    // un escenario le gana al otro — el pedido explícito fue lo contrario: ver
+    // los dos, no uno elegido. La etiqueta ya no vive en ningún lado de DATOS.
     await renderPage(BASE_PROPERTY)
-
-    // SIN COMISIONES nunca se esconde: aparece dos veces siempre.
+    // Vive dos veces: DATOS (resumen) y el cierre de COMISIONES DEL FONDO.
     expect(screen.getAllByText('INVERSIÓN SIN COMISIONES')).toHaveLength(2)
-    // CON COMISIONES sí se esconde en DATOS mientras la cifra no exista, pero
-    // COMISIONES DEL FONDO la sigue enseñando —con "—" y el porqué al lado—,
-    // así que sobrevive UNA sola vez, no cero.
-    expect(screen.queryAllByText('INVERSIÓN CON COMISIONES')).toHaveLength(1)
-    const conComisiones = screen.getByText('INVERSIÓN CON COMISIONES').closest('div')!
-    expect(within(conComisiones).getByText('—')).not.toBeNull()
-    expect(within(conComisiones).getByText('FALTA COMISIÓN DE SALIDA (VER ARRIBA)')).not.toBeNull()
+    expect(screen.queryByText('INVERSIÓN CON COMISIONES')).toBeNull()
   })
 
   // ── COMISIONES DEL FONDO ──────────────────────────────────────────────────
 
   it('COMISIONES DEL FONDO enseña el monto en pesos de cada comisión, no solo el %', async () => {
     // BASE_PROPERTY: landFee = 3,000,000 × 5%; constructionFee = 3,900,000 ×
-    // 15%. Las dos siempre se pueden calcular —no dependen de exitStrategy—
-    // así que se ven aunque la comisión de salida todavía no.
+    // 15%; exitFeeVenta = 9,000,000 proyectada × 5%; exitFeeRenta = 30,000
+    // proyectada × 3 meses. Los cuatro se calculan siempre — ninguno depende
+    // de exitStrategy ni de elegir un camino.
     await renderPage(BASE_PROPERTY)
 
     expect(screen.getByText('COMISIONES DEL FONDO')).not.toBeNull()
@@ -433,97 +418,65 @@ describe('PropertyDetailPage', () => {
     expect(within(landFeeRow).getByText('$150,000')).not.toBeNull()
     const constructionFeeRow = screen.getByText('COMISIÓN OBRA ($)').closest('div')!
     expect(within(constructionFeeRow).getByText('$585,000')).not.toBeNull()
-
-    // Sin exitStrategy no hay comisión de salida que calcular, y el guion dice
-    // por qué en vez de leerse como "cero comisión".
-    const salida = screen.getByText('COMISIÓN DE SALIDA ($)').closest('div')!
-    expect(within(salida).getByText('—')).not.toBeNull()
-    expect(within(salida).getByText('FALTA ESTRATEGIA DE SALIDA')).not.toBeNull()
-    expect(screen.getByText('TOTAL COMISIONES ($)')).not.toBeNull()
+    const ventaRow = screen.getByText('COMISIÓN VENTA ($)').closest('div')!
+    expect(within(ventaRow).getByText('$450,000')).not.toBeNull()
+    expect(within(ventaRow).getByText('% SOBRE PRECIO/PROYECCIÓN DE VENTA')).not.toBeNull()
+    const rentaRow = screen.getByText('COMISIÓN RENTA ($)').closest('div')!
+    expect(within(rentaRow).getByText('$90,000')).not.toBeNull()
+    expect(within(rentaRow).getByText('MESES × RENTA COBRADA/ESTIMADA')).not.toBeNull()
   })
 
-  it('COMISIÓN DE SALIDA ($) enseña el monto y el camino que corrió cuando exitFeeMode es "venta"', async () => {
-    await renderPage({
-      ...BASE_PROPERTY,
-      exitStrategy: 'venta',
-      exitFee: 450_000, exitFeeMode: 'venta',
-      totalFees: 1_185_000, totalInvestmentWithFees: 8_480_000, feesMissingInputs: [],
-    })
-
-    const salida = screen.getByText('COMISIÓN DE SALIDA ($)').closest('div')!
-    expect(within(salida).getByText('$450,000')).not.toBeNull()
-    expect(within(salida).getByText('% SOBRE PRECIO/PROYECCIÓN DE VENTA')).not.toBeNull()
-    const total = screen.getByText('TOTAL COMISIONES ($)').closest('div')!
-    expect(within(total).getByText('$1,185,000')).not.toBeNull()
-  })
-
-  it('COMISIÓN DE SALIDA ($) dice "meses × renta" cuando exitFeeMode es "renta"', async () => {
-    await renderPage({
-      ...BASE_PROPERTY,
-      exitStrategy: 'renta',
-      exitFee: 270_000, exitFeeMode: 'renta',
-      totalFees: 1_005_000, totalInvestmentWithFees: 8_300_000, feesMissingInputs: [],
-    })
-
-    const salida = screen.getByText('COMISIÓN DE SALIDA ($)').closest('div')!
-    expect(within(salida).getByText('$270,000')).not.toBeNull()
-    expect(within(salida).getByText('MESES × RENTA COBRADA/ESTIMADA')).not.toBeNull()
-  })
-
-  it('COMISIÓN DE SALIDA ($) nombra el precio de venta ausente, aunque exitFeeMode ya diga "venta"', async () => {
-    // compute_fees() (fees.py) fija exitFeeMode en cuanto se elige la
-    // estrategia, SIN esperar a que exitFee se calcule: con 'venta' elegida
-    // pero sin precio de venta, el servidor manda exitFeeMode='venta' Y
-    // exitFee=None a la vez. Leer exitFeeMode primero describiría la fórmula
-    // como si hubiera corrido; el hint tiene que mirar exitFee (o su ausencia)
-    // antes que el modo.
-    await renderPage({
-      ...BASE_PROPERTY,
-      exitStrategy: 'venta',
-      exitFee: null, exitFeeMode: 'venta',
-      totalFees: null, totalInvestmentWithFees: null, feesMissingInputs: ['salePrice'],
-    })
-
-    const salida = screen.getByText('COMISIÓN DE SALIDA ($)').closest('div')!
-    expect(within(salida).getByText('—')).not.toBeNull()
-    expect(within(salida).getByText('FALTA PRECIO DE VENTA (REAL O PROYECTADO)')).not.toBeNull()
-  })
-
-  it('COMISIÓN DE SALIDA ($) nombra la renta ausente, aunque exitFeeMode ya diga "renta"', async () => {
-    // El mismo caso que arriba, del lado de 'renta': exitFeeMode='renta' con
-    // exitFee=None porque falta la renta mensual (real o proyectada).
-    await renderPage({
-      ...BASE_PROPERTY,
-      exitStrategy: 'renta',
-      exitFee: null, exitFeeMode: 'renta',
-      totalFees: null, totalInvestmentWithFees: null, feesMissingInputs: ['rentMonthly'],
-    })
-
-    const salida = screen.getByText('COMISIÓN DE SALIDA ($)').closest('div')!
-    expect(within(salida).getByText('—')).not.toBeNull()
-    expect(within(salida).getByText('FALTA RENTA MENSUAL (REAL O PROYECTADA)')).not.toBeNull()
-  })
-
-  it('sin exitStrategy no se pinta ni COMISIÓN VENTA (%) ni MESES DE RENTA', async () => {
-    // Antes vivían siempre las dos, sin importar la estrategia elegida — se leía
-    // como 4 comisiones (terreno, obra, venta, renta) en vez de 3 (terreno, obra,
-    // salida). Cuál se enseña lo decide exitStrategy, no si tiene un valor —
-    // BASE_PROPERTY no trae una todavía, así que ninguna de las dos aparece.
+  it('ya no hay selector ESTRATEGIA DE SALIDA: COMISIÓN VENTA (%) y MESES DE RENTA se ven siempre las dos', async () => {
+    // Antes había que elegir un camino para ver su comisión — se leía como si
+    // hubiera que decidir de antemano algo que nadie sabe todavía. Ahora las
+    // dos entradas conviven, sin importar exitStrategy.
     await renderPage(BASE_PROPERTY)
-    expect(screen.queryByText('COMISIÓN VENTA (%)')).toBeNull()
-    expect(screen.queryByText('MESES DE RENTA (COMISIÓN SALIDA)')).toBeNull()
-  })
-
-  it('COMISIÓN VENTA (%) aparece sola cuando la estrategia es venta', async () => {
-    await renderPage({ ...BASE_PROPERTY, exitStrategy: 'venta' })
+    expect(screen.queryByLabelText('ESTRATEGIA DE SALIDA')).toBeNull()
+    expect(screen.queryByText('ESTRATEGIA DE SALIDA')).toBeNull()
     expect(screen.getByText('COMISIÓN VENTA (%)')).not.toBeNull()
-    expect(screen.queryByText('MESES DE RENTA (COMISIÓN SALIDA)')).toBeNull()
+    expect(screen.getByText('MESES DE RENTA (COMISIÓN SALIDA)')).not.toBeNull()
   })
 
-  it('MESES DE RENTA (COMISIÓN SALIDA) aparece sola cuando la estrategia es renta', async () => {
-    await renderPage({ ...BASE_PROPERTY, exitStrategy: 'renta' })
-    expect(screen.getByText('MESES DE RENTA (COMISIÓN SALIDA)')).not.toBeNull()
-    expect(screen.queryByText('COMISIÓN VENTA (%)')).toBeNull()
+  it('COMISIÓN VENTA ($) y COMISIÓN RENTA ($) nombran su propio insumo faltante, cada una por separado', async () => {
+    // Sin projected_sale/sale_price ni rent_monthly_*, cada escenario falla
+    // por su cuenta — uno faltando no apaga al otro.
+    await renderPage({
+      ...BASE_PROPERTY,
+      exitFeeVenta: null, exitFeeRenta: null,
+      totalFeesVenta: null, totalFeesRenta: null,
+      totalInvestmentWithFeesVenta: null, totalInvestmentWithFeesRenta: null,
+      feesMissingInputsVenta: ['salePrice'], feesMissingInputsRenta: ['rentMonthly'],
+    })
+
+    const ventaRow = screen.getByText('COMISIÓN VENTA ($)').closest('div')!
+    expect(within(ventaRow).getByText('—')).not.toBeNull()
+    expect(within(ventaRow).getByText('FALTA PRECIO DE VENTA (REAL O PROYECTADO)')).not.toBeNull()
+    const rentaRow = screen.getByText('COMISIÓN RENTA ($)').closest('div')!
+    expect(within(rentaRow).getByText('—')).not.toBeNull()
+    expect(within(rentaRow).getByText('FALTA RENTA MENSUAL (REAL O PROYECTADA)')).not.toBeNull()
+  })
+
+  it('el cierre de COMISIONES DEL FONDO compara los dos escenarios finales en columnas', async () => {
+    await renderPage(BASE_PROPERTY)
+
+    const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
+    expect(within(venta).getByText('$8,480,000')).not.toBeNull()
+    const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
+    expect(within(renta).getByText('$8,120,000')).not.toBeNull()
+  })
+
+  it('un escenario final ausente enseña el guion y el porqué, sin apagar al otro', async () => {
+    await renderPage({
+      ...BASE_PROPERTY,
+      exitFeeVenta: null, totalFeesVenta: null, totalInvestmentWithFeesVenta: null,
+      feesMissingInputsVenta: ['salePrice'],
+    })
+
+    const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
+    expect(within(venta).getByText('—')).not.toBeNull()
+    expect(within(venta).getByText('FALTA PRECIO DE VENTA (VER ARRIBA)')).not.toBeNull()
+    const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
+    expect(within(renta).getByText('$8,120,000')).not.toBeNull()
   })
 
   it('la renta cobrada se pide vacía: confirmar sin leer ya no borra la proyección', async () => {
@@ -753,10 +706,9 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('COSTOS ADQ. (%)')).not.toBeNull()
     expect(screen.getByText('0.0%')).not.toBeNull()
     expect(screen.getAllByText('CAPTURADO')).toHaveLength(2)
-    // Terreno y obra siguen en su default: ALL_IN no las tocó. La comisión de
-    // salida no cuenta — ALL_IN tampoco trae exitStrategy, así que ni COMISIÓN
-    // VENTA (%) ni MESES DE RENTA se pintan.
-    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(2)
+    // Las cuatro comisiones del fondo siguen en su default: ALL_IN no las
+    // tocó, y las cuatro se ven siempre.
+    expect(screen.getAllByText('SUPUESTO POR OMISIÓN')).toHaveLength(4)
     // Y el 0 tampoco se cuela como barra de $0 en el desglose.
     expect(screen.queryByText('COSTOS ADQ.')).toBeNull()
   })

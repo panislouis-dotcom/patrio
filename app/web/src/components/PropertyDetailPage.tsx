@@ -17,7 +17,6 @@ import type {
 } from '../lib/types'
 import {
   ASSET_TYPES, ASSET_TYPE_LABEL, STRATEGY_TYPES, STRATEGY_TYPE_LABEL,
-  EXIT_STRATEGIES, EXIT_STRATEGY_LABEL,
 } from '../lib/types'
 import {
   ALLOWED_TRANSITIONS, PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL,
@@ -82,22 +81,19 @@ const fmtGain = (amount: number | null | undefined, pct: number | null | undefin
   `${fmtMXN(amount)} ${fmtPctSigned(pct)}`
 
 /**
- * El hint de COMISIÓN DE SALIDA ($): describe la fórmula que corrió si
- * `exitFee` ya existe, o nombra el insumo que falta si no.
+ * El hint de COMISIÓN VENTA ($) / COMISIÓN RENTA ($): describe la fórmula que
+ * corrió si el monto ya existe, o nombra el insumo que falta si no.
  *
- * `exitFeeMode` NO sirve como señal de "ya corrió": `compute_fees()`
- * (fees.py) lo fija en cuanto se elige `exitStrategy`, sin esperar a que
- * `exitFee` se calcule — con 'venta' elegida pero sin precio de venta, el
- * servidor manda `exitFeeMode: 'venta'` Y `exitFee: null` a la vez. Por eso el
- * chequeo va primero por `exitFee != null`, y solo ahí se usa `exitFeeMode`
- * para nombrar la fórmula; con `exitFee` ausente, quien manda es
- * `feesMissingInputs`, nunca se adivina.
+ * Los dos escenarios se calculan siempre, sin depender de una estrategia de
+ * salida elegida (`compute_fees()` en fees.py ya no lee `exit_strategy` para
+ * decidir cuál correr) — así que cada uno solo puede faltar por su propio
+ * insumo: `missingInputsVenta` siempre trae exactamente `salePrice` cuando
+ * falta, `missingInputsRenta` siempre `rentMonthly`. No hace falta
+ * inspeccionar el arreglo: el modo ya dice cuál es.
  */
-function exitFeeHint(p: Property): string {
-  if (p.exitFee != null) return p.exitFeeMode === 'venta' ? '% SOBRE PRECIO/PROYECCIÓN DE VENTA' : 'MESES × RENTA COBRADA/ESTIMADA'
-  if (p.feesMissingInputs.includes('exitStrategy')) return 'FALTA ESTRATEGIA DE SALIDA'
-  if (p.feesMissingInputs.includes('salePrice')) return 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)'
-  return 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
+function exitFeeHint(fee: number | null, mode: 'venta' | 'renta'): string {
+  if (fee != null) return mode === 'venta' ? '% SOBRE PRECIO/PROYECCIÓN DE VENTA' : 'MESES × RENTA COBRADA/ESTIMADA'
+  return mode === 'venta' ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)' : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
 }
 
 /** Las dos cifras grandes de la ficha, ya formateadas. */
@@ -746,18 +742,12 @@ export function PropertyDetailPage() {
                 value={fmtMXN(p.totalInvestment)}
                 hint="SUMA DEL DESGLOSE"
               />
-              {/* Ausente —no un guion— mientras exitStrategy no esté capturado:
-                  feesMissingInputs dice por qué, y "—" leería como "cero
-                  comisiones", que no es lo mismo que "no se puede calcular
-                  todavía". */}
-              {p.totalInvestmentWithFees != null && (
-                <EditableRow
-                  label="INVERSIÓN CON COMISIONES"
-                  editing={editing}
-                  value={fmtMXN(p.totalInvestmentWithFees)}
-                  hint="SIN COMISIONES + COMISIONES DEL FONDO"
-                />
-              )}
+              {/* La fila CON COMISIONES ya no vive aquí: sin una estrategia de
+                  salida elegida —el pedido explícito es no obligar a elegir una—
+                  no hay UNA cifra que este resumen terso pueda promover sin
+                  fingir que un escenario le gana al otro. Los dos, venta y
+                  renta, se comparan en COMISIONES DEL FONDO, donde hay espacio
+                  para las dos lado a lado. */}
               {numRow('VALUACIÓN', 'currentValuation', fmtMXN, { clearable: 'currentValuation' })}
               {/* La ESTIMADA se fue a SUPUESTOS: es una apuesta sobre el futuro,
                   no un hecho. La COBRADA se queda — es lo que de verdad entró,
@@ -983,71 +973,34 @@ export function PropertyDetailPage() {
                   PLAZO PROYECTADO / VENTA PROYECTADA nadie las encontraba. Cada
                   comisión enseña su % (editable, mismo badge CAPTURADO/SUPUESTO POR
                   OMISIÓN de siempre) seguido de su monto en pesos — que el backend ya
-                  calculaba y la ficha nunca pintaba. Salvo VENTA: su monto no sigue
-                  directo, sale combinado con MESES DE RENTA en COMISIÓN DE SALIDA ($)
-                  más abajo, porque solo una de las dos corre según ESTRATEGIA DE
-                  SALIDA.
+                  calculaba y la ficha nunca pintaba.
 
-                  Esta sección repite a propósito INVERSIÓN SIN/CON COMISIONES, que
-                  ya viven en DATOS — la única excepción a «cada cifra vive en un solo
+                  Ya no hay un selector ESTRATEGIA DE SALIDA (feedback en vivo del
+                  dueño del producto: obligar a elegir venta o renta para ver su
+                  comisión pedía una decisión que nadie tiene tomada de antemano).
+                  COMISIÓN VENTA (%) y MESES DE RENTA se ven siempre las dos, cada
+                  una con su propio monto — compute_fees() (fees.py) calcula los dos
+                  escenarios siempre que haya con qué, sin depender de una estrategia
+                  elegida. `exitStrategy` sigue en la BD (migración 049) por si sirve
+                  para otro uso, pero ya no tiene control aquí.
+
+                  Esta sección repite a propósito INVERSIÓN SIN COMISIONES, que ya
+                  vive en DATOS — la única excepción a «cada cifra vive en un solo
                   lugar» de la nota de arriba. Ahí es una regla real: DATOS es un
-                  resumen terso que se esconde cuando falta el insumo. Aquí el punto
-                  es justo lo contrario — el guion más el porqué NUNCA debe
-                  desaparecer, así que necesita su propia fila que no comparta la
-                  condición que oculta la de DATOS. */}
-              {/* Once filas apiladas se sentían muy largas (feedback en vivo del
-                  dueño del producto): en ancho se acomodan en dos columnas, con
-                  el mismo `narrow` que ya parte la página entera en dos (línea
-                  ~682) — no un breakpoint nuevo. En angosto siguen apiladas: el
-                  contenedor pierde el grid y cada EditableRow vuelve a ser un
-                  bloque normal, exactamente el layout de antes de este cambio.
+                  resumen terso. Aquí el cierre de la sección compara los dos
+                  escenarios lado a lado — ver más abajo. */}
+              {/* Ocho filas en dos columnas cuando el ancho lo permite, con el mismo
+                  `narrow` que ya parte la página entera en dos (línea ~682) — no un
+                  breakpoint nuevo. En angosto siguen apiladas. Cada fila usa
+                  `stacked` (feedback en vivo, segunda ronda): etiqueta+hint arriba,
+                  valor/input abajo, alineados a la izquierda — el renglón normal de
+                  `EditableRow` se amontona en media columna de grid. Por default
+                  sigue apagada — ningún otro renglón de la ficha cambió.
 
-                  El orden no es un auto-flow ciego: cada renglón del grid empareja
-                  algo que se lee junto. ESTRATEGIA DE SALIDA abre sola, a lo ancho
-                  — fija el contexto y no tiene una pareja %/$ con la que compartir
-                  renglón. Luego cada comisión va %/$ una junto a la otra. VENTA (%)
-                  y MESES DE RENTA nunca están las dos en pantalla — cuál se enseña
-                  lo decide ESTRATEGIA DE SALIDA, ver el comentario junto a esas
-                  filas — así que el grid nunca les reserva dos celdas propias:
-                  cualquiera de las dos que aparezca cae junto a lo que venga
-                  después, sin hueco. Ninguna tiene su propio $ aparte — el suyo
-                  sale combinado en COMISIÓN DE SALIDA ($), que por eso comparte
-                  renglón con TOTAL COMISIONES ($): las dos son totales en pesos,
-                  no un %. Por último, el par de INVERSIÓN cierra la sección. Cada
-                  una sigue con su propio `borderBottom`, que en dos columnas solo
-                  cubre su celda; es el patrón esperado, no algo que arreglar aquí.
-
-                  Layout apretado en vivo (segundo feedback del dueño del producto):
-                  el renglón normal de `EditableRow` — etiqueta a la izquierda, valor
-                  a la derecha con columna de ancho fijo — se amontona en media
-                  columna de grid. Cada fila de esta sección usa `stacked`, la
-                  variante nueva de `EditableRow`: etiqueta+hint arriba, valor/input
-                  abajo, los dos alineados a la izquierda, sin columna de ancho fijo.
-                  Por default sigue apagada — ningún otro renglón de la ficha cambió. */}
+                  El orden empareja %/$ de cada comisión, una comisión por renglón
+                  del grid: terreno, obra, venta, renta — simétrico, sin huecos ni
+                  filas que compartan renglón por necesidad. */}
               <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
-                {/* De qué camino saldrá exitFee: sin default (migración 049), así
-                    que sin badge CAPTURADO/SUPUESTO POR OMISIÓN — a diferencia de
-                    las cuatro comisiones de abajo, nadie lo asume por ti. */}
-                <div style={narrow ? undefined : { gridColumn: '1 / -1' }}>
-                  <EditableRow
-                    label="ESTRATEGIA DE SALIDA"
-                    editing={editing}
-                    value={EXIT_STRATEGY_LABEL[field('exitStrategy') ?? ''] ?? '—'}
-                    stacked
-                    onClear={p.exitStrategy != null ? () => clearField('exitStrategy') : undefined}
-                    input={
-                      <select
-                        value={field('exitStrategy') ?? ''}
-                        onChange={e => setField('exitStrategy', e.target.value === '' ? null : e.target.value as 'venta' | 'renta')}
-                        aria-label="ESTRATEGIA DE SALIDA"
-                        style={{ ...fieldInput, cursor: 'pointer' }}
-                      >
-                        <option value="">— sin definir —</option>
-                        {EXIT_STRATEGIES.map(t => <option key={t} value={t}>{EXIT_STRATEGY_LABEL[t]}</option>)}
-                      </select>
-                    }
-                  />
-                </div>
                 <EditableRow
                   label="COMISIÓN COMPRA TERRENO (%)"
                   editing={editing}
@@ -1096,64 +1049,50 @@ export function PropertyDetailPage() {
                   hint="% SOBRE OBRA A EJECUTAR"
                   stacked
                 />
-                {/* La comisión de venta y los meses de renta son las DOS entradas
-                    posibles de una sola comisión — la de salida — nunca las dos a
-                    la vez: cuál se enseña lo decide ESTRATEGIA DE SALIDA de arriba,
-                    no cuál tiene un valor. Sin estrategia elegida no se enseña
-                    ninguna — un % o unos meses para un camino que nadie escogió
-                    todavía no es un dato, es una pregunta sin hacer. */}
-                {field('exitStrategy') === 'venta' && (
-                  <EditableRow
-                    label="COMISIÓN VENTA (%)"
-                    editing={editing}
-                    value={fmtPct(exitSaleCommissionPct)}
-                    hint={assumptionHint('exitSaleCommissionPct')}
-                    stacked
-                    onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
-                    input={
-                      <NumericInput
-                        value={exitSaleCommissionPct != null ? exitSaleCommissionPct * 100 : undefined}
-                        onChange={n => setField('exitSaleCommissionPct', n != null ? n / 100 : undefined)}
-                        step={0.1}
-                        ariaLabel="COMISIÓN VENTA (%)"
-                        style={fieldInput}
-                      />
-                    }
-                  />
-                )}
-                {field('exitStrategy') === 'renta' && numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
+                <EditableRow
+                  label="COMISIÓN VENTA (%)"
+                  editing={editing}
+                  value={fmtPct(exitSaleCommissionPct)}
+                  hint={assumptionHint('exitSaleCommissionPct')}
+                  stacked
+                  onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
+                  input={
+                    <NumericInput
+                      value={exitSaleCommissionPct != null ? exitSaleCommissionPct * 100 : undefined}
+                      onChange={n => setField('exitSaleCommissionPct', n != null ? n / 100 : undefined)}
+                      step={0.1}
+                      ariaLabel="COMISIÓN VENTA (%)"
+                      style={fieldInput}
+                    />
+                  }
+                />
+                <EditableRow
+                  label="COMISIÓN VENTA ($)"
+                  editing={editing}
+                  value={p.exitFeeVenta != null ? fmtMXN(p.exitFeeVenta) : '—'}
+                  hint={exitFeeHint(p.exitFeeVenta, 'venta')}
+                  stacked
+                />
+                {numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
                   clearable: isCaptured('exitRentMonths') ? 'exitRentMonths' : undefined,
                   hint: assumptionHint('exitRentMonths'),
                   stacked: true,
                 })}
-                {/* Una sola fila para la comisión de salida: usa la que aplique según
-                    ESTRATEGIA DE SALIDA arriba (% sobre venta, o meses de renta), nunca
-                    las dos a la vez — exitFeeMode dice cuál corrió. Sin exitFee todavía
-                    se ve "—" con el porqué al lado: feesMissingInputs lo nombra, nunca
-                    se adivina. Ver `exitFeeHint` para el porqué del orden. */}
                 <EditableRow
-                  label="COMISIÓN DE SALIDA ($)"
+                  label="COMISIÓN RENTA ($)"
                   editing={editing}
-                  value={p.exitFee != null ? fmtMXN(p.exitFee) : '—'}
-                  hint={exitFeeHint(p)}
-                  stacked
-                />
-                <EditableRow
-                  label="TOTAL COMISIONES ($)"
-                  editing={editing}
-                  value={p.totalFees != null ? fmtMXN(p.totalFees) : '—'}
-                  hint="SUMA DE LAS TRES COMISIONES"
+                  value={p.exitFeeRenta != null ? fmtMXN(p.exitFeeRenta) : '—'}
+                  hint={exitFeeHint(p.exitFeeRenta, 'renta')}
                   stacked
                 />
               </div>
               {/* El cierre de la sección, no una celda más del grid (feedback en
-                  vivo del dueño del producto: entre once renglones chicos, el
-                  número que de verdad decide cuánto poner se perdía). SIN
-                  COMISIONES queda chico y secundario — ya se lee arriba, en
-                  DATOS — y CON COMISIONES es la cifra grande: es la respuesta a
-                  «cuánto entra de verdad», y por eso es la más grande de toda la
-                  sección, centrada, sin nada más compitiendo por la vista en su
-                  renglón. */}
+                  vivo del dueño del producto, dos rondas: primero que la cifra final
+                  se perdía entre once renglones chicos, luego que quería ver los dos
+                  escenarios —venta y renta— lado a lado, no uno elegido). SIN
+                  COMISIONES es una sola cifra —no depende de la salida— y va chica y
+                  centrada arriba; las dos CON COMISIONES son las cifras grandes,
+                  una por columna, sin nada más compitiendo por la vista. */}
               <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}`, textAlign: 'center' }}>
                 {/* `label` es un <span>, no un <div>: las pruebas ubican cada
                     cifra con `getByText(label).closest('div')`, que en un
@@ -1163,14 +1102,25 @@ export function PropertyDetailPage() {
                   <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN SIN COMISIONES</span>
                   <div style={{ fontFamily: fonts.serif, fontSize: '22px', color: colors.secondary, marginTop: '8px' }}>{fmtMXN(p.totalInvestment)}</div>
                 </div>
-                <div>
-                  <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN CON COMISIONES</span>
-                  <div style={{ fontFamily: fonts.serif, fontSize: '36px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
-                    {p.totalInvestmentWithFees != null ? fmtMXN(p.totalInvestmentWithFees) : '—'}
+                <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
+                  <div>
+                    <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN CON COMISIONES (VENTA)</span>
+                    <div style={{ fontFamily: fonts.serif, fontSize: '30px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
+                      {p.totalInvestmentWithFeesVenta != null ? fmtMXN(p.totalInvestmentWithFeesVenta) : '—'}
+                    </div>
+                    <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
+                      {p.totalInvestmentWithFeesVenta != null ? 'SIN COMISIONES + COMISIONES (VENTA)' : 'FALTA PRECIO DE VENTA (VER ARRIBA)'}
+                    </span>
                   </div>
-                  <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
-                    {p.totalInvestmentWithFees != null ? 'SIN COMISIONES + COMISIONES DEL FONDO' : 'FALTA COMISIÓN DE SALIDA (VER ARRIBA)'}
-                  </span>
+                  <div style={narrow ? { marginTop: '20px' } : undefined}>
+                    <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN CON COMISIONES (RENTA)</span>
+                    <div style={{ fontFamily: fonts.serif, fontSize: '30px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
+                      {p.totalInvestmentWithFeesRenta != null ? fmtMXN(p.totalInvestmentWithFeesRenta) : '—'}
+                    </div>
+                    <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
+                      {p.totalInvestmentWithFeesRenta != null ? 'SIN COMISIONES + COMISIONES (RENTA)' : 'FALTA RENTA MENSUAL (VER ARRIBA)'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
