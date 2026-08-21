@@ -51,8 +51,13 @@ const PROSPECTO = {
 const INVESTMENT = '$2,130,000'
 // 20,000 × 12 / 3,000,000 — the modelled rent over the projected sale
 const CAP_RATE = '8.0%'
-// (3,000,000 − 2,130,000) over the twelve modelled months
-const PROJECTED_ROI = '+40.8%'
+// projectedRoi/projectedRoiTotal divide by the investment WITH the venta exit
+// commission, not the bare INVESTMENT above: 2,130,000 + 100,000 (terreno,
+// 5% of 2,000,000) + 0 (obra, no construction budgeted) + 150,000 (salida,
+// 5% of the 3,000,000 projected sale) = 2,380,000. (3,000,000 − 2,380,000)
+// over the twelve modelled months (hold=12, so the annualized figure equals
+// the simple one).
+const PROJECTED_ROI = '+26.1%'
 
 test.describe('Ficha de propiedad — un prospecto', () => {
   let token: string
@@ -146,7 +151,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
 
     // La ganancia se imprime entera: monto y porcentaje son la misma cifra en dos
     // unidades. Aquí la sube el héroe, así que ahí va completa.
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText(`$870,000 ${PROJECTED_ROI}`)
+    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText(`$620,000 ${PROJECTED_ROI}`)
 
     // Y lo que queda en la sección es lo que el héroe no subió
     await expect(page.getByText('PROYECCIÓN', { exact: true })).toBeVisible()

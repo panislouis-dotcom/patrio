@@ -86,9 +86,11 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await gotoProperty(page, id)
 
     await expect(detailRow(page, 'ETAPA')).toContainText('PROSPECTO')
-    // 7,000,000 out of a 4,000,000 basis over the twenty-four modelled months
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+32.3%')
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('+75.0%')
+    // 7,000,000 out of a 4,550,000 basis WITH the venta exit commission
+    // (4,000,000 + 200,000 terreno + 0 obra + 350,000 salida), over the
+    // twenty-four modelled months
+    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+24.0%')
+    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('+53.8%')
     await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(/Score \d+/)
     // Nothing has been bought, so there is no result to report
     await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
@@ -190,11 +192,11 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // hoy. (Que la marca lo desplace cuando alguien sí valúa es el test que
     // sigue.)
     await expect(page.getByText('GANANCIA NO REALIZADA')).toHaveCount(0)
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+32.3%')
+    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+24.0%')
 
     // The projection it was bought on stays readable — it is what reality is
     // measured against, and in later steps you see everything from before
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$3,000,000')
+    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$2,450,000')
     // Works can be tracked on a building that is yours
     await expect(page.getByText('TAREAS', { exact: true })).toBeVisible()
 
@@ -297,10 +299,12 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // A sold asset is a closed fact, not a live mark: la marca se apaga…
     await expect(page.getByText('GANANCIA NO REALIZADA')).toHaveCount(0)
     // …pero el plan NO. Es el par que el modelo promete, y se apagaba justo
-    // cuando se volvía comprobable: se proyectaron 3,000,000 de ganancia y se
-    // realizaron 3,000,000, y las dos cifras tienen que poder leerse juntas.
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$3,000,000')
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('32.3%')
+    // cuando se volvía comprobable: se proyectaron 2,450,000 (con comisión de
+    // salida) y se realizaron 3,000,000 (realizedGain no la lleva) — números
+    // distintos aunque la venta cerró exactamente en lo proyectado, y las dos
+    // cifras tienen que poder leerse juntas de todos modos.
+    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$2,450,000')
+    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('24.0%')
 
     // Terminal: a sale is the firm's track record, and it is not filed away
     await expect(page.getByRole('button', { name: 'AVANZAR A ▸' })).toHaveCount(0)
@@ -441,10 +445,14 @@ test.describe.serial('Archivar una propiedad', () => {
     await expect(page.getByRole('button', { name: 'AVANZAR A ▸' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'ARCHIVAR' })).toHaveCount(0)
 
-    // Y conserva lo que tenía: 1,200,000 de venta proyectada sobre una base de
-    // 1,065,000 (1,000,000 más el 6.5% de costos de adquisición supuesto).
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+12.7%')
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$135,000')
+    // Y conserva lo que tenía: 1,200,000 de venta proyectada sobre una base
+    // CON comisiones de venta de 1,175,000 (1,065,000 de inversión —
+    // 1,000,000 más el 6.5% de costos de adquisición supuesto— + 50,000 de
+    // terreno + 0 de obra + 60,000 de salida, 5% de la venta proyectada). El
+    // plazo supuesto (hold_months, default 12) hace que lo anualizado y lo
+    // simple coincidan.
+    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+2.1%')
+    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$25,000')
     await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('$1,065,000')
   })
 
