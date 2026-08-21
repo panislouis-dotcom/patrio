@@ -355,19 +355,35 @@ def test_opportunity_detail_shows_only_the_budget_section():
     assert "<svg" not in html
 
 
-def test_the_budget_flows_with_the_renders_not_its_own_page():
-    """Pedido de Louis: sin el plano técnico y con los renders arriba, la hoja de
-    detalle queda ~70% libre y un presupuesto de obra típico (corto) cabe ahí.
-    Ya NO se fuerza a su propia página — fluye como cualquier otra sección; si
-    uno muy largo no cupiera, Chromium brinca solo (sin partir renglones)."""
+def test_the_budget_forces_its_own_page_after_plano_or_renders():
+    """Pedido explícito: plano/renders y presupuesto quedan cada uno en su
+    hoja. Un presupuesto real (datos de producción) resultó más largo de lo
+    que la premisa anterior asumía ("un presupuesto típico es corto y cabe en
+    lo que dejan los renders") y arrancaba a media hoja de planos para
+    cortarse ahí — `.detail-section-budget` fuerza el salto quo lo evita."""
+    p = {**BASE_PROPERTY, "planSheets": [_sheet("abc", "original", "<svg>PLANO</svg>")],
+         "budget": {
+             "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
+             "chapters": ["Otros"],
+         }}
+    html = _opportunity_detail(p)
+    assert "Presupuesto de obra" in html
+    assert 'class="detail-section detail-section-budget"' in html
+    assert ".detail-section-budget" in _BODY_CSS
+    rule = re.search(r"\.detail-section-budget \{[^}]*\}", _BODY_CSS).group()
+    assert "break-before: page" in rule
+
+
+def test_the_budget_does_not_force_a_page_without_plano_or_renders_before_it():
+    """Sin plano ni renders no hay nada de qué separar el presupuesto — forzar
+    el salto ahí sería una hoja en blanco sin razón."""
     p = {**BASE_PROPERTY, "budget": {
         "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
         "chapters": ["Otros"],
     }}
     html = _opportunity_detail(p)
     assert "Presupuesto de obra" in html
-    assert "detail-section-budget" not in html     # sin salto de página forzado
-    assert ".detail-section-budget" not in _BODY_CSS  # la regla que lo forzaba se retiró
+    assert "detail-section-budget" not in html
 
 
 def test_opportunity_detail_flows_right_after_the_gallery_not_a_new_page():

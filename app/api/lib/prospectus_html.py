@@ -222,10 +222,13 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    una hoja, plano/renders igual brincaban a la siguiente por ese salto
    forzado, sin importar cuánta hoja quedara libre debajo. Fusionar todo en
    una sola page-block dejó que Chromium sólo pase de hoja cuando de veras se
-   le acaba el espacio, así que plano/renders/presupuesto ahora continúan
-   donde el contenido anterior los deja. Cada fragmento sigue midiendo lo que
-   su contenido pide; .page-block sigue heredando overflow:hidden, y sin
-   height fija en .opp no hay nada que esconder. */
+   le acaba el espacio, así que plano/renders continúan donde el contenido
+   anterior los deja. Cada fragmento sigue midiendo lo que su contenido pide;
+   .page-block sigue heredando overflow:hidden, y sin height fija en .opp no
+   hay nada que esconder. El presupuesto es la única excepción deliberada:
+   `.detail-section-budget` (más abajo) le fuerza su propio salto, sin volver
+   a envolverlo en una page-block completa — el mismo bug que este párrafo
+   describe, en miniatura, es justo lo que ese wrapper habría reintroducido. */
 .opp .hero { width: 100%; height: 78mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
 /* box-decoration-break:clone — sin esto, el padding de .opp-body (lo único
    que separa su contenido del borde de la hoja, porque @page no tiene
@@ -281,12 +284,12 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    plano (abajo), que sí son unidades visuales que no deben cortarse. */
 .detail-section { margin-bottom: 8mm; }
 .detail-section:last-child { margin-bottom: 0; }
-/* El presupuesto YA NO fuerza su propia hoja (pedido de Louis): sin el plano
-   técnico y con los renders arriba, la hoja de detalle queda ~70% libre y un
-   presupuesto de obra típico (corto) cabe de sobra ahí — mandarlo a una hoja
-   nueva dejaba media hoja en blanco. Ahora fluye después de los renders como
-   cualquier otra sección; si algún día uno muy largo no cupiera, Chromium
-   brinca solo, sin partir renglones (break-inside:avoid en table.kv tr). */
+/* El presupuesto SÍ fuerza su propia hoja cuando hay plano/renders antes —
+   pedido explícito. Vivió sin este salto un tiempo (la premisa era que un
+   presupuesto típico es corto y cabe en lo que dejan los renders), pero un
+   presupuesto real, con los datos de producción, resultó más largo de lo que
+   esa premisa asumía: arrancaba a media hoja de planos y se cortaba ahí. */
+.detail-section-budget { break-before: page; page-break-before: always; }
 
 /* ══ Plano junto a su render ══════════════════════════════════════════════ */
 .plan-row { margin: 0 0 7mm 0; break-inside: avoid; }
@@ -295,22 +298,24 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
                    text-transform: uppercase; color: #7A7A7A; margin-bottom: 1.5mm; }
 .plan-pair { display: flex; gap: 4mm; align-items: flex-start; }
 .plan-sheet { flex: 1 1 50%; min-width: 0; }
-/* 110mm, no 165: con 165mm cada piso ocupaba solo su columna de ~83mm de ancho pero
-   ~171mm de alto de fila — más de la mitad de una A4 (297mm) — así que nunca cabían
-   2 pisos en la misma página. Medido con el arnés real de Chromium contra los 4 pisos
-   reales de las propiedades 5 y 10 (viewBox más angosto: alto/ancho 2.02): a 110mm dos
-   filas miden ~232mm juntas —caben en la página— y el plano dibujado sigue midiendo
-   ~55-60mm de ancho visible. Not 85mm: ahí el ancho visible cae a ~42-46mm, medido
-   ilegible en un PDF real (cotas y m² encimados) — 110mm es el primer escalón donde
-   caben 2 por página sin repetir ese problema. */
-.plan-sheet svg { width: 100%; height: auto; max-height: 110mm; }
+/* 110mm fue el tope mientras el presupuesto todavía podía compartir esta misma
+   hoja debajo de los planos (ver .detail-section-budget), y mientras dos pisos
+   tenían que caber juntos en una sola A4 (297mm) para no dejar uno varado en su
+   propia hoja casi en blanco — las dos razones de por qué era chico. Ahora que
+   el presupuesto SIEMPRE arranca en su propia hoja Y que `.plan-row {
+   break-inside: avoid }` manda cada piso que no quepa a SU PROPIA hoja en vez de
+   partirlo, las dos presiones que lo achicaban desaparecieron: un plano —sobre
+   todo uno angosto y alto, el caso peor— puede crecer hasta casi llenar su
+   propia página. 250mm, pedido explícito: un piso solo en su hoja se lee grande
+   y legible en vez de una miniatura con media hoja en blanco alrededor. */
+.plan-sheet svg { width: 100%; height: auto; max-height: 250mm; }
 /* `_photo_block` mete una FOTO (etiqueta img) en este mismo hueco — antes solo lo
    llenaba un plano en SVG, que ya trae su propia proporción en el viewBox. Una
    imagen sin ancho ni alto explícitos se dibuja a su tamaño de píxeles real (miles
    de px de una foto de cámara) dentro de un flex angosto: el layout la desborda y
    no se ve nada. Mismo tope que la regla vecina de SVG, con object-fit porque, a
    diferencia del plano, una foto sí puede desbordar su caja en cualquier proporción. */
-.plan-sheet img { width: 100%; height: auto; max-height: 110mm; object-fit: contain; }
+.plan-sheet img { width: 100%; height: auto; max-height: 250mm; object-fit: contain; }
 /* El plano trae su nombre de piso DIBUJADO dentro del propio SVG (floorToSvg — el
    mismo que usa el botón ↓ SVG del editor, no se toca aquí para no cambiarle la
    descarga) — el margen que le hace lugar a ese título es ~8.5% de su alto, medido
@@ -329,8 +334,12 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 /* 78mm × 2 + hueco ≈ el alto del plano de al lado: la pareja se lee como una banda,
    no como una columna corta junto a una torre de imágenes. */
 .plan-renders img { width: 100%; height: auto; max-height: 78mm; object-fit: contain; }
-/* Una hoja sin render no debe estirarse a media página: sin pareja se queda a su ancho. */
-.plan-pair > .plan-sheet:only-child { flex: 0 0 62%; }
+/* Una hoja sin render no debe estirarse a TODA la página — sin pareja se queda a
+   su propio ancho, más generoso que el 50% que comparte con un render (78%,
+   subido junto con el max-height de arriba: un piso angosto y alto solo llegaba
+   a la mitad de un 62% aun con más alto disponible, height seguía siendo lo que
+   lo topaba primero). */
+.plan-pair > .plan-sheet:only-child { flex: 0 0 78%; }
 
 /* ══ CLOSING ═════════════════════════════════════════════════════════════ */
 .closing { height: 297mm; background: var(--green); color: #fff; padding: 30mm var(--pad);
@@ -1103,7 +1112,10 @@ def _opportunity_detail(p: dict) -> str:
     blanco: plano/renders/presupuesto brincaban a la siguiente por el
     page-break-after:always de su propia page-block sin importar cuánta hoja
     quedara libre. Sin ese salto forzado, Chromium solo pasa de página cuando
-    de verdad se le acaba el espacio.
+    de verdad se le acaba el espacio — con una excepción deliberada: el
+    presupuesto SÍ fuerza su propio salto (`.detail-section-budget`, ver más
+    abajo), pedido explícito para que plano/renders y presupuesto queden cada
+    uno en su hoja.
 
     Los renders son la cabeza de cada cadena (`renderHeads`, una por línea, la
     propuesta vigente de cada idea, sin pasos intermedios) — INCLUIDOS los
@@ -1138,10 +1150,17 @@ def _opportunity_detail(p: dict) -> str:
         # esperando a los que no se eligieron.
         f'<div class="detail-section"><div class="col-label">Fotos y propuesta</div>{photos_html}</div>'
         if photos_html else "",
-        # El presupuesto fluye después de los renders, en la misma hoja (pedido
-        # de Louis): un presupuesto de obra típico es corto y cabe en el ~70% de
-        # hoja que dejan los renders. Ya no fuerza su propia página.
-        f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
+        # El presupuesto arranca en su PROPIA hoja cuando hay plano/renders
+        # antes — pedido explícito, revierte la decisión anterior ("un
+        # presupuesto típico es corto y cabe en lo que dejan los renders"):
+        # el presupuesto real, con los datos de producción, resultó más largo
+        # de lo que esa premisa asumía, y arrancaba a media hoja de planos
+        # para luego cortarse. `.detail-section-budget` (CSS) fuerza el salto.
+        # Sin plano ni renders no hay nada de qué separarlo, así que no lo
+        # fuerza: sería una hoja en blanco antes del presupuesto sin razón.
+        (f'<div class="detail-section detail-section-budget"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
+         if (plan_html or photos_html) else
+         f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>')
         if budget_html else "",
     ])
     return f'<div class="opp-detail">{sections}</div>'
