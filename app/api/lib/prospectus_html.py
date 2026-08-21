@@ -218,14 +218,14 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    presupuesto) ya no es su propia page-block: el salto de página real no
    venía del alto de .opp ni de flex vs. bloque — venía de que .page-block
    trae page-break-after:always, y .opp-detail ERA una page-block propia.
-   Cuando la nota se quedaba a la mitad de una hoja, plano/renders igual
-   brincaban a la siguiente por ese salto forzado, sin importar cuánta hoja
-   quedara libre debajo de la nota. Fusionar todo en una sola page-block dejó
-   que Chromium sólo pase de hoja cuando de veras se le acaba el espacio, así
-   que plano/renders/presupuesto ahora continúan donde la nota los deja. Cada
-   fragmento sigue midiendo lo que su contenido pide; .page-block sigue
-   heredando overflow:hidden, y sin height fija en .opp no hay nada que
-   esconder. */
+   Cuando la galería o el desglose de comisiones se quedaban a la mitad de
+   una hoja, plano/renders igual brincaban a la siguiente por ese salto
+   forzado, sin importar cuánta hoja quedara libre debajo. Fusionar todo en
+   una sola page-block dejó que Chromium sólo pase de hoja cuando de veras se
+   le acaba el espacio, así que plano/renders/presupuesto ahora continúan
+   donde el contenido anterior los deja. Cada fragmento sigue midiendo lo que
+   su contenido pide; .page-block sigue heredando overflow:hidden, y sin
+   height fija en .opp no hay nada que esconder. */
 .opp .hero { width: 100%; height: 78mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
 /* box-decoration-break:clone — sin esto, el padding de .opp-body (lo único
    que separa su contenido del borde de la hoja, porque @page no tiene
@@ -234,8 +234,8 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    comprobado con una sonda propia: sin clone, el marcador de prueba
    aterrizaba a 3.8mm del borde; con clone, a ~19mm, igual que si esa hoja
    tuviera su propio padding completo. Es el mismo bug de contenido pegado
-   al filo que .opp arregló para las fotos y la nota, aquí aplicado al
-   padding de página que las envuelve a todas. */
+   al filo que .opp ya arregló para las fotos, aquí aplicado al padding de
+   página que las envuelve a todas. */
 .opp-body { padding: 8mm var(--pad) 7mm;
             -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .opp .metrics { margin-bottom: 7mm; break-inside: avoid; page-break-inside: avoid; }
@@ -254,20 +254,6 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .opp .metrics-6 .metric .v { font-size: 13pt; }
 .opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
             break-inside: avoid; page-break-inside: avoid; }
-/* Sin break-inside:avoid a propósito: una nota es prosa, no una foto ni una
-   tabla — que envuelva y siga en la página siguiente como cualquier párrafo
-   de un libro es normal. Forzarla entera a la página siguiente era parte de
-   lo que la dejaba varada, sola, en una hoja casi en blanco.
-   white-space:pre-line respeta los saltos de párrafo que quien escribió la
-   nota de verdad tecleó — por default el HTML los colapsa a un solo espacio
-   y una nota de tres párrafos se imprime como un solo bloque de texto.
-   overflow-wrap:anywhere evita que una URL o un token sin espacios se salga
-   del ancho de la nota (y de la hoja): sin esto no hay dónde partir la
-   palabra y .page-block la recorta en silencio contra el borde. */
-.opp-note { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec);
-            font-style: italic; line-height: 1.55; border-left: 2px solid var(--terra);
-            padding-left: 10px; margin-top: 8mm;
-            white-space: pre-line; overflow-wrap: anywhere; }
 .opp .strip { margin-top: 6mm; }
 /* Techo, no piso: con dos o más fotos aspect-ratio ya las deja bajo este
    alto sin ayuda (170mm entre 2 ya da ~63mm) — este límite solo cubre filas
@@ -1076,8 +1062,6 @@ def _opportunity(p: dict) -> str:
     images = _imgs_by_type(p.get("images", []))
     hero = f'<img class="hero" src="{images[0]["dataUri"]}" alt="">' if images else ""
     strip = _strip(images[1:], "Galería", 4) if len(images) > 1 else ""
-    notes = _esc(p.get("notes", ""))
-    note_html = f'<div class="opp-note">{notes}</div>' if notes else ""
     detail_html = _opportunity_detail(p)
 
     return f"""<div class="page-block opp">
@@ -1095,7 +1079,6 @@ def _opportunity(p: dict) -> str:
     <div class="metrics metrics-6">{_opportunity_fees_metrics(p)}</div>
     <div class="metrics metrics-5">{metrics}</div>
     {strip}
-    {note_html}
     {detail_html}
   </div>
 </div>"""
@@ -1114,14 +1097,13 @@ def _opportunity_detail(p: dict) -> str:
     puertas. Se empareja por piso y variante (`_plan_rows`), y cada hoja se
     imprime al lado de sus propios renders, no en una sección aparte.
 
-    Vive en el mismo flujo que la tarjeta principal, justo después de la nota
-    — ya no en su propia page-block. Forzar un salto de página aquí, sin
-    importar cuánta hoja quedara libre tras la nota, era lo que dejaba una
-    cola de dos líneas sola arriba de una hoja casi en blanco: cuando la nota
-    terminaba a la mitad de una página, plano/renders/presupuesto de todos
-    modos brincaban a la siguiente por el page-break-after:always de su
-    propia page-block. Sin ese salto forzado, Chromium solo pasa de página
-    cuando de verdad se le acaba el espacio.
+    Vive en el mismo flujo que la tarjeta principal, justo después de la
+    galería — ya no en su propia page-block. Forzar un salto de página aquí
+    era lo que dejaba una cola de dos líneas sola arriba de una hoja casi en
+    blanco: plano/renders/presupuesto brincaban a la siguiente por el
+    page-break-after:always de su propia page-block sin importar cuánta hoja
+    quedara libre. Sin ese salto forzado, Chromium solo pasa de página cuando
+    de verdad se le acaba el espacio.
 
     Los renders son la cabeza de cada cadena (`renderHeads`, una por línea, la
     propuesta vigente de cada idea, sin pasos intermedios) — INCLUIDOS los

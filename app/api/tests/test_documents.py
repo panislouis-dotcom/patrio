@@ -571,9 +571,9 @@ def test_prospectus_has_no_companion_section_without_plano_or_budget_beyond_resi
     información real (el estimado grueso), no un placeholder. Esta prueba
     documenta esa expectativa en vez de asumir lo contrario.
 
-    Ya no es una página propia (ver test_opportunity_detail_flows_right_after_the_note_not_a_new_page
+    Ya no es una página propia (ver test_opportunity_detail_flows_right_after_the_gallery_not_a_new_page
     en test_prospectus_html.py) — vive en el mismo flujo que `_opportunity`,
-    justo después de la nota. Los renders NO son parte de esta sección —
+    justo después de la galería. Los renders NO son parte de esta sección —
     viven en `_opportunity`, vía `renderHeads`
     (ver test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo)."""
     p = get_property(test_property["id"])

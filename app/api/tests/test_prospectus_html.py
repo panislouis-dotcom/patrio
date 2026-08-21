@@ -370,22 +370,21 @@ def test_the_budget_flows_with_the_renders_not_its_own_page():
     assert ".detail-section-budget" not in _BODY_CSS  # la regla que lo forzaba se retiró
 
 
-def test_opportunity_detail_flows_right_after_the_note_not_a_new_page():
+def test_opportunity_detail_flows_right_after_the_gallery_not_a_new_page():
     """Plano, renders y presupuesto solían vivir en su PROPIA page-block —
     page-break-after:always forzaba un salto de hoja sin importar cuánta
-    quedara libre bajo la nota, dejando su cola sola arriba de una página
-    casi en blanco. Ahora comparten la page-block de _opportunity, después de
-    la nota: Chromium solo brinca de página cuando de veras se le acaba el
-    espacio."""
+    quedara libre, dejando su cola sola arriba de una página casi en blanco.
+    Ahora comparten la page-block de _opportunity: Chromium solo brinca de
+    página cuando de veras se le acaba el espacio."""
     # El detalle ahora se dispara con presupuesto (o renders), no con el plano
     # técnico, que ya no se dibuja.
     p = {**BASE_PROPERTY, "budget": {
         "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
         "chapters": ["Otros"],
-    }, "notes": "Nota de prueba."}
+    }}
     html = _opportunity(p)
     assert html.count("page-block") == 1
-    assert html.index('class="opp-note"') < html.index('class="opp-detail"')
+    assert html.index('class="opp-cols"') < html.index('class="opp-detail"')
 
 
 def test_the_opportunity_card_does_not_hard_clip_overflow():
@@ -398,15 +397,6 @@ def test_the_opportunity_card_does_not_hard_clip_overflow():
     rule = re.search(r"\.opp-body \{[^}]*\}", _BODY_CSS).group()
     assert "height" not in rule
     assert "flex" not in rule
-
-
-def test_the_opportunity_note_is_prose_not_a_rigid_block():
-    """Un párrafo de nota puede envolver y seguir en la página siguiente como
-    cualquier texto de un libro — forzarlo entero a saltar de página (como sí
-    debe hacer una fila de fotos o una tabla) era lo que lo dejaba varado
-    solo en una hoja casi en blanco."""
-    rule = re.search(r"\.opp-note \{[^}]*\}", _BODY_CSS).group()
-    assert "break-inside" not in rule
 
 
 # ---------------------------------------------------------------------------
