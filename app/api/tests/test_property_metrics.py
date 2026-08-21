@@ -18,7 +18,7 @@ from .conftest import _delete_property
 
 # El expediente. Sin ventana: aparece cuando sus insumos están, en la etapa que sea.
 RECORD = ("acquisitionCosts", "acquisitionTotal", "constructionBudgeted",
-          "constructionCostPerSqm", "investmentPerSqm",
+          "constructionCostPerSqm",
           "projectedProfit", "projectedRoi", "projectedRoiTotal", "capRate", "rentAnnual")
 # El yield de la renta COBRADA. Va aparte porque su insumo aparece más tarde: una
 # propiedad en desarrollo tiene todo el resto del expediente y no tiene esto.
@@ -59,7 +59,12 @@ def test_prospecto_projects_and_has_realized_nothing(client, test_property):
 
 def test_projection_matches_the_underwriting_engine(client, test_property):
     """The API's projection is finance.underwriting of the same inputs — the
-    parity oracle that keeps the two from drifting."""
+    parity oracle that keeps the two from drifting.
+
+    projectedProfit/projectedRoi/projectedRoiTotal are the deliberate exception
+    (properties_db.py, ver el encabezado del archivo): dividen entre la
+    inversión CON comisiones de venta, no la del engine crudo — así que se
+    verifican aparte, contra esa base, en vez de en este lazo de paridad."""
     p = _get(client, test_property["id"])
     inputs = {
         "purchase_price": 1_000_000, "acquisition_cost_pct": 0.065, "permits_cost": 50_000,
@@ -74,20 +79,27 @@ def test_projection_matches_the_underwriting_engine(client, test_property):
     assert Decimal(str(p["constructionBudgeted"])) == Decimal("2340000")
     for camel, snake in [
         ("totalInvestment", "total_investment"), ("acquisitionCosts", "acquisition_costs"),
-        ("acquisitionTotal", "acquisition_total"), ("projectedProfit", "profit"),
-        ("projectedRoi", "roi"), ("projectedRoiTotal", "roi_total"), ("capRate", "cap_rate"),
-        ("investmentPerSqm", "investment_per_sqm"), ("rentAnnual", "rent_annual"),
+        ("acquisitionTotal", "acquisition_total"), ("capRate", "cap_rate"),
+        ("rentAnnual", "rent_annual"),
     ]:
         assert Decimal(str(p[camel])) == expected[snake], camel
+    # 3,480,000 de inversión + 526,000 de comisiones (terreno 50,000 + obra
+    # 351,000 + salida·venta 125,000 = 5% de 2,500,000) = 4,006,000.
+    assert Decimal(str(p["projectedProfit"])) == Decimal("-1506000")
+    assert Decimal(str(p["projectedRoiTotal"])) == Decimal("-0.3759")
+    assert Decimal(str(p["projectedRoi"])) == Decimal("-0.2697")
 
 
-def test_purchase_and_sale_per_sqm_are_gone_the_ficha_was_their_only_reader(client, test_property):
-    """`investmentPerSqm` se queda —lo sigue leyendo el PDF del prospecto—
-    pero estos dos no tenían más lector que la sección MÉTRICAS que se quitó."""
+def test_purchase_sale_and_investment_per_sqm_are_all_gone_they_ran_out_of_readers(client, test_property):
+    """`purchasePricePerSqm` y `salePerSqm` no tenían más lector que la sección
+    MÉTRICAS de la ficha, que se quitó. `investmentPerSqm` sobrevivió más —el
+    PDF del prospecto lo leía en su columna "Financieros"— pero perdió a ese
+    último lector también (pedido explícito), así que ahora los tres están
+    fuera del contrato."""
     p = _get(client, test_property["id"])
     assert "purchasePricePerSqm" not in p
     assert "salePerSqm" not in p
-    assert "investmentPerSqm" in p
+    assert "investmentPerSqm" not in p
 
 
 def test_no_modeled_sale_means_no_projected_gain(client, test_property):
@@ -109,6 +121,25 @@ def test_rent_absent_means_no_yield_never_zero(client, test_property):
     assert p["rentMonthlyProjected"] is None
     assert p["capRate"] is None
     assert p["rentAnnual"] is None
+    assert p["paybackMonths"] is None
+    assert p["yieldOnCost"] is None
+
+
+def test_payback_months_is_investment_with_fees_over_monthly_rent(client, test_property):
+    """4,006,000 de inversión con comisiones de venta (3,480,000 + 526,000:
+    terreno 50,000, obra 351,000, salida·venta 125,000) / 18,000 de renta
+    mensual = 222.55…, redondeado a 223."""
+    p = _get(client, test_property["id"])
+    assert p["paybackMonths"] == 223
+
+
+def test_yield_on_cost_is_annual_rent_over_investment_with_fees_not_cap_rate(client, test_property):
+    """216,000 de renta anual estimada / 4,006,000 de inversión con comisiones
+    de venta = 0.0539 — distinto de capRate, que divide esa misma renta entre
+    2,500,000 de venta proyectada."""
+    p = _get(client, test_property["id"])
+    assert Decimal(str(p["yieldOnCost"])) == Decimal("0.0539")
+    assert p["yieldOnCost"] != p["capRate"]
 
 
 # ── Investment basis ─────────────────────────────────────────────────────────
@@ -129,9 +160,6 @@ def test_clearing_one_cost_subtracts_it_instead_of_breaking_the_basis(client, te
                 json={"fields": ["permitsCost"]})
     p = _get(client, test_property["id"])
     assert Decimal(str(p["totalInvestment"])) == Decimal("3430000")
-    # …y toda cifra que divide entre la base la sigue, en vez de reportar un
-    # total de una fuente y un por-m² de otra. 3,430,000 / 300 m² = 11,433.33.
-    assert Decimal(str(p["investmentPerSqm"])) == Decimal("11433.33")
 
 
 def test_an_all_in_total_is_captured_as_a_purchase_price(client, test_property):
@@ -160,7 +188,6 @@ def test_an_empty_cost_stack_is_no_basis_at_all(client, test_property):
     p = _get(client, test_property["id"])
     assert p["totalInvestment"] is None
     assert p["projectedProfit"] is None
-    assert p["investmentPerSqm"] is None
 
 
 # ── Realized ─────────────────────────────────────────────────────────────────
@@ -226,10 +253,10 @@ def test_en_renta_keeps_projecting_and_marking(client, desarrollo_property):
     assert _all_present(p, MARK + RECORD_RENT)
     assert _all_none(p, EXIT)
     # La proyección sigue contestando por la renta estimada (18,000/mes)…
-    assert Decimal(str(p["capRate"])) == Decimal("0.0621")   # 216,000 / 3,480,000
+    assert Decimal(str(p["capRate"])) == Decimal("0.0864")   # 216,000 / 2,500,000
     # …y el realizado por la cobrada (20,000/mes), sin que una pise a la otra.
     assert Decimal(str(p["rentMonthlyProjected"])) == Decimal("18000")
-    assert Decimal(str(p["capRateActual"])) == Decimal("0.069")  # 240,000 / 3,480,000
+    assert Decimal(str(p["capRateActual"])) == Decimal("0.0571")  # 240,000 / 4,200,000 (valuación, no venta)
 
 
 def test_the_hold_freezes_at_the_first_rent(client, desarrollo_property):
@@ -274,15 +301,22 @@ def test_the_projection_survives_the_sale_so_the_pair_can_be_read(client, desarr
     momento exacto en que se volvía comprobable — y con ella se iba la única
     forma de contestar «¿le atinamos?».
 
-    Se proyectaron 2,500,000 sobre una base de 3,480,000 y se vendió en
-    5,000,000: el plan perdía 980,000 y la venta ganó 1,520,000. Los dos números
-    tienen que estar en la misma respuesta."""
+    Se proyectaron 2,500,000 sobre una base de 4,006,000 (3,480,000 de
+    inversión + 526,000 de comisiones de venta) y se vendió en 5,000,000: el
+    plan perdía 1,506,000 y la venta ganó 1,520,000 (esta última SIN
+    comisiones — realizedGain no las lleva, ver el encabezado del archivo).
+    Los dos números tienen que estar en la misma respuesta."""
     p = _advance(client, desarrollo_property["id"], to="vendida",
                  saleDate="2026-07", salePrice=5_000_000)
     assert _all_present(p, RECORD)
-    assert Decimal(str(p["projectedProfit"])) == Decimal("-980000")
-    assert Decimal(str(p["projectedRoiTotal"])) == Decimal("-0.2816")
+    assert Decimal(str(p["projectedProfit"])) == Decimal("-1506000")
+    assert Decimal(str(p["projectedRoiTotal"])) == Decimal("-0.3759")
     assert Decimal(str(p["realizedGain"])) == Decimal("1520000")
+    # yieldOnCost divide por la misma base congelada que projectedProfit — no
+    # se mueve porque la propiedad se vendió en 5,000,000 en vez de los
+    # 2,500,000 proyectados: 216,000 / 4,006,000, la misma cifra de antes de
+    # vender.
+    assert Decimal(str(p["yieldOnCost"])) == Decimal("0.0539")
 
 
 def test_the_breakdown_of_a_sold_property_adds_up_to_its_own_total(client, desarrollo_property):

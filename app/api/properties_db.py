@@ -39,6 +39,14 @@ pairs the firm cares about (projectedProfit ↔ realizedGain, projectedRoi ↔
 realizedRoi, capRate ↔ capRateActual) are symmetric by construction rather than
 by coincidence, and both halves of every pair are readable at once.
 
+projectedProfit/projectedRoiTotal/projectedRoi are the one exception, and on
+purpose: they divide by totalInvestmentWithFeesVenta (fees.py), not the bare
+cost stack — pedido explícito, para que "lo que se proyecta ganar" ya cuente
+la comisión de salida que la venta modelada cobraría, en vez de un profit
+inflado que nadie se embolsa así. unrealizedGain/roi and realizedGain/
+realizedRoi still divide by the bare `basis`: la marca y lo realizado no
+llevan comisión de salida hasta que de verdad hay una salida que cobrarla.
+
 Each annualized return closes its clock on the date of its own numerator: the
 exit on sale_date, the mark on valuation_date. An annualized figure whose
 numerator is months older than its denominator falls a little every month
@@ -58,7 +66,7 @@ from api.checks import run_checks, stage_requirements
 from api.db import get_db, _camel_to_snake, _row_to_dict, _snake_to_camel
 from api.finance import fees, underwriting
 from api.finance.analysis import months_between, parse_date, roi_cagr
-from api.finance.quantize import frac4, money, money0, to_decimal
+from api.finance.quantize import frac4, money0, to_decimal
 
 
 # ─── Lifecycle vocabulary ─────────────────────────────────────────────────────
@@ -397,11 +405,11 @@ _RECORD_KEYS = (
     # Derivada, no capturada: presupuesto ÷ metraje. Se publica para mostrarse y
     # nada la vuelve a leer para calcular dinero.
     "constructionCostPerSqm",
-    # `purchasePricePerSqm` y `salePerSqm` no sobrevivieron: la ficha era su
-    # único lector y dejó de mostrarlos. `investmentPerSqm` sí se queda —lo
-    # sigue leyendo el prospecto en PDF (prospectus_html.py)— aunque la ficha
-    # ya no lo enseñe.
-    "investmentPerSqm",
+    # `purchasePricePerSqm`, `salePerSqm` e `investmentPerSqm` no sobrevivieron:
+    # la ficha fue la primera en dejar de mostrar los dos primeros, y el
+    # prospecto en PDF —su último lector— dejó de mostrar el tercero
+    # (`_opportunity()` en prospectus_html.py, pedido explícito: "Financieros"
+    # no necesitaba esa fila).
     "projectedProfit", "projectedRoi", "projectedRoiTotal",
     "capRate", "rentAnnual", "capRateActual", "rentAnnualActual",
 )
@@ -422,15 +430,6 @@ METRIC_KEYS = _RECORD_KEYS + _MARK_KEYS + _EXIT_KEYS + _ASSUMPTION_KEYS + (
 def _cagr(basis, exit_value, months) -> Decimal | None:
     annual = roi_cagr(basis, exit_value, months)
     return frac4(annual) if annual is not None else None
-
-
-def _per_sqm(amount, sqm_land) -> Decimal | None:
-    """Unit price over the capital base, None when there is no base to divide.
-    underwriting.metrics() divides its own raw cost stack, which is a Decimal 0
-    where nothing was captured; this one divides the resolved base, so a
-    property with nothing captured reports «—» here instead of $0/m²."""
-    sqm = to_decimal(sqm_land)
-    return money(to_decimal(amount) / sqm) if (amount is not None and sqm > 0) else None
 
 
 def hold_months_actual(row: dict) -> int | None:
@@ -537,20 +536,57 @@ def metrics(row: dict) -> dict:
     # proyectado ↔ realizado solo sirve si se puede leer completa.
     sale = row.get("projected_sale")
     rent_actual = row.get("rent_monthly_actual")
+    # Con comisiones de venta, no con la inversión sin ellas: lo que se
+    # proyecta ganar tiene que descontar lo que la salida modelada de verdad
+    # cobraría — pedido explícito, ver el comentario del encabezado del
+    # archivo sobre por qué este trío es la excepción a "misma base que basis".
+    #
+    # `fee_lines` no sirve aquí tal cual: su comisión de venta usa sale_price
+    # REAL una vez que existe (fees.py, mismo relevo que ya usa `_resolve_
+    # sale_value`), y esta es la proyección CONGELADA — la misma pregunta que
+    # `sale` (arriba) ya contesta con projected_sale sin importar si la
+    # propiedad se vendió. Recalcular con sale_price=None fuerza esa misma
+    # respuesta para la comisión, no la que cobraría una venta ya cerrada.
+    fee_lines_projected = fees.compute_fees({**row, "sale_price": None}, basis)
+    inv_with_fees_venta = fee_lines_projected["totalInvestmentWithFeesVenta"]
     out.update(budget_db.metrics(row))
     out.update({
         "acquisitionCosts": stack["acquisition_costs"],
         "acquisitionTotal": stack["acquisition_total"],
-        "investmentPerSqm": _per_sqm(basis, row.get("sqm_land")),
-        "projectedProfit": underwriting.gain(basis, sale),
-        "projectedRoiTotal": underwriting.gain_pct(basis, sale),
-        "projectedRoi": _cagr(basis, sale, underwriting.assumption(row, "hold_months")[0]),
-        # Yield on cost off the MODELED rent — "what did the underwriting
-        # promise?" — next to the same formula fed the rent actually collected.
-        "capRate": underwriting.cap_rate(row.get("rent_monthly_projected"), basis),
+        "projectedProfit": underwriting.gain(inv_with_fees_venta, sale),
+        "projectedRoiTotal": underwriting.gain_pct(inv_with_fees_venta, sale),
+        "projectedRoi": _cagr(inv_with_fees_venta, sale, underwriting.assumption(row, "hold_months")[0]),
+        # capRate (proyectado) es NOI modelada / venta proyectada: la apuesta.
+        # capRateActual (real) es NOI cobrada / valuación actual, no venta
+        # proyectada: una vez que la propiedad renta, lo que vale hoy —no lo que
+        # se apostó que valdría al vender— es la cifra contra la que se mide un
+        # cobro real. Cada una empareja lo real con lo real y lo proyectado con
+        # lo proyectado; forzarlas al mismo denominador habría sido comparar la
+        # renta YA cobrada contra un precio de salida que sigue siendo una
+        # apuesta. Sin valuación capturada —comprar no produce un avalúo— no hay
+        # honestamente contra qué medir, y `cap_rate()` lo dice con None, no con
+        # la venta proyectada como relevo.
+        "capRate": underwriting.cap_rate(row.get("rent_monthly_projected"), sale),
         "rentAnnual": underwriting.rent_annual(row.get("rent_monthly_projected")),
-        "capRateActual": underwriting.cap_rate(rent_actual, basis),
+        "capRateActual": underwriting.cap_rate(rent_actual, row.get("current_valuation")),
         "rentAnnualActual": underwriting.rent_annual(rent_actual),
+        # Meses de renta ESTIMADA (mensual, no anual) para recuperar la
+        # inversión con comisiones de venta — pedido explícito, para la tarjeta
+        # de oportunidad. Usa la comisión que corresponda hoy (real una vez que
+        # exista, como cualquier otro lector de totalInvestmentWithFeesVenta):
+        # a diferencia de projectedProfit, este campo no tiene una mitad
+        # "realizada" que proteger de que se mueva.
+        "paybackMonths": underwriting.payback_months(
+            row.get("rent_monthly_projected"), fee_lines["totalInvestmentWithFeesVenta"]),
+        # El "yield on cost" que capRate dejó de ser (ver el docstring del
+        # módulo): NOI modelada / lo que de verdad cuesta comprar y vender —
+        # pedido explícito, para leerlo AL LADO del cap rate de mercado, no en
+        # su lugar. Misma función (`cap_rate()` no sabe ni le importa qué
+        # denominador recibe), congelada sobre projected_sale como
+        # projectedProfit — mismo motivo: la comisión de venta no debe
+        # moverse retroactivamente porque la propiedad ya se vendió por otro
+        # precio.
+        "yieldOnCost": underwriting.cap_rate(row.get("rent_monthly_projected"), inv_with_fees_venta),
     })
 
     if status in _MARK_STATUSES:

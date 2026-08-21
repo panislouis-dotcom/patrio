@@ -254,16 +254,16 @@ export interface Property {
   constructionCommittedVariance: number | null
   constructionPaidVariance: number | null
   // `purchasePricePerSqm`, `salePerSqm` e `investmentPerSqm` no están: la
-  // ficha era su único lector en este cliente y su sección MÉTRICAS se quitó.
-  // El servidor sigue mandando `investmentPerSqm` — lo lee el PDF del
-  // prospecto (prospectus_html.py), en Python, sin pasar por este tipo.
+  // ficha fue la primera en dejar de mostrar los dos primeros (se quitó
+  // MÉTRICAS), y el prospecto en PDF —su último lector, en Python, sin pasar
+  // por este tipo— dejó de mostrar el tercero. El servidor ya no lo calcula.
   projectedProfit: number | null
   projectedRoi: number | null
   projectedRoiTotal: number | null
-  capRate: number | null      // yield on cost de la renta ESTIMADA
+  capRate: number | null      // renta ESTIMADA anual / venta proyectada
   rentAnnual: number | null   // 12 × renta estimada
-  capRateActual: number | null      // las mismas dos fórmulas, con la renta
-  rentAnnualActual: number | null   // que de verdad se cobra
+  capRateActual: number | null      // renta COBRADA anual / valuación actual
+  rentAnnualActual: number | null   // 12 × renta cobrada
 
   // --- La marca viva (desarrollo, en_renta, archivada; null al vender) ---
   // Una vendida no tiene ganancia «no realizada»: la realizó.

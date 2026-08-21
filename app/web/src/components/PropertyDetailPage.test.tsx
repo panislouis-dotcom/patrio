@@ -360,7 +360,7 @@ describe('PropertyDetailPage', () => {
     // que se muda con las demás cifras que produce el modelo.
     await renderPage(BASE_PROPERTY)
     const orden = document.body.textContent!
-    expect(orden.indexOf('CAP RATE PROY. S/ INVERSIÓN')).toBeGreaterThan(orden.indexOf('PROYECCIÓN'))
+    expect(orden.indexOf('CAP RATE PROY. S/ VENTA')).toBeGreaterThan(orden.indexOf('PROYECCIÓN'))
   })
 
   it('la ficha nunca ofrece capturar un total: la inversión es el desglose', async () => {
@@ -560,10 +560,12 @@ describe('PropertyDetailPage', () => {
 
     expect(screen.getByText('RENTA/MES ESTIMADA')).not.toBeNull()
     expect(screen.getByText('RENTA/MES COBRADA')).not.toBeNull()
-    // La etiqueta lleva su denominador: la fórmula es yield-on-cost y «cap rate»
-    // a secas, en el mercado, significa NOI sobre valor (docs/glosario.md §8).
-    expect(screen.getByText('CAP RATE PROY. S/ INVERSIÓN')).not.toBeNull()
-    expect(screen.getByText('CAP RATE REAL S/ INVERSIÓN')).not.toBeNull()
+    // El proyectado lleva su denominador (venta proyectada — sigue siendo una
+    // apuesta). El real ya no lo necesita: mide contra la valuación actual, que
+    // es la única cifra de valor en juego una vez que la propiedad renta —«cap
+    // rate» a secas, sin ambigüedad de contra qué (docs/glosario.md §8).
+    expect(screen.getByText('CAP RATE PROY. S/ VENTA')).not.toBeNull()
+    expect(screen.getByText('CAP RATE')).not.toBeNull()
     // La anual cobrada se quedó sin fila al partir la renta en dos: antes salía
     // de `rentAnnual`, que en una rentada era lo que de verdad se cobraba.
     expect(screen.getByText('RENTA ANUAL COBRADA')).not.toBeNull()
