@@ -59,7 +59,12 @@ def test_prospecto_projects_and_has_realized_nothing(client, test_property):
 
 def test_projection_matches_the_underwriting_engine(client, test_property):
     """The API's projection is finance.underwriting of the same inputs — the
-    parity oracle that keeps the two from drifting."""
+    parity oracle that keeps the two from drifting.
+
+    projectedProfit/projectedRoi/projectedRoiTotal are the deliberate exception
+    (properties_db.py, ver el encabezado del archivo): dividen entre la
+    inversión CON comisiones de venta, no la del engine crudo — así que se
+    verifican aparte, contra esa base, en vez de en este lazo de paridad."""
     p = _get(client, test_property["id"])
     inputs = {
         "purchase_price": 1_000_000, "acquisition_cost_pct": 0.065, "permits_cost": 50_000,
@@ -74,11 +79,15 @@ def test_projection_matches_the_underwriting_engine(client, test_property):
     assert Decimal(str(p["constructionBudgeted"])) == Decimal("2340000")
     for camel, snake in [
         ("totalInvestment", "total_investment"), ("acquisitionCosts", "acquisition_costs"),
-        ("acquisitionTotal", "acquisition_total"), ("projectedProfit", "profit"),
-        ("projectedRoi", "roi"), ("projectedRoiTotal", "roi_total"), ("capRate", "cap_rate"),
+        ("acquisitionTotal", "acquisition_total"), ("capRate", "cap_rate"),
         ("rentAnnual", "rent_annual"),
     ]:
         assert Decimal(str(p[camel])) == expected[snake], camel
+    # 3,480,000 de inversión + 526,000 de comisiones (terreno 50,000 + obra
+    # 351,000 + salida·venta 125,000 = 5% de 2,500,000) = 4,006,000.
+    assert Decimal(str(p["projectedProfit"])) == Decimal("-1506000")
+    assert Decimal(str(p["projectedRoiTotal"])) == Decimal("-0.3759")
+    assert Decimal(str(p["projectedRoi"])) == Decimal("-0.2697")
 
 
 def test_purchase_sale_and_investment_per_sqm_are_all_gone_they_ran_out_of_readers(client, test_property):
@@ -273,14 +282,16 @@ def test_the_projection_survives_the_sale_so_the_pair_can_be_read(client, desarr
     momento exacto en que se volvía comprobable — y con ella se iba la única
     forma de contestar «¿le atinamos?».
 
-    Se proyectaron 2,500,000 sobre una base de 3,480,000 y se vendió en
-    5,000,000: el plan perdía 980,000 y la venta ganó 1,520,000. Los dos números
-    tienen que estar en la misma respuesta."""
+    Se proyectaron 2,500,000 sobre una base de 4,006,000 (3,480,000 de
+    inversión + 526,000 de comisiones de venta) y se vendió en 5,000,000: el
+    plan perdía 1,506,000 y la venta ganó 1,520,000 (esta última SIN
+    comisiones — realizedGain no las lleva, ver el encabezado del archivo).
+    Los dos números tienen que estar en la misma respuesta."""
     p = _advance(client, desarrollo_property["id"], to="vendida",
                  saleDate="2026-07", salePrice=5_000_000)
     assert _all_present(p, RECORD)
-    assert Decimal(str(p["projectedProfit"])) == Decimal("-980000")
-    assert Decimal(str(p["projectedRoiTotal"])) == Decimal("-0.2816")
+    assert Decimal(str(p["projectedProfit"])) == Decimal("-1506000")
+    assert Decimal(str(p["projectedRoiTotal"])) == Decimal("-0.3759")
     assert Decimal(str(p["realizedGain"])) == Decimal("1520000")
 
 

@@ -39,6 +39,14 @@ pairs the firm cares about (projectedProfit ↔ realizedGain, projectedRoi ↔
 realizedRoi, capRate ↔ capRateActual) are symmetric by construction rather than
 by coincidence, and both halves of every pair are readable at once.
 
+projectedProfit/projectedRoiTotal/projectedRoi are the one exception, and on
+purpose: they divide by totalInvestmentWithFeesVenta (fees.py), not the bare
+cost stack — pedido explícito, para que "lo que se proyecta ganar" ya cuente
+la comisión de salida que la venta modelada cobraría, en vez de un profit
+inflado que nadie se embolsa así. unrealizedGain/roi and realizedGain/
+realizedRoi still divide by the bare `basis`: la marca y lo realizado no
+llevan comisión de salida hasta que de verdad hay una salida que cobrarla.
+
 Each annualized return closes its clock on the date of its own numerator: the
 exit on sale_date, the mark on valuation_date. An annualized figure whose
 numerator is months older than its denominator falls a little every month
@@ -528,13 +536,26 @@ def metrics(row: dict) -> dict:
     # proyectado ↔ realizado solo sirve si se puede leer completa.
     sale = row.get("projected_sale")
     rent_actual = row.get("rent_monthly_actual")
+    # Con comisiones de venta, no con la inversión sin ellas: lo que se
+    # proyecta ganar tiene que descontar lo que la salida modelada de verdad
+    # cobraría — pedido explícito, ver el comentario del encabezado del
+    # archivo sobre por qué este trío es la excepción a "misma base que basis".
+    #
+    # `fee_lines` no sirve aquí tal cual: su comisión de venta usa sale_price
+    # REAL una vez que existe (fees.py, mismo relevo que ya usa `_resolve_
+    # sale_value`), y esta es la proyección CONGELADA — la misma pregunta que
+    # `sale` (arriba) ya contesta con projected_sale sin importar si la
+    # propiedad se vendió. Recalcular con sale_price=None fuerza esa misma
+    # respuesta para la comisión, no la que cobraría una venta ya cerrada.
+    fee_lines_projected = fees.compute_fees({**row, "sale_price": None}, basis)
+    inv_with_fees_venta = fee_lines_projected["totalInvestmentWithFeesVenta"]
     out.update(budget_db.metrics(row))
     out.update({
         "acquisitionCosts": stack["acquisition_costs"],
         "acquisitionTotal": stack["acquisition_total"],
-        "projectedProfit": underwriting.gain(basis, sale),
-        "projectedRoiTotal": underwriting.gain_pct(basis, sale),
-        "projectedRoi": _cagr(basis, sale, underwriting.assumption(row, "hold_months")[0]),
+        "projectedProfit": underwriting.gain(inv_with_fees_venta, sale),
+        "projectedRoiTotal": underwriting.gain_pct(inv_with_fees_venta, sale),
+        "projectedRoi": _cagr(inv_with_fees_venta, sale, underwriting.assumption(row, "hold_months")[0]),
         # capRate (proyectado) es NOI modelada / venta proyectada: la apuesta.
         # capRateActual (real) es NOI cobrada / valuación actual, no venta
         # proyectada: una vez que la propiedad renta, lo que vale hoy —no lo que
