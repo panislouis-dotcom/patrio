@@ -111,10 +111,11 @@ def test_opportunity_card_shows_the_payback_period_instead_of_bare_investment():
     """"Inversión sin comisiones" salió de esta fila — pedido explícito,
     reemplazada por el plazo de recuperación. La tarjeta LEE `paybackMonths`
     del API, no lo recalcula: el mismo criterio que ya sigue con
-    projectedProfit, capRate, etc."""
+    projectedProfit, capRate, etc. Se enseña en años (pedido explícito),
+    aunque el campo del API siga en meses — 223 / 12 = 18.6."""
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "paybackMonths": 223}
     html = _opportunity(p)
-    assert '<div class="v">223 meses</div><div class="l">Plazo de recuperación</div>' in html
+    assert '<div class="v">18.6 años</div><div class="l">Plazo de recuperación</div>' in html
     assert '<div class="l">Inversión sin comisiones</div>' not in html
 
 

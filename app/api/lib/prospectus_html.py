@@ -402,6 +402,13 @@ def _fmt_mxn_compact_or_dash(val) -> str:
     return _fmt_mxn_compact(val) if val is not None else "—"
 
 
+def _fmt_years_or_dash(months) -> str:
+    """meses (el que guarda paybackMonths) → años, 1 decimal — pedido explícito:
+    redondear a un año entero perdería demasiada precisión en un plazo que
+    típicamente son varios años (92 meses ↔ 7.7, no un impreciso "8 años")."""
+    return f"{_num(months) / 12:.1f} años" if months is not None else "—"
+
+
 def _sale_or_none(val):
     """0 significa "sin venta modelada" en todo el sistema — es el guard ps > 0
     del underwriting, no un precio de cero. La columna es NOT NULL, así que sin
@@ -1034,10 +1041,13 @@ def _opportunity(p: dict) -> str:
     # Venta — pedido explícito, reemplaza a "Inversión sin comisiones" en esta
     # fila: el desglose de Financieros ya deja leer ese total sumando sus
     # renglones, y aquí valía más el dato nuevo (cuánto tarda en pagarse sola).
+    # Se enseña en AÑOS, no meses (pedido explícito) — paybackMonths guarda el
+    # dato en meses (la unidad nativa de la fórmula), _fmt_years_or_dash solo
+    # lo traduce para mostrarlo.
     payback = p.get("paybackMonths")
     metrics = "".join([
         _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
-        _metric(f"{int(payback)} meses" if payback else "—", "Plazo de recuperación"),
+        _metric(_fmt_years_or_dash(payback), "Plazo de recuperación"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
         _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ venta"),

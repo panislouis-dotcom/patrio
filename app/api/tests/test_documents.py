@@ -345,8 +345,8 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     # "Inversión sin comisiones" ya no es una celda de esta fila — pedido
     # explícito, reemplazada por el plazo de recuperación: 4,006,000 de
     # inversión con comisiones de venta / 18,000 de renta mensual = 222.6,
-    # redondeado a 223 meses.
-    assert _metric("223 meses", "Plazo de recuperación") in html
+    # redondeado a 223 meses — enseñado en años (pedido explícito): 18.6.
+    assert _metric("18.6 años", "Plazo de recuperación") in html
     assert '<div class="l">Inversión sin comisiones</div>' not in html
     # Terreno: 1,000,000 x 5%. Obra: 2,340,000 (presupuesto, con overhead ya
     # aplicado una sola vez) x 15%.
