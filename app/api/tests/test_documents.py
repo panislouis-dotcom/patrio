@@ -363,6 +363,11 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _metric('$4.0M', "Inversión c/comisiones · venta") in html
     assert _metric('$3.9M', "Inversión c/comisiones · renta") in html
     assert "metric-wide" not in html
+    # Sexto cuadro de la fila de proyección — pedido explícito, AL LADO del
+    # cap rate de mercado, no en su lugar: 216,000 de renta anual estimada /
+    # 4,006,000 de inversión con comisiones de venta = 5.4%.
+    assert _metric("8.6%", "Cap rate proy. s/ venta") in html
+    assert _metric("5.4%", "Rendimiento proy. s/ inversión") in html
 
 
 def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):

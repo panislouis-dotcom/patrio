@@ -377,14 +377,27 @@ propiedad: real → anual → proyectado, el primero que exista.
 | Renta anual cobrada | `rentAnnualActual` | 12 × renta mensual cobrada. |
 | Cap rate proy. sobre venta | `capRate` | Renta anual **estimada** / venta proyectada. |
 | Cap rate | `capRateActual` | Renta anual **cobrada** / valuación actual. |
+| Rendimiento proy. sobre inversión | `yieldOnCost` | Renta anual **estimada** / inversión con comisiones de venta. |
 
-La fórmula es el cap rate de mercado — NOI (bruto, sin descuento de gastos
+La fórmula del cap rate es la de mercado — NOI (bruto, sin descuento de gastos
 operativos) sobre el valor del activo, no sobre lo que costó. Vivió un tiempo
 como *yield on cost* (renta / inversión total, 2026-07 a 2026-08): quitarle a
 la fórmula de la vista vieja su 30% de opex fabricado fue correcto, pero
 quitarle también el denominador de valor no lo era — «yield on cost» contesta
 una pregunta real, pero no es un cap rate, y llamarlo así se leía mal para
 cualquiera que conociera el término (`finance/underwriting.py`).
+
+*Yield on cost* no desapareció: vive como su propio campo, `yieldOnCost` —
+pedido explícito, AL LADO del cap rate de mercado en la tarjeta de
+oportunidad, no en su lugar. Misma función (`cap_rate()` no distingue: solo
+divide lo que le pasan), pero el segundo argumento ya no es un valor de
+mercado sino `totalInvestmentWithFeesVenta` — la misma inversión con
+comisiones de venta que ya usa `projectedProfit`, y congelada sobre
+`projectedSale` por la misma razón (la comisión de una proyección no debe
+moverse porque la propiedad ya se vendió por otro precio). Por eso lleva su
+propio nombre, «Rendimiento», y no «Cap rate»: llamarlo cap rate con otro
+denominador habría sido exactamente el error que el párrafo de arriba ya
+corrigió una vez.
 
 Los dos NO comparten denominador, a propósito: `capRate` empareja la renta
 **modelada** con la venta **proyectada** (la apuesta completa, de un extremo al
@@ -469,4 +482,5 @@ estado crudo.
 | Captura manual (de la inversión) · `investmentBasis` | Nombraba el segundo origen de una cifra que ahora solo tiene uno. | Nada: la inversión total no lleva procedencia |
 | ROI proyectado (a secas) | Nombró la anual y la total. | ROI proy. anual / Ganancia proyectada % |
 | Cap rate (a secas) para el **proyectado** | Ambiguo: inversión, venta y valuación son todas cifras de valor plausibles contra las que medir una renta modelada. | Cap rate proy. sobre venta (abreviado «s/ venta» donde no cabe) |
+| Cap rate sobre inversión / con comisiones · `yieldOnCost` llamado «cap rate» | En el mercado «cap rate» significa NOI/valor; ponerle un denominador de costo detrás no lo vuelve otra cosa, solo confunde el término con el «yield on cost» que ya se distinguió arriba. | Rendimiento proy. sobre inversión (abreviado «s/ inversión» donde no cabe) |
 | `en_renta`, `adaptive_reuse`, `properties_…_check` | Son identificadores, no lenguaje. | «En renta», «Reconversión», una frase accionable |

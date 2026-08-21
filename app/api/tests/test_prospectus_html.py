@@ -125,6 +125,26 @@ def test_opportunity_card_payback_period_is_a_dash_without_one():
     assert '<div class="v">—</div><div class="l">Plazo de recuperación</div>' in html
 
 
+def test_opportunity_card_shows_yield_on_cost_next_to_cap_rate_as_a_sixth_cell():
+    """Pedido explícito: un sexto cuadro, "rendimiento sobre inversión" — el
+    yield on cost que capRate dejó de ser — AL LADO del cap rate de mercado,
+    no en su lugar. La fila pasa de .metrics-5 a .metrics-6."""
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "capRate": 0.0864, "yieldOnCost": 0.0539}
+    html = _opportunity(p)
+    assert '<div class="v">8.6%</div><div class="l">Cap rate proy. s/ venta</div>' in html
+    assert '<div class="v">5.4%</div><div class="l">Rendimiento proy. s/ inversión</div>' in html
+    # Dos filas de seis ahora: comisiones/totales, y plazo/venta/ganancia/cap
+    # rate/rendimiento — ninguna es ya la vieja fila de cinco.
+    assert html.count('class="metrics metrics-6"') == 2
+    assert 'class="metrics metrics-5"' not in html
+
+
+def test_opportunity_card_yield_on_cost_is_a_dash_without_one():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "yieldOnCost": None}
+    html = _opportunity(p)
+    assert '<div class="v">—</div><div class="l">Rendimiento proy. s/ inversión</div>' in html
+
+
 # ---------------------------------------------------------------------------
 # _opportunity_fees_metrics — la fila nueva: terreno, obra, y los dos finales
 # ---------------------------------------------------------------------------

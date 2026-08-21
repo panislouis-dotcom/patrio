@@ -242,17 +242,12 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .opp-body { padding: 8mm var(--pad) 7mm;
             -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .opp .metrics { margin-bottom: 7mm; break-inside: avoid; page-break-inside: avoid; }
-/* Mismo ajuste que .summary ya hacía para su propia fila de 5: la celda del
-   .metric base (padding 5mm, valor a 20pt) está pensada para una fila de 4 —
-   en una de 5 el texto no cabe y CADA etiqueta envuelve a dos líneas, y el
-   valor con porcentaje ("$1.9M 51.7%") se parte en dos renglones cuando en
-   la fila de 4 el mismo patrón cabe en uno. */
-.opp .metrics-5 .metric { padding: 3.6mm 3mm; }
-.opp .metrics-5 .metric .v { font-size: 16pt; }
-/* Las 6 comisiones/totales en un solo renglón — mismo motivo que la de 5 de
-   arriba, un paso más apretado: 6 columnas en el mismo ancho de página no
-   caben con el padding/tamaño de una fila de 4, ni siquiera con el de una
-   de 5. */
+/* Dos filas de 6 (comisiones/totales, luego plazo/venta/ganancia/cap
+   rate/rendimiento): mismo motivo que .summary ya tenía para su fila de 5 —
+   la celda del .metric base (padding 5mm, valor a 20pt) está pensada para una
+   fila de 4, y en una más ancha el texto no cabe: cada etiqueta envuelve a dos
+   líneas, y un valor con porcentaje ("$1.9M 51.7%") se parte en dos renglones
+   cuando en la fila de 4 el mismo patrón cabe en uno. */
 .opp .metrics-6 .metric { padding: 3mm 2.5mm; }
 .opp .metrics-6 .metric .v { font-size: 13pt; }
 .opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
@@ -517,12 +512,12 @@ def _opportunity_fees_metrics(p: dict) -> str:
 
     Seis celdas en un solo renglón — pedido explícito, tras ver la primera
     versión partida en dos: se leía como si las cuatro comisiones y los dos
-    totales fueran grupos distintos, cuando en realidad son la misma
-    cuenta de principio a fin. `.metrics-6` (CSS) + el override
-    `.opp .metrics-6` (padding y tamaño de valor recortados, ver el
-    comentario ahí arriba) es lo que hace caber seis columnas donde la fila
-    de la proyección (`.metrics-5`, más abajo en la página — pedido explícito,
-    el desglose de comisiones va primero) solo necesita cinco.
+    totales fueran grupos distintos, cuando en realidad son la misma cuenta
+    de principio a fin. `.metrics-6` (CSS) + el override `.opp .metrics-6`
+    (padding y tamaño de valor recortados, ver el comentario ahí arriba) es
+    lo que hace caber seis columnas — la misma clase que usa la fila de
+    proyección justo abajo (plazo/venta/ganancia/cap rate/rendimiento),
+    también de seis, pedido explícito: el desglose de comisiones va primero.
 
     El orden importa aunque ya no haya renglones que lo marquen: primero las
     CUATRO comisiones que se cobran (terreno, obra, salida·venta,
@@ -1045,12 +1040,19 @@ def _opportunity(p: dict) -> str:
     # dato en meses (la unidad nativa de la fórmula), _fmt_years_or_dash solo
     # lo traduce para mostrarlo.
     payback = p.get("paybackMonths")
+    # Rendimiento sobre lo que de verdad cuesta comprar y vender — el "yield on
+    # cost" que capRate dejó de ser (finance/underwriting.py) — pedido
+    # explícito, AL LADO del cap rate de mercado, no en su lugar: "Cap rate"
+    # a secas ya significa NOI/valor en el mercado, así que este no puede
+    # llamarse igual con otro denominador nada más — se llama por lo que es.
+    yield_on_cost = p.get("yieldOnCost")
     metrics = "".join([
         _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
         _metric(_fmt_years_or_dash(payback), "Plazo de recuperación"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
         _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ venta"),
+        _metric(_fmt_pct_or_dash(yield_on_cost), "Rendimiento proy. s/ inversión"),
     ])
 
     # La ganancia proyectada, monto y porcentaje, ya vive en su métrica de arriba:
@@ -1096,7 +1098,7 @@ def _opportunity(p: dict) -> str:
       <div><div class="col-label">Propiedad</div>{ubicacion}</div>
     </div>
     <div class="metrics metrics-6">{_opportunity_fees_metrics(p)}</div>
-    <div class="metrics metrics-5">{metrics}</div>
+    <div class="metrics metrics-6">{metrics}</div>
     {strip}
     {detail_html}
   </div>

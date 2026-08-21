@@ -122,6 +122,7 @@ def test_rent_absent_means_no_yield_never_zero(client, test_property):
     assert p["capRate"] is None
     assert p["rentAnnual"] is None
     assert p["paybackMonths"] is None
+    assert p["yieldOnCost"] is None
 
 
 def test_payback_months_is_investment_with_fees_over_monthly_rent(client, test_property):
@@ -130,6 +131,15 @@ def test_payback_months_is_investment_with_fees_over_monthly_rent(client, test_p
     mensual = 222.55…, redondeado a 223."""
     p = _get(client, test_property["id"])
     assert p["paybackMonths"] == 223
+
+
+def test_yield_on_cost_is_annual_rent_over_investment_with_fees_not_cap_rate(client, test_property):
+    """216,000 de renta anual estimada / 4,006,000 de inversión con comisiones
+    de venta = 0.0539 — distinto de capRate, que divide esa misma renta entre
+    2,500,000 de venta proyectada."""
+    p = _get(client, test_property["id"])
+    assert Decimal(str(p["yieldOnCost"])) == Decimal("0.0539")
+    assert p["yieldOnCost"] != p["capRate"]
 
 
 # ── Investment basis ─────────────────────────────────────────────────────────
@@ -302,6 +312,11 @@ def test_the_projection_survives_the_sale_so_the_pair_can_be_read(client, desarr
     assert Decimal(str(p["projectedProfit"])) == Decimal("-1506000")
     assert Decimal(str(p["projectedRoiTotal"])) == Decimal("-0.3759")
     assert Decimal(str(p["realizedGain"])) == Decimal("1520000")
+    # yieldOnCost divide por la misma base congelada que projectedProfit — no
+    # se mueve porque la propiedad se vendió en 5,000,000 en vez de los
+    # 2,500,000 proyectados: 216,000 / 4,006,000, la misma cifra de antes de
+    # vender.
+    assert Decimal(str(p["yieldOnCost"])) == Decimal("0.0539")
 
 
 def test_the_breakdown_of_a_sold_property_adds_up_to_its_own_total(client, desarrollo_property):

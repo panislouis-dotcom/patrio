@@ -53,6 +53,12 @@ for the modeled rent, current valuation for the collected one — rather than
 sharing one denominator (see properties_db.py). rent_annual diverges from the
 view the same way: None where the view reported 0, because a property that
 does not rent has no rent.
+
+Yield on cost did not disappear — it lives on as its own field, `yieldOnCost`
+(properties_db.py), fed by this same `cap_rate()` with the investment as its
+`market_value` argument instead of a market value. The function does not care
+what its second argument represents; the two readings are kept apart by NAME,
+not by two functions doing the same division.
 """
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -213,15 +219,18 @@ def rent_annual(rent_monthly) -> Decimal | None:
 
 
 def cap_rate(rent_monthly, market_value) -> Decimal | None:
-    """Gross annual rent / market value — the textbook cap rate, NOI over what the
-    asset is worth, not over what it cost. `market_value` is whichever value
-    figure matches the rent: the caller (properties_db.py) pairs projected rent
-    with the projected sale for capRate, and collected rent with the current
-    valuation for capRateActual — proyectado against proyectado, real against
-    real, never a real number measured against a still-hypothetical exit price.
-    None unless both sides are positive — a property that does not rent, or has
-    no value captured to measure against, has no cap rate, and 0 would read as a
-    real (terrible) yield. Same rule as rent_annual about *which* rent."""
+    """Gross annual rent / market_value. Named for its usual caller (capRate,
+    capRateActual: `market_value` is whichever value figure matches the rent —
+    projected sale for the modeled rent, current valuation for the collected
+    one, proyectado against proyectado, real against real, never a real number
+    measured against a still-hypothetical exit price), but the division itself
+    doesn't know or care whether `market_value` is a market value at all:
+    `yieldOnCost` (properties_db.py) calls this same function with the
+    investment instead, on purpose — same shape (NOI over SOME denominator),
+    different question. None unless both sides are positive — a property that
+    does not rent, or has nothing captured to measure against, yields nothing,
+    and 0 would read as a real (terrible) return. Same rule as rent_annual
+    about *which* rent."""
     rent = to_decimal(rent_monthly)
     value = to_decimal(market_value)
     if rent <= 0 or value <= 0:

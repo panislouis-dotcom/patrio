@@ -578,6 +578,15 @@ def metrics(row: dict) -> dict:
         # "realizada" que proteger de que se mueva.
         "paybackMonths": underwriting.payback_months(
             row.get("rent_monthly_projected"), fee_lines["totalInvestmentWithFeesVenta"]),
+        # El "yield on cost" que capRate dejó de ser (ver el docstring del
+        # módulo): NOI modelada / lo que de verdad cuesta comprar y vender —
+        # pedido explícito, para leerlo AL LADO del cap rate de mercado, no en
+        # su lugar. Misma función (`cap_rate()` no sabe ni le importa qué
+        # denominador recibe), congelada sobre projected_sale como
+        # projectedProfit — mismo motivo: la comisión de venta no debe
+        # moverse retroactivamente porque la propiedad ya se vendió por otro
+        # precio.
+        "yieldOnCost": underwriting.cap_rate(row.get("rent_monthly_projected"), inv_with_fees_venta),
     })
 
     if status in _MARK_STATUSES:
