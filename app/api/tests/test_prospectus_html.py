@@ -128,11 +128,16 @@ def test_opportunity_card_payback_period_is_a_dash_without_one():
 def test_opportunity_card_shows_yield_on_cost_next_to_cap_rate_as_a_sixth_cell():
     """Pedido explícito: un sexto cuadro, "rendimiento sobre inversión" — el
     yield on cost que capRate dejó de ser — AL LADO del cap rate de mercado,
-    no en su lugar. La fila pasa de .metrics-5 a .metrics-6."""
+    no en su lugar. La fila pasa de .metrics-5 a .metrics-6. Las dos
+    etiquetas van sin calificar ("Cap rate", "Rendimiento sobre inversión")
+    — pedido explícito, tras ver los calificadores envolver a 2-3 líneas: el
+    nombre distinto de cada una ya dice cuál es cuál, a diferencia de
+    _development_card() (sin un vecino "Rendimiento"), que sí conserva
+    "Cap rate proy. s/ venta"."""
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "capRate": 0.0864, "yieldOnCost": 0.0539}
     html = _opportunity(p)
-    assert '<div class="v">8.6%</div><div class="l">Cap rate proy. s/ venta</div>' in html
-    assert '<div class="v">5.4%</div><div class="l">Rendimiento proy. s/ inversión</div>' in html
+    assert '<div class="v">8.6%</div><div class="l">Cap rate</div>' in html
+    assert '<div class="v">5.4%</div><div class="l">Rendimiento sobre inversión</div>' in html
     # Dos filas de seis ahora: comisiones/totales, y plazo/venta/ganancia/cap
     # rate/rendimiento — ninguna es ya la vieja fila de cinco.
     assert html.count('class="metrics metrics-6"') == 2
@@ -142,7 +147,7 @@ def test_opportunity_card_shows_yield_on_cost_next_to_cap_rate_as_a_sixth_cell()
 def test_opportunity_card_yield_on_cost_is_a_dash_without_one():
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "yieldOnCost": None}
     html = _opportunity(p)
-    assert '<div class="v">—</div><div class="l">Rendimiento proy. s/ inversión</div>' in html
+    assert '<div class="v">—</div><div class="l">Rendimiento sobre inversión</div>' in html
 
 
 # ---------------------------------------------------------------------------

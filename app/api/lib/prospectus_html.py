@@ -1045,14 +1045,24 @@ def _opportunity(p: dict) -> str:
     # explícito, AL LADO del cap rate de mercado, no en su lugar: "Cap rate"
     # a secas ya significa NOI/valor en el mercado, así que este no puede
     # llamarse igual con otro denominador nada más — se llama por lo que es.
+    #
+    # Las dos etiquetas van SIN calificar ("Cap rate", "Rendimiento sobre
+    # inversión") — pedido explícito, tras ver "Cap rate proy. s/ venta" y
+    # "Rendimiento proy. s/ inversión" envolver a 2 y 3 líneas. Esto es
+    # deliberadamente distinto de _development_card(), que sí necesita el
+    # calificador: ahí "Cap rate" solo, sin un "Rendimiento" al lado que ya
+    # se quedó con el nombre del denominador de costo, seguiría siendo
+    # ambiguo (inversión, venta, valuación son todas cifras de valor
+    # plausibles). Aquí el nombre distinto del vecino —no el calificador—
+    # es lo que quita la ambigüedad.
     yield_on_cost = p.get("yieldOnCost")
     metrics = "".join([
         _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
         _metric(_fmt_years_or_dash(payback), "Plazo de recuperación"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
-        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ venta"),
-        _metric(_fmt_pct_or_dash(yield_on_cost), "Rendimiento proy. s/ inversión"),
+        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate"),
+        _metric(_fmt_pct_or_dash(yield_on_cost), "Rendimiento sobre inversión"),
     ])
 
     # La ganancia proyectada, monto y porcentaje, ya vive en su métrica de arriba:

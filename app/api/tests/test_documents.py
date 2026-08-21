@@ -365,9 +365,11 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert "metric-wide" not in html
     # Sexto cuadro de la fila de proyección — pedido explícito, AL LADO del
     # cap rate de mercado, no en su lugar: 216,000 de renta anual estimada /
-    # 4,006,000 de inversión con comisiones de venta = 5.4%.
-    assert _metric("8.6%", "Cap rate proy. s/ venta") in html
-    assert _metric("5.4%", "Rendimiento proy. s/ inversión") in html
+    # 4,006,000 de inversión con comisiones de venta = 5.4%. Las dos
+    # etiquetas van sin calificar (pedido explícito, envolvían a 2-3 líneas):
+    # el nombre distinto de cada una ya dice cuál es cuál.
+    assert _metric("8.6%", "Cap rate") in html
+    assert _metric("5.4%", "Rendimiento sobre inversión") in html
 
 
 def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):
@@ -406,9 +408,11 @@ def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, tes
 
 
 def test_the_opportunity_cap_rate_comes_from_the_api(client, test_property):
-    # 216,000 de renta anual sobre 2,500,000 de venta proyectada = 8.6%
+    # 216,000 de renta anual sobre 2,500,000 de venta proyectada = 8.6%.
+    # Etiqueta sin calificar en la tarjeta de oportunidad — pedido explícito,
+    # ver el comentario sobre el sexto cuadro (rendimiento) más abajo.
     html = build_prospectus_html([], [], [], [get_property(test_property["id"])])
-    assert _metric("8.6%", "Cap rate proy. s/ venta") in html
+    assert _metric("8.6%", "Cap rate") in html
 
 
 def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
@@ -416,7 +420,7 @@ def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
                 json={"fields": ["rentMonthlyProjected"]})
     p = get_property(test_property["id"])
     assert p["capRate"] is None
-    assert _metric("—", "Cap rate proy. s/ venta") in build_prospectus_html([], [], [], [p])
+    assert _metric("—", "Cap rate") in build_prospectus_html([], [], [], [p])
 
 
 def test_the_document_translates_the_enums(client, make_property):
