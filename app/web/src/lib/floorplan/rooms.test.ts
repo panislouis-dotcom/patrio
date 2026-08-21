@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { emptyFloorGraph, GHOST_THICKNESS_M } from './types'
 import { addVertex, addEdge, splitEdgeAtVertex } from './graph'
 import { traceFaces, roomAreas, roomLabels, exteriorEdgeIds, roomConnections, roomPolygons } from './rooms'
+import { pointInPolygon } from './geometry'
 
 /** Rectángulo de 6x4 dividido a la mitad (x=3) por un muro interior, con Cocina a la
  * izquierda y Sala a la derecha — la misma forma que 'reports two rooms...' de roomAreas,
@@ -118,6 +119,51 @@ describe('roomAreas', () => {
     rectangle(f, 0, 0, 4, 3)
     f.rooms.push({ name: 'Sala', cx: 2, cy: 1.5 })
     expect(roomAreas(f)[0].type).toBeUndefined()
+  })
+
+  // Bug real (Locales Salón Escobedo, escaleras de Planta Alta, 2026-08-16): un cuarto NO
+  // convexo (en L/Z/U — el caso normal cuando un muro nuevo divide un cuarto sin dejarlo
+  // rectangular) puede tener su centroide geométrico FUERA de su propio contorno. Antes,
+  // roomAreas dibujaba/aceptaba clics justo en ese punto exterior — cualquier intento de
+  // nombrar el cuarto ahí se perdía en silencio (el nombre nuevo nunca volvía a resolver
+  // para ESE cuarto, porque roomInside exige que el punto esté DENTRO del polígono).
+  it('el punto de anclaje de un cuarto NO convexo (forma de U) cae DENTRO de su polígono, no en su centroide geométrico', () => {
+    const f = emptyFloorGraph('Test')
+    // "Grapa"/U ancha: [0,0]-[6,0]-[6,4]-[4,4]-[4,1]-[2,1]-[2,4]-[0,4] — el centroide
+    // geométrico real (3, 1.83) cae en la muesca cóncava de arriba, fuera del cuarto.
+    const p00 = addVertex(f, 0, 0), p60 = addVertex(f, 6, 0), p64 = addVertex(f, 6, 4)
+    const p44 = addVertex(f, 4, 4), p41 = addVertex(f, 4, 1), p21 = addVertex(f, 2, 1)
+    const p24 = addVertex(f, 2, 4), p04 = addVertex(f, 0, 4)
+    addEdge(f, p00, p60, 0.15); addEdge(f, p60, p64, 0.15); addEdge(f, p64, p44, 0.15)
+    addEdge(f, p44, p41, 0.15); addEdge(f, p41, p21, 0.15); addEdge(f, p21, p24, 0.15)
+    addEdge(f, p24, p04, 0.15); addEdge(f, p04, p00, 0.15)
+
+    const rooms = roomAreas(f)
+    expect(rooms).toHaveLength(1)
+    // El centroide geométrico puro sería (3, 1.83) — verificado fuera del polígono. El
+    // punto de anclaje real debe caer DENTRO, sin importar el valor exacto.
+    const poly = roomPolygons(f)[0].vertices.map(v => [v.x, v.y] as [number, number])
+    expect(pointInPolygon(rooms[0].cx, rooms[0].cy, poly)).toBe(true)
+  })
+
+  it('nombrar un cuarto en forma de U en su punto de anclaje SÍ se resuelve — antes se perdía en silencio', () => {
+    const f = emptyFloorGraph('Test')
+    const p00 = addVertex(f, 0, 0), p60 = addVertex(f, 6, 0), p64 = addVertex(f, 6, 4)
+    const p44 = addVertex(f, 4, 4), p41 = addVertex(f, 4, 1), p21 = addVertex(f, 2, 1)
+    const p24 = addVertex(f, 2, 4), p04 = addVertex(f, 0, 4)
+    addEdge(f, p00, p60, 0.15); addEdge(f, p60, p64, 0.15); addEdge(f, p64, p44, 0.15)
+    addEdge(f, p44, p41, 0.15); addEdge(f, p41, p21, 0.15); addEdge(f, p21, p24, 0.15)
+    addEdge(f, p24, p04, 0.15); addEdge(f, p04, p00, 0.15)
+
+    // Mismo flujo que el editor: leer dónde el cuarto SIN nombre se dibujaría (su punto de
+    // anclaje), y "escribir" un nombre justo ahí — exactamente lo que hace el usuario al
+    // hacer clic sobre el label y teclear.
+    const anchor = roomAreas(f)[0]
+    f.rooms.push({ name: 'ESCALERAS', cx: anchor.cx, cy: anchor.cy })
+
+    const renamed = roomAreas(f)
+    expect(renamed).toHaveLength(1)
+    expect(renamed[0].name).toBe('ESCALERAS')
   })
 })
 
