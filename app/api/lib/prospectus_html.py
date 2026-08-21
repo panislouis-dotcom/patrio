@@ -519,7 +519,8 @@ def _opportunity_fees_metrics(p: dict) -> str:
     cuenta de principio a fin. `.metrics-6` (CSS) + el override
     `.opp .metrics-6` (padding y tamaño de valor recortados, ver el
     comentario ahí arriba) es lo que hace caber seis columnas donde la fila
-    de arriba solo necesita cinco.
+    de la proyección (`.metrics-5`, más abajo en la página — pedido explícito,
+    el desglose de comisiones va primero) solo necesita cinco.
 
     El orden importa aunque ya no haya renglones que lo marquen: primero las
     CUATRO comisiones que se cobran (terreno, obra, salida·venta,
@@ -1085,12 +1086,12 @@ def _opportunity(p: dict) -> str:
   </div>
   {hero}
   <div class="opp-body">
-    <div class="metrics metrics-5">{metrics}</div>
     <div class="opp-cols">
       <div><div class="col-label">Financieros</div>{financieros}</div>
       <div><div class="col-label">Propiedad</div>{ubicacion}</div>
     </div>
     <div class="metrics metrics-6">{_opportunity_fees_metrics(p)}</div>
+    <div class="metrics metrics-5">{metrics}</div>
     {strip}
     {note_html}
     {detail_html}

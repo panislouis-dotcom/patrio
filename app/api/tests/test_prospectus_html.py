@@ -197,7 +197,11 @@ def test_opportunity_fees_metrics_names_the_reason_when_a_total_is_missing():
     assert '<div class="v">$3.9M</div><div class="l">Inversión c/comisiones · renta</div>' in html
 
 
-def test_opportunity_card_wires_the_fee_metrics_row_after_opp_cols():
+def test_opportunity_card_wires_the_fee_metrics_row_after_opp_cols_and_before_the_top_metrics():
+    """Pedido explícito: la fila de plazo/inversión/venta/ganancia/cap rate
+    (`.metrics-5`) va DESPUÉS de la de comisiones (`.metrics-6`), no antes —
+    el desglose de comisiones se lee primero, la proyección resumida cierra
+    la página."""
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
          "exitFeeVenta": 195_000, "exitSaleCommissionPct": 0.05,
          "exitFeeRenta": None, "feesMissingInputsRenta": ["rentMonthly"],
@@ -210,6 +214,7 @@ def test_opportunity_card_wires_the_fee_metrics_row_after_opp_cols():
     assert "Inversión c/comisiones · venta" in html
     assert "Inversión c/comisiones · renta" in html
     assert html.index('class="opp-cols"') < html.index("Comisión compra terreno")
+    assert html.index("Comisión compra terreno") < html.index("Plazo proyectado")
 
 
 # ---------------------------------------------------------------------------
