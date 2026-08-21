@@ -54,7 +54,7 @@ sharing one denominator (see properties_db.py). rent_annual diverges from the
 view the same way: None where the view reported 0, because a property that
 does not rent has no rent.
 """
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from .quantize import money, money0, frac4, to_decimal
 from .analysis import roi_cagr
@@ -227,6 +227,21 @@ def cap_rate(rent_monthly, market_value) -> Decimal | None:
     if rent <= 0 or value <= 0:
         return None
     return frac4(rent * Decimal(12) / value)
+
+
+def payback_months(rent_monthly, investment) -> Decimal | None:
+    """Meses de renta —sin anualizar— para recuperar una inversión: investment /
+    rent_monthly, directo en meses porque el divisor ya es mensual (a
+    diferencia de cap_rate(), que anualiza la renta para comparar contra un
+    valor). None unless both sides are positive — sin renta no hay con qué
+    recuperar nada, y 0 se leería como recuperación instantánea. Redondeado al
+    mes entero: el mismo lenguaje que ya usan holdMonths y exitRentMonths, que
+    tampoco hablan en fracciones de mes."""
+    rent = to_decimal(rent_monthly)
+    inv = to_decimal(investment)
+    if rent <= 0 or inv <= 0:
+        return None
+    return (inv / rent).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
 
 
 def metrics(inputs: dict) -> dict:

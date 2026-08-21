@@ -121,6 +121,15 @@ def test_rent_absent_means_no_yield_never_zero(client, test_property):
     assert p["rentMonthlyProjected"] is None
     assert p["capRate"] is None
     assert p["rentAnnual"] is None
+    assert p["paybackMonths"] is None
+
+
+def test_payback_months_is_investment_with_fees_over_monthly_rent(client, test_property):
+    """4,006,000 de inversión con comisiones de venta (3,480,000 + 526,000:
+    terreno 50,000, obra 351,000, salida·venta 125,000) / 18,000 de renta
+    mensual = 222.55…, redondeado a 223."""
+    p = _get(client, test_property["id"])
+    assert p["paybackMonths"] == 223
 
 
 # ── Investment basis ─────────────────────────────────────────────────────────

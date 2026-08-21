@@ -570,6 +570,14 @@ def metrics(row: dict) -> dict:
         "rentAnnual": underwriting.rent_annual(row.get("rent_monthly_projected")),
         "capRateActual": underwriting.cap_rate(rent_actual, row.get("current_valuation")),
         "rentAnnualActual": underwriting.rent_annual(rent_actual),
+        # Meses de renta ESTIMADA (mensual, no anual) para recuperar la
+        # inversión con comisiones de venta — pedido explícito, para la tarjeta
+        # de oportunidad. Usa la comisión que corresponda hoy (real una vez que
+        # exista, como cualquier otro lector de totalInvestmentWithFeesVenta):
+        # a diferencia de projectedProfit, este campo no tiene una mitad
+        # "realizada" que proteger de que se mueva.
+        "paybackMonths": underwriting.payback_months(
+            row.get("rent_monthly_projected"), fee_lines["totalInvestmentWithFeesVenta"]),
     })
 
     if status in _MARK_STATUSES:

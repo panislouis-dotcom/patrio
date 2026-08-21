@@ -1035,12 +1035,14 @@ def _opportunity(p: dict) -> str:
     # Inversión total de la tarjeta.
     dev_investment = _num(total_inv) - _num(p.get("acquisitionTotal"))
 
+    # Meses de renta ESTIMADA (mensual) para recuperar totalInvestmentWithFees
+    # Venta — pedido explícito, reemplaza a "Inversión sin comisiones" en esta
+    # fila: el desglose de Financieros ya deja leer ese total sumando sus
+    # renglones, y aquí valía más el dato nuevo (cuánto tarda en pagarse sola).
+    payback = p.get("paybackMonths")
     metrics = "".join([
         _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
-        # el detalle vive en _opportunity_fees_metrics() más abajo — aquí
-        # solo la cifra plana, para no repetir las mismas cifras dos veces
-        # en la misma página.
-        _metric(_inv_value(total_inv, None, None), "Inversión sin comisiones"),
+        _metric(f"{int(payback)} meses" if payback else "—", "Plazo de recuperación"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
         _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ venta"),

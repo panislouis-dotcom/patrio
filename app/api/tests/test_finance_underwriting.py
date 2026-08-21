@@ -294,6 +294,29 @@ def test_cap_rate_none_without_positive_rent():
     assert uw.cap_rate(-18_000, 3_480_000) is None
 
 
+def test_payback_months_is_investment_over_monthly_rent_not_annual():
+    # 4,006,000 / 18,000 = 222.55..., redondeado a 223 — a diferencia de
+    # cap_rate(), que sí anualiza la renta antes de dividir.
+    assert uw.payback_months(18_000, 4_006_000) == Decimal("223")
+
+
+def test_payback_months_rounds_half_up_to_the_whole_month():
+    assert uw.payback_months(1_000, 1_500) == Decimal("2")   # 1.5 → 2
+    assert uw.payback_months(1_000, 1_499) == Decimal("1")   # 1.499 → 1
+
+
+def test_payback_months_none_without_positive_investment():
+    assert uw.payback_months(18_000, 0) is None
+    assert uw.payback_months(18_000, None) is None
+    assert uw.payback_months(18_000, -4_006_000) is None
+
+
+def test_payback_months_none_without_positive_rent():
+    assert uw.payback_months(0, 4_006_000) is None
+    assert uw.payback_months(None, 4_006_000) is None
+    assert uw.payback_months(-18_000, 4_006_000) is None
+
+
 def test_rent_annual_is_twelve_months_or_nothing():
     assert uw.rent_annual(18_000) == Decimal("216000")
     assert uw.rent_annual(0) is None

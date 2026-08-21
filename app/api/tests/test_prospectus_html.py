@@ -107,21 +107,21 @@ def test_development_card_omits_the_sub_line_without_either_with_fees_figure():
     assert "c/comisiones" not in html
 
 
-def test_opportunity_card_main_investment_metric_has_no_sub_line():
-    """El detalle de comisiones se mudó a su propia fila
-    (`_opportunity_fees_metrics`) — mostrarlo también aquí repetiría las
-    mismas cifras dos veces en la misma página."""
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
-         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
+def test_opportunity_card_shows_the_payback_period_instead_of_bare_investment():
+    """"Inversión sin comisiones" salió de esta fila — pedido explícito,
+    reemplazada por el plazo de recuperación. La tarjeta LEE `paybackMonths`
+    del API, no lo recalcula: el mismo criterio que ya sigue con
+    projectedProfit, capRate, etc."""
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "paybackMonths": 223}
     html = _opportunity(p)
-    match = re.search(
-        r'<div class="metric"><div class="v">((?:(?!</div>).)*?)</div><div class="l">Inversión sin comisiones</div>',
-        html)
-    assert match is not None
-    cell = match.group(1)
-    assert cell == "$1.0M"
-    assert "<small>" not in cell
-    assert "V $" not in cell and "R $" not in cell
+    assert '<div class="v">223 meses</div><div class="l">Plazo de recuperación</div>' in html
+    assert '<div class="l">Inversión sin comisiones</div>' not in html
+
+
+def test_opportunity_card_payback_period_is_a_dash_without_one():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "paybackMonths": None}
+    html = _opportunity(p)
+    assert '<div class="v">—</div><div class="l">Plazo de recuperación</div>' in html
 
 
 # ---------------------------------------------------------------------------

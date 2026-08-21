@@ -342,11 +342,12 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _kv_row("Precio de compra", "$1,000,000") in html
     assert _kv_row("Costos de adquisición", "$65,000") in html
     assert _kv_row("Obra, permisos y subdivisión", "$2,415,000") in html
-    # La cifra principal vuelve a ser plana — el detalle vive en la fila
-    # nueva de comisiones (`_opportunity_fees_metrics`), no en una sub-línea
-    # pegada a esta celda: mostrarlo en las dos partes repetiría las mismas
-    # cifras en la misma página.
-    assert _metric("$3.5M", "Inversión sin comisiones") in html
+    # "Inversión sin comisiones" ya no es una celda de esta fila — pedido
+    # explícito, reemplazada por el plazo de recuperación: 4,006,000 de
+    # inversión con comisiones de venta / 18,000 de renta mensual = 222.6,
+    # redondeado a 223 meses.
+    assert _metric("223 meses", "Plazo de recuperación") in html
+    assert '<div class="l">Inversión sin comisiones</div>' not in html
     # Terreno: 1,000,000 x 5%. Obra: 2,340,000 (presupuesto, con overhead ya
     # aplicado una sola vez) x 15%.
     assert _metric('$50K <small>5.0%</small>', "Comisión compra terreno") in html
