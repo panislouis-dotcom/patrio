@@ -76,9 +76,11 @@ def test_the_stack_takes_no_multiplier_it_could_re_apply():
 # (locked here before the view was dropped in migration 020). A future change that
 # breaks the round-of-sum discipline — summing pre-rounded sub-totals instead of the
 # single unrounded investment_raw — would drift these by ~1 peso and fail.
-# cap_rate is the one figure that no longer matches the old view: the 2026-07 formula
-# change made it yield on cost (216,000 / 3,480,000 = 0.0621) instead of the view's
-# rent*12*0.70 / projected_sale (0.0605).
+# cap_rate is the one figure that no longer matches the old view exactly: it briefly
+# became yield on cost (216,000 / 3,480,000 = 0.0621, 2026-07 through 2026-08) before
+# reverting to NOI / market value — same shape as the view's own formula, just without
+# its fabricated 0.70 opex haircut (216,000 / 2,500,000 = 0.0864 vs. the view's
+# 151,200 / 2,500,000 = 0.0605).
 #
 # `construction_base` y `construction_total` ya no salen de aquí: la obra llega
 # entera y la publica el módulo del presupuesto, junto a lo comprometido y lo
@@ -89,7 +91,7 @@ _EXPECTED = {
     "acquisition_costs": Decimal("65000"),
     "acquisition_total": Decimal("1065000"),
     "profit": Decimal("-980000"),
-    "cap_rate": Decimal("0.0621"),
+    "cap_rate": Decimal("0.0864"),
     "purchase_price_per_sqm": Decimal("3333.33"),
     "sale_per_sqm": Decimal("8333.33"),
     "investment_per_sqm": Decimal("11600.00"),
@@ -275,12 +277,12 @@ def test_a_stack_that_sums_to_zero_is_no_basis_at_all():
     assert uw.basis(dict.fromkeys(uw.COST_KEYS, 0)) is None
 
 
-def test_cap_rate_is_yield_on_cost():
-    # 18,000*12 = 216,000 over 3,480,000 invested
-    assert uw.cap_rate(18_000, 3_480_000) == Decimal("0.0621")
+def test_cap_rate_is_noi_over_market_value():
+    # 18,000*12 = 216,000 over a 2,500,000 market value
+    assert uw.cap_rate(18_000, 2_500_000) == Decimal("0.0864")
 
 
-def test_cap_rate_none_without_positive_investment():
+def test_cap_rate_none_without_positive_market_value():
     assert uw.cap_rate(18_000, 0) is None
     assert uw.cap_rate(18_000, None) is None
     assert uw.cap_rate(18_000, -3_480_000) is None
@@ -290,6 +292,29 @@ def test_cap_rate_none_without_positive_rent():
     assert uw.cap_rate(0, 3_480_000) is None
     assert uw.cap_rate(None, 3_480_000) is None
     assert uw.cap_rate(-18_000, 3_480_000) is None
+
+
+def test_payback_months_is_investment_over_monthly_rent_not_annual():
+    # 4,006,000 / 18,000 = 222.55..., redondeado a 223 — a diferencia de
+    # cap_rate(), que sí anualiza la renta antes de dividir.
+    assert uw.payback_months(18_000, 4_006_000) == Decimal("223")
+
+
+def test_payback_months_rounds_half_up_to_the_whole_month():
+    assert uw.payback_months(1_000, 1_500) == Decimal("2")   # 1.5 → 2
+    assert uw.payback_months(1_000, 1_499) == Decimal("1")   # 1.499 → 1
+
+
+def test_payback_months_none_without_positive_investment():
+    assert uw.payback_months(18_000, 0) is None
+    assert uw.payback_months(18_000, None) is None
+    assert uw.payback_months(18_000, -4_006_000) is None
+
+
+def test_payback_months_none_without_positive_rent():
+    assert uw.payback_months(0, 4_006_000) is None
+    assert uw.payback_months(None, 4_006_000) is None
+    assert uw.payback_months(-18_000, 4_006_000) is None
 
 
 def test_rent_annual_is_twelve_months_or_nothing():
@@ -304,11 +329,15 @@ def test_the_underwriting_stack_reads_the_projected_rent():
     cobre renta, esta capa responde por lo que se proyectó."""
     m = uw.metrics(dict(INPUTS, rent_monthly_actual=90_000))
     assert m["rent_annual"] == Decimal("216000")
-    assert m["cap_rate"] == Decimal("0.0621")
+    assert m["cap_rate"] == Decimal("0.0864")
 
 
-def test_metrics_cap_rate_ignores_projected_sale():
-    """The denominator is the cost stack, so changing the exit cannot move cap rate."""
+def test_metrics_cap_rate_moves_with_projected_sale():
+    """El denominador es el valor de mercado (venta proyectada), así que un
+    cambio en la salida SÍ mueve el cap rate — al revés de cuando el
+    denominador era el costo."""
     m = uw.metrics(dict(INPUTS))
     cheaper_exit = uw.metrics(dict(INPUTS, projected_sale=1_000_000))
-    assert cheaper_exit["cap_rate"] == m["cap_rate"] == Decimal("0.0621")
+    assert m["cap_rate"] == Decimal("0.0864")
+    assert cheaper_exit["cap_rate"] == Decimal("0.2160")
+    assert cheaper_exit["cap_rate"] != m["cap_rate"]

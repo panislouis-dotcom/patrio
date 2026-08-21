@@ -287,9 +287,10 @@ def test_a_sold_property_reports_its_realized_result(client, sold_property):
     assert "Track Record · 01 · Resultado final" in html
     assert "Vendida · jul 2026" in html
     # Venta usa el precio de venta REAL (5,000,000), no la proyección: 5% de
-    # 5,000,000 + terreno/obra. Renta sigue con la renta proyectada (nunca se
-    # rentó) — los dos escenarios se calculan sin importar cuál pasó de verdad.
-    assert _metric('$3.5M <small>V $4.1M · R $3.9M c/comisiones</small>', "Inversión sin comisiones") in html
+    # 5,000,000 + terreno/obra. Solo venta aparece: renta es contrafactual —
+    # esta propiedad nunca se rentó, aunque compute_fees() la calcule igual.
+    assert _metric('$3.5M <small>V $4.1M c/comisiones</small>', "Inversión sin comisiones") in html
+    assert "R $" not in html
     assert _metric("$5.0M", "Precio de venta") in html
     # 5,000,000 - 3,480,000 = 1,520,000 sobre 3,480,000 = 43.7%
     assert _metric('$1.5M <small>43.7%</small>', "Ganancia realizada") in html
@@ -301,9 +302,8 @@ def test_a_sold_property_reports_its_realized_result(client, sold_property):
 def test_a_sold_property_shows_no_projection_and_no_live_mark(client, sold_property):
     html = build_prospectus_html([sold_property], [], [], [])
     for label in ("Valuación actual", "ROI anual", "Ganancia no realizada %",
-                  "Cap rate real s/ inversión", "Venta proyectada",
-                  "ROI proy. anual", "Ganancia proyectada %",
-                  "Cap rate proy. s/ inversión"):
+                  "Venta proyectada", "ROI proy. anual", "Ganancia proyectada %",
+                  "Cap rate proy. s/ venta"):
         assert _metric_label(label) not in html
     assert '<div class="l">Valuación · ' not in html
     # Ni con otro sufijo: ninguna tarjeta de una vendida lleva cap rate. (La
@@ -317,11 +317,19 @@ def test_a_rented_property_reports_its_mark_with_the_valuation_date(client, desa
     rented = _rented(client, desarrollo_property["id"], 30000, 6_000_000)
     html = build_prospectus_html([], [rented], [], [])
     assert "Track Record · 01 · En renta" in html
+    # Solo renta aparece en la sub-línea de comisiones: venta es
+    # contrafactual — esta propiedad nunca se vendió, aunque
+    # compute_fees() la calcule igual con la venta proyectada
+    # (2,500,000). Renta usa la renta REAL ya cobrada (30,000 x 3 meses +
+    # terreno/obra = 3,971,000, que redondea igual que la venta a "$4.0M").
+    # Este es el mismo bug que se corrigió en _sold_card(), en espejo.
+    assert _metric('$3.5M <small>R $4.0M c/comisiones</small>', "Inversión sin comisiones") in html
+    assert "V $" not in html
     assert _metric("$6.0M", "Valuación · ene 2026") in html
     # (6,000,000 - 3,480,000) / 3,480,000
     assert _metric("72.4%", "Ganancia no realizada %") in html
-    # 360,000 de renta anual sobre 3,480,000 invertidos
-    assert _metric("10.3%", "Cap rate real s/ inversión") in html
+    # 360,000 de renta anual sobre 6,000,000 de valuación actual, no venta proyectada
+    assert _metric("6.0%", "Cap rate") in html
     assert _metric_label("Precio de venta") not in html
     assert _metric_label("Ganancia realizada") not in html
 
@@ -334,7 +342,34 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _kv_row("Precio de compra", "$1,000,000") in html
     assert _kv_row("Costos de adquisición", "$65,000") in html
     assert _kv_row("Obra, permisos y subdivisión", "$2,415,000") in html
-    assert _metric('$3.5M <small>V $4.0M · R $3.9M c/comisiones</small>', "Inversión sin comisiones") in html
+    # "Inversión sin comisiones" ya no es una celda de esta fila — pedido
+    # explícito, reemplazada por el plazo de recuperación: 4,006,000 de
+    # inversión con comisiones de venta / 18,000 de renta mensual = 222.6,
+    # redondeado a 223 meses — enseñado en años (pedido explícito): 18.6.
+    assert _metric("18.6 años", "Plazo de recuperación") in html
+    assert '<div class="l">Inversión sin comisiones</div>' not in html
+    # Terreno: 1,000,000 x 5%. Obra: 2,340,000 (presupuesto, con overhead ya
+    # aplicado una sola vez) x 15%.
+    assert _metric('$50K <small>5.0%</small>', "Comisión compra terreno") in html
+    assert _metric('$351K <small>15.0%</small>', "Comisión de obra") in html
+    # La comisión de salida no venía desglosada en ningún lado — a diferencia
+    # de terreno y obra, aquí sí sale su propio $ por escenario. Venta: precio
+    # proyectado 2,500,000 x 5%. Renta: 18,000 x 3 meses.
+    assert _metric('$125K <small>5.0%</small>', "Comisión de salida · venta") in html
+    assert _metric('$54K <small>3 meses</small>', "Comisión de salida · renta") in html
+    # Y los totales quedan tal cual estaban — cada uno en su propia celda, sin
+    # fundirse en una sola: 3,480,000 + 401,000 (terreno+obra) + comisión de
+    # salida de cada escenario.
+    assert _metric('$4.0M', "Inversión c/comisiones · venta") in html
+    assert _metric('$3.9M', "Inversión c/comisiones · renta") in html
+    assert "metric-wide" not in html
+    # Sexto cuadro de la fila de proyección — pedido explícito, AL LADO del
+    # cap rate de mercado, no en su lugar: 216,000 de renta anual estimada /
+    # 4,006,000 de inversión con comisiones de venta = 5.4%. Las dos
+    # etiquetas van sin calificar (pedido explícito, envolvían a 2-3 líneas):
+    # el nombre distinto de cada una ya dice cuál es cuál.
+    assert _metric("8.6%", "Cap rate") in html
+    assert _metric("5.4%", "Rendimiento sobre inversión") in html
 
 
 def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):
@@ -373,9 +408,11 @@ def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, tes
 
 
 def test_the_opportunity_cap_rate_comes_from_the_api(client, test_property):
-    # 216,000 de renta anual sobre 3,480,000 invertidos = 6.2%
+    # 216,000 de renta anual sobre 2,500,000 de venta proyectada = 8.6%.
+    # Etiqueta sin calificar en la tarjeta de oportunidad — pedido explícito,
+    # ver el comentario sobre el sexto cuadro (rendimiento) más abajo.
     html = build_prospectus_html([], [], [], [get_property(test_property["id"])])
-    assert _metric("6.2%", "Cap rate proy. s/ inversión") in html
+    assert _metric("8.6%", "Cap rate") in html
 
 
 def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
@@ -383,7 +420,7 @@ def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
                 json={"fields": ["rentMonthlyProjected"]})
     p = get_property(test_property["id"])
     assert p["capRate"] is None
-    assert _metric("—", "Cap rate proy. s/ inversión") in build_prospectus_html([], [], [], [p])
+    assert _metric("—", "Cap rate") in build_prospectus_html([], [], [], [p])
 
 
 def test_the_document_translates_the_enums(client, make_property):
@@ -427,7 +464,7 @@ def test_the_cover_counts_only_the_units_still_in_rent(client, sold_property, re
 def test_the_cover_averages_the_cap_rate_of_what_it_rents(client, desarrollo_property):
     rented = _rented(client, desarrollo_property["id"], 30000, 6_000_000)
     html = build_prospectus_html([], [rented], [], [])
-    assert _cover_item("10.3%", "Cap rate promedio")  in html  # 360,000 / 3,480,000
+    assert _cover_item("6.0%", "Cap rate promedio")  in html  # 360,000 / 6,000,000 de valuación
 
 
 def test_the_cover_roi_average_counts_what_was_sold(client, sold_property):
@@ -455,10 +492,11 @@ def test_the_portfolio_summary_separates_sales_from_marks(client, sold_property,
     html = build_prospectus_html([sold_property], [rented_property], [], [])
     assert '<div class="kicker">Portafolio · vendidas y en renta</div>' in html
     assert _metric("2", "Propiedades") in html
-    # Cada escenario suma solo si LAS DOS propiedades del track record lo
-    # traen: venta 4,131,000 + 1,150,000 = 5,281,000; renta 3,935,000 +
-    # 1,080,000 = 5,015,000.
-    assert _metric('$4.5M <small>V $5.3M · R $5.0M c/comisiones</small>', "Capital invertido") in html
+    # Sin sub-línea de comisiones aquí: sumar "si todo se hubiera vendido" +
+    # "si todo se hubiera rentado" en un track record mixto no es una cifra
+    # real — ningún inversionista la pregunta, y mezclaría dinero realizado
+    # con dinero hipotético en un solo número.
+    assert _metric("$4.5M", "Capital invertido") in html
     assert _metric("$5.0M", "Ventas realizadas") in html
     assert _metric("$3.0M", "Valuación actual") in html
     assert _metric('$3.5M <small>79%</small>', "Ganancia del portafolio") in html
@@ -542,9 +580,9 @@ def test_prospectus_has_no_companion_section_without_plano_or_budget_beyond_resi
     información real (el estimado grueso), no un placeholder. Esta prueba
     documenta esa expectativa en vez de asumir lo contrario.
 
-    Ya no es una página propia (ver test_opportunity_detail_flows_right_after_the_note_not_a_new_page
+    Ya no es una página propia (ver test_opportunity_detail_flows_right_after_the_gallery_not_a_new_page
     en test_prospectus_html.py) — vive en el mismo flujo que `_opportunity`,
-    justo después de la nota. Los renders NO son parte de esta sección —
+    justo después de la galería. Los renders NO son parte de esta sección —
     viven en `_opportunity`, vía `renderHeads`
     (ver test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo)."""
     p = get_property(test_property["id"])

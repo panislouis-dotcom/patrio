@@ -177,8 +177,8 @@ desaparecen con ellas.
 entre cero no da «$0/m²», no da nada.
 
 Donde el espacio manda se abrevia **«Obra/m²»**, junto a las otras cifras por
-metro. La abreviatura es la misma concesión que «s/ inversión» en el cap rate
-(§8): se acorta el nombre, no se cambia.
+metro. La abreviatura es la misma concesión que «s/ venta» en el cap rate
+proyectado (§8): se acorta el nombre, no se cambia.
 
 **Ya NO se captura**, y no está entre los campos escribibles del API. Fue un
 insumo, y mientras lo fue era la segunda respuesta a cuánto cuesta la obra. Hoy
@@ -375,18 +375,59 @@ propiedad: real → anual → proyectado, el primero que exista.
 |---|---|---|
 | Renta anual estimada | `rentAnnual` | 12 × renta mensual estimada. |
 | Renta anual cobrada | `rentAnnualActual` | 12 × renta mensual cobrada. |
-| Cap rate proy. sobre inversión | `capRate` | Renta anual **estimada** / inversión total. |
-| Cap rate real sobre inversión | `capRateActual` | Renta anual **cobrada** / inversión total. |
+| Cap rate proy. sobre venta (o «Cap rate» a secas, ver abajo) | `capRate` | Renta anual **estimada** / venta proyectada. |
+| Cap rate | `capRateActual` | Renta anual **cobrada** / valuación actual. |
+| Rendimiento sobre inversión (o «Rendimiento proy. sobre inversión», ver abajo) | `yieldOnCost` | Renta anual **estimada** / inversión con comisiones de venta. |
 
-La fórmula es **yield on cost** — renta bruta sobre el dinero invertido — y esa
-es la decisión correcta, documentada en `finance/underwriting.py`. Pero «cap
-rate» a secas, en el mercado, significa NOI sobre valor de mercado. Por eso la
-etiqueta **siempre** lleva su denominador. Nunca «CAP RATE» solo.
+La fórmula del cap rate es la de mercado — NOI (bruto, sin descuento de gastos
+operativos) sobre el valor del activo, no sobre lo que costó. Vivió un tiempo
+como *yield on cost* (renta / inversión total, 2026-07 a 2026-08): quitarle a
+la fórmula de la vista vieja su 30% de opex fabricado fue correcto, pero
+quitarle también el denominador de valor no lo era — «yield on cost» contesta
+una pregunta real, pero no es un cap rate, y llamarlo así se leía mal para
+cualquiera que conociera el término (`finance/underwriting.py`).
 
-«Cap rate» **se califica, no se sustituye**: es la palabra que el usuario usa, y
-cambiarla por «rendimiento sobre costo» le costaría más de lo que le aclara.
-Donde hay lugar se escribe completo — «Cap rate real sobre inversión»; donde el
-espacio manda, como en las tarjetas del PDF, se abrevia a «s/ inversión».
+*Yield on cost* no desapareció: vive como su propio campo, `yieldOnCost` —
+pedido explícito, AL LADO del cap rate de mercado en la tarjeta de
+oportunidad, no en su lugar. Misma función (`cap_rate()` no distingue: solo
+divide lo que le pasan), pero el segundo argumento ya no es un valor de
+mercado sino `totalInvestmentWithFeesVenta` — la misma inversión con
+comisiones de venta que ya usa `projectedProfit`, y congelada sobre
+`projectedSale` por la misma razón (la comisión de una proyección no debe
+moverse porque la propiedad ya se vendió por otro precio). Por eso lleva su
+propio nombre, «Rendimiento», y no «Cap rate»: llamarlo cap rate con otro
+denominador habría sido exactamente el error que el párrafo de arriba ya
+corrigió una vez.
+
+Los dos NO comparten denominador, a propósito: `capRate` empareja la renta
+**modelada** con la venta **proyectada** (la apuesta completa, de un extremo al
+otro); `capRateActual` empareja la renta **cobrada** con la valuación
+**actual** (lo real contra lo real — la venta proyectada sigue siendo una
+apuesta de salida, no lo que la propiedad vale hoy). Forzar el mismo
+denominador en los dos habría sido medir un cobro real contra un precio de
+salida que sigue siendo hipotético.
+
+Por lo mismo, la etiqueta **solo lleva denominador cuando puede haber
+ambigüedad** — y esa ambigüedad se resuelve de DOS maneras distintas según
+dónde vive la cifra:
+
+- **Calificando el denominador**, cuando `capRate` aparece SOLO (sin
+  `yieldOnCost` al lado), como en la tarjeta de desarrollo: «Cap rate proy.
+  sobre venta» (o «Cap rate proy. s/ venta» donde el espacio manda). Sin el
+  calificador, «Cap rate» ahí seguiría siendo ambiguo — inversión, venta,
+  valuación son todas cifras de valor plausibles.
+- **Nombrando distinto al vecino**, cuando `capRate` y `yieldOnCost` aparecen
+  JUNTOS, como en la tarjeta de oportunidad — pedido explícito, tras ver los
+  calificadores envolver a 2 y 3 líneas. Ahí «Cap rate» y «Rendimiento sobre
+  inversión» van cada uno SIN calificar: el nombre distinto (Cap rate vs.
+  Rendimiento) ya dice cuál es cuál, y repetir el denominador en la etiqueta
+  sería inflar el texto sin agregar nada que el nombre no dijera ya.
+
+El real (`capRateActual`) nunca necesita ninguna de las dos: una vez que la
+propiedad renta, la valuación es la única cifra de valor en pantalla —el
+desglose de costos quedó atrás— así que «Cap rate» a secas no es la
+abreviatura de nada, es la etiqueta completa, exacta, sin nada que calificar
+ni con qué confundirse.
 
 **NO lleva** descuento de gastos operativos: el cap rate neto de opex vive en el
 analizador, que sí modela NOI.
@@ -453,5 +494,6 @@ estado crudo.
 | Inversión capturada · `totalInvestmentCaptured` | Era un total tecleado que competía con el desglose. Ya no se captura ningún total. | Inversión total — y si lo único que hay es un total, se captura como precio de compra |
 | Captura manual (de la inversión) · `investmentBasis` | Nombraba el segundo origen de una cifra que ahora solo tiene uno. | Nada: la inversión total no lleva procedencia |
 | ROI proyectado (a secas) | Nombró la anual y la total. | ROI proy. anual / Ganancia proyectada % |
-| Cap rate (a secas) | En el mercado significa NOI/valor. | Cap rate sobre inversión (abreviado «s/ inversión» donde no cabe) |
+| Cap rate (a secas) para el **proyectado** | Ambiguo: inversión, venta y valuación son todas cifras de valor plausibles contra las que medir una renta modelada. | Cap rate proy. sobre venta (abreviado «s/ venta» donde no cabe) |
+| Cap rate sobre inversión / con comisiones · `yieldOnCost` llamado «cap rate» | En el mercado «cap rate» significa NOI/valor; ponerle un denominador de costo detrás no lo vuelve otra cosa, solo confunde el término con el «yield on cost» que ya se distinguió arriba. | Rendimiento sobre inversión (calificado «Rendimiento proy. sobre inversión» SOLO donde `capRate` no aparece al lado — ver §8) |
 | `en_renta`, `adaptive_reuse`, `properties_…_check` | Son identificadores, no lenguaje. | «En renta», «Reconversión», una frase accionable |

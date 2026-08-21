@@ -82,11 +82,17 @@ body { font-family: 'Inter', sans-serif; background: #FFFFFF; color: var(--ink);
 .metrics { display: grid; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
 .metrics-4 { grid-template-columns: repeat(4, 1fr); }
 .metrics-5 { grid-template-columns: repeat(5, 1fr); }
+.metrics-6 { grid-template-columns: repeat(6, 1fr); }
 .metric { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
           padding: 5mm 5mm 5.5mm; }
 .metric .v { font-family: 'Playfair Display', serif; font-weight: 400; font-size: 20pt;
              color: var(--green-dark); line-height: 1; }
-.metric .v small { font-size: 11pt; color: var(--green); }
+/* white-space:nowrap — sin esto, Chromium parte "3 meses" (la única
+   anotación de esta rejilla con un espacio) en dos líneas y la continuación
+   pierde el font-size chico, quedando del mismo tamaño que el valor
+   principal. Con nowrap la anotación brinca completa a su propia línea en
+   vez de partirse a la mitad. */
+.metric .v small { font-size: 11pt; color: var(--green); white-space: nowrap; }
 .metric .l { font-family: 'Inter', sans-serif; font-size: 5.8pt; font-weight: 600;
              letter-spacing: 0.15em; text-transform: uppercase; color: var(--sec); margin-top: 6px; }
 
@@ -126,12 +132,23 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
              margin-bottom: 9px; break-after: avoid; page-break-after: avoid; }
 
 /* ── Presupuesto, renglón por renglón ────────────────────────────────────── */
-.budget-chapter { margin-bottom: 5mm; }
+/* Dos columnas por CSS puro (Python solo decide SI aplica — ver
+   _BUDGET_TWO_COLUMN_THRESHOLD — nunca cuáles capítulos van en cuál columna).
+   column-gap en vez de un borde/padding manual entre columnas: es lo que ya
+   separa .opp-cols del mismo documento. */
+.budget-columns { columns: 2; column-gap: 8mm; }
+/* Sin break-inside:avoid-column a propósito: mismo motivo que table.kv ya
+   documenta para páginas — un capítulo largo puede partirse entre columnas
+   como cualquier tabla de un libro. Lo único protegido sigue siendo el
+   renglón (table.kv tr) y el título pegado a su primer renglón
+   (budget-chapter-name, abajo). */
+.budget-chapter { margin-bottom: 3mm; }
 .budget-chapter:last-of-type { margin-bottom: 0; }
-.budget-chapter-name { font-family: 'Inter', sans-serif; font-size: 7pt; font-weight: 600;
-                        color: var(--sec); margin-bottom: 2mm;
+.budget-chapter-name { font-family: 'Inter', sans-serif; font-size: 6.5pt; font-weight: 600;
+                        color: var(--sec); margin-bottom: 1.5mm;
                         break-after: avoid; page-break-after: avoid; }
-.budget-qty { font-size: 7.5pt; color: var(--sec); font-weight: 400; }
+.budget-columns table.kv td { font-size: 7.5pt; padding: 3px 0; }
+.budget-qty { font-size: 7pt; color: var(--sec); font-weight: 400; }
 .budget-subtotal td { font-weight: 600; border-top: 1px solid var(--ink); }
 .budget-grand-total { margin-top: 3mm; }
 .budget-grand-total td { font-size: 10pt; font-weight: 600; padding-top: 6px;
@@ -201,14 +218,17 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    presupuesto) ya no es su propia page-block: el salto de página real no
    venía del alto de .opp ni de flex vs. bloque — venía de que .page-block
    trae page-break-after:always, y .opp-detail ERA una page-block propia.
-   Cuando la nota se quedaba a la mitad de una hoja, plano/renders igual
-   brincaban a la siguiente por ese salto forzado, sin importar cuánta hoja
-   quedara libre debajo de la nota. Fusionar todo en una sola page-block dejó
-   que Chromium sólo pase de hoja cuando de veras se le acaba el espacio, así
-   que plano/renders/presupuesto ahora continúan donde la nota los deja. Cada
-   fragmento sigue midiendo lo que su contenido pide; .page-block sigue
-   heredando overflow:hidden, y sin height fija en .opp no hay nada que
-   esconder. */
+   Cuando la galería o el desglose de comisiones se quedaban a la mitad de
+   una hoja, plano/renders igual brincaban a la siguiente por ese salto
+   forzado, sin importar cuánta hoja quedara libre debajo. Fusionar todo en
+   una sola page-block dejó que Chromium sólo pase de hoja cuando de veras se
+   le acaba el espacio, así que plano/renders continúan donde el contenido
+   anterior los deja. Cada fragmento sigue midiendo lo que su contenido pide;
+   .page-block sigue heredando overflow:hidden, y sin height fija en .opp no
+   hay nada que esconder. El presupuesto es la única excepción deliberada:
+   `.detail-section-budget` (más abajo) le fuerza su propio salto, sin volver
+   a envolverlo en una page-block completa — el mismo bug que este párrafo
+   describe, en miniatura, es justo lo que ese wrapper habría reintroducido. */
 .opp .hero { width: 100%; height: 78mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
 /* box-decoration-break:clone — sin esto, el padding de .opp-body (lo único
    que separa su contenido del borde de la hoja, porque @page no tiene
@@ -217,34 +237,21 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    comprobado con una sonda propia: sin clone, el marcador de prueba
    aterrizaba a 3.8mm del borde; con clone, a ~19mm, igual que si esa hoja
    tuviera su propio padding completo. Es el mismo bug de contenido pegado
-   al filo que .opp arregló para las fotos y la nota, aquí aplicado al
-   padding de página que las envuelve a todas. */
+   al filo que .opp ya arregló para las fotos, aquí aplicado al padding de
+   página que las envuelve a todas. */
 .opp-body { padding: 8mm var(--pad) 7mm;
             -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .opp .metrics { margin-bottom: 7mm; break-inside: avoid; page-break-inside: avoid; }
-/* Mismo ajuste que .summary ya hacía para su propia fila de 5: la celda del
-   .metric base (padding 5mm, valor a 20pt) está pensada para una fila de 4 —
-   en una de 5 el texto no cabe y CADA etiqueta envuelve a dos líneas, y el
-   valor con porcentaje ("$1.9M 51.7%") se parte en dos renglones cuando en
-   la fila de 4 el mismo patrón cabe en uno. */
-.opp .metrics-5 .metric { padding: 3.6mm 3mm; }
-.opp .metrics-5 .metric .v { font-size: 16pt; }
+/* Dos filas de 6 (comisiones/totales, luego plazo/venta/ganancia/cap
+   rate/rendimiento): mismo motivo que .summary ya tenía para su fila de 5 —
+   la celda del .metric base (padding 5mm, valor a 20pt) está pensada para una
+   fila de 4, y en una más ancha el texto no cabe: cada etiqueta envuelve a dos
+   líneas, y un valor con porcentaje ("$1.9M 51.7%") se parte en dos renglones
+   cuando en la fila de 4 el mismo patrón cabe en uno. */
+.opp .metrics-6 .metric { padding: 3mm 2.5mm; }
+.opp .metrics-6 .metric .v { font-size: 13pt; }
 .opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
             break-inside: avoid; page-break-inside: avoid; }
-/* Sin break-inside:avoid a propósito: una nota es prosa, no una foto ni una
-   tabla — que envuelva y siga en la página siguiente como cualquier párrafo
-   de un libro es normal. Forzarla entera a la página siguiente era parte de
-   lo que la dejaba varada, sola, en una hoja casi en blanco.
-   white-space:pre-line respeta los saltos de párrafo que quien escribió la
-   nota de verdad tecleó — por default el HTML los colapsa a un solo espacio
-   y una nota de tres párrafos se imprime como un solo bloque de texto.
-   overflow-wrap:anywhere evita que una URL o un token sin espacios se salga
-   del ancho de la nota (y de la hoja): sin esto no hay dónde partir la
-   palabra y .page-block la recorta en silencio contra el borde. */
-.opp-note { font-family: 'Inter', sans-serif; font-size: 8pt; color: var(--sec);
-            font-style: italic; line-height: 1.55; border-left: 2px solid var(--terra);
-            padding-left: 10px; margin-top: 8mm;
-            white-space: pre-line; overflow-wrap: anywhere; }
 .opp .strip { margin-top: 6mm; }
 /* Techo, no piso: con dos o más fotos aspect-ratio ya las deja bajo este
    alto sin ayuda (170mm entre 2 ya da ~63mm) — este límite solo cubre filas
@@ -272,12 +279,12 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    plano (abajo), que sí son unidades visuales que no deben cortarse. */
 .detail-section { margin-bottom: 8mm; }
 .detail-section:last-child { margin-bottom: 0; }
-/* El presupuesto YA NO fuerza su propia hoja (pedido de Louis): sin el plano
-   técnico y con los renders arriba, la hoja de detalle queda ~70% libre y un
-   presupuesto de obra típico (corto) cabe de sobra ahí — mandarlo a una hoja
-   nueva dejaba media hoja en blanco. Ahora fluye después de los renders como
-   cualquier otra sección; si algún día uno muy largo no cupiera, Chromium
-   brinca solo, sin partir renglones (break-inside:avoid en table.kv tr). */
+/* El presupuesto SÍ fuerza su propia hoja cuando hay plano/renders antes —
+   pedido explícito. Vivió sin este salto un tiempo (la premisa era que un
+   presupuesto típico es corto y cabe en lo que dejan los renders), pero un
+   presupuesto real, con los datos de producción, resultó más largo de lo que
+   esa premisa asumía: arrancaba a media hoja de planos y se cortaba ahí. */
+.detail-section-budget { break-before: page; page-break-before: always; }
 
 /* ══ Plano junto a su render ══════════════════════════════════════════════ */
 .plan-row { margin: 0 0 7mm 0; break-inside: avoid; }
@@ -286,22 +293,24 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
                    text-transform: uppercase; color: #7A7A7A; margin-bottom: 1.5mm; }
 .plan-pair { display: flex; gap: 4mm; align-items: flex-start; }
 .plan-sheet { flex: 1 1 50%; min-width: 0; }
-/* 110mm, no 165: con 165mm cada piso ocupaba solo su columna de ~83mm de ancho pero
-   ~171mm de alto de fila — más de la mitad de una A4 (297mm) — así que nunca cabían
-   2 pisos en la misma página. Medido con el arnés real de Chromium contra los 4 pisos
-   reales de las propiedades 5 y 10 (viewBox más angosto: alto/ancho 2.02): a 110mm dos
-   filas miden ~232mm juntas —caben en la página— y el plano dibujado sigue midiendo
-   ~55-60mm de ancho visible. Not 85mm: ahí el ancho visible cae a ~42-46mm, medido
-   ilegible en un PDF real (cotas y m² encimados) — 110mm es el primer escalón donde
-   caben 2 por página sin repetir ese problema. */
-.plan-sheet svg { width: 100%; height: auto; max-height: 110mm; }
+/* 110mm fue el tope mientras el presupuesto todavía podía compartir esta misma
+   hoja debajo de los planos (ver .detail-section-budget), y mientras dos pisos
+   tenían que caber juntos en una sola A4 (297mm) para no dejar uno varado en su
+   propia hoja casi en blanco — las dos razones de por qué era chico. Ahora que
+   el presupuesto SIEMPRE arranca en su propia hoja Y que `.plan-row {
+   break-inside: avoid }` manda cada piso que no quepa a SU PROPIA hoja en vez de
+   partirlo, las dos presiones que lo achicaban desaparecieron: un plano —sobre
+   todo uno angosto y alto, el caso peor— puede crecer hasta casi llenar su
+   propia página. 250mm, pedido explícito: un piso solo en su hoja se lee grande
+   y legible en vez de una miniatura con media hoja en blanco alrededor. */
+.plan-sheet svg { width: 100%; height: auto; max-height: 250mm; }
 /* `_photo_block` mete una FOTO (etiqueta img) en este mismo hueco — antes solo lo
    llenaba un plano en SVG, que ya trae su propia proporción en el viewBox. Una
    imagen sin ancho ni alto explícitos se dibuja a su tamaño de píxeles real (miles
    de px de una foto de cámara) dentro de un flex angosto: el layout la desborda y
    no se ve nada. Mismo tope que la regla vecina de SVG, con object-fit porque, a
    diferencia del plano, una foto sí puede desbordar su caja en cualquier proporción. */
-.plan-sheet img { width: 100%; height: auto; max-height: 110mm; object-fit: contain; }
+.plan-sheet img { width: 100%; height: auto; max-height: 250mm; object-fit: contain; }
 /* El plano trae su nombre de piso DIBUJADO dentro del propio SVG (floorToSvg — el
    mismo que usa el botón ↓ SVG del editor, no se toca aquí para no cambiarle la
    descarga) — el margen que le hace lugar a ese título es ~8.5% de su alto, medido
@@ -320,8 +329,12 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 /* 78mm × 2 + hueco ≈ el alto del plano de al lado: la pareja se lee como una banda,
    no como una columna corta junto a una torre de imágenes. */
 .plan-renders img { width: 100%; height: auto; max-height: 78mm; object-fit: contain; }
-/* Una hoja sin render no debe estirarse a media página: sin pareja se queda a su ancho. */
-.plan-pair > .plan-sheet:only-child { flex: 0 0 62%; }
+/* Una hoja sin render no debe estirarse a TODA la página — sin pareja se queda a
+   su propio ancho, más generoso que el 50% que comparte con un render (78%,
+   subido junto con el max-height de arriba: un piso angosto y alto solo llegaba
+   a la mitad de un 62% aun con más alto disponible, height seguía siendo lo que
+   lo topaba primero). */
+.plan-pair > .plan-sheet:only-child { flex: 0 0 78%; }
 
 /* ══ CLOSING ═════════════════════════════════════════════════════════════ */
 .closing { height: 297mm; background: var(--green); color: #fff; padding: 30mm var(--pad);
@@ -382,6 +395,13 @@ def _fmt_pct_or_dash(frac, decimals: int = 1) -> str:
 def _fmt_mxn_compact_or_dash(val) -> str:
     """No value means no metric — '—', never a fabricated $0."""
     return _fmt_mxn_compact(val) if val is not None else "—"
+
+
+def _fmt_years_or_dash(months) -> str:
+    """meses (el que guarda paybackMonths) → años, 1 decimal — pedido explícito:
+    redondear a un año entero perdería demasiada precisión en un plazo que
+    típicamente son varios años (92 meses ↔ 7.7, no un impreciso "8 años")."""
+    return f"{_num(months) / 12:.1f} años" if months is not None else "—"
 
 
 def _sale_or_none(val):
@@ -448,16 +468,22 @@ def _metric(value: str, label: str) -> str:
 
 
 def _inv_value(total_inv, with_fees_venta, with_fees_renta) -> str:
-    """La inversión sin comisiones, y —cuando existen— los dos escenarios con
-    comisiones (venta y renta) como sub-línea `<small>` en la misma celda:
-    mismo patrón que ya usan `gain_v` (Ganancia realizada) y `gain_value`
-    (Ganancia proyectada) para su detalle secundario, sin abrir columnas
-    nuevas en la rejilla fija de métricas.
+    """La inversión sin comisiones, y —cuando el llamador los pasa— hasta dos
+    escenarios con comisiones (venta y renta) como sub-línea `<small>` en la
+    misma celda: mismo patrón que ya usan `gain_v` (Ganancia realizada) y
+    `gain_value` (Ganancia proyectada) para su detalle secundario, sin abrir
+    columnas nuevas en la rejilla fija de métricas.
 
-    Cada escenario se calcula siempre que haya con qué —ya no depende de una
-    estrategia de salida elegida (compute_fees() en fees.py calcula los dos
-    sin importar exit_strategy)— así que pueden aparecer los dos, uno solo, o
-    ninguno; nunca se adivina cuál mostrar."""
+    `compute_fees()` (fees.py) calcula los dos escenarios siempre, sin
+    importar `exit_strategy` — pero esta función no decide cuál mostrar, solo
+    imprime lo que le pasan. Esa decisión es de cada CALLER, por etapa:
+    vendida solo pasa venta (renta ya es contrafactual, nunca se cobró),
+    rentada solo pasa renta (venta es el espejo), desarrollo pasa los dos (la
+    salida sigue genuinamente indecisa), oportunidad no pasa ninguno (el
+    detalle vive en su propia fila, `_opportunity_fees_metrics()`) y resumen
+    ya no llama a esta función. Por eso aquí pueden llegar los dos, uno solo,
+    o ninguno — nunca por ambigüedad, siempre porque el llamador ya resolvió
+    cuál escenario es real para su propia tarjeta."""
     v = _fmt_mxn_compact_or_dash(total_inv)
     parts = []
     if with_fees_venta is not None:
@@ -467,6 +493,66 @@ def _inv_value(total_inv, with_fees_venta, with_fees_renta) -> str:
     if parts:
         v += f' <small>{" · ".join(parts)} c/comisiones</small>'
     return v
+
+
+_FEE_MISSING_LABEL = {"salePrice": "falta precio de venta", "rentMonthly": "falta renta mensual"}
+
+
+def _fee_scenario_missing(reasons: list[str] | None) -> str:
+    """El guion, con el porqué al lado — nunca solo, se leería como cero
+    comisión. `reasons` siempre trae exactamente un elemento cuando no está
+    vacío: compute_fees() (fees.py) nombra un solo insumo por escenario."""
+    text = " · ".join(_FEE_MISSING_LABEL[r] for r in (reasons or []) if r in _FEE_MISSING_LABEL)
+    return f'— <small>{_esc(text)}</small>' if text else "—"
+
+
+def _opportunity_fees_metrics(p: dict) -> str:
+    """Comisiones del fondo, en su propia fila. Solo en _opportunity(): es la
+    única etapa donde el camino de salida sigue genuinamente indeciso.
+
+    Seis celdas en un solo renglón — pedido explícito, tras ver la primera
+    versión partida en dos: se leía como si las cuatro comisiones y los dos
+    totales fueran grupos distintos, cuando en realidad son la misma cuenta
+    de principio a fin. `.metrics-6` (CSS) + el override `.opp .metrics-6`
+    (padding y tamaño de valor recortados, ver el comentario ahí arriba) es
+    lo que hace caber seis columnas — la misma clase que usa la fila de
+    proyección justo abajo (plazo/venta/ganancia/cap rate/rendimiento),
+    también de seis, pedido explícito: el desglose de comisiones va primero.
+
+    El orden importa aunque ya no haya renglones que lo marquen: primero las
+    CUATRO comisiones que se cobran (terreno, obra, salida·venta,
+    salida·renta), luego los DOS totales que resultan de sumarlas a la
+    inversión (venta, renta) — se lee como el desglose seguido de su suma,
+    no como una mezcla intercalada.
+
+    Terreno y obra nunca faltan — siempre hay una base y un % (el default si
+    nadie lo capturó), así que sus dos celdas acceden a `landFee`/
+    `constructionFee` con corchetes, no `.get()`: un KeyError aquí sería una
+    señal real de que compute_fees() (fees.py) dejó de cumplir esa garantía,
+    no un dato opcional que la tarjeta deba tolerar en silencio. Las cuatro
+    restantes sí pueden faltar, cada una por su cuenta (sin precio de venta
+    no hay comisión de venta NI total con comisiones de venta), y entonces
+    nombran su propio insumo ausente vía `_fee_scenario_missing()`."""
+    salida_venta = (f'{_fmt_mxn_compact(p["exitFeeVenta"])} <small>{_fmt_pct(p.get("exitSaleCommissionPct"))}</small>'
+                    if p.get("exitFeeVenta") is not None
+                    else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
+    salida_renta = (f'{_fmt_mxn_compact(p["exitFeeRenta"])} <small>{int(_num(p.get("exitRentMonths")))} meses</small>'
+                    if p.get("exitFeeRenta") is not None
+                    else _fee_scenario_missing(p.get("feesMissingInputsRenta")))
+    total_venta = (_fmt_mxn_compact(p["totalInvestmentWithFeesVenta"])
+                   if p.get("totalInvestmentWithFeesVenta") is not None
+                   else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
+    total_renta = (_fmt_mxn_compact(p["totalInvestmentWithFeesRenta"])
+                   if p.get("totalInvestmentWithFeesRenta") is not None
+                   else _fee_scenario_missing(p.get("feesMissingInputsRenta")))
+    return "".join([
+        _metric(f'{_fmt_mxn_compact(p["landFee"])} <small>{_fmt_pct(p.get("landCommissionPct"))}</small>', "Comisión compra terreno"),
+        _metric(f'{_fmt_mxn_compact(p["constructionFee"])} <small>{_fmt_pct(p.get("constructionCommissionPct"))}</small>', "Comisión de obra"),
+        _metric(salida_venta, "Comisión de salida · venta"),
+        _metric(salida_renta, "Comisión de salida · renta"),
+        _metric(total_venta, "Inversión c/comisiones · venta"),
+        _metric(total_renta, "Inversión c/comisiones · renta"),
+    ])
 
 
 def _strip(images, label: str, limit: int) -> str:
@@ -619,10 +705,10 @@ def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
     #   · Unidades en renta — solo las que siguen en renta. La leyenda dice
     #     "operando hoy" y lo vendido dejó de operar para nosotros.
     #   · Cap rate promedio — solo en renta, y de `capRateActual`: renta COBRADA
-    #     sobre capital. El `capRate` a secas sale del underwriting, así que
-    #     promediarlo aquí publicaría lo que se estimó como si fuera lo que se
-    #     cobra. Una vendida sí trae ambos (el expediente ya no se apaga en la
-    #     venta), pero ya no cobra renta: por eso queda fuera del promedio.
+    #     sobre la valuación actual. El `capRate` a secas sale del underwriting,
+    #     así que promediarlo aquí publicaría lo que se estimó como si fuera lo
+    #     que se cobra. Una vendida sí trae ambos (el expediente ya no se apaga
+    #     en la venta), pero ya no cobra renta: por eso queda fuera del promedio.
     #   · ROI promedio — en renta y vendidas: el rendimiento que la firma ya
     #     entregó o lleva marcado. Ninguna proyección entra aquí; por eso
     #     desarrollo y las oportunidades no cuentan.
@@ -648,7 +734,7 @@ def _cover(month_year: str, rented: list[dict], sold: list[dict]) -> str:
     <div class="vp">
       <div class="vp-item"><div class="vp-v">{units_v}</div><div class="vp-l">Unidades en renta</div><div class="vp-d">operando hoy</div></div>
       <div class="vp-item"><div class="vp-v">{roi_avg}</div><div class="vp-l">ROI promedio</div><div class="vp-d">anualizado · vendidas y en renta</div></div>
-      <div class="vp-item"><div class="vp-v">{cap_avg}</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">renta cobrada sobre inversión</div></div>
+      <div class="vp-item"><div class="vp-v">{cap_avg}</div><div class="vp-l">Cap rate promedio</div><div class="vp-d">renta cobrada sobre valuación actual</div></div>
     </div>
   </div>
   <div class="cover-foot">
@@ -743,7 +829,10 @@ def _sold_card(p: dict, kicker: str) -> str:
     hold = int(_num(p.get("holdMonthsActual")))
     month = _fmt_month(p.get("saleDate"))
     metrics = "".join([
-        _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFeesVenta"), p.get("totalInvestmentWithFeesRenta")), "Inversión sin comisiones"),
+        # renta es contrafactual en una vendida — nunca se pasa, aunque el
+        # dato exista (compute_fees() lo calcula igual, con la renta
+        # proyectada, porque nunca hay una real que cobrar).
+        _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFeesVenta"), None), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(p.get("salePrice")), "Precio de venta"),
         _metric(gain_v, "Ganancia realizada"),
         _metric(_fmt_pct_or_dash(p.get("realizedRoi")), "ROI real anual"),
@@ -755,17 +844,22 @@ def _sold_card(p: dict, kicker: str) -> str:
 
 def _rented_card(p: dict, kicker: str) -> str:
     """En renta: la marca viva. La valuación lleva su fecha de corte encima
-    porque es una estimación con fecha, no un hecho; el cap rate es `capRateActual`,
-    la renta efectivamente cobrada sobre el capital — el track record no publica
-    lo que se estimó cobrar."""
+    porque es una estimación con fecha, no un hecho; el cap rate es
+    `capRateActual`, la renta efectivamente cobrada sobre esa misma valuación —
+    ya no sobre la venta proyectada, que sigue siendo una apuesta de salida y no
+    lo que la propiedad vale hoy. Por eso la etiqueta ya no dice "s/ venta": sin
+    sufijo, porque en esta tarjeta ya no hay ambigüedad de contra qué se mide —
+    la valuación es la única cifra de valor en pantalla."""
     val_month = _fmt_month(p.get("valuationDate"))
     metrics = "".join([
-        _metric(_inv_value(p.get("totalInvestment"), p.get("totalInvestmentWithFeesVenta"), p.get("totalInvestmentWithFeesRenta")), "Inversión sin comisiones"),
+        # venta es contrafactual en una rentada — nunca se pasa, aunque el
+        # dato exista: es el espejo del mismo criterio en _sold_card().
+        _metric(_inv_value(p.get("totalInvestment"), None, p.get("totalInvestmentWithFeesRenta")), "Inversión sin comisiones"),
         _metric(_fmt_mxn_compact_or_dash(p.get("currentValuation")),
                 f"Valuación · {val_month}" if val_month else "Valuación actual"),
         _metric(_fmt_pct_or_dash(p.get("roi")), "ROI anual"),
         _metric(_fmt_pct_or_dash(p.get("unrealizedGainPct")), "Ganancia no realizada %"),
-        _metric(_fmt_pct_or_dash(p.get("capRateActual")), "Cap rate real s/ inversión"),
+        _metric(_fmt_pct_or_dash(p.get("capRateActual")), "Cap rate"),
     ])
     return _card(p, f"{kicker} · En renta", _hold_tail(p), metrics)
 
@@ -779,9 +873,15 @@ def _development_card(p: dict, kicker: str) -> str:
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(p.get("projectedSale"))), "Venta proyectada"),
         _metric(_fmt_pct_or_dash(p.get("projectedRoi")), "ROI proy. anual"),
         _metric(_fmt_pct_or_dash(p.get("projectedRoiTotal")), "Ganancia proyectada %"),
-        _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy. s/ inversión"),
+        _metric(_fmt_pct_or_dash(p.get("capRate")), "Cap rate proy. s/ venta"),
     ])
     return _card(p, kicker, _projected_hold_tail(p), metrics)
+
+
+# Doce renglones es aproximadamente media página a una columna con el tipo
+# compacto de .budget-columns — por debajo de eso, partir en dos columnas
+# dejaría la segunda visiblemente vacía en vez de ahorrar espacio.
+_BUDGET_TWO_COLUMN_THRESHOLD = 12
 
 
 def _budget_full(lines: list[dict], chapters: list[str]) -> str:
@@ -794,14 +894,27 @@ def _budget_full(lines: list[dict], chapters: list[str]) -> str:
 
     Sin subtotal cuando un capítulo trae un solo renglón: repetir la misma
     cifra dos veces (la partida y "Subtotal" idénticos) no añade información,
-    solo la impresión de que el presupuesto no está costeado a detalle."""
+    solo la impresión de que el presupuesto no está costeado a detalle.
+
+    A dos columnas cuando hay suficientes renglones (feedback en vivo: un
+    presupuesto real, con capítulos de verdad, ocupaba hasta tres páginas).
+    `columns: 2` en CSS, no una división manual aquí — Chromium reparte los
+    capítulos entre columnas él solo, y balancea mejor de lo que cualquier
+    heurística de "la mitad de los capítulos a la izquierda" lograría con
+    capítulos de tamaños desiguales. Los capítulos NO llevan
+    `break-inside: avoid`: el comentario de `table.kv` ya explica por qué un
+    capítulo largo puede partirse — aquí igual, entre columnas y no solo entre
+    páginas — mientras cada renglón (`table.kv tr`) y el título de capítulo
+    pegado a su primer renglón sigan intactos. Un presupuesto corto (la
+    mayoría: una sola línea "Otros, por detallar") se queda en una columna —
+    dos columnas ahí solo dejarían una segunda columna vacía."""
     if not lines:
         return ""
     by_chapter: dict[str, list[dict]] = {}
     for line in lines:
         by_chapter.setdefault(line.get("chapterName") or "", []).append(line)
 
-    sections = []
+    chapter_sections = []
     grand_total = 0.0
     for chapter in chapters:
         chapter_lines = by_chapter.get(chapter)
@@ -822,14 +935,16 @@ def _budget_full(lines: list[dict], chapters: list[str]) -> str:
         if len(chapter_lines) > 1:
             rows.append(f'<tr class="budget-subtotal"><td>Subtotal</td><td class="n">{_fmt_mxn(subtotal)}</td></tr>')
         grand_total += subtotal
-        sections.append(
+        chapter_sections.append(
             f'<div class="budget-chapter"><div class="budget-chapter-name">{_esc(chapter)}</div>'
             f'<table class="kv">{"".join(rows)}</table></div>'
         )
-    sections.append(
-        f'<table class="kv budget-grand-total"><tr><td>Total</td><td class="n">{_fmt_mxn(grand_total)}</td></tr></table>'
-    )
-    return "".join(sections)
+
+    body = "".join(chapter_sections)
+    if len(lines) > _BUDGET_TWO_COLUMN_THRESHOLD:
+        body = f'<div class="budget-columns">{body}</div>'
+    total = f'<table class="kv budget-grand-total"><tr><td>Total</td><td class="n">{_fmt_mxn(grand_total)}</td></tr></table>'
+    return body + total
 
 
 def _summary_card(sold: list[dict], rented: list[dict]) -> str:
@@ -842,22 +957,19 @@ def _summary_card(sold: list[dict], rented: list[dict]) -> str:
     resume, y cada renglón desaparece cuando su etapa está vacía."""
     track = sold + rented
     inv = sum(_num(p.get("totalInvestment")) for p in track)
-    # Con comisiones, solo si CADA propiedad del track record trae la cifra de
-    # ESE escenario: una suma parcial (falta una, cuenta como $0) publicaría un
-    # total con comisiones más bajo que el real, más engañoso que no
-    # mostrarlo. Venta y renta se evalúan por separado — el track record puede
-    # tener el dato completo para uno y no para el otro. gain/gain_pct siguen
-    # sin comisiones abajo — el desempeño del portafolio queda fuera de alcance.
-    def _all_or_nothing(key: str):
-        values = [p.get(key) for p in track]
-        return sum(_num(v) for v in values) if track and all(v is not None for v in values) else None
-    inv_with_fees_venta = _all_or_nothing("totalInvestmentWithFeesVenta")
-    inv_with_fees_renta = _all_or_nothing("totalInvestmentWithFeesRenta")
     sales = sum(_num(p.get("salePrice")) for p in sold)
     marks = sum(_num(p.get("currentValuation")) for p in rented)
     gain = sales + marks - inv
 
-    cells = [(str(len(track)), "Propiedades"), (_inv_value(inv, inv_with_fees_venta, inv_with_fees_renta), "Capital invertido")]
+    # Sin sub-línea de comisiones aquí (a diferencia de las tarjetas
+    # individuales): un track record mixto nunca va a "ser" ni todo venta ni
+    # todo renta, así que sumar "si todo se hubiera vendido" + "si todo se
+    # hubiera rentado" no es una cifra que ningún inversionista pregunte —
+    # mezclaría dinero realizado con dinero hipotético en un solo número,
+    # exactamente lo que este mismo renglón ya evita a propósito para
+    # `sales`/`marks` (ver la nota de "Sumarlas en una sola cifra..." arriba,
+    # en el docstring de la función).
+    cells = [(str(len(track)), "Propiedades"), (_fmt_mxn_compact_or_dash(inv), "Capital invertido")]
     if sold:
         cells.append((_fmt_mxn_compact(sales), "Ventas realizadas"))
     if rented:
@@ -910,7 +1022,6 @@ def _opportunity(p: dict) -> str:
     rent_a = p.get("rentAnnual")
     sqm_land = _num(p.get("sqmLand"))
     sqm_con = _num(p.get("sqmConstruction"))
-    inv_ppsqm = p.get("investmentPerSqm")
     purchase_price = p.get("purchasePrice")
     acq_costs = p.get("acquisitionCosts")
     # Todo lo que se invierte encima de adquirir la propiedad, que son exactamente
@@ -921,12 +1032,37 @@ def _opportunity(p: dict) -> str:
     # Inversión total de la tarjeta.
     dev_investment = _num(total_inv) - _num(p.get("acquisitionTotal"))
 
+    # Meses de renta ESTIMADA (mensual) para recuperar totalInvestmentWithFees
+    # Venta — pedido explícito, reemplaza a "Inversión sin comisiones" en esta
+    # fila: el desglose de Financieros ya deja leer ese total sumando sus
+    # renglones, y aquí valía más el dato nuevo (cuánto tarda en pagarse sola).
+    # Se enseña en AÑOS, no meses (pedido explícito) — paybackMonths guarda el
+    # dato en meses (la unidad nativa de la fórmula), _fmt_years_or_dash solo
+    # lo traduce para mostrarlo.
+    payback = p.get("paybackMonths")
+    # Rendimiento sobre lo que de verdad cuesta comprar y vender — el "yield on
+    # cost" que capRate dejó de ser (finance/underwriting.py) — pedido
+    # explícito, AL LADO del cap rate de mercado, no en su lugar: "Cap rate"
+    # a secas ya significa NOI/valor en el mercado, así que este no puede
+    # llamarse igual con otro denominador nada más — se llama por lo que es.
+    #
+    # Las dos etiquetas van SIN calificar ("Cap rate", "Rendimiento sobre
+    # inversión") — pedido explícito, tras ver "Cap rate proy. s/ venta" y
+    # "Rendimiento proy. s/ inversión" envolver a 2 y 3 líneas. Esto es
+    # deliberadamente distinto de _development_card(), que sí necesita el
+    # calificador: ahí "Cap rate" solo, sin un "Rendimiento" al lado que ya
+    # se quedó con el nombre del denominador de costo, seguiría siendo
+    # ambiguo (inversión, venta, valuación son todas cifras de valor
+    # plausibles). Aquí el nombre distinto del vecino —no el calificador—
+    # es lo que quita la ambigüedad.
+    yield_on_cost = p.get("yieldOnCost")
     metrics = "".join([
         _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
-        _metric(_inv_value(total_inv, p.get("totalInvestmentWithFeesVenta"), p.get("totalInvestmentWithFeesRenta")), "Inversión sin comisiones"),
+        _metric(_fmt_years_or_dash(payback), "Plazo de recuperación"),
         _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
         _metric(gain_value, "Ganancia proyectada"),
-        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate proy. s/ inversión"),
+        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate"),
+        _metric(_fmt_pct_or_dash(yield_on_cost), "Rendimiento sobre inversión"),
     ])
 
     # La ganancia proyectada, monto y porcentaje, ya vive en su métrica de arriba:
@@ -940,7 +1076,6 @@ def _opportunity(p: dict) -> str:
         ("Obra, permisos y subdivisión", _fmt_mxn(dev_investment) if dev_investment > 0 else None),
         ("Renta mensual estimada", _fmt_mxn(rent_m) if _num(rent_m) else None),
         ("Renta anual estimada", _fmt_mxn(rent_a) if _num(rent_a) else None),
-        ("Inversión / m²", _fmt_mxn(inv_ppsqm) if _num(inv_ppsqm) else None),
     ])
     # Sin Dirección ni Ciudad aquí: la banda verde de arriba ya las imprime
     # ({address} · {city}), palabra por palabra — repetirlas en la tabla no
@@ -958,8 +1093,6 @@ def _opportunity(p: dict) -> str:
     images = _imgs_by_type(p.get("images", []))
     hero = f'<img class="hero" src="{images[0]["dataUri"]}" alt="">' if images else ""
     strip = _strip(images[1:], "Galería", 4) if len(images) > 1 else ""
-    notes = _esc(p.get("notes", ""))
-    note_html = f'<div class="opp-note">{notes}</div>' if notes else ""
     detail_html = _opportunity_detail(p)
 
     return f"""<div class="page-block opp">
@@ -970,13 +1103,13 @@ def _opportunity(p: dict) -> str:
   </div>
   {hero}
   <div class="opp-body">
-    <div class="metrics metrics-5">{metrics}</div>
     <div class="opp-cols">
       <div><div class="col-label">Financieros</div>{financieros}</div>
       <div><div class="col-label">Propiedad</div>{ubicacion}</div>
     </div>
+    <div class="metrics metrics-6">{_opportunity_fees_metrics(p)}</div>
+    <div class="metrics metrics-6">{metrics}</div>
     {strip}
-    {note_html}
     {detail_html}
   </div>
 </div>"""
@@ -995,14 +1128,16 @@ def _opportunity_detail(p: dict) -> str:
     puertas. Se empareja por piso y variante (`_plan_rows`), y cada hoja se
     imprime al lado de sus propios renders, no en una sección aparte.
 
-    Vive en el mismo flujo que la tarjeta principal, justo después de la nota
-    — ya no en su propia page-block. Forzar un salto de página aquí, sin
-    importar cuánta hoja quedara libre tras la nota, era lo que dejaba una
-    cola de dos líneas sola arriba de una hoja casi en blanco: cuando la nota
-    terminaba a la mitad de una página, plano/renders/presupuesto de todos
-    modos brincaban a la siguiente por el page-break-after:always de su
-    propia page-block. Sin ese salto forzado, Chromium solo pasa de página
-    cuando de verdad se le acaba el espacio.
+    Vive en el mismo flujo que la tarjeta principal, justo después de la
+    galería — ya no en su propia page-block. Forzar un salto de página aquí
+    era lo que dejaba una cola de dos líneas sola arriba de una hoja casi en
+    blanco: plano/renders/presupuesto brincaban a la siguiente por el
+    page-break-after:always de su propia page-block sin importar cuánta hoja
+    quedara libre. Sin ese salto forzado, Chromium solo pasa de página cuando
+    de verdad se le acaba el espacio — con una excepción deliberada: el
+    presupuesto SÍ fuerza su propio salto (`.detail-section-budget`, ver más
+    abajo), pedido explícito para que plano/renders y presupuesto queden cada
+    uno en su hoja.
 
     Los renders son la cabeza de cada cadena (`renderHeads`, una por línea, la
     propuesta vigente de cada idea, sin pasos intermedios) — INCLUIDOS los
@@ -1037,10 +1172,17 @@ def _opportunity_detail(p: dict) -> str:
         # esperando a los que no se eligieron.
         f'<div class="detail-section"><div class="col-label">Fotos y propuesta</div>{photos_html}</div>'
         if photos_html else "",
-        # El presupuesto fluye después de los renders, en la misma hoja (pedido
-        # de Louis): un presupuesto de obra típico es corto y cabe en el ~70% de
-        # hoja que dejan los renders. Ya no fuerza su propia página.
-        f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
+        # El presupuesto arranca en su PROPIA hoja cuando hay plano/renders
+        # antes — pedido explícito, revierte la decisión anterior ("un
+        # presupuesto típico es corto y cabe en lo que dejan los renders"):
+        # el presupuesto real, con los datos de producción, resultó más largo
+        # de lo que esa premisa asumía, y arrancaba a media hoja de planos
+        # para luego cortarse. `.detail-section-budget` (CSS) fuerza el salto.
+        # Sin plano ni renders no hay nada de qué separarlo, así que no lo
+        # fuerza: sería una hoja en blanco antes del presupuesto sin razón.
+        (f'<div class="detail-section detail-section-budget"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
+         if (plan_html or photos_html) else
+         f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>')
         if budget_html else "",
     ])
     return f'<div class="opp-detail">{sections}</div>'

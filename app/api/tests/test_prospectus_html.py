@@ -3,68 +3,95 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-from api.lib.prospectus_html import (_budget_full, _development_card, _opportunity, _opportunity_detail,
+from api.lib.prospectus_html import (_budget_full, _development_card, _fee_scenario_missing,
+                                     _fmt_mxn, _opportunity, _opportunity_detail,
+                                     _opportunity_fees_metrics,
                                      _photo_block, _photo_rows, _plan_block, _plan_rows, _rented_card,
-                                     _sold_card, _summary_card, _BODY_CSS)
+                                     _sold_card, _summary_card, _BODY_CSS, _BUDGET_TWO_COLUMN_THRESHOLD)
 
-BASE_PROPERTY = {"name": "[TEST] Casa Prueba"}
+BASE_PROPERTY = {
+    "name": "[TEST] Casa Prueba",
+    # landFee/constructionFee nunca faltan (compute_fees() siempre resuelve
+    # una base y un %) — toda tarjeta que pasa por _opportunity() los da por
+    # sentados (acceso directo, no .get), así que viven en la base para que
+    # cada test no tenga que repetirlos.
+    "landFee": 150_000, "landCommissionPct": 0.05,
+    "constructionFee": 420_000, "constructionCommissionPct": 0.15,
+}
 
 
 # ---------------------------------------------------------------------------
-# Inversión sin/con comisiones — las cuatro tarjetas de inversión del prospecto
-# viven en una rejilla .metrics-5 de ancho FIJO (grid-template-columns:
-# repeat(5, 1fr), sin regla .metrics-6): no hay dónde imprimir una sexta
-# celda. Las cifras con comisiones van como sub-línea `<small>` dentro de la
-# MISMA celda de "Inversión sin comisiones" — el mismo patrón que ya usan
-# "Ganancia realizada" y "Ganancia proyectada" para su detalle secundario.
-#
-# Ya no hay una sola cifra "con comisiones": compute_fees() (fees.py) calcula
-# venta y renta siempre, sin depender de una estrategia de salida elegida, así
-# que la sub-línea puede traer las dos ("V $X · R $Y"), una sola, o ninguna —
-# nunca se adivina cuál mostrar.
+# Inversión sin/con comisiones — cada tarjeta decide qué escenario(s) de salida
+# le pasa a `_inv_value()` como sub-línea de la celda "Inversión sin
+# comisiones" (mismo patrón que ya usan "Ganancia realizada" y "Ganancia
+# proyectada" para su detalle secundario). `compute_fees()` (fees.py) calcula
+# venta y renta siempre, sin depender de una estrategia de salida elegida —
+# pero una vendida solo pasa venta (renta sería contrafactual: nunca se
+# cobró) y una rentada solo pasa renta, en espejo. Desarrollo sigue pasando
+# los dos: la salida sigue genuinamente indecisa. Oportunidad ya no pasa
+# ninguno — su detalle vive en la fila nueva (`_opportunity_fees_metrics`,
+# más abajo). Resumen ya no llama a `_inv_value()`.
 # ---------------------------------------------------------------------------
 
-def test_sold_card_shows_both_with_fees_scenarios_as_a_sub_line():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
-         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
-    html = _sold_card(p, "Kicker")
-    assert "Inversión sin comisiones" in html
-    assert "Inversión total" not in html
-    assert "<small>V $1.1M · R $1.2M c/comisiones</small>" in html
-
-
-def test_sold_card_shows_only_the_venta_scenario_when_renta_is_missing():
+def test_sold_card_shows_the_venta_scenario_as_a_sub_line():
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
          "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": None}
     html = _sold_card(p, "Kicker")
+    assert "Inversión sin comisiones" in html
+    assert "Inversión total" not in html
     assert "<small>V $1.1M c/comisiones</small>" in html
 
 
-def test_sold_card_omits_the_sub_line_without_either_with_fees_figure():
+def test_sold_card_never_shows_the_renta_scenario_even_when_the_data_exists():
+    """La corrección del bug real: compute_fees() cae a un relevo
+    real→proyectado y puede traer totalInvestmentWithFeesRenta con valor
+    aunque la propiedad jamás se rentó — imprimirlo en una tarjeta de VENTA
+    sería una comisión contrafactual, sin ninguna marca de que lo es."""
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
-         "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": None}
+         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
+    html = _sold_card(p, "Kicker")
+    assert "<small>V $1.1M c/comisiones</small>" in html
+    assert "R $" not in html
+
+
+def test_sold_card_omits_the_sub_line_without_the_venta_with_fees_figure():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": 1_200_000}
     html = _sold_card(p, "Kicker")
     assert "Inversión sin comisiones" in html
     assert "c/comisiones" not in html
 
 
-def test_rented_card_shows_both_with_fees_scenarios_as_a_sub_line():
+def test_rented_card_shows_the_renta_scenario_as_a_sub_line():
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
-         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
+         "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": 1_200_000}
     html = _rented_card(p, "Kicker")
     assert "Inversión sin comisiones" in html
     assert "Inversión total" not in html
-    assert "<small>V $1.1M · R $1.2M c/comisiones</small>" in html
+    assert "<small>R $1.2M c/comisiones</small>" in html
 
 
-def test_rented_card_omits_the_sub_line_without_either_with_fees_figure():
+def test_rented_card_never_shows_the_venta_scenario_even_when_the_data_exists():
+    """Espejo del bug de _sold_card: venta es contrafactual en una tarjeta
+    que reporta lo que la propiedad de verdad hace hoy — rentar."""
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
-         "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": None}
+         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
+    html = _rented_card(p, "Kicker")
+    assert "<small>R $1.2M c/comisiones</small>" in html
+    assert "V $" not in html
+
+
+def test_rented_card_omits_the_sub_line_without_the_renta_with_fees_figure():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": None}
     html = _rented_card(p, "Kicker")
     assert "c/comisiones" not in html
 
 
 def test_development_card_shows_both_with_fees_scenarios_as_a_sub_line():
+    """Sin cambios: en desarrollo la salida sigue genuinamente indecisa, y la
+    tarjeta ya es de proyección pura — los dos escenarios siguen siendo
+    igual de hipotéticos, así que ninguno es más contrafactual que el otro."""
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
          "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
     html = _development_card(p, "Kicker")
@@ -80,23 +107,150 @@ def test_development_card_omits_the_sub_line_without_either_with_fees_figure():
     assert "c/comisiones" not in html
 
 
-def test_opportunity_card_shows_both_with_fees_scenarios_as_a_sub_line():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
-         "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_200_000}
+def test_opportunity_card_shows_the_payback_period_instead_of_bare_investment():
+    """"Inversión sin comisiones" salió de esta fila — pedido explícito,
+    reemplazada por el plazo de recuperación. La tarjeta LEE `paybackMonths`
+    del API, no lo recalcula: el mismo criterio que ya sigue con
+    projectedProfit, capRate, etc. Se enseña en años (pedido explícito),
+    aunque el campo del API siga en meses — 223 / 12 = 18.6."""
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "paybackMonths": 223}
     html = _opportunity(p)
-    assert "Inversión sin comisiones" in html
-    assert "Inversión total" not in html
-    assert "<small>V $1.1M · R $1.2M c/comisiones</small>" in html
+    assert '<div class="v">18.6 años</div><div class="l">Plazo de recuperación</div>' in html
+    assert '<div class="l">Inversión sin comisiones</div>' not in html
 
 
-def test_opportunity_card_omits_the_sub_line_without_either_with_fees_figure():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
-         "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": None}
+def test_opportunity_card_payback_period_is_a_dash_without_one():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "paybackMonths": None}
     html = _opportunity(p)
-    assert "c/comisiones" not in html
+    assert '<div class="v">—</div><div class="l">Plazo de recuperación</div>' in html
 
 
-def test_summary_card_shows_each_with_fees_sum_when_every_property_has_it():
+def test_opportunity_card_shows_yield_on_cost_next_to_cap_rate_as_a_sixth_cell():
+    """Pedido explícito: un sexto cuadro, "rendimiento sobre inversión" — el
+    yield on cost que capRate dejó de ser — AL LADO del cap rate de mercado,
+    no en su lugar. La fila pasa de .metrics-5 a .metrics-6. Las dos
+    etiquetas van sin calificar ("Cap rate", "Rendimiento sobre inversión")
+    — pedido explícito, tras ver los calificadores envolver a 2-3 líneas: el
+    nombre distinto de cada una ya dice cuál es cuál, a diferencia de
+    _development_card() (sin un vecino "Rendimiento"), que sí conserva
+    "Cap rate proy. s/ venta"."""
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "capRate": 0.0864, "yieldOnCost": 0.0539}
+    html = _opportunity(p)
+    assert '<div class="v">8.6%</div><div class="l">Cap rate</div>' in html
+    assert '<div class="v">5.4%</div><div class="l">Rendimiento sobre inversión</div>' in html
+    # Dos filas de seis ahora: comisiones/totales, y plazo/venta/ganancia/cap
+    # rate/rendimiento — ninguna es ya la vieja fila de cinco.
+    assert html.count('class="metrics metrics-6"') == 2
+    assert 'class="metrics metrics-5"' not in html
+
+
+def test_opportunity_card_yield_on_cost_is_a_dash_without_one():
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "yieldOnCost": None}
+    html = _opportunity(p)
+    assert '<div class="v">—</div><div class="l">Rendimiento sobre inversión</div>' in html
+
+
+# ---------------------------------------------------------------------------
+# _opportunity_fees_metrics — la fila nueva: terreno, obra, y los dos finales
+# ---------------------------------------------------------------------------
+
+def test_fee_scenario_missing_names_the_reason():
+    assert _fee_scenario_missing(["salePrice"]) == '— <small>falta precio de venta</small>'
+    assert _fee_scenario_missing(["rentMonthly"]) == '— <small>falta renta mensual</small>'
+
+
+def test_fee_scenario_missing_never_a_bare_dash_when_a_reason_exists():
+    """Un guion solo se leería como cero comisión — siempre trae el porqué al
+    lado cuando hay uno."""
+    assert _fee_scenario_missing(["salePrice"]) != "—"
+
+
+def test_fee_scenario_missing_falls_back_to_a_bare_dash_without_a_reason():
+    assert _fee_scenario_missing(None) == "—"
+    assert _fee_scenario_missing([]) == "—"
+
+
+def test_opportunity_fees_metrics_shows_terreno_and_obra_as_their_own_cells():
+    p = {**BASE_PROPERTY,
+         "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": 3_900_000}
+    html = _opportunity_fees_metrics(p)
+    assert '$150K <small>5.0%</small>' in html
+    assert "Comisión compra terreno" in html
+    assert '$420K <small>15.0%</small>' in html
+    assert "Comisión de obra" in html
+
+
+def test_opportunity_fees_metrics_shows_the_exit_fee_venta_and_renta_as_their_own_cells():
+    """La comisión de salida no venía desglosada en ningún lado — a diferencia
+    de terreno y obra, que sí muestran su propio $ — así que cada escenario
+    necesita su propia celda con el monto que se cobra."""
+    p = {**BASE_PROPERTY,
+         "exitFeeVenta": 195_000, "exitSaleCommissionPct": 0.05,
+         "exitFeeRenta": 144_000, "exitRentMonths": 3}
+    html = _opportunity_fees_metrics(p)
+    assert '$195K <small>5.0%</small>' in html
+    assert "Comisión de salida · venta" in html
+    assert '$144K <small>3 meses</small>' in html
+    assert "Comisión de salida · renta" in html
+
+
+def test_opportunity_fees_metrics_names_the_reason_when_an_exit_fee_is_missing():
+    p = {**BASE_PROPERTY,
+         "exitFeeVenta": None, "feesMissingInputsVenta": ["salePrice"],
+         "exitFeeRenta": 144_000, "exitRentMonths": 3}
+    html = _opportunity_fees_metrics(p)
+    assert '— <small>falta precio de venta</small>' in html
+    assert '$144K <small>3 meses</small>' in html
+
+
+def test_opportunity_fees_metrics_shows_the_two_totals_as_separate_cells():
+    """El pedido del usuario: los totales quedan tal cual estaban, cada uno en
+    su propia celda — no se funden en una sola."""
+    p = {**BASE_PROPERTY,
+         "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": 3_900_000}
+    html = _opportunity_fees_metrics(p)
+    assert '<div class="v">$4.0M</div><div class="l">Inversión c/comisiones · venta</div>' in html
+    assert '<div class="v">$3.9M</div><div class="l">Inversión c/comisiones · renta</div>' in html
+    assert "metric-wide" not in html
+
+
+def test_opportunity_fees_metrics_names_the_reason_when_a_total_is_missing():
+    p = {**BASE_PROPERTY,
+         "totalInvestmentWithFeesVenta": None, "feesMissingInputsVenta": ["salePrice"],
+         "totalInvestmentWithFeesRenta": 3_900_000, "feesMissingInputsRenta": []}
+    html = _opportunity_fees_metrics(p)
+    assert '— <small>falta precio de venta</small>' in html
+    assert '<div class="v">$3.9M</div><div class="l">Inversión c/comisiones · renta</div>' in html
+
+
+def test_opportunity_card_wires_the_fee_metrics_row_after_opp_cols_and_before_the_top_metrics():
+    """Pedido explícito: la fila de plazo/inversión/venta/ganancia/cap rate
+    (`.metrics-5`) va DESPUÉS de la de comisiones (`.metrics-6`), no antes —
+    el desglose de comisiones se lee primero, la proyección resumida cierra
+    la página."""
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
+         "exitFeeVenta": 195_000, "exitSaleCommissionPct": 0.05,
+         "exitFeeRenta": None, "feesMissingInputsRenta": ["rentMonthly"],
+         "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": None}
+    html = _opportunity(p)
+    assert "Comisión compra terreno" in html
+    assert "Comisión de obra" in html
+    assert "Comisión de salida · venta" in html
+    assert "Comisión de salida · renta" in html
+    assert "Inversión c/comisiones · venta" in html
+    assert "Inversión c/comisiones · renta" in html
+    assert html.index('class="opp-cols"') < html.index("Comisión compra terreno")
+    assert html.index("Comisión compra terreno") < html.index("Plazo proyectado")
+
+
+# ---------------------------------------------------------------------------
+# _summary_card — ya no muestra ninguna cifra con comisiones
+# ---------------------------------------------------------------------------
+
+def test_summary_card_never_shows_a_fee_sub_line_even_when_every_property_has_the_data():
+    """Sumar "si todo se hubiera vendido" + "si todo se hubiera rentado" en un
+    track record mixto no es una cifra real que ningún inversionista pregunte
+    — y mezclaría dinero realizado con dinero hipotético en un solo número."""
     sold = [{**BASE_PROPERTY, "totalInvestment": 1_000_000,
              "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_180_000,
              "salePrice": 2_000_000}]
@@ -104,23 +258,21 @@ def test_summary_card_shows_each_with_fees_sum_when_every_property_has_it():
                "totalInvestmentWithFeesVenta": 550_000, "totalInvestmentWithFeesRenta": 560_000,
                "currentValuation": 700_000}]
     html = _summary_card(sold, rented)
-    assert "<small>V $1.7M · R $1.7M c/comisiones</small>" in html
+    assert "c/comisiones" not in html
+    assert "V $" not in html and "R $" not in html
+    match = re.search(
+        r'<div class="metric"><div class="v">((?:(?!</div>).)*?)</div><div class="l">Capital invertido</div>',
+        html)
+    assert match is not None
+    assert match.group(1) == "$1.5M"
 
 
-def test_summary_card_omits_one_scenarios_sum_when_any_property_is_missing_it():
-    """Una suma parcial (la que falta cuenta como $0) publicaría un total con
-    comisiones más bajo que el real — más engañoso que no mostrarlo. Venta y
-    renta se evalúan por separado: falta renta en una propiedad no apaga
-    venta si esa sí trae el dato completo en todo el track record."""
+def test_summary_card_still_omits_the_fee_sub_line_when_data_is_missing_too():
     sold = [{**BASE_PROPERTY, "totalInvestment": 1_000_000,
-             "totalInvestmentWithFeesVenta": 1_150_000, "totalInvestmentWithFeesRenta": 1_180_000,
+             "totalInvestmentWithFeesVenta": None, "totalInvestmentWithFeesRenta": None,
              "salePrice": 2_000_000}]
-    rented = [{**BASE_PROPERTY, "totalInvestment": 500_000,
-               "totalInvestmentWithFeesVenta": 550_000, "totalInvestmentWithFeesRenta": None,
-               "currentValuation": 700_000}]
-    html = _summary_card(sold, rented)
-    assert "<small>V $1.7M c/comisiones</small>" in html
-    assert "R $" not in html
+    html = _summary_card(sold, [])
+    assert "c/comisiones" not in html
 
 
 def test_budget_full_empty_lines_returns_empty_string():
@@ -161,6 +313,59 @@ def test_budget_full_skips_the_subtotal_for_a_single_line_chapter():
     assert "budget-subtotal" not in html
 
 
+def test_budget_full_stays_single_column_below_the_threshold():
+    """Feedback en vivo: un presupuesto real de docenas de renglones ocupaba
+    hasta tres páginas — pero la mayoría de las propiedades solo tienen "Otros,
+    por detallar", una sola línea. Forzar dos columnas ahí dejaría la segunda
+    visiblemente vacía, así que el umbral solo aplica arriba de
+    _BUDGET_TWO_COLUMN_THRESHOLD."""
+    lines = [{"chapterName": "Otros", "name": "Otros, por detallar", "budgetedAmount": 156_000,
+              "quantity": 1, "unit": "lote"}]
+    html = _budget_full(lines, ["Otros"])
+    assert "budget-columns" not in html
+
+
+def test_budget_full_switches_to_two_columns_above_the_threshold():
+    """Un presupuesto de verdad, con capítulos de sobra, sí gana las dos
+    columnas — Chromium reparte los capítulos entre columnas, esta prueba solo
+    confirma que el contenedor aparece y sigue llevando cada capítulo, no
+    cómo se balancean visualmente (eso es CSS, no Python)."""
+    lines = [
+        {"chapterName": f"Capítulo {i}", "name": f"Partida {i}", "budgetedAmount": 1_000,
+         "quantity": 1, "unit": "lote"}
+        for i in range(_BUDGET_TWO_COLUMN_THRESHOLD + 1)
+    ]
+    chapters = [f"Capítulo {i}" for i in range(_BUDGET_TWO_COLUMN_THRESHOLD + 1)]
+    html = _budget_full(lines, chapters)
+    assert '<div class="budget-columns">' in html
+    for i in range(_BUDGET_TWO_COLUMN_THRESHOLD + 1):
+        assert f"Partida {i}" in html
+    # El total sigue fuera del contenedor de columnas, a lo ancho completo.
+    assert html.rindex("budget-columns") < html.index("budget-grand-total")
+
+
+def test_budget_full_total_is_never_inside_the_two_column_container():
+    """El Total es la respuesta, no un renglón más — se agrega FUERA de
+    .budget-columns aunque el presupuesto sea largo, para no leerse metido a
+    media columna. `_budget_full` arma el resultado como `body + total`, así
+    que si el total de verdad quedó afuera, la tabla del Total es un SUFIJO
+    literal del html completo — no hace falta parsear la anidación de <div>
+    para probarlo."""
+    n = _BUDGET_TWO_COLUMN_THRESHOLD + 1
+    lines = [
+        {"chapterName": f"Capítulo {i}", "name": f"Partida {i}", "budgetedAmount": 1_000,
+         "quantity": 1, "unit": "lote"}
+        for i in range(n)
+    ]
+    chapters = [f"Capítulo {i}" for i in range(n)]
+    html = _budget_full(lines, chapters)
+    expected_total_table = (
+        f'<table class="kv budget-grand-total"><tr><td>Total</td>'
+        f'<td class="n">{_fmt_mxn(n * 1_000)}</td></tr></table>'
+    )
+    assert html.endswith(expected_total_table)
+
+
 def test_opportunity_detail_is_empty_without_plano_or_budget():
     assert _opportunity_detail(BASE_PROPERTY) == ""
 
@@ -176,37 +381,52 @@ def test_opportunity_detail_shows_only_the_budget_section():
     assert "<svg" not in html
 
 
-def test_the_budget_flows_with_the_renders_not_its_own_page():
-    """Pedido de Louis: sin el plano técnico y con los renders arriba, la hoja de
-    detalle queda ~70% libre y un presupuesto de obra típico (corto) cabe ahí.
-    Ya NO se fuerza a su propia página — fluye como cualquier otra sección; si
-    uno muy largo no cupiera, Chromium brinca solo (sin partir renglones)."""
+def test_the_budget_forces_its_own_page_after_plano_or_renders():
+    """Pedido explícito: plano/renders y presupuesto quedan cada uno en su
+    hoja. Un presupuesto real (datos de producción) resultó más largo de lo
+    que la premisa anterior asumía ("un presupuesto típico es corto y cabe en
+    lo que dejan los renders") y arrancaba a media hoja de planos para
+    cortarse ahí — `.detail-section-budget` fuerza el salto quo lo evita."""
+    p = {**BASE_PROPERTY, "planSheets": [_sheet("abc", "original", "<svg>PLANO</svg>")],
+         "budget": {
+             "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
+             "chapters": ["Otros"],
+         }}
+    html = _opportunity_detail(p)
+    assert "Presupuesto de obra" in html
+    assert 'class="detail-section detail-section-budget"' in html
+    assert ".detail-section-budget" in _BODY_CSS
+    rule = re.search(r"\.detail-section-budget \{[^}]*\}", _BODY_CSS).group()
+    assert "break-before: page" in rule
+
+
+def test_the_budget_does_not_force_a_page_without_plano_or_renders_before_it():
+    """Sin plano ni renders no hay nada de qué separar el presupuesto — forzar
+    el salto ahí sería una hoja en blanco sin razón."""
     p = {**BASE_PROPERTY, "budget": {
         "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
         "chapters": ["Otros"],
     }}
     html = _opportunity_detail(p)
     assert "Presupuesto de obra" in html
-    assert "detail-section-budget" not in html     # sin salto de página forzado
-    assert ".detail-section-budget" not in _BODY_CSS  # la regla que lo forzaba se retiró
+    assert "detail-section-budget" not in html
 
 
-def test_opportunity_detail_flows_right_after_the_note_not_a_new_page():
+def test_opportunity_detail_flows_right_after_the_gallery_not_a_new_page():
     """Plano, renders y presupuesto solían vivir en su PROPIA page-block —
     page-break-after:always forzaba un salto de hoja sin importar cuánta
-    quedara libre bajo la nota, dejando su cola sola arriba de una página
-    casi en blanco. Ahora comparten la page-block de _opportunity, después de
-    la nota: Chromium solo brinca de página cuando de veras se le acaba el
-    espacio."""
+    quedara libre, dejando su cola sola arriba de una página casi en blanco.
+    Ahora comparten la page-block de _opportunity: Chromium solo brinca de
+    página cuando de veras se le acaba el espacio."""
     # El detalle ahora se dispara con presupuesto (o renders), no con el plano
     # técnico, que ya no se dibuja.
     p = {**BASE_PROPERTY, "budget": {
         "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
         "chapters": ["Otros"],
-    }, "notes": "Nota de prueba."}
+    }}
     html = _opportunity(p)
     assert html.count("page-block") == 1
-    assert html.index('class="opp-note"') < html.index('class="opp-detail"')
+    assert html.index('class="opp-cols"') < html.index('class="opp-detail"')
 
 
 def test_the_opportunity_card_does_not_hard_clip_overflow():
@@ -219,15 +439,6 @@ def test_the_opportunity_card_does_not_hard_clip_overflow():
     rule = re.search(r"\.opp-body \{[^}]*\}", _BODY_CSS).group()
     assert "height" not in rule
     assert "flex" not in rule
-
-
-def test_the_opportunity_note_is_prose_not_a_rigid_block():
-    """Un párrafo de nota puede envolver y seguir en la página siguiente como
-    cualquier texto de un libro — forzarlo entero a saltar de página (como sí
-    debe hacer una fila de fotos o una tabla) era lo que lo dejaba varado
-    solo en una hoja casi en blanco."""
-    rule = re.search(r"\.opp-note \{[^}]*\}", _BODY_CSS).group()
-    assert "break-inside" not in rule
 
 
 # ---------------------------------------------------------------------------
