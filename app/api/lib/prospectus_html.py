@@ -293,24 +293,24 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
                    text-transform: uppercase; color: #7A7A7A; margin-bottom: 1.5mm; }
 .plan-pair { display: flex; gap: 4mm; align-items: flex-start; }
 .plan-sheet { flex: 1 1 50%; min-width: 0; }
-/* 110mm fue el tope mientras el presupuesto todavía podía compartir esta misma
-   hoja debajo de los planos (ver .detail-section-budget), y mientras dos pisos
-   tenían que caber juntos en una sola A4 (297mm) para no dejar uno varado en su
-   propia hoja casi en blanco — las dos razones de por qué era chico. Ahora que
-   el presupuesto SIEMPRE arranca en su propia hoja Y que `.plan-row {
-   break-inside: avoid }` manda cada piso que no quepa a SU PROPIA hoja en vez de
-   partirlo, las dos presiones que lo achicaban desaparecieron: un plano —sobre
-   todo uno angosto y alto, el caso peor— puede crecer hasta casi llenar su
-   propia página. 250mm, pedido explícito: un piso solo en su hoja se lee grande
-   y legible en vez de una miniatura con media hoja en blanco alrededor. */
-.plan-sheet svg { width: 100%; height: auto; max-height: 250mm; }
+/* 110mm, no 250: subió a 250 un momento (pedido explícito, cuando el
+   presupuesto ganó su propia hoja y parecía que ya no había presión por
+   achicar el plano) pero un plano+render a 250 mide más de media hoja —
+   nunca caben dos pisos en la misma página, cada uno se queda solo con media
+   hoja en blanco alrededor. Pedido explícito, otra vez: medio A4 por piso, no
+   una página entera, así que dos pisos se leen juntos en una sola hoja. Medido
+   con el arnés real de Chromium contra los 4 pisos reales de las propiedades 5
+   y 10 (viewBox más angosto: alto/ancho 2.02): a 110mm dos filas miden ~232mm
+   juntas —caben en la página— y el plano dibujado sigue midiendo ~55-60mm de
+   ancho visible, legible. */
+.plan-sheet svg { width: 100%; height: auto; max-height: 110mm; }
 /* `_photo_block` mete una FOTO (etiqueta img) en este mismo hueco — antes solo lo
    llenaba un plano en SVG, que ya trae su propia proporción en el viewBox. Una
    imagen sin ancho ni alto explícitos se dibuja a su tamaño de píxeles real (miles
    de px de una foto de cámara) dentro de un flex angosto: el layout la desborda y
    no se ve nada. Mismo tope que la regla vecina de SVG, con object-fit porque, a
    diferencia del plano, una foto sí puede desbordar su caja en cualquier proporción. */
-.plan-sheet img { width: 100%; height: auto; max-height: 250mm; object-fit: contain; }
+.plan-sheet img { width: 100%; height: auto; max-height: 110mm; object-fit: contain; }
 /* El plano trae su nombre de piso DIBUJADO dentro del propio SVG (floorToSvg — el
    mismo que usa el botón ↓ SVG del editor, no se toca aquí para no cambiarle la
    descarga) — el margen que le hace lugar a ese título es ~8.5% de su alto, medido
@@ -329,12 +329,8 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 /* 78mm × 2 + hueco ≈ el alto del plano de al lado: la pareja se lee como una banda,
    no como una columna corta junto a una torre de imágenes. */
 .plan-renders img { width: 100%; height: auto; max-height: 78mm; object-fit: contain; }
-/* Una hoja sin render no debe estirarse a TODA la página — sin pareja se queda a
-   su propio ancho, más generoso que el 50% que comparte con un render (78%,
-   subido junto con el max-height de arriba: un piso angosto y alto solo llegaba
-   a la mitad de un 62% aun con más alto disponible, height seguía siendo lo que
-   lo topaba primero). */
-.plan-pair > .plan-sheet:only-child { flex: 0 0 78%; }
+/* Una hoja sin render no debe estirarse a media página: sin pareja se queda a su ancho. */
+.plan-pair > .plan-sheet:only-child { flex: 0 0 62%; }
 
 /* ══ CLOSING ═════════════════════════════════════════════════════════════ */
 .closing { height: 297mm; background: var(--green); color: #fff; padding: 30mm var(--pad);
