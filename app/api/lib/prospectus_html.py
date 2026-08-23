@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 import base64
 import json
@@ -691,6 +692,50 @@ def _kv_rows(pairs) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Qué entra al documento
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ProspectusSections:
+    """Los pedazos del prospecto que el llamador puede apagar.
+
+    Todo en True es el documento completo — el único que este módulo supo
+    imprimir hasta ahora—, así que es el default de cada función que lo
+    recibe: ninguna llamada existente cambia, y un prospecto sin opiniones
+    sale idéntico byte por byte al de siempre. Esa identidad es el contrato,
+    no una coincidencia: es lo que deja meter el recorte sin volver a validar
+    el PDF entero.
+
+    Es un dataclass pelón y NO el modelo Pydantic de la ruta a propósito: este
+    módulo es presentación y no puede depender de la capa HTTP. El vocabulario
+    camelCase del JSON vive en el borde (`ProspectusOptions`, routes/
+    documents.py) y se traduce una sola vez, ahí.
+
+    Lo que NO es apagable, y por qué: de una página de oportunidad siempre
+    salen la banda (nombre y dirección), el hero, las dos columnas
+    (Financieros/Propiedad) y la fila de proyección. Sin ellas la página deja
+    de identificar a la propiedad o de decir a qué se estaría entrando — no es
+    un prospecto más corto, es una hoja que no dice nada. Apagable es lo que
+    ABUNDA (fotos, planos, presupuesto) o lo que es un desglose de algo que ya
+    se dijo (la fila de comisiones)."""
+    cover: bool = True
+    portfolio_summary: bool = True
+    closing: bool = True
+    opportunity_fees: bool = True
+    opportunity_gallery: bool = True
+    opportunity_plans: bool = True
+    opportunity_renders: bool = True
+    opportunity_budget: bool = True
+
+
+# El documento completo. Vive como constante —y no como `ProspectusSections()`
+# repetido en cada firma— para que las funciones internas puedan pasarse el
+# mismo objeto sin construir uno por página; es frozen, así que compartirlo no
+# tiene riesgo.
+_ALL_SECTIONS = ProspectusSections()
+
+
+# ---------------------------------------------------------------------------
 # Section builders
 # ---------------------------------------------------------------------------
 
@@ -995,7 +1040,7 @@ def _summary_card(sold: list[dict], rented: list[dict]) -> str:
 </div>"""
 
 
-def _opportunity(p: dict) -> str:
+def _opportunity(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
@@ -1087,9 +1132,21 @@ def _opportunity(p: dict) -> str:
     ])
 
     images = _imgs_by_type(p.get("images", []))
+    # El hero no se apaga con la galería: es la primera foto, la que dice de
+    # qué inmueble habla la página. Apagar «galería» quita el resto de las
+    # fotos, no la identidad de la propiedad.
     hero = f'<img class="hero" src="{images[0]["dataUri"]}" alt="">' if images else ""
-    strip = _strip(images[1:], "Galería", 4) if len(images) > 1 else ""
-    detail_html = _opportunity_detail(p)
+    strip = (_strip(images[1:], "Galería", 4)
+             if sections.opportunity_gallery and len(images) > 1 else "")
+    detail_html = _opportunity_detail(p, sections)
+    # De las DOS rejillas de seis solo la de comisiones se puede apagar. La de
+    # proyección (plazo/venta/ganancia/cap rate/rendimiento) es a lo que el
+    # inversionista estaría entrando: una página de oportunidad sin ella no es
+    # un prospecto más corto, es una hoja que no dice nada. Las comisiones sí
+    # son un desglose —de cuánto encarece la operación algo que ya se muestra
+    # sin ellas— y hay lectores a los que ese detalle no les toca.
+    fees_row = (f'<div class="metrics metrics-6">{_opportunity_fees_metrics(p)}</div>'
+                if sections.opportunity_fees else "")
 
     return f"""<div class="page-block opp">
   <div class="band">
@@ -1103,7 +1160,7 @@ def _opportunity(p: dict) -> str:
       <div><div class="col-label">Financieros</div>{financieros}</div>
       <div><div class="col-label">Propiedad</div>{ubicacion}</div>
     </div>
-    <div class="metrics metrics-6">{_opportunity_fees_metrics(p)}</div>
+    {fees_row}
     <div class="metrics metrics-6">{metrics}</div>
     {strip}
     {detail_html}
@@ -1111,7 +1168,7 @@ def _opportunity(p: dict) -> str:
 </div>"""
 
 
-def _opportunity_detail(p: dict) -> str:
+def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
     """Plano, renders (propuesta de diseño) y desglose del presupuesto de obra de
     una oportunidad. "" si no hay ninguno de los tres.
 
@@ -1148,13 +1205,20 @@ def _opportunity_detail(p: dict) -> str:
     salía ilegible, y adivinar cuál enseñar nunca fue del documento. Sin
     estrella, la hoja se imprime igual (es el ancla dimensional) y la foto no
     imprime nada: ya se ve en la galería de arriba."""
-    rows = _plan_rows(p.get("planSheets") or [], p.get("renderHeads") or [])
+    # Un bloque apagado se corta en su ORIGEN —sin filas, sin renglones— y no
+    # borrando HTML ya armado. Así todo lo que se decide más abajo (que la
+    # sección exista, y sobre todo si el presupuesto fuerza su propia hoja)
+    # se calcula exactamente igual que cuando el dato no existe, que es el
+    # camino que este archivo lleva probando desde siempre.
+    rows = (_plan_rows(p.get("planSheets") or [], p.get("renderHeads") or [])
+            if sections.opportunity_plans else [])
     plan_html = _plan_block(rows)
 
-    photo_rows = _photo_rows(p.get("images") or [], p.get("renderHeads") or [])
+    photo_rows = (_photo_rows(p.get("images") or [], p.get("renderHeads") or [])
+                  if sections.opportunity_renders else [])
     photos_html = _photo_block(photo_rows)
 
-    budget = p.get("budget") or {}
+    budget = (p.get("budget") or {}) if sections.opportunity_budget else {}
     budget_html = _budget_full(budget.get("lines", []), budget.get("chapters", []))
 
     if not (plan_html or photos_html or budget_html):
@@ -1176,6 +1240,10 @@ def _opportunity_detail(p: dict) -> str:
         # para luego cortarse. `.detail-section-budget` (CSS) fuerza el salto.
         # Sin plano ni renders no hay nada de qué separarlo, así que no lo
         # fuerza: sería una hoja en blanco antes del presupuesto sin razón.
+        # APAGADOS cuenta igual que ausentes — la condición mira el HTML que
+        # de verdad se va a imprimir, no lo que la propiedad traía: un deck
+        # pedido sin planos y sin renders arrancaría con una hoja en blanco si
+        # el salto siguiera atado a que el dato existe.
         (f'<div class="detail-section detail-section-budget"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
          if (plan_html or photos_html) else
          f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>')
@@ -1208,7 +1276,8 @@ def _closing(month_year: str) -> str:
 # ---------------------------------------------------------------------------
 
 def build_prospectus_html(sold: list[dict], rented: list[dict], development: list[dict],
-                          opportunity: list[dict]) -> str:
+                          opportunity: list[dict],
+                          sections: ProspectusSections = _ALL_SECTIONS) -> str:
     """The four buckets arrive already partitioned — the caller owns the status
     vocabulary, this file owns the presentation.
 
@@ -1216,7 +1285,12 @@ def build_prospectus_html(sold: list[dict], rented: list[dict], development: lis
     closed deal and a held one are not presumed with the same figures: one
     reports what it collected, the other what it is worth today. Keeping them
     apart is what lets every number below name its own source instead of
-    guessing which one is present."""
+    guessing which one is present.
+
+    `sections` recorta el documento; su default es el documento entero, así
+    que un llamador que no opine obtiene el mismo HTML de siempre. QUÉ
+    propiedades entran no se decide aquí: eso ya venía resuelto en las cuatro
+    cubetas y sigue siendo del llamador."""
     from datetime import date
     today = date.today()
     month_year = f"{_MESES[today.month].capitalize()} {today.year}"
@@ -1228,23 +1302,27 @@ def build_prospectus_html(sold: list[dict], rented: list[dict], development: lis
     rented = sorted(rented, key=lambda p: _num(p.get("unrealizedGainPct")), reverse=True)
     track = [(_sold_card, p) for p in sold] + [(_rented_card, p) for p in rented]
 
-    parts = [_cover(month_year, rented, sold)]
+    parts = [_cover(month_year, rented, sold)] if sections.cover else []
 
     if track or development:
         cards = [build(p, f"Track Record · {i:02d}") for i, (build, p) in enumerate(track, 1)]
         cards += [_development_card(p, f"En Desarrollo · {j:02d}")
                   for j, p in enumerate(development, 1)]
         # Portfolio summary carries the valuation footnote and fills the
-        # trailing half-sheet.
-        if track:
+        # trailing half-sheet. Apagarlo NO deja media hoja en blanco: entra al
+        # mismo _chunk que las tarjetas, así que sin él las que siguen se
+        # reacomodan de a dos, igual que si el track record tuviera una
+        # propiedad menos.
+        if track and sections.portfolio_summary:
             cards.append(_summary_card(sold, rented))
         for pair in _chunk(cards, 2):
             parts.append(f'<div class="page-block sheet">{"".join(pair)}</div>')
 
     for p in opportunity:
-        parts.append(_opportunity(p))
+        parts.append(_opportunity(p, sections))
 
-    parts.append(_closing(month_year))
+    if sections.closing:
+        parts.append(_closing(month_year))
 
     body_html = "\n".join(parts)
     return f"""<!DOCTYPE html>

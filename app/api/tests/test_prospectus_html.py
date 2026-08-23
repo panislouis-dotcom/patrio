@@ -3,7 +3,8 @@ no client, straight function calls. Integration behavior (does the right data
 reach the right property) lives in test_documents.py."""
 import re
 
-from api.lib.prospectus_html import (_budget_full, _development_card, _fee_scenario_missing,
+from api.lib.prospectus_html import (ProspectusSections, _budget_full, _development_card,
+                                     _fee_scenario_missing,
                                      _fmt_mxn, _opportunity, _opportunity_detail,
                                      _opportunity_fees_metrics,
                                      _photo_block, _photo_rows, _plan_block, _plan_rows, _rented_card,
@@ -602,3 +603,148 @@ def test_la_foto_elegida_se_imprime_en_su_propia_seccion():
 
 def test_sin_plano_sin_render_y_sin_presupuesto_no_hay_detalle():
     assert _opportunity_detail({"planSheets": [], "renderHeads": [], "budget": {}}) == ""
+
+
+# ---------------------------------------------------------------------------
+# ProspectusSections — recortar la página de oportunidad
+#
+# Cada bloque se prueba apagado CONTRA UN VECINO QUE SIGUE AHÍ, no solo por su
+# propia ausencia: "la sección ya no está" también es cierto si el recorte se
+# llevó media página por delante, y esa es justamente la falla que estas
+# pruebas existen para atrapar.
+# ---------------------------------------------------------------------------
+
+# Cada bloque, por la única cadena que solo él imprime. Las dos rejillas de
+# seis comparten clase (`metrics-6`), así que se distinguen por su etiqueta:
+# la de comisiones abre con el terreno, la de proyección con el plazo.
+_FEES_ROW = "Comisión compra terreno"
+_PROJECTION_ROW = "Plazo proyectado"
+_GALLERY = '<div class="strip-label">Galería</div>'
+_PLANS = "Plano y propuesta"
+_PHOTO_RENDERS = "Fotos y propuesta"
+_BUDGET = "Presupuesto de obra"
+
+
+def _opportunity_with_everything() -> dict:
+    """Una oportunidad que dispara los cinco bloques apagables a la vez.
+
+    Es una función y no una constante para que cada prueba reciba un dict
+    nuevo: `_opportunity()` no muta su entrada hoy, pero una constante
+    compartida convierte esa promesa en una dependencia silenciosa entre
+    pruebas el día que deje de cumplirse.
+
+    Dos fotos, no una: la primera es el hero (que nunca se apaga) y solo a
+    partir de la segunda existe la galería. La foto 7 además trae render
+    elegido, que es lo que hace aparecer "Fotos y propuesta"."""
+    return {
+        **BASE_PROPERTY,
+        "images": [{"id": 6, "dataUri": "data:FOTO-HERO"},
+                   {"id": 7, "dataUri": "data:FOTO-GALERIA"}],
+        "planSheets": [_sheet("abc", "original", "<svg>PLANO</svg>")],
+        "renderHeads": [_render("abc", "original", uri="data:RENDER-PLANO", chosen=True),
+                        _render(uri="data:RENDER-FOTO", chosen=True, image_id=7)],
+        "budget": {"lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
+                   "chapters": ["Otros"]},
+    }
+
+
+def test_an_opportunity_card_with_no_opinion_prints_every_toggleable_block():
+    """El punto de partida de todo lo de abajo. Sin esta prueba, un "ya no
+    está" podría significar que ese bloque nunca estuvo y las demás pasarían
+    en verde sin comprobar nada."""
+    html = _opportunity(_opportunity_with_everything())
+    for marker in (_FEES_ROW, _PROJECTION_ROW, _GALLERY, _PLANS, _PHOTO_RENDERS, _BUDGET):
+        assert marker in html, marker
+
+
+def test_turning_off_the_fees_row_leaves_the_projection_row_standing():
+    """Las dos filas son `metrics-6` y son vecinas: apagar la de comisiones
+    borrando "la rejilla de seis" se llevaría también la proyección, que es lo
+    único que dice a qué se estaría entrando. El conteo de rejillas lo fija:
+    queda exactamente una."""
+    html = _opportunity(_opportunity_with_everything(),
+                        ProspectusSections(opportunity_fees=False))
+    assert _FEES_ROW not in html
+    assert _PROJECTION_ROW in html
+    assert html.count('class="metrics metrics-6"') == 1
+
+
+def test_turning_off_the_gallery_leaves_the_hero_and_the_detail_blocks():
+    """El hero no es galería: es la foto que dice de qué inmueble habla la
+    página. Y la galería vive justo antes del detalle — borrar de más aquí se
+    llevaría plano, renders y presupuesto de un tirón."""
+    html = _opportunity(_opportunity_with_everything(),
+                        ProspectusSections(opportunity_gallery=False))
+    assert _GALLERY not in html
+    assert 'class="hero"' in html
+    assert _PLANS in html and _PHOTO_RENDERS in html and _BUDGET in html
+
+
+def test_turning_off_the_plans_leaves_the_photo_renders_and_the_budget():
+    """Plano y fotos comparten maquetación (`plan-row`, `_plan_side`) y los dos
+    salen de `renderHeads`: apagar el plano por la clase, o vaciando
+    `renderHeads`, se llevaría también el render de la foto."""
+    html = _opportunity(_opportunity_with_everything(),
+                        ProspectusSections(opportunity_plans=False))
+    assert _PLANS not in html
+    assert "<svg" not in html  # el dibujo, no solo su encabezado
+    assert _PHOTO_RENDERS in html and "data:RENDER-FOTO" in html
+    assert _BUDGET in html
+
+
+def test_turning_off_the_photo_renders_leaves_the_plans_and_the_budget():
+    """El espejo de la prueba anterior, por el mismo parentesco: la sección de
+    fotos se va y el plano —con su render elegido— sigue impreso."""
+    html = _opportunity(_opportunity_with_everything(),
+                        ProspectusSections(opportunity_renders=False))
+    assert _PHOTO_RENDERS not in html
+    assert "data:RENDER-FOTO" not in html
+    assert _PLANS in html and "PLANO" in html and "data:RENDER-PLANO" in html
+    assert _BUDGET in html
+
+
+def test_turning_off_the_budget_leaves_the_plans_and_the_photo_renders():
+    html = _opportunity(_opportunity_with_everything(),
+                        ProspectusSections(opportunity_budget=False))
+    assert _BUDGET not in html
+    assert "$156,000" not in html
+    assert _PLANS in html and _PHOTO_RENDERS in html
+
+
+def test_the_budget_does_not_force_its_own_page_when_plans_and_renders_are_turned_off():
+    """Mismo criterio que cuando el dato no existe (ver
+    test_the_budget_does_not_force_a_page_without_plano_or_renders_before_it),
+    ahora por elección: si el salto siguiera atado a que la propiedad TIENE
+    plano, un deck pedido sin planos ni renders abriría cada presupuesto con
+    una hoja en blanco — no hay nada antes de qué separarlo."""
+    html = _opportunity_detail(_opportunity_with_everything(),
+                               ProspectusSections(opportunity_plans=False,
+                                                  opportunity_renders=False))
+    assert _BUDGET in html
+    assert "detail-section-budget" not in html
+
+
+def test_the_budget_still_forces_its_own_page_when_only_the_renders_are_turned_off():
+    """El plano solo ya es algo de qué separarlo: el salto no depende de que
+    estén los dos bloques, sino de que quede alguno."""
+    html = _opportunity_detail(_opportunity_with_everything(),
+                               ProspectusSections(opportunity_renders=False))
+    assert 'class="detail-section detail-section-budget"' in html
+
+
+def test_a_stripped_opportunity_still_says_which_property_it_is_and_what_it_projects():
+    """Lo que ningún recorte puede quitar: la banda con el nombre, el hero, las
+    dos columnas y la fila de proyección. Sin ellas la hoja deja de identificar
+    la propiedad o de decir a qué se entraría — no sería un prospecto más
+    corto, sería una página que no dice nada."""
+    html = _opportunity(_opportunity_with_everything(),
+                        ProspectusSections(opportunity_fees=False, opportunity_gallery=False,
+                                           opportunity_plans=False, opportunity_renders=False,
+                                           opportunity_budget=False))
+    assert "[TEST] Casa Prueba" in html
+    assert 'class="hero"' in html
+    assert 'class="opp-cols"' in html
+    assert _PROJECTION_ROW in html
+    # Sin ninguno de los tres bloques, el contenedor del detalle tampoco se
+    # imprime vacío — mismo comportamiento que una propiedad sin esos datos.
+    assert 'class="opp-detail"' not in html
