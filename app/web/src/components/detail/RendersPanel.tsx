@@ -31,12 +31,14 @@ interface PhotosProps extends CommonProps {
   images: PropertyImage[]
   onGenerate: (req: { sourceImageId: number; promptId: number | null; promptText: string })
     => Promise<PropertyRender>
+  onUpload?: (req: { sourceImageId: number; file: File }) => Promise<PropertyRender>
   plan?: never
   variant?: never
   floorId?: never
   floorName?: never
   floorCount?: never
   onGeneratePlan?: never
+  onUploadPlan?: never
 }
 
 /** Cada levantamiento (Tarea 17): la fuente es SU plano, nunca el ajeno. `variant`
@@ -63,8 +65,10 @@ interface PlanProps extends CommonProps {
   floorCount: number
   onGeneratePlan: (req: { promptId: number | null; promptText: string; floorId: string; floorName: string })
     => Promise<PropertyRender>
+  onUploadPlan?: (req: { floorId: string; floorName: string; file: File }) => Promise<PropertyRender>
   images?: never
   onGenerate?: never
+  onUpload?: never
 }
 
 /** De dónde nace todo render que este panel puede generar o listar. 'photos':
@@ -144,6 +148,8 @@ export function RendersPanel(props: Props) {
   const variant = props.source === 'plan' ? props.variant : undefined
   const onGenerate = props.source === 'photos' ? props.onGenerate : undefined
   const onGeneratePlan = props.source === 'plan' ? props.onGeneratePlan : undefined
+  const onUpload = props.source === 'photos' ? props.onUpload : undefined
+  const onUploadPlan = props.source === 'plan' ? props.onUploadPlan : undefined
   // Identidad del piso SELECCIONADO (Task 30) — null exactamente cuando `plan` es
   // null. `floorCount` decide, más abajo, cómo agrupar los renders con `floorId`
   // NULL (legado): bajo el único piso si es 1, aparte si son 2+.
@@ -167,6 +173,8 @@ export function RendersPanel(props: Props) {
   const [error, setError] = useState<string | null>(null)
   const [naming, setNaming] = useState(false)
   const [newName, setNewName] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
 
   // Índice para colgarle a cada render su foto base sin recorrer la lista por render.
   const photosById = useMemo(() => new Map(images.map(i => [i.id, i])), [images])
@@ -335,6 +343,25 @@ export function RendersPanel(props: Props) {
     } finally { setBusy(false) }
   }
 
+  async function handleUploadFile(f: File) {
+    setUploading(true); setError(null)
+    try {
+      if (usePlan && onUploadPlan) {
+        await onUploadPlan({ floorId: selectedFloorId!, floorName: selectedFloorName!, file: f })
+      } else if (onUpload && sourceId != null) {
+        await onUpload({ sourceImageId: sourceId, file: f })
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo subir el render')
+    } finally { setUploading(false) }
+  }
+
+  function onUploadInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (f) void handleUploadFile(f)
+  }
+
   async function savePrompt() {
     if (!newName.trim() || !text.trim()) return
     setBusy(true); setError(null)
@@ -470,9 +497,19 @@ export function RendersPanel(props: Props) {
           <button onClick={() => setNaming(true)} disabled={!text.trim()} style={btn(false)}>
             Guardar como nuevo
           </button>
-          <button onClick={generate} disabled={busy || (!usePlan && sourceId == null) || !text.trim()} style={btn(true)}>
+          <button onClick={generate} disabled={busy || uploading || (!usePlan && sourceId == null) || !text.trim()} style={btn(true)}>
             {busy ? 'GENERANDO…' : 'GENERAR RENDER'}
           </button>
+          {(onUpload || onUploadPlan) && (
+            <>
+              <input ref={uploadInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+                     onChange={onUploadInputChange} />
+              <button onClick={() => uploadInputRef.current?.click()}
+                      disabled={busy || uploading || (!usePlan && sourceId == null)} style={btn(false)}>
+                {uploading ? 'SUBIENDO…' : 'SUBIR RENDER'}
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -490,6 +527,12 @@ export function RendersPanel(props: Props) {
               <p style={{ ...label, letterSpacing: 0, textTransform: 'none', marginTop: '6px' }}>
                 Puede tardar cerca de un minuto. No cierres la pestaña.
               </p>
+            </div>
+          )}
+          {uploading && (
+            <div style={{ border: `1px dashed ${colors.border}`, borderRadius: radius.sm,
+                          padding: spacing.lg, textAlign: 'center', background: colors.surface }}>
+              <p style={{ ...label, color: colors.primary }}>Subiendo render…</p>
             </div>
           )}
           <RenderCards heads={heads} renderById={renderById} photosById={photosById} base={base}

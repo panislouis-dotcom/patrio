@@ -598,6 +598,58 @@ describe('RendersPanel', () => {
   })
 })
 
+describe('RendersPanel: subir un render sin generarlo', () => {
+  function uploadInput(container: HTMLElement) {
+    return container.querySelector('input[type="file"]') as HTMLInputElement
+  }
+
+  it('modo fotos: llama a onUpload con la foto seleccionada y el archivo', async () => {
+    const onUpload = vi.fn().mockResolvedValue(renderRow(5))
+    const { container } = render(<RendersPanel
+      source="photos" images={[photo(10, 'fachada.jpg')]} prompts={prompts} renders={[]} base=""
+      onGenerate={vi.fn()} onUpload={onUpload} onSavePrompt={vi.fn()} onDeleteRender={vi.fn()}
+      onChoose={vi.fn()} onUnchoose={vi.fn()} />)
+
+    fireEvent.click(screen.getByAltText('fachada.jpg'))
+    const file = new File(['x'], 'externo.png', { type: 'image/png' })
+    fireEvent.change(uploadInput(container), { target: { files: [file] } })
+
+    await waitFor(() => expect(onUpload).toHaveBeenCalledWith({ sourceImageId: 10, file }))
+  })
+
+  it('modo fotos: sin foto elegida, el botón de subir está deshabilitado', () => {
+    render(<RendersPanel
+      source="photos" images={[photo(10, 'fachada.jpg')]} prompts={prompts} renders={[]} base=""
+      onGenerate={vi.fn()} onUpload={vi.fn()} onSavePrompt={vi.fn()} onDeleteRender={vi.fn()}
+      onChoose={vi.fn()} onUnchoose={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /SUBIR RENDER/i }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('sin onUpload, no se muestra el botón de subir', () => {
+    render(<RendersPanel
+      source="photos" images={[photo(10, 'fachada.jpg')]} prompts={prompts} renders={[]} base=""
+      onGenerate={vi.fn()} onSavePrompt={vi.fn()} onDeleteRender={vi.fn()}
+      onChoose={vi.fn()} onUnchoose={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /SUBIR RENDER/i })).toBeNull()
+  })
+
+  it('modo plano: llama a onUploadPlan con el piso seleccionado y el archivo', async () => {
+    const onUploadPlan = vi.fn().mockResolvedValue(planRenderRow(5))
+    const cocina = planWithRooms(['Cocina'])
+    const { container } = render(<RendersPanel {...planBase}
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={1}
+      onGeneratePlan={vi.fn()} onUploadPlan={onUploadPlan} />)
+
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    const file = new File(['x'], 'externo.png', { type: 'image/png' })
+    fireEvent.change(uploadInput(container), { target: { files: [file] } })
+
+    await waitFor(() => expect(onUploadPlan).toHaveBeenCalledWith({
+      floorId: cocina.id, floorName: cocina.name, file,
+    }))
+  })
+})
+
 // ── El piso cambia sin remontar (addendum de fidelidad geométrica) ─────────────
 // `LevantamientoPanel` nunca remonta este panel al cambiar de piso — no hay `key`
 // por piso, solo cambia la prop `plan` (y `floorId`/`floorName` junto con ella).
