@@ -254,6 +254,18 @@ export async function generatePropertyRender(
   return res.json()
 }
 
+export async function uploadPropertyRender(
+  id: number,
+  req: { sourceImageId: number; file: File },
+): Promise<PropertyRender> {
+  const form = new FormData()
+  form.append('file', req.file)
+  form.append('sourceImageId', String(req.sourceImageId))
+  const res = await authFetch(`${BASE}/api/properties/${id}/renders/upload`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
 export async function generatePropertyRenderFromPlan(
   id: number,
   req: {
@@ -276,6 +288,20 @@ export async function generatePropertyRenderFromPlan(
   form.append('floorName', req.floorName)
   if (req.promptId != null) form.append('promptId', String(req.promptId))
   const res = await authFetch(`${BASE}/api/properties/${id}/renders/from-plan`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+export async function uploadPropertyRenderFromPlan(
+  id: number,
+  req: { file: File; variant: VariantKey; floorId: string; floorName: string },
+): Promise<PropertyRender> {
+  const form = new FormData()
+  form.append('file', req.file)
+  form.append('variant', req.variant)
+  form.append('floorId', req.floorId)
+  form.append('floorName', req.floorName)
+  const res = await authFetch(`${BASE}/api/properties/${id}/renders/from-plan/upload`, { method: 'POST', body: form })
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
