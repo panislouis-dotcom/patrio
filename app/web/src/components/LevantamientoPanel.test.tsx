@@ -422,6 +422,22 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
     expect(req.floorName).toBe('Planta Alta')
     expect(req.file).toBe(file)
   })
+
+  it('subir un render en modo plano PLANEADO manda variant: "planned"', async () => {
+    const geo = withVariant(withVariant(null, 'original', originalConMuro()), 'planned', plannedFloorSet())
+    const uploadImpl = vi.fn().mockResolvedValue(planRenderRow(5, 'planned'))
+    const { container } = renderPanel('planned', geo, undefined, { onUploadRender: uploadImpl })
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    const file = new File(['x'], 'externo.png', { type: 'image/png' })
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(uploadImpl).toHaveBeenCalled())
+    const [variant] = uploadImpl.mock.calls[0]
+    expect(variant).toBe('planned')
+  })
 })
 
 describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
