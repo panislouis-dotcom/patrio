@@ -173,6 +173,43 @@ def test_uploading_a_render_ignores_a_spoofed_filename_extension(client, test_pr
     assert r.json()["filePath"].endswith(".png")
 
 
+def test_uploading_a_render_from_plan_groups_it_by_floor(client, test_property):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"variant": "original", "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["sourceImageId"] is None
+    assert body["sourcePlanPath"] is None  # no hubo plano de referencia: no lo vio la IA
+    assert body["sourceVariant"] == "original"
+    assert body["floorId"] == "floor-abc-123"
+    assert body["provider"] == "upload"
+    assert body["model"] == "manual"
+
+
+def test_uploading_a_render_from_plan_with_an_invalid_variant_is_422(client, test_property):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"variant": "no-existe", "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_an_uploaded_plan_render_can_be_chosen(client, test_property):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"variant": "original", "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    render_id = r.json()["id"]
+    chosen = client.put(f"/api/properties/{test_property['id']}/renders/{render_id}/choose")
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json()["isChosen"] is True
+
+
 # ─── Parámetros que se le mandan al proveedor ─────────────────────────────────
 
 def test_generating_a_render_from_the_plan_keeps_the_plan_as_source(

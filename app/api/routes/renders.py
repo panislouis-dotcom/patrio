@@ -290,6 +290,66 @@ def create_render_from_plan(
     )
 
 
+@router.post("/api/properties/{property_id}/renders/from-plan/upload", status_code=201,
+             operation_id="property_renders_from_plan_upload")
+async def upload_render_from_plan(
+    property_id: int,
+    file: UploadFile = File(...),
+    variant: str = Form(...),
+    floorId: str = Form(...),
+    floorName: str = Form(...),
+    _: dict = Depends(get_current_user),
+):
+    """Igual que `upload_property_render`, pero agrupado por piso+variante en vez
+    de por foto — así se elige junto con los renders de plano generados por la
+    IA. Sin `source_plan_path`: no hubo un plano de referencia que la IA haya
+    visto, así que no hay nada que guardar ahí."""
+    if not properties.exists(property_id):
+        raise HTTPException(status_code=404, detail="Propiedad no encontrada")
+    if file.content_type not in _ALLOWED_UPLOAD_MIME:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
+    if variant not in renders_db.SOURCE_VARIANTS:
+        raise HTTPException(status_code=422,
+                            detail=f"variant debe ser uno de {', '.join(renders_db.SOURCE_VARIANTS)}")
+    if not floorId.strip():
+        raise HTTPException(status_code=422, detail="floorId no puede ir vacío")
+    if not floorName.strip():
+        raise HTTPException(status_code=422, detail="floorName no puede ir vacío")
+    content = await file.read(_MAX_UPLOAD_SIZE + 1)
+    if len(content) > _MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    if not content:
+        raise HTTPException(status_code=422, detail="El archivo llegó vacío")
+    content = await asyncio.to_thread(images.normalize_orientation, content)
+
+    # La extensión sale del content_type ya validado contra _ALLOWED_UPLOAD_MIME
+    # arriba, nunca del filename que manda el cliente — ver el comentario
+    # extenso de esta misma decisión en `upload_property_render` (Task 1):
+    # confiar en la extensión del filename para nombrar el archivo guardado es
+    # una vía de XSS almacenado, porque storage.stream() sirve el Content-Type
+    # de vuelta adivinándolo de esa misma extensión.
+    ext = _UPLOAD_EXT_BY_MIME[file.content_type]
+    relative_path = f"properties/{property_id}/renders/{uuid4().hex}{ext}"
+    try:
+        storage.upload(relative_path, content, file.content_type)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="No se pudo guardar el render") from exc
+
+    return renders_db.add_render(
+        property_id=property_id,
+        source_image_id=None,
+        file_path=relative_path,
+        content_type=file.content_type,
+        prompt_id=None,
+        prompt_text=UPLOAD_PROMPT_TEXT,
+        provider=UPLOAD_PROVIDER,
+        model=UPLOAD_MODEL,
+        source_variant=variant,
+        floor_id=floorId.strip(),
+        floor_name=floorName.strip(),
+    )
+
+
 @router.post("/api/properties/{property_id}/renders/{render_id}/edit", status_code=201,
              operation_id="property_renders_edit")
 def edit_property_render(property_id: int, render_id: int, body: RenderEditRequest,
