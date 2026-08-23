@@ -72,12 +72,15 @@ function renderPanel(
     renders?: PropertyRender[]
     onGenerateRender?: (variant: VariantKey, req: { promptId: number | null; promptText: string; plan: Blob; floorId: string; floorName: string })
       => Promise<PropertyRender>
+    onUploadRender?: (variant: VariantKey, req: { floorId: string; floorName: string; file: File })
+      => Promise<PropertyRender>
   } = {},
 ) {
   const onReady = vi.fn()
   const onGenerateRender = over.onGenerateRender
     ? vi.fn(over.onGenerateRender)
     : vi.fn().mockResolvedValue(planRenderRow(99, variant))
+  const onUploadRender = over.onUploadRender ? vi.fn(over.onUploadRender) : undefined
   // Extraído a función para poder re-renderizar con OTRA `geometry` — la
   // instancia real (`PropertyDetailPage`) nunca remonta el panel al cambiar el
   // FloorSet, solo le pasa props nuevas (`key` fijo por variante). Un test que
@@ -94,15 +97,16 @@ function renderPanel(
       prompts={[]}
       renders={over.renders ?? []}
       onGenerateRender={onGenerateRender}
+      onUploadRender={onUploadRender}
       onSavePrompt={vi.fn().mockResolvedValue({ id: 1, name: 'x', body: 'y', kind: 'plan', isDefault: false, createdAt: '2026-08-01T00:00:00Z' })}
       onDeleteRender={vi.fn().mockResolvedValue(undefined)}
       onChoose={vi.fn().mockResolvedValue(undefined)}
       onUnchoose={vi.fn().mockResolvedValue(undefined)}
     />
   )
-  const { rerender } = render(buildElement(geometry))
+  const { rerender, container } = render(buildElement(geometry))
   return {
-    onSave, onReady, onGenerateRender,
+    onSave, onReady, onGenerateRender, onUploadRender, container,
     rerenderWithGeometry: (geo: FloorPlanModel | null) => rerender(buildElement(geo)),
   }
 }
@@ -396,6 +400,27 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
     const [, req] = onGenerateRender.mock.calls[0]
     expect(req.floorId).toBe(dos.floors[0].id)
     expect(req.floorName).toBe('Planta Baja')
+  })
+
+  it('subir un render en modo plano manda la variante y el piso seleccionado', async () => {
+    const dos = dosPlantas()
+    const uploadImpl = vi.fn().mockResolvedValue(planRenderRow(5, 'original'))
+    const { container } = renderPanel('original', withVariant(null, 'original', dos), undefined,
+      { onUploadRender: uploadImpl })
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(screen.getByText('Planta Alta'))
+    fireEvent.click(screen.getByText(/^el plano$/i))
+    const file = new File(['x'], 'externo.png', { type: 'image/png' })
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(uploadImpl).toHaveBeenCalled())
+    const [variant, req] = uploadImpl.mock.calls[0]
+    expect(variant).toBe('original')
+    expect(req.floorId).toBe(dos.floors[1].id)
+    expect(req.floorName).toBe('Planta Alta')
+    expect(req.file).toBe(file)
   })
 })
 

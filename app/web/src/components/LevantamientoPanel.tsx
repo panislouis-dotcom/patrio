@@ -47,6 +47,8 @@ interface Props {
   onGenerateRender: (variant: VariantKey, req: {
     promptId: number | null; promptText: string; plan: Blob; floorId: string; floorName: string
   }) => Promise<PropertyRender>
+  onUploadRender?: (variant: VariantKey, req: { floorId: string; floorName: string; file: File })
+    => Promise<PropertyRender>
   onEdit?: (renderId: number, promptText: string) => Promise<PropertyRender>
   onSavePrompt: (p: { name: string; body: string; kind: RenderPromptKind }) => Promise<RenderPrompt>
   onDeleteRender: (renderId: number) => Promise<void>
@@ -77,7 +79,7 @@ type PendingWrite = 'partir' | 'blanco' | 'repartir'
 
 export function LevantamientoPanel({
   variant, geometry, onSave, onUploadImage, onReady, onDirtyChange,
-  base, prompts, renders, onGenerateRender, onEdit, onSavePrompt, onDeleteRender,
+  base, prompts, renders, onGenerateRender, onUploadRender, onEdit, onSavePrompt, onDeleteRender,
   onChoose, onUnchoose,
 }: Props) {
   const [confirmReclone, setConfirmReclone] = useState(false)
@@ -169,6 +171,10 @@ export function LevantamientoPanel({
     const blob = await floorToPngBlob(selectedFloor!, { annotations: false, roomTypeFill: true })
     return onGenerateRender(variant, { ...req, plan: blob })
   }, [selectedFloor, variant, onGenerateRender])
+
+  const handleUploadPlan = useCallback(async (req: { floorId: string; floorName: string; file: File }) => {
+    return onUploadRender!(variant, req)
+  }, [variant, onUploadRender])
 
   // GENERAR TODOS LOS PISOS (Task 31): un render por CADA piso de `fs.floors`, sin
   // importar cuál esté seleccionado arriba en RENDERS — el selector de un piso es
@@ -397,6 +403,7 @@ export function LevantamientoPanel({
         floorId={selectedFloor?.id ?? null} floorName={selectedFloor?.name ?? null}
         floorCount={floorCount} base={base}
         prompts={prompts} renders={renders} onGeneratePlan={handleGeneratePlan}
+        onUploadPlan={onUploadRender ? handleUploadPlan : undefined}
         onEdit={onEdit} onSavePrompt={onSavePrompt} onDeleteRender={onDeleteRender}
         onChoose={onChoose} onUnchoose={onUnchoose} />
     </div>
