@@ -1,4 +1,5 @@
 """Endpoints de la biblioteca de prompts y de los renders de una propiedad."""
+import asyncio
 from typing import Literal
 from uuid import uuid4
 
@@ -11,6 +12,21 @@ from api.auth import get_current_user
 from api.lib import images
 
 router = APIRouter()
+
+# Marca de un render que no nació de una llamada al proveedor, sino de una
+# subida directa (p.ej. generado en otro software). `provider`/`model` son
+# `text` libre en la tabla — no hace falta un enum ni una migración — y
+# `prompt_text` no puede ir vacío (CHECK de la tabla), así que lleva un
+# marcador fijo en vez de un prompt real que nunca existió.
+UPLOAD_PROVIDER = "upload"
+UPLOAD_MODEL = "manual"
+UPLOAD_PROMPT_TEXT = "Subido manualmente"
+
+# Mismo tope/lista que `upload_property_image` (routes/properties.py): un
+# render subido es, para efectos de validación, un archivo arbitrario que
+# viene de un humano — ni más ni menos peligroso que una foto real.
+_ALLOWED_UPLOAD_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
 class PromptCreate(BaseModel):
@@ -133,6 +149,52 @@ def create_property_render(property_id: int, body: RenderRequest,
         prompt_text=body.promptText.strip(),
         provider=renders.PROVIDER,
         model=renders.MODEL,
+    )
+
+
+@router.post("/api/properties/{property_id}/renders/upload", status_code=201,
+             operation_id="property_renders_upload")
+async def upload_property_render(
+    property_id: int,
+    file: UploadFile = File(...),
+    sourceImageId: int = Form(...),
+    _: dict = Depends(get_current_user),
+):
+    """Sube un render generado FUERA de este sistema y lo agrega a la biblioteca
+    de la propiedad en el mismo grupo que uno generado aquí (`source_image_id`)
+    — mismas acciones después: elegir, editar, borrar. Ver UPLOAD_PROVIDER
+    arriba para por qué `provider`/`model`/`prompt_text` llevan marcadores fijos
+    en vez de los valores reales que tendría un render de la IA."""
+    if not properties.exists(property_id):
+        raise HTTPException(status_code=404, detail="Propiedad no encontrada")
+    if file.content_type not in _ALLOWED_UPLOAD_MIME:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
+    source = renders_db.source_image(property_id, sourceImageId)
+    if source is None:
+        raise HTTPException(status_code=422,
+                            detail="La foto fuente no pertenece a esta propiedad")
+    content = await file.read(_MAX_UPLOAD_SIZE + 1)
+    if len(content) > _MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    if not content:
+        raise HTTPException(status_code=422, detail="El archivo llegó vacío")
+    content = await asyncio.to_thread(images.normalize_orientation, content)
+
+    relative_path = f"properties/{property_id}/renders/{uuid4().hex}.png"
+    try:
+        storage.upload(relative_path, content, file.content_type)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="No se pudo guardar el render") from exc
+
+    return renders_db.add_render(
+        property_id=property_id,
+        source_image_id=sourceImageId,
+        file_path=relative_path,
+        content_type=file.content_type,
+        prompt_id=None,
+        prompt_text=UPLOAD_PROMPT_TEXT,
+        provider=UPLOAD_PROVIDER,
+        model=UPLOAD_MODEL,
     )
 
 

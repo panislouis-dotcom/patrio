@@ -85,6 +85,60 @@ def source_image(client, test_property):
     return r.json()
 
 
+# ─── Subida manual (sin proveedor) ────────────────────────────────────────────
+
+def test_uploading_a_render_for_a_photo_stores_it_without_calling_the_provider(
+    client, test_property, source_image, monkeypatch,
+):
+    from api import renders
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("subir un render no debe llamar al proveedor")
+    monkeypatch.setattr(renders, "generate_image", _boom)
+
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["sourceImageId"] == source_image["id"]
+    assert body["provider"] == "upload"
+    assert body["model"] == "manual"
+    assert body["promptText"]  # nunca vacío: CHECK de la tabla
+
+
+def test_an_uploaded_photo_render_can_be_chosen(client, test_property, source_image):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    render_id = r.json()["id"]
+    chosen = client.put(f"/api/properties/{test_property['id']}/renders/{render_id}/choose")
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json()["isChosen"] is True
+
+
+def test_uploading_a_render_for_a_photo_outside_the_property_is_422(client, test_property):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"sourceImageId": "999999"},
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_uploading_an_unsupported_file_type_is_415(client, test_property, source_image):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.txt", io.BytesIO(b"no es una imagen"), "text/plain")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    assert r.status_code == 415, r.text
+
+
 # ─── Parámetros que se le mandan al proveedor ─────────────────────────────────
 
 def test_generating_a_render_from_the_plan_keeps_the_plan_as_source(
