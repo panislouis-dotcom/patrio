@@ -557,36 +557,38 @@ git commit -m "feat(web): botón para subir un render sin generarlo en RendersPa
 - Modify: `app/web/src/components/detail/FotosPanel.tsx`
 - Test: `app/web/src/components/detail/FotosPanel.test.tsx`
 
+**⚠ Naming collision found during implementation (fixed here):** `FotosPanel.tsx` already has a REQUIRED prop `onUpload: (file: File, imageType: ImageType) => Promise<void>` (forwards to `PhotoGallery`, wired from `PropertyDetailPage.tsx` to `uploadPropertyImage`). The render-upload prop below CANNOT reuse that name — it needs a distinct one. Use `onUploadRender`, matching the name already used for `LevantamientoPanel` in Task 6. `FotosPanel` maps its own `onUploadRender` prop onto `RendersPanel`'s `onUpload` prop (the names differ only at the `FotosPanel` boundary — `RendersPanel`'s own `onUpload`/`onUploadPlan` props, from Task 4, are unaffected).
+
 **Step 1: Write the failing test**
 
 Add to `FotosPanel.test.tsx`, right after the existing `'reenvía onChoose/onUnchoose a RendersPanel...'` test (uses the file's own `setup()` helper, same convention):
 
 ```ts
-it('reenvía onUpload a RendersPanel', () => {
+it('reenvía onUploadRender a RendersPanel como onUpload', () => {
   const props = setup()
   fireEvent.click(screen.getByText('RENDERS'))
   expect(vi.mocked(RendersPanel)).toHaveBeenCalledWith(
-    expect.objectContaining({ onUpload: props.onUpload }), {},
+    expect.objectContaining({ onUpload: props.onUploadRender }), {},
   )
 })
 ```
 
-This also needs `onUpload: vi.fn().mockResolvedValue(renderRow)` added to the `setup()` helper's default `props` object (next to `onGenerate`, near the top of the file) — otherwise `props.onUpload` is `undefined` and the assertion above is vacuous.
+This also needs `onUploadRender: vi.fn().mockResolvedValue(renderRow)` added to the `setup()` helper's default `props` object (next to `onGenerate`, near the top of the file) — otherwise `props.onUploadRender` is `undefined` and the assertion above is vacuous.
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd app/web && npx vitest run src/components/detail/FotosPanel.test.tsx -t "reenvía onUpload"`
-Expected: FAIL (TS error: `onUpload` not a valid prop on `FotosPanel`).
+Run: `cd app/web && npx vitest run src/components/detail/FotosPanel.test.tsx -t "reenvía onUploadRender"`
+Expected: FAIL (TS error: `onUploadRender` not a valid prop on `FotosPanel`).
 
 **Step 3: Write minimal implementation**
 
 In `FotosPanel.tsx`:
 1. Add to `Props` (after `onGenerate`):
 ```ts
-  onUpload?: (req: { sourceImageId: number; file: File }) => Promise<PropertyRender>
+  onUploadRender?: (req: { sourceImageId: number; file: File }) => Promise<PropertyRender>
 ```
-2. Destructure it in the function signature (add `onUpload` next to `onGenerate`).
-3. Forward it to `RendersPanel`: add `onUpload={onUpload}` next to `onGenerate={onGenerate}`.
+2. Destructure it in the function signature (add `onUploadRender` next to `onGenerate`).
+3. Forward it to `RendersPanel`'s `onUpload` prop: add `onUpload={onUploadRender}` next to `onGenerate={onGenerate}`. (Note: `RendersPanel`'s own prop is still named `onUpload` — only `FotosPanel`'s prop is renamed, to avoid colliding with its pre-existing photo-gallery `onUpload`.)
 
 **Step 4: Run test to verify it passes**
 
@@ -597,7 +599,7 @@ Expected: all pass.
 
 ```bash
 git add app/web/src/components/detail/FotosPanel.tsx app/web/src/components/detail/FotosPanel.test.tsx
-git commit -m "feat(web): reenvía onUpload de FotosPanel a RendersPanel"
+git commit -m "feat(web): reenvía onUploadRender de FotosPanel a RendersPanel"
 ```
 
 ---
@@ -763,9 +765,9 @@ In `PropertyDetailPage.tsx`:
     return created
   }
 ```
-3. In the FotosPanel mount (around line 1233), right after the `onGenerate={...}` block, add:
+3. In the FotosPanel mount (around line 1233), right after the `onGenerate={...}` block, add (note the prop name is `onUploadRender`, per Task 5's fix — `FotosPanel` has its own pre-existing `onUpload` for photo-gallery uploads, unrelated to this one):
 ```tsx
-                  onUpload={async req => {
+                  onUploadRender={async req => {
                     const created = await uploadPropertyRender(p.id, req)
                     setRenders(prev => [created, ...prev])
                     return created
