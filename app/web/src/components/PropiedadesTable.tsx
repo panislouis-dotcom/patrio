@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchProperties, updateProperty, generateProspectus } from '../lib/api'
+import type { ProspectusOptions } from '../lib/api'
 import type { Property } from '../lib/types'
 import { colors, fonts } from '../lib/theme'
 import { fmtPct, fmtPctSigned, fmtM } from '../lib/fmt'
@@ -8,6 +9,7 @@ import { SmartPropertyModal } from './SmartPropertyModal'
 import { LIFECYCLE, PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL, isPrePurchase } from '../lib/status'
 import type { PropertyStatus } from '../lib/status'
 import { pageFill } from '../lib/styles'
+import { ProspectusMenu } from './ProspectusMenu'
 
 type Filter = 'todas' | PropertyStatus
 
@@ -252,10 +254,10 @@ export function PropiedadesTable() {
     else { setSortKey(key); setSortAsc(false) }
   }
 
-  async function downloadProspectus() {
+  async function downloadProspectus(options: ProspectusOptions) {
     setGeneratingPdf(true)
     try {
-      const blob = await generateProspectus()
+      const blob = await generateProspectus(options)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -321,13 +323,14 @@ export function PropiedadesTable() {
               {totalWarnings > 0 && <span style={{ color: '#a46a14' }}>⚠️ {totalWarnings}</span>}
             </div>
           )}
-          <button
-            onClick={downloadProspectus}
-            disabled={generatingPdf}
-            style={{ background: 'transparent', border: `1px solid ${colors.primary}`, color: colors.tertiary, cursor: generatingPdf ? 'wait' : 'pointer', fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.1em', padding: '5px 12px', opacity: generatingPdf ? 0.7 : 1 }}
-          >
-            {generatingPdf ? '⏳ GENERANDO…' : '📄 PROSPECTO'}
-          </button>
+          {/* El prospecto ya no sale de un clic: el menú elige qué entra. Se le
+              pasa el inventario completo porque la ★ vive en cada renglón de
+              esta tabla, y es esa marca la que define el universo del PDF. */}
+          <ProspectusMenu
+            properties={properties}
+            generating={generatingPdf}
+            onGenerate={downloadProspectus}
+          />
           <button
             onClick={() => setShowCapture(true)}
             style={{ background: colors.primary, border: 'none', color: colors.neutral, cursor: 'pointer', fontFamily: fonts.label, fontSize: '10px', letterSpacing: '0.1em', padding: '5px 12px' }}

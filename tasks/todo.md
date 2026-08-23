@@ -1,161 +1,141 @@
-# Copia proporcional del presupuesto
+# Prospecto a la medida — elegir secciones y subsecciones
 
-Decisión (2026-08-16, con Ed): al copiar un presupuesto, poder hacerlo
-**proporcional** al tamaño de la obra destino, no solo idéntico. Un popup
-pregunta cuál de las dos.
+**Objetivo:** al dar click en `📄 PROSPECTO`, abrir un menú con checkboxes para elegir
+qué entra al PDF: qué propiedades y qué tan detallada es cada página de oportunidad.
 
-## La idea en una línea
+## Decisiones (confirmadas con Eduardo)
 
-**Copiar proporcional es copiar la FORMA del presupuesto, dimensionada al costo
-que esperas de ESTA obra.** El desglose de la obra de al lado te sirve; su
-tamaño no.
+1. **Subsecciones = las dos cosas**: propiedades individuales Y bloques de contenido.
+2. **Favoritos = el default, el menú = el ajuste**: el menú lista SOLO las favoritas,
+   todas palomeadas. Despalomear afecta a ESTE PDF, no a la estrella. La estrella
+   sigue siendo "mi portafolio de siempre"; el menú es "esta vez, esto".
+3. **La selección se recuerda** entre sesiones (localStorage), con botón de restaurar.
 
-El costo objetivo es `T = m² de construcción × $/m² de desarrollo` del DESTINO
-— no una razón de metrajes. Dos obras del mismo tamaño pueden construirse a
-niveles de costo distintos, y el metraje solo no lo captura.
+## Las dos decisiones de diseño que importan
 
-**T NO se guarda en ningún lado.** El total sigue siendo siempre la suma de los
-renglones: `set_total` mueve el RESIDUO para que la suma dé T (`budget_db.py:800`
-— «Ajusta el TOTAL de la obra presupuestada, moviendo el residuo»). Ninguna
-cifra total se almacena, igual que en todo el resto del módulo.
+### A. Se guardan las EXCLUSIONES, no las inclusiones
 
-## La aritmética, y por qué cierra exacto
+Guardar "lo que sí quiero" se rompe solo: marcas una propiedad nueva como favorita,
+generas el PDF, y no aparece — porque no estaba en la lista guardada de hace un mes.
+Falla en silencio, que es justo lo que este documento no debe hacer.
 
-    T = m² destino × $/m² destino      el costo objetivo
-    F = partidas FIJAS del origen      no escalan
-    S = partidas PROPORCIONALES        escalan
-    R = residuo del origen             lo que al origen le falta por detallar
+Guardando "lo que apagué", todo lo nuevo entra por default. La lista guardada se
+poda contra las favoritas actuales al abrir el menú: si despalomeas una propiedad de
+favoritos y la vuelves a palomear, regresa incluida (una exclusión vieja no la
+esconde para siempre).
 
-    factor = (T − F) / (S + R)
+### B. Las secciones NO necesitan su propio booleano
 
-Las fijas entran con su monto original; las proporcionales se multiplican por
-el factor; el residuo del destino aterriza solo en `R × factor` vía
-`_settle_residual`. La suma da **exactamente T**:
+`Track Record`, `En Desarrollo` y `Oportunidades` son *derivadas* de qué propiedades
+entran: si ninguna propiedad en desarrollo entra, la sección desaparece sola.
+El checkbox de la sección en el menú es puro azúcar de UI (palomea/despalomea a sus
+hijas), no un dato que viaje al API. Eso deja el contrato del API mínimo y sin dos
+maneras de decir lo mismo.
 
-    factor·S + F + factor·R  =  factor·(S+R) + F  =  (T−F) + F  =  T
+Solo las tres páginas que NO dependen de propiedades llevan booleano propio:
+Portada, Resumen de portafolio, Cierre.
 
-Incluir `R` en el denominador es lo que hace que el destino herede también
-**cuánto le falta por detallar**: si el origen estaba a medio detallar, el
-destino también. Un origen 100% detallado deja el residuo del destino en cero,
-sin caso especial. (Dato real: Vicente Guerrero está 95% detallado —
-$1,424,192 detallados y $71,808 de residuo — así que en la práctica esto casi
-siempre deja un residuo chico, no cero.)
+## Contrato del API
 
-**Guarda obligatoria**: si `T ≤ F`, las partidas fijas del origen ya no caben en
-el presupuesto objetivo. Error legible con los dos números («las fijas suman
-$850k y el objetivo es $600k»), nunca un factor negativo.
+`POST /api/documents/prospectus` — hoy no recibe body. Pasa a recibir uno OPCIONAL;
+sin body, el comportamiento es idéntico al de hoy (todo entra). Esa es la garantía de
+compatibilidad y se prueba explícitamente.
 
-## Se descompone en dos operaciones que YA existen
+```python
+class ProspectusOptions(BaseModel):
+    # None = todas las favoritas (el default de hoy). Una lista NARROWS sobre las
+    # favoritas: nunca mete algo que no esté marcado, solo saca.
+    propertyIds: list[int] | None = None
+    # Las tres páginas sin propiedad detrás
+    cover: bool = True
+    portfolioSummary: bool = True
+    closing: bool = True
+    # Qué lleva CADA página de oportunidad (aplica a todas por igual)
+    opportunityFees: bool = True       # fila de comisiones/totales del fondo
+    opportunityGallery: bool = True    # galería de fotos
+    opportunityPlans: bool = True      # "Plano y propuesta"
+    opportunityRenders: bool = True    # "Fotos y propuesta"
+    opportunityBudget: bool = True     # "Presupuesto de obra"
+```
 
-1. **Mover el total a T** — `set_total`, el residuo absorbe. Es «esto cambia
-   cuánto va a costar la obra».
-2. **Detallar** — copiar los renglones escalados; le comen al residuo y el total
-   no se mueve.
+Los 5 bloques mapean 1:1 a llamadas que ya existen en `prospectus_html.py`
+(`_opportunity_fees_metrics`, `_strip`, y las tres `detail-section` de
+`_opportunity_detail`) — no hay que inventar cortes nuevos en el documento.
 
-El repo ya distingue esas dos a propósito (`set_total` existe aparte «justamente
-para que se distinga de detallar»). Copiar proporcional no inventa una tercera:
-es las dos en orden.
+**Siempre entran** (no son negociables, son el pitch): banda con nombre/dirección,
+foto principal, columnas Financieros/Propiedad, y la fila de proyección
+(plazo, venta, ganancia, cap rate, rendimiento).
 
-## Verificado en datos reales, y por qué cambia el diseño
+## Tareas
 
-- [x] **Los 11 renglones reales usan unidad `lote`, cantidad entre 0 y 1.** Nadie mide en m² ni piezas: todo es suma alzada. Por eso escalar la CANTIDAD —lo obvio— produciría «1.5 lote» y dejaría sin sentido el precio unitario de `budget_price_observations`.
-- [x] **Solo 3 de 5 propiedades tienen `sqm_construction`.** «Sin metraje» no es un borde: es el 40% de hoy.
-- [x] `sqmConstruction: number | null` ya viaja al frontend (`types.ts:151`) → el preview se calcula en el cliente sin endpoint nuevo.
-- [x] `money0` (pesos enteros) y `frac4` existen en `app/api/finance/quantize.py`.
-- [x] `_norm` (`lower(btrim)`) ya existe y sirve para comparar la unidad sin pelearse con «Lote»/«LOTE».
-- [x] Próxima migración libre: **045**.
+### Backend
+- [ ] `ProspectusOptions` en `routes/documents.py`, body opcional en el endpoint
+- [ ] Filtrar favoritas por `propertyIds` cuando venga (intersección, nunca unión)
+- [ ] Pasar los flags a `build_prospectus_html(...)`
+- [ ] `build_prospectus_html`: parámetro de opciones; saltar portada/resumen/cierre
+- [ ] `_opportunity()`: recibir los 5 flags y omitir cada bloque
+- [ ] `_opportunity_detail()`: recibir plans/renders/budget
+- [ ] 400 con frase legible si la selección deja el PDF vacío
+- [ ] Tests: sin body == comportamiento de hoy; cada flag apaga lo suyo y NADA más;
+      `propertyIds` filtra; selección vacía → 400
 
-## Las cuatro decisiones
+### Frontend
+- [ ] `ProspectusMenu.tsx` — panel anclado al botón (patrón de `TabBar` settings:
+      `getBoundingClientRect` + cerrar al click afuera), `maxHeight` + scroll
+- [ ] Árbol: sección (padre) → propiedades (hijas), + bloques bajo Oportunidades
+- [ ] Padre palomea/despalomea hijas; estado indeterminado si están mezcladas
+- [ ] Persistencia de exclusiones en localStorage + poda contra favoritas actuales
+- [ ] Botón "Restaurar todo"
+- [ ] `GENERAR PDF` deshabilitado si no queda nada seleccionado
+- [ ] `generateProspectus(options)` en `lib/api.ts` manda el body
+- [ ] Tests del componente: agrupado por sección, padre↔hijas, persistencia,
+      restaurar, propiedad nueva entra por default (la regla de la sección A)
 
-1. **Qué escala, según la unidad.** Unidad `lote` → escala el PRECIO (sigue leyéndose «1 lote», solo más caro). Cualquier otra unidad (m², ml, pza) → escala la CANTIDAD, porque el precio por m² es un hecho de mercado que no cambia porque la casa sea más grande. Un solo condicional, y no se corrompe el día que alguien mida.
-2. **Faltan insumos → NO se puede copiar proporcional, y se dice cuál falta.** El destino necesita `m² de construcción` Y `$/m² de desarrollo`. El popup los marca como faltantes y el usuario los captura ahí mismo antes de poder continuar — no se adivina ninguno ni se cae a copia directa en silencio.
-3. **Hay partidas que no escalan** (permisos, licencias, conexiones).
-4. **La marca vive en el RENGLÓN, guardada, y VIAJA con la copia.** «Los permisos no crecen con la obra» es verdad de la partida, no de una copia — preguntarlo en cada copia sería preguntar lo mismo para siempre. Y al viajar, un presupuesto copiado nace sabiendo cuáles no escalan: es aprender sin catálogo.
-5. **Se llama PROPORCIONAL, no «escala»** — en la columna de la tabla y en el popup. Un solo vocabulario para el mismo concepto.
+### Verificación
+- [ ] Suite backend + frontend en verde
+- [ ] PDF real generado con varias combinaciones, revisado visualmente
+- [ ] Confirmar que "sin selección guardada" produce el MISMO PDF que hoy
 
-## Backend
+## Review
 
-- [x] Migración `045_budget_line_proporcional.sql`: `budget_lines.is_proportional BOOLEAN NOT NULL DEFAULT TRUE`. En positivo y con default TRUE para que la mayoría no capture nada y no haya dobles negaciones en los queries. `IF NOT EXISTS` en todo CREATE, **también en el bloque `down`** (ver [[patrio-migraciones-lint-idempotencia]] — es lo que tumbó el CI del PR #42).
-- [x] Añadir `is_proportional` a `_COPIED_LINE_COLUMNS`: es parte de la FORMA del plan, igual que `supplier_category_id`.
-- [x] `apply_budget` acepta el modo proporcional con el `$/m²` objetivo del destino. **El factor lo calcula el SERVIDOR** — un factor arbitrario mandado por el cliente vuelve la garantía imposible de verificar. Reusar `calculator_estimate` y `set_total`, que ya existen y ya hacen esto para la calculadora de la ficha.
-- [x] **RESUELTO: `constructionCostPerSqm` es DERIVADO** (`properties_db.py:379-381` — «presupuesto ÷ metraje, se publica para mostrarse y nada la vuelve a leer para calcular dinero») y **NO es campo escribible** (`:155` — «dejaron de ser insumos»). Solo sobrevive como entrada de la CALCULADORA de un tiro (`_CALCULATOR_FIELDS`, `:734`). Por lo tanto el `$/m²` objetivo del popup es un insumo TRANSITORIO del mismo tipo que ya usa la ficha — no se guarda, y no hay que crear un campo nuevo ni resucitar la columna. El popup lo pre-llena con el derivado del destino si tiene presupuesto, y vacío si no.
-- [x] Si falta `m²` o `$/m²` del destino, **422 legible que diga cuál de los dos falta**, no un genérico.
-- [x] El escalado se aplica en el mismo `INSERT ... SELECT` de la CTE (no en Python): `unit_price` × factor con `money0` si la unidad normalizada es `lote`; si no, `quantity` × factor redondeada a las 3 decimales de la columna (`NUMERIC(14,3)`; redondear a 4 sería redondear dos veces). Los renglones con `is_proportional = FALSE` pasan sin tocar.
-- [x] Guarda `T ≤ F` con mensaje que traiga los dos montos.
-- [x] **La dedup no cambia**: un renglón que ya existe en el destino se SALTA, no se escala ni se actualiza. La garantía central del PR #42 sigue intacta.
-- [x] Tests: escala una obra al doble; renglón `lote` mueve precio y no cantidad; renglón en m² mueve cantidad y no precio; renglón marcado fijo no se mueve; sin metraje → 422 que nombra la propiedad; el residuo cuadra y `budgetIncrease` se comporta.
+Hecho. Backend 681 pruebas, frontend 706, `tsc` limpio.
 
-## Frontend
+**Lo que cambió respecto al plan, y por qué:**
 
-- [x] Columna **PROPORCIONAL** por renglón en la tabla del presupuesto, visible (no escondida en el popup: si solo apareciera al copiar, nunca se captura hasta que ya llevas prisa). Patrón de celda siempre activa con autoguardado que ya usa el panel.
-- [x] Popup al copiar, en **las dos direcciones** (`COPIAR DE OTRA OBRA` y `COPIAR A OTRAS OBRAS`): elegir **directo** o **proporcional**. En proporcional, capturar `m²` y `$/m²` del destino, con el costo objetivo `T` calculándose en vivo mientras se teclea.
-- [x] El preview debe apartar las partidas fijas del monto que escala, o miente sobre lo que va a pasar.
-- [x] En PUSH a varias obras, **cada destino tiene su propio T** — un renglón por obra destino con sus dos campos y su total. Las obras a las que les falte un insumo quedan bloqueadas con el motivo, sin impedir copiar a las demás.
-- [x] El metraje que falte se captura EN EL POPUP y se guarda en la ficha de esa obra (`updateProperty`, `sqmConstruction` ya es escribible) **antes** de copiarle — es el momento en que a alguien le importa el dato, en vez de mandarlo a otra pantalla. La caja dice que se guarda: no es un dato de la copia. Si ese guardado falla, esa obra se reporta con su motivo y las demás se copian igual. El bloqueo se queda solo para la caja vacía.
-- [x] Tests de componente para ambas direcciones y para el caso sin metraje.
+1. **El guard de selección vacía no incluye `portfolioSummary`.** El plan decía
+   "sin propiedades Y sin portada/resumen/cierre". Pero el resumen NO imprime
+   nada sin propiedades (resume el track record), así que
+   `{propertyIds: [], cover: false, closing: false, portfolioSummary: true}`
+   habría pasado el guard literal y devuelto un PDF genuinamente en blanco —
+   justo el caso que el guard existe para negar. Quedó
+   `not favorites and not (cover or closing)`.
 
-## Corrección (2026-08-16, probado en vivo con Ed): T se LEE, no se recibe
+2. **Bug de frontera atrapado en revisión:** el front y el back opinaban
+   distinto sobre ese mismo caso. El botón `GENERAR` sí contaba el resumen como
+   página, así que se habilitaba para una combinación que el servidor rechazaba
+   con 400. Se alineó el front al back y se fijó con una prueba que nombra el
+   caso, para que las dos reglas no vuelvan a separarse.
 
-Ed probó la copia proporcional contra el stack y encontró que el `$/m²` sobra:
-«no estoy seguro por qué el $/m² es un input, debería ser fijo de la propiedad».
-Tiene razón — cada propiedad YA trae su costo de obra: el total de su
-presupuesto, que por construcción *es* `m² × $/m²`, porque de ahí lo sembró la
-ficha (Locales Salon Escobedo: $962,500 y 275 m² → $3,500/m² exacto, y
-`constructionCostPerSqm` se publica como total ÷ metraje). Pedirlo otra vez era
-capturar por segunda vez un número que ya existe, cuya única novedad posible
-era discrepar.
+3. **Los bloques se cortan en el origen, no borrando HTML ya armado.**
+   `opportunityPlans=False` produce `rows = []`, `opportunityBudget=False`
+   produce `budget = {}`. Así cada decisión río abajo —¿existe la sección?,
+   ¿el presupuesto fuerza salto de página?— corre el mismo camino que ya corría
+   cuando el dato simplemente no estaba. El salto de página del presupuesto
+   salió gratis: la condición `if (plan_html or photos_html)` ya lo contemplaba.
 
-**Esto SUSTITUYE los renglones 13, 24, 71, 80 y 82 de arriba:**
+4. **El recorte por `propertyIds` corre ANTES de enriquecer** (imágenes,
+   renders, planos): lo que no va al PDF no se descarga ni se dibuja.
 
-    T = el TOTAL ACTUAL del presupuesto de la obra DESTINO
+**Falsa alarma descartada:** se sospechó que una favorita archivada podía
+colarse al PDF. No: `get_properties()` ya nace con `include_archived=False`.
 
-- [x] `costPerSqm` fuera del contrato: el cuerpo del modo proporcional es
-      `{ budgetId, chapters?, proportional: true }`.
-- [x] `_target_cost` desaparece; el objetivo lo lee `_totals(budget_id)` UNA vez,
-      antes de la rama, porque es el mismo en los dos modos. Con eso ninguna de
-      las dos copias mueve el costo de obra: lo que cambia es a qué TAMAÑO entran
-      los renglones copiados.
-- [x] Se van los 422 de «falta el metraje» y «falta el $/m²» (ya no son insumos)
-      y el de «$/m² sin pedir proporcional». Entra uno nuevo:
-      `_require_cost_of_works` — destino con total en 0 no tiene a qué escalar, y
-      el rechazo nombra la obra y manda a su ficha, que es donde sí se captura.
-- [x] La guarda `T ≤ F` se queda igual, con sus dos montos.
-- [x] La aritmética NO cambia: mismo factor, mismo escalado por unidad, misma
-      dedup que SALTA. Los tests de esas reglas siguen pasando sin tocar una sola
-      aserción — el destino ahora es una obra que ya trae sus $4,050,000 en vez
-      de una que los recibe en el cuerpo.
-- [x] Test nuevo: bajar el total del destino con `set_total` cambia el objetivo
-      de la copia sin que la petición cambie un carácter — la prueba de que T se
-      lee al momento y no viaja en el cuerpo.
+**Verificación con PDFs reales** (no solo pruebas): sin cuerpo = 10 páginas;
+sin presupuesto = 8; sin planos ni renders = 8; sin portada ni cierre = 8;
+`propertyIds:[5]` = 5 páginas con solo esa propiedad; `propertyIds:[999]`
+(no favorita) = 2 páginas sin ninguna propiedad colada — la intersección
+aguanta. Los dos guards devuelven 400 con frase legible. Revisado a ojo que una
+página con bloques apagados no deja huecos ni encabezados huérfanos.
 
-## Verificación final
-- [x] `pytest` 565 · `tsc --noEmit` limpio · `vitest` 649 — todo verde tras mezclar `main`
-- [x] Lint de idempotencia de migraciones, local y limpio
-- [x] `dbmate up` desde cero (000→045) + round-trip `down`/`up` sobre BD scratch
-- [x] Contra el stack vivo: Vicente Guerrero ($1,496,000) → Escobedo ($962,500) dio factor **0.6434** en los 8 renglones, con el total intacto. Con una partida marcada NO proporcional, llegó en $62,832 sin escalar y la suma **volvió a dar exactamente el objetivo** — el residuo absorbió el redondeo.
-- [x] `db/schema.sql` regenerado con el dbmate de Docker y **re-verificado después del merge** (volcado idéntico al que dejó el merge)
-- [x] **E2E completos**: 201/203 contra nuestro stack. Los 2 fallos son de `08-proveedores`, suite que no tocamos, y **fallan en tests DISTINTOS entre corridas** — firma de estado compartido en la BD de dev, no regresión. En CI corren contra BD limpia. `09-propiedad-detalle` (el que toca el presupuesto) pasó las dos veces.
-
-## Revisión
-
-Tres correcciones nacieron de que Ed lo probara en vivo, y ninguna se habría
-visto en pruebas:
-
-1. **El `$/m²` no debía ser un input.** Cada propiedad ya tiene su costo de obra
-   —el total de su presupuesto, que por construcción ES `m² × $/m²`—, así que
-   pedirlo otra vez era pedir un dato que ya estaba. Se lee del destino. Neto:
-   −72 líneas y dos 422 menos.
-2. **Un booleano con default TRUE preguntado como `!valor`.** Un renglón sin el
-   campo contaba como FIJO, o sea lo contrario de su default. Bloqueó una copia
-   real de Ed. La misma lectura estaba en el `checked` de la casilla, donde
-   además volvía el input no controlado.
-3. **La causa raíz de todo no era del código, sino del entorno**: Vite lee sus
-   `.env` desde `app/web/`, no de la raíz del repo, así que el front caía al
-   default `:8000` —el API de OTRO worktree— y hacía copia directa ignorando la
-   bandera. Ver [[patrio-vite-api-base-trampa]]. La pista que tardé en seguir:
-   **cero tráfico del navegador en el log del uvicorn**. Si la UI responde pero
-   el log del API no ve nada, no es un bug de la UI.
-
-Además, mezclar `main` antes de abrir el PR destapó un test rojo preexistente
-(`TabBar.test.tsx`, del PR #36) que CI nunca vio porque **no corre vitest**.
-Arreglado en su propio commit.
+**Pendiente, a propósito:** `plano_js.render_plan_sheets` sigue lanzando
+Chromium aunque `opportunityPlans=False`. Es el único trabajo desperdiciado que
+queda; se dejó fuera para no ampliar el radio del cambio.

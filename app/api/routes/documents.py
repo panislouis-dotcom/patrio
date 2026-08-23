@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from api.db import get_db
 from api.properties_db import get_properties, get_property
-from api.lib.prospectus_html import build_prospectus_html, render_to_pdf
+from api.lib.prospectus_html import ProspectusSections, build_prospectus_html, render_to_pdf
 from api.lib.term_sheet_html import build_term_sheet_html
 from api.lib import plano_js
 from api.auth import get_current_user
@@ -95,13 +95,61 @@ def _by_status(favorites: list[dict], *statuses: str) -> list[dict]:
     return [p for status in statuses for p in favorites if p.get("status") == status]
 
 
+class ProspectusOptions(BaseModel):
+    """Qué entra al PDF. Todo default es el prospecto completo —el único que
+    este endpoint supo emitir hasta ahora—, así que un POST sin cuerpo sigue
+    produciendo el mismo documento byte por byte. Esa equivalencia es el
+    contrato con quien ya llama a esta ruta, no una casualidad de los valores.
+
+    `propertyIds` solo RECORTA las favoritas: el pool sigue siendo `isFavorite`
+    y esto es una intersección, nunca una unión. Un id que nadie marcó como
+    favorito NO entra al documento por pedirlo aquí — la marca es lo que
+    declara que una propiedad se puede publicar, y este parámetro existe para
+    armar un deck más corto con parte de ellas, no para saltarse esa
+    declaración. `None` (el default) es "todas las favoritas"; una lista vacía
+    sí significa ninguna, y no es lo mismo.
+
+    El vocabulario camelCase vive aquí, en el borde HTTP, y se traduce a
+    `ProspectusSections` (lib/prospectus_html.py) una sola vez: la capa de
+    presentación no importa nada de esta."""
+    propertyIds: list[int] | None = None
+    cover: bool = True
+    portfolioSummary: bool = True
+    closing: bool = True
+    opportunityFees: bool = True
+    opportunityGallery: bool = True
+    opportunityPlans: bool = True
+    opportunityRenders: bool = True
+    opportunityBudget: bool = True
+
+
 @router.post("/prospectus", operation_id="documents_prospectus")
-async def generate_prospectus(current_user: dict = Depends(get_current_user)):
+async def generate_prospectus(body: ProspectusOptions | None = None,
+                              current_user: dict = Depends(get_current_user)):
+    options = body or ProspectusOptions()
     favorites = [p for p in get_properties() if p.get("isFavorite")]
     if not favorites:
         raise HTTPException(
             status_code=400,
             detail="No favorites set. Mark at least one property as favorite.",
+        )
+    # El recorte se aplica ANTES de enriquecer (imágenes, renders, planos,
+    # presupuesto): lo que no va al PDF no se descarga ni se dibuja. Filtrar
+    # después habría dado el mismo documento pagando el costo completo.
+    if options.propertyIds is not None:
+        wanted = set(options.propertyIds)
+        favorites = [p for p in favorites if p["id"] in wanted]
+    # Un documento vacío no es un documento: si no queda ninguna propiedad y
+    # tampoco se pidieron las dos páginas que existen sin ellas (portada y
+    # cierre), el PDF saldría en blanco y el llamador se enteraría hasta
+    # abrirlo. El resumen de portafolio NO cuenta como página propia aquí:
+    # resume el track record, así que sin propiedades no imprime nada — darlo
+    # por bueno dejaría pasar justo el caso que este guard existe para negar.
+    if not favorites and not (options.cover or options.closing):
+        raise HTTPException(
+            status_code=400,
+            detail="La selección se quedó vacía: elige al menos una propiedad favorita, "
+                   "o incluye la portada o el cierre.",
         )
     # La presentación muestra la cabeza de cada cadena de render: una por línea,
     # la más reciente. Los pasos intermedios de una edición se quedan fuera.
@@ -135,6 +183,21 @@ async def generate_prospectus(current_user: dict = Depends(get_current_user)):
         _by_status(favorites, "en_renta"),
         _by_status(favorites, "desarrollo"),
         opportunities,
+        # Traducción explícita, campo por campo, y no un desempaquetado del
+        # modelo: son dos vocabularios distintos a propósito (camelCase en el
+        # JSON, snake_case en la presentación) y esto es el único lugar donde
+        # se tocan. Un campo nuevo tiene que pasar por aquí — que es
+        # exactamente lo que se quiere que cueste.
+        ProspectusSections(
+            cover=options.cover,
+            portfolio_summary=options.portfolioSummary,
+            closing=options.closing,
+            opportunity_fees=options.opportunityFees,
+            opportunity_gallery=options.opportunityGallery,
+            opportunity_plans=options.opportunityPlans,
+            opportunity_renders=options.opportunityRenders,
+            opportunity_budget=options.opportunityBudget,
+        ),
     )
     try:
         pdf = await asyncio.wait_for(render_to_pdf(html), timeout=_RENDER_TIMEOUT_S)

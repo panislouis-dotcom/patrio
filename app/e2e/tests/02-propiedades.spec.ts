@@ -230,12 +230,18 @@ test.describe('Propiedades — la tabla', () => {
     // esperando el evento download» — que nombra lo que no pasó, no por qué. Un
     // Chromium ausente en el servidor costó horas de diagnóstico escondido tras
     // esa frase. Mirar el status primero convierte el timeout en el 500 real.
+    // El botón ya no descarga: abre el menú de qué entra al PDF, y GENERAR es
+    // lo que dispara la petición. Se abre primero y se arman las esperas
+    // después, para que ninguna quede viva mientras nadie ha pedido nada.
+    await page.getByRole('button', { name: '📄 PROSPECTO' }).click()
+    await expect(page.getByTestId('prospectus-menu')).toBeVisible()
+
     const respuesta = page.waitForResponse(r => r.url().includes('/api/documents/prospectus'))
     // El `.catch` no traga el fallo: lo convierte en `null` para poder afirmarlo
     // abajo. Sin él, cuando el status falla primero, esta espera sigue viva y
     // revienta después del test con un rechazo sin dueño.
     const descarga = page.waitForEvent('download', { timeout: 20_000 }).catch(() => null)
-    await page.getByRole('button', { name: '📄 PROSPECTO' }).click()
+    await page.getByRole('button', { name: 'GENERAR PDF' }).click()
 
     const res = await respuesta
     expect(res.status(), `el endpoint del prospecto respondió ${res.status()}: `
@@ -246,6 +252,50 @@ test.describe('Propiedades — la tabla', () => {
     expect(archivo!.suggestedFilename()).toBe('prospecto.pdf')
 
     // Se deja como se encontró: el favorito es de quien lo marque, no del PDF.
+    await star.click()
+    await expect(star).toHaveText('☆')
+  })
+
+  test('lo que se despalomea en el menú viaja al API, y el PDF sigue saliendo', async ({ page }) => {
+    /* La prueba de que el menú está CONECTADO. Las de vitest cubren el árbol de
+       checkboxes contra un `onGenerate` falso; esta es la única que recorre el
+       camino entero —click, cuerpo del POST, PDF de vuelta— y por tanto la
+       única que se daría cuenta si el nombre de un campo dejara de coincidir
+       entre las dos capas. */
+    await page.goto('/propiedades')
+
+    const star = row(page, TEST_NAME).locator('td').first()
+    if ((await star.textContent())?.trim() === '☆') await star.click()
+    await expect(star).toHaveText('★')
+
+    await page.getByRole('button', { name: '📄 PROSPECTO' }).click()
+    const menu = page.getByTestId('prospectus-menu')
+    await expect(menu).toBeVisible()
+
+    // Dos apagados de naturaleza distinta a propósito: una página suelta y un
+    // bloque del interior de cada oportunidad. Si el menú tradujera mal
+    // cualquiera de las dos familias, solo una de estas dos aserciones caería.
+    await menu.getByRole('checkbox', { name: 'Portada' }).uncheck()
+    await menu.getByRole('checkbox', { name: 'Presupuesto de obra' }).uncheck()
+
+    const peticion = page.waitForRequest(r => r.url().includes('/api/documents/prospectus'))
+    const respuesta = page.waitForResponse(r => r.url().includes('/api/documents/prospectus'))
+    const descarga = page.waitForEvent('download', { timeout: 20_000 }).catch(() => null)
+    await page.getByRole('button', { name: 'GENERAR PDF' }).click()
+
+    const enviado = (await peticion).postDataJSON()
+    expect(enviado.cover).toBe(false)
+    expect(enviado.opportunityBudget).toBe(false)
+    // Lo que nadie tocó sigue entrando: el menú manda una selección completa,
+    // no solo el delta de lo apagado.
+    expect(enviado.closing).toBe(true)
+    expect(enviado.opportunityGallery).toBe(true)
+
+    const res = await respuesta
+    expect(res.status(), `el prospecto recortado respondió ${res.status()}: `
+      + `${(await res.text()).slice(0, 400)}`).toBe(200)
+    expect(await descarga, 'respondió 200 pero el navegador no descargó nada').not.toBeNull()
+
     await star.click()
     await expect(star).toHaveText('☆')
   })

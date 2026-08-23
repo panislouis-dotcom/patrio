@@ -135,8 +135,31 @@ export async function parseProperty(url: string, text: string, image?: Blob): Pr
   return res.json()
 }
 
-export async function generateProspectus(): Promise<Blob> {
-  const res = await authFetch(`${BASE}/api/documents/prospectus`, { method: 'POST' })
+/**
+ * Qué entra al prospecto. El menú lo arma propiedad por propiedad y bloque por
+ * bloque, pero `propertyIds` ausente NO significa «ninguna»: significa «todas
+ * las favoritas», y quien las resuelve es el servidor. Es deliberado — así una
+ * propiedad marcada con ★ después de la última vez que alguien abrió el menú
+ * entra sola, en vez de faltar en silencio porque no estaba en una lista vieja.
+ */
+export interface ProspectusOptions {
+  propertyIds?: number[]
+  cover: boolean
+  portfolioSummary: boolean
+  closing: boolean
+  opportunityFees: boolean
+  opportunityGallery: boolean
+  opportunityPlans: boolean
+  opportunityRenders: boolean
+  opportunityBudget: boolean
+}
+
+export async function generateProspectus(options: ProspectusOptions): Promise<Blob> {
+  const res = await authFetch(`${BASE}/api/documents/prospectus`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options),
+  })
   if (!res.ok) throw new Error(await detail(res))
   return res.blob()
 }

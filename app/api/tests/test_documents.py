@@ -166,6 +166,111 @@ def test_prospectus_generates_pdf(client, test_property):
     assert "application/pdf" in r.headers["content-type"]
 
 
+# ── Qué entra al prospecto (cuerpo opcional) ─────────────────────────────────
+
+def test_a_prospectus_without_a_body_is_the_document_with_every_default(
+        client, sold_property, rented_property, test_property):
+    """La garantía hacia atrás del cuerpo opcional: quien ya llamaba a esta ruta
+    sin cuerpo sigue recibiendo EXACTAMENTE el mismo documento.
+
+    Se compara el HTML completo, no un puñado de marcadores: cualquier byte que
+    el recorte hubiera movido —una fila que cambió de sitio, un contenedor
+    nuevo envolviendo lo de siempre— delataría aquí. Y se comparan las dos
+    formas de no opinar (sin cuerpo y con todos los campos escritos en su
+    default), porque son dos caminos distintos por el modelo."""
+    sin_cuerpo = _capture_favorites(client, sold_property, rented_property, test_property)
+    con_cuerpo_vacio = _capture(client, "/api/documents/prospectus", {})
+    todo_explicito = _capture(client, "/api/documents/prospectus", {
+        "propertyIds": None, "cover": True, "portfolioSummary": True, "closing": True,
+        "opportunityFees": True, "opportunityGallery": True, "opportunityPlans": True,
+        "opportunityRenders": True, "opportunityBudget": True})
+    assert con_cuerpo_vacio == sin_cuerpo
+    assert todo_explicito == sin_cuerpo
+
+
+def test_turning_off_the_cover_drops_that_page_and_leaves_the_rest(
+        client, sold_property, rented_property):
+    html = _capture_favorites(client, sold_property, rented_property, body={"cover": False})
+    assert 'class="page-block cover"' not in html
+    assert 'class="page-block closing"' in html
+    assert '<div class="summary">' in html
+    assert "[TEST] Casa Rentada" in html
+
+
+def test_turning_off_the_portfolio_summary_drops_only_that_half_sheet(
+        client, sold_property, rented_property):
+    """El resumen viaja en el mismo _chunk que las tarjetas: apagarlo no puede
+    llevarse las que lo acompañaban en la hoja."""
+    html = _capture_favorites(client, sold_property, rented_property,
+                              body={"portfolioSummary": False})
+    assert '<div class="summary">' not in html
+    assert "Ganancia del portafolio" not in html
+    assert "Track Record · 01 · Resultado final" in html
+    assert "Track Record · 02 · En renta" in html
+    assert 'class="page-block cover"' in html
+    assert 'class="page-block closing"' in html
+
+
+def test_turning_off_the_closing_drops_that_page_and_leaves_the_rest(
+        client, sold_property, rented_property):
+    html = _capture_favorites(client, sold_property, rented_property, body={"closing": False})
+    assert 'class="page-block closing"' not in html
+    assert "¿Lo vemos con tus números?" not in html
+    assert 'class="page-block cover"' in html
+    assert "[TEST] Casa Rentada" in html
+
+
+def test_property_ids_narrows_the_favorites_to_the_ones_asked_for(
+        client, sold_property, rented_property):
+    """Un deck más corto con parte de las favoritas: las dos están marcadas, se
+    pide una."""
+    html = _capture_favorites(client, sold_property, rented_property,
+                              body={"propertyIds": [rented_property["id"]]})
+    assert "[TEST] Casa Rentada" in html
+    assert "[TEST] Lote Prueba" not in html
+
+
+def test_property_ids_never_pulls_in_a_property_that_is_not_a_favorite(
+        client, sold_property, make_property):
+    """Intersección, nunca unión. La marca de favorito es la que declara que una
+    propiedad se puede publicar; si pedir su id bastara, este parámetro sería
+    una puerta trasera para meter al prospecto cualquier fila de la base."""
+    outsider = make_property(name="[TEST] Nunca Favorita")
+    html = _capture_favorites(client, sold_property,
+                              body={"propertyIds": [sold_property["id"], outsider["id"]]})
+    assert "[TEST] Lote Prueba" in html
+    assert "[TEST] Nunca Favorita" not in html
+
+
+def test_a_selection_without_properties_still_prints_the_pages_that_stand_alone(
+        client, test_property):
+    """Portada y cierre no dependen de ninguna propiedad, así que una selección
+    vacía con ellas encendidas sí es un documento — recortado, pero real."""
+    html = _capture_favorites(client, test_property, body={"propertyIds": []})
+    assert 'class="page-block cover"' in html
+    assert 'class="page-block closing"' in html
+    assert "[TEST] Lote Prueba" not in html
+
+
+def test_a_selection_with_nothing_left_to_print_is_rejected(client, test_property):
+    """Sin propiedades y sin portada ni cierre no queda nada que imprimir: el
+    PDF saldría en blanco y el llamador se enteraría hasta abrirlo."""
+    r = client.patch(f"/api/properties/{test_property['id']}", json={"isFavorite": True})
+    assert r.status_code == 200, r.text
+    r = client.post("/api/documents/prospectus", json={
+        "propertyIds": [], "cover": False, "closing": False})
+    assert r.status_code == 400
+    assert "vacía" in r.json()["error"]["message"]
+
+
+def test_the_prospectus_still_refuses_when_nothing_is_favorited(client, test_property):
+    """El recorte no releva la condición de siempre: sin una sola favorita no
+    hay prospecto, aunque el cuerpo pida portada y cierre."""
+    r = client.post("/api/documents/prospectus", json={"cover": True, "closing": True})
+    assert r.status_code == 400
+    assert "favorite" in r.json()["error"]["message"]
+
+
 def test_term_sheet_needs_a_property_in_oferta(client, test_property):
     """The pool is `oferta`: a term sheet is raised against a deal the firm is
     actually bidding on."""
