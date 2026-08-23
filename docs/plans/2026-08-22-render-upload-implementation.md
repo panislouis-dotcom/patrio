@@ -276,7 +276,8 @@ async def upload_render_from_plan(
         raise HTTPException(status_code=422, detail="El archivo llegó vacío")
     content = await asyncio.to_thread(images.normalize_orientation, content)
 
-    relative_path = f"properties/{property_id}/renders/{uuid4().hex}.png"
+    ext = Path(file.filename).suffix if file.filename else ""
+    relative_path = f"properties/{property_id}/renders/{uuid4().hex}{ext}"
     try:
         storage.upload(relative_path, content, file.content_type)
     except Exception as exc:

@@ -139,6 +139,25 @@ def test_uploading_an_unsupported_file_type_is_415(client, test_property, source
     assert r.status_code == 415, r.text
 
 
+def test_uploading_a_jpeg_render_keeps_its_real_content_type(client, test_property, source_image):
+    """La ruta guardada debe llevar la extensión real del archivo subido, no un
+    `.png` fijo: en el backend de disco local, `storage.stream` deriva el
+    Content-Type servido de la EXTENSIÓN del archivo, no de la columna
+    `content_type` de la BD — un JPEG guardado como `.png` se serviría de
+    vuelta con un Content-Type mentiroso."""
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10), (200, 50, 50)).save(buf, format="JPEG")
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.jpg", io.BytesIO(buf.getvalue()), "image/jpeg")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["contentType"] == "image/jpeg"
+    assert body["filePath"].endswith(".jpg")
+
+
 # ─── Parámetros que se le mandan al proveedor ─────────────────────────────────
 
 def test_generating_a_render_from_the_plan_keeps_the_plan_as_source(

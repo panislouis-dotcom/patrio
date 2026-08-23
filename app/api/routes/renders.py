@@ -1,5 +1,6 @@
 """Endpoints de la biblioteca de prompts y de los renders de una propiedad."""
 import asyncio
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -180,7 +181,8 @@ async def upload_property_render(
         raise HTTPException(status_code=422, detail="El archivo llegó vacío")
     content = await asyncio.to_thread(images.normalize_orientation, content)
 
-    relative_path = f"properties/{property_id}/renders/{uuid4().hex}.png"
+    ext = Path(file.filename).suffix if file.filename else ""
+    relative_path = f"properties/{property_id}/renders/{uuid4().hex}{ext}"
     try:
         storage.upload(relative_path, content, file.content_type)
     except Exception as exc:
