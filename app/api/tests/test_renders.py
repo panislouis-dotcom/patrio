@@ -158,6 +158,21 @@ def test_uploading_a_jpeg_render_keeps_its_real_content_type(client, test_proper
     assert body["filePath"].endswith(".jpg")
 
 
+def test_uploading_a_render_ignores_a_spoofed_filename_extension(client, test_property, source_image):
+    """El nombre de archivo lo manda el cliente; la extensión real la decide el
+    Content-Type validado, nunca el filename — si no, un Content-Type permitido
+    con un filename `.svg`/`.html` guardaría el archivo con esa extensión, y
+    storage.stream() (que adivina el Content-Type de SERVIDO por la extensión
+    del path, no por la columna de la BD) lo serviría como SVG/HTML."""
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("evil.svg", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["filePath"].endswith(".png")
+
+
 # ─── Parámetros que se le mandan al proveedor ─────────────────────────────────
 
 def test_generating_a_render_from_the_plan_keeps_the_plan_as_source(

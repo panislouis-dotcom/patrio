@@ -1,6 +1,5 @@
 """Endpoints de la biblioteca de prompts y de los renders de una propiedad."""
 import asyncio
-from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -28,6 +27,15 @@ UPLOAD_PROMPT_TEXT = "Subido manualmente"
 # viene de un humano — ni más ni menos peligroso que una foto real.
 _ALLOWED_UPLOAD_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 _MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
+
+# La extensión del archivo guardado sale de aquí, nunca del filename que manda
+# el cliente: `file.content_type` ya se validó contra `_ALLOWED_UPLOAD_MIME`
+# antes de llegar a este lookup, así que nunca falta una llave — si llegara a
+# faltar sería porque los dos diccionarios se desincronizaron, y eso debe
+# tronar como KeyError en dev, no devolver una extensión vacía en silencio.
+_UPLOAD_EXT_BY_MIME = {
+    "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp",
+}
 
 
 class PromptCreate(BaseModel):
@@ -181,7 +189,7 @@ async def upload_property_render(
         raise HTTPException(status_code=422, detail="El archivo llegó vacío")
     content = await asyncio.to_thread(images.normalize_orientation, content)
 
-    ext = Path(file.filename).suffix if file.filename else ""
+    ext = _UPLOAD_EXT_BY_MIME[file.content_type]
     relative_path = f"properties/{property_id}/renders/{uuid4().hex}{ext}"
     try:
         storage.upload(relative_path, content, file.content_type)

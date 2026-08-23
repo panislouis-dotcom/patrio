@@ -276,7 +276,23 @@ async def upload_render_from_plan(
         raise HTTPException(status_code=422, detail="El archivo llegó vacío")
     content = await asyncio.to_thread(images.normalize_orientation, content)
 
-    ext = Path(file.filename).suffix if file.filename else ""
+    # La extensión sale del content_type ya validado contra _ALLOWED_UPLOAD_MIME
+    # arriba, nunca del filename que manda el cliente — un filename es texto
+    # arbitrario del atacante, y confiar en su extensión para nombrar el
+    # archivo guardado (mientras storage.stream() sirve el Content-Type de
+    # vuelta adivinándolo de esa misma extensión) es una vía de XSS
+    # almacenado: Content-Type: image/png con filename: "evil.svg" guardaría
+    # el archivo como .svg y se serviría de vuelta como image/svg+xml.
+    # _UPLOAD_EXT_BY_MIME reusa la misma constante de Task 1 (mismo módulo):
+    #
+    # _UPLOAD_EXT_BY_MIME = {
+    #     "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp",
+    # }
+    #
+    # Nunca `.get()` con default: si file.content_type no estuviera en el
+    # diccionario sería porque se desincronizó de _ALLOWED_UPLOAD_MIME, y eso
+    # debe tronar como KeyError en dev, no devolver una extensión vacía.
+    ext = _UPLOAD_EXT_BY_MIME[file.content_type]
     relative_path = f"properties/{property_id}/renders/{uuid4().hex}{ext}"
     try:
         storage.upload(relative_path, content, file.content_type)
