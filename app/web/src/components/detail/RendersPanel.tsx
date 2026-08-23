@@ -344,6 +344,8 @@ export function RendersPanel(props: Props) {
   }
 
   async function handleUploadFile(f: File) {
+    if (busy || uploading) return
+    if (!(usePlan && onUploadPlan) && !(onUpload && sourceId != null)) return
     setUploading(true); setError(null)
     try {
       if (usePlan && onUploadPlan) {
@@ -503,7 +505,8 @@ export function RendersPanel(props: Props) {
           {(onUpload || onUploadPlan) && (
             <>
               <input ref={uploadInputRef} type="file" accept="image/*" style={{ display: 'none' }}
-                     onChange={onUploadInputChange} />
+                     onChange={onUploadInputChange}
+                     disabled={busy || uploading || (!usePlan && sourceId == null)} />
               <button onClick={() => uploadInputRef.current?.click()}
                       disabled={busy || uploading || (!usePlan && sourceId == null)} style={btn(false)}>
                 {uploading ? 'SUBIENDO…' : 'SUBIR RENDER'}
