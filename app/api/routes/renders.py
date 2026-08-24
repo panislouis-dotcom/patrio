@@ -1,4 +1,5 @@
 """Endpoints de la biblioteca de prompts y de los renders de una propiedad."""
+import asyncio
 from typing import Literal
 from uuid import uuid4
 
@@ -11,6 +12,30 @@ from api.auth import get_current_user
 from api.lib import images
 
 router = APIRouter()
+
+# Marca de un render que no nació de una llamada al proveedor, sino de una
+# subida directa (p.ej. generado en otro software). `provider`/`model` son
+# `text` libre en la tabla — no hace falta un enum ni una migración — y
+# `prompt_text` no puede ir vacío (CHECK de la tabla), así que lleva un
+# marcador fijo en vez de un prompt real que nunca existió.
+UPLOAD_PROVIDER = "upload"
+UPLOAD_MODEL = "manual"
+UPLOAD_PROMPT_TEXT = "Subido manualmente"
+
+# Mismo tope/lista que `upload_property_image` (routes/properties.py): un
+# render subido es, para efectos de validación, un archivo arbitrario que
+# viene de un humano — ni más ni menos peligroso que una foto real.
+_ALLOWED_UPLOAD_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
+
+# La extensión del archivo guardado sale de aquí, nunca del filename que manda
+# el cliente: `file.content_type` ya se validó contra `_ALLOWED_UPLOAD_MIME`
+# antes de llegar a este lookup, así que nunca falta una llave — si llegara a
+# faltar sería porque los dos diccionarios se desincronizaron, y eso debe
+# tronar como KeyError en dev, no devolver una extensión vacía en silencio.
+_UPLOAD_EXT_BY_MIME = {
+    "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp",
+}
 
 
 class PromptCreate(BaseModel):
@@ -136,6 +161,53 @@ def create_property_render(property_id: int, body: RenderRequest,
     )
 
 
+@router.post("/api/properties/{property_id}/renders/upload", status_code=201,
+             operation_id="property_renders_upload")
+async def upload_property_render(
+    property_id: int,
+    file: UploadFile = File(...),
+    sourceImageId: int = Form(...),
+    _: dict = Depends(get_current_user),
+):
+    """Sube un render generado FUERA de este sistema y lo agrega a la biblioteca
+    de la propiedad en el mismo grupo que uno generado aquí (`source_image_id`)
+    — mismas acciones después: elegir, editar, borrar. Ver UPLOAD_PROVIDER
+    arriba para por qué `provider`/`model`/`prompt_text` llevan marcadores fijos
+    en vez de los valores reales que tendría un render de la IA."""
+    if not properties.exists(property_id):
+        raise HTTPException(status_code=404, detail="Propiedad no encontrada")
+    if file.content_type not in _ALLOWED_UPLOAD_MIME:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
+    source = renders_db.source_image(property_id, sourceImageId)
+    if source is None:
+        raise HTTPException(status_code=422,
+                            detail="La foto fuente no pertenece a esta propiedad")
+    content = await file.read(_MAX_UPLOAD_SIZE + 1)
+    if len(content) > _MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    if not content:
+        raise HTTPException(status_code=422, detail="El archivo llegó vacío")
+    content = await asyncio.to_thread(images.normalize_orientation, content)
+
+    ext = _UPLOAD_EXT_BY_MIME[file.content_type]
+    relative_path = f"properties/{property_id}/renders/{uuid4().hex}{ext}"
+    try:
+        storage.upload(relative_path, content, file.content_type)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="No se pudo guardar el render") from exc
+
+    return renders_db.add_render(
+        property_id=property_id,
+        source_image_id=sourceImageId,
+        file_path=relative_path,
+        content_type=file.content_type,
+        prompt_id=None,
+        prompt_text=UPLOAD_PROMPT_TEXT,
+        provider=UPLOAD_PROVIDER,
+        model=UPLOAD_MODEL,
+    )
+
+
 @router.post("/api/properties/{property_id}/renders/from-plan", status_code=201,
              operation_id="property_renders_from_plan")
 def create_render_from_plan(
@@ -212,6 +284,66 @@ def create_render_from_plan(
         provider=renders.PROVIDER,
         model=renders.MODEL,
         source_plan_path=plan_path,
+        source_variant=variant,
+        floor_id=floorId.strip(),
+        floor_name=floorName.strip(),
+    )
+
+
+@router.post("/api/properties/{property_id}/renders/from-plan/upload", status_code=201,
+             operation_id="property_renders_from_plan_upload")
+async def upload_render_from_plan(
+    property_id: int,
+    file: UploadFile = File(...),
+    variant: str = Form(...),
+    floorId: str = Form(...),
+    floorName: str = Form(...),
+    _: dict = Depends(get_current_user),
+):
+    """Igual que `upload_property_render`, pero agrupado por piso+variante en vez
+    de por foto — así se elige junto con los renders de plano generados por la
+    IA. Sin `source_plan_path`: no hubo un plano de referencia que la IA haya
+    visto, así que no hay nada que guardar ahí."""
+    if not properties.exists(property_id):
+        raise HTTPException(status_code=404, detail="Propiedad no encontrada")
+    if file.content_type not in _ALLOWED_UPLOAD_MIME:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
+    if variant not in renders_db.SOURCE_VARIANTS:
+        raise HTTPException(status_code=422,
+                            detail=f"variant debe ser uno de {', '.join(renders_db.SOURCE_VARIANTS)}")
+    if not floorId.strip():
+        raise HTTPException(status_code=422, detail="floorId no puede ir vacío")
+    if not floorName.strip():
+        raise HTTPException(status_code=422, detail="floorName no puede ir vacío")
+    content = await file.read(_MAX_UPLOAD_SIZE + 1)
+    if len(content) > _MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="Image too large (max 20 MB)")
+    if not content:
+        raise HTTPException(status_code=422, detail="El archivo llegó vacío")
+    content = await asyncio.to_thread(images.normalize_orientation, content)
+
+    # La extensión sale del content_type ya validado contra _ALLOWED_UPLOAD_MIME
+    # arriba, nunca del filename que manda el cliente — ver el comentario
+    # extenso de esta misma decisión en `upload_property_render` (Task 1):
+    # confiar en la extensión del filename para nombrar el archivo guardado es
+    # una vía de XSS almacenado, porque storage.stream() sirve el Content-Type
+    # de vuelta adivinándolo de esa misma extensión.
+    ext = _UPLOAD_EXT_BY_MIME[file.content_type]
+    relative_path = f"properties/{property_id}/renders/{uuid4().hex}{ext}"
+    try:
+        storage.upload(relative_path, content, file.content_type)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="No se pudo guardar el render") from exc
+
+    return renders_db.add_render(
+        property_id=property_id,
+        source_image_id=None,
+        file_path=relative_path,
+        content_type=file.content_type,
+        prompt_id=None,
+        prompt_text=UPLOAD_PROMPT_TEXT,
+        provider=UPLOAD_PROVIDER,
+        model=UPLOAD_MODEL,
         source_variant=variant,
         floor_id=floorId.strip(),
         floor_name=floorName.strip(),

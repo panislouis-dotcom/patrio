@@ -39,6 +39,7 @@ function setup(over: Partial<Parameters<typeof FotosPanel>[0]> = {}) {
     prompts: [prompt],
     renders: [renderRow],
     onGenerate: vi.fn().mockResolvedValue(renderRow),
+    onUploadRender: vi.fn().mockResolvedValue(renderRow),
     onEdit: vi.fn().mockResolvedValue(renderRow),
     onSavePrompt: vi.fn().mockResolvedValue(prompt),
     onDeleteRender: vi.fn().mockResolvedValue(undefined),
@@ -101,6 +102,14 @@ describe('FotosPanel', () => {
     fireEvent.click(screen.getByText('RENDERS'))
     expect(vi.mocked(RendersPanel)).toHaveBeenCalledWith(
       expect.objectContaining({ onChoose: props.onChoose, onUnchoose: props.onUnchoose }), {},
+    )
+  })
+
+  it('reenvía onUploadRender a RendersPanel como onUpload', () => {
+    const props = setup()
+    fireEvent.click(screen.getByText('RENDERS'))
+    expect(vi.mocked(RendersPanel)).toHaveBeenCalledWith(
+      expect.objectContaining({ onUpload: props.onUploadRender }), {},
     )
   })
 })

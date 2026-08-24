@@ -6,6 +6,7 @@ import {
   fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage,
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
   listRenderPrompts, listPropertyRenders, generatePropertyRender, generatePropertyRenderFromPlan,
+  uploadPropertyRender, uploadPropertyRenderFromPlan,
   editPropertyRender, createRenderPrompt, deletePropertyRender,
   choosePropertyRender, unchoosePropertyRender,
 } from '../lib/api'
@@ -326,6 +327,17 @@ export function PropertyDetailPage() {
     req: { promptId: number | null; promptText: string; plan: Blob; floorId: string; floorName: string },
   ): Promise<PropertyRender> {
     const created = await generatePropertyRenderFromPlan(propertyId, { ...req, variant })
+    setRenders(prev => [created, ...prev])
+    return created
+  }
+
+  /** Análogo a `onGenerateRender`, pero para la subida directa: mismo spread
+   * `{...req, variant}`, mismo seam. */
+  async function onUploadRender(
+    variant: VariantKey,
+    req: { floorId: string; floorName: string; file: File },
+  ): Promise<PropertyRender> {
+    const created = await uploadPropertyRenderFromPlan(propertyId, { ...req, variant })
     setRenders(prev => [created, ...prev])
     return created
   }
@@ -1235,6 +1247,11 @@ export function PropertyDetailPage() {
                     setRenders(prev => [created, ...prev])
                     return created
                   }}
+                  onUploadRender={async req => {
+                    const created = await uploadPropertyRender(p.id, req)
+                    setRenders(prev => [created, ...prev])
+                    return created
+                  }}
                   onEdit={onEditRender}
                   onSavePrompt={onSaveRenderPrompt}
                   onDeleteRender={onDeleteRenderItem}
@@ -1263,6 +1280,7 @@ export function PropertyDetailPage() {
                   prompts={renderPrompts}
                   renders={renders}
                   onGenerateRender={onGenerateRender}
+                  onUploadRender={onUploadRender}
                   onEdit={onEditRender}
                   onSavePrompt={onSaveRenderPrompt}
                   onDeleteRender={onDeleteRenderItem}
@@ -1286,6 +1304,7 @@ export function PropertyDetailPage() {
                   prompts={renderPrompts}
                   renders={renders}
                   onGenerateRender={onGenerateRender}
+                  onUploadRender={onUploadRender}
                   onEdit={onEditRender}
                   onSavePrompt={onSaveRenderPrompt}
                   onDeleteRender={onDeleteRenderItem}

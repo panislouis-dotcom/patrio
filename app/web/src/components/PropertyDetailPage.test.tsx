@@ -45,6 +45,7 @@ vi.mock('../lib/api', async importOriginal => {
     // mockearlo aquí, el test de integración de más abajo pegaría de verdad al
     // backend en vez de probar el wiring `{...req, variant}` de la ficha.
     generatePropertyRenderFromPlan: vi.fn(),
+    uploadPropertyRenderFromPlan: vi.fn(),
   }
 })
 
@@ -956,6 +957,36 @@ describe('PropertyDetailPage', () => {
     expect(req.variant).toBe('original')
     expect(req.floorId).toBe(originalFloor.id)
     expect(req.floorName).toBe('Planta Original')
+  })
+
+  it('subir un render desde el PLANEADO llama a uploadPropertyRenderFromPlan con variant: "planned" y el piso', async () => {
+    const plannedFloor = emptyFloorGraph('Planta Planeada')
+    const v3: FloorPlanModel = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [plannedFloor] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.uploadPropertyRenderFromPlan).mockResolvedValueOnce(renderFromPlan('planned'))
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
+    expect(await screen.findByText('Planta Planeada')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('RENDERS'))
+    fireEvent.click(await screen.findByText(/^el plano$/i))
+    const file = new File(['x'], 'externo.png', { type: 'image/png' })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(api.uploadPropertyRenderFromPlan).toHaveBeenCalled())
+    const [id, req] = vi.mocked(api.uploadPropertyRenderFromPlan).mock.calls[0]
+    expect(id).toBe(7)
+    expect(req.variant).toBe('planned')
+    expect(req.floorId).toBe(plannedFloor.id)
+    expect(req.floorName).toBe('Planta Planeada')
   })
 
   // ── El presupuesto de obra ────────────────────────────────────────────────

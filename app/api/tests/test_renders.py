@@ -85,6 +85,131 @@ def source_image(client, test_property):
     return r.json()
 
 
+# ─── Subida manual (sin proveedor) ────────────────────────────────────────────
+
+def test_uploading_a_render_for_a_photo_stores_it_without_calling_the_provider(
+    client, test_property, source_image, monkeypatch,
+):
+    from api import renders
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("subir un render no debe llamar al proveedor")
+    monkeypatch.setattr(renders, "generate_image", _boom)
+
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["sourceImageId"] == source_image["id"]
+    assert body["provider"] == "upload"
+    assert body["model"] == "manual"
+    assert body["promptText"]  # nunca vacío: CHECK de la tabla
+
+
+def test_an_uploaded_photo_render_can_be_chosen(client, test_property, source_image):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    render_id = r.json()["id"]
+    chosen = client.put(f"/api/properties/{test_property['id']}/renders/{render_id}/choose")
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json()["isChosen"] is True
+
+
+def test_uploading_a_render_for_a_photo_outside_the_property_is_422(client, test_property):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"sourceImageId": "999999"},
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_uploading_an_unsupported_file_type_is_415(client, test_property, source_image):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.txt", io.BytesIO(b"no es una imagen"), "text/plain")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    assert r.status_code == 415, r.text
+
+
+def test_uploading_a_jpeg_render_keeps_its_real_content_type(client, test_property, source_image):
+    """La ruta guardada debe llevar la extensión real del archivo subido, no un
+    `.png` fijo: en el backend de disco local, `storage.stream` deriva el
+    Content-Type servido de la EXTENSIÓN del archivo, no de la columna
+    `content_type` de la BD — un JPEG guardado como `.png` se serviría de
+    vuelta con un Content-Type mentiroso."""
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10), (200, 50, 50)).save(buf, format="JPEG")
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("render.jpg", io.BytesIO(buf.getvalue()), "image/jpeg")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["contentType"] == "image/jpeg"
+    assert body["filePath"].endswith(".jpg")
+
+
+def test_uploading_a_render_ignores_a_spoofed_filename_extension(client, test_property, source_image):
+    """El nombre de archivo lo manda el cliente; la extensión real la decide el
+    Content-Type validado, nunca el filename — si no, un Content-Type permitido
+    con un filename `.svg`/`.html` guardaría el archivo con esa extensión, y
+    storage.stream() (que adivina el Content-Type de SERVIDO por la extensión
+    del path, no por la columna de la BD) lo serviría como SVG/HTML."""
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/upload",
+        files={"file": ("evil.svg", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"sourceImageId": str(source_image["id"])},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["filePath"].endswith(".png")
+
+
+def test_uploading_a_render_from_plan_groups_it_by_floor(client, test_property):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"variant": "original", "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["sourceImageId"] is None
+    assert body["sourcePlanPath"] is None  # no hubo plano de referencia: no lo vio la IA
+    assert body["sourceVariant"] == "original"
+    assert body["floorId"] == "floor-abc-123"
+    assert body["provider"] == "upload"
+    assert body["model"] == "manual"
+
+
+def test_uploading_a_render_from_plan_with_an_invalid_variant_is_422(client, test_property):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"variant": "no-existe", "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_an_uploaded_plan_render_can_be_chosen(client, test_property):
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan/upload",
+        files={"file": ("render.png", io.BytesIO(_rect_png_bytes(64, 64)), "image/png")},
+        data={"variant": "original", "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    render_id = r.json()["id"]
+    chosen = client.put(f"/api/properties/{test_property['id']}/renders/{render_id}/choose")
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json()["isChosen"] is True
+
+
 # ─── Parámetros que se le mandan al proveedor ─────────────────────────────────
 
 def test_generating_a_render_from_the_plan_keeps_the_plan_as_source(
