@@ -160,3 +160,13 @@ describe('PlanesPanel', () => {
     expect(screen.getByText('SE BORRA ESTE PLAN')).toBeTruthy()
   })
 })
+
+describe('PlanesPanel: crear con edición sucia', () => {
+  it('+ NUEVO PLAN se deshabilita con el editor sucio — crear remonta y perdería lo no guardado', () => {
+    setup(geometryWith(plan('plan-a', 'Plan A')))
+    act(() => { (lastProps().onDirtyChange as (d: boolean) => void)(true) })
+    expect((screen.getByText('+ NUEVO PLAN') as HTMLButtonElement).disabled).toBe(true)
+    act(() => { (lastProps().onDirtyChange as (d: boolean) => void)(false) })
+    expect((screen.getByText('+ NUEVO PLAN') as HTMLButtonElement).disabled).toBe(false)
+  })
+})

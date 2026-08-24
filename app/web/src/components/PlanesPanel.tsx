@@ -208,7 +208,14 @@ export function PlanesPanel({
         <>
           <button onClick={() => { setNewName(active.name); setRenaming(true) }} style={outlined}>RENOMBRAR</button>
           <button onClick={() => setConfirmDelete(true)} style={outlined}>BORRAR</button>
-          <button onClick={() => setCreating(true)} style={outlinedPrimary}>+ NUEVO PLAN</button>
+          {/* Crear cambia al plan nuevo y REMONTA el editor: con edición sucia
+              perdería lo no guardado sin el aviso que el selector sí da. Guardar
+              primero es más honesto que un segundo diálogo de confirmación. */}
+          <button onClick={() => setCreating(true)} disabled={dirty}
+            title={dirty ? 'Guarda los cambios primero' : undefined}
+            style={{ ...outlinedPrimary, opacity: dirty ? 0.5 : 1, cursor: dirty ? 'not-allowed' : 'pointer' }}>
+            + NUEVO PLAN
+          </button>
         </>
       )}
     </div>
