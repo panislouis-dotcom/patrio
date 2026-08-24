@@ -1,5 +1,5 @@
 import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, RenderPromptKind, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetSource } from './types'
-import type { FloorPlanModel, VariantKey } from './floorplan/types'
+import type { FloorPlanModel, PlanKey } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -144,6 +144,10 @@ export async function parseProperty(url: string, text: string, image?: Blob): Pr
  */
 export interface ProspectusOptions {
   propertyIds?: number[]
+  /** Recorte por plan, por propiedad — mismo contrato que propertyIds: ausente =
+   * todos los planes; una lista = solo esos (vacía = ninguno; el original se
+   * imprime igual, es el ancla dimensional, no un plan). */
+  planIds?: Record<number, string[]>
   cover: boolean
   portfolioSummary: boolean
   closing: boolean
@@ -269,7 +273,7 @@ export async function uploadPropertyRender(
 export async function generatePropertyRenderFromPlan(
   id: number,
   req: {
-    promptText: string; promptId: number | null; plan: Blob; variant: VariantKey
+    promptText: string; promptId: number | null; plan: Blob; variant: PlanKey
     floorId: string; floorName: string
   },
 ): Promise<PropertyRender> {
@@ -294,7 +298,7 @@ export async function generatePropertyRenderFromPlan(
 
 export async function uploadPropertyRenderFromPlan(
   id: number,
-  req: { file: File; variant: VariantKey; floorId: string; floorName: string },
+  req: { file: File; variant: PlanKey; floorId: string; floorName: string },
 ): Promise<PropertyRender> {
   const form = new FormData()
   form.append('file', req.file)
@@ -1060,6 +1064,17 @@ export async function savePropertyGeometry(id: number, geometry: FloorPlanModel)
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ geometry }),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+/** Borra un plan de proyecto Y sus renders (cascada deliberada, servidor).
+ * Devuelve cuántos renders se llevó — la UI lo confirma en dos pasos ANTES con
+ * el conteo local, y esto reporta lo que realmente pasó. */
+export async function deletePropertyPlan(id: number, planId: string): Promise<{ deletedRenders: number }> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/plans/${encodeURIComponent(planId)}`, {
+    method: 'DELETE',
   })
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
