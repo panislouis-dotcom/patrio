@@ -24,6 +24,14 @@ const v3 = (o: any[], p: any[] | null) => ({
     planned: p === null ? null : { slab_m: 0.15, activeFloor: 0, floors: p },
   },
 })
+const v4 = (o: any[], plans: { id: string; name: string; floors: any[] }[]) => ({
+  schemaVersion: 4,
+  variants: {
+    original: { slab_m: 0.15, activeFloor: 0, floors: o },
+    plans: plans.map(p => ({ id: p.id, name: p.name,
+                             fs: { slab_m: 0.15, activeFloor: 0, floors: p.floors } })),
+  },
+})
 
 describe('planSheets', () => {
   it('un blob v2 da una hoja original', () => {
@@ -64,6 +72,45 @@ describe('planSheets', () => {
   it('un planeado clonado sin editar produce el MISMO svg', () => {
     const s = planSheets(v3([floor(4.2, 3.1, 'abc')], [floor(4.2, 3.1, 'abc')]))
     expect(s[1].svg).toBe(s[0].svg)
+  })
+
+  it('v3 con planned: la hoja del plan legado trae variant "planned" y su nombre por default', () => {
+    // Byte-compat de pareo: _plan_rows (PDF) llavea por (floorId, 'planned') hoy.
+    const s = planSheets(v3([floor(4.2, 3.1, 'abc')], [floor(5.0, 3.1, 'abc')]))
+    expect(s[0].planName).toBeNull()
+    expect(s[1].variant).toBe('planned')
+    expect(s[1].planName).toBe('Plan de proyecto')
+  })
+
+  it('v4 con dos planes emite hojas por CADA plan, etiquetadas con su id y nombre', () => {
+    const s = planSheets(v4([floor(4.2, 3.1, 'abc')], [
+      { id: 'plan-a', name: 'Plan A: 4 departamentos', floors: [floor(5.0, 3.1, 'abc')] },
+      { id: 'plan-b', name: 'Plan B: locales', floors: [floor(6.0, 3.1, 'abc')] },
+    ]))
+    expect(s.map(x => [x.variant, x.planName])).toEqual([
+      ['original', null],
+      ['plan-a', 'Plan A: 4 departamentos'],
+      ['plan-b', 'Plan B: locales'],
+    ])
+    expect(new Set(s.map(x => x.floorId))).toEqual(new Set(['abc']))
+  })
+
+  it('el linaje ENTERO comparte escala: original y N planes del mismo piso', () => {
+    const s = planSheets(v4([floor(4.2, 3.1, 'abc')], [
+      { id: 'plan-a', name: 'A', floors: [floor(5.0, 3.1, 'abc')] },
+      { id: 'plan-b', name: 'B', floors: [floor(6.0, 3.1, 'abc')] },
+    ]))
+    const wall = (svg: string) => parseFloat(svg.match(/<line[^>]*stroke-width="([\d.]+)"/)![1])
+    expect(wall(s[1].svg)).toBeCloseTo(wall(s[0].svg), 5)
+    expect(wall(s[2].svg)).toBeCloseTo(wall(s[0].svg), 5)
+  })
+
+  it('un plan con todos sus pisos en blanco no emite hojas', () => {
+    const s = planSheets(v4([floor(4.2, 3.1, 'abc')], [
+      { id: 'plan-a', name: 'A', floors: [blank('nuevo')] },
+    ]))
+    expect(s).toHaveLength(1)
+    expect(s[0].variant).toBe('original')
   })
 
   it('basura, v1 y vacío dan []', () => {
