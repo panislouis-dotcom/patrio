@@ -44,7 +44,7 @@ const renderRow = (id: number): PropertyRender => ({
  * piso identificado — `floorId`/`floorName` null por defecto significa RENDER LEGADO
  * (anterior a la migración 042), no "sin variar": los tests de piso lo pisan a propósito. */
 const planRenderRow = (
-  id: number, variant: 'original' | 'planned' = 'original',
+  id: number, variant: string = 'original',
   floor: { id: string | null; name: string | null } = { id: null, name: null },
 ): PropertyRender => ({
   ...renderRow(id), sourceImageId: null, sourcePlanPath: `plan/${id}.png`, sourceVariant: variant,
@@ -833,5 +833,34 @@ describe('RendersPanel: avisa cuando el texto ya no refleja el piso actual', () 
     setup()
     fireEvent.change(screen.getByLabelText(/texto del prompt/i), { target: { value: 'Cualquier cosa.' } })
     expect(screen.queryByText(/el texto no refleja el piso actual/i)).toBeNull()
+  })
+})
+
+describe('RendersPanel: scoping por PLAN — dos planes comparten floor ids a propósito', () => {
+  it('el panel de un plan NUNCA enseña los renders de otro plan del mismo piso', () => {
+    // Plan A y Plan B nacieron de PARTIR: el piso comparte id. El único
+    // discriminante es la variante (= el plan id) — floorId solo mezclaría.
+    const cocina = planWithRooms(['Cocina'])
+    render(<RendersPanel {...planBase} variant="plan-a"
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={1}
+      onGeneratePlan={vi.fn()}
+      renders={[
+        planRenderRow(1, 'plan-a', { id: cocina.id, name: 'PB' }),
+        planRenderRow(2, 'plan-b', { id: cocina.id, name: 'PB' }),
+      ]} />)
+    expect(screen.getByText('Renders (1)')).toBeTruthy()
+  })
+
+  it('la sección "Sin piso identificado" también es por plan', () => {
+    const cocina = planWithRooms(['Cocina'])
+    const dosPisos = 2
+    render(<RendersPanel {...planBase} variant="plan-a"
+      plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={dosPisos}
+      onGeneratePlan={vi.fn()}
+      renders={[
+        planRenderRow(1, 'plan-a', { id: null, name: null }),
+        planRenderRow(2, 'plan-b', { id: null, name: null }),
+      ]} />)
+    expect(screen.getByText('Sin piso identificado (1)')).toBeTruthy()
   })
 })
