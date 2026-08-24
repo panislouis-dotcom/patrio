@@ -960,16 +960,26 @@ CREATE TABLE public.properties (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     rent_monthly_actual numeric(14,2),
+    land_commission_pct real,
+    construction_commission_pct real,
+    exit_sale_commission_pct real,
+    exit_rent_months real,
+    exit_strategy text,
     CONSTRAINT properties_acquisition_cost_pct_check CHECK ((acquisition_cost_pct >= (0)::double precision)),
     CONSTRAINT properties_address_check CHECK ((address <> ''::text)),
     CONSTRAINT properties_asset_type_check CHECK ((asset_type = ANY (ARRAY['casa'::text, 'departamento'::text, 'local'::text, 'edificio'::text, 'lote'::text, 'bodega'::text]))),
     CONSTRAINT properties_city_check CHECK ((city <> ''::text)),
+    CONSTRAINT properties_construction_commission_pct_check CHECK (((construction_commission_pct IS NULL) OR (construction_commission_pct >= (0)::double precision))),
     CONSTRAINT properties_construction_cost_per_sqm_check CHECK ((construction_cost_per_sqm >= (0)::numeric)),
     CONSTRAINT properties_construction_overhead_check CHECK ((construction_overhead >= (0)::double precision)),
     CONSTRAINT properties_current_valuation_check CHECK ((current_valuation >= (0)::numeric)),
     CONSTRAINT properties_en_renta_needs_first_rent CHECK (((status <> 'en_renta'::text) OR (first_rent_date IS NOT NULL))),
+    CONSTRAINT properties_exit_rent_months_check CHECK (((exit_rent_months IS NULL) OR (exit_rent_months >= (0)::double precision))),
+    CONSTRAINT properties_exit_sale_commission_pct_check CHECK (((exit_sale_commission_pct IS NULL) OR (exit_sale_commission_pct >= (0)::double precision))),
+    CONSTRAINT properties_exit_strategy_check CHECK (((exit_strategy IS NULL) OR (exit_strategy = ANY (ARRAY['venta'::text, 'renta'::text])))),
     CONSTRAINT properties_first_rent_after_acquisition CHECK (((first_rent_date IS NULL) OR (acquisition_date IS NULL) OR (first_rent_date >= acquisition_date))),
     CONSTRAINT properties_hold_months_check CHECK ((hold_months > 0)),
+    CONSTRAINT properties_land_commission_pct_check CHECK (((land_commission_pct IS NULL) OR (land_commission_pct >= (0)::double precision))),
     CONSTRAINT properties_milestones_check CHECK ((jsonb_typeof(milestones) = 'object'::text)),
     CONSTRAINT properties_name_check CHECK ((name <> ''::text)),
     CONSTRAINT properties_permits_cost_check CHECK ((permits_cost >= (0)::numeric)),
@@ -1181,7 +1191,7 @@ CREATE TABLE public.property_renders (
     is_chosen boolean DEFAULT false NOT NULL,
     CONSTRAINT property_renders_file_path_check CHECK ((file_path <> ''::text)),
     CONSTRAINT property_renders_prompt_text_check CHECK ((prompt_text <> ''::text)),
-    CONSTRAINT property_renders_source_variant_check CHECK ((source_variant = ANY (ARRAY['original'::text, 'planned'::text])))
+    CONSTRAINT property_renders_source_variant_no_vacio CHECK (((source_variant IS NULL) OR (source_variant <> ''::text)))
 );
 
 
@@ -3286,4 +3296,8 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('043'),
     ('044'),
     ('045'),
-    ('046');
+    ('046'),
+    ('047'),
+    ('048'),
+    ('049'),
+    ('050');
