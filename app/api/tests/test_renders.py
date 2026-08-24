@@ -1424,3 +1424,69 @@ def test_a_chain_of_edits_keeps_the_original_source_image(client, test_property,
     c = client.post(f"/api/properties/{test_property['id']}/renders/{b['id']}/edit",
                     json={"promptText": "z"}).json()
     assert c["sourceImageId"] == source_image["id"]
+
+
+# ─── Borrar un plan: cascada deliberada sobre sus renders ────────────────────
+
+def test_deleting_a_plan_cascades_its_renders_and_files(client, test_property, fake_openai):
+    from api import storage
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a", "plan-b")
+    en_a = client.post(
+        f"/api/properties/{pid}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "x", "variant": "plan-a",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    ).json()
+    en_b = client.post(
+        f"/api/properties/{pid}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "y", "variant": "plan-b",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    ).json()
+
+    r = client.delete(f"/api/properties/{pid}/plans/plan-a")
+    assert r.status_code == 200, r.text
+    assert r.json() == {"deletedRenders": 1}
+
+    # El plan se fue del geometry; el hermano sigue.
+    g = client.get(f"/api/properties/{pid}/geometry").json()
+    assert [p["id"] for p in g["variants"]["plans"]] == ["plan-b"]
+    # Sus renders se fueron de la BD; los del otro plan siguen intactos.
+    ids = {x["id"] for x in client.get(f"/api/properties/{pid}/renders").json()}
+    assert en_a["id"] not in ids
+    assert en_b["id"] in ids
+    # Y sus archivos se fueron de storage (render + PNG de referencia del plano).
+    with pytest.raises(FileNotFoundError):
+        storage.stream(en_a["filePath"])
+    with pytest.raises(FileNotFoundError):
+        storage.stream(en_a["sourcePlanPath"])
+    storage.stream(en_b["filePath"])   # el hermano no perdió nada
+
+
+def test_deleting_a_missing_plan_is_404_and_touches_nothing(client, test_property, fake_openai):
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    r = client.delete(f"/api/properties/{pid}/plans/no-existe")
+    assert r.status_code == 404
+    g = client.get(f"/api/properties/{pid}/geometry").json()
+    assert [p["id"] for p in g["variants"]["plans"]] == ["plan-a"]
+
+
+def test_deleting_a_plan_leaves_photo_and_original_renders_alone(
+        client, test_property, source_image, fake_openai):
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    foto = client.post(f"/api/properties/{pid}/renders",
+                       json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    original = client.post(
+        f"/api/properties/{pid}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "x", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    ).json()
+    r = client.delete(f"/api/properties/{pid}/plans/plan-a")
+    assert r.status_code == 200
+    assert r.json() == {"deletedRenders": 0}
+    ids = {x["id"] for x in client.get(f"/api/properties/{pid}/renders").json()}
+    assert foto["id"] in ids and original["id"] in ids

@@ -245,6 +245,46 @@ def delete_render(render_id: int, property_id: int) -> str:
     return row["file_path"]
 
 
+def delete_plan(property_id: int, plan_id: str) -> tuple[int, list[str]]:
+    """Quita un plan de proyecto del blob de geometría Y borra sus renders, en
+    UNA transacción — la mitad peligrosa es la cascada de renders, por eso vive
+    aquí y no en properties_db. Un plan borrado no deja ningún tab donde sus
+    renders vuelvan a verse jamás (a diferencia de un piso borrado, cuyos renders
+    siguen visibles con el nombre congelado): conservarlos sería peso muerto
+    invisible, no honestidad — decisión de diseño 2026-08-24, con confirmación de
+    dos pasos en la UI mostrando el conteo real.
+
+    Devuelve (renders borrados, rutas de storage a borrar DESPUÉS del commit) —
+    mismo orden que delete_render: primero la verdad de la BD, luego los
+    archivos. El filtro del plan en el jsonb no interpreta la forma profunda:
+    solo compara el `id` de cada elemento de `plans`."""
+    with get_db() as conn:
+        removed = conn.execute(
+            "UPDATE properties SET geometry = jsonb_set(geometry, '{variants,plans}',"
+            " COALESCE((SELECT jsonb_agg(p ORDER BY ord)"
+            "   FROM jsonb_array_elements(geometry->'variants'->'plans')"
+            "   WITH ORDINALITY AS t(p, ord) WHERE p->>'id' <> %(plan_id)s), '[]'::jsonb))"
+            " WHERE id = %(property_id)s"
+            "   AND geometry->'variants'->'plans' @> %(needle)s::jsonb"
+            " RETURNING id",
+            {"property_id": property_id, "plan_id": plan_id,
+             "needle": json.dumps([{"id": plan_id}])},
+        ).fetchone()
+        if removed is None:
+            raise NotFound(f"Plan {plan_id} no encontrado en la propiedad {property_id}")
+        rows = conn.execute(
+            "DELETE FROM property_renders WHERE property_id = %s AND source_variant = %s"
+            " RETURNING file_path, source_plan_path",
+            (property_id, plan_id),
+        ).fetchall()
+    # source_plan_path (el PNG de referencia que vio la IA) también se limpia:
+    # sin el plan ni sus renders, nada vuelve a direccionarlo. Set: una cadena de
+    # ediciones comparte la referencia de su raíz.
+    paths = {r["file_path"] for r in rows} | {
+        r["source_plan_path"] for r in rows if r["source_plan_path"]}
+    return len(rows), sorted(paths)
+
+
 class NoGroup(RuntimeError):
     """El render no tiene piso NI foto — su piso o su foto se borraron. No hay
     grupo dentro del cual «elegirlo» tenga sentido."""
