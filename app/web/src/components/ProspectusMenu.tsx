@@ -3,6 +3,7 @@ import type { Property } from '../lib/types'
 import type { PropertyStatus } from '../lib/status'
 import type { ProspectusOptions } from '../lib/api'
 import { colors, fonts } from '../lib/theme'
+import { migrateGeometry, type ProjectPlan } from '../lib/floorplan/types'
 
 /**
  * Las páginas que no cuelgan de ninguna propiedad y los bloques que se repiten
@@ -10,7 +11,7 @@ import { colors, fonts } from '../lib/theme'
  * alias local: el menú es la única pantalla que las escribe, y traducirlas dos
  * veces (aquí y en el `fetch`) es la forma más barata de que se desincronicen.
  */
-type PageKey = Exclude<keyof ProspectusOptions, 'propertyIds'>
+type PageKey = Exclude<keyof ProspectusOptions, 'propertyIds' | 'planIds'>
 
 const STANDALONE_PAGES: Array<[PageKey, string]> = [
   ['cover', 'Portada'],
@@ -45,9 +46,13 @@ const STORAGE_KEY = 'prospectoExclusiones'
 interface StoredExclusions {
   propertyIds: number[]
   pages: PageKey[]
+  /** Plan ids EXCLUIDOS por propiedad — misma filosofía que propertyIds: un plan
+   * nuevo entra por omisión; el peor caso es visible («sobró una sección»), no
+   * invisible. */
+  plans: Record<number, string[]>
 }
 
-const EMPTY: StoredExclusions = { propertyIds: [], pages: [] }
+const EMPTY: StoredExclusions = { propertyIds: [], pages: [], plans: {} }
 
 /**
  * SE GUARDA LO QUE EL USUARIO APAGÓ, NUNCA LO QUE DEJÓ PRENDIDO.
@@ -76,6 +81,11 @@ function readExclusions(): StoredExclusions {
       pages: Array.isArray(parsed?.pages)
         ? parsed.pages.filter((p): p is PageKey => typeof p === 'string')
         : [],
+      plans: parsed?.plans && typeof parsed.plans === 'object' && !Array.isArray(parsed.plans)
+        ? Object.fromEntries(Object.entries(parsed.plans)
+            .map(([k, v]) => [Number(k), Array.isArray(v) ? v.filter(x => typeof x === 'string') : []])
+            .filter(([k]) => Number.isFinite(k as number)))
+        : {},
     }
   } catch {
     // Un `localStorage` corrupto o inaccesible no puede tumbar la tabla entera:
@@ -84,11 +94,13 @@ function readExclusions(): StoredExclusions {
   }
 }
 
-function writeExclusions(propertyIds: Set<number>, pages: Set<PageKey>): void {
+function writeExclusions(propertyIds: Set<number>, pages: Set<PageKey>,
+                         plans: Record<number, string[]>): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       propertyIds: [...propertyIds],
       pages: [...pages],
+      plans,
     }))
   } catch { /* modo privado, cuota llena: la sesión sigue, solo no se recuerda */ }
 }
@@ -110,6 +122,7 @@ export function ProspectusMenu({ properties, generating, onGenerate }: Prospectu
   const [open, setOpen] = useState(false)
   const [excludedIds, setExcludedIds] = useState<Set<number>>(() => new Set(readExclusions().propertyIds))
   const [excludedPages, setExcludedPages] = useState<Set<PageKey>>(() => new Set(readExclusions().pages))
+  const [excludedPlans, setExcludedPlans] = useState<Record<number, string[]>>(() => readExclusions().plans)
   const panelRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
 
@@ -128,7 +141,21 @@ export function ProspectusMenu({ properties, generating, onGenerate }: Prospectu
     [properties],
   )
 
-  useEffect(() => { writeExclusions(excludedIds, excludedPages) }, [excludedIds, excludedPages])
+  // Los planes de cada oportunidad, resueltos del blob crudo con el MISMO
+  // migrador del editor — una sola lectura del modelo, nunca una segunda forma.
+  // Solo oportunidades: son las únicas cuyas propuestas imprime el documento.
+  const plansByProperty = useMemo(() => {
+    const out = new Map<number, ProjectPlan[]>()
+    for (const p of favorites) {
+      if (!SECTIONS.find(s => s.key === OPPORTUNITY_SECTION)!.statuses.includes(p.status)) continue
+      const model = migrateGeometry(p.geometry)
+      if (model && model.variants.plans.length > 0) out.set(p.id, model.variants.plans)
+    }
+    return out
+  }, [favorites])
+
+  useEffect(() => { writeExclusions(excludedIds, excludedPages, excludedPlans) },
+            [excludedIds, excludedPages, excludedPlans])
 
   // Podar al abrir, no al montar: es el momento en que el usuario va a leer la
   // lista, y una exclusión de algo que ya no es favorito no tiene renglón donde
@@ -141,7 +168,21 @@ export function ProspectusMenu({ properties, generating, onGenerate }: Prospectu
       const pruned = new Set([...prev].filter(id => alive.has(id)))
       return pruned.size === prev.size ? prev : pruned
     })
-  }, [open, favorites])
+    // Misma poda para planes: una exclusión de un plan borrado/renombrado de id
+    // no tiene casilla donde enseñarse y escondería sus sucesores para siempre.
+    setExcludedPlans(prev => {
+      const next: Record<number, string[]> = {}
+      for (const [pidRaw, planIds] of Object.entries(prev)) {
+        const pid = Number(pidRaw)
+        const livePlans = plansByProperty.get(pid)
+        if (!livePlans) continue
+        const liveIds = new Set(livePlans.map(pl => pl.id))
+        const kept = planIds.filter(id => liveIds.has(id))
+        if (kept.length > 0) next[pid] = kept
+      }
+      return JSON.stringify(next) === JSON.stringify(prev) ? prev : next
+    })
+  }, [open, favorites, plansByProperty])
 
   useEffect(() => {
     if (!open) return
@@ -165,8 +206,20 @@ export function ProspectusMenu({ properties, generating, onGenerate }: Prospectu
    * arma con lo que esta pantalla tiene cargado, y omitirla deja que el PDF
    * incluya lo que se haya marcado con ★ mientras tanto.
    */
+  // Mismo contrato que propertyIds, por propiedad: solo se manda la entrada de
+  // una propiedad CON exclusiones — ausente significa "todos sus planes", así un
+  // plan creado mañana entra sin tocar el menú.
+  const planSelections: Record<number, string[]> = {}
+  for (const [pid, excluded] of Object.entries(excludedPlans)) {
+    const live = plansByProperty.get(Number(pid))
+    if (!live || excluded.length === 0) continue
+    const excludedSet = new Set(excluded)
+    planSelections[Number(pid)] = live.filter(pl => !excludedSet.has(pl.id)).map(pl => pl.id)
+  }
+
   const options: ProspectusOptions = {
     ...(includedIds.length === favorites.length ? {} : { propertyIds: includedIds }),
+    ...(Object.keys(planSelections).length > 0 ? { planIds: planSelections } : {}),
     cover: pageOn('cover'),
     portfolioSummary: pageOn('portfolioSummary'),
     closing: pageOn('closing'),
@@ -198,9 +251,21 @@ export function ProspectusMenu({ properties, generating, onGenerate }: Prospectu
     })
   }
 
+  function togglePlan(propertyId: number, planId: string) {
+    setExcludedPlans(prev => {
+      const current = new Set(prev[propertyId] ?? [])
+      current.has(planId) ? current.delete(planId) : current.add(planId)
+      const next = { ...prev }
+      if (current.size === 0) delete next[propertyId]
+      else next[propertyId] = [...current]
+      return next
+    })
+  }
+
   function restoreAll() {
     setExcludedIds(new Set())
     setExcludedPages(new Set())
+    setExcludedPlans({})
   }
 
   const rect = buttonRef.current?.getBoundingClientRect()
@@ -276,14 +341,34 @@ export function ProspectusMenu({ properties, generating, onGenerate }: Prospectu
                   onChange={() => toggleSection(g.rows, on < g.rows.length)}
                 />
                 <div style={{ ...list, paddingLeft: '18px' }}>
-                  {g.rows.map(p => (
-                    <Check
-                      key={p.id}
-                      label={p.name}
-                      checked={!excludedIds.has(p.id)}
-                      onChange={() => setExcludedIds(prev => toggled(prev, p.id))}
-                    />
-                  ))}
+                  {g.rows.map(p => {
+                    const plans = g.key === OPPORTUNITY_SECTION ? plansByProperty.get(p.id) : undefined
+                    return (
+                      <div key={p.id} style={list}>
+                        <Check
+                          label={p.name}
+                          checked={!excludedIds.has(p.id)}
+                          onChange={() => setExcludedIds(prev => toggled(prev, p.id))}
+                        />
+                        {/* Propuestas de ESTA propiedad — solo con 2+ (con una,
+                            no hay nada que elegir y el menú queda como siempre).
+                            Es selección por-propiedad, a diferencia de los
+                            bloques de contenido de abajo, que son de sección. */}
+                        {plans && plans.length >= 2 && !excludedIds.has(p.id) && (
+                          <div style={{ ...list, paddingLeft: '18px' }} data-testid={`planes-${p.id}`}>
+                            {plans.map(pl => (
+                              <Check
+                                key={pl.id}
+                                label={pl.name}
+                                checked={!(excludedPlans[p.id] ?? []).includes(pl.id)}
+                                onChange={() => togglePlan(p.id, pl.id)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
 
                 {/* Los bloques de contenido son de la sección, no de una
