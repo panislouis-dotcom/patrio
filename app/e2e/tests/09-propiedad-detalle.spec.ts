@@ -714,6 +714,28 @@ test.describe('Levantamiento planeado: clonar, y sus herramientas nuevas', () =>
     await expect(page.getByRole('button', { name: 'PLANO', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'RENDERS', exact: true })).toBeVisible()
 
+    // El primer plan nace con su cromo: nombre por default y las acciones de la
+    // colección (múltiples planes de proyecto, diseño 2026-08-24).
+    await expect(page.getByText('Plan de proyecto', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '+ NUEVO PLAN' })).toBeVisible()
+
+    // Un SEGUNDO plan partido del original: aparece el selector, y cambiar de
+    // plan remonta el editor con la geometría de ese plan — el corazón de la
+    // feature. La creación persiste de inmediato (PUT /geometry).
+    await page.getByRole('button', { name: '+ NUEVO PLAN' }).click()
+    const planCreated = page.waitForResponse(res =>
+      res.url().includes('/geometry') && res.request().method() === 'PUT')
+    await page.getByRole('button', { name: 'PARTIR DEL ORIGINAL' }).click()
+    await planCreated
+    const planSelector = page.getByLabel('Plan de proyecto activo')
+    await expect(planSelector).toBeVisible()
+    await expect(planSelector).toHaveValue(/.+/)
+    // De regreso al primero y otra vez al segundo: el editor sigue vivo en ambos.
+    await planSelector.selectOption({ label: 'Plan de proyecto' })
+    await expect(page.getByRole('button', { name: 'Fit to screen' })).toBeVisible()
+    await planSelector.selectOption({ label: 'Plan 2' })
+    await expect(page.getByRole('button', { name: 'Fit to screen' })).toBeVisible()
+
     // DIVISIÓN: coloca una plantilla vertical con UN clic, seleccionada de inmediato —
     // el inspector confirma que el motor la conoce como fantasma, no como muro.
     await page.getByRole('button', { name: /^divisi.n$/i }).click()
