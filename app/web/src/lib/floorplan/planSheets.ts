@@ -1,8 +1,8 @@
-import { migrateGeometry, type FloorGraph, type VariantKey } from './types'
+import { migrateGeometry, type FloorGraph, type PlanKey } from './types'
 import { floorToSvg } from './exportSvg'
 
-/** Una hoja dibujada: un piso de una variante, ya en SVG. */
-export interface PlanSheet { variant: VariantKey; floorId: string; floorName: string; svg: string }
+/** Una hoja dibujada: un piso de una variante ('original' o el id de un plan), ya en SVG. */
+export interface PlanSheet { variant: PlanKey; floorId: string; floorName: string; svg: string }
 
 // Lado largo objetivo de una hoja, en px. El SVG se escala al 100% del ancho de su columna
 // en el PDF, así que este número solo fija la resolución del dibujo y la proporción entre
@@ -37,9 +37,11 @@ export function planSheets(raw: unknown): PlanSheet[] {
   const model = migrateGeometry(raw)
   if (!model) return []
 
-  const pairs: [VariantKey, FloorGraph][] = []
+  const pairs: [PlanKey, FloorGraph][] = []
   for (const f of model.variants.original?.floors ?? []) if (drawn(f)) pairs.push(['original', f])
-  for (const f of model.variants.planned?.floors ?? []) if (drawn(f)) pairs.push(['planned', f])
+  // La variante de un plan ES su id (el legado migrado conserva 'planned', así que el
+  // documento actual no cambia ni un byte); el etiquetado por nombre llega en Task 5.
+  for (const p of model.variants.plans) for (const f of p.fs.floors ?? []) if (drawn(f)) pairs.push([p.id, f])
 
   const lineage = new Map<string, number>()
   for (const [, f] of pairs) lineage.set(f.id, Math.max(lineage.get(f.id) ?? 0, span(f)))

@@ -38,7 +38,7 @@ import { StatRow } from './StatRow'
 import { PropertyProfitSection } from './PropertyProfitSection'
 import { type PlanApi } from './FloorPlanEditor'
 import { LevantamientoPanel } from './LevantamientoPanel'
-import { migrateGeometry, withVariant, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
+import { getPlan, LEGACY_PLAN_NAME, migrateGeometry, withOriginal, withPlan, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
 import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
@@ -270,12 +270,22 @@ export function PropertyDetailPage() {
   }, [])
 
   /**
-   * Guardar UNA variante compone el envelope v3 completo con `withVariant`, que
-   * preserva la otra tal cual: un guardado del planeado jamás pisa el original y
-   * viceversa. Un blob v2 viejo queda persistido en v3 en su primer guardado.
+   * Guardar UNA variante compone el envelope v4 completo con `withOriginal`/`withPlan`,
+   * que preservan todo lo demás tal cual: un guardado de un plan jamás pisa el original
+   * ni a los otros planes, y viceversa. Un blob v2/v3 viejo queda persistido en v4 en su
+   * primer guardado. El `name` del plan se conserva del modelo (withPlan reemplaza el
+   * objeto entero — sin esta lectura previa, guardar geometría regresaría el nombre al
+   * default).
    */
   async function saveFloorSet(variant: VariantKey, fs: FloorSet): Promise<void> {
-    setGeometry(await savePropertyGeometry(propertyId, withVariant(geometry, variant, fs)))
+    const next = variant === 'original'
+      ? withOriginal(geometry, fs)
+      : withPlan(geometry, {
+          id: variant,
+          name: getPlan(geometry, variant)?.name ?? LEGACY_PLAN_NAME,
+          fs,
+        })
+    setGeometry(await savePropertyGeometry(propertyId, next))
   }
 
   // ─── Renders: edición, biblioteca y borrado son iguales sin importar la fuente

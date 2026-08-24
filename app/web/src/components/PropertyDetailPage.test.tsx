@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { Property, PropertyRender } from '../lib/types'
-import { emptyFloorGraph, type FloorPlanModel } from '../lib/floorplan/types'
+import { emptyFloorGraph } from '../lib/floorplan/types'
 import { PropertyDetailPage } from './PropertyDetailPage'
 import * as api from '../lib/api'
 
@@ -769,16 +769,19 @@ describe('PropertyDetailPage', () => {
     const [id, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
     expect(id).toBe(7)
     expect(envelope).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       variants: {
         original: { slab_m: 0.2, activeFloor: 0, floors: v2.floors },
-        planned: null,
+        plans: [],
       },
     })
   })
 
   it('el editor edita el original, y guardar preserva el planeado que ya había', async () => {
-    const v3: FloorPlanModel = {
+    // Literal v3 crudo a propósito: así se ven los blobs persistidos HOY, y este
+    // test también ejercita la migración v3→v4 al cargar (el planned se vuelve el
+    // plan legado con id 'planned').
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
@@ -797,7 +800,10 @@ describe('PropertyDetailPage', () => {
     fireEvent.click(screen.getByText('Save'))
     await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
     const [, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
-    expect(envelope.variants.planned).toEqual(v3.variants.planned)
+    // El planned migrado sobrevive el guardado del original como el plan legado.
+    expect(envelope.variants.plans).toEqual([
+      { id: 'planned', name: 'Plan de proyecto', fs: v3.variants.planned },
+    ])
   })
 
   it('sin geometría reconocible, el ORIGINAL abre en la pantalla de inicio', async () => {
@@ -808,7 +814,7 @@ describe('PropertyDetailPage', () => {
   })
 
   it('el PLANEADO sin datos aterriza en su empty state con las dos maneras de nacer', async () => {
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
@@ -829,7 +835,7 @@ describe('PropertyDetailPage', () => {
     // RE-PARTIR persistiría el clon en el servidor mientras el editor montado
     // sigue con el planeado viejo — y un dibujo + GUARDAR posterior desde ese
     // editor viejo escribiría encima del clon recién hecho.
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
@@ -856,7 +862,7 @@ describe('PropertyDetailPage', () => {
     // Los dos editores comparten el GUARDAR del encabezado vía la misma PlanApi;
     // sin registrar de QUÉ variante es el editor vivo, este flujo escribiría el
     // planeado encima del original.
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
@@ -877,7 +883,7 @@ describe('PropertyDetailPage', () => {
     await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
     const [, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
     expect(envelope.variants.original).toEqual(v3.variants.original)
-    expect(Object.keys(envelope.variants.planned!.floors[0].edges)).toHaveLength(1)
+    expect(Object.keys(envelope.variants.plans[0].fs.floors[0].edges)).toHaveLength(1)
     expect(api.updateProperty).not.toHaveBeenCalled()
   })
 
@@ -901,7 +907,7 @@ describe('PropertyDetailPage', () => {
 
   it('generar RENDERS desde el PLANEADO llama a generatePropertyRenderFromPlan con variant: "planned" y el piso', async () => {
     const plannedFloor = emptyFloorGraph('Planta Planeada')
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
@@ -933,7 +939,7 @@ describe('PropertyDetailPage', () => {
 
   it('generar RENDERS desde el ORIGINAL llama a generatePropertyRenderFromPlan con variant: "original" y el piso', async () => {
     const originalFloor = emptyFloorGraph('Planta Original')
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [originalFloor] },
@@ -961,7 +967,7 @@ describe('PropertyDetailPage', () => {
 
   it('subir un render desde el PLANEADO llama a uploadPropertyRenderFromPlan con variant: "planned" y el piso', async () => {
     const plannedFloor = emptyFloorGraph('Planta Planeada')
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },

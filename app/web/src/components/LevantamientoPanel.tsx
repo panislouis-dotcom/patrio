@@ -7,7 +7,7 @@ import { RendersPanel } from './detail/RendersPanel'
 import { floorToPngBlob } from '../lib/floorplan/planImage'
 import { planFacts } from '../lib/floorplan/planFacts'
 import { generateAllFloors, formatBatchSummary, type FloorBatchSummary } from '../lib/floorplan/generateAllFloors'
-import { clone, emptyFloorSet, type FloorGraph, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
+import { clone, emptyFloorSet, getPlan, type FloorGraph, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
 import type { PropertyRender, RenderPrompt, RenderPromptKind } from '../lib/types'
 
 const btnBase: React.CSSProperties = {
@@ -106,7 +106,9 @@ export function LevantamientoPanel({
   const [batchSummary, setBatchSummary] = useState<FloorBatchSummary | null>(null)
 
   const original = geometry?.variants.original ?? null
-  const fs = variant === 'original' ? original : geometry?.variants.planned ?? null
+  // `variant` distinto de 'original' es un id de plan (el legado migrado usa el id
+  // literal 'planned', así que este montaje fijo sigue direccionando el mismo plan).
+  const fs = variant === 'original' ? original : getPlan(geometry ?? null, variant)?.fs ?? null
   // Clonar un original sin pisos no produce nada editable: la acción ni se ofrece.
   const originalHasFloors = original != null && original.floors.length > 0
   // El piso SELECCIONADO en RENDERS: lo que RENDERS siembra y exporta a PNG. Cae
