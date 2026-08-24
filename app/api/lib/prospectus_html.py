@@ -561,13 +561,19 @@ def _strip(images, label: str, limit: int) -> str:
     return f'{lab}<div class="strip">{tags}</div>'
 
 
-def _plan_rows(sheets: list[dict], renders: list[dict]) -> list[dict]:
-    """Las hojas dibujadas + las cabezas de render → filas por LINAJE de piso.
+def _plan_rows(sheets: list[dict], renders: list[dict], plan_id: str | None) -> list[dict]:
+    """Las hojas dibujadas + las cabezas de render → filas por LINAJE de piso,
+    para UN plan: el antes es el original, el después es `plan_id` (None = solo
+    hay original que mostrar, sin lado de propuesta). Con N planes, quien llama
+    (`_opportunity_detail`) invoca esta función una vez por plan seleccionado —
+    cada plan imprime su propia sección, nunca N columnas en una fila.
 
-    Una fila es un piso a lo largo de sus variantes, no una hoja: un piso planeado
-    nacido de PARTIR/RE-PARTIR comparte el `id` de su contraparte original
-    (`LevantamientoPanel.tsx:231`), y ese id compartido es justo lo que permite
-    alinear el antes con el después sin heurística.
+    Una fila es un piso a lo largo de sus variantes, no una hoja: un piso de plan
+    nacido de PARTIR comparte el `id` de su contraparte original
+    (`LevantamientoPanel.tsx`), y ese id compartido es justo lo que permite
+    alinear el antes con el después sin heurística. La variante de una hoja/render
+    de plan ES el plan id (envelope v4, migración 050), así que el pareo
+    `(floorId, variante)` distingue planes solo.
 
     De los renders de cada (floorId, sourceVariant) solo entra el que trae
     `isChosen` — nunca hay más de uno, porque el índice único de la base de
@@ -577,32 +583,30 @@ def _plan_rows(sheets: list[dict], renders: list[dict]) -> list[dict]:
     queda vacío. No hay tira suelta ni «el más reciente» de respaldo — si nadie
     eligió, el documento no adivina.
 
-    Por eso mismo un render empata por `(floorId, sourceVariant)`, LAS DOS, nunca
-    solo la primera: el propio comentario de `LevantamientoPanel.tsx` lo advirtió
-    por escrito antes de que esta función existiera.
-
     El nombre del piso sale de la HOJA, no del render: `floorName` en el render
     está congelado para sobrevivir a un renombre, pero el piso vivo siempre
     existe si hay una hoja que mostrar.
     """
+    mine = [s for s in sheets if s["variant"] == "original" or s["variant"] == plan_id]
     chosen_by_key = {
         (r["floorId"], r["sourceVariant"]): r
         for r in renders
         if r.get("dataUri") and r.get("isChosen") and r.get("floorId") is not None
     }
-    by_key = {(s["floorId"], s["variant"]): s for s in sheets}
+    by_key = {(s["floorId"], s["variant"]): s for s in mine}
 
     order, seen = [], set()
-    for s in sheets:
+    for s in mine:
         if s["floorId"] not in seen:
             seen.add(s["floorId"])
             order.append(s["floorId"])
 
     rows = []
     for fid in order:
-        antes, despues = by_key.get((fid, "original")), by_key.get((fid, "planned"))
+        antes = by_key.get((fid, "original"))
+        despues = by_key.get((fid, plan_id)) if plan_id is not None else None
         antes_r = chosen_by_key.get((fid, "original"))
-        despues_r = chosen_by_key.get((fid, "planned"))
+        despues_r = chosen_by_key.get((fid, plan_id)) if plan_id is not None else None
         # Un planeado clonado y aún no editado produce el MISMO string —mismo
         # serializador, misma entrada—. Imprimirlo bajo "Antes / Después" afirmaría
         # una transformación que nadie diseñó. Si las dos variantes tenían estrella
@@ -1210,9 +1214,37 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
     # sección exista, y sobre todo si el presupuesto fuerza su propia hoja)
     # se calcula exactamente igual que cuando el dato no existe, que es el
     # camino que este archivo lleva probando desde siempre.
-    rows = (_plan_rows(p.get("planSheets") or [], p.get("renderHeads") or [])
-            if sections.opportunity_plans else [])
-    plan_html = _plan_block(rows)
+    #
+    # Con N planes, cada plan seleccionado imprime SU sección "Plano y propuesta
+    # · {nombre}" con el par Antes/Después de siempre — nunca N columnas en una
+    # fila (ilegible en A4). Con 0-1 planes el título queda sin sufijo: el
+    # documento de una propiedad con su único plan legado sale byte-idéntico al
+    # de siempre — ese es el contrato de ProspectusSections, extendido aquí.
+    plan_sections_html = ""
+    if sections.opportunity_plans:
+        sheets_all = p.get("planSheets") or []
+        heads = p.get("renderHeads") or []
+        plans_present, seen_plans = [], set()
+        for s in sheets_all:
+            v = s["variant"]
+            if v != "original" and v not in seen_plans:
+                seen_plans.add(v)
+                plans_present.append((v, s.get("planName")))
+        if len(plans_present) <= 1:
+            only = plans_present[0][0] if plans_present else None
+            h = _plan_block(_plan_rows(sheets_all, heads, only))
+            if h:
+                plan_sections_html = (f'<div class="detail-section">'
+                                      f'<div class="col-label">Plano y propuesta</div>{h}</div>')
+        else:
+            parts = []
+            for plan_id, plan_name in plans_present:
+                h = _plan_block(_plan_rows(sheets_all, heads, plan_id))
+                if h:
+                    title = f"Plano y propuesta · {plan_name}" if plan_name else "Plano y propuesta"
+                    parts.append(f'<div class="detail-section">'
+                                 f'<div class="col-label">{_esc(title)}</div>{h}</div>')
+            plan_sections_html = "".join(parts)
 
     photo_rows = (_photo_rows(p.get("images") or [], p.get("renderHeads") or [])
                   if sections.opportunity_renders else [])
@@ -1221,12 +1253,11 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
     budget = (p.get("budget") or {}) if sections.opportunity_budget else {}
     budget_html = _budget_full(budget.get("lines", []), budget.get("chapters", []))
 
-    if not (plan_html or photos_html or budget_html):
+    if not (plan_sections_html or photos_html or budget_html):
         return ""
 
     sections = "".join([
-        f'<div class="detail-section"><div class="col-label">Plano y propuesta</div>{plan_html}</div>'
-        if plan_html else "",
+        plan_sections_html,
         # Solo lo que alguien eligió de verdad: sin estrella marcada en ninguna
         # foto de la propiedad, esta sección no existe — no hay tira suelta
         # esperando a los que no se eligieron.
@@ -1245,7 +1276,7 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
         # pedido sin planos y sin renders arrancaría con una hoja en blanco si
         # el salto siguiera atado a que el dato existe.
         (f'<div class="detail-section detail-section-budget"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
-         if (plan_html or photos_html) else
+         if (plan_sections_html or photos_html) else
          f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>')
         if budget_html else "",
     ])

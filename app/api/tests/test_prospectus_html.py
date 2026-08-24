@@ -458,7 +458,7 @@ def _render(fid=None, variant=None, uri="data:x", name=None, chosen=False, image
 def test_el_elegido_se_empareja_su_lado():
     rows = _plan_rows(
         [_sheet("abc", "original", "<svg>A</svg>"), _sheet("abc", "planned", "<svg>B</svg>")],
-        [_render("abc", "original", chosen=True), _render("abc", "planned", chosen=True)])
+        [_render("abc", "original", chosen=True), _render("abc", "planned", chosen=True)], "planned")
     assert len(rows[0]["antes"]["renders"]) == 1
     assert len(rows[0]["despues"]["renders"]) == 1
 
@@ -466,7 +466,7 @@ def test_el_elegido_se_empareja_su_lado():
 def test_sin_estrella_el_lado_no_tiene_renders_pero_el_plano_sigue():
     """El plano es el ancla dimensional (PR #45) — se imprime CON o SIN render
     elegido. Solo el hueco de render queda vacío."""
-    rows = _plan_rows([_sheet("abc", "original")], [_render("abc", "original", chosen=False)])
+    rows = _plan_rows([_sheet("abc", "original")], [_render("abc", "original", chosen=False)], "planned")
     assert rows[0]["antes"] is not None
     assert rows[0]["antes"]["renders"] == []
 
@@ -475,17 +475,17 @@ def test_variante_distinta_no_empata_aunque_el_piso_coincida():
     """Un piso planeado nacido de PARTIR comparte el id del original
     (LevantamientoPanel.tsx:231): elegir por floorId solo pondría el elegido del
     original junto al plano del planeado."""
-    rows = _plan_rows([_sheet("abc", "planned")], [_render("abc", "original", chosen=True)])
+    rows = _plan_rows([_sheet("abc", "planned")], [_render("abc", "original", chosen=True)], "planned")
     assert rows[0]["despues"]["renders"] == []
 
 
 def test_floor_id_nulo_no_empata_con_nada():
-    rows = _plan_rows([_sheet("abc", "original")], [_render(None, None, chosen=True)])
+    rows = _plan_rows([_sheet("abc", "original")], [_render(None, None, chosen=True)], "planned")
     assert rows[0]["antes"]["renders"] == []
 
 
 def test_un_render_sin_dataUri_nunca_cuenta_aunque_este_elegido():
-    rows = _plan_rows([_sheet("abc", "original")], [_render("abc", "original", uri=None, chosen=True)])
+    rows = _plan_rows([_sheet("abc", "original")], [_render("abc", "original", uri=None, chosen=True)], "planned")
     assert rows[0]["antes"]["renders"] == []
 
 
@@ -494,25 +494,25 @@ def test_un_clon_sin_editar_colapsa_a_una_sola_hoja():
     transformación que nadie diseñó."""
     rows = _plan_rows(
         [_sheet("abc", "original", "<svg>A</svg>"), _sheet("abc", "planned", "<svg>A</svg>")],
-        [_render("abc", "original", chosen=True)])
+        [_render("abc", "original", chosen=True)], "planned")
     assert rows[0]["despues"] is None
     assert len(rows[0]["antes"]["renders"]) == 1
 
 
 def test_el_nombre_sale_de_la_hoja_no_del_render():
     rows = _plan_rows([_sheet("abc", "original", name="Planta Alta")],
-                      [_render("abc", "original", name="Nombre Viejo", chosen=True)])
+                      [_render("abc", "original", name="Nombre Viejo", chosen=True)], "planned")
     assert rows[0]["floorName"] == "Planta Alta"
 
 
 def test_orden_original_primero_luego_los_pisos_solo_planeados():
-    rows = _plan_rows([_sheet("a", "original"), _sheet("b", "original"), _sheet("z", "planned")], [])
+    rows = _plan_rows([_sheet("a", "original"), _sheet("b", "original"), _sheet("z", "planned")], [], "planned")
     assert len(rows) == 3
     assert [r["antes"] is not None for r in rows] == [True, True, False]
 
 
 def test_sin_hojas_no_hay_filas():
-    assert _plan_rows([], [_render("abc", "original", chosen=True)]) == []
+    assert _plan_rows([], [_render("abc", "original", chosen=True)], "planned") == []
 
 
 # ─── _photo_rows — foto fuente + su render elegido ─────────────────────────
@@ -554,7 +554,7 @@ def test_la_pareja_de_una_foto_lleva_la_clase_que_apaga_el_padding_del_titulo():
 def test_la_pareja_de_un_plano_no_lleva_esa_clase():
     p = {"planSheets": [_sheet("abc", "original", "<svg>PLANO</svg>")],
          "renderHeads": [_render("abc", "original", chosen=True)]}
-    html = _plan_block(_plan_rows(p["planSheets"], p["renderHeads"]))
+    html = _plan_block(_plan_rows(p["planSheets"], p["renderHeads"], "planned"))
     assert "plan-pair--photo" not in html
 
 
@@ -748,3 +748,76 @@ def test_a_stripped_opportunity_still_says_which_property_it_is_and_what_it_proj
     # Sin ninguno de los tres bloques, el contenedor del detalle tampoco se
     # imprime vacío — mismo comportamiento que una propiedad sin esos datos.
     assert 'class="opp-detail"' not in html
+
+
+# ─── Múltiples planes: una sección por plan seleccionado ─────────────────────
+
+def _plan_sheet(fid, plan_id, plan_name, svg="<svg/>"):
+    return {**_sheet(fid, plan_id, svg), "planName": plan_name}
+
+
+def test_dos_planes_imprimen_dos_secciones_etiquetadas():
+    p = {**BASE_PROPERTY,
+         "planSheets": [
+             _sheet("abc", "original", "<svg>O</svg>"),
+             _plan_sheet("abc", "plan-a", "Plan A: 4 departamentos", "<svg>A</svg>"),
+             _plan_sheet("abc", "plan-b", "Plan B: locales", "<svg>B</svg>"),
+         ],
+         "renderHeads": []}
+    html = _opportunity_detail(p)
+    assert "Plano y propuesta · Plan A: 4 departamentos" in html
+    assert "Plano y propuesta · Plan B: locales" in html
+    # Cada sección trae su propio par: el svg del original aparece en LAS DOS.
+    assert html.count("<svg>O</svg>") == 2
+    assert html.count("<svg>A</svg>") == 1
+    assert html.count("<svg>B</svg>") == 1
+
+
+def test_un_solo_plan_conserva_el_titulo_de_siempre_sin_sufijo():
+    # El contrato de ProspectusSections extendido: una propiedad con su único
+    # plan (el legado) produce el documento de siempre, byte por byte.
+    p = {**BASE_PROPERTY,
+         "planSheets": [
+             _sheet("abc", "original", "<svg>O</svg>"),
+             _plan_sheet("abc", "planned", "Plan de proyecto", "<svg>P</svg>"),
+         ],
+         "renderHeads": []}
+    html = _opportunity_detail(p)
+    assert ">Plano y propuesta<" in html
+    assert "Plano y propuesta ·" not in html
+
+
+def test_el_clon_identico_se_suprime_por_plan_no_globalmente():
+    # Plan A es un clon sin editar (mismo svg que el original) — su lado
+    # "después" se suprime; Plan B sí difiere y conserva el suyo.
+    p = {**BASE_PROPERTY,
+         "planSheets": [
+             _sheet("abc", "original", "<svg>O</svg>"),
+             _plan_sheet("abc", "plan-a", "Plan A", "<svg>O</svg>"),
+             _plan_sheet("abc", "plan-b", "Plan B", "<svg>B</svg>"),
+         ],
+         "renderHeads": []}
+    html = _opportunity_detail(p)
+    assert "Después" in html            # el de Plan B
+    assert html.count("<svg>B</svg>") == 1
+    # La sección de Plan A existe (su original ancla) pero sin lado después:
+    assert "Plano y propuesta · Plan A" in html
+
+
+def test_cada_seccion_solo_parea_los_renders_de_su_plan():
+    p = {**BASE_PROPERTY,
+         "planSheets": [
+             _sheet("abc", "original", "<svg>O</svg>"),
+             _plan_sheet("abc", "plan-a", "Plan A", "<svg>A</svg>"),
+             _plan_sheet("abc", "plan-b", "Plan B", "<svg>B</svg>"),
+         ],
+         "renderHeads": [
+             {**_render("abc", "plan-a", uri="data:render-a", chosen=True)},
+             {**_render("abc", "plan-b", uri="data:render-b", chosen=True)},
+         ]}
+    html = _opportunity_detail(p)
+    a_pos = html.find("Plano y propuesta · Plan A")
+    b_pos = html.find("Plano y propuesta · Plan B")
+    # El render de cada plan cae dentro de SU sección, no en la del otro.
+    assert a_pos < html.find("data:render-a") < b_pos
+    assert html.find("data:render-b") > b_pos

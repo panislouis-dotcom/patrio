@@ -744,3 +744,53 @@ def test_una_oportunidad_sin_geometria_no_rompe_el_prospecto(client, test_proper
     html = _capture_favorites(client, test_property, plan_sheets={})
     assert '<div class="plan-row">' not in html
     assert "[TEST] Lote Prueba" in html
+
+
+def test_plan_ids_recorta_los_planes_de_una_propiedad(client, test_property):
+    """`planIds` es al plan lo que `propertyIds` a la propiedad: solo recorta.
+    El original sobrevive siempre — es el ancla dimensional, no un plan."""
+    sheets = {test_property["id"]: [
+        {"floorId": "abc", "variant": "original", "planName": None,
+         "floorName": "Planta Baja", "svg": "<svg>ORIGINAL</svg>"},
+        {"floorId": "abc", "variant": "plan-a", "planName": "Plan A",
+         "floorName": "Planta Baja", "svg": "<svg>PLAN-A</svg>"},
+        {"floorId": "abc", "variant": "plan-b", "planName": "Plan B",
+         "floorName": "Planta Baja", "svg": "<svg>PLAN-B</svg>"},
+    ]}
+    html = _capture_favorites(
+        client, test_property, plan_sheets=sheets,
+        body={"planIds": {str(test_property["id"]): ["plan-b"]}})
+    assert "PLAN-B" in html
+    assert "PLAN-A" not in html
+    assert "ORIGINAL" in html
+    # Con un solo plan restante, el título queda sin sufijo — el recorte
+    # devuelve el documento "de un solo plan" de siempre.
+    assert "Plano y propuesta ·" not in html
+
+
+def test_sin_plan_ids_entran_todos_los_planes(client, test_property):
+    sheets = {test_property["id"]: [
+        {"floorId": "abc", "variant": "original", "planName": None,
+         "floorName": "Planta Baja", "svg": "<svg>ORIGINAL</svg>"},
+        {"floorId": "abc", "variant": "plan-a", "planName": "Plan A",
+         "floorName": "Planta Baja", "svg": "<svg>PLAN-A</svg>"},
+        {"floorId": "abc", "variant": "plan-b", "planName": "Plan B",
+         "floorName": "Planta Baja", "svg": "<svg>PLAN-B</svg>"},
+    ]}
+    html = _capture_favorites(client, test_property, plan_sheets=sheets)
+    assert "Plano y propuesta · Plan A" in html
+    assert "Plano y propuesta · Plan B" in html
+
+
+def test_plan_ids_vacio_deja_solo_el_original_como_ancla(client, test_property):
+    sheets = {test_property["id"]: [
+        {"floorId": "abc", "variant": "original", "planName": None,
+         "floorName": "Planta Baja", "svg": "<svg>ORIGINAL</svg>"},
+        {"floorId": "abc", "variant": "plan-a", "planName": "Plan A",
+         "floorName": "Planta Baja", "svg": "<svg>PLAN-A</svg>"},
+    ]}
+    html = _capture_favorites(
+        client, test_property, plan_sheets=sheets,
+        body={"planIds": {str(test_property["id"]): []}})
+    assert "ORIGINAL" in html
+    assert "PLAN-A" not in html

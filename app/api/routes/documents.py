@@ -113,6 +113,12 @@ class ProspectusOptions(BaseModel):
     `ProspectusSections` (lib/prospectus_html.py) una sola vez: la capa de
     presentación no importa nada de esta."""
     propertyIds: list[int] | None = None
+    # Mismo contrato que propertyIds, por propiedad: `None` = todos los planes de
+    # todas; una propiedad AUSENTE del dict = todos sus planes; una lista = solo
+    # esos planes (vacía = ninguno — la hoja del original se imprime igual, es el
+    # ancla dimensional, no un plan). Solo RECORTA: un plan id que no existe en el
+    # geometry simplemente no aparece, nunca agrega nada.
+    planIds: dict[int, list[str]] | None = None
     cover: bool = True
     portfolioSummary: bool = True
     closing: bool = True
@@ -169,6 +175,19 @@ async def generate_prospectus(body: ProspectusOptions | None = None,
         {p["id"]: (p.get("geometry") or {}) for p in opportunities})
     for p in opportunities:
         p["planSheets"] = sheets.get(p["id"], [])
+    # El recorte por plan se aplica al DATO (las hojas), no en la presentación:
+    # un plan apagado se corta en su origen y todo lo de abajo (secciones,
+    # saltos de página) se decide igual que si el plan no existiera. Se recorta
+    # DESPUÉS de dibujar y no antes porque filtrar antes exigiría interpretar el
+    # blob de geometría en Python (regla del repo: eso es del bundle); las hojas
+    # ya tienen forma plana conocida y Chromium dibuja de sobra rápido.
+    if options.planIds is not None:
+        for p in opportunities:
+            wanted = options.planIds.get(p["id"])
+            if wanted is not None:
+                keep = set(wanted)
+                p["planSheets"] = [s for s in p["planSheets"]
+                                   if s["variant"] == "original" or s["variant"] in keep]
     await asyncio.to_thread(_embed_opportunity_extras, opportunities)
     # Cómo lee el prospecto una propiedad, por etapa. El track record es lo que
     # la firma ya hizo, y llega en dos cubetas porque una vendida se presume con
