@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { PlanesPanel } from './PlanesPanel'
 import {
   withOriginal, withPlan, emptyFloorSet, LEGACY_PLAN_ID,
-  type FloorPlanModel, type FloorSet, type ProjectPlan,
+  type FloorPlanModel, type ProjectPlan,
 } from '../lib/floorplan/types'
 import { LevantamientoPanel } from './LevantamientoPanel'
 import type { PropertyRender } from '../lib/types'
