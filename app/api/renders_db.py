@@ -1,10 +1,27 @@
 """Persistencia de la biblioteca de prompts y de los renders generados."""
+import json
+
 from api.db import get_db, _row_to_dict
 
-# De qué levantamiento nació un render de plano. Mismo patrón que
-# `properties_db.IMAGE_TYPES`: tupla explícita que la ruta valida antes de
-# tocar la base de datos.
-SOURCE_VARIANTS = ("original", "planned")
+
+def variant_exists(property_id: int, variant: str) -> bool:
+    """De qué variante nace un render de plano: 'original' (el levantamiento,
+    siempre existe) o el ID de un plan de proyecto, que debe estar presente en el
+    geometry VIVO de la propiedad. Reemplaza a la vieja tupla SOURCE_VARIANTS
+    ('original'|'planned'): desde la migración 050 la variante ES el plan id, y
+    una tupla fija ya no puede validarla — ni debe hacerlo el cliente, que antes
+    se auto-certificaba. Membresía por containment de jsonb, sin interpretar la
+    forma profunda del blob (la geometría es del frontend; aquí solo se pregunta
+    si el plan id existe)."""
+    if variant == "original":
+        return True
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM properties WHERE id = %s"
+            " AND geometry->'variants'->'plans' @> %s::jsonb",
+            (property_id, json.dumps([{"id": variant}])),
+        ).fetchone()
+    return row is not None
 
 
 class PromptError(RuntimeError):
