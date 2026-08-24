@@ -849,8 +849,8 @@ describe('PropertyDetailPage', () => {
     fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
     expect(await screen.findByText('Planta Planeada')).not.toBeNull()
 
-    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
-    fireEvent.click(screen.getByText('¿CONFIRMAR RE-PARTIR?'))
+    fireEvent.click(screen.getByText('REHACER DESDE ORIGINAL'))
+    fireEvent.click(screen.getByText('¿CONFIRMAR REHACER?'))
 
     await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
     // El editor del planeado ahora enseña la planta clonada, no la vieja.

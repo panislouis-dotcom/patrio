@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   BASE, fetchProperty, updateProperty, deleteProperty, clearPropertyFields, transitionProperty,
   uploadPropertyImage, deletePropertyImage, updatePropertyImageType, reorderPropertyImages,
-  fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage,
+  fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage, deletePropertyPlan,
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
   listRenderPrompts, listPropertyRenders, generatePropertyRender, generatePropertyRenderFromPlan,
   uploadPropertyRender, uploadPropertyRenderFromPlan,
@@ -38,7 +38,8 @@ import { StatRow } from './StatRow'
 import { PropertyProfitSection } from './PropertyProfitSection'
 import { type PlanApi } from './FloorPlanEditor'
 import { LevantamientoPanel } from './LevantamientoPanel'
-import { getPlan, LEGACY_PLAN_NAME, migrateGeometry, withOriginal, withPlan, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
+import { PlanesPanel } from './PlanesPanel'
+import { getPlan, LEGACY_PLAN_NAME, migrateGeometry, removePlan, withOriginal, withPlan, type FloorPlanModel, type FloorSet, type ProjectPlan, type VariantKey } from '../lib/floorplan/types'
 import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
@@ -286,6 +287,26 @@ export function PropertyDetailPage() {
           fs,
         })
     setGeometry(await savePropertyGeometry(propertyId, next))
+  }
+
+  // ─── Planes de proyecto: la colección (crear / renombrar / borrar) ─────────
+  // Crear y renombrar persisten de inmediato — operaciones de envelope, no
+  // ediciones dentro de un plan (mismo criterio que clonar en LevantamientoPanel).
+  async function onCreatePlan(plan: ProjectPlan): Promise<void> {
+    setGeometry(await savePropertyGeometry(propertyId, withPlan(geometry, plan)))
+  }
+  async function onRenamePlan(planId: string, name: string): Promise<void> {
+    const existing = getPlan(geometry, planId)
+    if (!existing) return
+    setGeometry(await savePropertyGeometry(propertyId, withPlan(geometry, { ...existing, name })))
+  }
+  async function onDeletePlan(planId: string): Promise<void> {
+    // El servidor cascadea (plan del blob + renders + archivos) en una operación;
+    // aquí solo se refleja: el plan fuera del envelope local y sus renders fuera
+    // de la lista — mismo filtro (sourceVariant) que la cascada usó.
+    await deletePropertyPlan(propertyId, planId)
+    setGeometry(prev => (prev ? removePlan(prev, planId) : prev))
+    setRenders(prev => prev.filter(r => r.sourceVariant !== planId))
   }
 
   // ─── Renders: edición, biblioteca y borrado son iguales sin importar la fuente
@@ -1301,12 +1322,18 @@ export function PropertyDetailPage() {
             },
             {
               label: 'plano de proyecto',
+              // PlanesPanel es dueño de CUÁL plan está activo (y remonta el
+              // LevantamientoPanel por plan); esta página sigue siendo dueña de
+              // persistir: guardar geometría, crear/renombrar (withPlan) y
+              // borrar (cascada del servidor + poda local de renders).
               panel: (
-                <LevantamientoPanel
-                  key="levantamiento-planeado"
-                  variant="planned"
+                <PlanesPanel
+                  key="planes-de-proyecto"
                   geometry={geometry}
                   onSave={saveFloorSet}
+                  onCreatePlan={onCreatePlan}
+                  onRenamePlan={onRenamePlan}
+                  onDeletePlan={onDeletePlan}
                   onUploadImage={file => uploadFloorplanImage(p.id, file)}
                   onReady={onPlanReady}
                   onDirtyChange={setPlanDirty}

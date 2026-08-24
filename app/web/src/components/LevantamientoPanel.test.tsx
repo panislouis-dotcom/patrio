@@ -123,7 +123,7 @@ describe('LevantamientoPanel · ORIGINAL', () => {
     expect(screen.getByText('Planta Original')).toBeTruthy()
     expect(screen.queryByText('PARTIR DEL ORIGINAL')).toBeNull()
     expect(screen.queryByText('EMPEZAR EN BLANCO')).toBeNull()
-    expect(screen.queryByText('RE-PARTIR DEL ORIGINAL')).toBeNull()
+    expect(screen.queryByText('REHACER DESDE ORIGINAL')).toBeNull()
     // El GUARDAR de la página necesita saber de qué variante es el editor vivo.
     expect(onReady).toHaveBeenCalledWith('original', expect.anything())
   })
@@ -229,18 +229,18 @@ describe('LevantamientoPanel · PLANEADO existente', () => {
     const { onSave } = renderPanel('planned', withPlan(withOriginal(null, original), legacyPlan(plannedFloorSet())))
 
     // Primer paso: el botón solo arma la confirmación, sin tocar el modelo.
-    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
+    fireEvent.click(screen.getByText('REHACER DESDE ORIGINAL'))
     expect(onSave).not.toHaveBeenCalled()
-    expect(screen.getByText('¿CONFIRMAR RE-PARTIR?')).toBeTruthy()
+    expect(screen.getByText('¿CONFIRMAR REHACER?')).toBeTruthy()
 
     fireEvent.click(screen.getByText('CANCELAR'))
-    expect(screen.queryByText('¿CONFIRMAR RE-PARTIR?')).toBeNull()
-    expect(screen.getByText('RE-PARTIR DEL ORIGINAL')).toBeTruthy()
+    expect(screen.queryByText('¿CONFIRMAR REHACER?')).toBeNull()
+    expect(screen.getByText('REHACER DESDE ORIGINAL')).toBeTruthy()
     expect(onSave).not.toHaveBeenCalled()
 
     // Segundo paso: confirmar sí reemplaza el planeado con un clon del original.
-    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
-    fireEvent.click(screen.getByText('¿CONFIRMAR RE-PARTIR?'))
+    fireEvent.click(screen.getByText('REHACER DESDE ORIGINAL'))
+    fireEvent.click(screen.getByText('¿CONFIRMAR REHACER?'))
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
     const [variant, fs] = onSave.mock.calls[0]
     expect(variant).toBe('planned')
@@ -253,8 +253,8 @@ describe('LevantamientoPanel · PLANEADO existente', () => {
     const colgado = vi.fn((_v: VariantKey, _fs: FloorSet) => new Promise<void>(() => {}))
     renderPanel('planned', geometry(), colgado)
 
-    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
-    fireEvent.click(screen.getByText('¿CONFIRMAR RE-PARTIR?'))
+    fireEvent.click(screen.getByText('REHACER DESDE ORIGINAL'))
+    fireEvent.click(screen.getByText('¿CONFIRMAR REHACER?'))
 
     expect(screen.getByText('CLONANDO…')).toBeTruthy()
     expect((screen.getByText('CANCELAR') as HTMLButtonElement).disabled).toBe(true)
@@ -567,7 +567,7 @@ describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
   it('el resumen del lote no sobrevive a que el FloorSet se reemplace por otro con pisos distintos', async () => {
     // Reproduce el hallazgo del revisor: un lote corre hasta terminar en un
     // FloorSet de 2 pisos, y LUEGO ese FloorSet se reemplaza POR COMPLETO —
-    // el mismo gesto que un RE-PARTIR DEL ORIGINAL, un EMPEZAR EN BLANCO, o
+    // el mismo gesto que un REHACER DESDE ORIGINAL, un EMPEZAR EN BLANCO, o
     // agregar/quitar un piso en el editor y guardar (`onSave` reescribe la
     // variante entera en los tres casos). El banner viejo no debe seguir
     // describiendo pisos que ya no existen.

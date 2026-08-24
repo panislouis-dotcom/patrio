@@ -233,8 +233,9 @@ export function LevantamientoPanel({
     }
   }
 
-  // Escribe el planeado ENTERO de un golpe: un clon del original o una planta en
-  // blanco. Es la única escritura que no pasa por el editor.
+  // Escribe el plan ENTERO de un golpe: un clon del original o una planta en
+  // blanco. Es la única escritura que no pasa por el editor. `variant` es el
+  // plan al que este panel está montado (el wrapper de planes lo decide).
   async function writePlanned(source: FloorSet, action: PendingWrite) {
     setPending(action)
     setError(null)
@@ -249,7 +250,7 @@ export function LevantamientoPanel({
       // SIEMPRE debe combinar floor_id con source_variant — nunca floor_id solo — para no
       // mezclar el original y el planeado de un mismo piso. No "arreglar" esto dándole un
       // id nuevo al clon sin revisar antes ese filtro.
-      await onSave('planned', clone(source))
+      await onSave(variant, clone(source))
       setGeneration(g => g + 1)
       setConfirmReclone(false)
     } catch (e) {
@@ -260,7 +261,7 @@ export function LevantamientoPanel({
   }
   const busy = pending != null
 
-  if (variant === 'planned' && fs == null) {
+  if (variant !== 'original' && fs == null) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: 'center', gap: '12px', background: colors.dark, padding: '32px' }}>
@@ -309,7 +310,7 @@ export function LevantamientoPanel({
         {error && <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.tertiary }}>{error}</span>}
         {originalHasFloors && (confirmReclone ? (
           <>
-            <span style={label}>SE DESCARTA EL PLANO DE PROYECTO ACTUAL</span>
+            <span style={label}>SE DESCARTA ESTE PLAN</span>
             {/* Desactivado en vuelo: la escritura ya se despachó y no se puede
                 detener — un CANCELAR clicable escondería la confirmación
                 mientras el planeado igual se reemplaza. */}
@@ -319,11 +320,11 @@ export function LevantamientoPanel({
             </button>
             <button onClick={() => writePlanned(original!, 'repartir')} disabled={busy}
               style={{ ...danger, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.7 : 1 }}>
-              {pending === 'repartir' ? 'CLONANDO…' : '¿CONFIRMAR RE-PARTIR?'}
+              {pending === 'repartir' ? 'CLONANDO…' : '¿CONFIRMAR REHACER?'}
             </button>
           </>
         ) : (
-          <button onClick={() => setConfirmReclone(true)} style={outlined}>RE-PARTIR DEL ORIGINAL</button>
+          <button onClick={() => setConfirmReclone(true)} style={outlined}>REHACER DESDE ORIGINAL</button>
         ))}
       </div>
       {editor}
