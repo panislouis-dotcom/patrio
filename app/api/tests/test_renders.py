@@ -1002,11 +1002,13 @@ def _seed_plans(client, property_id, *plan_ids):
           "floors": [{"id": "floor-abc-123", "name": "Planta Baja", "height_m": 2.6,
                       "extWall_m": 0.15, "intWall_m": 0.10,
                       "vertices": {}, "edges": {}, "rooms": []}]}
+    # Como el cliente real: leer la revisión vigente y declararla al guardar.
+    revision = client.get(f"/api/properties/{property_id}/geometry").json()["revision"]
     r = client.put(f"/api/properties/{property_id}/geometry", json={"geometry": {
         "schemaVersion": 4,
         "variants": {"original": fs,
                      "plans": [{"id": pid, "name": f"Plan {pid}", "fs": fs} for pid in plan_ids]},
-    }})
+    }, "expectedRevision": revision})
     assert r.status_code == 200, r.text
 
 
@@ -1447,10 +1449,12 @@ def test_deleting_a_plan_cascades_its_renders_and_files(client, test_property, f
 
     r = client.delete(f"/api/properties/{pid}/plans/plan-a")
     assert r.status_code == 200, r.text
-    assert r.json() == {"deletedRenders": 1}
+    # revision 2: la 1 fue el _seed_plans, y borrar el plan también muta el
+    # blob — sube el candado para que otras sesiones no lo resuciten.
+    assert r.json() == {"deletedRenders": 1, "revision": 2}
 
     # El plan se fue del geometry; el hermano sigue.
-    g = client.get(f"/api/properties/{pid}/geometry").json()
+    g = client.get(f"/api/properties/{pid}/geometry").json()["geometry"]
     assert [p["id"] for p in g["variants"]["plans"]] == ["plan-b"]
     # Sus renders se fueron de la BD; los del otro plan siguen intactos.
     ids = {x["id"] for x in client.get(f"/api/properties/{pid}/renders").json()}
@@ -1469,7 +1473,7 @@ def test_deleting_a_missing_plan_is_404_and_touches_nothing(client, test_propert
     _seed_plans(client, pid, "plan-a")
     r = client.delete(f"/api/properties/{pid}/plans/no-existe")
     assert r.status_code == 404
-    g = client.get(f"/api/properties/{pid}/geometry").json()
+    g = client.get(f"/api/properties/{pid}/geometry").json()["geometry"]
     assert [p["id"] for p in g["variants"]["plans"]] == ["plan-a"]
 
 
@@ -1487,6 +1491,6 @@ def test_deleting_a_plan_leaves_photo_and_original_renders_alone(
     ).json()
     r = client.delete(f"/api/properties/{pid}/plans/plan-a")
     assert r.status_code == 200
-    assert r.json() == {"deletedRenders": 0}
+    assert r.json() == {"deletedRenders": 0, "revision": 2}
     ids = {x["id"] for x in client.get(f"/api/properties/{pid}/renders").json()}
     assert foto["id"] in ids and original["id"] in ids

@@ -12,11 +12,13 @@ def _seed_plans(client, property_id, *plan_ids):
           "floors": [{"id": "floor-1", "name": "Planta Baja", "height_m": 2.6,
                       "extWall_m": 0.15, "intWall_m": 0.10,
                       "vertices": {}, "edges": {}, "rooms": []}]}
+    # Como el cliente real: leer la revisión vigente y declararla al guardar.
+    revision = client.get(f"/api/properties/{property_id}/geometry").json()["revision"]
     r = client.put(f"/api/properties/{property_id}/geometry", json={"geometry": {
         "schemaVersion": 4,
         "variants": {"original": fs,
                      "plans": [{"id": pid, "name": f"Plan {pid}", "fs": fs} for pid in plan_ids]},
-    }})
+    }, "expectedRevision": revision})
     assert r.status_code == 200, r.text
 
 

@@ -245,7 +245,7 @@ def delete_render(render_id: int, property_id: int) -> str:
     return row["file_path"]
 
 
-def delete_plan(property_id: int, plan_id: str) -> tuple[int, list[str]]:
+def delete_plan(property_id: int, plan_id: str) -> tuple[int, list[str], int]:
     """Quita un plan de proyecto del blob de geometría Y borra sus renders, en
     UNA transacción — la mitad peligrosa es la cascada de renders, por eso vive
     aquí y no en properties_db. Un plan borrado no deja ningún tab donde sus
@@ -254,19 +254,24 @@ def delete_plan(property_id: int, plan_id: str) -> tuple[int, list[str]]:
     invisible, no honestidad — decisión de diseño 2026-08-24, con confirmación de
     dos pasos en la UI mostrando el conteo real.
 
-    Devuelve (renders borrados, rutas de storage a borrar DESPUÉS del commit) —
-    mismo orden que delete_render: primero la verdad de la BD, luego los
-    archivos. El filtro del plan en el jsonb no interpreta la forma profunda:
-    solo compara el `id` de cada elemento de `plans`."""
+    Devuelve (renders borrados, rutas de storage a borrar DESPUÉS del commit,
+    nueva geometry_revision) — mismo orden que delete_render: primero la verdad
+    de la BD, luego los archivos. Muta el blob, así que sube la revisión del
+    candado optimista (052) igual que el PUT de geometría: las demás sesiones
+    con el blob viejo en memoria reciben 409 en su siguiente guardado en vez de
+    resucitar el plan borrado; y devuelve la nueva para que ESTA sesión siga
+    guardando sin recargar. El filtro del plan en el jsonb no interpreta la
+    forma profunda: solo compara el `id` de cada elemento de `plans`."""
     with get_db() as conn:
         removed = conn.execute(
             "UPDATE properties SET geometry = jsonb_set(geometry, '{variants,plans}',"
             " COALESCE((SELECT jsonb_agg(p ORDER BY ord)"
             "   FROM jsonb_array_elements(geometry->'variants'->'plans')"
-            "   WITH ORDINALITY AS t(p, ord) WHERE p->>'id' <> %(plan_id)s), '[]'::jsonb))"
+            "   WITH ORDINALITY AS t(p, ord) WHERE p->>'id' <> %(plan_id)s), '[]'::jsonb)),"
+            " geometry_revision = geometry_revision + 1"
             " WHERE id = %(property_id)s"
             "   AND geometry->'variants'->'plans' @> %(needle)s::jsonb"
-            " RETURNING id",
+            " RETURNING id, geometry_revision",
             {"property_id": property_id, "plan_id": plan_id,
              "needle": json.dumps([{"id": plan_id}])},
         ).fetchone()
@@ -289,7 +294,7 @@ def delete_plan(property_id: int, plan_id: str) -> tuple[int, list[str]]:
     # ediciones comparte la referencia de su raíz.
     paths = {r["file_path"] for r in rows} | {
         r["source_plan_path"] for r in rows if r["source_plan_path"]}
-    return len(rows), sorted(paths)
+    return len(rows), sorted(paths), removed["geometry_revision"]
 
 
 class NoGroup(RuntimeError):

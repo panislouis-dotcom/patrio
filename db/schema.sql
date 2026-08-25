@@ -967,6 +967,7 @@ CREATE TABLE public.properties (
     exit_sale_commission_pct real,
     exit_rent_months real,
     exit_strategy text,
+    geometry_revision bigint DEFAULT 0 NOT NULL,
     CONSTRAINT properties_acquisition_cost_pct_check CHECK ((acquisition_cost_pct >= (0)::double precision)),
     CONSTRAINT properties_address_check CHECK ((address <> ''::text)),
     CONSTRAINT properties_asset_type_check CHECK ((asset_type = ANY (ARRAY['casa'::text, 'departamento'::text, 'local'::text, 'edificio'::text, 'lote'::text, 'bodega'::text]))),
@@ -3310,4 +3311,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('048'),
     ('049'),
     ('050'),
-    ('051');
+    ('051'),
+    ('052');

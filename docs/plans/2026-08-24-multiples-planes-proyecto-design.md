@@ -99,9 +99,12 @@ que crea el plan (nunca id efímero en memoria).
   el plan del blob + sus renders (filas y archivos) en una operación; el
   frontend confirma en dos pasos mostrando el conteo real.
 - Concurrencia del blob (dos sesiones editando planes distintos se pisan el
-  guardado completo): riesgo YA existente hoy entre original/planned; app
-  interna monousuario. Documentado como v2 (`geometry_revision` optimista) —
-  no bloquea v1.
+  guardado completo): riesgo YA existente hoy entre original/planned.
+  **Resuelto en este mismo PR** (decisión 2026-08-24, tras un incidente real de
+  planes perdidos): `geometry_revision` en `properties` (migración 052), candado
+  optimista — GET entrega `{geometry, revision}`, el PUT declara
+  `expectedRevision` obligatoria y contesta 409 sin escribir si ya no es la
+  vigente; borrar un plan también la sube y la devuelve.
 
 ### Prospecto / PDF
 
@@ -153,8 +156,9 @@ que crea el plan (nunca id efímero en memoria).
 - Presupuestos/escenarios financieros por plan (si llega: el presupuesto del
   plan elegido ES el de la propiedad — se mueve, no se copia).
 - "Plan elegido" (★ por propiedad, índice único parcial).
-- `geometry_revision` (concurrencia optimista del blob).
 - Historial/revisiones por plan.
+
+(`geometry_revision` estaba aquí y se subió a v1 — ver «Concurrencia del blob».)
 
 ## Tests afectados (mapa completo en los reportes de agentes)
 

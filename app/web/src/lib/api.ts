@@ -1051,19 +1051,26 @@ export async function deleteCotizacion(id: number): Promise<void> {
 
 // ── Floor-plan geometry ──
 
-// El backend es un blob store sin esquema: lo que regresa puede ser v3, v2 viejo o {},
-// así que el caller lo pasa por migrateGeometry en vez de confiar en un tipo aquí.
-export async function fetchPropertyGeometry(id: number): Promise<unknown> {
+// El backend es un blob store sin esquema: el `geometry` que regresa puede ser v3,
+// v2 viejo o {}, así que el caller lo pasa por migrateGeometry en vez de confiar en
+// un tipo aquí. `revision` es el candado optimista (migración 052): guardar
+// reemplaza el blob COMPLETO, así que cada guardado declara de qué revisión
+// partió y el servidor contesta 409 si alguien más guardó en medio — nunca pisa.
+export async function fetchPropertyGeometry(
+  id: number,
+): Promise<{ geometry: unknown; revision: number }> {
   const res = await authFetch(`${BASE}/api/properties/${id}/geometry`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
 
-export async function savePropertyGeometry(id: number, geometry: FloorPlanModel): Promise<FloorPlanModel> {
+export async function savePropertyGeometry(
+  id: number, geometry: FloorPlanModel, expectedRevision: number,
+): Promise<{ geometry: FloorPlanModel; revision: number }> {
   const res = await authFetch(`${BASE}/api/properties/${id}/geometry`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ geometry }),
+    body: JSON.stringify({ geometry, expectedRevision }),
   })
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
@@ -1071,8 +1078,11 @@ export async function savePropertyGeometry(id: number, geometry: FloorPlanModel)
 
 /** Borra un plan de proyecto Y sus renders (cascada deliberada, servidor).
  * Devuelve cuántos renders se llevó — la UI lo confirma en dos pasos ANTES con
- * el conteo local, y esto reporta lo que realmente pasó. */
-export async function deletePropertyPlan(id: number, planId: string): Promise<{ deletedRenders: number }> {
+ * el conteo local, y esto reporta lo que realmente pasó — y la nueva `revision`
+ * del candado (borrar también muta el blob de geometría en el servidor). */
+export async function deletePropertyPlan(
+  id: number, planId: string,
+): Promise<{ deletedRenders: number; revision: number }> {
   const res = await authFetch(`${BASE}/api/properties/${id}/plans/${encodeURIComponent(planId)}`, {
     method: 'DELETE',
   })
