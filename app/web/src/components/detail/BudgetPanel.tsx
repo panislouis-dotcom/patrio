@@ -76,6 +76,11 @@ interface Props {
    * esto, de una sola vez y sin plomería nueva.
    */
   onPropertyChange: (property: Property) => void
+  /** Ámbito del panel: sin él, el presupuesto de la PROPIEDAD (el que alimenta
+   * finanzas); con él, el presupuesto-ESCENARIO de ese plan de proyecto
+   * (addendum 2026-08-24). El montador (PresupuestosPanel) remonta por key al
+   * cambiar de ámbito, así que aquí es constante de por vida del componente. */
+  planId?: string
 }
 
 /** Una fila de la tabla. Un capítulo NO es una entidad: es agrupar por nombre. */
@@ -278,7 +283,11 @@ function freshChapterName(taken: string[]): string {
   for (let i = 2; ; i++) if (!taken.includes(`${base} ${i}`)) return `${base} ${i}`
 }
 
-export function BudgetPanel({ property, onPropertyChange }: Props) {
+export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
+  // Cierre local con el ámbito puesto: los dos sitios de crear renglón pasan
+  // objetos largos y este alias evita colar el planId al final de cada uno.
+  const createLine = (data: Parameters<typeof createBudgetLine>[1]) =>
+    createBudgetLine(propertyId, data, planId)
   const propertyId = property.id
 
   const [lines, setLines] = useState<BudgetLine[]>([])
@@ -393,7 +402,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([fetchBudget(propertyId), getProveedores(), getCategories()])
+    Promise.all([fetchBudget(propertyId, planId), getProveedores(), getCategories()])
       .then(([b, ps, cs]) => { receive(b); setProveedores(ps); setCategories(cs) })
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo cargar el presupuesto'))
       .finally(() => setLoading(false))
@@ -433,7 +442,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
       ].filter(Boolean).join(' ') || null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar')
-      fetchBudget(propertyId).then(receive).catch(() => {})
+      fetchBudget(propertyId, planId).then(receive).catch(() => {})
     }
   }
 
@@ -446,7 +455,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
     const patch = pending.current.get(lineId)
     if (!patch) return
     pending.current.delete(lineId)
-    void run(() => updateBudgetLine(propertyId, lineId, patch))
+    void run(() => updateBudgetLine(propertyId, lineId, patch, planId))
   }
 
   /** Un cambio que ya es definitivo al hacerse: no espera a que suelten nada. */
@@ -705,7 +714,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
       next.add(to)
       return next
     })
-    void run(() => renameBudgetChapter(propertyId, from, to))
+    void run(() => renameBudgetChapter(propertyId, from, to, planId))
   }
 
   // ── Estilos ─────────────────────────────────────────────────────────────────
@@ -894,23 +903,32 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
         </span>
         <div style={{ display: 'flex', gap: '6px' }}>
           <button
-            onClick={() => void run(() => createBudgetLine(propertyId, {
+            onClick={() => void run(() => createLine({
               chapterName: freshChapterName(chapters), name: 'Partida nueva',
             }))}
             style={ghost}
           >
             + CAPÍTULO
           </button>
-          <button onClick={toggleSourcing} style={ghost}>
-            COPIAR DE OTRA OBRA {sourcing ? '▾' : '▸'}
-          </button>
-          {/* La otra dirección, y por eso es otro botón: «arrancar desde» jala
-              un presupuesto ajeno hacia esta obra, esto se lleva el de esta obra
-              hacia otras. Meterlas en el mismo bloque haría que se pareciera un
-              copiado que trae a uno que manda. */}
-          <button onClick={togglePush} style={ghost}>
-            COPIAR A OTRAS OBRAS {pushing ? '▾' : '▸'}
-          </button>
+          {/* El copiado entre OBRAS es del presupuesto de la propiedad; un
+              escenario copia solo por sus dos puertas propias: su nacimiento
+              (copiado de la propiedad) y «USAR EN LA PROPIEDAD». Ofrecerlo aquí
+              mandaría renglones de otra obra a un escenario — o peor, el
+              escenario a otras obras como si fuera el compromiso vigente. */}
+          {planId == null && (
+            <>
+              <button onClick={toggleSourcing} style={ghost}>
+                COPIAR DE OTRA OBRA {sourcing ? '▾' : '▸'}
+              </button>
+              {/* La otra dirección, y por eso es otro botón: «arrancar desde» jala
+                  un presupuesto ajeno hacia esta obra, esto se lleva el de esta obra
+                  hacia otras. Meterlas en el mismo bloque haría que se pareciera un
+                  copiado que trae a uno que manda. */}
+              <button onClick={togglePush} style={ghost}>
+                COPIAR A OTRAS OBRAS {pushing ? '▾' : '▸'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1227,7 +1245,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                         <button
                           onClick={() => {
                             if (!window.confirm(`¿Quitar el capítulo «${row.name}» con sus ${row.lines.length} partidas? Lo detallado vuelve a «Otros, por detallar» y el total no se mueve.`)) return
-                            void run(() => deleteBudgetChapter(propertyId, row.name))
+                            void run(() => deleteBudgetChapter(propertyId, row.name, planId))
                           }}
                           aria-label={`Quitar capítulo ${row.name}`}
                           style={kill}
@@ -1247,7 +1265,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                   <tr key={`a${row.id}`} style={{ borderBottom: `1px solid ${colors.border}` }}>
                     <td colSpan={8} style={{ padding: '3px 6px 6px', paddingLeft: `${6 + indent}px` }}>
                       <button
-                        onClick={() => void run(() => createBudgetLine(propertyId, {
+                        onClick={() => void run(() => createLine({
                           chapterName: row.chapterName, name: 'Partida nueva',
                         }))}
                         style={ghost}
@@ -1430,7 +1448,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                   </td>
                   <td style={{ ...td, textAlign: 'right' }}>
                     <button
-                      onClick={() => void run(() => deleteBudgetLine(propertyId, line.id))}
+                      onClick={() => void run(() => deleteBudgetLine(propertyId, line.id, planId))}
                       aria-label={`Quitar ${line.name}`}
                       style={kill}
                     >
@@ -1454,7 +1472,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                           <span style={micro}>{pay.paidOn}</span>
                           {pay.notes && <span style={micro}>{pay.notes}</span>}
                           <button
-                            onClick={() => void run(() => deleteBudgetPayment(propertyId, line.id, pay.id))}
+                            onClick={() => void run(() => deleteBudgetPayment(propertyId, line.id, pay.id, planId))}
                             aria-label={`Borrar pago de ${fmtMXN(pay.amount)}`}
                             style={kill}
                           >
@@ -1481,7 +1499,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                           disabled={!payAmount || !payDate}
                           onClick={() => {
                             if (!payAmount || !payDate) return
-                            void run(() => addBudgetPayment(propertyId, line.id, { amount: payAmount, paidOn: payDate }))
+                            void run(() => addBudgetPayment(propertyId, line.id, { amount: payAmount, paidOn: payDate }, planId))
                             setPayAmount(undefined)
                           }}
                           style={{
@@ -1527,7 +1545,7 @@ export function BudgetPanel({ property, onPropertyChange }: Props) {
                     <button
                       onClick={() => {
                         if (newTotal == null) return
-                        void run(() => setBudgetTotal(propertyId, newTotal))
+                        void run(() => setBudgetTotal(propertyId, newTotal, planId))
                         setAdjusting(false)
                       }}
                       style={{ ...ghost, borderColor: colors.primary, color: colors.primary }}

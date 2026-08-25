@@ -45,7 +45,7 @@ import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
 import { FotosPanel } from './detail/FotosPanel'
-import { BudgetPanel } from './detail/BudgetPanel'
+import { PresupuestosPanel } from './detail/PresupuestosPanel'
 import { SectionDivider } from './detail/SectionDivider'
 import { ErrorBanner } from './detail/ErrorBanner'
 import { TransitionModal } from './detail/TransitionModal'
@@ -1357,7 +1357,7 @@ export function PropertyDetailPage() {
               // ya no es función del costo, ver underwriting.py). Un solo
               // setProperty y la ficha entera queda al día.
               label: 'presupuesto',
-              panel: <BudgetPanel property={p} onPropertyChange={setProperty} />,
+              panel: <PresupuestosPanel property={p} geometry={geometry} onPropertyChange={setProperty} />,
             },
           ]}
         />

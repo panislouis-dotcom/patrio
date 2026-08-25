@@ -1017,7 +1017,7 @@ describe('PropertyDetailPage', () => {
     expect(await screen.findByText('PRESUPUESTO DE OBRA')).not.toBeNull()
     expect(screen.getByText('TOTAL · ES EL COSTO DE OBRA')).not.toBeNull()
     // Y el total de la tabla es la misma cifra que la obra del desglose
-    expect(api.fetchBudget).toHaveBeenCalledWith(7)
+    expect(api.fetchBudget).toHaveBeenCalledWith(7, undefined)
   })
 
   it('el costo de obra por m² se prellena con el cociente derivado al entrar a edición', async () => {

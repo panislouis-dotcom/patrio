@@ -339,7 +339,7 @@ describe('BudgetPanel', () => {
 
     fireEvent.blur(caja)
     await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(api.updateBudgetLine).mock.calls[0].slice(1)).toEqual([1, { unitPrice: 1500 }])
+    expect(vi.mocked(api.updateBudgetLine).mock.calls[0].slice(1)).toEqual([1, { unitPrice: 1500 }, undefined])
   })
 
   it('vaciar el nombre de una partida no lo manda: se revierte a lo guardado', async () => {
@@ -557,7 +557,7 @@ describe('BudgetPanel', () => {
     fireEvent.change(screen.getByLabelText('Nuevo total de obra'), { target: { value: '1500000' } })
     fireEvent.click(screen.getByText('FIJAR TOTAL'))
 
-    await waitFor(() => expect(api.setBudgetTotal).toHaveBeenCalledWith(7, 1_500_000))
+    await waitFor(() => expect(api.setBudgetTotal).toHaveBeenCalledWith(7, 1_500_000, undefined))
     await waitFor(() => expect(onChange).toHaveBeenCalled())
   })
 
@@ -600,7 +600,7 @@ describe('BudgetPanel', () => {
     fireEvent.click(screen.getByText('AGREGAR PAGO'))
 
     await waitFor(() => expect(api.addBudgetPayment).toHaveBeenCalledWith(
-      7, 1, { amount: 6_000, paidOn: '2026-06-15' },
+      7, 1, { amount: 6_000, paidOn: '2026-06-15' }, undefined,
     ))
   })
 
@@ -870,7 +870,7 @@ describe('BudgetPanel', () => {
     fireEvent.click(fija)
     await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalled())
     expect(vi.mocked(api.updateBudgetLine).mock.calls[0].slice(1))
-      .toEqual([2, { isProportional: true }])
+      .toEqual([2, { isProportional: true }, undefined])
   })
 
   /** Abre «copiar de otra obra» y pide la copia PROPORCIONAL. */

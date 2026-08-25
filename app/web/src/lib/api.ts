@@ -1096,8 +1096,11 @@ export async function uploadFloorplanImage(id: number, file: File): Promise<{ im
 // herramienta que se abre en desarrollo. Hay que poder presupuestar antes de
 // ofertar.
 
-const budgetUrl = (propertyId: number, path = '') =>
+// `planId` cambia el ámbito al presupuesto-escenario de ese plan (addendum
+// 2026-08-24); sin él, el de la propiedad — el único que alimenta finanzas.
+const budgetUrl = (propertyId: number, path = '', planId?: string) =>
   `${BASE}/api/properties/${propertyId}/budget${path}`
+  + (planId ? `?planId=${encodeURIComponent(planId)}` : '')
 
 /**
  * Toda escritura del presupuesto responde lo mismo, así que se lee en un solo
@@ -1115,14 +1118,14 @@ async function budgetWrite(url: string, method: string, body?: unknown): Promise
   return res.json()
 }
 
-export async function fetchBudget(propertyId: number): Promise<Budget> {
-  const res = await authFetch(budgetUrl(propertyId))
+export async function fetchBudget(propertyId: number, planId?: string): Promise<Budget> {
+  const res = await authFetch(budgetUrl(propertyId, '', planId))
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
-export function createBudgetLine(propertyId: number, data: BudgetLineCreate): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, '/lines'), 'POST', data)
+export function createBudgetLine(propertyId: number, data: BudgetLineCreate, planId?: string): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, '/lines', planId), 'POST', data)
 }
 
 /**
@@ -1133,13 +1136,34 @@ export function createBudgetLine(propertyId: number, data: BudgetLineCreate): Pr
  * presupuesto no necesita el clear-fields que sí necesita la ficha.
  */
 export function updateBudgetLine(
-  propertyId: number, lineId: number, data: BudgetLinePatch,
+  propertyId: number, lineId: number, data: BudgetLinePatch, planId?: string,
 ): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`), 'PATCH', data)
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`, planId), 'PATCH', data)
 }
 
-export function deleteBudgetLine(propertyId: number, lineId: number): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`), 'DELETE')
+export function deleteBudgetLine(propertyId: number, lineId: number, planId?: string): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`, planId), 'DELETE')
+}
+
+/** El escenario de un plan nace por acción explícita: copiado del presupuesto
+ * de la propiedad (default) o vacío. Nunca al leer. */
+export async function createPlanBudget(
+  propertyId: number, planId: string, copyFromProperty = true,
+): Promise<{ budget: Budget; linesAdded: number; linesSkipped: number }> {
+  const res = await authFetch(
+    `${BASE}/api/properties/${propertyId}/budget/plans/${encodeURIComponent(planId)}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ copyFromProperty }) })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+/** «Usar este plan»: sus renglones entran al presupuesto de la PROPIEDAD por la
+ * misma puerta que copiar de otra obra — deduplicar es saltar, lo capturado no
+ * se pisa, y se reporta cuánto entró y cuánto ya estaba. */
+export function usePlanBudget(propertyId: number, planId: string): Promise<BudgetWrite> {
+  return budgetWrite(
+    `${BASE}/api/properties/${propertyId}/budget/plans/${encodeURIComponent(planId)}/use`, 'POST')
 }
 
 /**
@@ -1149,8 +1173,8 @@ export function deleteBudgetLine(propertyId: number, lineId: number): Promise<Bu
  * sola partida. Mezclarlas volvería imposible contestar si el presupuesto
  * creció o solo se abrió.
  */
-export function setBudgetTotal(propertyId: number, amount: number): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, '/total'), 'PUT', { amount })
+export function setBudgetTotal(propertyId: number, amount: number, planId?: string): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, '/total', planId), 'PUT', { amount })
 }
 
 /**
@@ -1159,27 +1183,27 @@ export function setBudgetTotal(propertyId: number, amount: number): Promise<Budg
  * presupuesto a medio renombrar si algo falla en medio.
  */
 export function renameBudgetChapter(
-  propertyId: number, chapter: string, name: string,
+  propertyId: number, chapter: string, name: string, planId?: string,
 ): Promise<BudgetWrite> {
   return budgetWrite(
-    budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`), 'PATCH', { name },
+    budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`, planId), 'PATCH', { name },
   )
 }
 
-export function deleteBudgetChapter(propertyId: number, chapter: string): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`), 'DELETE')
+export function deleteBudgetChapter(propertyId: number, chapter: string, planId?: string): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`, planId), 'DELETE')
 }
 
 export function addBudgetPayment(
-  propertyId: number, lineId: number, data: BudgetPaymentCreate,
+  propertyId: number, lineId: number, data: BudgetPaymentCreate, planId?: string,
 ): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments`), 'POST', data)
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments`, planId), 'POST', data)
 }
 
 export function deleteBudgetPayment(
-  propertyId: number, lineId: number, paymentId: number,
+  propertyId: number, lineId: number, paymentId: number, planId?: string,
 ): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments/${paymentId}`), 'DELETE')
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments/${paymentId}`, planId), 'DELETE')
 }
 
 /**
