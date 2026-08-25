@@ -166,3 +166,35 @@ Backend: test_renders.py (validación server-side de planKey), test_prospectus_h
 (patrón test_backfill_floor_ids.py). E2E: 09-propiedad-detalle.spec.ts (golden path
 PARTIR + selector), 02-propiedades.spec.ts (menú). Los asserts desactualizados se
 arreglan EN LA MISMA PASADA (lección e2e-staleness).
+
+## Addendum 2026-08-24: presupuesto por plan (escenarios)
+
+Decisión de Eduardo: cada plan puede llevar SU presupuesto-escenario, sin tocar
+la invariante central — **el presupuesto de la propiedad (plan_id NULL) sigue
+siendo LA respuesta viva** que alimenta totalInvestment/ROI; el de un plan
+responde otra pregunta ("¿cuánto costaría esta propuesta?") y jamás entra a las
+finanzas. Cuando se decide un plan, sus renglones se copian al de la propiedad
+con `copy_lines` — la maquinaria EXISTENTE de `budget/apply`, cuya semántica es
+exactamente la correcta para ese momento: deduplicar es saltar, nunca
+actualizar (el dinero ya capturado en la propiedad no se pisa), el residuo no
+viaja, y se reporta (copiados, saltados).
+
+- `budgets.plan_id text NULL` (migración 051): id congelado del plan (jsonb, sin
+  FK — mismo patrón que renders.source_variant). El único índice por propiedad
+  se parte en dos parciales: uno para el de la propiedad (plan_id IS NULL), otro
+  por (property_id, plan_id).
+- **Auditoría obligatoria**: toda query que junta budgets por property_id gana
+  `plan_id IS NULL` (totals_sql, métricas, la vista budget_price_observations —
+  un escenario NACE copiado, incluirlo duplicaría cada observación de precio).
+  El DELETE de propiedad sí arrastra todos (correcto tal cual).
+- Nacimiento: copiado del presupuesto de la propiedad (copy_lines) o vacío.
+- "USAR EN LA PROPIEDAD": copy_lines escenario→propiedad, confirmación de dos
+  pasos, muestra (copiados, saltados). Sin modo reemplazo.
+- Borrar un plan cascadea su presupuesto (misma operación que ya cascadea
+  renders).
+- PDF: cada sección "Plano y propuesta · Plan X" imprime el desglose de SU
+  presupuesto-escenario si existe (null sobre fabricado: sin presupuesto, nada);
+  el bloque "Presupuesto de obra" de la propiedad se imprime igual que siempre.
+- UI: selector de ámbito en el tab PRESUPUESTO (Propiedad | Plan A | …), mismo
+  panel; los pagos/compromisos sobre un escenario no se bloquean mecánicamente
+  pero las finanzas solo leen plan_id NULL, así que no contaminan nada.
