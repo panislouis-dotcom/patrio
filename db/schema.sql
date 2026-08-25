@@ -311,7 +311,9 @@ CREATE TABLE public.budgets (
     id bigint NOT NULL,
     property_id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    plan_id text,
+    CONSTRAINT budgets_plan_id_check CHECK (((plan_id IS NULL) OR (plan_id <> ''::text)))
 );
 
 
@@ -338,7 +340,7 @@ CREATE VIEW public.budget_price_observations AS
      JOIN LATERAL ( SELECT COALESCE(sum(p.amount), (0)::numeric) AS paid_amount
            FROM public.budget_line_payments p
           WHERE (p.line_id = l.id)) pagos ON (true))
-  WHERE ((l.closed_at IS NOT NULL) AND (pagos.paid_amount > (0)::numeric));
+  WHERE ((l.closed_at IS NOT NULL) AND (pagos.paid_amount > (0)::numeric) AND (b.plan_id IS NULL));
 
 
 --
@@ -2788,7 +2790,14 @@ CREATE UNIQUE INDEX uq_budget_lines_residual ON public.budget_lines USING btree 
 -- Name: uq_budgets_property; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_budgets_property ON public.budgets USING btree (property_id);
+CREATE UNIQUE INDEX uq_budgets_property ON public.budgets USING btree (property_id) WHERE (plan_id IS NULL);
+
+
+--
+-- Name: uq_budgets_property_plan; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_budgets_property_plan ON public.budgets USING btree (property_id, plan_id) WHERE (plan_id IS NOT NULL);
 
 
 --
@@ -3300,4 +3309,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('047'),
     ('048'),
     ('049'),
-    ('050');
+    ('050'),
+    ('051');

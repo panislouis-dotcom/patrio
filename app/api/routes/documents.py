@@ -67,6 +67,20 @@ def _embed_opportunity_extras(opportunities: list[dict]) -> None:
     with get_db() as conn:
         for p in opportunities:
             p["budget"] = budget_db.get_budget(conn, p["id"])
+            # El presupuesto-escenario de cada plan SELECCIONADO (las hojas ya
+            # vienen recortadas por planIds): se imprime dentro de su sección.
+            # Sin escenario, nada — null sobre fabricado. Un plan sin pisos
+            # dibujados no tiene hojas y por tanto tampoco imprime su
+            # presupuesto: una propuesta sin plano no es presentable todavía.
+            plan_ids = {s["variant"] for s in p.get("planSheets", [])
+                        if s["variant"] != "original"}
+            budgets = {}
+            for plan_id in plan_ids:
+                try:
+                    budgets[plan_id] = budget_db.get_budget(conn, p["id"], plan_id)
+                except budget_db.BudgetNotFound:
+                    pass
+            p["planBudgets"] = budgets
 
 
 def _embed_images(items: list[dict]) -> None:

@@ -30,6 +30,7 @@ central de este módulo: volver a aplicarlo inflaría un 30% el costo de obra de
 cada propiedad sin un test rojo, sin un error, solo con números más grandes que
 parecen plausibles.
 """
+import json
 from decimal import Decimal
 
 from api.db import _row_to_dict
@@ -197,6 +198,7 @@ def totals_sql(property_ref: str) -> str:
                            FROM budget_line_payments p
                           WHERE p.line_id = l.id) pagos ON TRUE
      WHERE b.property_id = {property_ref}
+       AND b.plan_id IS NULL
 """
 
 
@@ -269,12 +271,12 @@ _LINES_SQL = """
 """
 
 
-def get_budget(conn, property_id: int) -> dict:
+def get_budget(conn, property_id: int, plan_id: str | None = None) -> dict:
     """El presupuesto completo de una propiedad, con sus renglones y sus pagos.
 
     El residuo va al final del orden a propósito: es lo que queda por detallar,
     no un capítulo más, y leerlo al final es leerlo como se lee un remanente."""
-    budget_id = _require_budget(conn, property_id)
+    budget_id = _require_budget(conn, property_id, plan_id)
     rows = conn.execute(_LINES_SQL, (budget_id,)).fetchall()
     lines = []
     for row in rows:
@@ -284,6 +286,7 @@ def get_budget(conn, property_id: int) -> dict:
     return {
         "id": budget_id,
         "propertyId": property_id,
+        "planId": plan_id,
         "lines": lines,
         # Los capítulos son los que los renglones nombran: `chapter_name` es una
         # COPIA en la fila, no una referencia, así que un capítulo no existe sin
@@ -303,16 +306,32 @@ def _chapters(lines: list[dict]) -> list[str]:
 
 # ─── El presupuesto y su residuo ──────────────────────────────────────────────
 
-def _require_budget(conn, property_id: int) -> int:
-    """El id del presupuesto de la propiedad, creándolo si le falta.
+def _require_budget(conn, property_id: int, plan_id: str | None = None) -> int:
+    """El id del presupuesto de la propiedad (plan_id None) o del escenario de un
+    plan, creándolo si le falta — SOLO en el caso de la propiedad.
 
     Crear al leer no es un atajo: es lo que sostiene la invariante de la que
     depende todo lo demás —toda propiedad tiene presupuesto— frente a filas que
     entraron por fuera del API (una semilla, un fixture, un INSERT a mano). Sin
     ella volvería la rama «si existe presupuesto», que es la rama que este
-    diseño existe para no tener."""
+    diseño existe para no tener.
+
+    El escenario de un plan es lo contrario a propósito: NO se auto-crea. Nace
+    de una acción explícita (copiado del de la propiedad, o vacío — ver
+    create_plan_budget); auto-crearlo al leer sembraría escenarios vacíos con
+    solo abrir la pestaña. Sin escenario, BudgetNotFound — la UI lo convierte
+    en los botones de nacimiento."""
+    if plan_id is not None:
+        row = conn.execute(
+            "SELECT id FROM budgets WHERE property_id = %s AND plan_id = %s",
+            (property_id, plan_id),
+        ).fetchone()
+        if row is None:
+            raise BudgetNotFound(
+                f"El plan {plan_id} de la propiedad {property_id} no tiene presupuesto todavía")
+        return row["id"]
     row = conn.execute(
-        "SELECT id FROM budgets WHERE property_id = %s", (property_id,)
+        "SELECT id FROM budgets WHERE property_id = %s AND plan_id IS NULL", (property_id,)
     ).fetchone()
     if row is not None:
         return row["id"]
@@ -321,7 +340,7 @@ def _require_budget(conn, property_id: int) -> int:
     return create_budget(conn, property_id, Decimal(0))
 
 
-def create_budget(conn, property_id: int, estimate) -> int:
+def create_budget(conn, property_id: int, estimate, plan_id: str | None = None) -> int:
     """El presupuesto de una propiedad recién capturada: una sola fila, «Otros,
     por detallar», con el estimado grueso entero.
 
@@ -329,7 +348,8 @@ def create_budget(conn, property_id: int, estimate) -> int:
     ningún momento en que el costo de obra cambie de fuente— porque nace aquí,
     en `prospecto`, y de aquí en adelante detallar solo lo reparte."""
     budget_id = conn.execute(
-        "INSERT INTO budgets (property_id) VALUES (%s) RETURNING id", (property_id,)
+        "INSERT INTO budgets (property_id, plan_id) VALUES (%s, %s) RETURNING id",
+        (property_id, plan_id),
     ).fetchone()["id"]
     conn.execute(
         "INSERT INTO budget_lines"
@@ -707,7 +727,8 @@ def _proportional_factor(conn, source_budget_id: int,
 
 def apply_budget(conn, property_id: int, source_budget_id: int,
                  chapters: list[str] | None = None, *,
-                 proportional: bool = False) -> tuple[int, int, Decimal]:
+                 proportional: bool = False,
+                 plan_id: str | None = None) -> tuple[int, int, Decimal]:
     """Arranca esta obra desde el presupuesto de otra.
 
     Los renglones se SUMAN a lo que ya hubiera: el residuo baja lo que ellos
@@ -737,7 +758,7 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
 
     `budgetIncrease` significa lo mismo en las dos: cuánto REBASÓ el detalle al
     objetivo."""
-    budget_id = _require_budget(conn, property_id)
+    budget_id = _require_budget(conn, property_id, plan_id)
     if source_budget_id == budget_id:
         raise BudgetError("Un presupuesto no se copia sobre sí mismo.")
     if conn.execute("SELECT 1 FROM budgets WHERE id = %s",
@@ -787,6 +808,7 @@ _SOURCES_SQL = """
               FROM budget_lines l
              WHERE l.budget_id = b.id AND NOT l.is_residual) t ON TRUE
      WHERE t.line_count > 0
+       AND b.plan_id IS NULL
        AND (%s::bigint IS NULL OR b.property_id <> %s::bigint)
      ORDER BY lower(p.name)
 """
@@ -916,7 +938,7 @@ _RESIDUAL_IS_NOT_TYPED = (
     "la obra, ajusta el presupuesto.")
 
 
-def create_line(conn, property_id: int, data: dict) -> tuple[int, Decimal]:
+def create_line(conn, property_id: int, data: dict, plan_id: str | None = None) -> tuple[int, Decimal]:
     """Un renglón detallado. El residuo baja lo mismo que este renglón sube, así
     que el costo de obra —y con él la inversión total— no se mueve.
 
@@ -926,7 +948,7 @@ def create_line(conn, property_id: int, data: dict) -> tuple[int, Decimal]:
 
     Un renglón nace suelto, siempre: captura manual —capítulo, nombre, unidad,
     cantidad y precio tecleados— y nada más. Es el caso barato a propósito."""
-    budget_id = _require_budget(conn, property_id)
+    budget_id = _require_budget(conn, property_id, plan_id)
     total_antes, _ = _totals(conn, budget_id)
 
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
@@ -950,14 +972,14 @@ def create_line(conn, property_id: int, data: dict) -> tuple[int, Decimal]:
     return line_id, _settle_residual(conn, budget_id, total_antes)
 
 
-def update_line(conn, property_id: int, line_id: int, data: dict) -> Decimal:
+def update_line(conn, property_id: int, line_id: int, data: dict, plan_id: str | None = None) -> Decimal:
     """Cambia un renglón detallado y vuelve a cuadrar el residuo contra el total
     que el presupuesto tenía antes.
 
     `data` trae SOLO lo que el cliente mandó, y un `None` ahí significa «quítalo»
     —no «no lo toques»—: los campos de NULLABLE_LINE_FIELDS se vacían así y no
     hay otra puerta para hacerlo."""
-    budget_id = _require_budget(conn, property_id)
+    budget_id = _require_budget(conn, property_id, plan_id)
     row = conn.execute(
         "SELECT is_residual FROM budget_lines WHERE id = %s AND budget_id = %s",
         (line_id, budget_id),
@@ -984,10 +1006,10 @@ def update_line(conn, property_id: int, line_id: int, data: dict) -> Decimal:
     return _settle_residual(conn, budget_id, total_antes)
 
 
-def delete_line(conn, property_id: int, line_id: int) -> dict:
+def delete_line(conn, property_id: int, line_id: int, plan_id: str | None = None) -> dict:
     """Quita un renglón detallado y le devuelve su importe al residuo: dejar de
     detallar es lo contrario de detallar, así que tampoco mueve el total."""
-    budget_id = _require_budget(conn, property_id)
+    budget_id = _require_budget(conn, property_id, plan_id)
     line = _get_line(conn, budget_id, line_id)
     if line["isResidual"]:
         raise BudgetError(
@@ -1000,7 +1022,7 @@ def delete_line(conn, property_id: int, line_id: int) -> dict:
     return line
 
 
-def set_total(conn, property_id: int, amount) -> Decimal:
+def set_total(conn, property_id: int, amount, plan_id: str | None = None) -> Decimal:
     """Ajusta el TOTAL de la obra presupuestada, moviendo el residuo.
 
     Es la otra operación —la que sí cambia cuánto va a costar la obra— y existe
@@ -1010,7 +1032,7 @@ def set_total(conn, property_id: int, amount) -> Decimal:
     contestar si el presupuesto creció o solo se abrió.
 
     Devuelve el nuevo residuo."""
-    budget_id = _require_budget(conn, property_id)
+    budget_id = _require_budget(conn, property_id, plan_id)
     objetivo = to_decimal(amount)
     if objetivo < 0:
         raise BudgetError("El presupuesto de obra no puede ser negativo.")
@@ -1031,8 +1053,8 @@ def set_total(conn, property_id: int, amount) -> Decimal:
 # varios renglones a la vez y hacerlas renglón por renglón dejaría el
 # presupuesto medio renombrado si algo falla en medio.
 
-def rename_chapter(conn, property_id: int, chapter: str, new_name: str) -> int:
-    budget_id = _require_budget(conn, property_id)
+def rename_chapter(conn, property_id: int, chapter: str, new_name: str, plan_id: str | None = None) -> int:
+    budget_id = _require_budget(conn, property_id, plan_id)
     new_name = (new_name or "").strip()
     if not new_name:
         raise BudgetError("El capítulo necesita un nombre.")
@@ -1048,11 +1070,11 @@ def rename_chapter(conn, property_id: int, chapter: str, new_name: str) -> int:
     return changed
 
 
-def delete_chapter(conn, property_id: int, chapter: str) -> int:
+def delete_chapter(conn, property_id: int, chapter: str, plan_id: str | None = None) -> int:
     """Borra el capítulo con sus renglones. Lo detallado vuelve al residuo, así
     que el total sigue sin moverse: quitar el detalle es lo contrario de
     ponerlo, no una rebaja del presupuesto."""
-    budget_id = _require_budget(conn, property_id)
+    budget_id = _require_budget(conn, property_id, plan_id)
     if chapter == RESIDUAL_CHAPTER:
         raise BudgetError(
             f"«{RESIDUAL_CHAPTER}» no se borra: ahí vive el remanente del presupuesto.")
@@ -1075,9 +1097,9 @@ def delete_chapter(conn, property_id: int, chapter: str) -> int:
 # cosa. Un pago no toca el residuo ni el total: pagar no cambia lo que la obra
 # estaba planeada a costar, y esa brecha es justamente lo que se quiere ver.
 
-def add_payment(conn, property_id: int, line_id: int, amount, paid_on=None,
+def add_payment(conn, property_id: int, line_id: int, amount, paid_on=None, plan_id: str | None = None,
                 notes: str = "") -> int:
-    budget_id = _require_budget(conn, property_id)
+    budget_id = _require_budget(conn, property_id, plan_id)
     _get_line(conn, budget_id, line_id)
     if to_decimal(amount) <= 0:
         raise BudgetError("Un pago se captura positivo.")
@@ -1088,8 +1110,8 @@ def add_payment(conn, property_id: int, line_id: int, amount, paid_on=None,
     ).fetchone()["id"]
 
 
-def delete_payment(conn, property_id: int, line_id: int, payment_id: int) -> None:
-    budget_id = _require_budget(conn, property_id)
+def delete_payment(conn, property_id: int, line_id: int, payment_id: int, plan_id: str | None = None) -> None:
+    budget_id = _require_budget(conn, property_id, plan_id)
     _get_line(conn, budget_id, line_id)
     deleted = conn.execute(
         "DELETE FROM budget_line_payments WHERE id = %s AND line_id = %s",
@@ -1133,3 +1155,55 @@ def drop_budget(conn, property_id: int) -> None:
     borrado, y solo después de que `holds_captured_work` dijo que no hay nada
     que perder."""
     conn.execute("DELETE FROM budgets WHERE property_id = %s", (property_id,))
+
+
+# ─── Presupuesto-escenario por plan de proyecto (addendum 2026-08-24) ─────────
+
+def _plan_exists(conn, property_id: int, plan_id: str) -> bool:
+    """Membresía del plan en el geometry vivo — misma pregunta (y misma query de
+    containment) que renders_db.variant_exists, aquí con la conexión del
+    llamador porque el nacimiento del escenario es parte de UNA transacción."""
+    return conn.execute(
+        "SELECT 1 FROM properties WHERE id = %s"
+        " AND geometry->'variants'->'plans' @> %s::jsonb",
+        (property_id, json.dumps([{"id": plan_id}])),
+    ).fetchone() is not None
+
+
+def create_plan_budget(conn, property_id: int, plan_id: str,
+                       copy_from_property: bool) -> tuple[int, int, int]:
+    """Nace el escenario de un plan: copiado del presupuesto de la propiedad
+    (misma maquinaria de siempre — copy_lines + residuo asentado, exactamente el
+    flujo de apply_budget con otro destino) o vacío. Devuelve
+    (budget_id, copiados, saltados).
+
+    El escenario nace con el MISMO total que el presupuesto de la propiedad
+    cuando se copia: los renglones detallados viajan y el residuo del escenario
+    absorbe el resto, igual que copiar entre obras. Vacío = residuo en cero.
+    NUNCA se auto-crea al leer (ver _require_budget)."""
+    if not _plan_exists(conn, property_id, plan_id):
+        raise BudgetNotFound(
+            f"El plan {plan_id} no existe en la propiedad {property_id}")
+    if conn.execute(
+        "SELECT 1 FROM budgets WHERE property_id = %s AND plan_id = %s",
+        (property_id, plan_id),
+    ).fetchone() is not None:
+        raise BudgetError(f"El plan {plan_id} ya tiene presupuesto")
+    if not copy_from_property:
+        return create_budget(conn, property_id, Decimal(0), plan_id=plan_id), 0, 0
+    source_id = _require_budget(conn, property_id)
+    objetivo, _ = _totals(conn, source_id)
+    budget_id = create_budget(conn, property_id, objetivo, plan_id=plan_id)
+    copied, skipped = copy_lines(conn, source_id, budget_id)
+    _settle_residual(conn, budget_id, objetivo)
+    return budget_id, copied, skipped
+
+
+def use_plan_budget(conn, property_id: int, plan_id: str) -> tuple[int, int, Decimal]:
+    """«Usar este plan»: los renglones del escenario entran al presupuesto de la
+    propiedad por la MISMA puerta que copiar de otra obra (apply_budget →
+    copy_lines): deduplicar es saltar —el dinero ya capturado en la propiedad no
+    se pisa—, el residuo no viaja, y se reporta (copiados, saltados, creció).
+    El escenario queda intacto: es la propuesta, y la propuesta se califica."""
+    source_id = _require_budget(conn, property_id, plan_id)
+    return apply_budget(conn, property_id, source_id)

@@ -1224,6 +1224,23 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
     if sections.opportunity_plans:
         sheets_all = p.get("planSheets") or []
         heads = p.get("renderHeads") or []
+        plan_budgets = p.get("planBudgets") or {}
+
+        def _plan_budget_html(plan_id, plan_name):
+            # El presupuesto-ESCENARIO del plan (addendum 2026-08-24), dentro de
+            # su propia sección — distinto del "Presupuesto de obra" de la
+            # propiedad (más abajo), que es el compromiso vigente y se imprime
+            # igual que siempre. Sin escenario, nada: null sobre fabricado.
+            budget = plan_budgets.get(plan_id)
+            if not budget:
+                return ""
+            h = _budget_full(budget.get("lines", []), budget.get("chapters", []))
+            if not h:
+                return ""
+            title = f"Presupuesto · {plan_name}" if plan_name else "Presupuesto del plan"
+            return (f'<div class="detail-section">'
+                    f'<div class="col-label">{_esc(title)}</div>{h}</div>')
+
         plans_present, seen_plans = [], set()
         for s in sheets_all:
             v = s["variant"]
@@ -1236,6 +1253,8 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
             if h:
                 plan_sections_html = (f'<div class="detail-section">'
                                       f'<div class="col-label">Plano y propuesta</div>{h}</div>')
+                if only is not None:
+                    plan_sections_html += _plan_budget_html(only, plans_present[0][1])
         else:
             parts = []
             for plan_id, plan_name in plans_present:
@@ -1244,6 +1263,7 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
                     title = f"Plano y propuesta · {plan_name}" if plan_name else "Plano y propuesta"
                     parts.append(f'<div class="detail-section">'
                                  f'<div class="col-label">{_esc(title)}</div>{h}</div>')
+                    parts.append(_plan_budget_html(plan_id, plan_name))
             plan_sections_html = "".join(parts)
 
     photo_rows = (_photo_rows(p.get("images") or [], p.get("renderHeads") or [])

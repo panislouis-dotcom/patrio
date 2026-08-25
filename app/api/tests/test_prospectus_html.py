@@ -821,3 +821,42 @@ def test_cada_seccion_solo_parea_los_renders_de_su_plan():
     # El render de cada plan cae dentro de SU sección, no en la del otro.
     assert a_pos < html.find("data:render-a") < b_pos
     assert html.find("data:render-b") > b_pos
+
+
+def test_cada_seccion_de_plan_imprime_su_presupuesto_escenario_si_existe():
+    p = {**BASE_PROPERTY,
+         "planSheets": [
+             _sheet("abc", "original", "<svg>O</svg>"),
+             _plan_sheet("abc", "plan-a", "Plan A", "<svg>A</svg>"),
+             _plan_sheet("abc", "plan-b", "Plan B", "<svg>B</svg>"),
+         ],
+         "renderHeads": [],
+         "planBudgets": {
+             "plan-a": {"lines": [
+                 {"chapterName": "Obra", "name": "Albañilería", "unit": "lote",
+                  "quantity": 1, "unitPrice": 100_000, "isResidual": False,
+                  "committedAmount": None, "closedAt": None, "payments": [],
+                  "supplierId": None, "actualQuantity": None, "isProportional": True}],
+              "chapters": ["Obra"]},
+             # plan-b sin escenario: su sección no imprime presupuesto.
+         }}
+    html = _opportunity_detail(p)
+    assert "Presupuesto · Plan A" in html
+    assert "Albañilería" in html
+    assert "Presupuesto · Plan B" not in html
+    # Y aparece DENTRO del flujo de su plan: después del título de Plan A y
+    # antes del de Plan B.
+    assert html.find("Plano y propuesta · Plan A") < html.find("Presupuesto · Plan A") < html.find("Plano y propuesta · Plan B")
+
+
+def test_sin_escenarios_el_documento_no_cambia_ni_un_byte():
+    base = {**BASE_PROPERTY,
+            "planSheets": [
+                _sheet("abc", "original", "<svg>O</svg>"),
+                _plan_sheet("abc", "planned", "Plan de proyecto", "<svg>P</svg>"),
+            ],
+            "renderHeads": []}
+    sin_clave = _opportunity_detail(base)
+    con_vacio = _opportunity_detail({**base, "planBudgets": {}})
+    assert sin_clave == con_vacio
+    assert "Presupuesto ·" not in sin_clave

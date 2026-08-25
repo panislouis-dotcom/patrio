@@ -277,6 +277,13 @@ def delete_plan(property_id: int, plan_id: str) -> tuple[int, list[str]]:
             " RETURNING file_path, source_plan_path",
             (property_id, plan_id),
         ).fetchall()
+        # Su presupuesto-escenario (addendum 2026-08-24) cae con él: los
+        # renglones y pagos cascadean por FK. El de la propiedad (plan_id NULL)
+        # ni se mira.
+        conn.execute(
+            "DELETE FROM budgets WHERE property_id = %s AND plan_id = %s",
+            (property_id, plan_id),
+        )
     # source_plan_path (el PNG de referencia que vio la IA) también se limpia:
     # sin el plan ni sus renders, nada vuelve a direccionarlo. Set: una cadena de
     # ediciones comparte la referencia de su raíz.
