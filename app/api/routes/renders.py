@@ -233,9 +233,9 @@ def create_render_from_plan(
         raise HTTPException(status_code=404, detail="Propiedad no encontrada")
     if not promptText.strip():
         raise HTTPException(status_code=422, detail="El prompt no puede ir vacío")
-    if variant not in renders_db.SOURCE_VARIANTS:
+    if not renders_db.variant_exists(property_id, variant):
         raise HTTPException(status_code=422,
-                            detail=f"variant debe ser uno de {', '.join(renders_db.SOURCE_VARIANTS)}")
+                            detail="variant debe ser 'original' o el id de un plan existente")
     if not floorId.strip():
         raise HTTPException(status_code=422, detail="floorId no puede ir vacío")
     if not floorName.strip():
@@ -308,9 +308,9 @@ async def upload_render_from_plan(
         raise HTTPException(status_code=404, detail="Propiedad no encontrada")
     if file.content_type not in _ALLOWED_UPLOAD_MIME:
         raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
-    if variant not in renders_db.SOURCE_VARIANTS:
+    if not renders_db.variant_exists(property_id, variant):
         raise HTTPException(status_code=422,
-                            detail=f"variant debe ser uno de {', '.join(renders_db.SOURCE_VARIANTS)}")
+                            detail="variant debe ser 'original' o el id de un plan existente")
     if not floorId.strip():
         raise HTTPException(status_code=422, detail="floorId no puede ir vacío")
     if not floorName.strip():

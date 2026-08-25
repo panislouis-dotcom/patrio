@@ -2,10 +2,16 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { LevantamientoPanel } from './LevantamientoPanel'
 import {
-  withVariant, emptyFloorSet, emptyFloorGraph, clone,
-  type FloorPlanModel, type FloorSet, type VariantKey,
+  withOriginal, withPlan, emptyFloorSet, emptyFloorGraph, clone,
+  LEGACY_PLAN_ID, LEGACY_PLAN_NAME,
+  type FloorPlanModel, type FloorSet, type ProjectPlan, type VariantKey,
 } from '../lib/floorplan/types'
 import type { PropertyRender } from '../lib/types'
+
+/** El plan legado (id determinista 'planned') con el fs dado — el shape exacto que
+ * migrateGeometry produce para un blob v3 con planned, y el que estos montajes fijos
+ * variant="planned" siguen direccionando. */
+const legacyPlan = (fs: FloorSet): ProjectPlan => ({ id: LEGACY_PLAN_ID, name: LEGACY_PLAN_NAME, fs })
 
 // `floorToPngBlob` rasteriza vía <canvas>, que jsdom no implementa (no hay paquete
 // `canvas` en este repo — ver planImage.test.ts, que por eso solo prueba la mitad
@@ -113,11 +119,11 @@ function renderPanel(
 
 describe('LevantamientoPanel · ORIGINAL', () => {
   it('es solo el editor: sin botones de clonación en ninguna dirección', () => {
-    const { onReady } = renderPanel('original', withVariant(null, 'original', originalConMuro()))
+    const { onReady } = renderPanel('original', withOriginal(null, originalConMuro()))
     expect(screen.getByText('Planta Original')).toBeTruthy()
     expect(screen.queryByText('PARTIR DEL ORIGINAL')).toBeNull()
     expect(screen.queryByText('EMPEZAR EN BLANCO')).toBeNull()
-    expect(screen.queryByText('RE-PARTIR DEL ORIGINAL')).toBeNull()
+    expect(screen.queryByText('REHACER DESDE ORIGINAL')).toBeNull()
     // El GUARDAR de la página necesita saber de qué variante es el editor vivo.
     expect(onReady).toHaveBeenCalledWith('original', expect.anything())
   })
@@ -125,7 +131,7 @@ describe('LevantamientoPanel · ORIGINAL', () => {
 
 describe('LevantamientoPanel · PLANEADO sin datos', () => {
   it('aterriza en su empty state con las dos acciones', () => {
-    renderPanel('planned', withVariant(null, 'original', originalConMuro()))
+    renderPanel('planned', withOriginal(null, originalConMuro()))
     expect(screen.getByText('PARTIR DEL ORIGINAL')).toBeTruthy()
     expect(screen.getByText('EMPEZAR EN BLANCO')).toBeTruthy()
     // Sin planeado no hay nada que editar: el editor no se monta.
@@ -140,7 +146,7 @@ describe('LevantamientoPanel · PLANEADO sin datos', () => {
 
   it('PARTIR DEL ORIGINAL guarda un clon profundo del original, con sus mismos ids', async () => {
     const original = originalConMuro()
-    const { onSave } = renderPanel('planned', withVariant(null, 'original', original))
+    const { onSave } = renderPanel('planned', withOriginal(null, original))
 
     fireEvent.click(screen.getByText('PARTIR DEL ORIGINAL'))
     await waitFor(() => expect(onSave).toHaveBeenCalled())
@@ -162,7 +168,7 @@ describe('LevantamientoPanel · PLANEADO sin datos', () => {
     // solo exige no repetirse DENTRO de un FloorSet; original y planned son arreglos
     // separados, así que compartir id entre ellos no colisiona con esa garantía.
     const original = originalConMuro()
-    const { onSave } = renderPanel('planned', withVariant(null, 'original', original))
+    const { onSave } = renderPanel('planned', withOriginal(null, original))
 
     fireEvent.click(screen.getByText('PARTIR DEL ORIGINAL'))
     await waitFor(() => expect(onSave).toHaveBeenCalled())
@@ -175,7 +181,7 @@ describe('LevantamientoPanel · PLANEADO sin datos', () => {
     // Con un booleano compartido, EMPEZAR EN BLANCO ponía "CLONANDO…" en el
     // botón de PARTIR DEL ORIGINAL — el estado explícito dice CUÁL acción corre.
     const colgado = vi.fn((_v: VariantKey, _fs: FloorSet) => new Promise<void>(() => {}))
-    renderPanel('planned', withVariant(null, 'original', originalConMuro()), colgado)
+    renderPanel('planned', withOriginal(null, originalConMuro()), colgado)
 
     fireEvent.click(screen.getByText('EMPEZAR EN BLANCO'))
 
@@ -187,7 +193,7 @@ describe('LevantamientoPanel · PLANEADO sin datos', () => {
   })
 
   it('EMPEZAR EN BLANCO guarda un planeado con una planta en blanco', async () => {
-    const { onSave } = renderPanel('planned', withVariant(null, 'original', originalConMuro()))
+    const { onSave } = renderPanel('planned', withOriginal(null, originalConMuro()))
 
     fireEvent.click(screen.getByText('EMPEZAR EN BLANCO'))
     await waitFor(() => expect(onSave).toHaveBeenCalled())
@@ -204,7 +210,7 @@ describe('LevantamientoPanel · PLANEADO sin datos', () => {
 
 describe('LevantamientoPanel · PLANEADO existente', () => {
   const geometry = () =>
-    withVariant(withVariant(null, 'original', originalConMuro()), 'planned', plannedFloorSet())
+    withPlan(withOriginal(null, originalConMuro()), legacyPlan(plannedFloorSet()))
 
   it('el empty state desaparece: se monta el editor con SU variante', () => {
     const { onReady } = renderPanel('planned', geometry())
@@ -220,21 +226,21 @@ describe('LevantamientoPanel · PLANEADO existente', () => {
     // resultado: `originalConMuro()` genera un id nuevo en cada llamada (vía emptyFloorSet),
     // así que comparar contra una segunda llamada nunca coincidiría en el id del piso.
     const original = originalConMuro()
-    const { onSave } = renderPanel('planned', withVariant(withVariant(null, 'original', original), 'planned', plannedFloorSet()))
+    const { onSave } = renderPanel('planned', withPlan(withOriginal(null, original), legacyPlan(plannedFloorSet())))
 
     // Primer paso: el botón solo arma la confirmación, sin tocar el modelo.
-    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
+    fireEvent.click(screen.getByText('REHACER DESDE ORIGINAL'))
     expect(onSave).not.toHaveBeenCalled()
-    expect(screen.getByText('¿CONFIRMAR RE-PARTIR?')).toBeTruthy()
+    expect(screen.getByText('¿CONFIRMAR REHACER?')).toBeTruthy()
 
     fireEvent.click(screen.getByText('CANCELAR'))
-    expect(screen.queryByText('¿CONFIRMAR RE-PARTIR?')).toBeNull()
-    expect(screen.getByText('RE-PARTIR DEL ORIGINAL')).toBeTruthy()
+    expect(screen.queryByText('¿CONFIRMAR REHACER?')).toBeNull()
+    expect(screen.getByText('REHACER DESDE ORIGINAL')).toBeTruthy()
     expect(onSave).not.toHaveBeenCalled()
 
     // Segundo paso: confirmar sí reemplaza el planeado con un clon del original.
-    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
-    fireEvent.click(screen.getByText('¿CONFIRMAR RE-PARTIR?'))
+    fireEvent.click(screen.getByText('REHACER DESDE ORIGINAL'))
+    fireEvent.click(screen.getByText('¿CONFIRMAR REHACER?'))
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
     const [variant, fs] = onSave.mock.calls[0]
     expect(variant).toBe('planned')
@@ -247,8 +253,8 @@ describe('LevantamientoPanel · PLANEADO existente', () => {
     const colgado = vi.fn((_v: VariantKey, _fs: FloorSet) => new Promise<void>(() => {}))
     renderPanel('planned', geometry(), colgado)
 
-    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
-    fireEvent.click(screen.getByText('¿CONFIRMAR RE-PARTIR?'))
+    fireEvent.click(screen.getByText('REHACER DESDE ORIGINAL'))
+    fireEvent.click(screen.getByText('¿CONFIRMAR REHACER?'))
 
     expect(screen.getByText('CLONANDO…')).toBeTruthy()
     expect((screen.getByText('CANCELAR') as HTMLButtonElement).disabled).toBe(true)
@@ -275,10 +281,10 @@ describe('LevantamientoPanel · PLANEADO existente', () => {
 
 describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
   const geometryConPlaneado = () =>
-    withVariant(withVariant(null, 'original', originalConMuro()), 'planned', plannedFloorSet())
+    withPlan(withOriginal(null, originalConMuro()), legacyPlan(plannedFloorSet()))
 
   it('PLANO sigue mostrando el editor sin cambios', () => {
-    renderPanel('original', withVariant(null, 'original', originalConMuro()))
+    renderPanel('original', withOriginal(null, originalConMuro()))
     // El sub-nav es nuevo, pero PLANO es la pestaña activa por default: el
     // editor de siempre, con sus mismas herramientas.
     expect(screen.getByText('PLANO')).toBeTruthy()
@@ -288,7 +294,7 @@ describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
   })
 
   it('el empty-state PLANEADO no ofrece RENDERS — no hay plano del que generar', () => {
-    renderPanel('planned', withVariant(null, 'original', originalConMuro()))
+    renderPanel('planned', withOriginal(null, originalConMuro()))
     expect(screen.getByText('PARTIR DEL ORIGINAL')).toBeTruthy()
     expect(screen.queryByText('RENDERS')).toBeNull()
     expect(screen.queryByText('PLANO')).toBeNull()
@@ -296,7 +302,7 @@ describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
 
   it('ORIGINAL: la pestaña RENDERS lista solo los renders de SU variante', () => {
     const renders = [planRenderRow(1, 'original'), planRenderRow(2, 'planned')]
-    renderPanel('original', withVariant(null, 'original', originalConMuro()), undefined, { renders })
+    renderPanel('original', withOriginal(null, originalConMuro()), undefined, { renders })
 
     fireEvent.click(screen.getByText('RENDERS'))
     expect(screen.getByAltText('Render 1')).toBeTruthy()
@@ -314,7 +320,7 @@ describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
 
   it('generar desde el ORIGINAL llama a onGenerateRender con variant: "original" y el piso único', async () => {
     const original = originalConMuro()
-    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', original))
+    const { onGenerateRender } = renderPanel('original', withOriginal(null, original))
 
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText(/^el plano$/i))
@@ -349,14 +355,14 @@ describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
 
 describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
   it('el selector de RENDERS ofrece un botón por piso de fs.floors', () => {
-    renderPanel('original', withVariant(null, 'original', dosPlantas()))
+    renderPanel('original', withOriginal(null, dosPlantas()))
     fireEvent.click(screen.getByText('RENDERS'))
     expect(screen.getByText('Planta Baja')).toBeTruthy()
     expect(screen.getByText('Planta Alta')).toBeTruthy()
   })
 
   it('elegir un piso en RENDERS no mueve el piso activo de PLANO — estados independientes', () => {
-    renderPanel('original', withVariant(null, 'original', dosPlantas()))
+    renderPanel('original', withOriginal(null, dosPlantas()))
 
     // Piso activo de PLANO (pestaña por default) antes de tocar nada en RENDERS.
     const bajaAntes = (screen.getByText('Planta Baja') as HTMLButtonElement).getAttribute('style')
@@ -374,7 +380,7 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
 
   it('generar con el piso B seleccionado manda el id/nombre de B, no el de A', async () => {
     const dos = dosPlantas()
-    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dos))
+    const { onGenerateRender } = renderPanel('original', withOriginal(null, dos))
 
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('Planta Alta'))
@@ -390,7 +396,7 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
 
   it('sin tocar el selector, genera con el PRIMER piso por default', async () => {
     const dos = dosPlantas()
-    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dos))
+    const { onGenerateRender } = renderPanel('original', withOriginal(null, dos))
 
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText(/^el plano$/i))
@@ -405,7 +411,7 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
   it('subir un render en modo plano manda la variante y el piso seleccionado', async () => {
     const dos = dosPlantas()
     const uploadImpl = vi.fn().mockResolvedValue(planRenderRow(5, 'original'))
-    const { container } = renderPanel('original', withVariant(null, 'original', dos), undefined,
+    const { container } = renderPanel('original', withOriginal(null, dos), undefined,
       { onUploadRender: uploadImpl })
 
     fireEvent.click(screen.getByText('RENDERS'))
@@ -424,7 +430,7 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
   })
 
   it('subir un render en modo plano PLANEADO manda variant: "planned"', async () => {
-    const geo = withVariant(withVariant(null, 'original', originalConMuro()), 'planned', plannedFloorSet())
+    const geo = withPlan(withOriginal(null, originalConMuro()), legacyPlan(plannedFloorSet()))
     const uploadImpl = vi.fn().mockResolvedValue(planRenderRow(5, 'planned'))
     const { container } = renderPanel('planned', geo, undefined, { onUploadRender: uploadImpl })
 
@@ -442,19 +448,19 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
 
 describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
   it('con un solo piso no ofrece el botón de lote — sería idéntico al individual', () => {
-    renderPanel('original', withVariant(null, 'original', originalConMuro()))
+    renderPanel('original', withOriginal(null, originalConMuro()))
     fireEvent.click(screen.getByText('RENDERS'))
     expect(screen.queryByText('GENERAR TODOS LOS PISOS')).toBeNull()
   })
 
   it('con 2+ pisos ofrece el botón de lote', () => {
-    renderPanel('original', withVariant(null, 'original', dosPlantas()))
+    renderPanel('original', withOriginal(null, dosPlantas()))
     fireEvent.click(screen.getByText('RENDERS'))
     expect(screen.getByText('GENERAR TODOS LOS PISOS')).toBeTruthy()
   })
 
   it('exige confirmación de dos pasos: el primer click NO dispara ninguna llamada', () => {
-    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dosPlantas()))
+    const { onGenerateRender } = renderPanel('original', withOriginal(null, dosPlantas()))
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
 
@@ -465,7 +471,7 @@ describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
   })
 
   it('CANCELAR en la confirmación no dispara nada y regresa al botón inicial', () => {
-    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dosPlantas()))
+    const { onGenerateRender } = renderPanel('original', withOriginal(null, dosPlantas()))
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
     fireEvent.click(screen.getByText('CANCELAR'))
@@ -477,7 +483,7 @@ describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
 
   it('confirmar genera un render por CADA piso, con su propio floorId/floorName/plano', async () => {
     const dos = dosPlantas()
-    const { onGenerateRender } = renderPanel('original', withVariant(null, 'original', dos))
+    const { onGenerateRender } = renderPanel('original', withOriginal(null, dos))
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
     fireEvent.click(screen.getByText(/¿CONFIRMAR/i))
@@ -510,7 +516,7 @@ describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
       return planRenderRow(2, variant)
     })
     const { onGenerateRender } = renderPanel(
-      'original', withVariant(null, 'original', dos), undefined, { onGenerateRender: impl },
+      'original', withOriginal(null, dos), undefined, { onGenerateRender: impl },
     )
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
@@ -532,7 +538,7 @@ describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
       return planRenderRow(2, variant)
     })
     const { onGenerateRender } = renderPanel(
-      'original', withVariant(null, 'original', dos), undefined, { onGenerateRender: impl },
+      'original', withOriginal(null, dos), undefined, { onGenerateRender: impl },
     )
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
@@ -548,7 +554,7 @@ describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
     let resolveFirst: (v: PropertyRender) => void = () => {}
     const pendiente = new Promise<PropertyRender>(r => { resolveFirst = r })
     const impl = vi.fn(async () => pendiente)
-    renderPanel('original', withVariant(null, 'original', dos), undefined, { onGenerateRender: impl })
+    renderPanel('original', withOriginal(null, dos), undefined, { onGenerateRender: impl })
 
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
@@ -561,12 +567,12 @@ describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
   it('el resumen del lote no sobrevive a que el FloorSet se reemplace por otro con pisos distintos', async () => {
     // Reproduce el hallazgo del revisor: un lote corre hasta terminar en un
     // FloorSet de 2 pisos, y LUEGO ese FloorSet se reemplaza POR COMPLETO —
-    // el mismo gesto que un RE-PARTIR DEL ORIGINAL, un EMPEZAR EN BLANCO, o
+    // el mismo gesto que un REHACER DESDE ORIGINAL, un EMPEZAR EN BLANCO, o
     // agregar/quitar un piso en el editor y guardar (`onSave` reescribe la
     // variante entera en los tres casos). El banner viejo no debe seguir
     // describiendo pisos que ya no existen.
     const dos = dosPlantas()
-    const { rerenderWithGeometry } = renderPanel('original', withVariant(null, 'original', dos))
+    const { rerenderWithGeometry } = renderPanel('original', withOriginal(null, dos))
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('GENERAR TODOS LOS PISOS'))
     fireEvent.click(screen.getByText(/¿CONFIRMAR/i))
@@ -576,7 +582,7 @@ describe('LevantamientoPanel · GENERAR TODOS LOS PISOS (Task 31)', () => {
     const otros = emptyFloorSet()
     otros.floors[0].name = 'Sotano'
     otros.floors.push(emptyFloorGraph('Azotea'))
-    rerenderWithGeometry(withVariant(null, 'original', otros))
+    rerenderWithGeometry(withOriginal(null, otros))
 
     expect(screen.queryByText(/generados/)).toBeNull()
     expect(screen.queryByText(/Generando piso/)).toBeNull()

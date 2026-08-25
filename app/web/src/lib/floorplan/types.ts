@@ -183,20 +183,42 @@ export interface FloorGraph {
 }
 
 // El editor trabaja sobre UNA variante (un plano completo, multi-piso); el envelope
-// persistido guarda dos: el levantamiento ORIGINAL (cómo está la propiedad) y el
-// PLANEADO (cómo va a quedar), null hasta que el usuario lo crea. FloorSet es el shape
-// v2 sin schemaVersion: la migración v2→v3 es anidarlo como `original`.
+// persistido guarda el levantamiento ORIGINAL (cómo está la propiedad) y N PLANES de
+// proyecto (propuestas de cómo podría quedar), lista vacía hasta que el usuario crea el
+// primero. FloorSet es el shape v2 sin schemaVersion: la migración v2 es anidarlo como
+// `original`.
 export interface FloorSet {
   slab_m: number
   activeFloor: number
   floors: FloorGraph[]
 }
 
-export type VariantKey = 'original' | 'planned'
+/** Un plan de proyecto nombrado. `id` es identidad persistida (uuid al crear —
+ * NUNCA minteado al leer: un id efímero de lectura ya causó el bug que la
+ * migración 048 reparó en producción para los pisos); `name` es la etiqueta que
+ * el usuario edita y el prospecto imprime. */
+export interface ProjectPlan { id: string; name: string; fs: FloorSet }
+
+/** Qué variante direcciona una operación: el original, o un plan por su id.
+ * Generaliza al viejo VariantKey ('original' | 'planned'): el plan migrado desde
+ * v3 conserva el id literal 'planned' (ver LEGACY_PLAN_ID), así que todo código y
+ * todo dato que decía 'planned' sigue direccionando el mismo plan sin traducción. */
+export type PlanKey = 'original' | string
+
+/** @deprecated Alias de transición — se elimina cuando el selector de planes (UI)
+ * reemplace los dos montajes fijos original/planned. */
+export type VariantKey = PlanKey
+
+/** Id determinista del plan migrado desde el `planned` de v3. Literal a propósito:
+ * `property_renders.source_variant='planned'` (todas las filas existentes) empata
+ * con este plan SIN backfill, y un blob migrado en memoria (TS) y uno migrado en
+ * SQL (migración 050) producen el MISMO id — sin carrera de ids efímeros. */
+export const LEGACY_PLAN_ID = 'planned'
+export const LEGACY_PLAN_NAME = 'Plan de proyecto'
 
 export interface FloorPlanModel {
-  schemaVersion: 3
-  variants: { original: FloorSet; planned: FloorSet | null }
+  schemaVersion: 4
+  variants: { original: FloorSet; plans: ProjectPlan[] }
 }
 
 export function genId(): string {
@@ -216,19 +238,47 @@ export function emptyFloorSet(): FloorSet {
 }
 
 /**
- * El único constructor del envelope v3: escribe UNA variante y preserva la otra tal
- * cual venga en `model` (o su default si no hay modelo: el original nace en blanco,
- * el planeado nace inexistente). Todo literal `{ schemaVersion: 3, variants: … }`
- * vive aquí — quien guarda una variante no puede, ni por accidente, pisar la otra.
+ * Los únicos constructores del envelope v4: escriben UNA variante (el original, o
+ * un plan por id) y preservan todo lo demás tal cual venga en `model` (o su default
+ * si no hay modelo: el original nace en blanco, los planes nacen como lista vacía).
+ * Todo literal `{ schemaVersion: 4, variants: … }` vive aquí — quien guarda una
+ * variante no puede, ni por accidente, pisar las otras. Mismo contrato que el viejo
+ * `withVariant`, generalizado a N planes.
  */
-export function withVariant(model: FloorPlanModel | null, key: VariantKey, fs: FloorSet): FloorPlanModel {
+export function withOriginal(model: FloorPlanModel | null, fs: FloorSet): FloorPlanModel {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
+    variants: { original: fs, plans: model?.variants.plans ?? [] },
+  }
+}
+
+/** Upsert por id: reemplaza el plan si existe, lo agrega al final si no. El objeto
+ * `plan` entra completo (id + name + fs) — quien guarda solo la geometría de un plan
+ * existente es responsable de conservar su `name` (leerlo del modelo antes). */
+export function withPlan(model: FloorPlanModel | null, plan: ProjectPlan): FloorPlanModel {
+  const plans = model?.variants.plans ?? []
+  const i = plans.findIndex(p => p.id === plan.id)
+  return {
+    schemaVersion: 4,
     variants: {
-      original: key === 'original' ? fs : model?.variants.original ?? emptyFloorSet(),
-      planned: key === 'planned' ? fs : model?.variants.planned ?? null,
+      original: model?.variants.original ?? emptyFloorSet(),
+      plans: i >= 0 ? plans.map(p => (p.id === plan.id ? plan : p)) : [...plans, plan],
     },
   }
+}
+
+export function removePlan(model: FloorPlanModel, planId: string): FloorPlanModel {
+  return {
+    schemaVersion: 4,
+    variants: {
+      original: model.variants.original,
+      plans: model.variants.plans.filter(p => p.id !== planId),
+    },
+  }
+}
+
+export function getPlan(model: FloorPlanModel | null, planId: string): ProjectPlan | null {
+  return model?.variants.plans.find(p => p.id === planId) ?? null
 }
 
 const isFloorSet = (v: unknown): v is FloorSet =>
@@ -247,13 +297,25 @@ function backfillFloorIds(fs: FloorSet): void {
   }
 }
 
+const isProjectPlan = (v: unknown): v is ProjectPlan =>
+  !!v && typeof v === 'object'
+  && typeof (v as ProjectPlan).id === 'string' && (v as ProjectPlan).id !== ''
+  && typeof (v as ProjectPlan).name === 'string'
+  && isFloorSet((v as ProjectPlan).fs)
+
 /**
- * Único punto de entrada para leer un blob de geometría persistido: v3 pasa tal cual,
- * v2 (un plano en la raíz) se anida como variante `original` con `planned: null`.
- * Cualquier otra cosa —schemaVersion 1 del viejo editor de listas de muros, `{}`,
- * basura— regresa null. Es una frontera greenfield deliberada, no una migración de v1:
- * el blob viejo queda intacto en storage (nada escribe hasta que el usuario vuelve a
- * guardar) pero jamás se lee como si fuera un modelo válido.
+ * Único punto de entrada para leer un blob de geometría persistido: v4 pasa tal cual,
+ * v3 (dos variantes fijas original/planned) se convierte — el planned, si existe, se
+ * vuelve el primer plan con el id determinista LEGACY_PLAN_ID —, y v2 (un plano en la
+ * raíz) se anida como `original` con `plans: []`. Cualquier otra cosa —schemaVersion 1
+ * del viejo editor de listas de muros, `{}`, basura— regresa null. Es una frontera
+ * greenfield deliberada, no una migración de v1: el blob viejo queda intacto en storage
+ * (nada escribe hasta que el usuario vuelve a guardar) pero jamás se lee como si fuera
+ * un modelo válido.
+ *
+ * Un plan presente pero malformado (en v4: cualquier entrada de `plans`; en v3: el
+ * `planned`) invalida el blob ENTERO: si miente en una variante puede mentir en las
+ * otras, y leerlo a medias es peor que no leerlo — mismo criterio de siempre.
  *
  * Efecto de lado: rellena `FloorGraph.id` en cualquier piso que no lo tenga, MUTANDO
  * `raw` in-place vía `backfillFloorIds` (ver su comentario) antes de devolver el modelo —
@@ -261,27 +323,39 @@ function backfillFloorIds(fs: FloorSet): void {
  */
 export function migrateGeometry(raw: unknown): FloorPlanModel | null {
   if (!raw || typeof raw !== 'object') return null
-  const m = raw as { schemaVersion?: unknown; variants?: { original?: unknown; planned?: unknown } }
+  const m = raw as {
+    schemaVersion?: unknown
+    variants?: { original?: unknown; planned?: unknown; plans?: unknown }
+  }
+  if (m.schemaVersion === 4) {
+    const original = m.variants?.original
+    const plans = m.variants?.plans
+    if (!isFloorSet(original)) return null
+    if (!Array.isArray(plans) || !plans.every(isProjectPlan)) return null
+    backfillFloorIds(original)
+    for (const p of plans) backfillFloorIds(p.fs)
+    // Un v4 bien formado conserva su identidad, sin copia.
+    return raw as FloorPlanModel
+  }
   if (m.schemaVersion === 3) {
     const original = m.variants?.original
     const planned = m.variants?.planned
     if (!isFloorSet(original)) return null
-    // Un planned presente pero malformado invalida el blob ENTERO: si miente en una
-    // variante puede mentir en la otra, y leerlo a medias es peor que no leerlo.
     if (planned != null && !isFloorSet(planned)) return null
-    // Backfill de `id` ANTES de entregar el modelo: mutar in-place preserva la identidad
-    // del objeto para el caso ya-bien-formado (nada que rellenar, mismo objeto de vuelta).
     backfillFloorIds(original)
     if (isFloorSet(planned)) backfillFloorIds(planned)
-    // Ausente (clave sin escribir) se normaliza a null para que el tipo no mienta;
-    // un v3 ya bien formado conserva su identidad, sin copia.
-    if (planned === undefined) return withVariant(null, 'original', original)
-    return raw as FloorPlanModel
+    // El id/nombre del plan legado son literales deterministas (ver LEGACY_PLAN_ID):
+    // los renders persistidos con source_variant='planned' lo direccionan sin backfill,
+    // y la migración SQL 050 produce byte-lógicamente lo mismo que esta rama.
+    const model = withOriginal(null, original)
+    return isFloorSet(planned)
+      ? withPlan(model, { id: LEGACY_PLAN_ID, name: LEGACY_PLAN_NAME, fs: planned })
+      : model
   }
   if (m.schemaVersion === 2 && isFloorSet(m)) {
     const { slab_m, activeFloor, floors } = m
     backfillFloorIds({ slab_m, activeFloor, floors })
-    return withVariant(null, 'original', { slab_m, activeFloor, floors })
+    return withOriginal(null, { slab_m, activeFloor, floors })
   }
   return null
 }

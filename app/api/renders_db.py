@@ -1,10 +1,27 @@
 """Persistencia de la biblioteca de prompts y de los renders generados."""
+import json
+
 from api.db import get_db, _row_to_dict
 
-# De qué levantamiento nació un render de plano. Mismo patrón que
-# `properties_db.IMAGE_TYPES`: tupla explícita que la ruta valida antes de
-# tocar la base de datos.
-SOURCE_VARIANTS = ("original", "planned")
+
+def variant_exists(property_id: int, variant: str) -> bool:
+    """De qué variante nace un render de plano: 'original' (el levantamiento,
+    siempre existe) o el ID de un plan de proyecto, que debe estar presente en el
+    geometry VIVO de la propiedad. Reemplaza a la vieja tupla SOURCE_VARIANTS
+    ('original'|'planned'): desde la migración 050 la variante ES el plan id, y
+    una tupla fija ya no puede validarla — ni debe hacerlo el cliente, que antes
+    se auto-certificaba. Membresía por containment de jsonb, sin interpretar la
+    forma profunda del blob (la geometría es del frontend; aquí solo se pregunta
+    si el plan id existe)."""
+    if variant == "original":
+        return True
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM properties WHERE id = %s"
+            " AND geometry->'variants'->'plans' @> %s::jsonb",
+            (property_id, json.dumps([{"id": variant}])),
+        ).fetchone()
+    return row is not None
 
 
 class PromptError(RuntimeError):
@@ -226,6 +243,58 @@ def delete_render(render_id: int, property_id: int) -> str:
     if row is None:
         raise NotFound(f"Render {render_id} no encontrado en la propiedad {property_id}")
     return row["file_path"]
+
+
+def delete_plan(property_id: int, plan_id: str) -> tuple[int, list[str], int]:
+    """Quita un plan de proyecto del blob de geometría Y borra sus renders, en
+    UNA transacción — la mitad peligrosa es la cascada de renders, por eso vive
+    aquí y no en properties_db. Un plan borrado no deja ningún tab donde sus
+    renders vuelvan a verse jamás (a diferencia de un piso borrado, cuyos renders
+    siguen visibles con el nombre congelado): conservarlos sería peso muerto
+    invisible, no honestidad — decisión de diseño 2026-08-24, con confirmación de
+    dos pasos en la UI mostrando el conteo real.
+
+    Devuelve (renders borrados, rutas de storage a borrar DESPUÉS del commit,
+    nueva geometry_revision) — mismo orden que delete_render: primero la verdad
+    de la BD, luego los archivos. Muta el blob, así que sube la revisión del
+    candado optimista (052) igual que el PUT de geometría: las demás sesiones
+    con el blob viejo en memoria reciben 409 en su siguiente guardado en vez de
+    resucitar el plan borrado; y devuelve la nueva para que ESTA sesión siga
+    guardando sin recargar. El filtro del plan en el jsonb no interpreta la
+    forma profunda: solo compara el `id` de cada elemento de `plans`."""
+    with get_db() as conn:
+        removed = conn.execute(
+            "UPDATE properties SET geometry = jsonb_set(geometry, '{variants,plans}',"
+            " COALESCE((SELECT jsonb_agg(p ORDER BY ord)"
+            "   FROM jsonb_array_elements(geometry->'variants'->'plans')"
+            "   WITH ORDINALITY AS t(p, ord) WHERE p->>'id' <> %(plan_id)s), '[]'::jsonb)),"
+            " geometry_revision = geometry_revision + 1"
+            " WHERE id = %(property_id)s"
+            "   AND geometry->'variants'->'plans' @> %(needle)s::jsonb"
+            " RETURNING id, geometry_revision",
+            {"property_id": property_id, "plan_id": plan_id,
+             "needle": json.dumps([{"id": plan_id}])},
+        ).fetchone()
+        if removed is None:
+            raise NotFound(f"Plan {plan_id} no encontrado en la propiedad {property_id}")
+        rows = conn.execute(
+            "DELETE FROM property_renders WHERE property_id = %s AND source_variant = %s"
+            " RETURNING file_path, source_plan_path",
+            (property_id, plan_id),
+        ).fetchall()
+        # Su presupuesto-escenario (addendum 2026-08-24) cae con él: los
+        # renglones y pagos cascadean por FK. El de la propiedad (plan_id NULL)
+        # ni se mira.
+        conn.execute(
+            "DELETE FROM budgets WHERE property_id = %s AND plan_id = %s",
+            (property_id, plan_id),
+        )
+    # source_plan_path (el PNG de referencia que vio la IA) también se limpia:
+    # sin el plan ni sus renders, nada vuelve a direccionarlo. Set: una cadena de
+    # ediciones comparte la referencia de su raíz.
+    paths = {r["file_path"] for r in rows} | {
+        r["source_plan_path"] for r in rows if r["source_plan_path"]}
+    return len(rows), sorted(paths), removed["geometry_revision"]
 
 
 class NoGroup(RuntimeError):

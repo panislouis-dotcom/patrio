@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { Property, PropertyRender } from '../lib/types'
-import { emptyFloorGraph, type FloorPlanModel } from '../lib/floorplan/types'
+import { emptyFloorGraph } from '../lib/floorplan/types'
 import { PropertyDetailPage } from './PropertyDetailPage'
 import * as api from '../lib/api'
 
@@ -29,7 +29,7 @@ vi.mock('../lib/api', async importOriginal => {
     deleteProperty: vi.fn(),
     clearPropertyFields: vi.fn(),
     transitionProperty: vi.fn(),
-    fetchPropertyGeometry: vi.fn(async () => ({})),
+    fetchPropertyGeometry: vi.fn(async () => ({ geometry: {}, revision: 0 })),
     savePropertyGeometry: vi.fn(),
     fetchPropertyInvestors: vi.fn(async () => []),
     fetchInvestors: vi.fn(async () => []),
@@ -755,8 +755,8 @@ describe('PropertyDetailPage', () => {
     // siendo UN plano en la raíz. La página lo migra al cargar y lo persiste en v3
     // en su primer guardado — sin migración SQL de por medio.
     const v2 = { schemaVersion: 2, slab_m: 0.2, activeFloor: 0, floors: [emptyFloorGraph('Planta Migrada')] }
-    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v2)
-    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v2, revision: 0 })
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => ({ geometry: g, revision: 1 }))
     await renderPage(BASE_PROPERTY)
 
     fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
@@ -769,24 +769,27 @@ describe('PropertyDetailPage', () => {
     const [id, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
     expect(id).toBe(7)
     expect(envelope).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       variants: {
         original: { slab_m: 0.2, activeFloor: 0, floors: v2.floors },
-        planned: null,
+        plans: [],
       },
     })
   })
 
   it('el editor edita el original, y guardar preserva el planeado que ya había', async () => {
-    const v3: FloorPlanModel = {
+    // Literal v3 crudo a propósito: así se ven los blobs persistidos HOY, y este
+    // test también ejercita la migración v3→v4 al cargar (el planned se vuelve el
+    // plan legado con id 'planned').
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
         planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
       },
     }
-    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
-    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v3, revision: 0 })
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => ({ geometry: g, revision: 1 }))
     await renderPage(BASE_PROPERTY)
 
     fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
@@ -797,7 +800,10 @@ describe('PropertyDetailPage', () => {
     fireEvent.click(screen.getByText('Save'))
     await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
     const [, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
-    expect(envelope.variants.planned).toEqual(v3.variants.planned)
+    // El planned migrado sobrevive el guardado del original como el plan legado.
+    expect(envelope.variants.plans).toEqual([
+      { id: 'planned', name: 'Plan de proyecto', fs: v3.variants.planned },
+    ])
   })
 
   it('sin geometría reconocible, el ORIGINAL abre en la pantalla de inicio', async () => {
@@ -808,14 +814,14 @@ describe('PropertyDetailPage', () => {
   })
 
   it('el PLANEADO sin datos aterriza en su empty state con las dos maneras de nacer', async () => {
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
         planned: null,
       },
     }
-    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v3, revision: 0 })
     await renderPage(BASE_PROPERTY)
 
     fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
@@ -829,22 +835,22 @@ describe('PropertyDetailPage', () => {
     // RE-PARTIR persistiría el clon en el servidor mientras el editor montado
     // sigue con el planeado viejo — y un dibujo + GUARDAR posterior desde ese
     // editor viejo escribiría encima del clon recién hecho.
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
         planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
       },
     }
-    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
-    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v3, revision: 0 })
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => ({ geometry: g, revision: 1 }))
     await renderPage(BASE_PROPERTY)
 
     fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
     expect(await screen.findByText('Planta Planeada')).not.toBeNull()
 
-    fireEvent.click(screen.getByText('RE-PARTIR DEL ORIGINAL'))
-    fireEvent.click(screen.getByText('¿CONFIRMAR RE-PARTIR?'))
+    fireEvent.click(screen.getByText('REHACER DESDE ORIGINAL'))
+    fireEvent.click(screen.getByText('¿CONFIRMAR REHACER?'))
 
     await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
     // El editor del planeado ahora enseña la planta clonada, no la vieja.
@@ -856,15 +862,15 @@ describe('PropertyDetailPage', () => {
     // Los dos editores comparten el GUARDAR del encabezado vía la misma PlanApi;
     // sin registrar de QUÉ variante es el editor vivo, este flujo escribiría el
     // planeado encima del original.
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
         planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
       },
     }
-    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
-    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => g)
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v3, revision: 0 })
+    vi.mocked(api.savePropertyGeometry).mockImplementationOnce(async (_id, g) => ({ geometry: g, revision: 1 }))
     await renderPage(BASE_PROPERTY)
 
     fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
@@ -877,8 +883,65 @@ describe('PropertyDetailPage', () => {
     await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalled())
     const [, envelope] = vi.mocked(api.savePropertyGeometry).mock.calls[0]
     expect(envelope.variants.original).toEqual(v3.variants.original)
-    expect(Object.keys(envelope.variants.planned!.floors[0].edges)).toHaveLength(1)
+    expect(Object.keys(envelope.variants.plans[0].fs.floors[0].edges)).toHaveLength(1)
     expect(api.updateProperty).not.toHaveBeenCalled()
+  })
+
+  // ── El candado optimista del blob (migración 052) ────────────────────────
+
+  it('cada guardado declara la revisión de la que partió y adopta la del servidor', async () => {
+    // Guardar reemplaza el blob COMPLETO: sin declarar el punto de partida, el
+    // guardado tardío de otra sesión pisa en silencio. Aquí se prueba el lado
+    // cliente del contrato: viaja la revisión leída, y la nueva se adopta para
+    // el siguiente guardado (sin recargar la página).
+    const v3 = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Planeada')] },
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v3, revision: 5 })
+    vi.mocked(api.savePropertyGeometry).mockImplementation(
+      async (_id, g, expected) => ({ geometry: g, revision: expected + 1 }))
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('PLANO DE PROYECTO'))
+    expect(await screen.findByText('Planta Planeada')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('wall'))
+    fireEvent.click(await screen.findByText('GUARDAR ▸'))
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(api.savePropertyGeometry).mock.calls[0][2]).toBe(5)
+
+    fireEvent.click(screen.getByText('wall'))
+    fireEvent.click(await screen.findByText('GUARDAR ▸'))
+    await waitFor(() => expect(api.savePropertyGeometry).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.savePropertyGeometry).mock.calls[1][2]).toBe(6)
+  })
+
+  it('un 409 del candado enseña su mensaje y no adopta nada', async () => {
+    const v3 = {
+      schemaVersion: 3,
+      variants: {
+        original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
+        planned: null,
+      },
+    }
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v3, revision: 0 })
+    vi.mocked(api.savePropertyGeometry).mockRejectedValueOnce(new Error(
+      'La geometría cambió en otra sesión mientras editabas. '
+      + 'Recarga la página para ver la última versión antes de guardar.'))
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('LEVANTAMIENTO ORIGINAL'))
+    expect(await screen.findByText('Planta Original')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('wall'))
+    fireEvent.click(await screen.findByText('GUARDAR ▸'))
+    // El mensaje sale por el ErrorBanner del guardado que ya existía; el
+    // usuario decide recargar — nada local se pisa ni se descarta por él.
+    expect(await screen.findByText(/otra sesión/)).not.toBeNull()
   })
 
   // ── Generar un render desde el plano de un levantamiento (Tarea 17) ──────
@@ -901,14 +964,14 @@ describe('PropertyDetailPage', () => {
 
   it('generar RENDERS desde el PLANEADO llama a generatePropertyRenderFromPlan con variant: "planned" y el piso', async () => {
     const plannedFloor = emptyFloorGraph('Planta Planeada')
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
         planned: { slab_m: 0.15, activeFloor: 0, floors: [plannedFloor] },
       },
     }
-    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v3, revision: 0 })
     vi.mocked(api.generatePropertyRenderFromPlan).mockResolvedValueOnce(renderFromPlan('planned'))
     await renderPage(BASE_PROPERTY)
 
@@ -933,14 +996,14 @@ describe('PropertyDetailPage', () => {
 
   it('generar RENDERS desde el ORIGINAL llama a generatePropertyRenderFromPlan con variant: "original" y el piso', async () => {
     const originalFloor = emptyFloorGraph('Planta Original')
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [originalFloor] },
         planned: null,
       },
     }
-    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v3, revision: 0 })
     vi.mocked(api.generatePropertyRenderFromPlan).mockResolvedValueOnce(renderFromPlan('original'))
     await renderPage(BASE_PROPERTY)
 
@@ -961,14 +1024,14 @@ describe('PropertyDetailPage', () => {
 
   it('subir un render desde el PLANEADO llama a uploadPropertyRenderFromPlan con variant: "planned" y el piso', async () => {
     const plannedFloor = emptyFloorGraph('Planta Planeada')
-    const v3: FloorPlanModel = {
+    const v3 = {
       schemaVersion: 3,
       variants: {
         original: { slab_m: 0.15, activeFloor: 0, floors: [emptyFloorGraph('Planta Original')] },
         planned: { slab_m: 0.15, activeFloor: 0, floors: [plannedFloor] },
       },
     }
-    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce(v3)
+    vi.mocked(api.fetchPropertyGeometry).mockResolvedValueOnce({ geometry: v3, revision: 0 })
     vi.mocked(api.uploadPropertyRenderFromPlan).mockResolvedValueOnce(renderFromPlan('planned'))
     await renderPage(BASE_PROPERTY)
 
@@ -1011,7 +1074,7 @@ describe('PropertyDetailPage', () => {
     expect(await screen.findByText('PRESUPUESTO DE OBRA')).not.toBeNull()
     expect(screen.getByText('TOTAL · ES EL COSTO DE OBRA')).not.toBeNull()
     // Y el total de la tabla es la misma cifra que la obra del desglose
-    expect(api.fetchBudget).toHaveBeenCalledWith(7)
+    expect(api.fetchBudget).toHaveBeenCalledWith(7, undefined)
   })
 
   it('el costo de obra por m² se prellena con el cociente derivado al entrar a edición', async () => {

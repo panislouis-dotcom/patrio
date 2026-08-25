@@ -89,7 +89,8 @@ def collect_keys(property_id: int | None = None) -> list[tuple[str, str]]:
     for prop in properties:
         for image in prop["images"]:
             found.append((PROPERTY_PHOTO, image["filePath"]))
-        for key in _reference_keys(properties_db.get_geometry(prop["id"]) or {}):
+        geometry = (properties_db.get_geometry(prop["id"]) or {}).get("geometry") or {}
+        for key in _reference_keys(geometry):
             found.append((FLOORPLAN_REFERENCE, key))
         for render in renders_db.list_renders(prop["id"]):
             found.append((RENDER, render["filePath"]))

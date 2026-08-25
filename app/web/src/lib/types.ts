@@ -61,9 +61,10 @@ export interface PropertyRender {
   sourcePlanPath: string | null
   /** El render del que se editó ENCIMA, si es un paso de una cadena. */
   parentRenderId: number | null
-  /** De qué levantamiento nació un render de plano ('original' | 'planned'); null cuando
-   * nació de una foto (migración 040). Una edición hereda la variante de su padre. */
-  sourceVariant?: 'original' | 'planned' | null
+  /** De qué variante nació un render de plano: 'original' o el ID DEL PLAN de proyecto
+   * (el plan migrado desde v3 conserva el id literal 'planned' — migración 050); null
+   * cuando nació de una foto (migración 040). Una edición hereda la variante de su padre. */
+  sourceVariant?: string | null
   /** De qué PISO del levantamiento nació un render de plano — identidad (coincide con
    * un `FloorGraph.id` mientras ese piso exista), null cuando nació de una foto O
    * cuando es un render de plano anterior a esta identidad (migración 042: sin
@@ -941,6 +942,17 @@ export interface BudgetSource {
   /** El nombre de la propiedad. */
   name: string
   propertyId: number
+  /** El plan de proyecto del que es escenario este presupuesto — null cuando es
+   * el presupuesto de la propiedad. El nombre viene VIVO del geometry. */
+  planId: string | null
+  planName: string | null
+  /** El total CON residuo: el objetivo del destino en una copia proporcional
+   * (`total`, sin residuo, es lo que saldría de aquí como fuente). */
+  fullTotal: number | null
+  /** De la PROPIEDAD dueña — un escenario comparte los de su obra. Solo para el
+   * renglón informativo del empuje proporcional. */
+  sqmConstruction: number | null
+  constructionCostPerSqm: number | null
   /**
    * Cuántos renglones se van a COPIAR, que no es cuántos tiene: el residuo
    * nunca viaja. El número es exactamente lo que va a aparecer después, así que

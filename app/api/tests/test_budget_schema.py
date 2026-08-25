@@ -106,7 +106,10 @@ def test_a_budget_is_not_named_apart_from_its_job(obra):
     Un presupuesto hereda el nombre de su propiedad y no lleva otro que pueda
     contradecirlo — el enumerado entero, para que devolverle una columna a esta
     tabla sea una decisión y no un descuido."""
-    assert _columns("budgets") == {"id", "property_id", "created_at", "updated_at"}
+    # `plan_id` entró con la 051 (addendum 2026-08-24): NULL = el presupuesto de
+    # la propiedad — el único que alimenta finanzas —, con valor = el escenario
+    # de ese plan de proyecto. Decisión documentada, no descuido.
+    assert _columns("budgets") == {"id", "property_id", "plan_id", "created_at", "updated_at"}
 
 
 def test_closing_a_line_demands_the_real_quantity(obra):

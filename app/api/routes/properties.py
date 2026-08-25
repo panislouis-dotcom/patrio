@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from api import properties_db as properties
-from api import storage
+from api import renders_db, storage
 from api.auth import get_current_user
 from api.lib import images
 
@@ -152,6 +152,10 @@ class ClearFieldsRequest(BaseModel):
 
 class GeometryBody(BaseModel):
     geometry: dict  # deep schema is validated in the TS engine (single source of truth)
+    # El candado optimista (052): la revisión de la que partió este guardado.
+    # Obligatoria — un guardado que no declara su punto de partida es
+    # exactamente el que pisa a los demás en silencio.
+    expectedRevision: int
 
 
 class ImageTypeUpdate(BaseModel):
@@ -323,10 +327,33 @@ def get_property_geometry(property_id: int, _: dict = Depends(get_current_user))
 @router.put("/api/properties/{property_id}/geometry", operation_id="properties_set_geometry")
 def set_property_geometry(property_id: int, body: GeometryBody,
                           _: dict = Depends(get_current_user)):
-    saved = properties.set_geometry(property_id, body.geometry)
+    try:
+        saved = properties.set_geometry(property_id, body.geometry, body.expectedRevision)
+    except properties.GeometryConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if saved is None:
         raise HTTPException(status_code=404, detail="Propiedad no encontrada")
     return saved
+
+
+@router.delete("/api/properties/{property_id}/plans/{plan_id}",
+               operation_id="properties_delete_plan")
+def delete_property_plan(property_id: int, plan_id: str,
+                         _: dict = Depends(get_current_user)):
+    """Borra un plan de proyecto Y sus renders (cascada deliberada — ver
+    renders_db.delete_plan). No pasa por el PUT de geometría: un overwrite ciego
+    del blob no puede garantizar que las filas de renders del plan se vayan con
+    él. Devuelve el conteo para que la UI confirme lo que realmente pasó, y la
+    nueva geometry_revision para que el cliente siga guardando sin recargar."""
+    try:
+        deleted, paths, revision = renders_db.delete_plan(property_id, plan_id)
+    except renders_db.NotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    # Después del commit: un fallo de storage deja a lo más archivos huérfanos,
+    # nunca filas apuntando a archivos borrados (mismo orden que delete_render).
+    for path in paths:
+        storage.delete(path)
+    return {"deletedRenders": deleted, "revision": revision}
 
 
 @router.post("/api/properties/{property_id}/floorplan-image", status_code=201,

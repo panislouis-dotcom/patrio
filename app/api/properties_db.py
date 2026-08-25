@@ -1061,18 +1061,50 @@ def reorder_images(property_id: int, image_ids: list[int]) -> list[dict]:
 
 # ─── Geometry ─────────────────────────────────────────────────────────────────
 
+class GeometryConflict(Exception):
+    """El guardado partió de una revisión que ya no es la vigente: alguien más
+    guardó en medio. Escribir igual perdería SU cambio (el blob se reemplaza
+    completo), así que no se escribe nada."""
+
+    def __init__(self, current_revision: int):
+        self.current_revision = current_revision
+        super().__init__(
+            "La geometría cambió en otra sesión mientras editabas. "
+            "Recarga la página para ver la última versión antes de guardar.")
+
+
 def get_geometry(property_id: int) -> dict | None:
-    """The stored floorplan model ({} when unset), or None if no such property."""
-    with get_db() as conn:
-        row = conn.execute("SELECT geometry FROM properties WHERE id = %s", (property_id,)).fetchone()
-    return None if row is None else (row["geometry"] or {})
-
-
-def set_geometry(property_id: int, geometry: dict) -> dict | None:
-    """Whole-blob replace. Returns the stored model, or None if no such property."""
+    """{"geometry": model ({} when unset), "revision": n}, or None if no such
+    property. The revision is the optimistic lock token: set_geometry only
+    accepts a write that declares the revision it read."""
     with get_db() as conn:
         row = conn.execute(
-            "UPDATE properties SET geometry = %s WHERE id = %s RETURNING geometry",
-            (Json(geometry), property_id),
+            "SELECT geometry, geometry_revision FROM properties WHERE id = %s",
+            (property_id,),
         ).fetchone()
-    return None if row is None else (row["geometry"] or {})
+    if row is None:
+        return None
+    return {"geometry": row["geometry"] or {}, "revision": row["geometry_revision"]}
+
+
+def set_geometry(property_id: int, geometry: dict, expected_revision: int) -> dict | None:
+    """Whole-blob replace, guarded: writes only if the stored revision still is
+    `expected_revision`, bumping it. Returns {"geometry", "revision"}, None if
+    no such property, or raises GeometryConflict on a stale revision."""
+    with get_db() as conn:
+        row = conn.execute(
+            "UPDATE properties SET geometry = %s, geometry_revision = geometry_revision + 1"
+            " WHERE id = %s AND geometry_revision = %s"
+            " RETURNING geometry, geometry_revision",
+            (Json(geometry), property_id, expected_revision),
+        ).fetchone()
+        if row is not None:
+            return {"geometry": row["geometry"] or {}, "revision": row["geometry_revision"]}
+        # Nada se escribió: propiedad inexistente, o revisión vieja — distinguirlas
+        # en la MISMA transacción para no confundir un borrado con un conflicto.
+        current = conn.execute(
+            "SELECT geometry_revision FROM properties WHERE id = %s", (property_id,),
+        ).fetchone()
+    if current is None:
+        return None
+    raise GeometryConflict(current["geometry_revision"])

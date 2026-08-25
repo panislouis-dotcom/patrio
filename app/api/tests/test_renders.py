@@ -993,7 +993,29 @@ def test_from_plan_without_variant_is_rejected(client, test_property, fake_opena
     assert after == before   # no se creó ningún render a medio validar
 
 
-def test_from_plan_with_an_invalid_variant_is_rejected(client, test_property, fake_openai):
+def _seed_plans(client, property_id, *plan_ids):
+    """Persiste un geometry v4 con los planes dados: desde la migración 050 la
+    variante de un render ES un plan id, y el servidor valida que exista en el
+    geometry vivo — un test que genera un render de plan tiene que sembrar el
+    plan primero, igual que la UI real (que siempre genera desde un plan abierto)."""
+    fs = {"slab_m": 0.15, "activeFloor": 0,
+          "floors": [{"id": "floor-abc-123", "name": "Planta Baja", "height_m": 2.6,
+                      "extWall_m": 0.15, "intWall_m": 0.10,
+                      "vertices": {}, "edges": {}, "rooms": []}]}
+    # Como el cliente real: leer la revisión vigente y declararla al guardar.
+    revision = client.get(f"/api/properties/{property_id}/geometry").json()["revision"]
+    r = client.put(f"/api/properties/{property_id}/geometry", json={"geometry": {
+        "schemaVersion": 4,
+        "variants": {"original": fs,
+                     "plans": [{"id": pid, "name": f"Plan {pid}", "fs": fs} for pid in plan_ids]},
+    }, "expectedRevision": revision})
+    assert r.status_code == 200, r.text
+
+
+def test_from_plan_with_an_unknown_plan_id_is_rejected(client, test_property, fake_openai):
+    # 'remodelado' no es 'original' ni un plan presente en el geometry — 422,
+    # aunque OTROS planes sí existan (la membresía es por id exacto).
+    _seed_plans(client, test_property["id"], "planned")
     before = client.get(f"/api/properties/{test_property['id']}/renders").json()
     r = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
@@ -1005,9 +1027,23 @@ def test_from_plan_with_an_invalid_variant_is_rejected(client, test_property, fa
     assert after == before
 
 
+def test_from_plan_with_a_plan_id_absent_from_geometry_is_rejected(
+        client, test_property, fake_openai):
+    # Sin sembrar NINGÚN plan, hasta el id legado 'planned' es inválido: el
+    # servidor valida contra el geometry vivo, no contra un vocabulario fijo.
+    r = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "Amuebla la planta.", "variant": "planned",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    )
+    assert r.status_code == 422
+
+
 @pytest.mark.parametrize("variant", ["original", "planned"])
 def test_from_plan_persists_the_variant_it_was_given(
         client, test_property, fake_openai, variant):
+    _seed_plans(client, test_property["id"], "planned")
     r = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
@@ -1296,6 +1332,7 @@ def test_unchoose_removes_the_mark_without_choosing_another(
 
 
 def test_choosing_a_plan_render_scopes_by_floor_and_variant(client, test_property, fake_openai):
+    _seed_plans(client, test_property["id"], "planned")
     a = client.post(
         f"/api/properties/{test_property['id']}/renders/from-plan",
         files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
@@ -1312,6 +1349,36 @@ def test_choosing_a_plan_render_scopes_by_floor_and_variant(client, test_propert
     renders = {r["id"]: r for r in client.get(f"/api/properties/{test_property['id']}/renders").json()}
     assert renders[a["id"]]["isChosen"] is True     # variante distinta: no lo tocó
     assert renders[other_variant["id"]]["isChosen"] is True
+
+
+def test_choosing_scopes_by_plan_even_when_floors_share_their_id(
+        client, test_property, fake_openai):
+    """LA colisión que el diseño de múltiples planes resuelve: dos planes
+    clonados del mismo original comparten floor ids A PROPÓSITO (linaje del
+    Antes/Después). Como la variante ES el plan id, elegir el render de un piso
+    en el plan A no desmarca el del MISMO piso en el plan B — el índice único de
+    la 046 ya distingue por (property, floor, variante) sin ningún cambio."""
+    _seed_plans(client, test_property["id"], "plan-a", "plan-b")
+    en_a = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "x", "variant": "plan-a",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    ).json()
+    en_b = client.post(
+        f"/api/properties/{test_property['id']}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "y", "variant": "plan-b",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    ).json()
+    assert en_a["sourceVariant"] == "plan-a"
+    assert en_b["sourceVariant"] == "plan-b"
+    client.put(f"/api/properties/{test_property['id']}/renders/{en_a['id']}/choose")
+    r = client.put(f"/api/properties/{test_property['id']}/renders/{en_b['id']}/choose")
+    assert r.status_code == 200, r.text
+    renders = {r["id"]: r for r in client.get(f"/api/properties/{test_property['id']}/renders").json()}
+    assert renders[en_a["id"]]["isChosen"] is True   # otro plan, mismo piso: intacto
+    assert renders[en_b["id"]]["isChosen"] is True
 
 
 def test_choosing_a_render_without_floor_or_photo_is_rejected(client, test_property, fake_openai):
@@ -1359,3 +1426,71 @@ def test_a_chain_of_edits_keeps_the_original_source_image(client, test_property,
     c = client.post(f"/api/properties/{test_property['id']}/renders/{b['id']}/edit",
                     json={"promptText": "z"}).json()
     assert c["sourceImageId"] == source_image["id"]
+
+
+# ─── Borrar un plan: cascada deliberada sobre sus renders ────────────────────
+
+def test_deleting_a_plan_cascades_its_renders_and_files(client, test_property, fake_openai):
+    from api import storage
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a", "plan-b")
+    en_a = client.post(
+        f"/api/properties/{pid}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "x", "variant": "plan-a",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    ).json()
+    en_b = client.post(
+        f"/api/properties/{pid}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "y", "variant": "plan-b",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    ).json()
+
+    r = client.delete(f"/api/properties/{pid}/plans/plan-a")
+    assert r.status_code == 200, r.text
+    # revision 2: la 1 fue el _seed_plans, y borrar el plan también muta el
+    # blob — sube el candado para que otras sesiones no lo resuciten.
+    assert r.json() == {"deletedRenders": 1, "revision": 2}
+
+    # El plan se fue del geometry; el hermano sigue.
+    g = client.get(f"/api/properties/{pid}/geometry").json()["geometry"]
+    assert [p["id"] for p in g["variants"]["plans"]] == ["plan-b"]
+    # Sus renders se fueron de la BD; los del otro plan siguen intactos.
+    ids = {x["id"] for x in client.get(f"/api/properties/{pid}/renders").json()}
+    assert en_a["id"] not in ids
+    assert en_b["id"] in ids
+    # Y sus archivos se fueron de storage (render + PNG de referencia del plano).
+    with pytest.raises(FileNotFoundError):
+        storage.stream(en_a["filePath"])
+    with pytest.raises(FileNotFoundError):
+        storage.stream(en_a["sourcePlanPath"])
+    storage.stream(en_b["filePath"])   # el hermano no perdió nada
+
+
+def test_deleting_a_missing_plan_is_404_and_touches_nothing(client, test_property, fake_openai):
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    r = client.delete(f"/api/properties/{pid}/plans/no-existe")
+    assert r.status_code == 404
+    g = client.get(f"/api/properties/{pid}/geometry").json()["geometry"]
+    assert [p["id"] for p in g["variants"]["plans"]] == ["plan-a"]
+
+
+def test_deleting_a_plan_leaves_photo_and_original_renders_alone(
+        client, test_property, source_image, fake_openai):
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    foto = client.post(f"/api/properties/{pid}/renders",
+                       json={"sourceImageId": source_image["id"], "promptText": "x"}).json()
+    original = client.post(
+        f"/api/properties/{pid}/renders/from-plan",
+        files={"file": ("plano.png", io.BytesIO(_png_bytes()), "image/png")},
+        data={"promptText": "x", "variant": "original",
+              "floorId": "floor-abc-123", "floorName": "Planta Baja"},
+    ).json()
+    r = client.delete(f"/api/properties/{pid}/plans/plan-a")
+    assert r.status_code == 200
+    assert r.json() == {"deletedRenders": 0, "revision": 2}
+    ids = {x["id"] for x in client.get(f"/api/properties/{pid}/renders").json()}
+    assert foto["id"] in ids and original["id"] in ids

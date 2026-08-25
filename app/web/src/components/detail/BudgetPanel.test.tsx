@@ -23,7 +23,7 @@ vi.mock('../../lib/api', async importOriginal => {
     deleteBudgetPayment: vi.fn(),
     fetchBudgetSources: vi.fn(async () => FUENTES),
     applyBudgetSource: vi.fn(),
-    fetchProperties: vi.fn(async () => OBRAS),
+    fetchProperties: vi.fn(async () => []),
     // Mockeada para poder AFIRMAR QUE NO SE LLAMA: copiar ya no escribe la ficha
     // de nadie. El costo de obra del destino se lee de su presupuesto, y se
     // captura en su ficha —con su metraje y su $/m²—, nunca desde este popup.
@@ -59,20 +59,26 @@ const categoria = (id: number, name: string) => ({ id, name, description: '', cr
  * reciente es el único punto de partida que no es captura manual.
  */
 const FUENTES: BudgetSource[] = [
-  { id: 500, name: 'Zaragoza 100', propertyId: 4, lineCount: 18, total: 1_800_000 },
-  { id: 501, name: 'Modesto 415', propertyId: 3, lineCount: 22, total: 2_300_000 },
+  { id: 500, name: 'Zaragoza 100', propertyId: 4, lineCount: 18, total: 1_800_000,
+    planId: null, planName: null, fullTotal: 2_000_000, sqmConstruction: 200, constructionCostPerSqm: 10_000 },
+  { id: 501, name: 'Modesto 415', propertyId: 3, lineCount: 22, total: 2_300_000,
+    planId: null, planName: null, fullTotal: 2_500_000, sqmConstruction: 250, constructionCostPerSqm: 10_000 },
 ]
 
 /**
- * El inventario, que es de donde salen las obras DESTINO al empujar. La 7 es la
- * que se está viendo: tiene que quedar fuera de la lista, porque copiarse sobre
- * sí misma la rechaza el servidor con un 422.
+ * Los presupuestos DESTINO al empujar (addendum 2026-08-24: la lista es de
+ * PRESUPUESTOS — obras y escenarios — y la exclusión del propio la hace el
+ * servidor por id de presupuesto, no este cliente).
  */
-const OBRAS = [
-  { id: 3, name: 'Modesto 415' },
-  { id: 4, name: 'Zaragoza 100' },
-  { id: 7, name: 'Esta misma obra' },
-] as Property[]
+const destino = (over: Partial<BudgetSource>): BudgetSource => ({
+  id: 300, name: 'Modesto 415', propertyId: 3, lineCount: 0, total: 0,
+  planId: null, planName: null, fullTotal: 2_000_000,
+  sqmConstruction: null, constructionCostPerSqm: null, ...over,
+})
+const DESTINOS: BudgetSource[] = [
+  destino({}),
+  destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, fullTotal: 3_000_000 }),
+]
 
 const PROVEEDORES: Proveedor[] = [
   proveedor({ id: 11, name: 'Albañiles del Norte', categories: [categoria(7, 'Albañilería')] }),
@@ -157,7 +163,7 @@ describe('BudgetPanel', () => {
     vi.clearAllMocks()
     vi.mocked(api.fetchBudgetSources).mockResolvedValue(FUENTES)
     vi.mocked(api.getCategories).mockResolvedValue(OFICIOS)
-    vi.mocked(api.fetchProperties).mockResolvedValue(OBRAS)
+
   })
 
   it('abre con los capítulos colapsados: la vista inicial son renglones, no cuarenta', async () => {
@@ -339,7 +345,7 @@ describe('BudgetPanel', () => {
 
     fireEvent.blur(caja)
     await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(api.updateBudgetLine).mock.calls[0].slice(1)).toEqual([1, { unitPrice: 1500 }])
+    expect(vi.mocked(api.updateBudgetLine).mock.calls[0].slice(1)).toEqual([1, { unitPrice: 1500 }, undefined])
   })
 
   it('vaciar el nombre de una partida no lo manda: se revierte a lo guardado', async () => {
@@ -557,7 +563,7 @@ describe('BudgetPanel', () => {
     fireEvent.change(screen.getByLabelText('Nuevo total de obra'), { target: { value: '1500000' } })
     fireEvent.click(screen.getByText('FIJAR TOTAL'))
 
-    await waitFor(() => expect(api.setBudgetTotal).toHaveBeenCalledWith(7, 1_500_000))
+    await waitFor(() => expect(api.setBudgetTotal).toHaveBeenCalledWith(7, 1_500_000, undefined))
     await waitFor(() => expect(onChange).toHaveBeenCalled())
   })
 
@@ -600,7 +606,7 @@ describe('BudgetPanel', () => {
     fireEvent.click(screen.getByText('AGREGAR PAGO'))
 
     await waitFor(() => expect(api.addBudgetPayment).toHaveBeenCalledWith(
-      7, 1, { amount: 6_000, paidOn: '2026-06-15' },
+      7, 1, { amount: 6_000, paidOn: '2026-06-15' }, undefined,
     ))
   })
 
@@ -609,7 +615,7 @@ describe('BudgetPanel', () => {
   it('arrancar desde otra obra copia sus renglones por su id de presupuesto', async () => {
     // Lo que viaja es el id del PRESUPUESTO de la obra origen, no el de la obra.
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRO PRESUPUESTO/))
     const selector = await screen.findByLabelText('Presupuesto de origen')
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.applyBudgetSource).mockResolvedValue({
@@ -624,12 +630,12 @@ describe('BudgetPanel', () => {
 
     fireEvent.change(selector, { target: { value: '500' } })
     fireEvent.click(screen.getByText('COPIAR RENGLONES'))
-    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 500))
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 500, null, false, undefined))
 
     // Y otra obra es la misma llamada con otro id
     fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '501' } })
     fireEvent.click(screen.getByText('COPIAR RENGLONES'))
-    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 501))
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 501, null, false, undefined))
 
     // Y se dice que reparten en vez de crecer, que es lo que hace el residuo
     expect(screen.getByText(/el residuo baja y el total no se mueve/)).not.toBeNull()
@@ -639,10 +645,10 @@ describe('BudgetPanel', () => {
     // `apply` rechaza copiarse sobre sí mismo con un 422, y ofrecer una opción
     // que solo puede dar error es hacer que alguien descubra la regla chocando.
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRO PRESUPUESTO/))
     await screen.findByLabelText('Presupuesto de origen')
 
-    expect(api.fetchBudgetSources).toHaveBeenCalledWith(7)
+    expect(api.fetchBudgetSources).toHaveBeenCalledWith(9)
   })
 
   it('sin nada de dónde copiar lo dice, en vez de dejar un selector vacío', async () => {
@@ -650,7 +656,7 @@ describe('BudgetPanel', () => {
     // defecto: no tiene nada que dar. El vacío de un selector se lee como roto.
     vi.mocked(api.fetchBudgetSources).mockResolvedValue([])
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRO PRESUPUESTO/))
 
     expect(await screen.findByText(/Todavía no hay de dónde copiar/)).not.toBeNull()
   })
@@ -662,7 +668,7 @@ describe('BudgetPanel', () => {
     // clic y caen dentro de capítulos colapsados: el efecto no está en
     // pantalla, y una escritura así no se dispara de un dedazo.
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRO PRESUPUESTO/))
     const selector = await screen.findByLabelText('Presupuesto de origen')
     vi.spyOn(window, 'confirm').mockReturnValue(false)
 
@@ -676,7 +682,7 @@ describe('BudgetPanel', () => {
 
   it('copiar dice cuántos renglones cayeron: no se ven, los capítulos están cerrados', async () => {
     await renderPanel(DETALLADO)
-    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRO PRESUPUESTO/))
     await screen.findByLabelText('Presupuesto de origen')
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.applyBudgetSource).mockResolvedValue({
@@ -693,9 +699,10 @@ describe('BudgetPanel', () => {
   // ── Copiar a otras obras (la dirección contraria: empujar) ─────────────────
 
   /** Abre el bloque de empujar y espera a que lleguen las obras destino. */
-  async function abrirEmpujar() {
-    fireEvent.click(screen.getByText(/COPIAR A OTRAS OBRAS/))
-    await screen.findByLabelText('Copiar a Modesto 415')
+  async function abrirEmpujar(targets: BudgetSource[] = DESTINOS) {
+    vi.mocked(api.fetchBudgetSources).mockResolvedValue(targets)
+    fireEvent.click(screen.getByText(/COPIAR A OTROS PRESUPUESTOS/))
+    await screen.findByLabelText(`Copiar a ${targets[0].name}`)
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   }
 
@@ -723,8 +730,8 @@ describe('BudgetPanel', () => {
     // El id de la URL es el DESTINO y el `budgetId` el del presupuesto de ESTA
     // obra: la misma llamada de «arrancar desde», al revés.
     expect(vi.mocked(api.applyBudgetSource).mock.calls).toEqual([
-      [3, 9, ['Albañilería']],
-      [4, 9, ['Albañilería']],
+      [3, 9, ['Albañilería'], false, undefined],
+      [4, 9, ['Albañilería'], false, undefined],
     ])
   })
 
@@ -739,7 +746,7 @@ describe('BudgetPanel', () => {
     fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
     fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
 
-    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(3, 9, null))
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(3, 9, null, false, undefined))
   })
 
   it('dice OBRA POR OBRA cuántos renglones entraron y cuántos ya estaban', async () => {
@@ -800,14 +807,16 @@ describe('BudgetPanel', () => {
     expect(within(total).getByText('$1,000,000')).not.toBeNull()
   })
 
-  it('esta obra no se ofrece como destino, y el residuo no se ofrece como capítulo', async () => {
-    // Copiarse sobre sí misma da 422, y ofrecer una opción que solo puede fallar
-    // es hacer que alguien descubra la regla chocando con ella. El capítulo del
-    // residuo tampoco viaja nunca, así que su casilla no haría nada.
+  it('este presupuesto se excluye en el servidor, y el residuo no se ofrece como capítulo', async () => {
+    // Copiarse sobre sí mismo da 422, y ofrecer una opción que solo puede fallar
+    // es hacer que alguien descubra la regla chocando con ella. La exclusión es
+    // por id de PRESUPUESTO (así los escenarios de esta obra sí aparecen), y
+    // `includeEmpty`: a un presupuesto vacío sí se le puede copiar. El capítulo
+    // del residuo tampoco viaja nunca, así que su casilla no haría nada.
     await renderPanel(DETALLADO)
     await abrirEmpujar()
 
-    expect(screen.queryByLabelText('Copiar a Esta misma obra')).toBeNull()
+    expect(api.fetchBudgetSources).toHaveBeenCalledWith(9, true)
     expect(screen.getByLabelText('Copiar capítulo Albañilería')).not.toBeNull()
     expect(screen.getByLabelText('Copiar capítulo Instalaciones')).not.toBeNull()
     expect(screen.queryByLabelText('Copiar capítulo Otros')).toBeNull()
@@ -870,12 +879,12 @@ describe('BudgetPanel', () => {
     fireEvent.click(fija)
     await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalled())
     expect(vi.mocked(api.updateBudgetLine).mock.calls[0].slice(1))
-      .toEqual([2, { isProportional: true }])
+      .toEqual([2, { isProportional: true }, undefined])
   })
 
   /** Abre «copiar de otra obra» y pide la copia PROPORCIONAL. */
   async function abrirProporcional() {
-    fireEvent.click(screen.getByText(/COPIAR DE OTRA OBRA/))
+    fireEvent.click(screen.getByText(/COPIAR DE OTRO PRESUPUESTO/))
     await screen.findByLabelText('Presupuesto de origen')
     fireEvent.click(screen.getByLabelText('Copia proporcional de otra obra'))
   }
@@ -982,7 +991,7 @@ describe('BudgetPanel', () => {
     fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '500' } })
     fireEvent.click(screen.getByText('COPIAR RENGLONES'))
 
-    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 500, null, true))
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 500, null, true, undefined))
     // Y no se escribe la ficha de nadie antes de copiar: no hay nada que guardar
     expect(api.updateProperty).not.toHaveBeenCalled()
   })
@@ -990,15 +999,11 @@ describe('BudgetPanel', () => {
   it('en PUSH cada obra entra a SU propio costo de obra, y una bloqueada no frena a las demás', async () => {
     // Dos obras del mismo tamaño pueden construirse a niveles de costo
     // distintos: el objetivo es de cada una, leído de su propio presupuesto.
-    vi.mocked(api.fetchProperties).mockResolvedValue([
-      {
-        id: 3, name: 'Modesto 415', constructionBudgeted: 2_400_000,
-        sqmConstruction: 200, constructionCostPerSqm: 12_000,
-      },
-      { id: 4, name: 'Zaragoza 100', constructionBudgeted: 0 },
-    ] as Property[])
     await renderPanel(CON_FIJA)
-    await abrirEmpujar()
+    await abrirEmpujar([
+      destino({ fullTotal: 2_400_000, sqmConstruction: 200, constructionCostPerSqm: 12_000 }),
+      destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, fullTotal: 0 }),
+    ])
     fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
     vi.mocked(api.applyBudgetSource).mockResolvedValue(copiado(2, 0))
 
@@ -1017,7 +1022,7 @@ describe('BudgetPanel', () => {
     fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
 
     await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(api.applyBudgetSource).mock.calls[0]).toEqual([3, 9, null, true])
+    expect(vi.mocked(api.applyBudgetSource).mock.calls[0]).toEqual([3, 9, null, true, undefined])
     // Ninguna ficha se escribe antes de copiar: el objetivo ya estaba capturado
     expect(api.updateProperty).not.toHaveBeenCalled()
     expect(await screen.findByText(/Modesto 415: 2 renglones agregados/)).not.toBeNull()
@@ -1029,12 +1034,11 @@ describe('BudgetPanel', () => {
   it('una obra que falla en proporcional no cancela a las siguientes', async () => {
     // El aislamiento por destino es el mismo de siempre: cada obra es una
     // llamada, y el rechazo del servidor se lee junto al nombre de la suya.
-    vi.mocked(api.fetchProperties).mockResolvedValue([
-      { id: 3, name: 'Modesto 415', constructionBudgeted: 2_400_000 },
-      { id: 4, name: 'Zaragoza 100', constructionBudgeted: 3_000_000 },
-    ] as Property[])
     await renderPanel(CON_FIJA)
-    await abrirEmpujar()
+    await abrirEmpujar([
+      destino({ fullTotal: 2_400_000 }),
+      destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, fullTotal: 3_000_000 }),
+    ])
     fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
     vi.mocked(api.applyBudgetSource)
       .mockRejectedValueOnce(new Error('El presupuesto de destino está cerrado.'))
@@ -1046,7 +1050,7 @@ describe('BudgetPanel', () => {
 
     await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledTimes(2))
     expect(vi.mocked(api.applyBudgetSource).mock.calls)
-      .toEqual([[3, 9, null, true], [4, 9, null, true]])
+      .toEqual([[3, 9, null, true, undefined], [4, 9, null, true, undefined]])
     expect(await screen.findByText(/Modesto 415: no se copió — El presupuesto de destino está cerrado\./))
       .not.toBeNull()
     expect(await screen.findByText(/Zaragoza 100: 2 renglones agregados/)).not.toBeNull()

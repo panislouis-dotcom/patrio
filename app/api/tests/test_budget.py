@@ -1251,12 +1251,14 @@ def test_a_source_counts_only_what_it_would_actually_copy(client, test_property,
                 if f["id"] == origen["budgetId"])["lineCount"] == 3
 
 
-def test_a_job_is_not_offered_as_a_source_to_itself(client, test_property, origen):
+def test_a_budget_is_not_offered_as_a_source_to_itself(client, test_property, origen):
     """`apply` ya lo rechaza con un 422; ofrecerlo en el selector sería hacer que
-    el usuario descubra la regla chocando con ella."""
+    el usuario descubra la regla chocando con ella. La exclusión es por id de
+    PRESUPUESTO (no de propiedad) desde el addendum 2026-08-24: así los
+    escenarios de la misma obra sí se ofrecen."""
     assert any(f["id"] == origen["budgetId"] for f in _sources(client))
     assert all(f["id"] != origen["budgetId"]
-               for f in _sources(client, excludePropertyId=origen["propertyId"]))
+               for f in _sources(client, excludeBudgetId=origen["budgetId"]))
 
 
 # ── Invariantes que sostienen la resta ──────────────────────────────────────

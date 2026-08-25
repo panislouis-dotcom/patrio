@@ -61,7 +61,7 @@ def torcidas(test_property, proceso_de_la_propiedad):
     photo = properties_db.add_image(
         pid, f"properties/{pid}/backfill-foto.jpg", "foto.jpg", "image/jpeg")
     reference_key = f"properties/{pid}/floorplan/backfill-ref.jpg"
-    properties_db.set_geometry(pid, {
+    properties_db.set_geometry(pid, expected_revision=0, geometry={
         "schemaVersion": 2, "slab_m": 0.15, "activeFloor": 0,
         "floors": [{
             "name": "Planta Baja", "height_m": 2.6, "extWall_m": 0.15, "intWall_m": 0.10,

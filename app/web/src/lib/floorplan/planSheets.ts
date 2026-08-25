@@ -1,8 +1,17 @@
-import { migrateGeometry, type FloorGraph, type VariantKey } from './types'
+import { migrateGeometry, type FloorGraph, type PlanKey } from './types'
 import { floorToSvg } from './exportSvg'
 
-/** Una hoja dibujada: un piso de una variante, ya en SVG. */
-export interface PlanSheet { variant: VariantKey; floorId: string; floorName: string; svg: string }
+/** Una hoja dibujada: un piso de una variante ('original' o el id de un plan), ya en SVG.
+ * `variant` es la LLAVE de pareo (la misma que source_variant en los renders);
+ * `planName` es la etiqueta humana que el prospecto imprime por sección — null en el
+ * original, que no es un plan. */
+export interface PlanSheet {
+  variant: PlanKey
+  planName: string | null
+  floorId: string
+  floorName: string
+  svg: string
+}
 
 // Lado largo objetivo de una hoja, en px. El SVG se escala al 100% del ancho de su columna
 // en el PDF, así que este número solo fija la resolución del dibujo y la proporción entre
@@ -37,15 +46,21 @@ export function planSheets(raw: unknown): PlanSheet[] {
   const model = migrateGeometry(raw)
   if (!model) return []
 
-  const pairs: [VariantKey, FloorGraph][] = []
-  for (const f of model.variants.original?.floors ?? []) if (drawn(f)) pairs.push(['original', f])
-  for (const f of model.variants.planned?.floors ?? []) if (drawn(f)) pairs.push(['planned', f])
+  // La variante de un plan ES su id (el legado migrado conserva 'planned', así que
+  // el documento de una propiedad con un solo plan no cambia ni un byte de pareo).
+  const pairs: [PlanKey, string | null, FloorGraph][] = []
+  for (const f of model.variants.original?.floors ?? []) if (drawn(f)) pairs.push(['original', null, f])
+  for (const p of model.variants.plans) for (const f of p.fs.floors ?? []) if (drawn(f)) pairs.push([p.id, p.name, f])
 
+  // Máximo del linaje ENTERO (original + todos los planes que comparten el floorId),
+  // no por pareja: la hoja del original se dibuja UNA vez, y con el máximo global
+  // toda sección "Antes / Propuesta" queda en la misma escala — por-pareja habría
+  // que dibujar el original N veces, o mentir en alguna sección.
   const lineage = new Map<string, number>()
-  for (const [, f] of pairs) lineage.set(f.id, Math.max(lineage.get(f.id) ?? 0, span(f)))
+  for (const [, , f] of pairs) lineage.set(f.id, Math.max(lineage.get(f.id) ?? 0, span(f)))
 
-  return pairs.map(([variant, f]) => ({
-    variant, floorId: f.id, floorName: f.name,
+  return pairs.map(([variant, planName, f]) => ({
+    variant, planName, floorId: f.id, floorName: f.name,
     svg: floorToSvg(f, { scale: SHEET_MAX_PX / lineage.get(f.id)! }),
   }))
 }

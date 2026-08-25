@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   BASE, fetchProperty, updateProperty, deleteProperty, clearPropertyFields, transitionProperty,
   uploadPropertyImage, deletePropertyImage, updatePropertyImageType, reorderPropertyImages,
-  fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage,
+  fetchPropertyGeometry, savePropertyGeometry, uploadFloorplanImage, deletePropertyPlan,
   fetchPropertyInvestors, fetchInvestors, fetchPropertyProfit, fetchInstances, fetchTeam,
   listRenderPrompts, listPropertyRenders, generatePropertyRender, generatePropertyRenderFromPlan,
   uploadPropertyRender, uploadPropertyRenderFromPlan,
@@ -38,13 +38,14 @@ import { StatRow } from './StatRow'
 import { PropertyProfitSection } from './PropertyProfitSection'
 import { type PlanApi } from './FloorPlanEditor'
 import { LevantamientoPanel } from './LevantamientoPanel'
-import { migrateGeometry, withVariant, type FloorPlanModel, type FloorSet, type VariantKey } from '../lib/floorplan/types'
+import { PlanesPanel } from './PlanesPanel'
+import { getPlan, LEGACY_PLAN_NAME, migrateGeometry, removePlan, withOriginal, withPlan, type FloorPlanModel, type FloorSet, type ProjectPlan, type VariantKey } from '../lib/floorplan/types'
 import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
 import { FotosPanel } from './detail/FotosPanel'
-import { BudgetPanel } from './detail/BudgetPanel'
+import { PresupuestosPanel } from './detail/PresupuestosPanel'
 import { SectionDivider } from './detail/SectionDivider'
 import { ErrorBanner } from './detail/ErrorBanner'
 import { TransitionModal } from './detail/TransitionModal'
@@ -202,6 +203,12 @@ export function PropertyDetailPage() {
   // (nunca dibujó, o el blob es del editor viejo). Null no significa «cargando»: mientras
   // la ficha carga, la página entera hace early-return antes de pintar las pestañas.
   const [geometry, setGeometry] = useState<FloorPlanModel | null>(null)
+  // El candado optimista del blob (migración 052): la revisión de la que partió
+  // lo que esta página tiene en memoria. Cada guardado la declara y el servidor
+  // contesta 409 si otra sesión guardó en medio — el mensaje sale por los
+  // caminos de error que ya existen (saveError / el error de cada panel). Ref y
+  // no estado: nada se re-pinta por ella, solo viaja con el siguiente guardado.
+  const geometryRevision = useRef(0)
   // El editor vivo Y de qué variante es, en UN solo ref: los dos levantamientos
   // comparten el GUARDAR del encabezado, y con el par amarrado estructuralmente
   // no existe el estado donde el api de un editor se guarda con la etiqueta del
@@ -226,7 +233,8 @@ export function PropertyDetailPage() {
     Promise.all([fetchProperty(propertyId), fetchPropertyGeometry(propertyId)])
       .then(([p, geo]) => {
         setProperty(p)
-        setGeometry(migrateGeometry(geo))
+        setGeometry(migrateGeometry(geo.geometry))
+        geometryRevision.current = geo.revision
         setTimeout(() => setMounted(true), 40)
         setTimeout(() => setBarsReady(true), 420)
       })
@@ -270,12 +278,54 @@ export function PropertyDetailPage() {
   }, [])
 
   /**
-   * Guardar UNA variante compone el envelope v3 completo con `withVariant`, que
-   * preserva la otra tal cual: un guardado del planeado jamás pisa el original y
-   * viceversa. Un blob v2 viejo queda persistido en v3 en su primer guardado.
+   * Guardar UNA variante compone el envelope v4 completo con `withOriginal`/`withPlan`,
+   * que preservan todo lo demás tal cual: un guardado de un plan jamás pisa el original
+   * ni a los otros planes, y viceversa. Un blob v2/v3 viejo queda persistido en v4 en su
+   * primer guardado. El `name` del plan se conserva del modelo (withPlan reemplaza el
+   * objeto entero — sin esta lectura previa, guardar geometría regresaría el nombre al
+   * default).
    */
+  /** El ÚNICO camino que escribe el blob desde esta página: guarda declarando
+   * la revisión vigente y adopta la nueva. Un 409 (otra sesión guardó en medio)
+   * sale como excepción hacia el caller — nada local se toca, el usuario recarga. */
+  async function persistGeometry(next: FloorPlanModel): Promise<void> {
+    const saved = await savePropertyGeometry(propertyId, next, geometryRevision.current)
+    geometryRevision.current = saved.revision
+    setGeometry(saved.geometry)
+  }
+
   async function saveFloorSet(variant: VariantKey, fs: FloorSet): Promise<void> {
-    setGeometry(await savePropertyGeometry(propertyId, withVariant(geometry, variant, fs)))
+    const next = variant === 'original'
+      ? withOriginal(geometry, fs)
+      : withPlan(geometry, {
+          id: variant,
+          name: getPlan(geometry, variant)?.name ?? LEGACY_PLAN_NAME,
+          fs,
+        })
+    await persistGeometry(next)
+  }
+
+  // ─── Planes de proyecto: la colección (crear / renombrar / borrar) ─────────
+  // Crear y renombrar persisten de inmediato — operaciones de envelope, no
+  // ediciones dentro de un plan (mismo criterio que clonar en LevantamientoPanel).
+  async function onCreatePlan(plan: ProjectPlan): Promise<void> {
+    await persistGeometry(withPlan(geometry, plan))
+  }
+  async function onRenamePlan(planId: string, name: string): Promise<void> {
+    const existing = getPlan(geometry, planId)
+    if (!existing) return
+    await persistGeometry(withPlan(geometry, { ...existing, name }))
+  }
+  async function onDeletePlan(planId: string): Promise<void> {
+    // El servidor cascadea (plan del blob + renders + archivos) en una operación;
+    // aquí solo se refleja: el plan fuera del envelope local y sus renders fuera
+    // de la lista — mismo filtro (sourceVariant) que la cascada usó. Borrar
+    // también sube la revisión del candado en el servidor: se adopta la nueva
+    // para que el siguiente guardado de ESTA sesión no dé un 409 falso.
+    const { revision } = await deletePropertyPlan(propertyId, planId)
+    geometryRevision.current = revision
+    setGeometry(prev => (prev ? removePlan(prev, planId) : prev))
+    setRenders(prev => prev.filter(r => r.sourceVariant !== planId))
   }
 
   // ─── Renders: edición, biblioteca y borrado son iguales sin importar la fuente
@@ -1291,12 +1341,18 @@ export function PropertyDetailPage() {
             },
             {
               label: 'plano de proyecto',
+              // PlanesPanel es dueño de CUÁL plan está activo (y remonta el
+              // LevantamientoPanel por plan); esta página sigue siendo dueña de
+              // persistir: guardar geometría, crear/renombrar (withPlan) y
+              // borrar (cascada del servidor + poda local de renders).
               panel: (
-                <LevantamientoPanel
-                  key="levantamiento-planeado"
-                  variant="planned"
+                <PlanesPanel
+                  key="planes-de-proyecto"
                   geometry={geometry}
                   onSave={saveFloorSet}
+                  onCreatePlan={onCreatePlan}
+                  onRenamePlan={onRenamePlan}
+                  onDeletePlan={onDeletePlan}
                   onUploadImage={file => uploadFloorplanImage(p.id, file)}
                   onReady={onPlanReady}
                   onDirtyChange={setPlanDirty}
@@ -1320,7 +1376,7 @@ export function PropertyDetailPage() {
               // ya no es función del costo, ver underwriting.py). Un solo
               // setProperty y la ficha entera queda al día.
               label: 'presupuesto',
-              panel: <BudgetPanel property={p} onPropertyChange={setProperty} />,
+              panel: <PresupuestosPanel property={p} geometry={geometry} onPropertyChange={setProperty} />,
             },
           ]}
         />

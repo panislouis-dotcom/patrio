@@ -172,16 +172,20 @@ def _residual_of(budget: dict) -> dict | None:
 # ─── Lectura ──────────────────────────────────────────────────────────────────
 
 @router.get("/api/properties/{property_id}/budget", operation_id="budget_get")
-def read_budget(property_id: int, _: dict = Depends(get_current_user)):
+def read_budget(property_id: int, planId: str | None = None,
+                _: dict = Depends(get_current_user)):
+    """`planId` cambia el ámbito al presupuesto-escenario de ese plan (addendum
+    2026-08-24). Sin él, el de la propiedad — el único que alimenta finanzas."""
     with get_db() as conn:
-        return budget_db.get_budget(conn, property_id)
+        return budget_db.get_budget(conn, property_id, planId)
 
 
 # ─── Renglones ────────────────────────────────────────────────────────────────
 
 @router.post("/api/properties/{property_id}/budget/lines", status_code=201,
              operation_id="budget_line_create")
-def create_line(property_id: int, body: LineCreate, _: dict = Depends(get_current_user)):
+def create_line(property_id: int, body: LineCreate, planId: str | None = None,
+                _: dict = Depends(get_current_user)):
     """Detallar: la partida sube lo mismo que el residual baja, así que el costo
     de obra —y con él la inversión total— no se mueve un peso."""
     with get_db() as conn:
@@ -190,30 +194,31 @@ def create_line(property_id: int, body: LineCreate, _: dict = Depends(get_curren
         # columna nace NULL de todos modos— así que no hay nada que distinguir.
         # Al ACTUALIZAR sí lo hay, y ahí el null es la única forma de vaciar.
         line_id, increase = budget_db.create_line(
-            conn, property_id, body.model_dump(exclude_none=True))
-        budget = budget_db.get_budget(conn, property_id)
+            conn, property_id, body.model_dump(exclude_none=True), plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     return _written(property_id, budget, _line_of(budget, line_id), increase)
 
 
 @router.patch("/api/properties/{property_id}/budget/lines/{line_id}",
               operation_id="budget_line_update")
 def update_line(property_id: int, line_id: int, body: LineUpdate,
-                _: dict = Depends(get_current_user)):
+                planId: str | None = None, _: dict = Depends(get_current_user)):
     with get_db() as conn:
         increase = budget_db.update_line(
-            conn, property_id, line_id, body.model_dump(exclude_unset=True))
-        budget = budget_db.get_budget(conn, property_id)
+            conn, property_id, line_id, body.model_dump(exclude_unset=True), plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     return _written(property_id, budget, _line_of(budget, line_id), increase)
 
 
 @router.delete("/api/properties/{property_id}/budget/lines/{line_id}",
                operation_id="budget_line_delete")
-def delete_line(property_id: int, line_id: int, _: dict = Depends(get_current_user)):
+def delete_line(property_id: int, line_id: int, planId: str | None = None,
+                _: dict = Depends(get_current_user)):
     """Dejar de detallar es lo contrario de detallar: el importe vuelve al
     residual y el total tampoco se mueve."""
     with get_db() as conn:
-        line = budget_db.delete_line(conn, property_id, line_id)
-        budget = budget_db.get_budget(conn, property_id)
+        line = budget_db.delete_line(conn, property_id, line_id, plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     # El renglón viaja tal como estaba: un borrado también es una escritura, y el
     # cliente tiene que poder decir qué fila quitar de la tabla.
     return _written(property_id, budget, line, Decimal(0))
@@ -234,7 +239,7 @@ def delete_line(property_id: int, line_id: int, _: dict = Depends(get_current_us
 
 @router.post("/api/properties/{property_id}/budget/apply", status_code=201,
              operation_id="budget_apply")
-def apply_budget(property_id: int, body: BudgetApply,
+def apply_budget(property_id: int, body: BudgetApply, planId: str | None = None,
                  _: dict = Depends(get_current_user)):
     """Copia el presupuesto de otra obra sobre éste, o solo los capítulos que se
     pidan.
@@ -262,8 +267,8 @@ def apply_budget(property_id: int, body: BudgetApply,
     with get_db() as conn:
         copied, skipped, increase = budget_db.apply_budget(
             conn, property_id, body.budgetId, body.chapters,
-            proportional=body.proportional)
-        budget = budget_db.get_budget(conn, property_id)
+            proportional=body.proportional, plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     return {**_written(property_id, budget, None, increase),
             "linesAdded": copied, "linesSkipped": skipped}
 
@@ -276,22 +281,27 @@ def apply_budget(property_id: int, body: BudgetApply,
 # ninguna — lo que sí lo hace, `apply`, vive arriba, del lado de la propiedad.
 
 @router.get("/api/budget/sources", operation_id="budget_sources_list")
-def list_sources(excludePropertyId: Optional[int] = None,
+def list_sources(excludeBudgetId: Optional[int] = None,
+                 includeEmpty: bool = False,
                  _: dict = Depends(get_current_user)):
-    """Las obras de cuyo presupuesto se puede copiar.
+    """Los presupuestos entre los que se puede copiar — el de cada obra y los
+    escenarios de plan, etiquetados con su plan.
 
-    `lineCount` es lo que de verdad se va a copiar —el residuo queda fuera— y los
-    presupuestos sin nada copiable no aparecen: uno del que no sale nada no es
-    una respuesta a «de dónde puedo copiar». El `id` va directo a
-    `POST .../budget/apply`."""
+    `lineCount` es lo que de verdad se va a copiar —el residuo queda fuera— y
+    sin `includeEmpty` los presupuestos sin nada copiable no aparecen: uno del
+    que no sale nada no es una respuesta a «de dónde puedo copiar» (como
+    DESTINO de empuje sí lo es, y para eso existe la bandera). El `id` va
+    directo a `POST .../budget/apply`."""
     with get_db() as conn:
-        return budget_db.list_sources(conn, exclude_property_id=excludePropertyId)
+        return budget_db.list_sources(conn, exclude_budget_id=excludeBudgetId,
+                                      include_empty=includeEmpty)
 
 
 # ─── El total ─────────────────────────────────────────────────────────────────
 
 @router.put("/api/properties/{property_id}/budget/total", operation_id="budget_set_total")
-def set_total(property_id: int, body: TotalUpdate, _: dict = Depends(get_current_user)):
+def set_total(property_id: int, body: TotalUpdate, planId: str | None = None,
+              _: dict = Depends(get_current_user)):
     """Ajusta cuánto va a costar la obra, moviendo el residual.
 
     Es la operación que SÍ mueve el total, y existe aparte de detallar
@@ -300,8 +310,8 @@ def set_total(property_id: int, body: TotalUpdate, _: dict = Depends(get_current
     de la captura: produce un número, y el número entra por esta puerta —no por
     un campo que se quede guardado compitiendo con el presupuesto."""
     with get_db() as conn:
-        budget_db.set_total(conn, property_id, body.amount)
-        budget = budget_db.get_budget(conn, property_id)
+        budget_db.set_total(conn, property_id, body.amount, plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     return _written(property_id, budget, _residual_of(budget), Decimal(0))
 
 
@@ -316,19 +326,20 @@ def set_total(property_id: int, body: TotalUpdate, _: dict = Depends(get_current
 @router.patch("/api/properties/{property_id}/budget/chapters/{chapter}",
               operation_id="budget_chapter_rename")
 def rename_chapter(property_id: int, chapter: str, body: ChapterRename,
-                   _: dict = Depends(get_current_user)):
+                   planId: str | None = None, _: dict = Depends(get_current_user)):
     with get_db() as conn:
-        budget_db.rename_chapter(conn, property_id, chapter, body.name)
-        budget = budget_db.get_budget(conn, property_id)
+        budget_db.rename_chapter(conn, property_id, chapter, body.name, plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     return _written(property_id, budget, None, Decimal(0))
 
 
 @router.delete("/api/properties/{property_id}/budget/chapters/{chapter}",
                operation_id="budget_chapter_delete")
-def delete_chapter(property_id: int, chapter: str, _: dict = Depends(get_current_user)):
+def delete_chapter(property_id: int, chapter: str, planId: str | None = None,
+                   _: dict = Depends(get_current_user)):
     with get_db() as conn:
-        budget_db.delete_chapter(conn, property_id, chapter)
-        budget = budget_db.get_budget(conn, property_id)
+        budget_db.delete_chapter(conn, property_id, chapter, plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     return _written(property_id, budget, None, Decimal(0))
 
 
@@ -341,21 +352,68 @@ def delete_chapter(property_id: int, chapter: str, _: dict = Depends(get_current
 @router.post("/api/properties/{property_id}/budget/lines/{line_id}/payments",
              status_code=201, operation_id="budget_payment_create")
 def add_payment(property_id: int, line_id: int, body: PaymentCreate,
-                _: dict = Depends(get_current_user)):
+                planId: str | None = None, _: dict = Depends(get_current_user)):
     with get_db() as conn:
         budget_db.add_payment(conn, property_id, line_id, body.amount,
-                              paid_on=body.paidOn, notes=body.notes)
-        budget = budget_db.get_budget(conn, property_id)
+                              paid_on=body.paidOn, notes=body.notes, plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     return _written(property_id, budget, _line_of(budget, line_id), Decimal(0))
 
 
 @router.delete("/api/properties/{property_id}/budget/lines/{line_id}/payments/{payment_id}",
                operation_id="budget_payment_delete")
 def delete_payment(property_id: int, line_id: int, payment_id: int,
-                   _: dict = Depends(get_current_user)):
+                   planId: str | None = None, _: dict = Depends(get_current_user)):
     """Un pago mal capturado se borra, no se reescribe: la tabla es append-only
     porque corregir en su lugar borraría que alguna vez se dijo otra cosa."""
     with get_db() as conn:
-        budget_db.delete_payment(conn, property_id, line_id, payment_id)
-        budget = budget_db.get_budget(conn, property_id)
+        budget_db.delete_payment(conn, property_id, line_id, payment_id, plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     return _written(property_id, budget, _line_of(budget, line_id), Decimal(0))
+
+
+# ─── Presupuesto-escenario por plan de proyecto (addendum 2026-08-24) ─────────
+
+class PlanBudgetCreate(BaseModel):
+    # De dónde nace: `sourceBudgetId` copia de ESE presupuesto (el de la
+    # propiedad, el escenario de otro plan — el flujo real muchas veces arma
+    # plan a plan y el de la propiedad se llena al final —, o el de otra obra);
+    # sin él, `copyFromProperty` (default) copia del de la propiedad; con los
+    # dos apagados, nace vacío. La copia es la maquinaria de siempre:
+    # copy_lines, con su residuo asentado.
+    copyFromProperty: bool = True
+    sourceBudgetId: int | None = None
+
+
+@router.post("/api/properties/{property_id}/budget/plans/{plan_id}", status_code=201,
+             operation_id="budget_plan_create")
+def create_plan_budget(property_id: int, plan_id: str, body: PlanBudgetCreate | None = None,
+                       _: dict = Depends(get_current_user)):
+    """El escenario de un plan nace por acción explícita, nunca al leer."""
+    opts = body or PlanBudgetCreate()
+    with get_db() as conn:
+        if opts.sourceBudgetId is not None:
+            source_id = opts.sourceBudgetId
+        elif opts.copyFromProperty:
+            source_id = budget_db._require_budget(conn, property_id)
+        else:
+            source_id = None
+        _, copied, skipped = budget_db.create_plan_budget(
+            conn, property_id, plan_id, source_budget_id=source_id)
+        budget = budget_db.get_budget(conn, property_id, plan_id)
+    return {"budget": budget, "linesAdded": copied, "linesSkipped": skipped}
+
+
+@router.post("/api/properties/{property_id}/budget/plans/{plan_id}/use",
+             operation_id="budget_plan_use")
+def use_plan_budget(property_id: int, plan_id: str, _: dict = Depends(get_current_user)):
+    """«Usar este plan»: sus renglones entran al presupuesto de LA PROPIEDAD por
+    la misma puerta que copiar de otra obra (apply): deduplicar es saltar — el
+    dinero ya capturado no se pisa —, el residuo no viaja, y se reporta cuánto
+    entró y cuánto ya estaba. El escenario queda intacto: es la propuesta, y la
+    propuesta se califica."""
+    with get_db() as conn:
+        copied, skipped, increase = budget_db.use_plan_budget(conn, property_id, plan_id)
+        budget = budget_db.get_budget(conn, property_id)
+    return {**_written(property_id, budget, None, increase),
+            "linesAdded": copied, "linesSkipped": skipped}

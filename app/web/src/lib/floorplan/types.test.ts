@@ -1,8 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
-  withVariant, emptyFloorSet, emptyFloorGraph, clone, floorElev, migrateGeometry, FIXTURE_CATALOG,
-  ROOM_TYPE_CATALOG, type RoomType,
+  withOriginal, withPlan, removePlan, getPlan, emptyFloorSet, emptyFloorGraph, clone, floorElev,
+  migrateGeometry, FIXTURE_CATALOG, ROOM_TYPE_CATALOG, LEGACY_PLAN_ID, LEGACY_PLAN_NAME,
+  type ProjectPlan, type RoomType,
 } from './types'
+
+/** Un plan de proyecto de fixture, con fs propio y nombre reconocible. */
+function plan(id: string, name = `Plan ${id}`): ProjectPlan {
+  return { id, name, fs: emptyFloorSet() }
+}
 
 // Real shape seen in production: the old wall-list editor's blob has no `activeFloor` at all
 // (it used `active` instead) and each floor has `walls`/`footprint`, not `vertices`/`edges`.
@@ -30,11 +36,11 @@ describe('emptyFloorGraph', () => {
   })
 })
 
-describe('withVariant', () => {
-  it('builds a fresh v3 envelope from null: the written variant lands, the other defaults', () => {
-    const m = withVariant(null, 'original', emptyFloorSet())
-    expect(m.schemaVersion).toBe(3)
-    expect(m.variants.planned).toBeNull()
+describe('withOriginal / withPlan / removePlan', () => {
+  it('builds a fresh v4 envelope from null: the original lands, plans default to empty', () => {
+    const m = withOriginal(null, emptyFloorSet())
+    expect(m.schemaVersion).toBe(4)
+    expect(m.variants.plans).toEqual([])
     const fs = m.variants.original
     expect(fs.floors).toHaveLength(1)
     expect(fs.activeFloor).toBe(0)
@@ -45,28 +51,47 @@ describe('withVariant', () => {
     expect(fs.floors[0].intWall_m).toBeCloseTo(0.10)
   })
 
-  it('from null with the planned variant, original still exists: it can never be null', () => {
-    const planned = emptyFloorSet()
-    const m = withVariant(null, 'planned', planned)
-    expect(m.variants.planned).toBe(planned)
+  it('from null with a plan, original still exists: it can never be null', () => {
+    const a = plan('a')
+    const m = withPlan(null, a)
+    expect(m.variants.plans).toEqual([a])
     expect(m.variants.original.floors).toHaveLength(1)
   })
 
-  it('writing one variant preserves the other untouched, in both directions', () => {
-    const planned = emptyFloorSet()
-    planned.floors[0].name = 'Planta Planeada'
-    const base = withVariant(withVariant(null, 'original', emptyFloorSet()), 'planned', planned)
+  it('writing the original preserves every plan; writing a plan preserves the original and its siblings', () => {
+    const a = plan('a'), b = plan('b')
+    const base = withPlan(withPlan(withOriginal(null, emptyFloorSet()), a), b)
 
     const newOriginal = emptyFloorSet()
     newOriginal.floors[0].name = 'Planta Nueva'
-    const afterOriginal = withVariant(base, 'original', newOriginal)
+    const afterOriginal = withOriginal(base, newOriginal)
     expect(afterOriginal.variants.original).toBe(newOriginal)
-    expect(afterOriginal.variants.planned).toBe(planned)
+    expect(afterOriginal.variants.plans).toEqual([a, b])
 
-    const newPlanned = emptyFloorSet()
-    const afterPlanned = withVariant(base, 'planned', newPlanned)
-    expect(afterPlanned.variants.planned).toBe(newPlanned)
-    expect(afterPlanned.variants.original).toBe(base.variants.original)
+    const a2: ProjectPlan = { ...a, fs: emptyFloorSet() }
+    const afterPlan = withPlan(base, a2)
+    expect(afterPlan.variants.original).toBe(base.variants.original)
+    expect(afterPlan.variants.plans).toEqual([a2, b])   // upsert en su lugar, no al final
+  })
+
+  it('withPlan upserts by id: an unknown id appends, a known id replaces in place', () => {
+    const a = plan('a')
+    const one = withPlan(null, a)
+    expect(one.variants.plans.map(p => p.id)).toEqual(['a'])
+    const renamed: ProjectPlan = { ...a, name: 'Plan A renombrado' }
+    const two = withPlan(one, renamed)
+    expect(two.variants.plans).toHaveLength(1)
+    expect(two.variants.plans[0].name).toBe('Plan A renombrado')
+  })
+
+  it('removePlan quita solo ese plan; getPlan lo encuentra por id', () => {
+    const a = plan('a'), b = plan('b')
+    const base = withPlan(withPlan(withOriginal(null, emptyFloorSet()), a), b)
+    expect(getPlan(base, 'b')).toBe(b)
+    expect(getPlan(base, 'zzz')).toBeNull()
+    const sinA = removePlan(base, 'a')
+    expect(sinA.variants.plans).toEqual([b])
+    expect(sinA.variants.original).toBe(base.variants.original)
   })
 })
 
@@ -74,35 +99,53 @@ describe('migrateGeometry', () => {
   it('nests a v2 blob as the original variant, preserving floors, activeFloor and slab_m', () => {
     const v2 = v2Blob()
     const m = migrateGeometry(v2)!
-    expect(m.schemaVersion).toBe(3)
-    expect(m.variants.planned).toBeNull()
+    expect(m.schemaVersion).toBe(4)
+    expect(m.variants.plans).toEqual([])
     expect(m.variants.original.slab_m).toBeCloseTo(0.2)
     expect(m.variants.original.activeFloor).toBe(1)
     expect(m.variants.original.floors).toHaveLength(2)
     expect(m.variants.original.floors.map(f => f.name)).toEqual(['Planta Original', 'Planta Alta'])
   })
 
-  it('returns a well-formed v3 envelope as-is, without copying', () => {
-    const v3 = withVariant(null, 'original', emptyFloorSet())
-    expect(migrateGeometry(v3)).toBe(v3)
+  it('returns a well-formed v4 envelope as-is, without copying', () => {
+    const v4 = withPlan(withOriginal(null, emptyFloorSet()), plan('a'))
+    expect(migrateGeometry(v4)).toBe(v4)
   })
 
-  it('returns a v3 envelope with a drawn planned variant as-is too', () => {
-    const v3 = withVariant(withVariant(null, 'original', emptyFloorSet()), 'planned', emptyFloorSet())
-    expect(migrateGeometry(v3)).toBe(v3)
+  it('convierte v3 SIN planned a v4 con plans vacío', () => {
+    const original = emptyFloorSet()
+    const v3 = { schemaVersion: 3, variants: { original, planned: null } }
+    const m = migrateGeometry(v3)!
+    expect(m.schemaVersion).toBe(4)
+    expect(m.variants.plans).toEqual([])
+    expect(m.variants.original).toBe(original)
   })
 
-  it('normalizes a v3 blob without a planned key to planned: null', () => {
-    // Un blob v3 escrito por una versión que aún no conocía `planned` no debe
-    // colarse con `planned: undefined`: el tipo promete FloorSet | null.
+  it('convierte v3 sin la CLAVE planned igual que planned: null', () => {
     const sinPlanned = { schemaVersion: 3, variants: { original: emptyFloorSet() } }
     const m = migrateGeometry(sinPlanned)!
-    expect(m).not.toBeNull()
-    expect(m.variants.planned).toBeNull()
+    expect(m.schemaVersion).toBe(4)
+    expect(m.variants.plans).toEqual([])
     expect(m.variants.original).toBe(sinPlanned.variants.original)
   })
 
-  it('rejects the whole blob when planned exists but is not a FloorSet', () => {
+  it('convierte v3 CON planned al primer plan con el id y nombre legados EXACTOS', () => {
+    // El id literal 'planned' es carga estructural: los renders persistidos con
+    // source_variant='planned' direccionan este plan sin backfill, y la migración
+    // SQL 050 produce el mismo id — determinista en ambos lenguajes, sin carrera.
+    const planned = emptyFloorSet()
+    planned.floors[0].name = 'Planta Planeada'
+    const v3 = { schemaVersion: 3, variants: { original: emptyFloorSet(), planned } }
+    const m = migrateGeometry(v3)!
+    expect(m.schemaVersion).toBe(4)
+    expect(m.variants.plans).toHaveLength(1)
+    expect(m.variants.plans[0].id).toBe(LEGACY_PLAN_ID)
+    expect(m.variants.plans[0].id).toBe('planned')          // el literal, no un uuid
+    expect(m.variants.plans[0].name).toBe(LEGACY_PLAN_NAME)
+    expect(m.variants.plans[0].fs).toBe(planned)            // el FloorSet viaja intacto
+  })
+
+  it('rejects the whole v3 blob when planned exists but is not a FloorSet', () => {
     // Un planned malformado no se repara en silencio: si el blob miente en una
     // variante puede mentir en la otra, y leerlo a medias es peor que no leerlo.
     const malformado = {
@@ -111,6 +154,14 @@ describe('migrateGeometry', () => {
     }
     expect(migrateGeometry(malformado)).toBeNull()
     expect(migrateGeometry({ schemaVersion: 3, variants: { original: emptyFloorSet(), planned: 42 } })).toBeNull()
+  })
+
+  it('rejects the whole v4 blob when any plan entry is malformed — all or nothing', () => {
+    const base = withOriginal(null, emptyFloorSet())
+    expect(migrateGeometry({ ...base, variants: { ...base.variants, plans: 'no soy arreglo' } })).toBeNull()
+    expect(migrateGeometry({ ...base, variants: { ...base.variants, plans: [{ id: '', name: 'x', fs: emptyFloorSet() }] } })).toBeNull()
+    expect(migrateGeometry({ ...base, variants: { ...base.variants, plans: [{ id: 'a', name: 'x', fs: { floors: 'nope' } }] } })).toBeNull()
+    expect(migrateGeometry({ ...base, variants: { ...base.variants, plans: [plan('a'), 42] } })).toBeNull()
   })
 
   it('returns null for {}: a property that never drew a plan has no model to migrate', () => {
@@ -136,21 +187,30 @@ describe('migrateGeometry', () => {
     expect(m.variants.original.floors[0].id).toBeTruthy()
   })
 
-  it('asigna un id fresco a un piso v3 que ya no lo tiene (blob guardado antes de esta feature)', () => {
-    const v3 = withVariant(null, 'original', emptyFloorSet())
-    delete (v3.variants.original.floors[0] as { id?: string }).id
-    const m = migrateGeometry(v3)!
+  it('asigna un id fresco a un piso v4 que no lo tiene (blob guardado antes de ese campo)', () => {
+    const v4 = withOriginal(null, emptyFloorSet())
+    delete (v4.variants.original.floors[0] as { id?: string }).id
+    const m = migrateGeometry(v4)!
     expect(m).not.toBeNull()
     expect(m.variants.original.floors[0].id).toBeTruthy()
   })
 
-  it('asigna un id fresco también en la variante planned cuando le falta', () => {
+  it('asigna un id fresco también dentro del fs de un plan cuando le falta', () => {
+    const a = plan('a')
+    delete (a.fs.floors[0] as { id?: string }).id
+    const v4 = withPlan(withOriginal(null, emptyFloorSet()), a)
+    const m = migrateGeometry(v4)!
+    expect(m).not.toBeNull()
+    expect(m.variants.plans[0].fs.floors[0].id).toBeTruthy()
+  })
+
+  it('asigna un id fresco al piso del planned de un blob v3 al convertirlo', () => {
     const planned = emptyFloorSet()
     delete (planned.floors[0] as { id?: string }).id
-    const v3 = withVariant(withVariant(null, 'original', emptyFloorSet()), 'planned', planned)
+    const v3 = { schemaVersion: 3, variants: { original: emptyFloorSet(), planned } }
     const m = migrateGeometry(v3)!
     expect(m).not.toBeNull()
-    expect(m.variants.planned!.floors[0].id).toBeTruthy()
+    expect(m.variants.plans[0].fs.floors[0].id).toBeTruthy()
   })
 
   it('asigna ids DISTINTOS a dos pisos del mismo blob que no tienen id (no reusa un solo genId())', () => {
@@ -158,8 +218,8 @@ describe('migrateGeometry', () => {
     fs.floors.push({ ...clone(fs.floors[0]), name: 'Planta Alta' })
     delete (fs.floors[0] as { id?: string }).id
     delete (fs.floors[1] as { id?: string }).id
-    const v3 = withVariant(null, 'original', fs)
-    const m = migrateGeometry(v3)!
+    const v4 = withOriginal(null, fs)
+    const m = migrateGeometry(v4)!
     const [f0, f1] = m.variants.original.floors
     expect(f0.id).toBeTruthy()
     expect(f1.id).toBeTruthy()
@@ -167,9 +227,9 @@ describe('migrateGeometry', () => {
   })
 
   it('conserva el id de un piso que ya lo tenía: no lo pisa en cada carga', () => {
-    const v3 = withVariant(null, 'original', emptyFloorSet())
-    const originalId = v3.variants.original.floors[0].id
-    const m = migrateGeometry(v3)!
+    const v4 = withOriginal(null, emptyFloorSet())
+    const originalId = v4.variants.original.floors[0].id
+    const m = migrateGeometry(v4)!
     expect(m.variants.original.floors[0].id).toBe(originalId)
   })
 })

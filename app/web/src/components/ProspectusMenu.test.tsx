@@ -157,7 +157,7 @@ describe('ProspectusMenu · se guarda lo que se apagó, nunca lo que quedó pren
     fireEvent.click(box('Obra Contry'))
     fireEvent.click(box('Cierre'))
 
-    expect(stored()).toEqual({ propertyIds: [3], pages: ['closing'] })
+    expect(stored()).toEqual({ propertyIds: [3], pages: ['closing'], plans: {} })
 
     first.unmount()
     mount()
@@ -192,7 +192,7 @@ describe('ProspectusMenu · se guarda lo que se apagó, nunca lo que quedó pren
     const first = mount(sinEstrella)
     openMenu()
 
-    expect(stored()).toEqual({ propertyIds: [], pages: [] })
+    expect(stored()).toEqual({ propertyIds: [], pages: [], plans: {} })
     first.unmount()
 
     // La vuelven a marcar: entra al prospecto, no arrastra la exclusión muerta.
@@ -216,7 +216,7 @@ describe('ProspectusMenu · se guarda lo que se apagó, nunca lo que quedó pren
     expect(box('Portada').checked).toBe(true)
     expect(box('Obra Contry').checked).toBe(true)
     expect(box('Galería de fotos').checked).toBe(true)
-    expect(stored()).toEqual({ propertyIds: [], pages: [] })
+    expect(stored()).toEqual({ propertyIds: [], pages: [], plans: {} })
   })
 
   it('un localStorage con basura no tumba el menú: sale con todo incluido', () => {
@@ -315,5 +315,70 @@ describe('ProspectusMenu · generar', () => {
 
     const boton = screen.getByText('⏳ GENERANDO…') as HTMLButtonElement
     expect(boton.disabled).toBe(true)
+  })
+})
+
+describe('selección de planes por oportunidad', () => {
+  const geo = (plans: { id: string; name: string }[]) => ({
+    schemaVersion: 4,
+    variants: {
+      original: { slab_m: 0.15, activeFloor: 0, floors: [] },
+      plans: plans.map(p => ({ ...p, fs: { slab_m: 0.15, activeFloor: 0, floors: [] } })),
+    },
+  })
+
+  const conPlanes = (id: number, name: string, plans: { id: string; name: string }[]): Property =>
+    ({ ...prop(id, name, 'oferta'), geometry: geo(plans) }) as Property
+
+  it('una oportunidad con 2+ planes enseña sus checkboxes; con 1, nada cambia', () => {
+    mount([
+      conPlanes(4, 'Oferta Valle', [
+        { id: 'plan-a', name: 'Plan A: deptos' }, { id: 'plan-b', name: 'Plan B: locales' }]),
+      conPlanes(5, 'Prospecto Centro', [{ id: 'planned', name: 'Plan de proyecto' }]),
+    ])
+    openMenu()
+    expect(screen.getByTestId('planes-4')).toBeTruthy()
+    expect(screen.getByLabelText('Plan A: deptos')).toBeTruthy()
+    expect(screen.queryByTestId('planes-5')).toBeNull()   // un solo plan: sin sub-lista
+  })
+
+  it('excluir un plan manda planIds SOLO con los que quedan; sin exclusiones no manda el campo', () => {
+    const { onGenerate } = mount([
+      conPlanes(4, 'Oferta Valle', [
+        { id: 'plan-a', name: 'Plan A' }, { id: 'plan-b', name: 'Plan B' }]),
+    ])
+    openMenu()
+    fireEvent.click(screen.getByText('GENERAR PDF'))
+    expect(onGenerate.mock.calls[0][0].planIds).toBeUndefined()
+
+    openMenu()
+    fireEvent.click(box('Plan A'))
+    fireEvent.click(screen.getByText('GENERAR PDF'))
+    expect(onGenerate.mock.calls[1][0].planIds).toEqual({ 4: ['plan-b'] })
+  })
+
+  it('la exclusión de un plan persiste y se PODA cuando el plan ya no existe', () => {
+    memory.set(STORAGE_KEY, JSON.stringify({
+      propertyIds: [], pages: [],
+      plans: { 4: ['plan-muerto', 'plan-b'] },
+    }))
+    mount([
+      conPlanes(4, 'Oferta Valle', [
+        { id: 'plan-a', name: 'Plan A' }, { id: 'plan-b', name: 'Plan B' }]),
+    ])
+    openMenu()
+    // plan-b sigue excluido (su casilla lo enseña apagado); plan-muerto se podó.
+    expect(box('Plan B').checked).toBe(false)
+    expect(stored().plans).toEqual({ 4: ['plan-b'] })
+  })
+
+  it('apagar la propiedad entera esconde su sub-lista de planes', () => {
+    mount([
+      conPlanes(4, 'Oferta Valle', [
+        { id: 'plan-a', name: 'Plan A' }, { id: 'plan-b', name: 'Plan B' }]),
+    ])
+    openMenu()
+    fireEvent.click(box('Oferta Valle'))
+    expect(screen.queryByTestId('planes-4')).toBeNull()
   })
 })

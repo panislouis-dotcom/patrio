@@ -1,5 +1,5 @@
 import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, RenderPromptKind, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetSource } from './types'
-import type { FloorPlanModel, VariantKey } from './floorplan/types'
+import type { FloorPlanModel, PlanKey } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
 export const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -144,6 +144,10 @@ export async function parseProperty(url: string, text: string, image?: Blob): Pr
  */
 export interface ProspectusOptions {
   propertyIds?: number[]
+  /** Recorte por plan, por propiedad — mismo contrato que propertyIds: ausente =
+   * todos los planes; una lista = solo esos (vacía = ninguno; el original se
+   * imprime igual, es el ancla dimensional, no un plan). */
+  planIds?: Record<number, string[]>
   cover: boolean
   portfolioSummary: boolean
   closing: boolean
@@ -269,7 +273,7 @@ export async function uploadPropertyRender(
 export async function generatePropertyRenderFromPlan(
   id: number,
   req: {
-    promptText: string; promptId: number | null; plan: Blob; variant: VariantKey
+    promptText: string; promptId: number | null; plan: Blob; variant: PlanKey
     floorId: string; floorName: string
   },
 ): Promise<PropertyRender> {
@@ -294,7 +298,7 @@ export async function generatePropertyRenderFromPlan(
 
 export async function uploadPropertyRenderFromPlan(
   id: number,
-  req: { file: File; variant: VariantKey; floorId: string; floorName: string },
+  req: { file: File; variant: PlanKey; floorId: string; floorName: string },
 ): Promise<PropertyRender> {
   const form = new FormData()
   form.append('file', req.file)
@@ -1047,19 +1051,40 @@ export async function deleteCotizacion(id: number): Promise<void> {
 
 // ── Floor-plan geometry ──
 
-// El backend es un blob store sin esquema: lo que regresa puede ser v3, v2 viejo o {},
-// así que el caller lo pasa por migrateGeometry en vez de confiar en un tipo aquí.
-export async function fetchPropertyGeometry(id: number): Promise<unknown> {
+// El backend es un blob store sin esquema: el `geometry` que regresa puede ser v3,
+// v2 viejo o {}, así que el caller lo pasa por migrateGeometry en vez de confiar en
+// un tipo aquí. `revision` es el candado optimista (migración 052): guardar
+// reemplaza el blob COMPLETO, así que cada guardado declara de qué revisión
+// partió y el servidor contesta 409 si alguien más guardó en medio — nunca pisa.
+export async function fetchPropertyGeometry(
+  id: number,
+): Promise<{ geometry: unknown; revision: number }> {
   const res = await authFetch(`${BASE}/api/properties/${id}/geometry`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
 
-export async function savePropertyGeometry(id: number, geometry: FloorPlanModel): Promise<FloorPlanModel> {
+export async function savePropertyGeometry(
+  id: number, geometry: FloorPlanModel, expectedRevision: number,
+): Promise<{ geometry: FloorPlanModel; revision: number }> {
   const res = await authFetch(`${BASE}/api/properties/${id}/geometry`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ geometry }),
+    body: JSON.stringify({ geometry, expectedRevision }),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+/** Borra un plan de proyecto Y sus renders (cascada deliberada, servidor).
+ * Devuelve cuántos renders se llevó — la UI lo confirma en dos pasos ANTES con
+ * el conteo local, y esto reporta lo que realmente pasó — y la nueva `revision`
+ * del candado (borrar también muta el blob de geometría en el servidor). */
+export async function deletePropertyPlan(
+  id: number, planId: string,
+): Promise<{ deletedRenders: number; revision: number }> {
+  const res = await authFetch(`${BASE}/api/properties/${id}/plans/${encodeURIComponent(planId)}`, {
+    method: 'DELETE',
   })
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
@@ -1081,8 +1106,11 @@ export async function uploadFloorplanImage(id: number, file: File): Promise<{ im
 // herramienta que se abre en desarrollo. Hay que poder presupuestar antes de
 // ofertar.
 
-const budgetUrl = (propertyId: number, path = '') =>
+// `planId` cambia el ámbito al presupuesto-escenario de ese plan (addendum
+// 2026-08-24); sin él, el de la propiedad — el único que alimenta finanzas.
+const budgetUrl = (propertyId: number, path = '', planId?: string) =>
   `${BASE}/api/properties/${propertyId}/budget${path}`
+  + (planId ? `?planId=${encodeURIComponent(planId)}` : '')
 
 /**
  * Toda escritura del presupuesto responde lo mismo, así que se lee en un solo
@@ -1100,14 +1128,14 @@ async function budgetWrite(url: string, method: string, body?: unknown): Promise
   return res.json()
 }
 
-export async function fetchBudget(propertyId: number): Promise<Budget> {
-  const res = await authFetch(budgetUrl(propertyId))
+export async function fetchBudget(propertyId: number, planId?: string): Promise<Budget> {
+  const res = await authFetch(budgetUrl(propertyId, '', planId))
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
 
-export function createBudgetLine(propertyId: number, data: BudgetLineCreate): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, '/lines'), 'POST', data)
+export function createBudgetLine(propertyId: number, data: BudgetLineCreate, planId?: string): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, '/lines', planId), 'POST', data)
 }
 
 /**
@@ -1118,13 +1146,37 @@ export function createBudgetLine(propertyId: number, data: BudgetLineCreate): Pr
  * presupuesto no necesita el clear-fields que sí necesita la ficha.
  */
 export function updateBudgetLine(
-  propertyId: number, lineId: number, data: BudgetLinePatch,
+  propertyId: number, lineId: number, data: BudgetLinePatch, planId?: string,
 ): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`), 'PATCH', data)
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`, planId), 'PATCH', data)
 }
 
-export function deleteBudgetLine(propertyId: number, lineId: number): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`), 'DELETE')
+export function deleteBudgetLine(propertyId: number, lineId: number, planId?: string): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`, planId), 'DELETE')
+}
+
+/** El escenario de un plan nace por acción explícita: copiado de CUALQUIER
+ * presupuesto origen (`sourceBudgetId` — el de la propiedad, el escenario de
+ * otro plan, el de otra obra), del de la propiedad (default), o vacío. Nunca
+ * al leer. */
+export async function createPlanBudget(
+  propertyId: number, planId: string, copyFromProperty = true,
+  sourceBudgetId?: number,
+): Promise<{ budget: Budget; linesAdded: number; linesSkipped: number }> {
+  const res = await authFetch(
+    `${BASE}/api/properties/${propertyId}/budget/plans/${encodeURIComponent(planId)}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ copyFromProperty, ...(sourceBudgetId != null ? { sourceBudgetId } : {}) }) })
+  if (!res.ok) throw new Error(await detail(res))
+  return res.json()
+}
+
+/** «Usar este plan»: sus renglones entran al presupuesto de la PROPIEDAD por la
+ * misma puerta que copiar de otra obra — deduplicar es saltar, lo capturado no
+ * se pisa, y se reporta cuánto entró y cuánto ya estaba. */
+export function usePlanBudget(propertyId: number, planId: string): Promise<BudgetWrite> {
+  return budgetWrite(
+    `${BASE}/api/properties/${propertyId}/budget/plans/${encodeURIComponent(planId)}/use`, 'POST')
 }
 
 /**
@@ -1134,8 +1186,8 @@ export function deleteBudgetLine(propertyId: number, lineId: number): Promise<Bu
  * sola partida. Mezclarlas volvería imposible contestar si el presupuesto
  * creció o solo se abrió.
  */
-export function setBudgetTotal(propertyId: number, amount: number): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, '/total'), 'PUT', { amount })
+export function setBudgetTotal(propertyId: number, amount: number, planId?: string): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, '/total', planId), 'PUT', { amount })
 }
 
 /**
@@ -1144,27 +1196,27 @@ export function setBudgetTotal(propertyId: number, amount: number): Promise<Budg
  * presupuesto a medio renombrar si algo falla en medio.
  */
 export function renameBudgetChapter(
-  propertyId: number, chapter: string, name: string,
+  propertyId: number, chapter: string, name: string, planId?: string,
 ): Promise<BudgetWrite> {
   return budgetWrite(
-    budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`), 'PATCH', { name },
+    budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`, planId), 'PATCH', { name },
   )
 }
 
-export function deleteBudgetChapter(propertyId: number, chapter: string): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`), 'DELETE')
+export function deleteBudgetChapter(propertyId: number, chapter: string, planId?: string): Promise<BudgetWrite> {
+  return budgetWrite(budgetUrl(propertyId, `/chapters/${encodeURIComponent(chapter)}`, planId), 'DELETE')
 }
 
 export function addBudgetPayment(
-  propertyId: number, lineId: number, data: BudgetPaymentCreate,
+  propertyId: number, lineId: number, data: BudgetPaymentCreate, planId?: string,
 ): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments`), 'POST', data)
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments`, planId), 'POST', data)
 }
 
 export function deleteBudgetPayment(
-  propertyId: number, lineId: number, paymentId: number,
+  propertyId: number, lineId: number, paymentId: number, planId?: string,
 ): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments/${paymentId}`), 'DELETE')
+  return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}/payments/${paymentId}`, planId), 'DELETE')
 }
 
 /**
@@ -1208,11 +1260,12 @@ export function deleteBudgetPayment(
  */
 export function applyBudgetSource(
   propertyId: number, budgetId: number, chapters: string[] | null = null,
-  proportional = false,
+  proportional = false, planId?: string,
 ): Promise<BudgetWrite> {
   // En directo el cuerpo es EXACTAMENTE el de siempre: la copia que ya
-  // funcionaba no cambia de forma por existir la otra.
-  return budgetWrite(budgetUrl(propertyId, '/apply'), 'POST', {
+  // funcionaba no cambia de forma por existir la otra. `planId` cambia el
+  // DESTINO al escenario de ese plan, igual que en el resto del presupuesto.
+  return budgetWrite(budgetUrl(propertyId, '/apply', planId), 'POST', {
     budgetId, chapters,
     ...(proportional ? { proportional: true } : {}),
   })
@@ -1232,9 +1285,13 @@ export function applyBudgetSource(
  * sobre sí mismo con un 422, y ofrecer una opción que solo puede dar error es
  * hacer que alguien descubra la regla chocando con ella.
  */
-export async function fetchBudgetSources(excludePropertyId?: number): Promise<BudgetSource[]> {
-  const query = excludePropertyId != null ? `?excludePropertyId=${excludePropertyId}` : ''
-  const res = await authFetch(`${BASE}/api/budget/sources${query}`)
+export async function fetchBudgetSources(
+  excludeBudgetId?: number, includeEmpty = false,
+): Promise<BudgetSource[]> {
+  const params = new URLSearchParams()
+  if (excludeBudgetId != null) params.set('excludeBudgetId', String(excludeBudgetId))
+  if (includeEmpty) params.set('includeEmpty', 'true')
+  const res = await authFetch(`${BASE}/api/budget/sources${params.size ? `?${params}` : ''}`)
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }
