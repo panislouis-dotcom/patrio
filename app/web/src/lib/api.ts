@@ -1247,11 +1247,12 @@ export function deleteBudgetPayment(
  */
 export function applyBudgetSource(
   propertyId: number, budgetId: number, chapters: string[] | null = null,
-  proportional = false,
+  proportional = false, planId?: string,
 ): Promise<BudgetWrite> {
   // En directo el cuerpo es EXACTAMENTE el de siempre: la copia que ya
-  // funcionaba no cambia de forma por existir la otra.
-  return budgetWrite(budgetUrl(propertyId, '/apply'), 'POST', {
+  // funcionaba no cambia de forma por existir la otra. `planId` cambia el
+  // DESTINO al escenario de ese plan, igual que en el resto del presupuesto.
+  return budgetWrite(budgetUrl(propertyId, '/apply', planId), 'POST', {
     budgetId, chapters,
     ...(proportional ? { proportional: true } : {}),
   })
@@ -1271,9 +1272,13 @@ export function applyBudgetSource(
  * sobre sí mismo con un 422, y ofrecer una opción que solo puede dar error es
  * hacer que alguien descubra la regla chocando con ella.
  */
-export async function fetchBudgetSources(excludePropertyId?: number): Promise<BudgetSource[]> {
-  const query = excludePropertyId != null ? `?excludePropertyId=${excludePropertyId}` : ''
-  const res = await authFetch(`${BASE}/api/budget/sources${query}`)
+export async function fetchBudgetSources(
+  excludeBudgetId?: number, includeEmpty = false,
+): Promise<BudgetSource[]> {
+  const params = new URLSearchParams()
+  if (excludeBudgetId != null) params.set('excludeBudgetId', String(excludeBudgetId))
+  if (includeEmpty) params.set('includeEmpty', 'true')
+  const res = await authFetch(`${BASE}/api/budget/sources${params.size ? `?${params}` : ''}`)
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }

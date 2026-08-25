@@ -798,19 +798,37 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
 #     ellos. Un presupuesto del que no sale nada no es una respuesta a «de dónde
 #     puedo copiar».
 
+# Desde el addendum 2026-08-24 la lista es de PRESUPUESTOS, no de propiedades:
+# los escenarios de plan también aparecen (etiquetados con el nombre VIVO de su
+# plan, leído del geometry — sobrevive a renombres), y la exclusión es por id de
+# presupuesto — así el menú de una obra ofrece los escenarios de ESA MISMA obra,
+# que era imposible cuando se excluía la propiedad entera. copy_lines siempre lo
+# dijo: "copiar no distingue de dónde a dónde va: son dos presupuestos de obra".
+#
+# `full_total` (con residuo) viaja aparte de `total` (lo copiable): el primero
+# es el OBJETIVO del destino en proporcional; el segundo, lo que saldría de ahí.
 _SOURCES_SQL = """
-    SELECT b.id, p.name, b.property_id, t.line_count, t.total
+    SELECT b.id, p.name, b.property_id, b.plan_id, pl.plan_name,
+           p.sqm_construction, p.construction_cost_per_sqm,
+           t.line_count, t.total, ft.full_total
       FROM budgets b
       JOIN properties p ON p.id = b.property_id
+      LEFT JOIN LATERAL (
+            SELECT e->>'name' AS plan_name
+              FROM jsonb_array_elements(p.geometry->'variants'->'plans') e
+             WHERE e->>'id' = b.plan_id) pl ON b.plan_id IS NOT NULL
       JOIN LATERAL (
             SELECT count(*) AS line_count,
                    coalesce(sum(l.quantity * l.unit_price), 0) AS total
               FROM budget_lines l
              WHERE l.budget_id = b.id AND NOT l.is_residual) t ON TRUE
-     WHERE t.line_count > 0
-       AND b.plan_id IS NULL
-       AND (%s::bigint IS NULL OR b.property_id <> %s::bigint)
-     ORDER BY lower(p.name)
+      JOIN LATERAL (
+            SELECT coalesce(sum(l.quantity * l.unit_price), 0) AS full_total
+              FROM budget_lines l
+             WHERE l.budget_id = b.id) ft ON TRUE
+     WHERE (%(include_empty)s OR t.line_count > 0)
+       AND (%(exclude_budget_id)s::bigint IS NULL OR b.id <> %(exclude_budget_id)s::bigint)
+     ORDER BY lower(p.name), b.plan_id NULLS FIRST, lower(coalesce(pl.plan_name, ''))
 """
 
 
@@ -819,17 +837,25 @@ _SOURCES_SQL = """
 # una lista en el detalle es la clase de trampa que se paga en el cliente.
 
 
-def list_sources(conn, exclude_property_id: int | None = None) -> list[dict]:
-    """Las obras de cuyo presupuesto se puede copiar, cada una con el nombre de
-    su propiedad y cuántos renglones traería.
+def list_sources(conn, exclude_budget_id: int | None = None, *,
+                 include_empty: bool = False) -> list[dict]:
+    """Los PRESUPUESTOS entre los que se puede copiar — el de cada obra y los
+    escenarios de plan, etiquetados — cada uno con cuántos renglones traería.
 
-    `exclude_property_id` saca el presupuesto de la obra que está preguntando.
-    `apply` ya rechaza copiarse sobre sí mismo con un 422, y ofrecer en un
-    selector una opción que solo puede dar error es hacer que el usuario
-    descubra la regla chocando con ella."""
-    return [_row_to_dict(row) | {"total": money0(row["total"])}
-            for row in conn.execute(
-                _SOURCES_SQL, (exclude_property_id, exclude_property_id)).fetchall()]
+    `exclude_budget_id` saca el presupuesto que está preguntando (por id de
+    presupuesto, no de propiedad: los escenarios de la MISMA obra sí se
+    ofrecen). `apply` ya rechaza copiarse sobre sí mismo con un 422, y ofrecer
+    en un selector una opción que solo puede dar error es hacer que el usuario
+    descubra la regla chocando con ella.
+
+    `include_empty` es para la lista de DESTINOS de empuje: a un presupuesto
+    vacío sí se le puede copiar; como FUENTE no dice nada (default)."""
+    return [_row_to_dict(row)
+            | {"total": money0(row["total"]), "fullTotal": money0(row["full_total"])}
+            for row in conn.execute(_SOURCES_SQL, {
+                "exclude_budget_id": exclude_budget_id,
+                "include_empty": include_empty,
+            }).fetchall()]
 
 
 # ─── Renglones ────────────────────────────────────────────────────────────────

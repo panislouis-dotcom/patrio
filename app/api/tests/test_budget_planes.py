@@ -131,12 +131,52 @@ def test_borrar_el_plan_cascadea_su_presupuesto(client, test_property):
     assert _budget(client, pid).status_code == 200             # el de la propiedad ni se inmuta
 
 
-def test_las_fuentes_de_copiado_no_listan_escenarios(client, test_property):
+def test_las_fuentes_listan_los_escenarios_de_la_misma_obra_etiquetados(client, test_property):
+    """El cambio que pidió Eduardo (2026-08-24): la lista es de PRESUPUESTOS —
+    el menú de una obra ofrece sus propios escenarios (imposible cuando se
+    excluía la propiedad entera), etiquetados con el nombre VIVO de su plan."""
     pid = test_property["id"]
     _seed_plans(client, pid, "plan-a")
     _line(client, pid, "Albañilería", 100_000)
-    client.post(f"/api/properties/{pid}/budget/plans/plan-a")   # copia: mismo contenido
-    sources = client.get("/api/budget/sources").json()
-    # La propiedad aparece una vez — su escenario no compite en la lista.
+    client.post(f"/api/properties/{pid}/budget/plans/plan-a")   # nace copiado
+    prop_budget_id = _budget(client, pid).json()["id"]
+
+    sources = client.get("/api/budget/sources",
+                         params={"excludeBudgetId": prop_budget_id}).json()
     mine = [s for s in sources if s["propertyId"] == pid]
+    # El escenario aparece (el de la propiedad quedó excluido por SU id):
     assert len(mine) == 1
+    assert mine[0]["planId"] == "plan-a"
+    assert mine[0]["planName"] == "Plan plan-a"     # el nombre vivo del geometry
+    assert mine[0]["lineCount"] == 1                 # lo copiable, sin residuo
+    assert mine[0]["fullTotal"] is not None          # el objetivo para proporcional
+
+
+def test_include_empty_lista_destinos_sin_nada_copiable(client, test_property):
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    client.post(f"/api/properties/{pid}/budget/plans/plan-a",
+                json={"copyFromProperty": False})   # escenario vacío
+    sin_flag = client.get("/api/budget/sources").json()
+    con_flag = client.get("/api/budget/sources", params={"includeEmpty": True}).json()
+    vacio = [s for s in con_flag if s["propertyId"] == pid and s["planId"] == "plan-a"]
+    assert vacio and vacio[0]["lineCount"] == 0
+    assert not any(s["propertyId"] == pid and s.get("planId") == "plan-a" for s in sin_flag)
+
+
+def test_apply_puede_escribir_en_un_escenario_como_destino(client, test_property):
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    _line(client, pid, "Albañilería", 100_000)      # detalle en la propiedad
+    client.post(f"/api/properties/{pid}/budget/plans/plan-a",
+                json={"copyFromProperty": False})   # escenario vacío
+    prop_budget_id = _budget(client, pid).json()["id"]
+
+    r = client.post(f"/api/properties/{pid}/budget/apply?planId=plan-a",
+                    json={"budgetId": prop_budget_id})
+    assert r.status_code == 201, r.text
+    assert r.json()["linesAdded"] == 1
+    plan_names = [ln["name"] for ln in _budget(client, pid, "plan-a").json()["lines"]]
+    assert "Albañilería" in plan_names
+    # La propiedad no recibió nada de vuelta: el destino era el escenario.
+    assert r.json()["budget"]["planId"] == "plan-a"

@@ -942,6 +942,17 @@ export interface BudgetSource {
   /** El nombre de la propiedad. */
   name: string
   propertyId: number
+  /** El plan de proyecto del que es escenario este presupuesto — null cuando es
+   * el presupuesto de la propiedad. El nombre viene VIVO del geometry. */
+  planId: string | null
+  planName: string | null
+  /** El total CON residuo: el objetivo del destino en una copia proporcional
+   * (`total`, sin residuo, es lo que saldría de aquí como fuente). */
+  fullTotal: number | null
+  /** De la PROPIEDAD dueña — un escenario comparte los de su obra. Solo para el
+   * renglón informativo del empuje proporcional. */
+  sqmConstruction: number | null
+  constructionCostPerSqm: number | null
   /**
    * Cuántos renglones se van a COPIAR, que no es cuántos tiene: el residuo
    * nunca viaja. El número es exactamente lo que va a aparecer después, así que

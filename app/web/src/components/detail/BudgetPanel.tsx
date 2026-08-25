@@ -3,7 +3,7 @@ import type React from 'react'
 import {
   fetchBudget, createBudgetLine, updateBudgetLine, deleteBudgetLine, setBudgetTotal,
   renameBudgetChapter, deleteBudgetChapter, addBudgetPayment, deleteBudgetPayment, getProveedores,
-  getCategories, fetchBudgetSources, applyBudgetSource, fetchProperties,
+  getCategories, fetchBudgetSources, applyBudgetSource,
 } from '../../lib/api'
 import type {
   Budget, BudgetLine, BudgetLinePatch,
@@ -356,7 +356,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
    * toda visita al presupuesto es a capturar un renglón.
    */
   const [pushing, setPushing] = useState(false)
-  const [targets, setTargets] = useState<Property[]>([])
+  const [targets, setTargets] = useState<BudgetSource[]>([])
   const [pickedTargets, setPickedTargets] = useState<number[]>([])
   /**
    * Qué capítulos viajan. `null` = nadie ha tocado una casilla, y entonces van
@@ -526,7 +526,9 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
     const opening = !sourcing
     setSourcing(opening)
     if (!opening) return
-    fetchBudgetSources(propertyId)
+    // Presupuestos, no propiedades (addendum 2026-08-24): los escenarios de
+    // ESTA obra también se ofrecen — solo se excluye el presupuesto actual.
+    fetchBudgetSources(budgetId ?? undefined)
       .then(setSources)
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer de dónde copiar'))
   }
@@ -561,8 +563,8 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
     // Cada obra trae su propio costo de obra en su ficha —el total de su
     // presupuesto— y ése es su objetivo. No hay nada que pre-llenar ni que
     // teclear: lo que se lee es lo que se usa.
-    fetchProperties()
-      .then(ps => setTargets(ps.filter(p => p.id !== propertyId)))
+    fetchBudgetSources(budgetId ?? undefined, true)
+      .then(setTargets)
       .catch(e => setError(e instanceof Error ? e.message : 'No se pudo leer a qué obras copiar'))
   }
 
@@ -607,7 +609,9 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
    * El plan de UNA obra destino, contra SU costo de obra. En directo no hay nada
    * que planear: se copia tal cual y ninguna obra puede quedar bloqueada.
    */
-  const planOf = (p: Property): Plan => planFor(p.constructionBudgeted, pushScope)
+  const planOf = (t: BudgetSource): Plan => planFor(t.fullTotal, pushScope)
+  /** «Casa Modesto» o «Casa Modesto · Plan A»: un escenario se nombra con su obra. */
+  const budgetLabel = (s: BudgetSource) => (s.planName ? `${s.name} · ${s.planName}` : s.name)
 
   const chosenTargets = targets.filter(p => pickedTargets.includes(p.id))
 
@@ -674,10 +678,10 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
     setPushResults(chosenTargets
       .filter(p => !chosen.includes(p))
       .map(p => ({
-        propertyId: p.id, name: p.name, added: 0, skipped: 0, error: planOf(p).blocker,
+        propertyId: p.id, name: budgetLabel(p), added: 0, skipped: 0, error: planOf(p).blocker,
       })))
     for (const p of chosen) {
-      const base = { propertyId: p.id, name: p.name }
+      const base = { propertyId: p.id, name: budgetLabel(p) }
       try {
         // Una sola llamada por obra, y NADA que escribir antes: el objetivo es
         // el costo de obra que el destino ya tiene, y el servidor lo lee de su
@@ -687,8 +691,8 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
         // de siempre, y mandar un campo de más sería decirle al servidor algo
         // sobre un modo que no se pidió.
         const { linesAdded, linesSkipped } = await (pushMode === 'proporcional'
-          ? applyBudgetSource(p.id, budgetId, chaptersToPush, true)
-          : applyBudgetSource(p.id, budgetId, chaptersToPush))
+          ? applyBudgetSource(p.propertyId, budgetId, chaptersToPush, true, p.planId ?? undefined)
+          : applyBudgetSource(p.propertyId, budgetId, chaptersToPush, false, p.planId ?? undefined))
         setPushResults(prev => [...prev, {
           ...base, error: null, added: linesAdded ?? 0, skipped: linesSkipped ?? 0,
         }])
@@ -910,25 +914,18 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
           >
             + CAPÍTULO
           </button>
-          {/* El copiado entre OBRAS es del presupuesto de la propiedad; un
-              escenario copia solo por sus dos puertas propias: su nacimiento
-              (copiado de la propiedad) y «USAR EN LA PROPIEDAD». Ofrecerlo aquí
-              mandaría renglones de otra obra a un escenario — o peor, el
-              escenario a otras obras como si fuera el compromiso vigente. */}
-          {planId == null && (
-            <>
-              <button onClick={toggleSourcing} style={ghost}>
-                COPIAR DE OTRA OBRA {sourcing ? '▾' : '▸'}
-              </button>
-              {/* La otra dirección, y por eso es otro botón: «arrancar desde» jala
-                  un presupuesto ajeno hacia esta obra, esto se lleva el de esta obra
-                  hacia otras. Meterlas en el mismo bloque haría que se pareciera un
-                  copiado que trae a uno que manda. */}
-              <button onClick={togglePush} style={ghost}>
-                COPIAR A OTRAS OBRAS {pushing ? '▾' : '▸'}
-              </button>
-            </>
-          )}
+          <button onClick={toggleSourcing} style={ghost}>
+            COPIAR DE OTRO PRESUPUESTO {sourcing ? '▾' : '▸'}
+          </button>
+          {/* La otra dirección, y por eso es otro botón: «arrancar desde» jala
+              un presupuesto ajeno hacia éste, esto se lleva el de éste hacia
+              otros. Meterlas en el mismo bloque haría que se pareciera un
+              copiado que trae a uno que manda. Desde el addendum 2026-08-24 las
+              dos listas son de PRESUPUESTOS —obras y escenarios de plan,
+              incluidos los de ESTA obra— y solo se excluye el actual. */}
+          <button onClick={togglePush} style={ghost}>
+            COPIAR A OTROS PRESUPUESTOS {pushing ? '▾' : '▸'}
+          </button>
         </div>
       </div>
 
@@ -955,7 +952,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
               <option value="">— Elegir obra</option>
               {sources.map(f => (
                 <option key={f.id} value={f.id}>
-                  {f.name} · {f.lineCount} renglones · {fmtMXN(f.total)}
+                  {budgetLabel(f)} · {f.lineCount} renglones · {fmtMXN(f.total)}
                 </option>
               ))}
             </select>
@@ -982,8 +979,8 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
                 // al servidor algo que nadie contestó. El objetivo no viaja
                 // nunca: es el costo de obra de ESTA obra, que él ya tiene.
                 void run(() => (sourceMode === 'proporcional'
-                  ? applyBudgetSource(propertyId, pickedSource, null, true)
-                  : applyBudgetSource(propertyId, pickedSource)))
+                  ? applyBudgetSource(propertyId, pickedSource, null, true, planId)
+                  : applyBudgetSource(propertyId, pickedSource, null, false, planId)))
                 setPickedSource('')
               }}
               style={{ ...ghost, cursor: canPull ? 'pointer' : 'not-allowed' }}
@@ -1040,14 +1037,14 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
                 <input
                   type="checkbox"
                   checked={pickedTargets.includes(p.id)}
-                  aria-label={`Copiar a ${p.name}`}
+                  aria-label={`Copiar a ${budgetLabel(p)}`}
                   onChange={() => setPickedTargets(prev => (
                     prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
                   ))}
                   style={{ accentColor: colors.primary, cursor: 'pointer' }}
                 />
                 <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
-                  {p.name}
+                  {budgetLabel(p)}
                 </span>
               </label>
             ))}
@@ -1096,7 +1093,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
                 Elige a qué obras copiar para ver el costo de obra al que entra cada una.
               </span>
             ) : chosenTargets.map(p => targetRow({
-              label: p.name,
+              label: budgetLabel(p),
               sqm: p.sqmConstruction,
               costPerSqm: p.constructionCostPerSqm,
               plan: planOf(p),

@@ -239,7 +239,7 @@ def delete_line(property_id: int, line_id: int, planId: str | None = None,
 
 @router.post("/api/properties/{property_id}/budget/apply", status_code=201,
              operation_id="budget_apply")
-def apply_budget(property_id: int, body: BudgetApply,
+def apply_budget(property_id: int, body: BudgetApply, planId: str | None = None,
                  _: dict = Depends(get_current_user)):
     """Copia el presupuesto de otra obra sobre éste, o solo los capítulos que se
     pidan.
@@ -267,8 +267,8 @@ def apply_budget(property_id: int, body: BudgetApply,
     with get_db() as conn:
         copied, skipped, increase = budget_db.apply_budget(
             conn, property_id, body.budgetId, body.chapters,
-            proportional=body.proportional)
-        budget = budget_db.get_budget(conn, property_id)
+            proportional=body.proportional, plan_id=planId)
+        budget = budget_db.get_budget(conn, property_id, planId)
     return {**_written(property_id, budget, None, increase),
             "linesAdded": copied, "linesSkipped": skipped}
 
@@ -281,16 +281,20 @@ def apply_budget(property_id: int, body: BudgetApply,
 # ninguna — lo que sí lo hace, `apply`, vive arriba, del lado de la propiedad.
 
 @router.get("/api/budget/sources", operation_id="budget_sources_list")
-def list_sources(excludePropertyId: Optional[int] = None,
+def list_sources(excludeBudgetId: Optional[int] = None,
+                 includeEmpty: bool = False,
                  _: dict = Depends(get_current_user)):
-    """Las obras de cuyo presupuesto se puede copiar.
+    """Los presupuestos entre los que se puede copiar — el de cada obra y los
+    escenarios de plan, etiquetados con su plan.
 
-    `lineCount` es lo que de verdad se va a copiar —el residuo queda fuera— y los
-    presupuestos sin nada copiable no aparecen: uno del que no sale nada no es
-    una respuesta a «de dónde puedo copiar». El `id` va directo a
-    `POST .../budget/apply`."""
+    `lineCount` es lo que de verdad se va a copiar —el residuo queda fuera— y
+    sin `includeEmpty` los presupuestos sin nada copiable no aparecen: uno del
+    que no sale nada no es una respuesta a «de dónde puedo copiar» (como
+    DESTINO de empuje sí lo es, y para eso existe la bandera). El `id` va
+    directo a `POST .../budget/apply`."""
     with get_db() as conn:
-        return budget_db.list_sources(conn, exclude_property_id=excludePropertyId)
+        return budget_db.list_sources(conn, exclude_budget_id=excludeBudgetId,
+                                      include_empty=includeEmpty)
 
 
 # ─── El total ─────────────────────────────────────────────────────────────────
