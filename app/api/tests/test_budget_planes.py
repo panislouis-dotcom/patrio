@@ -180,3 +180,40 @@ def test_apply_puede_escribir_en_un_escenario_como_destino(client, test_property
     assert "Albañilería" in plan_names
     # La propiedad no recibió nada de vuelta: el destino era el escenario.
     assert r.json()["budget"]["planId"] == "plan-a"
+
+
+def test_un_escenario_puede_nacer_copiado_de_OTRO_plan(client, test_property):
+    """El flujo real de Eduardo: los planes se arman plan a plan, y el
+    presupuesto de la propiedad se llena AL FINAL con el ganador."""
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a", "plan-b")
+    client.post(f"/api/properties/{pid}/budget/plans/plan-a",
+                json={"copyFromProperty": False})
+    _line(client, pid, "Albañilería A", 120_000, plan_id="plan-a")
+    budget_a = _budget(client, pid, "plan-a").json()["id"]
+
+    r = client.post(f"/api/properties/{pid}/budget/plans/plan-b",
+                    json={"sourceBudgetId": budget_a})
+    assert r.status_code == 201, r.text
+    assert r.json()["linesAdded"] == 1
+    b = r.json()["budget"]
+    assert b["planId"] == "plan-b"
+    assert any(ln["name"] == "Albañilería A" for ln in b["lines"])
+    # Mismo total que su origen: el residuo del nuevo absorbió el resto.
+    total_a = sum(ln["quantity"] * ln["unitPrice"]
+                  for ln in _budget(client, pid, "plan-a").json()["lines"])
+    total_b = sum(ln["quantity"] * ln["unitPrice"] for ln in b["lines"])
+    assert total_b == total_a
+    # Y la PROPIEDAD ni se enteró: su presupuesto no participó.
+    prop_names = [ln["name"] for ln in _budget(client, pid).json()["lines"]]
+    assert "Albañilería A" not in prop_names
+
+
+def test_nacer_de_un_presupuesto_inexistente_es_404(client, test_property):
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    r = client.post(f"/api/properties/{pid}/budget/plans/plan-a",
+                    json={"sourceBudgetId": 999999})
+    assert r.status_code == 404
+    # Y no dejó un escenario a medias.
+    assert _budget(client, pid, "plan-a").status_code == 404

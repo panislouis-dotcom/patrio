@@ -1145,15 +1145,18 @@ export function deleteBudgetLine(propertyId: number, lineId: number, planId?: st
   return budgetWrite(budgetUrl(propertyId, `/lines/${lineId}`, planId), 'DELETE')
 }
 
-/** El escenario de un plan nace por acción explícita: copiado del presupuesto
- * de la propiedad (default) o vacío. Nunca al leer. */
+/** El escenario de un plan nace por acción explícita: copiado de CUALQUIER
+ * presupuesto origen (`sourceBudgetId` — el de la propiedad, el escenario de
+ * otro plan, el de otra obra), del de la propiedad (default), o vacío. Nunca
+ * al leer. */
 export async function createPlanBudget(
   propertyId: number, planId: string, copyFromProperty = true,
+  sourceBudgetId?: number,
 ): Promise<{ budget: Budget; linesAdded: number; linesSkipped: number }> {
   const res = await authFetch(
     `${BASE}/api/properties/${propertyId}/budget/plans/${encodeURIComponent(planId)}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ copyFromProperty }) })
+      body: JSON.stringify({ copyFromProperty, ...(sourceBudgetId != null ? { sourceBudgetId } : {}) }) })
   if (!res.ok) throw new Error(await detail(res))
   return res.json()
 }

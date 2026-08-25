@@ -1197,16 +1197,18 @@ def _plan_exists(conn, property_id: int, plan_id: str) -> bool:
 
 
 def create_plan_budget(conn, property_id: int, plan_id: str,
-                       copy_from_property: bool) -> tuple[int, int, int]:
-    """Nace el escenario de un plan: copiado del presupuesto de la propiedad
-    (misma maquinaria de siempre — copy_lines + residuo asentado, exactamente el
-    flujo de apply_budget con otro destino) o vacío. Devuelve
-    (budget_id, copiados, saltados).
+                       source_budget_id: int | None) -> tuple[int, int, int]:
+    """Nace el escenario de un plan: copiado de CUALQUIER presupuesto origen
+    (el de la propiedad, el escenario de otro plan — el flujo real muchas veces
+    va de plan a plan, y el de la propiedad se llena al final —, o el de otra
+    obra; misma maquinaria de siempre: copy_lines + residuo asentado, el flujo
+    de apply_budget con otro destino) o vacío con `source_budget_id` None.
+    Devuelve (budget_id, copiados, saltados).
 
-    El escenario nace con el MISMO total que el presupuesto de la propiedad
-    cuando se copia: los renglones detallados viajan y el residuo del escenario
-    absorbe el resto, igual que copiar entre obras. Vacío = residuo en cero.
-    NUNCA se auto-crea al leer (ver _require_budget)."""
+    El escenario nace con el MISMO total que su origen: los renglones
+    detallados viajan y el residuo del escenario absorbe el resto, igual que
+    copiar entre obras. Vacío = residuo en cero. NUNCA se auto-crea al leer
+    (ver _require_budget)."""
     if not _plan_exists(conn, property_id, plan_id):
         raise BudgetNotFound(
             f"El plan {plan_id} no existe en la propiedad {property_id}")
@@ -1215,12 +1217,15 @@ def create_plan_budget(conn, property_id: int, plan_id: str,
         (property_id, plan_id),
     ).fetchone() is not None:
         raise BudgetError(f"El plan {plan_id} ya tiene presupuesto")
-    if not copy_from_property:
+    if source_budget_id is None:
         return create_budget(conn, property_id, Decimal(0), plan_id=plan_id), 0, 0
-    source_id = _require_budget(conn, property_id)
-    objetivo, _ = _totals(conn, source_id)
+    if conn.execute("SELECT 1 FROM budgets WHERE id = %s",
+                    (source_budget_id,)).fetchone() is None:
+        raise BudgetNotFound(
+            f"No existe el presupuesto {source_budget_id} que se quiere copiar")
+    objetivo, _ = _totals(conn, source_budget_id)
     budget_id = create_budget(conn, property_id, objetivo, plan_id=plan_id)
-    copied, skipped = copy_lines(conn, source_id, budget_id)
+    copied, skipped = copy_lines(conn, source_budget_id, budget_id)
     _settle_residual(conn, budget_id, objetivo)
     return budget_id, copied, skipped
 

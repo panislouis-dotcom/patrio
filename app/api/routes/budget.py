@@ -375,10 +375,14 @@ def delete_payment(property_id: int, line_id: int, payment_id: int,
 # ─── Presupuesto-escenario por plan de proyecto (addendum 2026-08-24) ─────────
 
 class PlanBudgetCreate(BaseModel):
-    # Nace copiado del presupuesto de la propiedad (default — decisión de
-    # Eduardo) o vacío. La copia es la maquinaria de siempre: copy_lines, con
-    # su residuo asentado.
+    # De dónde nace: `sourceBudgetId` copia de ESE presupuesto (el de la
+    # propiedad, el escenario de otro plan — el flujo real muchas veces arma
+    # plan a plan y el de la propiedad se llena al final —, o el de otra obra);
+    # sin él, `copyFromProperty` (default) copia del de la propiedad; con los
+    # dos apagados, nace vacío. La copia es la maquinaria de siempre:
+    # copy_lines, con su residuo asentado.
     copyFromProperty: bool = True
+    sourceBudgetId: int | None = None
 
 
 @router.post("/api/properties/{property_id}/budget/plans/{plan_id}", status_code=201,
@@ -388,8 +392,14 @@ def create_plan_budget(property_id: int, plan_id: str, body: PlanBudgetCreate | 
     """El escenario de un plan nace por acción explícita, nunca al leer."""
     opts = body or PlanBudgetCreate()
     with get_db() as conn:
+        if opts.sourceBudgetId is not None:
+            source_id = opts.sourceBudgetId
+        elif opts.copyFromProperty:
+            source_id = budget_db._require_budget(conn, property_id)
+        else:
+            source_id = None
         _, copied, skipped = budget_db.create_plan_budget(
-            conn, property_id, plan_id, copy_from_property=opts.copyFromProperty)
+            conn, property_id, plan_id, source_budget_id=source_id)
         budget = budget_db.get_budget(conn, property_id, plan_id)
     return {"budget": budget, "linesAdded": copied, "linesSkipped": skipped}
 

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import type React from 'react'
 import { colors, fonts } from '../../lib/theme'
 import { BudgetPanel } from './BudgetPanel'
-import { createPlanBudget, fetchBudget, usePlanBudget } from '../../lib/api'
-import type { Budget, Property } from '../../lib/types'
+import { createPlanBudget, fetchBudget, fetchBudgetSources, usePlanBudget } from '../../lib/api'
+import type { Budget, BudgetSource, Property } from '../../lib/types'
 import type { FloorPlanModel } from '../../lib/floorplan/types'
 
 const chip = (active: boolean): React.CSSProperties => ({
@@ -53,6 +53,12 @@ export function PresupuestosPanel({ property, geometry, onPropertyChange }: Prop
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [confirmUse, setConfirmUse] = useState(false)
+  // Los presupuestos de los que puede NACER copiado el escenario: cualquiera —
+  // el de la propiedad (tiene su botón directo), el escenario de OTRO plan (el
+  // flujo real muchas veces arma plan a plan y el de la propiedad se llena al
+  // final), o el de otra obra. Se piden al aterrizar en el nacimiento.
+  const [birthSources, setBirthSources] = useState<BudgetSource[]>([])
+  const [pickedBirthSource, setPickedBirthSource] = useState<number | ''>('')
 
   // El ámbito de un plan borrado cae de vuelta a la propiedad.
   useEffect(() => {
@@ -70,20 +76,23 @@ export function PresupuestosPanel({ property, geometry, onPropertyChange }: Prop
         const msg = e instanceof Error ? e.message : ''
         // El 404 esperado (sin escenario todavía) abre el nacimiento; cualquier
         // otra cosa es un error real y se dice.
-        if (msg.includes('no tiene presupuesto')) setMissing(true)
-        else setError(msg || 'No se pudo leer el presupuesto del plan')
+        if (msg.includes('no tiene presupuesto')) {
+          setMissing(true)
+          setPickedBirthSource('')
+          fetchBudgetSources().then(list => { if (alive) setBirthSources(list) }).catch(() => {})
+        } else setError(msg || 'No se pudo leer el presupuesto del plan')
       })
     return () => { alive = false }
   }, [property.id, active?.id])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function birth(copyFromProperty: boolean) {
+  async function birth(copyFromProperty: boolean, sourceBudgetId?: number) {
     if (!active) return
     setBusy(true); setError(null)
     try {
       const { budget, linesAdded, linesSkipped } = await createPlanBudget(
-        property.id, active.id, copyFromProperty)
+        property.id, active.id, copyFromProperty, sourceBudgetId)
       setScenario(budget); setMissing(false)
-      setNotice(copyFromProperty
+      setNotice(copyFromProperty || sourceBudgetId != null
         ? `Nació copiado: ${linesAdded} renglones${linesSkipped ? `, ${linesSkipped} saltados` : ''}.`
         : null)
     } catch (e) {
@@ -176,12 +185,35 @@ export function PresupuestosPanel({ property, geometry, onPropertyChange }: Prop
           El escenario de un plan responde «¿cuánto costaría esta propuesta?» — nunca
           mueve la inversión de la propiedad. Nace copiado del presupuesto actual o vacío.
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
           <button onClick={() => birth(true)} disabled={busy} style={primary}>
             {busy ? 'CREANDO…' : 'COPIADO DE LA PROPIEDAD'}
           </button>
           <button onClick={() => birth(false)} disabled={busy} style={outlined}>EMPEZAR VACÍO</button>
         </div>
+        {/* O de CUALQUIER otro presupuesto — el flujo real muchas veces arma
+            plan a plan, y el de la propiedad se llena al final con el ganador. */}
+        {birthSources.length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <select value={pickedBirthSource}
+              aria-label="Copiar de otro presupuesto"
+              onChange={e => setPickedBirthSource(e.target.value === '' ? '' : Number(e.target.value))}
+              style={{ padding: '4px 8px', fontFamily: fonts.sans, fontSize: '12px',
+                       color: colors.neutral, background: colors.dark,
+                       border: `1px solid ${colors.border}` }}>
+              <option value="">— o copiar de otro presupuesto</option>
+              {birthSources.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.planName ? `${s.name} · ${s.planName}` : s.name} · {s.lineCount} renglones
+                </option>
+              ))}
+            </select>
+            <button disabled={busy || pickedBirthSource === ''} style={outlined}
+              onClick={() => pickedBirthSource !== '' && birth(false, pickedBirthSource)}>
+              COPIAR DE ESTE
+            </button>
+          </div>
+        )}
       </div>
     )
   } else if (scenario) {
