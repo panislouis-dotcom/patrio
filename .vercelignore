@@ -7,5 +7,8 @@ scripts/
 docs/
 .github/
 .env.example
-Empresa/
-Proyectos/
+# Anclados a la raíz con "/" para NO excluir assets/proyectos (fotos reales del
+# sitio): un patrón sin "/" matchea la carpeta en cualquier nivel y tumbaba las
+# fotos en Vercel. Mismo anclaje que .gitignore.
+/Empresa/
+/Proyectos/
