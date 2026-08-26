@@ -472,10 +472,12 @@ export function RendersPanel(props: Props) {
       {/* Un botón muerto sin explicación se lee como «no pasó nada». Elegir el
           preset es la acción obvia —es el control grande— pero la que habilita
           es elegir foto, y la tira de miniaturas no parece un paso obligatorio.
-          Así que el botón dice qué le falta en vez de quedarse callado. */}
+          Así que el botón dice qué le falta en vez de quedarse callado. La
+          fuente también manda para SUBIR: un render subido pertenece al grupo
+          de su foto (estrella, comparación), igual que uno generado. */}
       {!usePlan && sourceId == null && (images.length > 0 || plan) && (
         <p style={{ ...label, letterSpacing: 0, textTransform: 'none', color: colors.tertiary }}>
-          Elige una fuente arriba para generar.
+          Elige una fuente arriba para generar o subir.
         </p>
       )}
 
@@ -496,10 +498,11 @@ export function RendersPanel(props: Props) {
         </div>
       ) : (
         <div style={{ display: 'flex', gap: spacing.sm }}>
-          <button onClick={() => setNaming(true)} disabled={!text.trim()} style={btn(false)}>
+          <button onClick={() => setNaming(true)} disabled={!text.trim()} style={btn(false, !text.trim())}>
             Guardar como nuevo
           </button>
-          <button onClick={generate} disabled={busy || uploading || (!usePlan && sourceId == null) || !text.trim()} style={btn(true)}>
+          <button onClick={generate} disabled={busy || uploading || (!usePlan && sourceId == null) || !text.trim()}
+                  style={btn(true, busy || uploading || (!usePlan && sourceId == null) || !text.trim())}>
             {busy ? 'GENERANDO…' : 'GENERAR RENDER'}
           </button>
           {(onUpload || onUploadPlan) && (
@@ -508,7 +511,8 @@ export function RendersPanel(props: Props) {
                      onChange={onUploadInputChange}
                      disabled={busy || uploading || (!usePlan && sourceId == null)} />
               <button onClick={() => uploadInputRef.current?.click()}
-                      disabled={busy || uploading || (!usePlan && sourceId == null)} style={btn(false)}>
+                      disabled={busy || uploading || (!usePlan && sourceId == null)}
+                      style={btn(false, busy || uploading || (!usePlan && sourceId == null))}>
                 {uploading ? 'SUBIENDO…' : 'SUBIR RENDER'}
               </button>
             </>
@@ -788,12 +792,16 @@ const linkBtn: React.CSSProperties = {
   background: 'none', border: 'none', cursor: 'pointer', color: colors.secondary, padding: 0,
 }
 
-function btn(primary: boolean): React.CSSProperties {
+function btn(primary: boolean, disabled = false): React.CSSProperties {
   return {
     fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase',
-    padding: '10px 16px', cursor: 'pointer', borderRadius: radius.sm,
+    padding: '10px 16px', cursor: disabled ? 'default' : 'pointer', borderRadius: radius.sm,
     border: `1px solid ${primary ? colors.primary : colors.border}`,
     background: primary ? colors.primary : 'transparent',
     color: primary ? colors.dark : colors.secondary,
+    // Un botón deshabilitado que se ve idéntico al habilitado se lee como
+    // «le pico y no pasa nada» (incidente 2026-08-25 con SUBIR RENDER): el
+    // estilo inline no conoce :disabled, así que el atenuado viaja explícito.
+    opacity: disabled ? 0.45 : 1,
   }
 }
