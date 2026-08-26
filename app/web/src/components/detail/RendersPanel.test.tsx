@@ -617,12 +617,30 @@ describe('RendersPanel: subir un render sin generarlo', () => {
     await waitFor(() => expect(onUpload).toHaveBeenCalledWith({ sourceImageId: 10, file }))
   })
 
-  it('modo fotos: sin foto elegida, el botón de subir está deshabilitado', () => {
+  it('modo fotos: sin foto elegida, el botón de subir está deshabilitado Y SE VE deshabilitado', () => {
     render(<RendersPanel
       source="photos" images={[photo(10, 'fachada.jpg')]} prompts={prompts} renders={[]} base=""
       onGenerate={vi.fn()} onUpload={vi.fn()} onSavePrompt={vi.fn()} onDeleteRender={vi.fn()}
       onChoose={vi.fn()} onUnchoose={vi.fn()} />)
-    expect(screen.getByRole('button', { name: /SUBIR RENDER/i }).hasAttribute('disabled')).toBe(true)
+    const subir = screen.getByRole('button', { name: /SUBIR RENDER/i })
+    expect(subir.hasAttribute('disabled')).toBe(true)
+    // Incidente 2026-08-25: deshabilitado pero pintado idéntico al habilitado
+    // se vive como «le pico y no pasa nada». El atenuado es parte del contrato.
+    expect(subir.style.opacity).toBe('0.45')
+    expect(subir.style.cursor).toBe('default')
+    // Y la nota de qué falta menciona subir, no solo generar.
+    expect(screen.getByText('Elige una fuente arriba para generar o subir.')).toBeTruthy()
+  })
+
+  it('modo fotos: con foto elegida, subir se ve habilitado', () => {
+    render(<RendersPanel
+      source="photos" images={[photo(10, 'fachada.jpg')]} prompts={prompts} renders={[]} base=""
+      onGenerate={vi.fn()} onUpload={vi.fn()} onSavePrompt={vi.fn()} onDeleteRender={vi.fn()}
+      onChoose={vi.fn()} onUnchoose={vi.fn()} />)
+    fireEvent.click(screen.getByAltText('fachada.jpg'))
+    const subir = screen.getByRole('button', { name: /SUBIR RENDER/i })
+    expect(subir.hasAttribute('disabled')).toBe(false)
+    expect(subir.style.opacity).toBe('1')
   })
 
   it('sin onUpload, no se muestra el botón de subir', () => {
