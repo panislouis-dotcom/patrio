@@ -980,7 +980,6 @@ describe('PropertyDetailPage', () => {
 
     // A través del árbol real: LevantamientoPanel → su sub-nav → RendersPanel.
     fireEvent.click(screen.getByText('RENDERS'))
-    fireEvent.click(await screen.findByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
 
     await waitFor(() => expect(api.generatePropertyRenderFromPlan).toHaveBeenCalled())
@@ -1011,7 +1010,6 @@ describe('PropertyDetailPage', () => {
     expect(await screen.findByText('Planta Original')).not.toBeNull()
 
     fireEvent.click(screen.getByText('RENDERS'))
-    fireEvent.click(await screen.findByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
 
     await waitFor(() => expect(api.generatePropertyRenderFromPlan).toHaveBeenCalled())
@@ -1039,7 +1037,6 @@ describe('PropertyDetailPage', () => {
     expect(await screen.findByText('Planta Planeada')).not.toBeNull()
 
     fireEvent.click(screen.getByText('RENDERS'))
-    fireEvent.click(await screen.findByText(/^el plano$/i))
     const file = new File(['x'], 'externo.png', { type: 'image/png' })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(input, { target: { files: [file] } })

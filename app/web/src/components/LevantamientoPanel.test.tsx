@@ -323,7 +323,6 @@ describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
     const { onGenerateRender } = renderPanel('original', withOriginal(null, original))
 
     fireEvent.click(screen.getByText('RENDERS'))
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
 
     await waitFor(() => expect(onGenerateRender).toHaveBeenCalled())
@@ -341,7 +340,6 @@ describe('LevantamientoPanel · sub-navegación PLANO | RENDERS', () => {
     const { onGenerateRender } = renderPanel('planned', geometryConPlaneado())
 
     fireEvent.click(screen.getByText('RENDERS'))
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
 
     await waitFor(() => expect(onGenerateRender).toHaveBeenCalled())
@@ -384,7 +382,6 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
 
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('Planta Alta'))
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
 
     await waitFor(() => expect(onGenerateRender).toHaveBeenCalled())
@@ -399,7 +396,6 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
     const { onGenerateRender } = renderPanel('original', withOriginal(null, dos))
 
     fireEvent.click(screen.getByText('RENDERS'))
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
 
     await waitFor(() => expect(onGenerateRender).toHaveBeenCalled())
@@ -416,7 +412,6 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
 
     fireEvent.click(screen.getByText('RENDERS'))
     fireEvent.click(screen.getByText('Planta Alta'))
-    fireEvent.click(screen.getByText(/^el plano$/i))
     const file = new File(['x'], 'externo.png', { type: 'image/png' })
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(input, { target: { files: [file] } })
@@ -435,7 +430,6 @@ describe('LevantamientoPanel · selector de piso en RENDERS (Task 30)', () => {
     const { container } = renderPanel('planned', geo, undefined, { onUploadRender: uploadImpl })
 
     fireEvent.click(screen.getByText('RENDERS'))
-    fireEvent.click(screen.getByText(/^el plano$/i))
     const file = new File(['x'], 'externo.png', { type: 'image/png' })
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(input, { target: { files: [file] } })
