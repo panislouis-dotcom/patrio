@@ -285,18 +285,16 @@ describe('RendersPanel', () => {
     expect(props.onGenerate).toHaveBeenCalled()
   })
 
-  it('ofrece el plano como fuente y siembra el prompt desde los cuartos (modo plano)', () => {
+  it('modo plano: el prompt nace sembrado desde los cuartos, sin elegir nada', () => {
     setup({ source: 'plan', variant: 'original', plan: planWithRooms(['Cocina', 'Recámara']), onGeneratePlan: vi.fn() })
-    fireEvent.click(screen.getByText(/^el plano$/i))
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     expect(ta.value).toMatch(/Cocina/)
     expect(ta.value).toMatch(/Recámara/)
   })
 
-  it('genera desde el plano cuando el plano es la fuente elegida (modo plano)', async () => {
+  it('modo plano: genera desde el plano directo — la fuente está elegida de fábrica', async () => {
     const onGeneratePlan = vi.fn().mockResolvedValue(planRenderRow(2))
     setup({ source: 'plan', variant: 'original', plan: planWithRooms(['Sala']), onGeneratePlan })
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
     await waitFor(() => expect(onGeneratePlan).toHaveBeenCalled())
   })
@@ -310,28 +308,27 @@ describe('RendersPanel', () => {
   // del texto de estilo (ver el docstring de `planFacts`, "listo para
   // anteponerse al prompt de estilo").
 
-  it('modo plano: elegir "El plano" y LUEGO un preset conserva los datos duros del piso', () => {
+  it('modo plano: elegir un preset conserva los datos duros ya sembrados', () => {
     setup({
       source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
       onGeneratePlan: vi.fn(), prompts: planPrompts,
     })
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     expect(ta.value).toMatch(/Cocina/)
     expect(ta.value).toMatch(/Piso de madera, tonos cálidos\./)
   })
 
-  it('modo plano: elegir un preset y LUEGO "El plano" agrega los datos duros del piso', () => {
+  it('modo plano: ya no hay tira de Fuente — el plano es la única y está siempre elegida', () => {
+    // 2026-08-25: exigir el click en la única fuente posible (autogenerada)
+    // dejaba GENERAR/SUBIR muertos sin razón visible.
     setup({
       source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
       onGeneratePlan: vi.fn(), prompts: planPrompts,
     })
-    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
-    fireEvent.click(screen.getByText(/^el plano$/i))
-    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
-    expect(ta.value).toMatch(/Cocina/)
-    expect(ta.value).toMatch(/Piso de madera, tonos cálidos\./)
+    expect(screen.queryByText(/^el plano$/i)).toBeNull()
+    expect(screen.queryByText('Fuente')).toBeNull()
+    expect(screen.getByRole('button', { name: /GENERAR RENDER/i }).hasAttribute('disabled')).toBe(false)
   })
 
   it('modo plano: los datos duros del piso van ANTES del texto de estilo, no después', () => {
@@ -340,19 +337,16 @@ describe('RendersPanel', () => {
       onGeneratePlan: vi.fn(), prompts: planPrompts,
     })
     fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
-    fireEvent.click(screen.getByText(/^el plano$/i))
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     expect(ta.value.indexOf('Cocina')).toBeLessThan(ta.value.indexOf('Piso de madera'))
   })
 
-  it('modo plano: re-elegir "El plano" ya seleccionado no duplica los datos duros', () => {
+  it('modo plano: componer con preset no duplica los datos duros', () => {
     setup({
       source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
       onGeneratePlan: vi.fn(), prompts: planPrompts,
     })
     fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
-    fireEvent.click(screen.getByText(/^el plano$/i))
-    fireEvent.click(screen.getByText(/^el plano$/i))
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     expect(ta.value.match(/Cocina/g)?.length ?? 0).toBe(1)
   })
@@ -362,7 +356,6 @@ describe('RendersPanel', () => {
       source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
       onGeneratePlan: vi.fn(), prompts: planPrompts,
     })
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
     fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '4' } })
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
@@ -377,7 +370,6 @@ describe('RendersPanel', () => {
       source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
       onGeneratePlan, prompts: planPrompts,
     })
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
     await waitFor(() => expect(onGeneratePlan).toHaveBeenCalledWith(
@@ -391,7 +383,6 @@ describe('RendersPanel', () => {
       source: 'plan', variant: 'original', plan: planWithRooms(['Cocina']),
       onGeneratePlan, prompts: planPrompts,
     })
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     fireEvent.change(ta, { target: { value: `${ta.value} y techo alto.` } })
@@ -441,7 +432,6 @@ describe('RendersPanel', () => {
       source: 'plan', variant: 'original', plan: planWithRooms(['Sala']), onGeneratePlan,
       floorId: 'floor-a', floorName: 'Planta Baja', floorCount: 2,
     })
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.click(screen.getByRole('button', { name: /GENERAR RENDER/i }))
     await waitFor(() => expect(onGeneratePlan).toHaveBeenCalledWith(
       expect.objectContaining({ floorId: 'floor-a', floorName: 'Planta Baja' }),
@@ -617,9 +607,10 @@ describe('RendersPanel: subir un render sin generarlo', () => {
     await waitFor(() => expect(onUpload).toHaveBeenCalledWith({ sourceImageId: 10, file }))
   })
 
-  it('modo fotos: sin foto elegida, el botón de subir está deshabilitado Y SE VE deshabilitado', () => {
+  it('modo fotos con 2+ fotos: sin foto elegida, subir está deshabilitado Y SE VE deshabilitado', () => {
     render(<RendersPanel
-      source="photos" images={[photo(10, 'fachada.jpg')]} prompts={prompts} renders={[]} base=""
+      source="photos" images={[photo(10, 'fachada.jpg'), photo(11, 'jardin.jpg')]}
+      prompts={prompts} renders={[]} base=""
       onGenerate={vi.fn()} onUpload={vi.fn()} onSavePrompt={vi.fn()} onDeleteRender={vi.fn()}
       onChoose={vi.fn()} onUnchoose={vi.fn()} />)
     const subir = screen.getByRole('button', { name: /SUBIR RENDER/i })
@@ -632,15 +623,17 @@ describe('RendersPanel: subir un render sin generarlo', () => {
     expect(screen.getByText('Elige una fuente arriba para generar o subir.')).toBeTruthy()
   })
 
-  it('modo fotos: con foto elegida, subir se ve habilitado', () => {
+  it('modo fotos con UNA sola foto: se auto-elige y subir nace habilitado', () => {
+    // 2026-08-25: con una sola fuente no hay nada que decidir — exigir el
+    // click dejaba el botón muerto sin razón.
     render(<RendersPanel
       source="photos" images={[photo(10, 'fachada.jpg')]} prompts={prompts} renders={[]} base=""
       onGenerate={vi.fn()} onUpload={vi.fn()} onSavePrompt={vi.fn()} onDeleteRender={vi.fn()}
       onChoose={vi.fn()} onUnchoose={vi.fn()} />)
-    fireEvent.click(screen.getByAltText('fachada.jpg'))
     const subir = screen.getByRole('button', { name: /SUBIR RENDER/i })
     expect(subir.hasAttribute('disabled')).toBe(false)
     expect(subir.style.opacity).toBe('1')
+    expect(screen.queryByText(/elige una fuente/i)).toBeNull()
   })
 
   it('sin onUpload, no se muestra el botón de subir', () => {
@@ -658,7 +651,6 @@ describe('RendersPanel: subir un render sin generarlo', () => {
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={1}
       onGeneratePlan={vi.fn()} onUploadPlan={onUploadPlan} />)
 
-    fireEvent.click(screen.getByText(/^el plano$/i))
     const file = new File(['x'], 'externo.png', { type: 'image/png' })
     fireEvent.change(uploadInput(container), { target: { files: [file] } })
 
@@ -684,13 +676,12 @@ describe('RendersPanel: subir un render sin generarlo', () => {
 // el cambio de piso real: la misma técnica que ya usa
 // `LevantamientoPanel.test.tsx` para probar el reset del resumen de lote.
 describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, nunca deja obsoleto)', () => {
-  it('generar sin volver a hacer clic en "El plano" tras cambiar de piso NO manda datos del piso viejo', async () => {
+  it('generar tras cambiar de piso NO manda datos del piso viejo', async () => {
     const cocina = planWithRooms(['Cocina'])
     const recamara = planWithRooms(['Recámara'])
     const onGeneratePlan = vi.fn().mockResolvedValue(planRenderRow(9))
     const { rerender } = render(<RendersPanel {...planBase}
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={onGeneratePlan} />)
-    fireEvent.click(screen.getByText(/^el plano$/i))
 
     // Cambia de piso — la misma prop `plan`, sin remontar (RendersPanel no tiene
     // `key` por piso en `LevantamientoPanel`).
@@ -705,30 +696,27 @@ describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, 
     expect(promptText).not.toMatch(/Cocina/)
   })
 
-  it('re-elegir "El plano" tras cambiar de piso no mezcla los cuartos de los dos pisos (no duplica)', () => {
+  it('cambiar de piso no mezcla los cuartos de los dos pisos (no duplica)', () => {
     const cocina = planWithRooms(['Cocina'])
     const recamara = planWithRooms(['Recámara'])
     const { rerender } = render(<RendersPanel {...planBase}
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
-    fireEvent.click(screen.getByText(/^el plano$/i))
 
     rerender(<RendersPanel {...planBase}
       plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
-    fireEvent.click(screen.getByText(/^el plano$/i))
 
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     expect(ta.value).toMatch(/Recámara/)
     expect(ta.value).not.toMatch(/Cocina/)
   })
 
-  it('cambiar de piso por sí solo (sin re-elegir "El plano") ya actualiza el texto al piso nuevo', () => {
+  it('cambiar de piso por sí solo ya actualiza el texto al piso nuevo', () => {
     // El síntoma 2, visto desde el textarea: ni siquiera hace falta re-generar
     // para notar el dato obsoleto — el texto mismo debe reflejar el piso actual.
     const cocina = planWithRooms(['Cocina'])
     const recamara = planWithRooms(['Recámara'])
     const { rerender } = render(<RendersPanel {...planBase}
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
-    fireEvent.click(screen.getByText(/^el plano$/i))
 
     rerender(<RendersPanel {...planBase}
       plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
@@ -747,7 +735,6 @@ describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, 
     const recamara = planWithRooms(['Recámara'])
     const { rerender } = render(<RendersPanel {...planBase}
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
-    fireEvent.click(screen.getByText(/^el plano$/i))
 
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     fireEvent.change(ta, { target: { value: 'Texto totalmente reescrito a mano, sin relación con los hechos.' } })
@@ -759,15 +746,21 @@ describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, 
       .toBe('Texto totalmente reescrito a mano, sin relación con los hechos.')
   })
 
-  it('cambiar de piso sin haber elegido "El plano" no toca el texto (usePlan sigue en false)', () => {
+  it('el plano nace sembrado sin ningún click, y cambiar de piso no duplica los hechos', () => {
+    // 2026-08-25: "El plano" ya no se elige — es la única fuente posible y
+    // está elegida siempre. El texto nace con los hechos del piso montado, y
+    // el cambio de piso los REEMPLAZA (nunca los apila).
     const cocina = planWithRooms(['Cocina'])
     const recamara = planWithRooms(['Recámara'])
     const { rerender } = render(<RendersPanel {...planBase}
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
-    // Nunca se hace clic en "El plano": el texto empieza y se queda vacío.
+    const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
+    expect(ta.value).toMatch(/Cocina/)
     rerender(<RendersPanel {...planBase}
       plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)
-    expect((screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement).value).toBe('')
+    expect(ta.value).toMatch(/Recámara/)
+    expect(ta.value).not.toMatch(/Cocina/)
+    expect(ta.value.match(/Cuartos:/g)?.length ?? 0).toBe(1)
   })
 
   it('un preset elegido sigue vinculado (promptId no nulo) tras cambiar de piso', async () => {
@@ -778,7 +771,6 @@ describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, 
     const onGeneratePlan = vi.fn().mockResolvedValue(planRenderRow(9))
     const { rerender } = render(<RendersPanel {...planBase}
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={onGeneratePlan} />)
-    fireEvent.click(screen.getByText(/^el plano$/i))
     fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: '3' } })
 
     rerender(<RendersPanel {...planBase}
@@ -798,7 +790,6 @@ describe('RendersPanel: el piso cambia sin remontar (sincroniza, nunca duplica, 
     const cocinaOtraReferencia = { ...cocina, rooms: [...cocina.rooms] }
     const { rerender } = render(<RendersPanel {...planBase}
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
-    fireEvent.click(screen.getByText(/^el plano$/i))
     const textoAntes = (screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement).value
 
     rerender(<RendersPanel {...planBase}
@@ -823,7 +814,6 @@ describe('RendersPanel: avisa cuando el texto ya no refleja el piso actual', () 
     const recamara = planWithRooms(['Recámara'])
     const { rerender } = render(<RendersPanel {...planBase}
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
-    fireEvent.click(screen.getByText(/^el plano$/i))
 
     const ta = screen.getByLabelText(/texto del prompt/i) as HTMLTextAreaElement
     fireEvent.change(ta, { target: { value: 'Texto totalmente reescrito a mano, sin relación con los hechos.' } })
@@ -839,7 +829,6 @@ describe('RendersPanel: avisa cuando el texto ya no refleja el piso actual', () 
     const recamara = planWithRooms(['Recámara'])
     const { rerender } = render(<RendersPanel {...planBase}
       plan={cocina} floorId={cocina.id} floorName={cocina.name} floorCount={2} onGeneratePlan={vi.fn()} />)
-    fireEvent.click(screen.getByText(/^el plano$/i))
 
     rerender(<RendersPanel {...planBase}
       plan={recamara} floorId={recamara.id} floorName={recamara.name} floorCount={2} onGeneratePlan={vi.fn()} />)

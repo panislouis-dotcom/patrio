@@ -3,7 +3,6 @@ import { colors, fonts, radius, spacing } from '../../lib/theme'
 import { fmtDia } from '../../lib/fmt'
 import type { PropertyImage, PropertyRender, RenderPrompt, RenderPromptKind } from '../../lib/types'
 import type { FloorGraph, VariantKey } from '../../lib/floorplan/types'
-import { roomLabels } from '../../lib/floorplan/rooms'
 import { planFacts } from '../../lib/floorplan/planFacts'
 
 interface CommonProps {
@@ -166,9 +165,17 @@ export function RendersPanel(props: Props) {
   const visiblePrompts = useMemo(() => prompts.filter(p => p.kind === kind), [prompts, kind])
 
   const [sourceId, setSourceId] = useState<number | null>(null)
-  const [usePlan, setUsePlan] = useState(false)
+  // "El plano" ya no se elige: es la ÚNICA fuente posible del modo plano
+  // (autogenerada, sin forma de crear otra), así que está elegida siempre que
+  // exista (2026-08-25 — exigir el click dejaba GENERAR/SUBIR muertos sin
+  // razón visible). En modo fotos sigue siendo falso, como siempre.
+  const usePlan = source === 'plan' && plan != null
   const [promptId, setPromptId] = useState<number | null>(null)
-  const [text, setText] = useState('')
+  // Modo plano: los datos duros del piso nacen sembrados en el texto — lo que
+  // antes hacía el primer click en "El plano" (composeWithFacts con texto
+  // vacío es exactamente los hechos).
+  const [text, setText] = useState(() =>
+    plan ? planFacts(plan, { includeColorLegend: true }) : '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [naming, setNaming] = useState(false)
@@ -178,12 +185,6 @@ export function RendersPanel(props: Props) {
 
   // Índice para colgarle a cada render su foto base sin recorrer la lista por render.
   const photosById = useMemo(() => new Map(images.map(i => [i.id, i])), [images])
-
-  // Nombres de cuarto del plano, solo para el badge "N espacios" del botón de fuente.
-  const planRoomNames = useMemo(
-    () => (plan ? roomLabels(plan).map(r => r.name).filter(Boolean) : []),
-    [plan],
-  )
 
   // El equivalente en el frontend de `chain_is_plan` (backend): una edición hereda
   // `sourceVariant` de su padre inmediato, así que TODO nodo de una cadena (raíz y
@@ -293,7 +294,15 @@ export function RendersPanel(props: Props) {
     const prevFacts = prevFactsRef.current
     prevPlanIdRef.current = planId
     prevFactsRef.current = currentFacts
-    if (!usePlan || prevPlanId === planId || prevFacts == null || currentFacts == null) return
+    if (!usePlan || currentFacts == null) return
+    // El plano acaba de EXISTIR (se dibujó el primer piso con el panel ya
+    // montado): siembra los hechos igual que el estado inicial — la misma
+    // composición que hacía el click en "El plano", ahora automática.
+    if (prevFacts == null) {
+      setText(t => (t.startsWith(currentFacts) ? t : composeWithFacts(t, currentFacts)))
+      return
+    }
+    if (prevPlanId === planId) return
     setText(t => replaceFacts(t, prevFacts, currentFacts))
   }, [planId, currentFacts, usePlan])
 
@@ -312,16 +321,14 @@ export function RendersPanel(props: Props) {
     setText(composeWithFacts(p?.body ?? '', currentFacts))
   }
 
-  function selectPhoto(id: number) { setSourceId(id); setUsePlan(false) }
-  function selectPlan() {
-    setUsePlan(true); setSourceId(null)
-    if (!plan) return
-    const facts = planFacts(plan, { includeColorLegend: true }) // debe coincidir con currentFacts, arriba
-    // Ya compuesto con estos mismos hechos (p.ej. un re-clic sobre "El plano"
-    // ya seleccionado): no dupliques. `startsWith` basta porque
-    // `composeWithFacts` siempre pone los hechos al frente.
-    if (!text.startsWith(facts)) setText(composeWithFacts(text, facts))
-  }
+  function selectPhoto(id: number) { setSourceId(id) }
+
+  // Con UNA sola foto no hay nada que decidir: es la fuente. La selección
+  // manual queda solo para cuando de verdad hay alternativas (2026-08-25 —
+  // mismo criterio que "El plano" siempre elegido en modo plano).
+  useEffect(() => {
+    if (source === 'photos' && images.length === 1) setSourceId(images[0].id)
+  }, [source, images])
 
   async function generate() {
     const viaPlan = usePlan && !!onGeneratePlan
@@ -379,52 +386,39 @@ export function RendersPanel(props: Props) {
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: spacing.md,
                   display: 'flex', flexDirection: 'column', gap: spacing.md }}>
 
-      {/* ── Fuente: una foto (modo fotos) o el plano de esta variante (modo plano) ──
-          Nunca las dos a la vez: en 'photos' no existe el botón "El plano" —esa
-          fuente se mudó al RendersPanel de cada levantamiento (Tarea 17)— y en
-          'plan' no hay tira de fotos, porque un levantamiento no es dueño de
-          ninguna. */}
-      <div>
-        <div style={label}>Fuente</div>
-        <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', marginTop: spacing.sm }}>
-          {source === 'photos' && images.map(img => (
-            <button key={img.id} onClick={() => selectPhoto(img.id)} title={img.fileName}
-              style={{
-                padding: 0, background: 'none', cursor: 'pointer', flexShrink: 0,
-                border: `2px solid ${!usePlan && sourceId === img.id ? colors.primary : colors.border}`,
-                borderRadius: radius.sm, lineHeight: 0,
-              }}>
-              <img src={`${base}/files/${img.filePath}`} alt={img.fileName}
-                   style={{ width: 84, height: 64, objectFit: 'cover', borderRadius: radius.sm }} />
-            </button>
-          ))}
-          {source === 'plan' && plan && (
-            <button onClick={selectPlan} title="Usar el plano de este levantamiento"
-              style={{
-                flexShrink: 0, width: 84, height: 64, cursor: 'pointer',
-                border: `2px solid ${usePlan ? colors.primary : colors.border}`,
-                borderRadius: radius.sm, background: colors.dark, color: colors.neutral,
-                fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '4px',
-              }}>
-              <span>El plano</span>
-              {planRoomNames.length > 0 && (
-                <span style={{ color: colors.secondary, letterSpacing: 0 }}>{planRoomNames.length} espacios</span>
-              )}
-            </button>
+      {/* ── Fuente: SOLO en modo fotos, donde de verdad hay alternativas (las
+          fotos de la galería) y con una sola se auto-elige. En modo plano no
+          hay tira: la única fuente posible es el plano autogenerado del piso y
+          está siempre elegida (2026-08-25) — solo queda el aviso cuando ni
+          siquiera hay plano dibujado. */}
+      {source === 'photos' && (
+        <div>
+          <div style={label}>Fuente</div>
+          <div style={{ display: 'flex', gap: spacing.sm, overflowX: 'auto', marginTop: spacing.sm }}>
+            {images.map(img => (
+              <button key={img.id} onClick={() => selectPhoto(img.id)} title={img.fileName}
+                style={{
+                  padding: 0, background: 'none', cursor: 'pointer', flexShrink: 0,
+                  border: `2px solid ${sourceId === img.id ? colors.primary : colors.border}`,
+                  borderRadius: radius.sm, lineHeight: 0,
+                }}>
+                <img src={`${base}/files/${img.filePath}`} alt={img.fileName}
+                     style={{ width: 84, height: 64, objectFit: 'cover', borderRadius: radius.sm }} />
+              </button>
+            ))}
+          </div>
+          {images.length === 0 && (
+            <p style={{ color: colors.secondary, fontSize: '13px', marginTop: spacing.sm }}>
+              Sube una foto en GALERÍA para generar un render.
+            </p>
           )}
         </div>
-        {source === 'photos' && images.length === 0 && (
-          <p style={{ color: colors.secondary, fontSize: '13px', marginTop: spacing.sm }}>
-            Sube una foto en GALERÍA para generar un render.
-          </p>
-        )}
-        {source === 'plan' && !plan && (
-          <p style={{ color: colors.secondary, fontSize: '13px', marginTop: spacing.sm }}>
-            Dibuja el plano en PLANO para generar un render.
-          </p>
-        )}
-      </div>
+      )}
+      {source === 'plan' && !plan && (
+        <p style={{ color: colors.secondary, fontSize: '13px' }}>
+          Dibuja el plano en PLANO para generar un render.
+        </p>
+      )}
 
       {/* ── Biblioteca de prompts ── */}
       <div>
