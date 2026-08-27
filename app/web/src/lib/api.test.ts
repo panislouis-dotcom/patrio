@@ -5,8 +5,11 @@ import { updateProperty, clearPropertyFields, generatePropertyRenderFromPlan, li
 vi.mock('./auth', () => ({ getToken: () => 'test-token', clearToken: () => {} }))
 
 function stubFetch(payload: unknown = { id: 1 }) {
+  // `request()` lee el body como texto y parsea él mismo (un 204/body vacío
+  // regresa undefined en vez de tronar) — el stub imita Response de verdad.
   const fn = vi.fn(async (_url: string, _init?: RequestInit) =>
-    ({ ok: true, status: 200, json: async () => payload }))
+    ({ ok: true, status: 200, json: async () => payload,
+       text: async () => JSON.stringify(payload) }))
   vi.stubGlobal('fetch', fn)
   return fn
 }

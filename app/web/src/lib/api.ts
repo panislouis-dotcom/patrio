@@ -33,6 +33,27 @@ async function detail(res: Response): Promise<string> {
   return body?.error?.message ?? body?.detail ?? `API error: ${res.status}`
 }
 
+/** EL ritual de este archivo, una sola vez: authFetch → error legible → JSON.
+ *
+ * Antes vivía copiado en ~110 llamadas, con dos dialectos de error (`detail`
+ * vs `API error: N`) según la antigüedad de la función — ahora el mensaje del
+ * servidor gana siempre. `json` serializa el body con su Content-Type; un
+ * FormData viaja tal cual en `body`. La respuesta se parsea por contenido, no
+ * por fe: un 204 o un body vacío regresan undefined en vez de tronar. */
+async function request<T>(
+  url: string, init: RequestInit & { json?: unknown } = {},
+): Promise<T> {
+  const { json, ...rest } = init
+  const res = await authFetch(url, json === undefined ? rest : {
+    ...rest,
+    headers: { 'Content-Type': 'application/json', ...(rest.headers ?? {}) },
+    body: JSON.stringify(json),
+  })
+  if (!res.ok) throw new Error(await detail(res))
+  const text = await res.text()
+  return (text ? JSON.parse(text) : undefined) as T
+}
+
 // ─── Propiedades ──────────────────────────────────────────────────────────────
 
 export interface PropertyFilters {
@@ -53,25 +74,15 @@ export async function fetchProperties(filters: PropertyFilters = {}): Promise<Pr
   if (filters.minRoi !== undefined) params.set('min_roi', String(filters.minRoi))
   if (filters.maxRoi !== undefined) params.set('max_roi', String(filters.maxRoi))
   if (filters.includeArchived) params.set('include_archived', 'true')
-  const res = await authFetch(`${BASE}/api/properties${params.size ? `?${params}` : ''}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/properties${params.size ? `?${params}` : ''}`)
 }
 
 export async function fetchProperty(id: number): Promise<Property> {
-  const res = await authFetch(`${BASE}/api/properties/${id}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/properties/${id}`)
 }
 
 export async function createProperty(data: PropertyCreate): Promise<Property> {
-  const res = await authFetch(`${BASE}/api/properties`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties`, { method: 'POST', json: data })
 }
 
 /**
@@ -83,46 +94,25 @@ export async function updateProperty(id: number, data: PropertyPatch): Promise<P
   const payload = Object.fromEntries(
     Object.entries(data).filter(([, value]) => value !== null && value !== undefined),
   )
-  const res = await authFetch(`${BASE}/api/properties/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}`, { method: 'PATCH', json: payload })
 }
 
 export async function deleteProperty(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/properties/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/properties/${id}`, { method: 'DELETE' })
 }
 
 /** La única forma de mover el status: con los insumos que pide la etapa destino. */
 export async function transitionProperty(id: number, body: Transition): Promise<Property> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/transition`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/transition`, { method: 'POST', json: body })
 }
 
 /** La única forma de dejar un campo vacío — y solo los que el servidor permite. */
 export async function clearPropertyFields(id: number, fields: ClearableField[]): Promise<Property> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/clear-fields`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/clear-fields`, { method: 'POST', json: { fields } })
 }
 
 export async function fetchQuality(): Promise<QualityEntry[]> {
-  const res = await authFetch(`${BASE}/api/quality`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/quality`)
 }
 
 export async function parseProperty(url: string, text: string, image?: Blob): Promise<ParsedProperty> {
@@ -130,9 +120,7 @@ export async function parseProperty(url: string, text: string, image?: Blob): Pr
   form.append('url', url)
   form.append('text', text)
   if (image) form.append('file', image, 'screenshot.png')
-  const res = await authFetch(`${BASE}/api/properties/parse`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/parse`, { method: 'POST', body: form })
 }
 
 /**
@@ -159,9 +147,9 @@ export interface ProspectusOptions {
 }
 
 export async function generateProspectus(options: ProspectusOptions): Promise<Blob> {
+  // Binario: la ÚNICA respuesta no-JSON del API — se queda fuera de request().
   const res = await authFetch(`${BASE}/api/documents/prospectus`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(options),
   })
   if (!res.ok) throw new Error(await detail(res))
@@ -174,34 +162,19 @@ export async function uploadPropertyImage(id: number, file: File, imageType: Ima
   const form = new FormData()
   form.append('file', file, file.name)
   form.append('image_type', imageType)
-  const res = await authFetch(`${BASE}/api/properties/${id}/images`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/images`, { method: 'POST', body: form })
 }
 
 export async function updatePropertyImageType(id: number, imageId: number, imageType: ImageType): Promise<PropertyImage> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/images/${imageId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_type: imageType }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/images/${imageId}`, { method: 'PATCH', json: { image_type: imageType } })
 }
 
 export async function reorderPropertyImages(id: number, imageIds: number[]): Promise<PropertyImage[]> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/images/reorder`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_ids: imageIds }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/images/reorder`, { method: 'PUT', json: { image_ids: imageIds } })
 }
 
 export async function deletePropertyImage(id: number, imageId: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/images/${imageId}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/properties/${id}/images/${imageId}`, { method: 'DELETE' })
 }
 
 // ─── Renders y su biblioteca de prompts ──────────────────────────────────────
@@ -216,46 +189,29 @@ export async function deletePropertyImage(id: number, imageId: number): Promise<
 export async function listRenderPrompts(kind?: RenderPromptKind): Promise<RenderPrompt[]> {
   const params = new URLSearchParams()
   if (kind) params.set('kind', kind)
-  const res = await authFetch(`${BASE}/api/render-prompts${params.size ? `?${params}` : ''}`)
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/render-prompts${params.size ? `?${params}` : ''}`)
 }
 
 /** `kind` por defecto 'photo': mismo default que `renders_db.create_prompt`
  * (Tarea 22), por compatibilidad hacia atrás con cualquier llamador que no
  * sepa todavía de la biblioteca de plano. */
 export async function createRenderPrompt(name: string, body: string, kind: RenderPromptKind = 'photo'): Promise<RenderPrompt> {
-  const res = await authFetch(`${BASE}/api/render-prompts`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, body, kind }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/render-prompts`, { method: 'POST', json: { name, body, kind } })
 }
 
 export async function deleteRenderPrompt(promptId: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/render-prompts/${promptId}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/render-prompts/${promptId}`, { method: 'DELETE' })
 }
 
 export async function listPropertyRenders(id: number): Promise<PropertyRender[]> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/renders`)
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/renders`)
 }
 
 export async function generatePropertyRender(
   id: number,
   req: { sourceImageId: number; promptText: string; promptId: number | null },
 ): Promise<PropertyRender> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/renders`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/renders`, { method: 'POST', json: req })
 }
 
 export async function uploadPropertyRender(
@@ -265,9 +221,7 @@ export async function uploadPropertyRender(
   const form = new FormData()
   form.append('file', req.file)
   form.append('sourceImageId', String(req.sourceImageId))
-  const res = await authFetch(`${BASE}/api/properties/${id}/renders/upload`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/renders/upload`, { method: 'POST', body: form })
 }
 
 export async function generatePropertyRenderFromPlan(
@@ -291,9 +245,7 @@ export async function generatePropertyRenderFromPlan(
   form.append('floorId', req.floorId)
   form.append('floorName', req.floorName)
   if (req.promptId != null) form.append('promptId', String(req.promptId))
-  const res = await authFetch(`${BASE}/api/properties/${id}/renders/from-plan`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/renders/from-plan`, { method: 'POST', body: form })
 }
 
 export async function uploadPropertyRenderFromPlan(
@@ -305,9 +257,7 @@ export async function uploadPropertyRenderFromPlan(
   form.append('variant', req.variant)
   form.append('floorId', req.floorId)
   form.append('floorName', req.floorName)
-  const res = await authFetch(`${BASE}/api/properties/${id}/renders/from-plan/upload`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/renders/from-plan/upload`, { method: 'POST', body: form })
 }
 
 export async function editPropertyRender(
@@ -315,30 +265,19 @@ export async function editPropertyRender(
   renderId: number,
   req: { promptText: string },
 ): Promise<PropertyRender> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}/edit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/renders/${renderId}/edit`, { method: 'POST', json: req })
 }
 
 export async function deletePropertyRender(id: number, renderId: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/properties/${id}/renders/${renderId}`, { method: 'DELETE' })
 }
 
 export async function choosePropertyRender(id: number, renderId: number): Promise<PropertyRender> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}/choose`, { method: 'PUT' })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/renders/${renderId}/choose`, { method: 'PUT' })
 }
 
 export async function unchoosePropertyRender(id: number, renderId: number): Promise<PropertyRender> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/renders/${renderId}/choose`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/renders/${renderId}/choose`, { method: 'DELETE' })
 }
 
 export type SonarRunEvent =
@@ -351,9 +290,9 @@ export type SonarRunEvent =
   | { type: 'complete';        found: number; skipped: number; enriched: number; signals: SonarSignal[] }
 
 export async function* streamSonarRun(cves: string[]): AsyncGenerator<SonarRunEvent> {
+  // SSE: se consume el stream crudo — fuera de request() a propósito.
   const res = await authFetch(`${BASE}/api/sonar/run`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cves }),
   })
   if (!res.ok) throw new Error(await detail(res))
@@ -374,41 +313,25 @@ export async function* streamSonarRun(cves: string[]): AsyncGenerator<SonarRunEv
 }
 
 export async function importSonarSignal(signal: SonarSignal): Promise<{ property: Property }> {
-  const res = await authFetch(`${BASE}/api/sonar/import`, { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(signal),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/sonar/import`, { method: 'POST', json: signal })
 }
 
 export async function importSonarToComparables(signalIds: number[], zoneId: number): Promise<{ created: number; skipped: number }> {
-  const res = await authFetch(`${BASE}/api/sonar/to-comparables`, { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ signal_ids: signalIds, zone_id: zoneId }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/sonar/to-comparables`, { method: 'POST', json: { signal_ids: signalIds, zone_id: zoneId } })
 }
 
 export async function fetchSonarSignals(): Promise<SonarSignal[]> {
-  const res = await authFetch(`${BASE}/api/sonar/signals`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  const data = await res.json()
+  const data = await request<{ signals: SonarSignal[] }>(`${BASE}/api/sonar/signals`)
   return data.signals
 }
 
 export async function fetchZoneMedians(): Promise<Record<string, number>> {
-  const res = await authFetch(`${BASE}/api/sonar/zone-medians`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  const data = await res.json()
+  const data = await request<{ medians: Record<string, number> }>(`${BASE}/api/sonar/zone-medians`)
   return data.medians
 }
 
 export async function reGeocodeSonarSignals(): Promise<{ queued: number }> {
-  const res = await authFetch(`${BASE}/api/sonar/re-geocode`, { method: 'POST' })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/sonar/re-geocode`, { method: 'POST' })
 }
 
 export async function fetchSonarZones(): Promise<SonarState[]> {
@@ -419,81 +342,47 @@ export async function fetchSonarZones(): Promise<SonarState[]> {
 }
 
 export async function fetchTeam(): Promise<TeamMember[]> {
-  const res = await authFetch(`${BASE}/api/team`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/team`)
 }
 
 export async function createTeamMember(data: { name: string; role: MemberRole; managerId?: number | null; email?: string; notes?: string }): Promise<TeamMember> {
-  const res = await authFetch(`${BASE}/api/team`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/team`, { method: 'POST', json: data })
 }
 
 export async function deleteTeamMember(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/team/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/team/${id}`, { method: 'DELETE' })
 }
 
 export async function updateTeamMember(id: number, data: { name?: string; role?: MemberRole; managerId?: number | null; email?: string; notes?: string }): Promise<TeamMember> {
-  const res = await authFetch(`${BASE}/api/team/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/team/${id}`, { method: 'PATCH', json: data })
 }
 
 // ─── Process templates ────────────────────────────
 
 export async function fetchTemplates(): Promise<ProcessTemplate[]> {
-  const res = await authFetch(`${BASE}/api/process/templates`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/process/templates`)
 }
 
 export async function createTemplate(data: { name: string; description?: string }): Promise<ProcessTemplate> {
-  const res = await authFetch(`${BASE}/api/process/templates`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/process/templates`, { method: 'POST', json: data })
 }
 
 export async function updateTemplate(id: number, data: Partial<Pick<ProcessTemplate, 'name' | 'description'>>): Promise<ProcessTemplate> {
-  const res = await authFetch(`${BASE}/api/process/templates/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/process/templates/${id}`, { method: 'PATCH', json: data })
 }
 
 export async function deleteTemplate(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/process/templates/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/process/templates/${id}`, { method: 'DELETE' })
 }
 
 export async function fetchTemplatePreview(tid: number): Promise<{ template: ProcessTemplate; nodes: GanttNode[] }> {
-  const res = await authFetch(`${BASE}/api/process/templates/${tid}/preview`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/process/templates/${tid}/preview`)
 }
 
 // ─── Template nodes ───────────────────────────────
 
 export async function fetchTemplateNodes(tid: number): Promise<TemplateNode[]> {
-  const res = await authFetch(`${BASE}/api/process/templates/${tid}/nodes`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/process/templates/${tid}/nodes`)
 }
 
 export async function createNode(tid: number, data: {
@@ -505,13 +394,7 @@ export async function createNode(tid: number, data: {
   durationDays?: number | null
   sourceTemplateId?: number | null
 }): Promise<TemplateNode> {
-  const res = await authFetch(`${BASE}/api/process/templates/${tid}/nodes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/process/templates/${tid}/nodes`, { method: 'POST', json: data })
 }
 
 export async function updateNode(nid: number, data: {
@@ -522,18 +405,11 @@ export async function updateNode(nid: number, data: {
   durationDays?: number | null
   supplierCategoryId?: number | null
 }): Promise<TemplateNode> {
-  const res = await authFetch(`${BASE}/api/process/nodes/${nid}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/process/nodes/${nid}`, { method: 'PATCH', json: data })
 }
 
 export async function deleteNode(nid: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/process/nodes/${nid}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/process/nodes/${nid}`, { method: 'DELETE' })
 }
 
 // ─── Process instances ────────────────────────────
@@ -541,10 +417,7 @@ export async function deleteNode(nid: number): Promise<void> {
 export async function fetchInstances(propertyId?: number): Promise<ProcessInstance[]> {
   const params = new URLSearchParams()
   if (propertyId !== undefined) params.set('property_id', String(propertyId))
-  const url = `${BASE}/api/process/instances${params.size ? `?${params}` : ''}`
-  const res = await authFetch(url)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/process/instances${params.size ? `?${params}` : ''}`)
 }
 
 export async function createInstance(data: {
@@ -557,13 +430,7 @@ export async function createInstance(data: {
   dueDate?: string | null
   notes?: string
 }): Promise<ProcessInstance> {
-  const res = await authFetch(`${BASE}/api/process/instances`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/process/instances`, { method: 'POST', json: data })
 }
 
 export async function updateInstance(iid: number, data: Partial<{
@@ -578,38 +445,27 @@ export async function updateInstance(iid: number, data: Partial<{
   frequencyDays: number | null
   durationLockedAt: string | null
 }>): Promise<{ instance: ProcessInstance; nextInstance: ProcessInstance | null }> {
-  const res = await authFetch(`${BASE}/api/process/instances/${iid}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/process/instances/${iid}`, { method: 'PATCH', json: data })
 }
 
 export async function fetchInstanceDetail(iid: number): Promise<InstanceDetail & { files: InstanceFile[] }> {
-  const res = await authFetch(`${BASE}/api/process/instances/${iid}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/process/instances/${iid}`)
 }
 
 // ─── Instance files ───────────────────────────────────────────────────────────
 
 export async function fetchInstanceFiles(iid: number): Promise<InstanceFile[]> {
-  const res = await authFetch(`${BASE}/api/process/instances/${iid}/files`)
-  if (!res.ok) throw new Error(`fetchInstanceFiles: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/process/instances/${iid}/files`)
 }
 
 export async function uploadInstanceFile(iid: number, file: File): Promise<InstanceFile> {
   const form = new FormData()
   form.append('file', file)
-  const res = await authFetch(`${BASE}/api/process/instances/${iid}/files`, { method: 'POST', body: form })
-  return res.json()
+  return request(`${BASE}/api/process/instances/${iid}/files`, { method: 'POST', body: form })
 }
 
 export async function deleteInstanceFile(fid: number): Promise<void> {
-  await authFetch(`${BASE}/api/process/instance-files/${fid}`, { method: 'DELETE' })
+  await request<void>(`${BASE}/api/process/instance-files/${fid}`, { method: 'DELETE' })
 }
 
 // ─── Node states ──────────────────────────────────
@@ -623,22 +479,14 @@ export async function updateNodeState(iid: number, nid: number, data: {
   notes?: string
   durationOverrideDays?: number | null
 }): Promise<NodeState> {
-  const res = await authFetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}/state`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/process/instances/${iid}/nodes/${nid}/state`, { method: 'PATCH', json: data })
 }
 
 // ─── Node files ──────────────────────────────────────────────────────────────
 
 export async function fetchNodeFiles(nid: number, instanceId?: number): Promise<NodeFile[]> {
   const qs = instanceId != null ? `?instance_id=${instanceId}` : ''
-  const res = await authFetch(`${BASE}/api/process/nodes/${nid}/files${qs}`)
-  if (!res.ok) throw new Error('Failed to fetch files')
-  return res.json()
+  return request(`${BASE}/api/process/nodes/${nid}/files${qs}`)
 }
 
 export async function uploadNodeFile(
@@ -649,22 +497,17 @@ export async function uploadNodeFile(
   const form = new FormData()
   form.append('file', file)
   if (instanceId != null) form.append('instance_id', String(instanceId))
-  const res = await authFetch(`${BASE}/api/process/nodes/${nid}/files`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/process/nodes/${nid}/files`, { method: 'POST', body: form })
 }
 
 export async function deleteNodeFile(fid: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/process/files/${fid}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/process/files/${fid}`, { method: 'DELETE' })
 }
 
 // ─── Node comments ───────────────────────────────────────────────────────────
 
 export async function fetchNodeComments(iid: number, nid: number): Promise<NodeComment[]> {
-  const res = await authFetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}/comments`)
-  if (!res.ok) throw new Error('Failed to fetch comments')
-  return res.json()
+  return request(`${BASE}/api/process/instances/${iid}/nodes/${nid}/comments`)
 }
 
 export async function createNodeComment(
@@ -673,105 +516,61 @@ export async function createNodeComment(
   body: string,
   author: string,
 ): Promise<NodeComment> {
-  const res = await authFetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}/comments`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ body, author }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/process/instances/${iid}/nodes/${nid}/comments`, { method: 'POST', json: { body, author } })
 }
 
 export async function deleteNodeComment(cid: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/process/comments/${cid}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/process/comments/${cid}`, { method: 'DELETE' })
 }
 
 // ─── Node detail ─────────────────────────────────────────────────────────────
 
 export async function fetchNodeDetail(iid: number, nid: number): Promise<NodeDetail> {
-  const res = await authFetch(`${BASE}/api/process/instances/${iid}/nodes/${nid}`)
-  if (!res.ok) throw new Error('Failed to fetch node detail')
-  return res.json()
+  return request(`${BASE}/api/process/instances/${iid}/nodes/${nid}`)
 }
 
 // ─── Profit split ─────────────────────────────────────────────────────────────
 
 export async function fetchProfitTemplate(): Promise<ProfitSplitConfig> {
-  const res = await authFetch(`${BASE}/api/profit/template`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/profit/template`)
 }
 
 export async function updateProfitTemplate(data: Partial<ProfitSplitConfig>): Promise<ProfitSplitConfig> {
-  const res = await authFetch(`${BASE}/api/profit/template`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/profit/template`, { method: 'PUT', json: data })
 }
 
 export async function fetchPropertyProfit(id: number): Promise<{ config: ProfitSplitConfig; waterfall: ProfitWaterfall }> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/profit`)
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/profit`)
 }
 
 export async function updatePropertyProfit(id: number, data: Partial<ProfitSplitConfig>): Promise<{ config: ProfitSplitConfig; waterfall: ProfitWaterfall }> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/profit`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/profit`, { method: 'PUT', json: data })
 }
 
 // ─── Investors ────────────────────────────────────────────────────────────────
 
 export async function fetchInvestors(): Promise<Investor[]> {
-  const res = await authFetch(`${BASE}/api/investors`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/investors`)
 }
 
 export async function fetchInvestor(id: number): Promise<Investor & { positions: PropertyInvestor[] }> {
-  const res = await authFetch(`${BASE}/api/investors/${id}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/investors/${id}`)
 }
 
 export async function createInvestor(data: Omit<Investor, 'id' | 'createdAt' | 'totalInterested' | 'totalCommitted' | 'totalFunded'>): Promise<Investor> {
-  const res = await authFetch(`${BASE}/api/investors`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/investors`, { method: 'POST', json: data })
 }
 
 export async function updateInvestor(id: number, data: Partial<Pick<Investor, 'name' | 'apellidos' | 'email' | 'phone' | 'notes' | 'temperatura' | 'capacidad' | 'fuente' | 'confianza'>>): Promise<Investor> {
-  const res = await authFetch(`${BASE}/api/investors/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/investors/${id}`, { method: 'PUT', json: data })
 }
 
 export async function deleteInvestor(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/investors/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/investors/${id}`, { method: 'DELETE' })
 }
 
 export async function fetchPropertyInvestors(propertyId: number): Promise<PropertyInvestor[]> {
-  const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/properties/${propertyId}/investors`)
 }
 
 export async function addPropertyInvestor(
@@ -779,13 +578,7 @@ export async function addPropertyInvestor(
   // Sin `status`: el embudo lo deriva el servidor de los montos en cada escritura.
   data: { investorId: number; interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; notes: string }
 ): Promise<PropertyInvestor> {
-  const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${propertyId}/investors`, { method: 'POST', json: data })
 }
 
 export async function updatePropertyInvestment(
@@ -793,26 +586,17 @@ export async function updatePropertyInvestment(
   investmentId: number,
   data: Partial<{ interestedAmount: number; committedAmount: number; fundedAmount: number; interestRateAnnual: number; investmentDate: string | null; returnAmount: number | null; returnDate: string | null; notes: string }>
 ): Promise<PropertyInvestor> {
-  const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors/${investmentId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${propertyId}/investors/${investmentId}`, { method: 'PUT', json: data })
 }
 
 export async function deletePropertyInvestment(propertyId: number, investmentId: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/properties/${propertyId}/investors/${investmentId}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/properties/${propertyId}/investors/${investmentId}`, { method: 'DELETE' })
 }
 
 // ─── Zones ───────────────────────────────────────────────────────────────────
 
 export async function fetchZones(): Promise<Zone[]> {
-  const res = await authFetch(`${BASE}/api/zones`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/zones`)
 }
 
 // ─── Comparables ─────────────────────────────────────────────────────────────
@@ -822,117 +606,65 @@ export async function fetchComparables(status?: string, zoneId?: number): Promis
   if (status) params.set('status', status)
   if (zoneId) params.set('zone_id', String(zoneId))
   const qs = params.size ? `?${params}` : ''
-  const res = await authFetch(`${BASE}/api/comparables${qs}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/comparables${qs}`)
 }
 
 export async function createComparable(data: Partial<Comparable>): Promise<Comparable> {
-  const res = await authFetch(`${BASE}/api/comparables`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/comparables`, { method: 'POST', json: data })
 }
 
 export async function updateComparable(id: number, data: Partial<Comparable>): Promise<Comparable> {
-  const res = await authFetch(`${BASE}/api/comparables/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/comparables/${id}`, { method: 'PATCH', json: data })
 }
 
 export async function deleteComparable(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/comparables/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/comparables/${id}`, { method: 'DELETE' })
 }
 
 // ─── Auth / Me ────────────────────────────────────────────────────────────────
 
 export async function fetchMe(): Promise<{ email: string }> {
-  const res = await authFetch(`${BASE}/api/auth/me`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/auth/me`)
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  const res = await authFetch(`${BASE}/api/auth/change-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ currentPassword, newPassword }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/auth/change-password`, { method: 'POST', json: { currentPassword, newPassword } })
 }
 
 // ─── User management ─────────────────────────────────────────────────────────
 
 export async function fetchUsers(): Promise<User[]> {
-  const res = await authFetch(`${BASE}/api/users`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/users`)
 }
 
 export async function createUser(email: string, password: string): Promise<User> {
-  const res = await authFetch(`${BASE}/api/users`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/users`, { method: 'POST', json: { email, password } })
 }
 
 export async function updateUser(id: number, data: { isActive?: boolean; password?: string }): Promise<User> {
-  const res = await authFetch(`${BASE}/api/users/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/users/${id}`, { method: 'PATCH', json: data })
 }
 
 export async function deleteUser(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/users/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/users/${id}`, { method: 'DELETE' })
 }
 
 // ── Proveedor Categories ──────────────────────────────────────────────────────
 
 export async function getCategories(): Promise<ProveedorCategory[]> {
-  const res = await authFetch(`${BASE}/api/proveedor-categories`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return request(`${BASE}/api/proveedor-categories`)
 }
 
 export async function createCategory(data: { name: string; description?: string }): Promise<ProveedorCategory> {
-  const res = await authFetch(`${BASE}/api/proveedor-categories`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/proveedor-categories`, { method: 'POST', json: data })
 }
 
 export async function updateCategory(id: number, data: Partial<Pick<ProveedorCategory, 'name' | 'description'>>): Promise<ProveedorCategory> {
-  const res = await authFetch(`${BASE}/api/proveedor-categories/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/proveedor-categories/${id}`, { method: 'PATCH', json: data })
 }
 
 export async function deleteCategory(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/proveedor-categories/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/proveedor-categories/${id}`, { method: 'DELETE' })
 }
 
 // ── Proveedores ───────────────────────────────────────────────────────────────
@@ -941,112 +673,63 @@ export async function getProveedores(categoryId?: number): Promise<Proveedor[]> 
   const url = categoryId != null
     ? `${BASE}/api/proveedores?category_id=${categoryId}`
     : `${BASE}/api/proveedores`
-  const res = await authFetch(url)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return request(url)
 }
 
 export async function getProveedor(id: number): Promise<Proveedor> {
-  const res = await authFetch(`${BASE}/api/proveedores/${id}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return request(`${BASE}/api/proveedores/${id}`)
 }
 
 export async function getProveedorAssignments(id: number): Promise<import('./types').ProveedorAssignment[]> {
-  const res = await authFetch(`${BASE}/api/proveedores/${id}/assignments`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return request(`${BASE}/api/proveedores/${id}/assignments`)
 }
 
 export async function createProveedor(data: Partial<Proveedor> & { name: string }): Promise<Proveedor> {
-  const res = await authFetch(`${BASE}/api/proveedores`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/proveedores`, { method: 'POST', json: data })
 }
 
 export async function updateProveedor(id: number, data: Partial<Proveedor>): Promise<Proveedor> {
-  const res = await authFetch(`${BASE}/api/proveedores/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/proveedores/${id}`, { method: 'PATCH', json: data })
 }
 
 export async function deleteProveedor(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/proveedores/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/proveedores/${id}`, { method: 'DELETE' })
 }
 
 export async function setProveedorCategories(id: number, categoryIds: number[]): Promise<Proveedor> {
-  const res = await authFetch(`${BASE}/api/proveedores/${id}/categories`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ categoryIds }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/proveedores/${id}/categories`, { method: 'PUT', json: { categoryIds } })
 }
 
 export async function uploadProveedorPhoto(id: number, file: File): Promise<ProveedorPhoto> {
   const fd = new FormData()
   fd.append('file', file, file.name)
-  const res = await authFetch(`${BASE}/api/proveedores/${id}/photos`, { method: 'POST', body: fd })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/proveedores/${id}/photos`, { method: 'POST', body: fd })
 }
 
 export async function deleteProveedorPhoto(proveedorId: number, photoId: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/proveedores/${proveedorId}/photos/${photoId}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/proveedores/${proveedorId}/photos/${photoId}`, { method: 'DELETE' })
 }
 
 // ── Cotizaciones ──────────────────────────────────────────────────────────────
 
 export async function getCotizaciones(stateId: number): Promise<Cotizacion[]> {
-  const res = await authFetch(`${BASE}/api/instance-node-states/${stateId}/cotizaciones`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return request(`${BASE}/api/instance-node-states/${stateId}/cotizaciones`)
 }
 
 export async function createCotizacion(stateId: number, data: Partial<Cotizacion>): Promise<Cotizacion> {
-  const res = await authFetch(`${BASE}/api/instance-node-states/${stateId}/cotizaciones`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/instance-node-states/${stateId}/cotizaciones`, { method: 'POST', json: data })
 }
 
 export async function updateCotizacion(id: number, data: Partial<Cotizacion>): Promise<Cotizacion> {
-  const res = await authFetch(`${BASE}/api/cotizaciones/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/cotizaciones/${id}`, { method: 'PATCH', json: data })
 }
 
 export async function selectCotizacion(id: number, instanceNodeStateId: number): Promise<Cotizacion> {
-  const res = await authFetch(`${BASE}/api/cotizaciones/${id}/select`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ instanceNodeStateId }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/cotizaciones/${id}/select`, { method: 'POST', json: { instanceNodeStateId } })
 }
 
 export async function deleteCotizacion(id: number): Promise<void> {
-  const res = await authFetch(`${BASE}/api/cotizaciones/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await detail(res))
+  await request<void>(`${BASE}/api/cotizaciones/${id}`, { method: 'DELETE' })
 }
 
 // ── Floor-plan geometry ──
@@ -1059,21 +742,13 @@ export async function deleteCotizacion(id: number): Promise<void> {
 export async function fetchPropertyGeometry(
   id: number,
 ): Promise<{ geometry: unknown; revision: number }> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/geometry`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/geometry`)
 }
 
 export async function savePropertyGeometry(
   id: number, geometry: FloorPlanModel, expectedRevision: number,
 ): Promise<{ geometry: FloorPlanModel; revision: number }> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/geometry`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ geometry, expectedRevision }),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/geometry`, { method: 'PUT', json: { geometry, expectedRevision } })
 }
 
 /** Borra un plan de proyecto Y sus renders (cascada deliberada, servidor).
@@ -1083,19 +758,13 @@ export async function savePropertyGeometry(
 export async function deletePropertyPlan(
   id: number, planId: string,
 ): Promise<{ deletedRenders: number; revision: number }> {
-  const res = await authFetch(`${BASE}/api/properties/${id}/plans/${encodeURIComponent(planId)}`, {
-    method: 'DELETE',
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/plans/${encodeURIComponent(planId)}`, { method: 'DELETE' })
 }
 
 export async function uploadFloorplanImage(id: number, file: File): Promise<{ imageKey: string }> {
   const fd = new FormData()
   fd.append('file', file)
-  const res = await authFetch(`${BASE}/api/properties/${id}/floorplan-image`, { method: 'POST', body: fd })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/properties/${id}/floorplan-image`, { method: 'POST', body: fd })
 }
 
 // ── Presupuesto de obra ───────────────────────────────────────────────────────
@@ -1118,20 +787,11 @@ const budgetUrl = (propertyId: number, path = '', planId?: string) =>
  * ajustar el total son la misma forma: un camino de código, no siete.
  */
 async function budgetWrite(url: string, method: string, body?: unknown): Promise<BudgetWrite> {
-  const res = await authFetch(url, {
-    method,
-    ...(body !== undefined
-      ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-      : {}),
-  })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(url, { method, ...(body !== undefined ? { json: body } : {}) })
 }
 
 export async function fetchBudget(propertyId: number, planId?: string): Promise<Budget> {
-  const res = await authFetch(budgetUrl(propertyId, '', planId))
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(budgetUrl(propertyId, '', planId))
 }
 
 export function createBudgetLine(propertyId: number, data: BudgetLineCreate, planId?: string): Promise<BudgetWrite> {
@@ -1163,12 +823,9 @@ export async function createPlanBudget(
   propertyId: number, planId: string, copyFromProperty = true,
   sourceBudgetId?: number,
 ): Promise<{ budget: Budget; linesAdded: number; linesSkipped: number }> {
-  const res = await authFetch(
+  return request(
     `${BASE}/api/properties/${propertyId}/budget/plans/${encodeURIComponent(planId)}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ copyFromProperty, ...(sourceBudgetId != null ? { sourceBudgetId } : {}) }) })
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+    { method: 'POST', json: { copyFromProperty, ...(sourceBudgetId != null ? { sourceBudgetId } : {}) } })
 }
 
 /** «Usar este plan»: sus renglones entran al presupuesto de la PROPIEDAD por la
@@ -1291,7 +948,5 @@ export async function fetchBudgetSources(
   const params = new URLSearchParams()
   if (excludeBudgetId != null) params.set('excludeBudgetId', String(excludeBudgetId))
   if (includeEmpty) params.set('includeEmpty', 'true')
-  const res = await authFetch(`${BASE}/api/budget/sources${params.size ? `?${params}` : ''}`)
-  if (!res.ok) throw new Error(await detail(res))
-  return res.json()
+  return request(`${BASE}/api/budget/sources${params.size ? `?${params}` : ''}`)
 }
