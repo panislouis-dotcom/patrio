@@ -249,3 +249,28 @@ nadie puede mantener a la vez.
    `is_residual`— sobre `*.md`, `*.sql`, las skills y los comentarios, no solo sobre
    el código que lo invoca. Los llamadores los encuentra el compilador; las oraciones
    no las encuentra nadie más que tú.
+
+---
+
+## Un dump se parece a su base de datos, incluida la parte que nadie migró
+
+**2026-08-30 · el `COMMENT ON SCHEMA public` que borraba la 054**
+
+`db/schema.sql` es un dump, así que hereda cómo se construyó la base de la que sale.
+Una base recién hecha con `CREATE DATABASE` se lleva el `COMMENT ON SCHEMA public`
+de `template1`, y el dump salía con un hunk que **quitaba**
+`COMMENT ON SCHEMA public IS ''` — un cambio que nadie hizo y que ninguna migración
+explica. Regenerarlo desde una base rehecha como la rehace `make reset-db`
+(`DROP SCHEMA public CASCADE; CREATE SCHEMA public`) reproduce el archivo commiteado
+exacto, con la delta limitada a los objetos de la migración.
+
+El diff pasó por dos revisores y una suite verde. Lo que lo atrapó fue leer el
+artefacto contra la delta que se esperaba de él.
+
+**Cómo aplicarlo**: regenera `db/schema.sql` **solo** desde una base construida con
+la receta de `make reset-db`, y si el diff trae un hunk que no puedes atribuir a una
+migración, lo que está mal es el método del dump, no el esquema. La regla general:
+**una base de scratch no sustituye a la receta real** — difiere justo en lo que no se
+te ocurrió revisar, y el dump es donde eso sale a la superficie. Mismo consejo que
+cierra [[Verde en local puede significar «contaminado», no «correcto»]]: cuando un
+entorno da un resultado y otro da otro, compara sus recetas antes de teorizar.
