@@ -1207,6 +1207,98 @@ def test_a_scaled_estimate_says_so_because_its_own_arithmetic_stopped_adding_up(
     assert _dec(_get(client, pid)["constructionBudgeted"]) == ESTIMADO_MXN
 
 
+def test_the_same_line_copied_twice_in_different_modes_is_still_one_line(
+        client, test_property, origen_sin_detalle):
+    """LA NOTA DE ESCALADO NO PUEDE PARTIR LA LLAVE DE LA DEDUP.
+
+    El nombre carga dos cosas: QUIÉN ES el renglón —su cuenta, y de qué obra
+    viene— y una ANOTACIÓN de lectura, que su importe se ajustó. Deduplicar es
+    preguntar quién es, así que la anotación tiene que quedar fuera de la
+    comparación; comparando la cadena entera, el mismo renglón del mismo origen
+    entra una vez proporcional y otra directo y el destino cuenta el dinero dos
+    veces.
+
+    La secuencia natural, que es como se descubrió: se jala proporcional, se
+    teclea algo —así el destino deja de ser reemplazable y la segunda copia SUMA
+    en vez de reemplazar— y se vuelve a jalar directo. Tiene que saltarse."""
+    pid = test_property["id"]
+    fuente = origen_sin_detalle["budgetId"]
+
+    assert _apply_proporcional(client, pid, fuente).status_code == 201
+    escalado = _budget(client, pid)["lines"][0]
+    assert _dec(escalado["budgetedAmount"]) == ESTIMADO_MXN
+
+    _add(client, pid, chapterName="Clósets", name="Clósets cotizados",
+         unit="lote", quantity=1, unitPrice=950_000)
+    r = _apply(client, pid, fuente).json()
+
+    assert (r["linesAdded"], r["linesSkipped"]) == (0, 1)
+    estimados = [l for l in r["budget"]["lines"] if l["seeded"]]
+    assert len(estimados) == 1
+    assert _dec(estimados[0]["budgetedAmount"]) == ESTIMADO_MXN
+    assert _dec(r["property"]["constructionBudgeted"]) == (
+        ESTIMADO_MXN + Decimal("950000"))
+
+
+def test_the_note_is_stripped_from_both_sides_of_the_dedup(
+        client, test_property, origen_sin_detalle, destino):
+    """LA NOTA APARECE EN CUALQUIERA DE LAS DOS PUNTAS, así que se quita de las
+    dos. Quitarla de un solo lado del `=` mueve el error, no lo arregla.
+
+    Aquí el nombre GUARDADO viene sin nota y el que LLEGA la trae —al revés que
+    en la prueba de arriba—. Se llega por una copia de copia: `destino` recibió
+    el estimado de la fuente en proporcional, así que lo tiene anotado, y de ahí
+    se copia a una obra que ya lo tenía sin anotar. `_copied_name` no vuelve a
+    tocar un nombre ya atribuido, así que la nota viaja tal cual."""
+    pid, fuente = test_property["id"], origen_sin_detalle["budgetId"]
+
+    assert _apply_proporcional(client, destino["id"], fuente).status_code == 201
+    con_nota = _budget(client, destino["id"])["lines"][0]
+    assert budget_db.SCALED_NOTE in con_nota["name"]
+
+    assert _apply(client, pid, fuente).status_code == 201
+    sin_nota = _budget(client, pid)["lines"][0]
+    assert budget_db.SCALED_NOTE not in sin_nota["name"]
+    _add(client, pid, chapterName="Clósets", name="Clósets cotizados",
+         unit="lote", quantity=1, unitPrice=950_000)
+
+    r = _apply(client, pid, _budget(client, destino["id"])["id"]).json()
+    assert (r["linesAdded"], r["linesSkipped"]) == (0, 1)
+    estimados = [l for l in r["budget"]["lines"] if l["seeded"]]
+    assert len(estimados) == 1
+    # La dedup SALTA, nunca actualiza: el de acá se queda con su nombre y su cifra.
+    assert estimados[0]["name"] == sin_nota["name"]
+    assert _dec(estimados[0]["budgetedAmount"]) == Decimal("1500000")
+
+
+def test_direct_then_proportional_replaces_instead_of_deduping(
+        client, test_property, origen_sin_detalle):
+    """El orden inverso —directo y luego proporcional— NO pasa por la dedup, y
+    conviene dejarlo dicho para que nadie lo busque ahí.
+
+    La proporcional exige un destino reemplazable, y después de una copia directa
+    sobre un destino que sólo tenía su estimado, lo que hay es un renglón
+    sembrado: sigue siendo reemplazable. Así que la segunda copia entra por el
+    REEMPLAZO —borra y vuelve a copiar— y no hay dos nombres que comparar. Por
+    eso el defecto sólo podía aparecer en un orden: para que haya dedup hace
+    falta que alguien teclee algo en medio, y eso cierra la proporcional."""
+    pid, fuente = test_property["id"], origen_sin_detalle["budgetId"]
+
+    assert _apply(client, pid, fuente).status_code == 201
+    assert _budget(client, pid)["replaceable"] is True
+
+    r = _apply_proporcional(client, pid, fuente).json()
+    assert (r["linesAdded"], r["linesSkipped"]) == (1, 0)
+    lineas = r["budget"]["lines"]
+    assert len(lineas) == 1
+    assert _dec(lineas[0]["budgetedAmount"]) == Decimal("1500000")
+    # Y sin nota, porque no hubo qué ajustar: el objetivo que la proporcional
+    # lee del destino son los $1,500,000 que ella misma acaba de copiar de esta
+    # misma fuente, así que el factor es exactamente 1. La nota aparece cuando
+    # multiplica, no cuando el modo se pidió.
+    assert budget_db.SCALED_NOTE not in lineas[0]["name"]
+
+
 def test_a_copied_estimate_does_not_hold_the_property_back_either(
         client, test_property, origen_sin_detalle):
     """La otra cara de lo mismo, por la puerta del borrado: un estimado que llegó

@@ -579,6 +579,27 @@ def _norm(column: str) -> str:
     return f"lower(btrim({column}))"
 
 
+def _identidad(column: str) -> str:
+    """El nombre SIN lo que es anotación de lectura — hoy, la nota de escalado.
+
+    EL NOMBRE CARGA DOS COSAS y sólo una de ellas dice quién es el renglón: su
+    cuenta y de qué obra viene (`_copied_name`) lo identifican; que su importe se
+    haya ajustado es una anotación para quien lee, y VARÍA entre copias legítimas
+    del mismo renglón —la misma partida del mismo origen llega con nota si la
+    copia fue proporcional y sin ella si fue directa—.
+
+    Deduplicar es preguntar quién es. Comparando la cadena entera, esa anotación
+    partía la llave: el mismo renglón entraba dos veces y el destino contaba el
+    dinero dos veces. Se quita de LAS DOS PUNTAS de la comparación —el nombre
+    guardado la trae o no según cómo se copió, igual que el que llega— porque
+    quitarla de un solo lado mueve el error en vez de arreglarlo.
+
+    Va sobre el texto crudo y no sobre `_norm`, para que la nota se reconozca con
+    las mayúsculas con las que se escribió: sale de una constante, nunca de algo
+    que alguien teclee."""
+    return f"replace({column}, '{SCALED_NOTE}', '')"
+
+
 # ─── Copiar un presupuesto a otro ──────────────────────────────────────────────
 #
 # «Copiar de otra obra» es la única forma de arrancar un presupuesto que no es
@@ -786,7 +807,11 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
 
     Dos renglones son EL MISMO cuando coinciden su `(capítulo, nombre)`
     normalizados con `_norm` —el nombre YA reescrito, si la copia cruzó de
-    propiedad, porque es el que va a quedar guardado—.
+    propiedad, porque es el que va a quedar guardado— y sin la nota de escalado,
+    que es anotación de lectura y no identidad: ver `_identidad`. Con la nota
+    dentro de la comparación, el mismo renglón del mismo origen entraba una vez
+    copiado proporcional y otra copiado directo, y el destino contaba el dinero
+    dos veces.
 
     LO ÚNICO QUE LA COPIA REESCRIBE ES EL NOMBRE DEL SEMBRADO, y sólo al cruzar
     de propiedad: se le agrega de qué obra viene, porque su cuenta habla de
@@ -834,7 +859,8 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
         "       WHERE NOT EXISTS (SELECT 1 FROM budget_lines d"
         "                          WHERE d.budget_id = %s"
         f"                           AND {_norm('d.chapter_name')} = {_norm('l.chapter_name')}"
-        f"                           AND {_norm('d.name')} = {_norm('l.name')})"
+        f"                           AND {_norm(_identidad('d.name'))}"
+        f"                             = {_norm(_identidad('l.name'))})"
         "       ORDER BY l.chapter_name, l.sort_order, l.id"
         "     RETURNING 1"
         ") SELECT (SELECT count(*) FROM cand) AS candidatos,"

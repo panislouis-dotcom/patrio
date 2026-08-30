@@ -184,10 +184,15 @@ def _set_budget(property_id: int, amount) -> None:
             (property_id,)).fetchone()["id"]
         conn.execute("DELETE FROM budget_lines WHERE budget_id = %s", (budget_id,))
         if amount:
+            # `seeded` va en TRUE porque es lo que esta fila ES: la cifra global
+            # de obra que la calculadora habría sembrado, con otro importe. Sin
+            # la marca el presupuesto se lee como trabajo TECLEADO —no se borra,
+            # ninguna copia lo reemplaza— y toda prueba que sólo quería un
+            # número de obra quedaba, sin decirlo, en el estado contrario.
             conn.execute(
                 "INSERT INTO budget_lines (budget_id, chapter_name, name, unit,"
-                "                          quantity, unit_price)"
-                " VALUES (%s, 'Otros', 'Obra', 'lote', 1, %s)",
+                "                          quantity, unit_price, seeded)"
+                " VALUES (%s, 'Otros', 'Obra', 'lote', 1, %s, TRUE)",
                 (budget_id, amount))
 
 
