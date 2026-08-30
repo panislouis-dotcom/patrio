@@ -20,7 +20,16 @@
 --   2. Las semillas corren con `psql -f` SIN `-1` (ver makefile), o sea
 --      autocommit por sentencia: el INSERT del presupuesto y el del renglón caen
 --      en transacciones distintas y sus marcas difieren. Las 18 propiedades
---      sembradas quedaban indelebles y sin reemplazo posible.
+--      sembradas quedan indelebles y sin reemplazo posible.
+--
+--      Y ESO NO SE ARREGLA SOLO EN UNA BASE YA SEMBRADA. El relleno de abajo
+--      conserva la respuesta de hoy —es su trabajo—, así que esos renglones se
+--      quedan en FALSE; y volver a correr las semillas tampoco los toca, porque
+--      `seed_zz_presupuestos.sql` sólo escribe donde el presupuesto no tiene
+--      renglones. La única salida es `make full-reset`. Producción no tiene el
+--      problema: ahí el presupuesto y su renglón nacen en la misma transacción
+--      (`create_property` los envuelve en un solo `with get_db()`), así que
+--      rellenan en TRUE. Es un defecto de las bases de desarrollo, y sólo de ellas.
 --
 -- La igualdad de relojes CORRELACIONA con el origen del renglón, pero no es el
 -- origen del renglón. Aquí se registra el hecho en vez de inferirlo.
@@ -34,8 +43,8 @@
 --
 -- El relleno reproduce EXACTAMENTE el predicado de hoy, así que ninguna
 -- propiedad cambia de respuesta el día de la migración; de ahí en adelante el
--- dato es declarado. La guarda del final lo prueba presupuesto por presupuesto
--- en vez de pedir que se le crea.
+-- dato es declarado. La guarda del final comprueba eso y sólo eso, presupuesto
+-- por presupuesto: que ninguno cambie de respuesta.
 --
 -- Aditiva y por lo tanto segura bajo expand/contract: los pods VIEJOS ignoran
 -- una columna que no nombran. Con una salvedad que conviene decir en voz alta:
@@ -54,8 +63,15 @@ SET LOCAL statement_timeout = '60s';
 ALTER TABLE budget_lines
     ADD COLUMN IF NOT EXISTS seeded BOOLEAN NOT NULL DEFAULT FALSE;
 
--- El relleno: el predicado vigente, palabra por palabra. `NOT l.seeded` lo hace
--- idempotente —la segunda corrida no encuentra nada que marcar—.
+-- El relleno: el predicado vigente, palabra por palabra.
+--
+-- ESTA MIGRACIÓN CORRE UNA VEZ y no se replica sin daño. dbmate no la repite, y
+-- eso basta; pero si alguien la vuelve a correr a mano sobre una base donde ya
+-- trabajó el código nuevo, la guarda ABORTA. No porque algo esté mal: un
+-- estimado que llegó copiado es `seeded = TRUE` con relojes distintos, o sea
+-- justo el caso donde los dos lados discrepan por diseño. El `IF NOT EXISTS` y
+-- el `NOT l.seeded` evitan trabajo repetido, no convierten el archivo en
+-- reejecutable. Si la guarda aborta en un replay, la columna ya estaba bien.
 UPDATE budget_lines l
    SET seeded = TRUE
   FROM budgets b
@@ -71,8 +87,14 @@ UPDATE budget_lines l
 
 -- La guarda de conservación: para CADA presupuesto, «¿aquí no ha trabajado
 -- nadie?» tiene que dar lo mismo leído por relojes que leído por `seeded`. Si
--- alguno difiere, el relleno no reprodujo el predicado y la migración aborta en
--- vez de dejar propiedades que cambiaron de respuesta sin que nadie lo pidiera.
+-- alguno difiere, la migración aborta en vez de dejar propiedades que cambiaron
+-- de respuesta sin que nadie lo pidiera.
+--
+-- Prueba ESO y nada más. No prueba que cada renglón quedara bien marcado: los
+-- dos lados exigen `count(l.id) <= 1`, así que marcar de más DENTRO de un
+-- presupuesto de varios renglones le resulta invisible. Es inofensivo —los dos
+-- consumidores exigen lo mismo— pero la guarda no lo cubre y no hay que leerla
+-- como si lo hiciera.
 DO $$
 DECLARE
     difieren integer;

@@ -1006,6 +1006,48 @@ def test_copying_a_source_that_is_only_its_estimate_leaves_the_destination_repla
         ESTIMADO_MXN + Decimal("650000"))
 
 
+def test_the_replace_branch_removes_without_reporting_it_and_can_run_again(
+        client, test_property, origen_sin_detalle, origen):
+    """LO QUE EL REEMPLAZO QUITA NO SE REPORTA, y encadenarlo no acumula.
+
+    La respuesta trae `linesAdded` y `linesSkipped` y nada para lo quitado —hay
+    un renglón menos que antes y ningún número lo dice—. Es a propósito: lo único
+    que esta rama puede quitar es un renglón que escribió el propio sistema, así
+    que no hay pérdida que reportar, y darle un campo obligaría a la pantalla a
+    explicarla. Se fija aquí para que el siguiente que lo note lo lea como una
+    decisión y no como un olvido.
+
+    Y como la marca viaja con la copia, la rama vuelve a abrirse: el segundo
+    `apply` sustituye lo que copió el primero en vez de sumárselo. Dos copias
+    seguidas dejan un presupuesto, no dos estimados encimados."""
+    pid = test_property["id"]
+    inicial = _estimate(_budget(client, pid))["id"]
+
+    r = _apply(client, pid, origen_sin_detalle["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+    assert (r["linesAdded"], r["linesSkipped"]) == (1, 0)
+    assert set(r) == {"line", "budget", "property", "budgetIncrease",
+                      "linesAdded", "linesSkipped"}
+    # Entró uno y se fue otro: el conteo no lo dice y el presupuesto sí.
+    assert [l["id"] for l in r["budget"]["lines"]] != [inicial]
+    assert len(r["budget"]["lines"]) == 1
+
+    # Otra vez, y sigue siendo uno: lo copiado antes se reemplaza, no se suma.
+    r = _apply(client, pid, origen_sin_detalle["budgetId"]).json()
+    assert r["linesAdded"] == 1
+    assert len(r["budget"]["lines"]) == 1
+
+    # Hasta que entra trabajo tecleado: ahí la rama se cierra y se suma. Los dos
+    # que había —el estimado copiado y los clósets— más los cuatro del origen,
+    # que trae su propio estimado además de sus tres partidas.
+    _add(client, pid, chapterName="Clósets", name="Clósets cotizados",
+         unit="lote", quantity=1, unitPrice=950_000)
+    r = _apply(client, pid, origen["budgetId"]).json()
+    assert r["linesAdded"] == 4
+    assert len(r["budget"]["lines"]) == 6
+
+
 def test_a_copied_estimate_does_not_hold_the_property_back_either(
         client, test_property, origen_sin_detalle):
     """La otra cara de lo mismo, por la puerta del borrado: un estimado que llegó

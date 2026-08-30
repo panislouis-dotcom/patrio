@@ -935,6 +935,20 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
     y no con un parecido: `apply` no se lee como destructiva y no tiene paso de
     confirmación.
 
+    Y BORRA EN SILENCIO: lo devuelto son `(copiados, saltados)` y no hay un
+    tercer número para lo quitado. Es deliberado. Lo único que esta rama puede
+    quitar es un renglón sembrado —lo dice el predicado que la abre, no una
+    convención—, o sea una cifra que este mismo sistema escribió y que vuelve a
+    escribirse sola si la propiedad se recaptura. Reportarlo obligaría a la
+    pantalla a explicar una pérdida que no lo es.
+
+    De lo mismo se sigue que la rama es RE-ENTRANTE: copiar una fuente que sólo
+    trae su estimado deja aquí un renglón sembrado —la marca viaja con la copia—
+    así que el siguiente `apply` vuelve a entrar por el reemplazo y sustituye lo
+    recién copiado en vez de sumarle. Encadenar copias no acumula estimados. En
+    cuanto entra un renglón tecleado o un segundo renglón, la rama se cierra y no
+    se vuelve a abrir.
+
     Y LA PROPORCIONAL SOLO EXISTE EN LA PRIMERA RAMA: fuera de ella rechaza
     (`_require_replaceable`) en vez de aterrizar encima. La directa funciona en
     las dos, porque no promete nada sobre el total.

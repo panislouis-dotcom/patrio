@@ -32,7 +32,12 @@
 -- transaccional deja de importar. Es exactamente lo que la 054 vino a arreglar.
 --
 -- Solo siembra lo que falta: correr las semillas dos veces no duplica el costo
--- de obra de nadie.
+-- de obra de nadie. LA OTRA CARA DE ESO: una base sembrada ANTES de la 054 no se
+-- repara volviendo a sembrar. Sus renglones ya existen, así que este archivo no
+-- los toca, y siguen en `seeded = FALSE` —propiedades que no se borran y que
+-- ninguna copia reemplaza—. Se arregla con `make full-reset` y con nada más.
+-- Es un problema de bases de desarrollo: en producción el presupuesto y su
+-- renglón nacen en la misma transacción y la 054 los rellenó en TRUE.
 
 INSERT INTO budgets (property_id)
 SELECT p.id
