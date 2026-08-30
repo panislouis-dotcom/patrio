@@ -159,6 +159,12 @@ def _cifra(number) -> str:
     return f"{to_decimal(number):,.4f}".rstrip("0").rstrip(".")
 
 
+# El renglón sin su cuenta. Es como queda un estimado que se copió a OTRA
+# propiedad: la aritmética sólo significa algo dentro de la obra que describe
+# (ver `_copied_name`).
+ESTIMATE_LINE_LABEL = "Estimado inicial"
+
+
 def estimate_line_name(sqm_construction, construction_cost_per_sqm,
                        construction_overhead=None) -> str:
     """«Estimado inicial · 200 m² × $8,000/m²» — el renglón se llama con la
@@ -178,7 +184,7 @@ def estimate_line_name(sqm_construction, construction_cost_per_sqm,
     factor = overhead_factor(CONSTRUCTION_OVERHEAD_DEFAULT
                              if construction_overhead is None else construction_overhead)
     indirectos = f" × {_cifra(factor)}" if factor != 1 else ""
-    return (f"Estimado inicial · {_cifra(sqm_construction)} m² × "
+    return (f"{ESTIMATE_LINE_LABEL} · {_cifra(sqm_construction)} m² × "
             f"${_cifra(construction_cost_per_sqm)}/m²{indirectos}")
 
 
@@ -642,7 +648,30 @@ _SCALED_COLUMN = {
 }
 
 
-def _candidate_columns(factor) -> tuple[str, list]:
+def _copied_name(misma_propiedad: bool) -> str:
+    """Cómo se llama el renglón al otro lado de la copia.
+
+    EL NOMBRE DEL SEMBRADO LLEVA SU CUENTA ADENTRO —«Estimado inicial · 200 m² ×
+    $8,000/m²»— y esa cuenta habla de UNA propiedad. Copiado a otra obra, el
+    nombre afirma metros que no son los del destino: alguien abre su presupuesto
+    y lee un cálculo sobre un edificio que no es el suyo. Se le quita la cuenta y
+    queda «Estimado inicial», que es verdad en cualquier parte.
+
+    Copiado al ESCENARIO DE PLAN de la misma propiedad se conserva entero: ahí
+    los metros sí son los suyos, y el escenario existe justamente para
+    espejearla.
+
+    No se recalcula contra las métricas del destino, que sería el arreglo
+    aparente: el importe que viaja es el del ORIGEN —escalado, incluso— así que
+    un nombre recalculado contradiría su propia cifra, que es exactamente el
+    defecto del que venimos."""
+    if misma_propiedad:
+        return "l.name"
+    return (f"CASE WHEN l.seeded THEN '{ESTIMATE_LINE_LABEL}'"
+            "      ELSE l.name END AS name")
+
+
+def _candidate_columns(factor, misma_propiedad: bool) -> tuple[str, list]:
     """Las columnas del origen TAL COMO SE VAN A INSERTAR, con sus parámetros.
 
     Sin factor no se toca ni una: la copia directa es literalmente el SELECT de
@@ -650,10 +679,21 @@ def _candidate_columns(factor) -> tuple[str, list]:
     nadie pidió escalar. Con factor, el mismo valor entra tantas veces como
     `%s` haya en las columnas escaladas —el conteo sale del SQL y no de una
     constante que haya que acordarse de mover."""
-    if factor is None:
-        return ", ".join(f"l.{c}" for c in _COPIED_LINE_COLUMNS), []
-    sql = ", ".join(_SCALED_COLUMN.get(c, f"l.{c}") for c in _COPIED_LINE_COLUMNS)
+    columnas = {"name": _copied_name(misma_propiedad)}
+    if factor is not None:
+        columnas |= _SCALED_COLUMN
+    sql = ", ".join(columnas.get(c, f"l.{c}") for c in _COPIED_LINE_COLUMNS)
     return sql, [factor] * sql.count("%s")
+
+
+def _same_property(conn, source_budget_id: int, target_budget_id: int) -> bool:
+    """Si los dos presupuestos son de la misma obra. Separa copiar ENTRE obras de
+    copiar a un escenario de plan, que es la misma operación con otro alcance."""
+    return bool(conn.execute(
+        "SELECT (SELECT o.property_id FROM budgets o WHERE o.id = %s)"
+        "        IS NOT DISTINCT FROM"
+        "       (SELECT d.property_id FROM budgets d WHERE d.id = %s) AS misma",
+        (source_budget_id, target_budget_id)).fetchone()["misma"])
 
 
 def copy_lines(conn, source_budget_id: int, target_budget_id: int,
@@ -678,7 +718,12 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
     reporta; si hay que cambiarlo, lo cambia un humano renglón por renglón.
 
     Dos renglones son EL MISMO cuando coinciden su `(capítulo, nombre)`
-    normalizados con `_norm`.
+    normalizados con `_norm` —el nombre YA reescrito, si la copia cruzó de
+    propiedad, porque es el que va a quedar guardado—.
+
+    LO ÚNICO QUE LA COPIA REESCRIBE ES EL NOMBRE DEL SEMBRADO, y sólo al cruzar
+    de propiedad: su cuenta habla de metros que no son los del destino. Ver
+    `_copied_name`, que explica por qué no se recalcula.
 
     `chapters` recorta el origen a esos capítulos; `None` los copia todos, que es
     el comportamiento de siempre.
@@ -707,7 +752,8 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
     # insertadas no puede despegarse de la lista de valores.
     columns = ", ".join(_COPIED_LINE_COLUMNS)
     source = ", ".join(f"l.{c}" for c in _COPIED_LINE_COLUMNS)
-    candidatas, escalado = _candidate_columns(factor)
+    candidatas, escalado = _candidate_columns(factor, _same_property(
+        conn, source_budget_id, target_budget_id))
     row = conn.execute(
         # `l.id` viaja en `cand` sin copiarse: solo desempata el ORDER BY, para
         # que el orden de inserción —y por lo tanto los `id` nuevos— sea el mismo

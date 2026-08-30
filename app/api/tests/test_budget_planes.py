@@ -57,6 +57,22 @@ def test_el_escenario_nace_copiado_del_de_la_propiedad(client, test_property):
     assert plan_total == prop_total
 
 
+def test_el_escenario_conserva_la_cuenta_del_estimado_porque_es_la_suya(
+        client, test_property):
+    """El escenario de plan es la MISMA propiedad, así que el nombre del estimado
+    viaja entero: esos metros sí son los de esta obra y el escenario existe para
+    espejearla. Copiar a OTRA propiedad sí le quita la cuenta —ver
+    `budget_db._copied_name`—; aquí quitársela borraría información verdadera."""
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    de_la_obra = _budget(client, pid).json()["lines"][0]["name"]
+    assert de_la_obra.startswith("Estimado inicial · ")
+
+    r = client.post(f"/api/properties/{pid}/budget/plans/plan-a")
+    assert r.status_code == 201, r.text
+    assert [ln["name"] for ln in r.json()["budget"]["lines"]] == [de_la_obra]
+
+
 def test_el_escenario_puede_nacer_vacio(client, test_property):
     pid = test_property["id"]
     _seed_plans(client, pid, "plan-a")
