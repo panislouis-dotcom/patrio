@@ -249,6 +249,10 @@ nadie puede mantener a la vez.
    `is_residual`— sobre `*.md`, `*.sql`, las skills y los comentarios, no solo sobre
    el código que lo invoca. Los llamadores los encuentra el compilador; las oraciones
    no las encuentra nadie más que tú.
+3. **Si la referencia cruzada vale la pena, ánclala en algo que sobreviva.** Un número
+   de línea lo invalida la siguiente edición ARRIBA de él; el nombre del archivo
+   aguanta todo menos un rename; una frase citada aguanta hasta el rename, porque se
+   grepea desde cualquier parte. Cita el texto, no la coordenada.
 
 ---
 
