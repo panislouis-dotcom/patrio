@@ -858,10 +858,11 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
     rendija. El reemplaza va antes de copiar, no después, para que la dedup no
     compare contra un renglón que ya está sentenciado.
 
-    No hay composición de bloques ni expansión recursiva —eso es lo que hacen las plantillas de
-    proceso con `source_template_id`, y ahí se ve el costo: la expansión quedó
-    truncada a un nivel más un detector de ciclos completo. Arrancar desde otra
-    obra y borrar tres renglones cuesta treinta segundos y cero código.
+    No hay composición de bloques ni expansión recursiva —eso es lo que hacen
+    las plantillas de proceso con `source_template_id`, y ahí se ve el costo: la
+    expansión quedó truncada a un nivel más un detector de ciclos completo.
+    Arrancar desde otra obra y borrar tres renglones cuesta treinta segundos y
+    cero código.
 
     Devuelve `(copiados, saltados)`. Los saltados son los renglones que el
     destino YA tenía y que por eso quedaron intactos —ver `copy_lines`—, y
@@ -871,9 +872,19 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
 
     LAS DOS COPIAS SON LA MISMA OPERACIÓN CON OTRO TAMAÑO. Lo que cambia es a
     qué tamaño entran los renglones: la directa los trae con los importes del
-    origen, la PROPORCIONAL los dimensiona para que sumen exactamente lo que
-    esta obra ya tenía presupuestado. De ahí en adelante las dos son el mismo
+    origen, la PROPORCIONAL los dimensiona para que LO COPIADO sume exactamente
+    el total que esta obra ya tenía. De ahí en adelante las dos son el mismo
     INSERT.
+
+    Y ahí hay que ser preciso, porque la frase se presta: el factor garantiza lo
+    que suma LO COPIADO, no en qué queda el total. Las dos coinciden en la rama
+    del reemplazo —lo que había se fue, así que el total ES lo copiado— y NO
+    coinciden en la de suma: sobre un presupuesto que ya trae renglones propios,
+    la proporcional aterriza otro tanto encima y el total queda en la suma de
+    los dos. Con un solo renglón tecleado sobre el estimado eso es ≈2×T, y el
+    reemplazo no lo puede evitar sin adivinar cuál de los renglones vino a
+    sustituir —adivinar de más sería borrar trabajo real, en silencio—. Queda
+    abierto a propósito: ver la nota de `_NOTHING_BUT_THE_ESTIMATE`.
 
     EL FACTOR LO CALCULA ESTE SERVIDOR, siempre, contra el costo de obra que el
     destino ya tiene capturado. Un factor mandado por el cliente volvería la
