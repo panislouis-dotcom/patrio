@@ -344,7 +344,8 @@ Use this verbatim copy every time. Do not paraphrase.
 - **Construction figures are read, never rebuilt.** The cost of works is the sum
   of the property's budget; `sqmConstruction` is physical footage and is printed
   with a m² unit, never multiplied by a price. Do not reach for
-  `constructionCostPerSqm` (derived, display-only) or an overhead multiplier —
+  `constructionCostPerSqm` (a captured assumption that prices nothing),
+  `budgetedCostPerSqm` (derived, display-only) or an overhead multiplier —
   the ×1.3 is already inside the amount, and applying it again inflates every
   works figure by 30% with nothing looking broken.
 - **Enums:** `assetType` and `strategyType` are translated, never printed raw and

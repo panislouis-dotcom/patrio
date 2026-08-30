@@ -168,6 +168,29 @@ def _delete_property(property_id: int) -> None:
         conn.execute("DELETE FROM properties WHERE id = %s", (property_id,))
 
 
+def _set_budget(property_id: int, amount) -> None:
+    """Deja el costo de obra de una propiedad en `amount`, con un solo renglón.
+
+    El total del presupuesto es la suma de sus renglones y no hay ruta que fije
+    un total —se retiró con el residuo—, así que dejarlo en una cifra concreta
+    es capturar renglones. Las pruebas que usan esto no son del presupuesto: les
+    hace falta UN número de obra y les da igual cómo esté desglosado, así que lo
+    ponen por SQL en una fila y siguen con lo suyo. `0` deja el presupuesto
+    vacío, que es un estado legítimo y suma exactamente 0.
+    """
+    with get_db() as conn:
+        budget_id = conn.execute(
+            "SELECT id FROM budgets WHERE property_id = %s AND plan_id IS NULL",
+            (property_id,)).fetchone()["id"]
+        conn.execute("DELETE FROM budget_lines WHERE budget_id = %s", (budget_id,))
+        if amount:
+            conn.execute(
+                "INSERT INTO budget_lines (budget_id, chapter_name, name, unit,"
+                "                          quantity, unit_price)"
+                " VALUES (%s, 'Otros', 'Obra', 'lote', 1, %s)",
+                (budget_id, amount))
+
+
 # The complete cost breakdown of a property, for a CREATE and only a create.
 #
 # It used to say "a create or a transition", and that stopped being true when the

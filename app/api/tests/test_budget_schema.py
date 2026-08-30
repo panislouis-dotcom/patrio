@@ -64,9 +64,11 @@ def test_no_total_is_stored():
         "id", "budget_id", "chapter_name", "name", "unit",
         "quantity", "unit_price", "supplier_id", "committed_amount", "committed_on",
         "actual_quantity", "closed_at", "sort_order", "notes", "created_at", "updated_at",
-        # `is_residual` NO es un total: es qué ES el renglón. Marca el que
-        # absorbe lo que falta por detallar, y sin él la regla del remanente
-        # dependería de que nadie renombre la cadena «Otros, por detallar».
+        # `is_residual` está MUERTA desde la 053 y sigue enumerada aquí a
+        # propósito: la columna sobrevive en FALSE un despliegue más para que los
+        # pods viejos no truenen durante el rollout (las migraciones corren como
+        # hook PreSync, antes de que entren los nuevos). Nada la lee ni la
+        # escribe. Se va en la 054, y este renglón se va con ella.
         "is_residual",
         # `supplier_category_id` tampoco es un total: es el OFICIO, y es lo que
         # se sabe mucho antes que el proveedor. Captura manual, como el nombre y
@@ -119,37 +121,6 @@ def test_closing_a_line_demands_the_real_quantity(obra):
         with get_db() as conn:
             conn.execute("UPDATE budget_lines SET closed_at = now() WHERE id = %s",
                          (obra["line_id"],))
-
-
-def test_the_residual_has_no_trade(obra):
-    """«Otros, por detallar» no es trabajo de ningún oficio: es lo que todavía no
-    se reparte, y en cuanto se sepa de qué es deja de ser residuo y se vuelve una
-    partida. El API ya rechaza toda escritura sobre el residuo que no sea una
-    nota; el CHECK lo vuelve un hecho de la fila, como la 033 hizo con
-    `is_residual` mismo."""
-    with get_db() as conn:
-        category_id = conn.execute(
-            "INSERT INTO proveedor_categories (name) VALUES ('[TEST] Oficio') RETURNING id"
-        ).fetchone()["id"]
-        residual_id = conn.execute(
-            "INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity,"
-            "                          unit_price, is_residual)"
-            " VALUES (%s, 'Otros', 'Otros, por detallar', 'lote', 1, 0, TRUE) RETURNING id",
-            (obra["budget_id"],)).fetchone()["id"]
-    try:
-        with pytest.raises(IntegrityError):
-            with get_db() as conn:
-                conn.execute("UPDATE budget_lines SET supplier_category_id = %s WHERE id = %s",
-                             (category_id, residual_id))
-        # Y la misma columna en una partida detallada sí entra: lo que el CHECK
-        # rechaza es el residuo, no el oficio.
-        with get_db() as conn:
-            conn.execute("UPDATE budget_lines SET supplier_category_id = %s WHERE id = %s",
-                         (category_id, obra["line_id"]))
-    finally:
-        with get_db() as conn:
-            conn.execute("DELETE FROM budget_lines WHERE id = %s", (residual_id,))
-            conn.execute("DELETE FROM proveedor_categories WHERE id = %s", (category_id,))
 
 
 def _observations(line_id: int) -> list[dict]:

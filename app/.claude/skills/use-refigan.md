@@ -129,7 +129,7 @@ A property is **born `prospecto`** — `POST /api/properties` cannot set a statu
 
 `purchasePrice` is what it costs to **acquire the building as it stands** — a bare lot or a finished house, no special case per asset type. The work *you will execute* on top — a remodel, an extension, a ground-up build — is priced in the property's **work budget**, line by line (below), and nothing already paid for inside the purchase price appears there, which is what stops a built house being counted twice.
 
-`sqmConstruction` is that work's **physical footage and prices nothing.** It was half of a formula — `sqmConstruction × constructionCostPerSqm` — and survives that formula's retirement because the PDF reads it, and because it is the divisor of the derived cost per m².
+`sqmConstruction` is that work's **physical footage and prices nothing.** `constructionCostPerSqm` is the captured **assumption** — what somebody thinks a metre of works costs — and it prices nothing either. The two are multiplied exactly once, by the calculator that seeds the budget's first line at `POST /api/properties`, and after that neither one moves a peso of the budget: editing them is editing two ordinary columns. Both survive because the PDF reads the footage, and because the pair is the honest comparison against `budgetedCostPerSqm` (budget ÷ footage).
 
 **Assumptions** — `acquisitionCostPct` and `holdMonths` — are not inputs like the rest. They always have a value in force, and the payload publishes it under its own key *plus* its provenance in `assumptions`: `{"holdMonths": {"value": 12, "source": "default" | "captured"}}`. `default` means nobody chose and the model applied its own (6.5%, 12 months); `captured` means a person decided. Writing one captures it; clearing it hands it back to the model.
 
@@ -223,7 +223,8 @@ it, and the yield of each of the two rents.
 | `constructionBudgeted` | **Obra presupuestada** — the sum of the work budget, and the only cost of works there is |
 | `constructionCommitted` · `constructionPaid` | **Obra comprometida** · **Obra pagada** — signed for, and out of the bank |
 | `constructionCommittedVariance` · `constructionPaidVariance` | **Comprometido vs presupuesto** · **Pagado vs presupuesto** — execution minus plan, so positive means overrun |
-| `constructionCostPerSqm` | **Costo por m² de obra** — derived (budget ÷ footage), never captured |
+| `constructionCostPerSqm` | **Tu estimado de $/m²** — the captured assumption, a writable column; prices nothing |
+| `budgetedCostPerSqm` | **Costo por m² presupuestado** — derived (budget ÷ footage), read-only |
 | `purchasePricePerSqm` · `investmentPerSqm` · `salePerSqm` | per-m² figures |
 | `projectedProfit` · `projectedRoiTotal` | **Ganancia proyectada** · **Ganancia proyectada %** |
 | `projectedRoi` | **ROI proy. anual** — annualized over `holdMonths` |
@@ -289,7 +290,9 @@ gaining a branch. **There is no "use the budget if it exists, else the formula"*
 that disjunction is two numbers wearing one name. Every property has a budget
 from birth (it is created in the same transaction as the row, and the migration
 that introduced it seeded one for every property that already existed, to the
-peso), so the sum is defined in every stage and the question never arises.
+peso), so the sum is defined in every stage and the question never arises. A
+budget with no lines sums to **0**, and 0 is a number, not a missing value:
+nothing downstream branches on it.
 
 **A lump sum is written as `purchasePrice`.** When all that is known about an
 older property is "it cost $9.5M all in", capture `purchasePrice: 9500000` with
@@ -330,9 +333,11 @@ Properties carry an `isFavorite` flag; the prospectus is built from **favorited*
 
 Two levels: **capítulo → partida**. A chapter is a name its lines carry (`chapterName`), not a row, so it exists exactly as long as some line names it — which is why nothing creates an empty one.
 
-**No total is ever stored.** Budgeted, committed and paid are derived every time somebody asks, exactly like `totalInvestment`. There is no `paidAmount` column to write and no total to PATCH.
+**No total is ever stored, and there is no operation that sets one.** Budgeted, committed and paid are derived every time somebody asks, exactly like `totalInvestment`. **The total of a budget is the sum of its lines** — always, with no mode, no fallback and no "base" field. To move it, move lines.
 
-**The residual line absorbs detail.** Every budget is born with one line — «Otros, por detallar», `isResidual: true` — carrying the rough estimate the calculator produced from `sqmConstruction`, `constructionCostPerSqm` and the overhead. Adding a $300k line drops the residual by $300k, so **detailing does not change the cost of works, it distributes it**; deleting a line returns the amount and does not move it either. Raising the budget is therefore a *different* operation, and every write returns `budgetIncrease` — 0 in the normal case, non-zero only when the detail overflowed the residual, which is a real increase reported rather than let through in silence. The residual never accepts `quantity`/`unitPrice` from a client: it is a remainder, not a capture.
+**Every line is an ordinary line.** A property born with the calculator gets exactly one, named with the arithmetic that produced it — «Estimado inicial · 200 m² × $9,000/m² × 1.3» — carrying the rough estimate from `sqmConstruction`, `constructionCostPerSqm` and the overhead. From that instant it is editable, renameable and deletable like any other, and **nothing ever rewrites it**: the calculator runs once, at birth, and there is no write path from the property's metrics into the budget afterwards — not automatic, not behind a button. Editing the m² or the $/m² of a property moves no money.
+
+So adding a $300k line **raises** the cost of works by $300k and deleting one lowers it by the same. There used to be an `isResidual` line that absorbed the difference, which meant a quote landing $45k over its allowance moved nothing and the overrun vanished — that absorption is gone, and the movement is the point. `budgetIncrease` still ships in every write response but is now **always 0**; it reported an overflow condition that can no longer occur, and it is being retired. Ignore it.
 
 **Every write returns `{line, budget, property, budgetIncrease}`.** The `property` comes back recomputed, because moving a line moves the cost of works and with it `totalInvestment`, `projectedProfit`, `projectedRoi` and `capRate`. Take it whole; do not re-fetch the property and do not re-sum the lines client-side.
 
@@ -343,25 +348,24 @@ In a line `PATCH`, **a `null` travels and means "clear it"** — the opposite of
 Deleting a property that holds captured work is a `422` with its reason in words, not a silent cascade.
 
 Key `operation_id`s:
-- `budget_get` — `GET /api/properties/{id}/budget` → `{id, propertyId, lines, chapters}`, residual last
+- `budget_get` — `GET /api/properties/{id}/budget` → `{id, propertyId, lines, chapters}`, ordered by chapter
 - `budget_line_create` — `POST /api/properties/{id}/budget/lines` — `chapterName` and `name` required; the rest is filled cell by cell
 - `budget_line_update` — `PATCH /api/properties/{id}/budget/lines/{line_id}`
 - `budget_line_delete` — `DELETE /api/properties/{id}/budget/lines/{line_id}`
-- `budget_set_total` — `PUT /api/properties/{id}/budget/total` — body `{"amount": n}`; the one operation that moves the cost of works, and where a re-run of the calculator lands
 - `budget_chapter_rename` — `PATCH /api/properties/{id}/budget/chapters/{chapter}`
 - `budget_chapter_delete` — `DELETE /api/properties/{id}/budget/chapters/{chapter}`
 - `budget_payment_create` — `POST /api/properties/{id}/budget/lines/{line_id}/payments`
 - `budget_payment_delete` — `DELETE /api/properties/{id}/budget/lines/{line_id}/payments/{payment_id}`
 - `budget_apply` — `POST /api/properties/{id}/budget/apply` — body `{budgetId, chapters?, proportional?}`; copies the budget of another job over this one. `chapters` absent or `null` copies the whole thing; a list copies only those chapters, named exactly as `budget_get` publishes them. Answers `{…, linesAdded, linesSkipped}`.
 
-**`proportional: true` copies the shape and not the size.** The copied lines are scaled so their sum lands exactly on the cost of works **this** job already has — the sum of its own budget — instead of arriving with the other job's amounts. Lines marked `isProportional: false` (permits, licences: they cost what they cost) come over untouched and are excluded from both ends of the ratio; everything else, the source's residual included, is scaled by one server-computed factor, so the destination inherits how much is left to detail too. **The target is read, never sent**: there is no `costPerSqm` and no factor in the body — a property's cost of works is already captured (the ficha seeds it as `m² × $/m²`), and a job whose budget is still 0 is refused, pointing at its ficha. Neither mode moves the cost of works; raising it stays `budget_set_total`'s job.
+**`proportional: true` copies the shape and not the size.** The copied lines are scaled so their sum lands exactly on the cost of works **this** job already has — the sum of its own budget — instead of arriving with the other job's amounts. Lines marked `isProportional: false` (permits, licences: they cost what they cost) come over untouched and are excluded from both ends of the ratio; everything else, the source's estimate line included, is scaled by one server-computed factor, so the destination inherits how much is left to detail too. **The target is read, never sent**: there is no `costPerSqm` and no factor in the body, and a job whose budget is still $0 is refused, pointing at its budget. Note that **both modes ADD**: the copied lines land on top of what was already there, so a job copied proportionally onto its own estimate ends at twice its cost of works until that estimate line is deleted — which is the normal next step, since the breakdown is what replaces it.
 
 **Applying never overwrites a line this job already has.** A source line whose `(chapter, name)` — lowercased and trimmed — already exists here is **skipped**, never updated: the one here may carry a supplier, a committed amount, payments or a close, and overwriting its price or quantity would rewrite money already captured. So applying the same source twice adds nothing the second time, and `linesSkipped` says how much was left alone. Copying to several jobs is this same route called once per destination — there is no broadcast route, because each budget is independent and the correct atomicity is per property.
 
 **Copying from another job is the only start that is not manual capture.** There are no budget templates: every budget belongs to a job, and the database now requires it. A curated template only beats "copy the job next door" while somebody keeps it curated, and the most recent similar job is more up to date than any template without anyone doing anything.
 
 Key `operation_id`s:
-- `budget_sources_list` — `GET /api/budget/sources?excludePropertyId=…` — the jobs `budget_apply` can copy from, each with its property's name and how many lines it would actually bring (the residual is not one of them); jobs with nothing copyable are left out, and `excludePropertyId` drops the asking job's own budget
+- `budget_sources_list` — `GET /api/budget/sources?excludePropertyId=…` — the jobs `budget_apply` can copy from, each with its property's name and how many lines it would actually bring (every line travels, the estimate included); jobs with no lines at all are left out, and `excludePropertyId` drops the asking job's own budget
 
 ### 2. Sonar — real-time market scraper
 

@@ -7,17 +7,20 @@
 -- así que toda propiedad nueva que se siembre antes queda cubierta sin tocar
 -- nada más.
 --
--- Es la misma aritmética de la 032, y tiene que seguir siéndolo: una fila
--- «Otros, por detallar» cuyo importe es el costo de obra con el overhead YA
--- APLICADO —un 0 capturado es identidad 1, un NULL resuelve al default 1.3—
--- para que el presupuesto y la fórmula digan el mismo número al peso. Los
--- ::numeric evitan que Postgres promueva a flotante y empiece a diferir de lo
--- que calcula Python por ruido de redondeo.
+-- Es la misma aritmética de la 032, y tiene que seguir siéndolo: un renglón
+-- cuyo importe es el costo de obra con el overhead YA APLICADO —un 0 capturado
+-- es identidad 1, un NULL resuelve al default 1.3— para que el presupuesto y la
+-- calculadora digan el mismo número al peso. Los ::numeric evitan que Postgres
+-- promueva a flotante y empiece a diferir de lo que calcula Python por ruido de
+-- redondeo.
 --
--- La fila nace con `is_residual` PRENDIDA (migración 033): es el renglón que
--- absorbe lo que todavía no se detalla, y sin la bandera detallar una partida
--- no tendría de dónde restar — el costo de obra crecería con cada renglón que
--- alguien capturara, sin nada que se viera roto.
+-- EL RENGLÓN ES NORMAL, sin bandera. La 053 retiró el residuo: el total del
+-- presupuesto es la suma de sus renglones, y una holgura es un renglón con el
+-- nombre que alguien le puso. Por eso el nombre lleva la cuenta que lo produjo,
+-- igual que el que escribe `budget_db.seed_estimate_line` al dar de alta una
+-- propiedad — una base sembrada y una capturada por el API se leen igual. El
+-- `FM` de to_char es lo que quita el relleno de ceros, como el `_cifra` de allá,
+-- y el overhead solo aparece cuando de verdad multiplica.
 --
 -- Solo siembra lo que falta: correr las semillas dos veces no duplica el costo
 -- de obra de nadie.
@@ -28,14 +31,26 @@ SELECT p.id
  WHERE NOT EXISTS (SELECT 1 FROM budgets b WHERE b.property_id = p.id)
  ORDER BY p.id;
 
-INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity, unit_price, is_residual)
-SELECT b.id, 'Otros', 'Otros, por detallar', 'lote', 1,
+INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity, unit_price)
+SELECT b.id, 'Otros',
+       'Estimado inicial · '
+         || trim(to_char(coalesce(p.sqm_construction::numeric, 0), 'FM999,999,990.999'))
+         || ' m² × $'
+         || trim(to_char(coalesce(p.construction_cost_per_sqm, 0), 'FM999,999,990.99'))
+         || '/m²'
+         || CASE WHEN overhead.factor = 1 THEN ''
+                 ELSE ' × ' || trim(to_char(overhead.factor, 'FM999,990.9999')) END,
+       'lote', 1,
        (coalesce(p.sqm_construction::numeric, 0)
         * coalesce(p.construction_cost_per_sqm, 0)
-        * CASE WHEN p.construction_overhead IS NULL THEN 1.3
-               WHEN p.construction_overhead = 0     THEN 1
-               ELSE p.construction_overhead::numeric END),
-       TRUE
+        * overhead.factor)
   FROM budgets b
   JOIN properties p ON p.id = b.property_id
- WHERE NOT EXISTS (SELECT 1 FROM budget_lines l WHERE l.budget_id = b.id);
+  JOIN LATERAL (SELECT CASE WHEN p.construction_overhead IS NULL THEN 1.3
+                            WHEN p.construction_overhead = 0     THEN 1
+                            ELSE p.construction_overhead::numeric END AS factor) overhead ON TRUE
+ WHERE NOT EXISTS (SELECT 1 FROM budget_lines l WHERE l.budget_id = b.id)
+   -- Sin metraje o sin $/m² no hay estimado que sembrar, y un renglón en $0
+   -- llamado «Estimado inicial · 0 m² × $0/m²» no dice nada que el presupuesto
+   -- vacío no diga ya. Mismo criterio que `seed_estimate_line`.
+   AND coalesce(p.sqm_construction::numeric, 0) * coalesce(p.construction_cost_per_sqm, 0) > 0;

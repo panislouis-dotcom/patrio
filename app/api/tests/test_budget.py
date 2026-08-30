@@ -1,13 +1,18 @@
-"""El presupuesto de obra: la suma manda, el overhead no se repite, «otros» resta.
+"""El presupuesto de obra: el total es la suma de sus renglones, y nada más.
 
 Tres reglas y las tres tienen la misma forma de falla — se rompen sin que nada
 se vea roto, solo con números más grandes o más chicos que parecen plausibles:
 
   · La suma del presupuesto ES el costo de obra, en TODA etapa y sin ramas.
-  · El overhead se aplicó una vez, al sembrar, y vive dentro del importe.
+  · El overhead se aplicó una vez, al dar de alta, y vive dentro del importe.
     Aplicarlo de nuevo inflaría 30% cada costo de obra.
-  · «Otros, por detallar» es un RESIDUO: detallar reparte el costo, no lo crea,
-    así que el total no se mueve.
+  · NINGÚN CAMPO DE LA FICHA MUEVE EL PRESUPUESTO. Ni los m², ni el $/m², ni los
+    dos juntos. Se mueve moviendo renglones, y de ninguna otra forma.
+
+La tercera es la que este archivo vigila con más tests, porque es la que ya se
+rompió dos veces: la 033 desató la liga viva y `67e05bf` la volvió a atar, y en
+el intermedio corregir un metraje de 200 a 220 m² repreciaba un 10% los trece
+capítulos que alguien había cotizado con proveedor.
 """
 from decimal import Decimal
 
@@ -31,8 +36,23 @@ def _budget(client, property_id: int) -> dict:
     return r.json()
 
 
-def _residual(budget: dict) -> dict:
-    return next(line for line in budget["lines"] if line["isResidual"])
+# El renglón con el que nace toda propiedad capturada con la calculadora: el
+# estimado paramétrico del fixture, 200 m² × $9,000 × 1.3. Es un renglón NORMAL
+# —se edita, se renombra y se borra— y aquí se localiza por su nombre, que es la
+# única marca que lleva, porque es la única que necesita: decir de dónde salió.
+ESTIMADO = "Estimado inicial · 200 m² × $9,000/m² × 1.3"
+ESTIMADO_MXN = Decimal("2340000")
+
+
+def _estimate(budget: dict) -> dict:
+    return next(line for line in budget["lines"] if line["name"] == ESTIMADO)
+
+
+def _estimate_of(budget: dict, sqm, cost_per_sqm) -> dict:
+    """El renglón de estimado que la calculadora habría escrito con esos dos
+    insumos. Se localiza por nombre porque el nombre ES la cuenta."""
+    nombre = budget_db.estimate_line_name(sqm, cost_per_sqm, 1)
+    return next(line for line in budget["lines"] if line["name"] == nombre)
 
 
 def _line_by_id(budget: dict, line_id: int) -> dict:
@@ -98,27 +118,56 @@ def test_an_overhead_below_one_is_refused_because_indirect_costs_never_cheapen()
 # ── Una propiedad nace con su presupuesto ───────────────────────────────────
 
 def test_a_new_property_is_born_with_its_budget(client, test_property):
-    """La fila «Otros, por detallar» YA es el presupuesto, desde `prospecto`.
-    Que nazca con la propiedad es lo que hace que nunca haya un momento en que
-    el costo de obra cambie de fuente: no hay traspaso que diseñar."""
+    """Un renglón normal YA es el presupuesto, desde `prospecto`. Que nazca con
+    la propiedad es lo que hace que nunca haya un momento en que el costo de
+    obra cambie de fuente: no hay traspaso que diseñar.
+
+    EL NOMBRE LLEVA LA CUENTA QUE LO PRODUJO, y es la única memoria que queda de
+    ella: los tres insumos corrieron una vez y se olvidaron. Sin eso, dentro de
+    un mes nadie podría contestar si $2,340,000 fue una cotización o una regla
+    de tres."""
     budget = _budget(client, test_property["id"])
     assert len(budget["lines"]) == 1
-    residual = _residual(budget)
-    assert residual["name"] == budget_db.RESIDUAL_NAME
+    estimado = budget["lines"][0]
+    assert estimado["name"] == ESTIMADO == budget_db.estimate_line_name(200, 9_000, 1.3)
+    assert estimado["chapterName"] == budget_db.ESTIMATE_CHAPTER
     # 200 m² × 9,000 × 1.3 del fixture, con el overhead ya adentro.
-    assert _dec(residual["budgetedAmount"]) == Decimal("2340000")
-    assert _dec(test_property["constructionBudgeted"]) == Decimal("2340000")
+    assert _dec(estimado["budgetedAmount"]) == ESTIMADO_MXN
+    assert _dec(test_property["constructionBudgeted"]) == ESTIMADO_MXN
+
+
+def test_a_property_captured_without_the_calculator_is_born_with_an_empty_budget(client):
+    """Un presupuesto vacío es LEGAL, y es la primera vez que lo es. Sin metraje
+    ni $/m² no hay nada que estimar, y un renglón de $0 llamado «Estimado
+    inicial · 0 m² × $0/m²» no diría nada que el presupuesto vacío no diga ya —
+    solo habría que borrarlo a mano en cada alta.
+
+    `constructionBudgeted = 0` es un número, no un faltante: la inversión total
+    lo suma y la comisión de obra lo multiplica, las dos sin una rama nueva."""
+    r = client.post("/api/properties", json={
+        "name": "[TEST] Sin Calculadora", "address": "Calle Vacía 1",
+        "city": "Monterrey", "purchasePrice": 1_000_000})
+    assert r.status_code == 201, r.text
+    prop = r.json()
+    try:
+        assert _budget(client, prop["id"])["lines"] == []
+        assert _dec(prop["constructionBudgeted"]) == Decimal("0")
+        # 1,000,000 × 1.065 + 0 de obra: la base se calcula, no se rompe.
+        assert _dec(prop["totalInvestment"]) == Decimal("1065000")
+        assert prop["constructionFee"] is not None
+    finally:
+        client.delete(f"/api/properties/{prop['id']}")
 
 
 def test_a_property_is_not_born_with_its_work_shrunk_in_silence(client):
-    """El caso donde la regla se paga: la calculadora corre al dar de alta y su
-    resultado se queda dentro de «Otros, por detallar» para siempre. Un 0.5
+    """El caso donde la regla se paga: la calculadora corre UNA vez, al dar de
+    alta, y su resultado se queda dentro de un renglón para siempre. Un 0.5
     aceptado ahí no produce un número raro que alguien note — produce una obra a
     mitad de precio que se ve perfectamente plausible, y que ya no se corrige
-    arreglando el campo.
+    arreglando el campo, porque el campo dejó de multiplicar nada.
 
-    La propiedad tampoco nace a medias: el estimado se calcula ANTES de abrir la
-    transacción, así que el rechazo no deja fila que limpiar."""
+    La propiedad tampoco nace a medias: el rechazo sube desde dentro de la
+    transacción que insertó la fila, y `get_db()` la revierte entera."""
     encogida = "[TEST] Obra Encogida"
     r = client.post("/api/properties", json={
         "name": encogida, "address": "Calle Test 1", "city": "Monterrey",
@@ -152,79 +201,64 @@ def test_the_budget_feeds_the_investment_and_nothing_multiplies_it(client, test_
     la inversión sube exactamente 660,000. Si algún factor sobreviviera, subiría
     858,000."""
     before = _dec(test_property["totalInvestment"])
-    r = client.put(f"/api/properties/{test_property['id']}/budget/total",
-                   json={"amount": 3_000_000})
-    assert r.status_code == 200, r.text
-    assert _dec(r.json()["property"]["constructionBudgeted"]) == Decimal("3000000")
-    assert _dec(r.json()["property"]["totalInvestment"]) == before + Decimal("660000")
+    r = _add(client, test_property["id"], name="Estructura", quantity=1, unitPrice=660_000)
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("660000")
+    assert _dec(r["property"]["totalInvestment"]) == before + Decimal("660000")
 
 
-# ── «Otros» es un residuo ───────────────────────────────────────────────────
+# ── El total es la suma de sus renglones ────────────────────────────────────
+#
+# La entrega entera, dicha en cuatro tests. Antes «Otros, por detallar» absorbía
+# cada partida que se capturaba, así que detallar no movía el total y la
+# varianza contra el estimado se borraba en silencio: una cotización que llegaba
+# $45,000 arriba se la comía el remanente. Ahora el total se mueve, y ese
+# movimiento ES el hallazgo.
 
-def test_detailing_moves_cost_out_of_others_without_moving_the_total(client, test_property):
-    """Detallar distribuye costo, no lo crea. 500,000 de cocina salen de los
-    2,340,000 sin detallar; el total y la inversión no se mueven un peso."""
+def test_adding_a_line_raises_the_total_by_exactly_its_amount(client, test_property):
+    """500,000 de cocina suben el presupuesto 500,000 y la inversión 500,000.
+    Ni un peso más —no hay overhead que se vuelva a aplicar— ni uno menos —no hay
+    renglón que los absorba—."""
     total_antes = _dec(test_property["totalInvestment"])
     r = _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
 
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("1840000")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
-    assert _dec(r["property"]["totalInvestment"]) == total_antes
-    assert r["budgetIncrease"] == 0
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("500000")
+    assert _dec(r["property"]["totalInvestment"]) == total_antes + Decimal("500000")
+    # El estimado se quedó exactamente donde estaba: nadie lo recalculó.
+    assert _dec(_estimate(r["budget"])["budgetedAmount"]) == ESTIMADO_MXN
 
 
-def test_undetailing_gives_the_cost_back_to_others(client, test_property):
-    """Quitar el detalle es lo contrario de ponerlo, así que tampoco mueve el
-    total: el importe vuelve al residuo de donde salió."""
+def test_deleting_a_line_lowers_the_total_by_exactly_its_amount(client, test_property):
+    """Y al revés, con la misma exactitud."""
     created = _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
     line_id = created["line"]["id"]
     r = client.delete(f"/api/properties/{test_property['id']}/budget/lines/{line_id}")
     assert r.status_code == 200, r.text
     r = r.json()
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("2340000")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN
+    assert _dec(_estimate(r["budget"])["budgetedAmount"]) == ESTIMADO_MXN
 
 
-def test_raising_a_detailed_line_lowers_others_by_the_same_amount(client, test_property):
+def test_raising_a_line_raises_the_total_by_the_difference(client, test_property):
+    """Subir una partida de 500,000 a 900,000 sube el total 400,000. Antes bajaba
+    el residuo esos 400,000 y el total no se enteraba — que es exactamente la
+    señal que se perdía: que el supuesto de $/m² iba corto."""
     created = _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
     r = client.patch(
         f"/api/properties/{test_property['id']}/budget/lines/{created['line']['id']}",
         json={"unitPrice": 900_000})
     assert r.status_code == 200, r.text
-    r = r.json()
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("1440000")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
+    assert _dec(r.json()["property"]["constructionBudgeted"]) == (
+        ESTIMADO_MXN + Decimal("900000"))
 
 
-def test_others_is_never_typed_by_hand(client, test_property):
-    """Convertir una resta determinista en una segunda captura es donde nace el
-    descuadre: el residuo tendría dos verdades, la tecleada y la que se deduce
-    del total."""
-    residual_id = _residual(_budget(client, test_property["id"]))["id"]
-    r = client.patch(
-        f"/api/properties/{test_property['id']}/budget/lines/{residual_id}",
-        json={"unitPrice": 9_000_000})
-    assert r.status_code == 422
-    assert "se calcula solo" in r.json()["error"]["message"]
-    assert _dec(_get(client, test_property["id"])["constructionBudgeted"]) == Decimal("2340000")
+def test_the_total_does_not_shave_fractions_off_the_lines(client, test_property):
+    """`cantidad × precio` puede traer cinco decimales —la cantidad lleva tres y
+    el precio dos— y el total se publica en pesos y centavos. 50 partidas de
+    150.015 exactos suman 7,500.75 y ni un centavo se queda tirado en el camino.
 
-
-def test_others_is_not_renamed_either(client, test_property):
-    """Su capítulo, su nombre y su unidad los pone el sistema. Un residuo
-    renombrado seguiría restando bien, pero dejaría de leerse como lo que es."""
-    residual_id = _residual(_budget(client, test_property["id"]))["id"]
-    r = client.patch(
-        f"/api/properties/{test_property['id']}/budget/lines/{residual_id}",
-        json={"name": "Imprevistos"})
-    assert r.status_code == 422
-
-
-def test_detailing_does_not_shave_fractions_off_the_total(client, test_property):
-    """`cantidad × precio` puede traer cinco decimales y el importe del residuo
-    se guarda en dos. Restando en crudo, cada partida dejaba hasta medio centavo
-    tirado y cincuenta partidas movían el total un cuarto de peso — una fuga que
-    nadie pidió y que ninguna cifra publicada delataría, porque todo se imprime
-    en pesos enteros."""
+    Antes esta prueba vigilaba la resta del residuo, donde el redondeo doble
+    movía el total un cuarto de peso sin que nadie lo hubiera pedido. Ya no hay
+    resta; queda la suma, y tiene que cerrar igual."""
     for i in range(50):
         _add(client, test_property["id"], name=f"Partida {i}",
              quantity=1.5, unitPrice=100.01)          # 150.015 exactos
@@ -233,45 +267,53 @@ def test_detailing_does_not_shave_fractions_off_the_total(client, test_property)
             "SELECT sum(l.quantity * l.unit_price) AS t FROM budget_lines l"
             "  JOIN budgets b ON b.id = l.budget_id WHERE b.property_id = %s",
             (test_property["id"],)).fetchone()["t"]
-    assert _dec(total) == Decimal("2340000")
+    assert _dec(total) == ESTIMADO_MXN + Decimal("7500.750")
 
 
-def test_others_is_never_deleted(client, test_property):
-    residual_id = _residual(_budget(client, test_property["id"]))["id"]
-    r = client.delete(f"/api/properties/{test_property['id']}/budget/lines/{residual_id}")
-    assert r.status_code == 422
-    assert "no se borra" in r.json()["error"]["message"]
+# ── El renglón del estimado es un renglón y nada más ────────────────────────
+#
+# Las tres guardas que tenía el residuo —no se teclea, no se renombra, no se
+# borra— existían para proteger una resta. Sin resta que proteger, sobran las
+# tres: «todas se hagan de la misma manera».
+
+def test_the_estimate_line_is_typed_by_hand_like_any_other(client, test_property):
+    """Corregir a mano el estimado grueso es la operación normal, no un ataque a
+    la contabilidad: alguien mira el número que salió de m² × $/m² y sabe que va
+    corto. Antes eran 422."""
+    estimado_id = _estimate(_budget(client, test_property["id"]))["id"]
+    r = client.patch(
+        f"/api/properties/{test_property['id']}/budget/lines/{estimado_id}",
+        json={"unitPrice": 9_000_000})
+    assert r.status_code == 200, r.text
+    assert _dec(r.json()["property"]["constructionBudgeted"]) == Decimal("9000000")
 
 
-def test_detail_beyond_the_total_grows_the_budget_and_says_so(client, test_property):
-    """Si el detalle rebasa el total, «otros» llega a 0 y el total SÍ crece. Eso
-    es aumentar el presupuesto, no detallarlo, y las dos operaciones tienen que
-    poder distinguirse: la respuesta reporta cuánto creció en vez de dejar que
-    el costo de obra suba en silencio."""
-    r = _add(client, test_property["id"], name="Estructura", quantity=1, unitPrice=3_000_000)
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("0")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("3000000")
-    assert _dec(r["budgetIncrease"]) == Decimal("660000")
+def test_the_estimate_line_is_renamed_like_any_other(client, test_property):
+    """Su nombre dice de dónde salió, y por eso el sistema lo escribe. Pero es un
+    nombre, no un identificador: en cuanto alguien lo detalla deja de ser un
+    estimado y tiene derecho a llamarse como lo que es."""
+    estimado_id = _estimate(_budget(client, test_property["id"]))["id"]
+    r = client.patch(
+        f"/api/properties/{test_property['id']}/budget/lines/{estimado_id}",
+        json={"name": "Imprevistos"})
+    assert r.status_code == 200, r.text
+    assert _line_by_id(r.json()["budget"], estimado_id)["name"] == "Imprevistos"
 
 
-def test_raising_the_total_is_its_own_operation(client, test_property):
-    """Aumentar el presupuesto sin tocar una sola partida detallada: el residuo
-    absorbe la diferencia y el detalle se queda donde estaba."""
-    _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
-    r = client.put(f"/api/properties/{test_property['id']}/budget/total",
-                   json={"amount": 4_000_000})
+def test_the_last_line_can_be_deleted_and_the_budget_stays_at_zero(client, test_property):
+    """Un presupuesto sin renglones suma $0, y $0 es un número. Antes «Otros» no
+    se podía borrar —el mecanismo lo necesitaba vivo para tener de dónde restar—
+    y esa era la parte de la regla que sobraba."""
+    estimado_id = _estimate(_budget(client, test_property["id"]))["id"]
+    r = client.delete(f"/api/properties/{test_property['id']}/budget/lines/{estimado_id}")
     assert r.status_code == 200, r.text
     r = r.json()
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("3500000")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("4000000")
-
-
-def test_the_total_cannot_drop_below_what_is_already_detailed(client, test_property):
-    _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
-    r = client.put(f"/api/properties/{test_property['id']}/budget/total",
-                   json={"amount": 100_000})
-    assert r.status_code == 422
-    assert "detallados en partidas" in r.json()["error"]["message"]
+    assert r["budget"]["lines"] == []
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("0")
+    # Y la ficha sigue contestando: la obra en 0 no rompe la base de capital.
+    p = _get(client, test_property["id"])
+    assert _dec(p["totalInvestment"]) == Decimal("1140000")   # 1,000,000×1.065 + 50k + 25k
+    assert p["constructionFee"] is not None
 
 
 # ── Las tres cifras, y las dos que no redefinen la inversión ────────────────
@@ -290,9 +332,12 @@ def test_committing_and_paying_never_redefine_the_investment(client, test_proper
     """Lo que la obra va a costar y lo que ya se pagó de ella son dos preguntas
     distintas. Solo el PLAN alimenta la inversión total; comprometer y pagar
     generan métricas propias y no mueven la base de capital."""
-    inversion = _dec(test_property["totalInvestment"])
     created = _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
     line_id = created["line"]["id"]
+    # Se lee DESPUÉS de capturar la partida: detallar sí mueve la inversión —el
+    # presupuesto es la suma de sus renglones—. Lo que esta prueba fija es que
+    # comprometer y pagar no la mueven más.
+    inversion = _dec(created["property"]["totalInvestment"])
 
     r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{line_id}",
                      json={"committedAmount": 620_000})
@@ -300,7 +345,7 @@ def test_committing_and_paying_never_redefine_the_investment(client, test_proper
     r = r.json()
     assert _dec(r["property"]["constructionCommitted"]) == Decimal("620000")
     # 620,000 firmados contra los 500,000 planeados DE ESE RENGLÓN. No contra los
-    # 2,340,000 del presupuesto entero: eso diría cuánto falta por comprometer.
+    # 2,840,000 del presupuesto entero: eso diría cuánto falta por comprometer.
     assert _dec(r["property"]["constructionCommittedVariance"]) == Decimal("120000")
     assert _dec(r["property"]["totalInvestment"]) == inversion
 
@@ -312,7 +357,7 @@ def test_committing_and_paying_never_redefine_the_investment(client, test_proper
     assert r.status_code == 201, r.text
     r = r.json()
     assert _dec(r["property"]["constructionPaid"]) == Decimal("550000")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("500000")
     assert _dec(r["property"]["totalInvestment"]) == inversion
 
 
@@ -342,17 +387,17 @@ def test_the_committed_variance_only_measures_what_has_been_signed(client, test_
     assert _dec(r.json()["property"]["constructionCommittedVariance"]) == Decimal("-50000")
 
     # (3) Uno por ENCIMA: 380,000 contra 300,000. La brecha es la suma de las dos
-    # y no la de un presupuesto que todavía tiene 1,540,000 sin contratar.
+    # y no la de un presupuesto que todavía tiene 2,340,000 sin contratar.
     r = client.patch(f"/api/properties/{test_property['id']}/budget/lines/{fachada}",
                      json={"committedAmount": 380_000})
     assert _dec(r.json()["property"]["constructionCommittedVariance"]) == Decimal("30000")
 
-    # (4) Todo firmado. Se ajusta el total a lo detallado para que no quede
-    # residuo —el remanente no se contrata, se detalla— y ahí las dos lecturas
-    # coinciden: cuando no falta nada por firmar, comparar contra lo firmado y
-    # comparar contra el presupuesto entero son la misma resta.
-    r = client.put(f"/api/properties/{test_property['id']}/budget/total",
-                   json={"amount": 800_000})
+    # (4) Todo firmado. Se borra el renglón del estimado —lo que queda son las
+    # dos partidas contratadas, 800,000— y ahí las dos lecturas coinciden: cuando
+    # no falta nada por firmar, comparar contra lo firmado y comparar contra el
+    # presupuesto entero son la misma resta.
+    estimado_id = _estimate(_budget(client, test_property["id"]))["id"]
+    r = client.delete(f"/api/properties/{test_property['id']}/budget/lines/{estimado_id}")
     assert r.status_code == 200, r.text
     p = r.json()["property"]
     assert _dec(p["constructionBudgeted"]) == Decimal("800000")
@@ -562,112 +607,128 @@ def test_a_payment_is_deleted_not_rewritten(client, test_property):
     assert r.json()["property"]["constructionPaid"] is None
 
 
-# ── El costo por m² se deriva, ya no se captura ─────────────────────────────
+# ── Dos $/m² con dos nombres: el capturado y el derivado ────────────────────
+#
+# `constructionCostPerSqm` es el SUPUESTO —lo que alguien tecleó, su columna— y
+# `budgetedCostPerSqm` es el DERIVADO —presupuesto ÷ metraje—. Hasta el
+# 2026-08-30 los dos compartían nombre siendo dos cosas distintas: la columna no
+# se escribía y el derivado salía publicado con su nombre. Se enseñan juntos,
+# rotulados, y ninguno es el relevo del otro: una comparación sólo es honesta
+# mientras ninguno de los dos sea el fallback del que falta.
 
-def test_the_cost_per_sqm_is_derived_from_the_budget(client, test_property):
+def test_the_budgeted_cost_per_sqm_is_derived_from_the_budget(client, test_property):
     """2,340,000 entre 200 m² = 11,700/m². Es el precio unitario COMPUESTO, con
     los indirectos ya dentro, que es justo lo que un desglose por partidas no
     tiene y por eso se calcula en vez de teclearse."""
-    assert _dec(test_property["constructionCostPerSqm"]) == Decimal("11700.00")
-    r = client.put(f"/api/properties/{test_property['id']}/budget/total",
-                   json={"amount": 4_000_000})
-    assert _dec(r.json()["property"]["constructionCostPerSqm"]) == Decimal("20000.00")
+    assert _dec(test_property["budgetedCostPerSqm"]) == Decimal("11700.00")
+    r = _add(client, test_property["id"], name="Estructura",
+             quantity=1, unitPrice=1_660_000)      # total 4,000,000
+    assert _dec(r["property"]["budgetedCostPerSqm"]) == Decimal("20000.00")
 
 
-def test_without_metres_there_is_no_cost_per_sqm(client, test_property):
-    """Dividir entre cero no da «$0/m²»: no da nada. Antes la columna podía
-    publicar 6,000/m² sobre 0 m² de obra, que es un precio de nada."""
+def test_the_captured_cost_per_sqm_is_its_own_column_and_stays_put(client, test_property):
+    """El supuesto es del que lo capturó: se guarda tal cual y NADIE lo deriva
+    encima. Viene del alta en 9,000 —el insumo de la calculadora— y ahí sigue,
+    mientras el derivado dice 11,700 porque el estimado trae el 1.3 adentro.
+
+    Que los dos números difieran es el punto: uno es lo que se supuso y el otro
+    lo que el presupuesto de verdad dice. Cuando compartían nombre, esa
+    diferencia era imposible de ver."""
+    assert _dec(test_property["constructionCostPerSqm"]) == Decimal("9000.00")
+    assert _dec(test_property["budgetedCostPerSqm"]) == Decimal("11700.00")
+
+
+def test_without_metres_there_is_no_budgeted_cost_per_sqm(client, test_property):
+    """Dividir entre cero no da «$0/m²»: no da nada. El capturado sí sobrevive —
+    es un supuesto, no un cociente— y ahí se ve que son dos cosas distintas."""
     client.post(f"/api/properties/{test_property['id']}/clear-fields",
                 json={"fields": ["sqmConstruction"]})
-    assert _get(client, test_property["id"])["constructionCostPerSqm"] is None
+    p = _get(client, test_property["id"])
+    assert p["budgetedCostPerSqm"] is None
+    assert _dec(p["constructionCostPerSqm"]) == Decimal("9000.00")
 
 
-def test_the_cost_per_sqm_cannot_be_captured_as_a_column_but_still_recomputes_the_budget(
-        client, test_property):
-    """No volvió a ser una columna —vaciarlo se sigue rechazando, como
-    cualquier campo que un PATCH no reconoce— pero escribirlo YA NO es un
-    no-op: mientras el presupuesto siga intacto, mover $/m² vuelve a correr la
-    misma calculadora que sembró el presupuesto al nacer, salvo que aquí NO
-    aplica overhead: es una edición directa, no un alta, y quien teclea $/m²
-    aquí ya está viendo un presupuesto real, no proponiendo un estimado
-    grueso. 200 m² × 99,000 = 19,800,000, sin multiplicador."""
+# ── EDITAR LA FICHA NO MUEVE EL PRESUPUESTO ─────────────────────────────────
+#
+# El defecto que motivó todo este trabajo, y los tres caminos por los que se
+# llegaba a él. Cada uno tiene su test nombrado por su caso, porque los tres
+# fallaban distinto y el tercero era el grave: corregir el metraje derivaba la
+# tasa vigente del total actual y la volvía a aplicar, repreciando trece
+# capítulos cotizados con proveedor sin que nada en la pantalla lo dijera.
+#
+# Los tres afirman lo mismo: el presupuesto queda IDÉNTICO, al peso.
+
+def test_editing_the_cost_per_sqm_alone_does_not_move_the_budget(client, test_property):
+    """Primer camino: llega $/m² solo. Antes corría la calculadora contra el
+    metraje de la fila y reescribía el total — 200 × 99,000 = 19,800,000."""
     r = client.patch(f"/api/properties/{test_property['id']}",
                      json={"constructionCostPerSqm": 99_000})
     assert r.status_code == 200, r.text
-    assert _dec(r.json()["constructionBudgeted"]) == Decimal("19800000")
+    assert _dec(r.json()["constructionBudgeted"]) == ESTIMADO_MXN
+    # Y sí se guardó: es una columna, y el supuesto nuevo es el que se enseña.
     assert _dec(r.json()["constructionCostPerSqm"]) == Decimal("99000.00")
-
-    r = client.post(f"/api/properties/{test_property['id']}/clear-fields",
-                    json={"fields": ["constructionCostPerSqm"]})
-    assert r.status_code == 422
+    assert _dec(r.json()["budgetedCostPerSqm"]) == Decimal("11700.00")
 
 
-def test_the_cost_per_sqm_alone_recomputes_against_the_metres_already_on_file(
-        client, test_property):
-    """No hace falta reenviar el m² si ya está guardado: 200 (de la ficha) ×
-    15,000 = 3,000,000, sin overhead."""
-    r = client.patch(f"/api/properties/{test_property['id']}",
-                     json={"constructionCostPerSqm": 15_000})
-    assert r.status_code == 200, r.text
-    assert _dec(r.json()["constructionBudgeted"]) == Decimal("3000000")
-
-
-def test_the_metres_and_the_cost_per_sqm_can_arrive_in_the_same_patch(client, test_property):
-    """Los dos datos pueden llegar juntos, como en el alta: 300 × 10,000 =
-    3,000,000, y el m² nuevo también se guarda."""
+def test_editing_both_metres_and_cost_per_sqm_does_not_move_the_budget(client, test_property):
+    """Segundo camino: los dos en el mismo PATCH. Antes 300 × 10,000 =
+    3,000,000."""
     r = client.patch(f"/api/properties/{test_property['id']}",
                      json={"sqmConstruction": 300, "constructionCostPerSqm": 10_000})
     assert r.status_code == 200, r.text
     assert r.json()["sqmConstruction"] == 300
-    assert _dec(r.json()["constructionBudgeted"]) == Decimal("3000000")
+    assert _dec(r.json()["constructionCostPerSqm"]) == Decimal("10000.00")
+    assert _dec(r.json()["constructionBudgeted"]) == ESTIMADO_MXN
+    # El derivado SÍ se mueve, y debe: cambió el divisor. 2,340,000 ÷ 300.
+    assert _dec(r.json()["budgetedCostPerSqm"]) == Decimal("7800.00")
 
 
-def test_the_metres_alone_recompute_the_budget_against_the_rate_already_in_force(
-        client, test_property):
-    """No hace falta reteclear $/m² para que el m² lo mueva: 200 m² ya
-    presupuestados en 2,340,000 dan una tasa de 11,700/m², y mandar solo
-    sqmConstruction=300 la vuelve a aplicar — 300 × 11,700 = 3,510,000. Es la
-    misma calculadora, del otro lado: antes «los 2 datos» exigía traer ambos
-    en el mismo PATCH; ahora basta con que uno de los dos ya esté vigente."""
+def test_editing_the_metres_alone_does_not_move_the_budget(client, test_property):
+    """TERCER CAMINO, EL GRAVE. Corregir el metraje de 200 a 300 m² no toca un
+    peso del presupuesto — ni siquiera de los renglones que nadie cotizó.
+
+    Antes derivaba la tasa vigente del total actual (2,340,000 ÷ 200 = 11,700) y
+    la volvía a aplicar contra el metraje nuevo: 300 × 11,700 = 3,510,000, un
+    50% más de obra por corregir una medida. Con trece capítulos cotizados a
+    mano, los trece se repreciaban."""
+    detalle = _add(client, test_property["id"], chapterName="Carpintería",
+                   name="Clósets", quantity=1, unitPrice=180_000)["line"]["id"]
+    antes = _budget(client, test_property["id"])
+
     r = client.patch(f"/api/properties/{test_property['id']}",
                      json={"sqmConstruction": 300})
     assert r.status_code == 200, r.text
     assert r.json()["sqmConstruction"] == 300
-    assert _dec(r.json()["constructionBudgeted"]) == Decimal("3510000")
+    assert _dec(r.json()["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("180000")
+
+    # Renglón por renglón, no sólo el total: repreciar proporcionalmente habría
+    # dejado el total distinto Y cada importe distinto.
+    despues = _budget(client, test_property["id"])
+    assert ([(l["name"], l["budgetedAmount"]) for l in despues["lines"]]
+            == [(l["name"], l["budgetedAmount"]) for l in antes["lines"]])
+    assert _dec(_line_by_id(despues, detalle)["budgetedAmount"]) == Decimal("180000")
 
 
-def test_the_metres_alone_do_nothing_when_there_is_no_rate_yet(client, test_property):
-    """Sin presupuesto todavía (recién sembrado en 0), cambiar el m² no
-    inventa una tasa de la nada: 0 ÷ cualquier metraje sigue siendo 0."""
-    client.put(f"/api/properties/{test_property['id']}/budget/total", json={"amount": 0})
+def test_editing_the_metres_of_a_property_with_no_budget_does_not_invent_one(
+        client, test_property):
+    """Con el presupuesto vacío, mover el metraje tampoco inventa obra: no hay
+    tasa vigente que derivar ni fórmula que corra. 0 sigue siendo 0."""
+    estimado_id = _estimate(_budget(client, test_property["id"]))["id"]
+    client.delete(f"/api/properties/{test_property['id']}/budget/lines/{estimado_id}")
     r = client.patch(f"/api/properties/{test_property['id']}",
-                     json={"sqmConstruction": 300})
+                     json={"sqmConstruction": 300, "constructionCostPerSqm": 12_000})
     assert r.status_code == 200, r.text
     assert _dec(r.json()["constructionBudgeted"]) == Decimal("0")
+    assert _budget(client, test_property["id"])["lines"] == []
 
 
-def test_the_cost_per_sqm_alone_computes_nothing_without_metres(client, test_property):
-    """«Se calcula solo cuando están los 2 datos»: sin m² capturado, mandar
-    $/m² no mueve el presupuesto — no hay «$0/m²» ni obra fantasma."""
-    client.post(f"/api/properties/{test_property['id']}/clear-fields",
-                json={"fields": ["sqmConstruction"]})
-    before = _dec(_get(client, test_property["id"])["constructionBudgeted"])
-    r = client.patch(f"/api/properties/{test_property['id']}",
-                     json={"constructionCostPerSqm": 99_000})
-    assert r.status_code == 200, r.text
-    assert _dec(r.json()["constructionBudgeted"]) == before
-
-
-def test_the_cost_per_sqm_refuses_to_shrink_a_budget_that_already_has_detail(
-        client, test_property):
-    """La misma regla de FIJAR TOTAL: no se vale que $/m² borre en silencio lo
-    que ya se detalló. 200 × 100 = 20,000, muy por debajo de los 500,000
-    ya detallados en Cocina."""
-    _add(client, test_property["id"], name="Cocina", quantity=1, unitPrice=500_000)
-    r = client.patch(f"/api/properties/{test_property['id']}",
-                     json={"constructionCostPerSqm": 100})
+def test_the_cost_per_sqm_cannot_be_emptied_from_the_ficha(client, test_property):
+    """Volvió a ser columna escribible, pero no entró a CLEARABLE_FIELDS: es un
+    hecho capturado sin default al que volver, como la latitud. Se corrige
+    tecleando otro número, no vaciándolo."""
+    r = client.post(f"/api/properties/{test_property['id']}/clear-fields",
+                    json={"fields": ["constructionCostPerSqm"]})
     assert r.status_code == 422
-    assert "detallados en partidas" in r.json()["error"]["message"]
 
 
 def test_the_overhead_is_not_part_of_the_contract_any_more(client, test_property):
@@ -684,7 +745,7 @@ def test_a_chapter_is_the_name_its_lines_carry(client, test_property):
     _add(client, test_property["id"], chapterName="Albañilería", name="Muros")
     _add(client, test_property["id"], chapterName="Instalaciones", name="Hidráulica")
     assert _budget(client, test_property["id"])["chapters"] == [
-        "Albañilería", "Instalaciones", budget_db.RESIDUAL_CHAPTER]
+        "Albañilería", "Instalaciones", budget_db.ESTIMATE_CHAPTER]
 
 
 def test_renaming_a_chapter_renames_all_of_its_lines(client, test_property):
@@ -693,10 +754,13 @@ def test_renaming_a_chapter_renames_all_of_its_lines(client, test_property):
     r = client.patch(f"/api/properties/{test_property['id']}/budget/chapters/Albañileria",
                      json={"name": "Albañilería"})
     assert r.status_code == 200, r.text
-    assert r.json()["budget"]["chapters"] == ["Albañilería", budget_db.RESIDUAL_CHAPTER]
+    assert r.json()["budget"]["chapters"] == ["Albañilería", budget_db.ESTIMATE_CHAPTER]
 
 
-def test_deleting_a_chapter_returns_its_cost_to_others(client, test_property):
+def test_deleting_a_chapter_lowers_the_total_by_what_it_summed(client, test_property):
+    """Borrar un capítulo es `delete_line` en bloque y significa lo mismo: se van
+    sus renglones y el total baja lo que sumaban. Antes su costo volvía al
+    residuo y el total no se movía."""
     _add(client, test_property["id"], chapterName="Albañilería", name="Muros",
          quantity=1, unitPrice=300_000)
     _add(client, test_property["id"], chapterName="Albañilería", name="Aplanados",
@@ -704,14 +768,19 @@ def test_deleting_a_chapter_returns_its_cost_to_others(client, test_property):
     r = client.delete(f"/api/properties/{test_property['id']}/budget/chapters/Albañilería")
     assert r.status_code == 200, r.text
     r = r.json()
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("2340000")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
+    assert _detailed(r["budget"]) == {}
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN
 
 
-def test_the_residual_chapter_is_not_deleted(client, test_property):
+def test_the_chapter_of_the_estimate_is_deleted_like_any_other(client, test_property):
+    """«Otros» era donde vivía el remanente y no se renombraba ni se borraba. Es
+    un capítulo como cualquiera: ahí aterriza el estimado sólo para que un
+    presupuesto recién nacido y uno migrado se lean igual."""
     r = client.delete(
-        f"/api/properties/{test_property['id']}/budget/chapters/{budget_db.RESIDUAL_CHAPTER}")
-    assert r.status_code == 422
+        f"/api/properties/{test_property['id']}/budget/chapters/{budget_db.ESTIMATE_CHAPTER}")
+    assert r.status_code == 200, r.text
+    assert r.json()["budget"]["lines"] == []
+    assert _dec(r.json()["property"]["constructionBudgeted"]) == Decimal("0")
 
 
 # ── Copiar de otro presupuesto ──────────────────────────────────────────────
@@ -750,25 +819,33 @@ def _apply(client, property_id: int, source_budget_id: int, **body):
 
 
 def _detailed(budget: dict) -> dict:
-    """Los renglones detallados por nombre — el residuo no es una partida."""
-    return {line["name"]: line for line in budget["lines"] if not line["isResidual"]}
+    """Los renglones por nombre, menos el estimado con el que nació la obra.
+
+    El estimado no es especial para el sistema —es un renglón como cualquiera— y
+    se aparta aquí sólo para que cada test hable de lo que capturó él mismo."""
+    return {line["name"]: line for line in budget["lines"]
+            if not line["name"].startswith("Estimado inicial · ")}
 
 
-def test_applying_a_whole_budget_copies_every_line_and_never_the_residual(
+def test_applying_a_whole_budget_copies_every_line_and_raises_the_total(
         client, test_property, origen):
-    """El comportamiento de siempre, sin `chapters`: entran los tres renglones,
-    el residuo del origen se queda en su obra y el total de ésta no se mueve —
-    650,000 detallados salen de los 2,340,000 sin detallar."""
+    """Sin `chapters`: entran TODOS los renglones del origen y el total sube lo
+    que suman. Antes el residuo del origen se quedaba en su obra —era un importe
+    que el sistema recalculaba, no una partida— y el total de ésta no se movía.
+    Hoy no hay renglón especial que dejar fuera.
+
+    Los dos presupuestos nacieron con el MISMO estimado —las dos obras se dieron
+    de alta con 200 m² a $9,000 y 1.3—, así que el del origen llega con el nombre
+    que el destino ya tiene y la dedup lo salta. Es la regla de siempre haciendo
+    su trabajo, sin caso especial."""
     r = _apply(client, test_property["id"], origen["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
     assert r["linesAdded"] == 3
-    assert r["linesSkipped"] == 0
+    assert r["linesSkipped"] == 1
     assert set(_detailed(r["budget"])) == {"Hidráulica", "Eléctrica", "Piso cerámico"}
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("1690000")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
-    assert _dec(r["budgetIncrease"]) == Decimal("0")
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("650000")
 
 
 def test_only_the_chapters_asked_for_are_copied(client, test_property, origen):
@@ -782,7 +859,7 @@ def test_only_the_chapters_asked_for_are_copied(client, test_property, origen):
     assert r["linesAdded"] == 1
     assert r["linesSkipped"] == 0
     assert set(_detailed(r["budget"])) == {"Piso cerámico"}
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("2190000")
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("150000")
 
 
 def test_applying_the_same_source_twice_adds_nothing_the_second_time(
@@ -799,10 +876,9 @@ def test_applying_the_same_source_twice_adds_nothing_the_second_time(
     r = r.json()
 
     assert r["linesAdded"] == 0
-    assert r["linesSkipped"] == 3
+    assert r["linesSkipped"] == 4      # los tres detallados y el estimado
     assert len(_detailed(r["budget"])) == 3
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("1690000")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("650000")
 
 
 def test_the_same_line_in_other_case_or_with_stray_spaces_is_still_the_same_line(
@@ -824,7 +900,7 @@ def test_the_same_line_in_other_case_or_with_stray_spaces_is_still_the_same_line
     r = r.json()
 
     assert r["linesAdded"] == 3
-    assert r["linesSkipped"] == 1
+    assert r["linesSkipped"] == 2      # la eléctrica padeada y el estimado gemelo
     detalladas = _detailed(r["budget"])
     assert "  instalación ELÉCTRICA  " not in detalladas
     # Y el que ya estaba sigue con SU precio, no con el del origen.
@@ -854,7 +930,7 @@ def test_a_line_with_money_captured_is_skipped_and_left_untouched(
     assert r.status_code == 201, r.text
     r = r.json()
     assert r["linesAdded"] == 2
-    assert r["linesSkipped"] == 1
+    assert r["linesSkipped"] == 2      # la hidráulica con dinero y el estimado gemelo
 
     # Ni el renglón ni un peso de lo capturado se movieron: es la MISMA fila.
     hidraulica = _line_by_id(r["budget"], linea)
@@ -868,20 +944,21 @@ def test_a_line_with_money_captured_is_skipped_and_left_untouched(
     assert _dec(r["property"]["constructionPaid"]) == Decimal("40000")
 
 
-def test_copying_beyond_the_total_grows_the_budget_and_says_so(client, test_property, origen):
-    """`budgetIncrease` se comporta igual que en toda escritura: copiar sale del
-    residuo y no mueve el total, salvo cuando lo copiado lo rebasa — y entonces
-    eso es aumentar el presupuesto, no detallarlo, y se reporta."""
-    r = client.put(f"/api/properties/{test_property['id']}/budget/total",
-                   json={"amount": 400_000})
-    assert r.status_code == 200, r.text
+def test_copying_into_an_empty_budget_lands_exactly_what_came_in(client, test_property, origen):
+    """Copiar sube el total lo que suman los renglones copiados, ni un peso más.
+    Con el presupuesto del destino vacío se ve al desnudo: entran los cuatro del
+    origen —los tres detallados y su estimado— y el total ES su suma.
+
+    Antes copiar salía del residuo y no movía el total, salvo cuando lo rebasaba;
+    ese excedente se reportaba aparte en `budgetIncrease`. Ya no hay dos casos."""
+    estimado_id = _estimate(_budget(client, test_property["id"]))["id"]
+    client.delete(f"/api/properties/{test_property['id']}/budget/lines/{estimado_id}")
 
     r = _apply(client, test_property["id"], origen["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
-    assert _dec(r["budgetIncrease"]) == Decimal("250000")     # 650,000 − 400,000
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("0")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("650000")
+    assert (r["linesAdded"], r["linesSkipped"]) == (4, 0)
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("650000")
 
 
 def test_a_chapter_the_source_does_not_have_simply_contributes_nothing(
@@ -936,10 +1013,14 @@ def test_an_empty_chapter_list_is_refused_instead_of_copying_nothing(
 # Los números están elegidos para que el factor dé EXACTAMENTE 2 y cada cifra se
 # pueda verificar a mano:
 #
-#     origen:   200,000 (lote) + 150,000 (m²) + 50,000 (fija) = 400,000 detallado
-#               total 2,050,000  →  residuo 1,650,000
-#     destino:  200 m² × $20,250 = T = 4,050,000, sembrado por la ficha al alta
+#     origen:   200,000 (lote) + 150,000 (m²) + 50,000 (fija) = 400,000 capturado
+#               + su estimado, 100 m² × $16,500 = 1,650,000  →  total 2,050,000
+#     destino:  200 m² × $20,250 = T = 4,050,000, su renglón de estimado al alta
 #     factor = (4,050,000 − 50,000) / (2,050,000 − 50,000) = 2
+#
+# El estimado del origen entra al denominador igual que antes entraba su residuo,
+# y por la misma razón: es alcance que esa obra carga y que la que copia la forma
+# quiere heredar. Lo único que cambió es que ahora es un renglón con nombre.
 COSTO_POR_M2 = 20_250
 OBJETIVO = Decimal("4050000")
 
@@ -951,7 +1032,7 @@ def modelo(client):
     r = client.post("/api/properties", json={
         "name": "[TEST] Obra Modelo", "address": "Calle Modelo 1", "city": "Monterrey",
         "purchasePrice": 1_000_000, "sqmConstruction": 100,
-        "constructionCostPerSqm": 20_500, "constructionOverhead": 1})
+        "constructionCostPerSqm": 16_500, "constructionOverhead": 1})
     assert r.status_code == 201, r.text
     prop = r.json()
     _add(client, prop["id"], chapterName="Instalaciones", name="Hidráulica",
@@ -970,8 +1051,8 @@ def destino(client):
     obra ya capturado.
 
     Ese total ES el objetivo, y por eso el cuerpo de la copia no lo lleva: la
-    ficha lo sembró al alta como `m² × $/m²` y desde entonces vive en el
-    presupuesto, donde el servidor lo lee."""
+    calculadora lo escribió como un renglón al dar de alta la obra y desde
+    entonces vive en el presupuesto, donde el servidor lo lee."""
     r = client.post("/api/properties", json={
         "name": "[TEST] Obra Destino", "address": "Calle Destino 1",
         "city": "Monterrey", "purchasePrice": 1_000_000, "sqmConstruction": 200,
@@ -985,8 +1066,9 @@ def destino(client):
 
 @pytest.fixture
 def sin_costo_de_obra(client):
-    """Una obra sin costo de obra capturado — hoy 2 de las 5 reales están así, y
-    por eso el rechazo tiene que ser legible, no un borde."""
+    """Una obra sin costo de obra capturado —sin metraje ni $/m² no hay estimado
+    que sembrar, así que su presupuesto nace vacío—. Hoy 2 de las 5 reales están
+    así, y por eso el rechazo tiene que ser legible, no un borde."""
     r = client.post("/api/properties", json={
         "name": "[TEST] Obra Sin Costo", "address": "Calle Sin 1",
         "city": "Monterrey", "purchasePrice": 1_000_000})
@@ -1043,28 +1125,34 @@ def test_a_line_that_does_not_grow_with_the_job_is_copied_untouched(
     assert _detailed(r.json()["budget"])["Hidráulica"]["isProportional"] is True
 
 
-def test_the_copied_budget_adds_up_to_the_target_cost_exactly(
-        client, destino, modelo):
-    """LA PRUEBA DE QUE LA ARITMÉTICA CIERRA. El destino ya traía $4,050,000 de
-    costo de obra, y el presupuesto sigue dando esa cifra al peso: fijas +
-    escalado + residuo, sin un centavo de sobra ni de menos.
+def test_the_copied_lines_add_up_to_the_target_cost_exactly(client, destino, modelo):
+    """LA PRUEBA DE QUE LA ARITMÉTICA CIERRA. Lo COPIADO suma exactamente los
+    $4,050,000 que el destino traía de costo de obra, sin un centavo de sobra ni
+    de menos:
 
-        50,000 + 400,000 + 300,000 + 3,300,000 = 4,050,000
+        50,000 (fija) + 400,000 + 300,000 + 3,300,000 (el estimado escalado)
 
-    No es una coincidencia de estos números: el residuo se calcula al final como
-    `objetivo − detallado`, así que absorbe hasta el último peso que el redondeo
-    haya movido."""
+    Lo que cambió es dónde aterriza esa suma: se AGREGA a lo que el destino ya
+    tenía, así que el presupuesto queda en 2×T hasta que se borre lo que sobra —
+    su propio renglón de estimado, que es justo lo que el desglose viene a
+    reemplazar—. Antes el residuo absorbía la diferencia y el total no se movía,
+    que es la absorción que este diseño retiró."""
     r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
-    assert r["linesAdded"] == 3
-    assert _dec(r["property"]["constructionBudgeted"]) == OBJETIVO
-    detalladas = sum(_dec(l["budgetedAmount"]) for l in _detailed(r["budget"]).values())
-    assert detalladas == Decimal("750000")
-    assert detalladas + _dec(_residual(r["budget"])["budgetedAmount"]) == OBJETIVO
-    # Copiar reparte el costo de obra, no lo aumenta: el total quedó donde estaba.
-    assert _dec(r["budgetIncrease"]) == Decimal("0")
+    assert r["linesAdded"] == 4
+    # Lo copiado es todo lo que el total ganó, y da el objetivo al peso.
+    copiadas = _dec(r["property"]["constructionBudgeted"]) - OBJETIVO
+    assert copiadas == OBJETIVO
+    assert (sum(_dec(l["budgetedAmount"]) for l in _detailed(r["budget"]).values())
+            == Decimal("750000"))      # las tres capturadas; la cuarta es el estimado
+
+    # Y borrado el estimado del destino, el desglose ES el costo de obra, al peso.
+    estimado_id = _estimate_of(_budget(client, destino["id"]), 200, 20_250)["id"]
+    r = client.delete(f"/api/properties/{destino['id']}/budget/lines/{estimado_id}")
+    assert r.status_code == 200, r.text
+    assert _dec(r.json()["property"]["constructionBudgeted"]) == OBJETIVO
 
 
 def test_the_target_is_read_from_the_destination_and_never_received(
@@ -1079,37 +1167,44 @@ def test_the_target_is_read_from_the_destination_and_never_received(
     Es la prueba de que no quedó ningún costo objetivo viajando en el cuerpo: si
     lo hubiera, este mismo llamado seguiría dimensionando contra los $4,050,000
     viejos."""
-    r = client.put(f"/api/properties/{destino['id']}/budget/total",
-                   json={"amount": 2_050_000})
+    estimado_id = _estimate_of(_budget(client, destino["id"]), 200, 20_250)["id"]
+    r = client.patch(f"/api/properties/{destino['id']}/budget/lines/{estimado_id}",
+                     json={"unitPrice": 2_050_000})
     assert r.status_code == 200, r.text
 
     r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
-    detalladas = _detailed(r["budget"])
-    assert _dec(detalladas["Hidráulica"]["unitPrice"]) == Decimal("200000")
-    assert _dec(detalladas["Piso cerámico"]["quantity"]) == Decimal("100")
-    assert _dec(detalladas["Licencias"]["unitPrice"]) == Decimal("50000")
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("1650000")
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2050000")
+    copiadas = _detailed(r["budget"])
+    assert _dec(copiadas["Hidráulica"]["unitPrice"]) == Decimal("200000")
+    assert _dec(copiadas["Piso cerámico"]["quantity"]) == Decimal("100")
+    assert _dec(copiadas["Licencias"]["unitPrice"]) == Decimal("50000")
+    # Lo copiado suma el nuevo objetivo, no los $4,050,000 viejos: el total pasó
+    # de 2,050,000 a 4,100,000, o sea que entraron otros 2,050,000.
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("4100000")
+    assert _dec(_estimate_of(r["budget"], 100, 16_500)["budgetedAmount"]) == Decimal("1650000")
 
 
 def test_the_destination_inherits_how_much_is_left_to_detail(
         client, destino, modelo):
-    """El residuo del origen entra al denominador del factor, y por eso el destino
-    hereda TAMBIÉN cuánto le falta por detallar: el modelo está detallado al 19.5%
-    y el destino queda igual, con su residuo escalado por el mismo 2.
+    """El estimado del origen entra al denominador del factor, y por eso el
+    destino hereda TAMBIÉN cuánto le falta por detallar: el modelo está detallado
+    al 19.5% y lo copiado queda igual, con el estimado escalado por el mismo 2.
 
-    Un origen 100% detallado dejaría el residuo del destino en cero por la misma
-    aritmética, sin un caso especial."""
+    Un origen 100% detallado no traería ningún renglón de holgura, por la misma
+    aritmética y sin un caso especial. Lo que cambió es que la holgura heredada
+    llega con NOMBRE —dice de qué obra y de qué cuenta salió— en vez de como un
+    remanente anónimo que el sistema recalculaba."""
     r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
-    assert _dec(_residual(r["budget"])["budgetedAmount"]) == Decimal("3300000")
-    origen = _budget(client, modelo["propertyId"])
-    assert _dec(_residual(origen)["budgetedAmount"]) == Decimal("1650000")
+    heredado = _estimate_of(r["budget"], 100, 16_500)
+    assert _dec(heredado["budgetedAmount"]) == Decimal("3300000")
+    # Y el origen no se movió: copiar lee, no escribe en la obra de al lado.
+    assert _dec(_estimate_of(_budget(client, modelo["propertyId"]), 100, 16_500)
+                ["budgetedAmount"]) == Decimal("1650000")
 
 
 def test_the_proportional_copy_still_skips_what_the_destination_already_has(
@@ -1126,11 +1221,11 @@ def test_the_proportional_copy_still_skips_what_the_destination_already_has(
     assert r.status_code == 201, r.text
     r = r.json()
 
-    assert (r["linesAdded"], r["linesSkipped"]) == (2, 1)
+    assert (r["linesAdded"], r["linesSkipped"]) == (3, 1)
     hidraulica = _line_by_id(r["budget"], linea)
     assert _dec(hidraulica["unitPrice"]) == Decimal("100000")   # ni escalado ni pisado
-    # Y el total sigue dando el objetivo: el residuo cuadra lo que el saltado dejó.
-    assert _dec(r["property"]["constructionBudgeted"]) == OBJETIVO
+    # Y no entró una segunda: la dedup es saltar, no actualizar ni duplicar.
+    assert [l["name"] for l in r["budget"]["lines"]].count("Hidráulica") == 1
 
 
 def test_the_direct_copy_does_not_scale_a_single_peso(client, test_property, modelo):
@@ -1146,25 +1241,28 @@ def test_the_direct_copy_does_not_scale_a_single_peso(client, test_property, mod
     assert _dec(detalladas["Piso cerámico"]["quantity"]) == Decimal("100")
     assert _dec(detalladas["Licencias"]["unitPrice"]) == Decimal("50000")
     assert detalladas["Licencias"]["isProportional"] is False
-    # El total no se movió: 400,000 detallados salieron del residuo de 2,340,000.
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2340000")
+    # Y el total subió exactamente lo que traía el origen: 2,050,000 sobre los
+    # 2,340,000 que esta obra ya tenía. Copiar agrega; no reparte un total fijo.
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("2050000")
 
 
-def test_a_destination_without_a_cost_of_works_is_refused_and_sent_to_its_ficha(
+def test_a_destination_without_a_cost_of_works_is_refused_and_says_where_to_fix_it(
         client, modelo, sin_costo_de_obra):
     """Sin costo de obra no hay a qué escalar: el factor daría 0 y la copia
     entera aterrizaría en importes en cero, que se ven capturados y no lo están.
 
     Hoy 2 de las 5 obras reales están así, o sea que faltar no es un borde, y el
-    rechazo tiene que mandar al lugar donde SÍ se arregla: la ficha de la obra,
-    con sus m² y su $/m². Aquí no se captura — este popup ya no tiene dónde."""
+    rechazo tiene que mandar al lugar donde SÍ se arregla. Ese lugar ya no es la
+    ficha —teclear m² y $/m² ahí no escribe un peso en el presupuesto— sino el
+    presupuesto mismo: se captura un renglón, aunque sea el estimado grueso."""
     r = _apply_proporcional(client, sin_costo_de_obra["id"], modelo["budgetId"])
     assert r.status_code == 422, r.text
     mensaje = r.json()["error"]["message"]
     assert sin_costo_de_obra["name"] in mensaje
-    assert "costo de obra" in mensaje and "ficha" in mensaje
+    assert "$0" in mensaje and "renglón" in mensaje
+    assert "ficha" not in mensaje, "la ficha ya no siembra el presupuesto"
     # Y no dejó nada a medias en el destino.
-    assert _detailed(_budget(client, sin_costo_de_obra["id"])) == {}
+    assert _budget(client, sin_costo_de_obra["id"])["lines"] == []
 
 
 def test_a_target_that_does_not_fit_the_fixed_lines_is_refused_with_both_amounts(
@@ -1173,8 +1271,9 @@ def test_a_target_that_does_not_fit_the_fixed_lines_is_refused_with_both_amounts
     costo de obra del destino en $40,000, las licencias solas cuestan $50,000 y
     ya no caben. Un factor negativo habría producido precios en negativo, que la
     base rechaza con un CHECK y un 500 mudo — o peor, habría cabido."""
-    r = client.put(f"/api/properties/{destino['id']}/budget/total",
-                   json={"amount": 40_000})
+    estimado_id = _estimate_of(_budget(client, destino["id"]), 200, 20_250)["id"]
+    r = client.patch(f"/api/properties/{destino['id']}/budget/lines/{estimado_id}",
+                     json={"unitPrice": 40_000})
     assert r.status_code == 200, r.text
 
     r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
@@ -1228,27 +1327,32 @@ def test_the_sources_list_is_jobs_and_only_jobs(client, test_property, origen):
     fuente = next(f for f in fuentes if f["id"] == origen["budgetId"])
     assert fuente["propertyId"] == origen["propertyId"]
     assert fuente["name"] == _get(client, origen["propertyId"])["name"]
-    assert (fuente["lineCount"], _dec(fuente["total"])) == (3, Decimal("650000"))
+    assert (fuente["lineCount"], _dec(fuente["total"])) == (
+        4, ESTIMADO_MXN + Decimal("650000"))
     # `lineCount` es un NÚMERO aquí y `lines` es el arreglo en el detalle: un
     # mismo nombre con dos tipos se paga en el cliente.
     assert "lines" not in fuente
 
 
-def test_a_source_counts_only_what_it_would_actually_copy(client, test_property, origen):
-    """El residuo no se copia, así que contarlo prometería un renglón que nunca
-    llega — y una obra apenas capturada es SOLO su residuo. Sin el filtro el
-    selector serían dieciocho renglones en cero con las obras útiles perdidas
-    entre ellos."""
-    propio = _budget(client, test_property["id"])
-    assert len(propio["lines"]) == 1 and propio["lines"][0]["isResidual"]
-    assert all(f["id"] != propio["id"] for f in _sources(client)), \
-        "una obra sin detallar no es una respuesta a «de dónde copio»"
+def test_a_source_counts_every_line_because_every_line_would_travel(
+        client, test_property, origen):
+    """`lineCount` es exactamente cuántos renglones van a aparecer. Antes contaba
+    sólo lo detallado, porque el residuo no se copiaba y prometerlo habría sido
+    prometer un renglón que nunca llegaba.
 
-    # El origen tiene CUATRO renglones —los tres detallados y su residuo— y solo
-    # los tres viajan.
+    Ahora todo viaja, y la consecuencia visible es que una obra apenas capturada
+    SÍ aparece en el selector, con el 1 de su estimado. Es lo que de verdad
+    ofrece: un renglón con un número real que la obra destino puede escalar."""
+    propio = _budget(client, test_property["id"])
+    assert len(propio["lines"]) == 1
+    fuente_propia = next(f for f in _sources(client) if f["id"] == propio["id"])
+    assert fuente_propia["lineCount"] == 1
+
+    # El origen tiene CUATRO renglones —los tres detallados y su estimado— y los
+    # cuatro viajan.
     assert len(_budget(client, origen["propertyId"])["lines"]) == 4
     assert next(f for f in _sources(client)
-                if f["id"] == origen["budgetId"])["lineCount"] == 3
+                if f["id"] == origen["budgetId"])["lineCount"] == 4
 
 
 def test_a_budget_is_not_offered_as_a_source_to_itself(client, test_property, origen):
@@ -1261,25 +1365,16 @@ def test_a_budget_is_not_offered_as_a_source_to_itself(client, test_property, or
                for f in _sources(client, excludeBudgetId=origen["budgetId"]))
 
 
-# ── Invariantes que sostienen la resta ──────────────────────────────────────
+# ── La invariante que queda ─────────────────────────────────────────────────
 
-def test_every_property_has_exactly_one_residual(client, test_property):
-    """La resta necesita saber de dónde restar. Cero residuos y el total crecería
-    con cada partida; dos, y habría dos restas compitiendo por el remanente."""
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT b.property_id, count(*) FILTER (WHERE l.is_residual) AS residuos"
-            "  FROM budgets b JOIN budget_lines l ON l.budget_id = b.id"
-            " WHERE b.property_id IS NOT NULL GROUP BY b.property_id"
-        ).fetchall()
-    assert rows, "no hay presupuestos que revisar"
-    assert all(row["residuos"] == 1 for row in rows), [dict(r) for r in rows]
-
-
-def test_a_property_without_a_budget_still_answers_and_gets_one(client):
+def test_a_property_without_a_budget_still_answers_and_gets_an_empty_one(client):
     """La invariante se sostiene sola frente a filas que entraron por fuera del
     API. Sin eso volvería la rama «si existe presupuesto», que es exactamente la
-    disyunción que este diseño existe para no tener."""
+    disyunción que este diseño existe para no tener.
+
+    NACE VACÍO, sin renglón fantasma: leer el presupuesto de una fila que entró
+    por fuera no es una captura de nadie, y aquí no hay con qué llamar a la
+    calculadora. Suma $0 y eso es un estado legítimo."""
     r = client.post("/api/properties", json={
         "name": "[TEST] Sin Presupuesto", "address": "Calle Seis 6", "city": "Monterrey",
         "purchasePrice": 1_000_000})
@@ -1288,7 +1383,7 @@ def test_a_property_without_a_budget_still_answers_and_gets_one(client):
         with get_db() as conn:
             conn.execute("DELETE FROM budgets WHERE property_id = %s", (prop["id"],))
         assert _dec(_get(client, prop["id"])["constructionBudgeted"]) == Decimal("0")
-        assert len(_budget(client, prop["id"])["lines"]) == 1
+        assert _budget(client, prop["id"])["lines"] == []
     finally:
         client.delete(f"/api/properties/{prop['id']}")
 
