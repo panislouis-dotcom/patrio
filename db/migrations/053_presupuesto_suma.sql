@@ -41,8 +41,8 @@
 -- las migraciones corren como hook PreSync de ArgoCD, o sea ANTES de que entren
 -- los pods nuevos, y los viejos siguen atendiendo tráfico con
 -- `FILTER (WHERE NOT l.is_residual)` adentro de sus queries. Sin la columna
--- contestarían 500 durante todo el rollout. El DROP va en la 054, cuando ya no
--- quede código que la nombre — y se lleva solo, por dependencia, al CHECK
+-- contestarían 500 durante todo el rollout. El DROP va en **PR 2 · Contract**,
+-- cuando ya no quede código que la nombre — y se lleva solo, por dependencia, al CHECK
 -- `budget_lines_residual_has_no_category`.
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -92,7 +92,7 @@ SELECT b.id                                        AS budget_id,
 UPDATE budget_lines SET is_residual = FALSE WHERE is_residual;
 
 -- Sin residuos no hay «uno por presupuesto» que garantizar. El índice se va
--- ahora y no en la 054 porque es lo único que la bandera todavía IMPONÍA: la
+-- ahora y no con el DROP porque es lo único que la bandera todavía IMPONÍA: la
 -- columna sobrevive al rollout como dato muerto, la regla no sobrevive ni un
 -- minuto.
 DROP INDEX IF EXISTS uq_budget_lines_residual;
@@ -104,7 +104,7 @@ DROP INDEX IF EXISTS uq_budget_lines_residual;
 -- que lo lea va a diagnosticar contra un sistema que ya no existe.
 
 COMMENT ON COLUMN budget_lines.is_residual IS
-    'MUERTA desde la migración 053: ya no existe el renglón residual. Su regla —«el importe es el total del presupuesto menos la suma de los detallados»— se retiró: el total es la suma de sus renglones y una holgura es un renglón normal, con el nombre que alguien le puso, que se edita y se borra como cualquier otro. Sobrevive en FALSE únicamente para que los pods viejos no truenen durante el rollout (las migraciones corren como hook PreSync, antes de que entren los nuevos). Pendiente de DROP en la 054; nada debe volver a leerla ni escribirla.';
+    'MUERTA desde la migración 053: ya no existe el renglón residual. Su regla —«el importe es el total del presupuesto menos la suma de los detallados»— se retiró: el total es la suma de sus renglones y una holgura es un renglón normal, con el nombre que alguien le puso, que se edita y se borra como cualquier otro. Sobrevive en FALSE únicamente para que los pods viejos no truenen durante el rollout (las migraciones corren como hook PreSync, antes de que entren los nuevos). Pendiente de DROP en el PR 2 (contract) de este mismo trabajo; nada debe volver a leerla ni escribirla.';
 
 COMMENT ON COLUMN properties.construction_cost_per_sqm IS
     'Supuesto CAPTURADO: el costo por m² que teclea quien evalúa la propiedad. Vuelve a ser insumo —la 033 lo había convertido en derivado (presupuesto ÷ m²)— porque desde la 053 convive CON ese derivado en pantalla, rotulados: tu estimado contra el presupuesto. Dos números reales, ninguno gobierna al otro y ninguno es el fallback del otro; solo así la comparación es honesta. No mueve el presupuesto: la calculadora escribe UN renglón al nacer la propiedad y de ahí en adelante el presupuesto es dato propio.';
