@@ -933,8 +933,8 @@ def test_a_hand_typed_line_is_never_deleted_by_a_copy_even_if_it_is_the_only_one
     capturó sus clósets en $950,000— no es «lo que sembró el sistema», aunque
     contarlo dé uno. `apply` lo borraría en silencio: no se lee como destructiva
     y no tiene paso de confirmación, así que aquí no hay red que lo detenga
-    después. Lo separa el mismo hecho que retiene la propiedad: ese renglón nació
-    en otra transacción, así que su `created_at` no es el del presupuesto.
+    después. Lo separa el mismo hecho que retiene la propiedad: nadie marcó ese
+    renglón como sembrado, así que `seeded` es FALSE por default de la columna.
 
     Se suma, no reemplaza, y el renglón sigue ahí con su importe."""
     pid = test_property["id"]
@@ -951,6 +951,86 @@ def test_a_hand_typed_line_is_never_deleted_by_a_copy_even_if_it_is_the_only_one
     assert _dec(_line_by_id(r["budget"], propio)["budgetedAmount"]) == Decimal("950000")
     assert _dec(r["property"]["constructionBudgeted"]) == (
         Decimal("950000") + ESTIMADO_MXN + Decimal("650000"))
+
+
+@pytest.fixture
+def origen_sin_detalle(client):
+    """Una obra cuyo presupuesto es SÓLO el estimado que le sembró la calculadora.
+
+    Con métricas distintas a las del `test_property` a propósito: 150 m² a
+    $10,000 contra 200 m² a $9,000 × 1.3, para que el renglón copiado se
+    distinga del que ya estaba por su solo nombre."""
+    r = client.post("/api/properties", json={
+        "name": "[TEST] Obra Sin Detalle", "address": "Calle Sin Detalle 1",
+        "city": "Monterrey", "purchasePrice": 1_000_000, "sqmConstruction": 150,
+        "constructionCostPerSqm": 10_000, "constructionOverhead": 1})
+    assert r.status_code == 201, r.text
+    prop = r.json()
+    yield {"propertyId": prop["id"], "budgetId": _budget(client, prop["id"])["id"]}
+    _delete_property(prop["id"])
+
+
+def test_copying_a_source_that_is_only_its_estimate_leaves_the_destination_replaceable(
+        client, test_property, origen_sin_detalle, origen):
+    """`seeded` VIAJA CON LA COPIA, y eso tiene una consecuencia que hay que ver.
+
+    Copiar de una obra que no ha detallado nada trae un solo renglón, y trae su
+    marca: el destino queda con UN renglón sembrado, o sea sigue leyéndose como
+    intacto —se borra, y el siguiente `apply` lo reemplaza en vez de sumarle—.
+
+    Es lo correcto, no un descuido. Lo que se copió es un estimado paramétrico,
+    no obra cotizada; nadie tecleó una partida aquí, y volver a copiar cuesta un
+    clic. Tratarlo como trabajo capturado retendría la propiedad para siempre por
+    algo que el sistema mismo escribió dos veces —la regresión que `seeded` vino
+    a cerrar—, sólo que con un rodeo.
+
+    OJO CON EL NOMBRE: el renglón llega diciendo «150 m² × $10,000/m²», que son
+    los metros de la FUENTE. `copy_lines` copia `name` literal desde siempre; lo
+    nuevo es que ahora el nombre del sembrado lleva aritmética adentro y que ese
+    renglón sí viaja (antes era el residuo y la copia lo excluía). Queda
+    registrado aquí; arreglarlo no es de este PR."""
+    pid = test_property["id"]
+    assert len(_budget(client, pid)["lines"]) == 1
+
+    assert _apply(client, pid, origen_sin_detalle["budgetId"]).status_code == 201
+    lineas = _budget(client, pid)["lines"]
+    assert len(lineas) == 1
+    assert lineas[0]["name"] == "Estimado inicial · 150 m² × $10,000/m²"
+    assert lineas[0]["seeded"] is True
+
+    # Sigue intacto: el siguiente copiado REEMPLAZA lo copiado, no le suma.
+    assert _apply(client, pid, origen["budgetId"]).status_code == 201
+    despues = _budget(client, pid)["lines"]
+    assert not any(l["name"] == "Estimado inicial · 150 m² × $10,000/m²" for l in despues)
+    assert _dec(_get(client, pid)["constructionBudgeted"]) == (
+        ESTIMADO_MXN + Decimal("650000"))
+
+
+def test_a_copied_estimate_does_not_hold_the_property_back_either(
+        client, test_property, origen_sin_detalle):
+    """La otra cara de lo mismo, por la puerta del borrado: un estimado que llegó
+    copiado tampoco es trabajo capturado, así que la propiedad se sigue
+    borrando."""
+    pid = test_property["id"]
+    assert _apply(client, pid, origen_sin_detalle["budgetId"]).status_code == 201
+    assert client.delete(f"/api/properties/{pid}").status_code == 204
+
+
+def test_copying_a_detailed_budget_does_protect_the_destination(
+        client, test_property, origen):
+    """Y el caso benigno, que es el que se da casi siempre: copiar un presupuesto
+    DETALLADO deja al destino protegido, con marcas o sin ellas.
+
+    Del origen viaja también su propio estimado sembrado, pero da igual: son
+    cuatro renglones y `count(l.id) <= 1` ya falla. La marca sólo decide el caso
+    de un renglón solo."""
+    pid = test_property["id"]
+    assert _apply(client, pid, origen["budgetId"]).status_code == 201
+    assert len(_budget(client, pid)["lines"]) > 1
+
+    r = client.delete(f"/api/properties/{pid}")
+    assert r.status_code == 422, r.text
+    assert "renglones capturados" in r.json()["error"]["message"]
 
 
 def test_a_budget_with_work_of_its_own_is_added_to_and_never_replaced(
