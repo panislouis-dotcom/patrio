@@ -55,10 +55,12 @@ def _estimate_of(budget: dict, sqm, cost_per_sqm) -> dict:
     return next(line for line in budget["lines"] if line["name"] == nombre)
 
 
-def _de(name: str, property_name: str) -> str:
+def _de(name: str, property_name: str, escalado: bool = False) -> str:
     """El nombre con el que un estimado llega a OTRA obra: el suyo, más de quién
-    es. Ver `budget_db._copied_name`."""
-    return f"{name} (de «{property_name}»)"
+    es, y —si la proporcional le movió el importe— que su cuenta ya no da su
+    cifra. Ver `budget_db._copied_name`."""
+    nota = budget_db.SCALED_NOTE if escalado else ""
+    return f"{name} (de «{property_name}»{nota})"
 
 
 def _line_by_id(budget: dict, line_id: int) -> dict:
@@ -961,6 +963,46 @@ def test_a_hand_typed_line_is_never_deleted_by_a_copy_even_if_it_is_the_only_one
         Decimal("950000") + ESTIMADO_MXN + Decimal("650000"))
 
 
+def _source(client, budget_id: int) -> dict:
+    r = client.get("/api/budget/sources?includeEmpty=true")
+    assert r.status_code == 200, r.text
+    return next(s for s in r.json() if s["id"] == budget_id)
+
+
+def test_the_source_list_says_which_budgets_a_proportional_copy_could_replace(
+        client, test_property, origen):
+    """`replaceable` EXISTE PARA QUE LA PANTALLA NO OFREZCA LO QUE EL SERVIDOR
+    RECHAZA. La proporcional exige un destino que no tenga más que su estimado
+    sembrado, y en un empuje los destinos son OTRAS propiedades: su contenido no
+    está en la pantalla, así que el cliente no puede contestarlo solo.
+
+    Los tres estados, y el vacío es el que había que decidir a propósito:
+
+    - Sólo su estimado sembrado → `true`. Hay qué sustituir y nada que perder.
+    - Con algo tecleado → `false`. Lo mismo que retiene la propiedad al borrarla:
+      una sola regla, tres lectores.
+    - VACÍO → `true`. Cero renglones no es más que el estimado, es menos, y el
+      reemplazo sería un DELETE sin filas seguido de la copia. Es además el caso
+      que `includeEmpty` existe para enseñar —los destinos de empuje— donde un
+      presupuesto vacío es el blanco más reemplazable que hay."""
+    pid = test_property["id"]
+    propio = _budget(client, pid)["id"]
+
+    assert _source(client, propio)["replaceable"] is True
+    assert _source(client, origen["budgetId"])["replaceable"] is False
+
+    _add(client, pid, chapterName="Clósets", name="Clósets cotizados",
+         unit="lote", quantity=1, unitPrice=950_000)
+    assert _source(client, propio)["replaceable"] is False
+
+    for linea in _budget(client, pid)["lines"]:
+        assert client.delete(
+            f"/api/properties/{pid}/budget/lines/{linea['id']}").status_code == 200
+    vacio = _source(client, propio)
+    assert vacio["lineCount"] == 0
+    assert vacio["replaceable"] is True
+
+
 @pytest.fixture
 def origen_sin_detalle(client):
     """Una obra cuyo presupuesto es SÓLO el estimado que le sembró la calculadora.
@@ -1109,6 +1151,32 @@ def test_the_attribution_is_written_once_even_copying_a_copy(
     assert r["linesSkipped"] == 1
     assert r["linesAdded"] == 0
     assert len([l for l in r["budget"]["lines"] if l["name"] == esperado]) == 1
+
+
+def test_a_scaled_estimate_says_so_because_its_own_arithmetic_stopped_adding_up(
+        client, test_property, origen_sin_detalle):
+    """EL NOMBRE Y EL IMPORTE SE AFIRMAN JUNTOS, porque el defecto era que se
+    contradecían mientras cada uno por su lado se veía bien.
+
+    La fuente es de 150 m² × $10,000 = $1,500,000; esta obra tenía $2,340,000 y
+    la proporcional dimensiona a eso, así que el renglón aterriza con $2,340,000
+    y una cuenta en el nombre que da $1,500,000. Dividir entre los 150 m² del
+    origen saca $15,600/m², una tarifa que no tuvo ninguna de las dos.
+
+    El dinero está bien —$2,340,000 es exactamente lo que la proporcional
+    promete— y por eso el arreglo no toca la cifra: el renglón dice que se
+    ajustó. La versión directa de este mismo par vive arriba, sin la nota,
+    porque ahí la cuenta sí da el importe."""
+    pid = test_property["id"]
+    r = _apply_proporcional(client, pid, origen_sin_detalle["budgetId"])
+    assert r.status_code == 201, r.text
+
+    lineas = _budget(client, pid)["lines"]
+    assert len(lineas) == 1
+    assert lineas[0]["name"] == _de("Estimado inicial · 150 m² × $10,000/m²",
+                                    "[TEST] Obra Sin Detalle", escalado=True)
+    assert _dec(lineas[0]["budgetedAmount"]) == ESTIMADO_MXN
+    assert _dec(_get(client, pid)["constructionBudgeted"]) == ESTIMADO_MXN
 
 
 def test_a_copied_estimate_does_not_hold_the_property_back_either(
@@ -1560,18 +1628,20 @@ def test_the_destination_inherits_how_much_is_left_to_detail(
     Un origen 100% detallado no traería ningún renglón de holgura, por la misma
     aritmética y sin un caso especial.
 
-    Y AQUÍ SE VE POR QUÉ EL NOMBRE COPIADO NO SE RECALCULA NI SE RECORTA. La
-    holgura heredada llega escalada —$1,650,000 × 2— así que un nombre armado con
-    las métricas del destino diría «200 m² × $20,250/m²», que da otra cosa; y uno
-    recortado a «Estimado inicial» dejaría $3,300,000 sin explicación. Llega la
-    cuenta del origen más de quién es, que es lo único verdadero de las tres."""
+    Y AQUÍ SE VE EL NOMBRE COMPLETO, con sus tres piezas y por qué hacen falta
+    las tres. La holgura heredada llega escalada —$1,650,000 × 2— así que un
+    nombre armado con las métricas del destino diría «200 m² × $20,250/m²», que
+    da otra cosa; uno recortado a «Estimado inicial» dejaría $3,300,000 sin
+    explicación; y la cuenta del origen a secas invita a dividir entre 100 m² y
+    sacar $33,000/m², una tarifa que no tuvo ninguna de las dos obras. Llega la
+    cuenta del origen, de quién es, y que el importe se ajustó."""
     r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
     heredado = next(l for l in r["budget"]["lines"]
                     if l["name"] == _de(budget_db.estimate_line_name(100, 16_500, 1),
-                                        "[TEST] Obra Modelo"))
+                                        "[TEST] Obra Modelo", escalado=True))
     assert _dec(heredado["budgetedAmount"]) == Decimal("3300000")
     # Y el origen no se movió: copiar lee, no escribe en la obra de al lado.
     assert _dec(_estimate_of(_budget(client, modelo["propertyId"]), 100, 16_500)

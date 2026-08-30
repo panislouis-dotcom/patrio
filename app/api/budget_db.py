@@ -166,6 +166,10 @@ ESTIMATE_LINE_LABEL = "Estimado inicial"
 # que ya está puesta, así que vive aquí y no tecleada en dos lados.
 ATTRIBUTION_OPEN = " (de «"
 
+# Lo que el renglón confiesa cuando la copia proporcional le movió el importe:
+# su cuenta ya no da su cifra. Va DENTRO del paréntesis de la atribución.
+SCALED_NOTE = ", importe ajustado a esta obra"
+
 
 def estimate_line_name(sqm_construction, construction_cost_per_sqm,
                        construction_overhead=None) -> str:
@@ -650,7 +654,7 @@ _SCALED_COLUMN = {
 }
 
 
-def _copied_name(misma_propiedad: bool) -> str:
+def _copied_name(misma_propiedad: bool, factor) -> str:
     """Cómo se llama el renglón al otro lado de la copia.
 
     EL NOMBRE DEL SEMBRADO LLEVA SU CUENTA ADENTRO —«Estimado inicial · 200 m² ×
@@ -680,18 +684,37 @@ def _copied_name(misma_propiedad: bool) -> str:
     ese nombre son los metros de A, nunca los de B.
 
     No se recalcula contra las métricas del destino, que sería el arreglo
-    aparente: el importe que viaja es el del ORIGEN —escalado, incluso— así que
-    un nombre recalculado contradiría su propia cifra, que es exactamente el
-    defecto del que venimos."""
+    aparente: un nombre armado con los metros de acá y el importe de allá
+    contradiría su propia cifra, que es exactamente el defecto del que venimos.
+
+    Y CON FACTOR NI SIQUIERA LA CUENTA DEL ORIGEN CUADRA YA. La proporcional
+    dimensiona lo copiado al costo que el destino tenía: «150 m² × $10,000/m²»
+    aterriza cargando $2,340,000, y quien divida entre los 150 m² de la fuente
+    saca $15,600/m², una tarifa que no tuvo ninguna de las dos obras. Atribuir
+    arregló que el lector dividiera entre SUS metros; no que dividiera entre los
+    del origen. Así que cuando hubo factor el renglón lo dice, DENTRO del mismo
+    paréntesis —para que la guarda de idempotencia lo siga cortando de un
+    `strpos`—: el nombre admite que su aritmética ya no es su importe en vez de
+    dejar al lector descubrirlo con una división.
+
+    No se marca cuando no hubo escalado: sin factor, con factor 1 —todo el
+    origen es fijo— o en un renglón que no escala, la cuenta y el importe
+    siguen siendo el mismo hecho. Mismo criterio que el overhead en
+    `estimate_line_name`: se dice cuando multiplica."""
     if misma_propiedad:
         return "l.name"
+    # `l.is_proportional` es exactamente la unión de las dos ramas que escalan
+    # (`_SCALES_ITS_PRICE` y `_SCALES_ITS_QUANTITY`): una fija no se mueve, así
+    # que su nombre no tiene nada que confesar.
+    marca = ("''" if factor is None or factor == 1 else
+             f"CASE WHEN l.is_proportional THEN '{SCALED_NOTE}' ELSE '' END")
     # Sin parámetros a propósito: el nombre de la obra sale de un subquery y no
     # de una interpolación, que con un nombre que traiga comilla sería inyección.
     return (f"CASE WHEN l.seeded AND strpos(l.name, '{ATTRIBUTION_OPEN}') = 0"
             f"     THEN l.name || '{ATTRIBUTION_OPEN}'"
             "            || (SELECT p.name FROM properties p JOIN budgets o"
             "                  ON o.property_id = p.id WHERE o.id = l.budget_id)"
-            "            || '»)'"
+            f"            || '»' || {marca} || ')'"
             "     ELSE l.name END AS name")
 
 
@@ -703,7 +726,7 @@ def _candidate_columns(factor, misma_propiedad: bool) -> tuple[str, list]:
     nadie pidió escalar. Con factor, el mismo valor entra tantas veces como
     `%s` haya en las columnas escaladas —el conteo sale del SQL y no de una
     constante que haya que acordarse de mover."""
-    columnas = {"name": _copied_name(misma_propiedad)}
+    columnas = {"name": _copied_name(misma_propiedad, factor)}
     if factor is not None:
         columnas |= _SCALED_COLUMN
     sql = ", ".join(columnas.get(c, f"l.{c}") for c in _COPIED_LINE_COLUMNS)
@@ -1135,10 +1158,15 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
 # `fullTotal` queda DEPRECADO por lo mismo y se va en PR 2 · Contract, junto con
 # `budgetIncrease` y la columna: la sesión en vuelo durante el rollout es la que
 # lo sigue leyendo.
-_SOURCES_SQL = """
+_SOURCES_SQL = f"""
     SELECT b.id, p.name, b.property_id, b.plan_id, pl.plan_name,
            p.sqm_construction, p.construction_cost_per_sqm,
-           t.line_count, t.total
+           t.line_count, t.total,
+           -- La MISMA expresión que contesta `budget_holds_only_initial_estimate`
+           -- y que decide si una propiedad se borra. Tres lectores, una regla:
+           -- restarla aquí sería tenerla escrita dos veces y descubrir el día en
+           -- que se despeguen que el cliente ofrecía lo que el servidor rechaza.
+           {_UNTOUCHED_BUDGET} AS replaceable
       FROM budgets b
       JOIN properties p ON p.id = b.property_id
       LEFT JOIN LATERAL (
@@ -1173,7 +1201,26 @@ def list_sources(conn, exclude_budget_id: int | None = None, *,
     descubra la regla chocando con ella.
 
     `include_empty` es para la lista de DESTINOS de empuje: a un presupuesto
-    vacío sí se le puede copiar; como FUENTE no dice nada (default)."""
+    vacío sí se le puede copiar; como FUENTE no dice nada (default).
+
+    `replaceable` DICE SI UNA COPIA PROPORCIONAL SOBRE ESTE PRESUPUESTO SERÍA
+    ACEPTADA en lo que a su contenido respecta: no tiene más que el estimado que
+    le sembró el sistema, así que hay algo que sustituir y nada que perder. Lo
+    contesta la misma expresión que `budget_holds_only_initial_estimate` y que el
+    borrado de propiedades — una regla, tres lectores.
+
+    NO habla de la otra mitad de la restricción, la de alcance: la proporcional
+    también exige copiar el presupuesto entero, y ESA la sabe el cliente, que es
+    quien elige los capítulos. Existe porque la otra mitad el cliente no puede
+    saberla: en un empuje los destinos son otras propiedades y su contenido no
+    está en la pantalla. Sin este campo la pantalla ofrece una acción con un
+    factor en verde que el servidor va a rechazar entera.
+
+    UN PRESUPUESTO VACÍO SALE `true`, y es deliberado: cero renglones no es más
+    que el estimado sembrado, es MENOS, y el reemplazo sería un DELETE sin filas
+    seguido de la copia. Es además el caso que `include_empty` existe para
+    enseñar —los destinos de empuje— donde un vacío es el blanco más reemplazable
+    que hay; contestar `false` ahí habría escondido justo esa fila."""
     return [_row_to_dict(row)
             | {"total": money0(row["total"]), "fullTotal": money0(row["total"])}
             for row in conn.execute(_SOURCES_SQL, {

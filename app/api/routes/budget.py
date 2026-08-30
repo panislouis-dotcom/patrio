@@ -303,7 +303,16 @@ def list_sources(excludeBudgetId: Optional[int] = None,
     hay ninguno que quede fuera— y sin `includeEmpty` los presupuestos sin nada
     copiable no aparecen: uno del que no sale nada no es una respuesta a «de
     dónde puedo copiar» (como DESTINO de empuje sí lo es, y para eso existe la
-    bandera). El `id` va directo a `POST .../budget/apply`."""
+    bandera). El `id` va directo a `POST .../budget/apply`.
+
+    `replaceable` dice si un `apply` con `proportional` sobre ESE presupuesto
+    sería aceptado en lo que a su contenido respecta —no tiene más que el
+    estimado que le sembró el sistema, o está vacío—. No habla de la otra mitad
+    de la regla, que es de alcance: la proporcional también exige copiar el
+    presupuesto entero, y eso lo sabe el cliente, que es quien elige capítulos.
+    Va aquí porque el contenido de un destino de empuje —otra propiedad— no está
+    en la pantalla, y sin el campo se ofrece una acción que el servidor rechaza
+    entera después de haber enseñado un factor en verde."""
     with get_db() as conn:
         return budget_db.list_sources(conn, exclude_budget_id=excludeBudgetId,
                                       include_empty=includeEmpty)
