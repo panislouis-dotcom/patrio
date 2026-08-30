@@ -829,21 +829,21 @@ def _detailed(budget: dict) -> dict:
 
 def test_applying_a_whole_budget_copies_every_line_and_raises_the_total(
         client, test_property, origen):
-    """Sin `chapters`: entran TODOS los renglones del origen y el total sube lo
-    que suman. Antes el residuo del origen se quedaba en su obra —era un importe
-    que el sistema recalculaba, no una partida— y el total de ésta no se movía.
-    Hoy no hay renglón especial que dejar fuera.
+    """Sin `chapters`: entran TODOS los renglones del origen y no queda renglón
+    especial que dejar fuera. Antes el residuo del origen se quedaba en su obra
+    —era un importe que el sistema recalculaba, no una partida—.
 
-    Los dos presupuestos nacieron con el MISMO estimado —las dos obras se dieron
-    de alta con 200 m² a $9,000 y 1.3—, así que el del origen llega con el nombre
-    que el destino ya tiene y la dedup lo salta. Es la regla de siempre haciendo
-    su trabajo, sin caso especial."""
+    El destino no traía más que su estimado inicial, así que ESE RENGLÓN SE
+    REEMPLAZA: la cifra paramétrica se vuelve el desglose que la sustenta, y por
+    eso no se salta ni uno. El estimado del origen —las dos obras se dieron de
+    alta con 200 m² a $9,000 y 1.3, así que se llaman igual— ya no choca con
+    nada, porque lo que chocaba se fue antes de copiar."""
     r = _apply(client, test_property["id"], origen["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
-    assert r["linesAdded"] == 3
-    assert r["linesSkipped"] == 1
+    assert r["linesAdded"] == 4
+    assert r["linesSkipped"] == 0
     assert set(_detailed(r["budget"])) == {"Hidráulica", "Eléctrica", "Piso cerámico"}
     assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("650000")
 
@@ -851,7 +851,13 @@ def test_applying_a_whole_budget_copies_every_line_and_raises_the_total(
 def test_only_the_chapters_asked_for_are_copied(client, test_property, origen):
     """Copiar UNA sección: llega lo de «Acabados» y nada de «Instalaciones». Un
     capítulo no es una entidad —es el nombre que copian sus renglones— así que
-    copiar una sección es la misma copia con un WHERE."""
+    copiar una sección es la misma copia con un WHERE.
+
+    El reemplazo NO distingue la copia entera de la parcial: el destino no tenía
+    más que su estimado, así que se va, y el presupuesto queda en los $150,000
+    que llegaron. Es la consecuencia áspera de la regla —copiar una sección
+    sobre una obra apenas estimada la deja en el tamaño de esa sección— y se fija
+    aquí en vez de dejarla como sorpresa."""
     r = _apply(client, test_property["id"], origen["budgetId"], chapters=["Acabados"])
     assert r.status_code == 201, r.text
     r = r.json()
@@ -859,7 +865,7 @@ def test_only_the_chapters_asked_for_are_copied(client, test_property, origen):
     assert r["linesAdded"] == 1
     assert r["linesSkipped"] == 0
     assert set(_detailed(r["budget"])) == {"Piso cerámico"}
-    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("150000")
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("150000")
 
 
 def test_applying_the_same_source_twice_adds_nothing_the_second_time(
@@ -869,8 +875,10 @@ def test_applying_the_same_source_twice_adds_nothing_the_second_time(
     solo renglón, y lo DICE — 0 agregados, 3 saltados — en vez de contestar
     «listo» como si hubiera hecho algo."""
     primera = _apply(client, test_property["id"], origen["budgetId"]).json()
-    assert primera["linesAdded"] == 3
+    assert primera["linesAdded"] == 4
 
+    # Y la segunda ya no reemplaza nada: el destino trae cuatro renglones, así
+    # que la pregunta «¿aquí no ha trabajado nadie?» se contesta que no.
     r = _apply(client, test_property["id"], origen["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
@@ -879,6 +887,33 @@ def test_applying_the_same_source_twice_adds_nothing_the_second_time(
     assert r["linesSkipped"] == 4      # los tres detallados y el estimado
     assert len(_detailed(r["budget"])) == 3
     assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("650000")
+
+
+def test_a_budget_with_work_of_its_own_is_added_to_and_never_replaced(
+        client, test_property, origen):
+    """EL OTRO LADO DEL REEMPLAZO, que es donde vive la garantía: basta UN
+    renglón tecleado para que la copia deje de reemplazar y vuelva a sumar.
+
+    Reemplazar es cambiar el estimado por el desglose que lo sustenta, y eso
+    solo es cierto mientras el estimado sea lo ÚNICO que hay. En cuanto alguien
+    capturó algo, la copia no tiene manera de saber qué parte del presupuesto
+    venía a sustituir —y borrar de más sería tirar trabajo real, en silencio—,
+    así que no borra nada: los renglones se suman y el total sube con ellos.
+    Aquí el destino queda en su estimado + su partida + los tres del origen +
+    el estimado del origen, cada uno contado una vez."""
+    _add(client, test_property["id"], chapterName="Albañilería", name="Muros",
+         quantity=1, unitPrice=400_000)
+
+    r = _apply(client, test_property["id"], origen["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    # El estimado del destino sigue ahí, y el gemelo del origen se salta por ser
+    # el mismo (capítulo, nombre): la dedup de siempre, sin caso especial.
+    assert (r["linesAdded"], r["linesSkipped"]) == (3, 1)
+    assert _dec(_estimate(r["budget"])["budgetedAmount"]) == ESTIMADO_MXN
+    assert _dec(r["property"]["constructionBudgeted"]) == (
+        ESTIMADO_MXN + Decimal("400000") + Decimal("650000"))
 
 
 def test_the_same_line_in_other_case_or_with_stray_spaces_is_still_the_same_line(
@@ -1132,27 +1167,23 @@ def test_the_copied_lines_add_up_to_the_target_cost_exactly(client, destino, mod
 
         50,000 (fija) + 400,000 + 300,000 + 3,300,000 (el estimado escalado)
 
-    Lo que cambió es dónde aterriza esa suma: se AGREGA a lo que el destino ya
-    tenía, así que el presupuesto queda en 2×T hasta que se borre lo que sobra —
-    su propio renglón de estimado, que es justo lo que el desglose viene a
-    reemplazar—. Antes el residuo absorbía la diferencia y el total no se movía,
-    que es la absorción que este diseño retiró."""
+    Y EL TOTAL SE QUEDA EN T, porque el destino no tenía más que su estimado y
+    el estimado es justo lo que este desglose viene a reemplazar. Sumarlo encima
+    habría dado 2×T: un total que la propia aritmética del modo desmiente —el
+    factor se calculó para que lo copiado sumara T— y que ningún renglón podría
+    justificar. Antes el residuo llegaba al mismo número absorbiendo la
+    diferencia; hoy llega porque lo que sobraba se fue."""
     r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
     assert r["linesAdded"] == 4
-    # Lo copiado es todo lo que el total ganó, y da el objetivo al peso.
-    copiadas = _dec(r["property"]["constructionBudgeted"]) - OBJETIVO
-    assert copiadas == OBJETIVO
+    assert _dec(r["property"]["constructionBudgeted"]) == OBJETIVO
     assert (sum(_dec(l["budgetedAmount"]) for l in _detailed(r["budget"]).values())
             == Decimal("750000"))      # las tres capturadas; la cuarta es el estimado
-
-    # Y borrado el estimado del destino, el desglose ES el costo de obra, al peso.
-    estimado_id = _estimate_of(_budget(client, destino["id"]), 200, 20_250)["id"]
-    r = client.delete(f"/api/properties/{destino['id']}/budget/lines/{estimado_id}")
-    assert r.status_code == 200, r.text
-    assert _dec(r.json()["property"]["constructionBudgeted"]) == OBJETIVO
+    # Y el estimado que había en el destino ya no está: lo reemplazó el desglose.
+    nombres = [l["name"] for l in _budget(client, destino["id"])["lines"]]
+    assert budget_db.estimate_line_name(200, 20_250, 1) not in nombres
 
 
 def test_the_target_is_read_from_the_destination_and_never_received(
@@ -1166,7 +1197,11 @@ def test_the_target_is_read_from_the_destination_and_never_received(
 
     Es la prueba de que no quedó ningún costo objetivo viajando en el cuerpo: si
     lo hubiera, este mismo llamado seguiría dimensionando contra los $4,050,000
-    viejos."""
+    viejos.
+
+    Corregirle el importe al estimado no lo vuelve otro renglón: sigue siendo lo
+    único que hay y sigue siendo lo que el desglose reemplaza. La pregunta cuenta
+    renglones y ejecución, no ediciones."""
     estimado_id = _estimate_of(_budget(client, destino["id"]), 200, 20_250)["id"]
     r = client.patch(f"/api/properties/{destino['id']}/budget/lines/{estimado_id}",
                      json={"unitPrice": 2_050_000})
@@ -1180,9 +1215,9 @@ def test_the_target_is_read_from_the_destination_and_never_received(
     assert _dec(copiadas["Hidráulica"]["unitPrice"]) == Decimal("200000")
     assert _dec(copiadas["Piso cerámico"]["quantity"]) == Decimal("100")
     assert _dec(copiadas["Licencias"]["unitPrice"]) == Decimal("50000")
-    # Lo copiado suma el nuevo objetivo, no los $4,050,000 viejos: el total pasó
-    # de 2,050,000 a 4,100,000, o sea que entraron otros 2,050,000.
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("4100000")
+    # Lo copiado suma el nuevo objetivo, no los $4,050,000 viejos, y como
+    # reemplazó al estimado el total ES ese objetivo.
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2050000")
     assert _dec(_estimate_of(r["budget"], 100, 16_500)["budgetedAmount"]) == Decimal("1650000")
 
 
@@ -1230,8 +1265,8 @@ def test_the_proportional_copy_still_skips_what_the_destination_already_has(
 
 def test_the_direct_copy_does_not_scale_a_single_peso(client, test_property, modelo):
     """Sin pedir la copia proporcional no se mueve nada: los importes llegan tal
-    cual y el total del destino sigue donde estaba, que es lo que copiar hizo
-    siempre."""
+    cual, sin un `round()` que le toque un centavo a un precio que nadie pidió
+    escalar."""
     r = _apply(client, test_property["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
@@ -1241,9 +1276,11 @@ def test_the_direct_copy_does_not_scale_a_single_peso(client, test_property, mod
     assert _dec(detalladas["Piso cerámico"]["quantity"]) == Decimal("100")
     assert _dec(detalladas["Licencias"]["unitPrice"]) == Decimal("50000")
     assert detalladas["Licencias"]["isProportional"] is False
-    # Y el total subió exactamente lo que traía el origen: 2,050,000 sobre los
-    # 2,340,000 que esta obra ya tenía. Copiar agrega; no reparte un total fijo.
-    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("2050000")
+    # Y el total es exactamente lo que traía el origen: el destino no tenía más
+    # que su estimado y el desglose lo reemplazó. Aquí el modo directo SÍ mueve
+    # el total —a 2,050,000 desde los 2,340,000 estimados— porque el desglose de
+    # la otra obra vale lo que vale; dimensionarlo es lo que pide la proporcional.
+    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2050000")
 
 
 def test_a_destination_without_a_cost_of_works_is_refused_and_says_where_to_fix_it(

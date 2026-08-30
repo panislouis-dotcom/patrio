@@ -194,11 +194,12 @@ def _set_budget(property_id: int, amount) -> None:
 # The complete cost breakdown of a property, for a CREATE and only a create.
 #
 # It used to say "a create or a transition", and that stopped being true when the
-# cost of works became the budget's sum: `constructionCostPerSqm` and
-# `constructionOverhead` are no longer writable fields but inputs to the
-# CALCULATOR that seeds the first budget line, which only POST /api/properties
-# runs. Hand this dict to a PATCH or a transition and those two are dropped in
-# silence — the property is born with no works, and nothing raises.
+# cost of works became the budget's sum. `constructionCostPerSqm` IS writable —
+# it is the assumption you captured, and a PATCH stores it — but writing it moves
+# nothing: the pair only reaches the BUDGET through the calculator that seeds the
+# first line, and only POST /api/properties runs it. `constructionOverhead` is
+# not writable at all: it is an input to that one calculation and nothing else.
+# Hand this dict to a PATCH or a transition and no budget line is born.
 #
 # 1,000,000×1.065 + 50,000 + 25,000 + 200×9,000×1.3 = 3,480,000, where the last
 # term is the seeded budget and therefore `constructionBudgeted`.

@@ -175,6 +175,41 @@ def test_a_seeded_budget_does_not_block_the_delete(client, test_property):
     assert client.get(f"/api/properties/{pid}").status_code == 404
 
 
+def test_a_line_of_your_own_with_no_execution_is_knowingly_not_protected(
+        client, test_property):
+    """LA RENDIJA, FIJADA A PROPÓSITO: no es un descuido, es el precio elegido.
+
+    «¿Trabajó alguien aquí?» se contesta CONTANDO —a lo más un renglón, y
+    ninguno con ejecución (`budget_db._NOTHING_BUT_THE_ESTIMATE`)—. No pregunta
+    CUÁL renglón, y no puede: el nombre del estimado lleva dentro los m² y el
+    $/m², así que corregir el metraje en la ficha lo cambiaría y la propiedad se
+    volvería indeleble por una edición que ni siquiera habla del presupuesto.
+
+    De ahí el hueco que este test fija: quien BORRE el estimado, teclee UNO
+    propio y no le ponga ejecución —ni proveedor, ni comprometido, ni cantidad
+    real, ni cierre, ni pago— cae del lado de «aquí no ha trabajado nadie», y ese
+    renglón se va con la propiedad sin 422 que lo detenga. Se elige contra la
+    alternativa —retener por cualquier renglón—, que volvería indeleble a TODA
+    propiedad dada de alta con la calculadora y le pondría al 422 una fila que
+    puso el sistema. Basta un segundo renglón, o un solo dato de ejecución, para
+    que sí retenga: eso lo fija el test de aquí arriba."""
+    pid = test_property["id"]
+    estimado = client.get(f"/api/properties/{pid}/budget").json()["lines"][0]["id"]
+    assert client.delete(
+        f"/api/properties/{pid}/budget/lines/{estimado}").status_code == 200
+    r = client.post(f"/api/properties/{pid}/budget/lines", json={
+        "chapterName": "Albañilería", "name": "Muros", "unit": "m2",
+        "quantity": 100, "unitPrice": 900})
+    assert r.status_code == 201, r.text
+    linea = r.json()["line"]["id"]
+
+    assert client.delete(f"/api/properties/{pid}").status_code == 204
+    assert client.get(f"/api/properties/{pid}").status_code == 404
+    with get_db() as conn:
+        assert conn.execute("SELECT 1 FROM budget_lines WHERE id = %s",
+                            (linea,)).fetchone() is None
+
+
 def test_quality_reports_issues_per_property(client, test_property):
     r = client.get("/api/quality")
     assert r.status_code == 200

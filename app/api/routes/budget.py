@@ -145,13 +145,21 @@ class BudgetApply(BaseModel):
 def _written(property_id: int, budget: dict, line: dict | None = None) -> dict:
     """La respuesta de toda escritura, armada en un solo lugar.
 
-    `budgetIncrease` SE QUEDÓ EN CERO, siempre, y se publica solo para que el
-    cliente de este despliegue siga compilando. Decía cuánto había REBASADO el
-    detalle al residual —la única forma en que el total podía moverse cuando
-    detallar no lo movía— y esa condición ya no puede ocurrir: hoy toda
-    escritura mueve el total exactamente su propio importe, y el `budget` y la
-    `property` que viajan aquí al lado ya lo dicen con la cifra en la mano. Se
-    retira con la pantalla que lo lee."""
+    `budgetIncrease` está DEPRECADO y SE QUEDÓ EN CERO, siempre. Lo retira
+    **PR 2 · Contract**, el mismo que hace el `DROP COLUMN is_residual`, y por
+    la misma razón: el cable necesita la misma disciplina expand/contract que la
+    columna. El SPA y el API viajan en UNA imagen —no hay despliegue de frontend
+    por separado— pero quien tenga la página abierta durante el rollout está
+    corriendo el JS viejo contra el API nuevo, y ESA sesión en vuelo es toda la
+    superficie de compatibilidad que hay. Quitarlo hoy la rompería.
+
+    Decía cuánto había REBASADO el detalle al residual —la única forma en que el
+    total podía moverse cuando detallar no lo movía— y esa condición ya no puede
+    ocurrir: hoy toda escritura mueve el total exactamente su propio importe.
+    Reportar el delta de verdad dispararía el toast «El detalle rebasó el
+    estimado» de BudgetPanel en CADA renglón que se agregue, con un texto que ya
+    no significa nada. Cero es la respuesta correcta, y el `budget` y la
+    `property` que viajan aquí al lado dicen el total con la cifra en la mano."""
     return {
         "line": line,
         "budget": budget,
