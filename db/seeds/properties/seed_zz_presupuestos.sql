@@ -28,7 +28,7 @@
 -- necesite abrir una transacción: las semillas corren con `psql -f` sin `-1`, o
 -- sea autocommit por sentencia, así que el presupuesto y su renglón caen en
 -- transacciones distintas. Cuando la procedencia se deducía de `created_at` eso
--- dejaba a las 18 propiedades sembradas indelebles; declarándola, el límite
+-- dejaba a las 16 propiedades sembradas indelebles; declarándola, el límite
 -- transaccional deja de importar. Es exactamente lo que la 054 vino a arreglar.
 --
 -- Solo siembra lo que falta: correr las semillas dos veces no duplica el costo

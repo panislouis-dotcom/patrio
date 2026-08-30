@@ -19,7 +19,7 @@
 --      cotizados a mano» de $950,000.
 --   2. Las semillas corren con `psql -f` SIN `-1` (ver makefile), o sea
 --      autocommit por sentencia: el INSERT del presupuesto y el del renglón caen
---      en transacciones distintas y sus marcas difieren. Las 18 propiedades
+--      en transacciones distintas y sus marcas difieren. Las 16 propiedades
 --      sembradas quedan indelebles y sin reemplazo posible.
 --
 --      Y ESO NO SE ARREGLA SOLO EN UNA BASE YA SEMBRADA. El relleno de abajo

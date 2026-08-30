@@ -348,7 +348,7 @@ In a line `PATCH`, **a `null` travels and means "clear it"** — the opposite of
 Deleting a property that holds captured work is a `422` with its reason in words, not a silent cascade.
 
 Key `operation_id`s:
-- `budget_get` — `GET /api/properties/{id}/budget` → `{id, propertyId, lines, chapters}`, ordered by chapter
+- `budget_get` — `GET /api/properties/{id}/budget[?planId=…]` → `{id, propertyId, planId, lines, chapters}`, ordered by chapter. Without `planId` this is the property's own budget — the only one that feeds the finances; with it, that plan's scenario budget
 - `budget_line_create` — `POST /api/properties/{id}/budget/lines` — `chapterName` and `name` required; the rest is filled cell by cell
 - `budget_line_update` — `PATCH /api/properties/{id}/budget/lines/{line_id}`
 - `budget_line_delete` — `DELETE /api/properties/{id}/budget/lines/{line_id}`
@@ -356,6 +356,8 @@ Key `operation_id`s:
 - `budget_chapter_delete` — `DELETE /api/properties/{id}/budget/chapters/{chapter}`
 - `budget_payment_create` — `POST /api/properties/{id}/budget/lines/{line_id}/payments`
 - `budget_payment_delete` — `DELETE /api/properties/{id}/budget/lines/{line_id}/payments/{payment_id}`
+- `budget_plan_create` — `POST /api/properties/{id}/budget/plans/{plan_id}` — body `{copyFromProperty?, sourceBudgetId?}`; a plan's scenario budget is born by an explicit action, never by reading one. Empty, copied from the property's own budget, or copied from any other budget. Answers `{budget, linesAdded, linesSkipped}`
+- `budget_plan_use` — `POST /api/properties/{id}/budget/plans/{plan_id}/use` — "use this plan": its lines enter THE PROPERTY's budget through the same door as copying from another job, skipping what is already there. The scenario is left intact — it is the proposal, and a proposal gets graded
 - `budget_apply` — `POST /api/properties/{id}/budget/apply` — body `{budgetId, chapters?, proportional?}`; copies the budget of another job over this one. `chapters` absent or `null` copies the whole thing; a list copies only those chapters, named exactly as `budget_get` publishes them. Answers `{…, linesAdded, linesSkipped}`.
 
 **`proportional: true` copies the shape and not the size.** The copied lines are scaled so their sum lands exactly on the cost of works **this** job already has — the sum of its own budget — instead of arriving with the other job's amounts. Lines marked `isProportional: false` (permits, licences: they cost what they cost) come over untouched and are excluded from both ends of the ratio; everything else, the source's estimate line included, is scaled by one server-computed factor, so the destination inherits how much is left to detail too. **The target is read, never sent**: there is no `costPerSqm` and no factor in the body, and a job whose budget is still $0 is refused, pointing at its budget. Note that **the direct copy ADDS**: its lines land on top of what was already there and the total rises by their sum. **`proportional` only exists where the copy replaces** — a whole-budget copy onto a job that holds nothing but its seeded estimate. There the estimate is deleted first and the total lands on exactly the target, never at twice it; anywhere else (a single chapter, or a job with lines somebody captured) it is refused with a `422` that says why, rather than landing on top and contradicting its own guarantee.
@@ -365,7 +367,7 @@ Key `operation_id`s:
 **Copying from another job is the only start that is not manual capture.** There are no budget templates: every budget belongs to a job, and the database now requires it. A curated template only beats "copy the job next door" while somebody keeps it curated, and the most recent similar job is more up to date than any template without anyone doing anything.
 
 Key `operation_id`s:
-- `budget_sources_list` — `GET /api/budget/sources?excludeBudgetId=…` — the jobs `budget_apply` can copy from, each with its property's name and how many lines it would actually bring (every line travels, the estimate included); jobs with no lines at all are left out, and `excludeBudgetId` drops the asking budget itself
+- `budget_sources_list` — `GET /api/budget/sources?excludeBudgetId=…&includeEmpty=…` — the budgets `budget_apply` can copy from — each job's own and each plan scenario, labelled — with its property's name and how many lines it would actually bring (every line travels, the estimate included). The exclusion is **by budget id, not by property**, and deliberately so: the asking budget drops out while the same job's other plan scenarios stay on offer, since copying between them is a real move. Budgets with no lines are left out, because as a SOURCE one that gives nothing is not an answer; `includeEmpty=true` puts them back for the list of push DESTINATIONS, where an empty budget is a perfectly good target
 
 ### 2. Sonar — real-time market scraper
 

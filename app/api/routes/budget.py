@@ -157,8 +157,13 @@ def _written(property_id: int, budget: dict, line: dict | None = None) -> dict:
     total podía moverse cuando detallar no lo movía— y esa condición ya no puede
     ocurrir: hoy toda escritura mueve el total exactamente su propio importe.
     Reportar el delta de verdad dispararía el toast «El detalle rebasó el
-    estimado» de BudgetPanel en CADA renglón que se agregue, con un texto que ya
-    no significa nada. Cero es la respuesta correcta, y el `budget` y la
+    estimado» del BudgetPanel VIEJO —el de la sesión en vuelo durante el
+    rollout— en CADA renglón que se agregue, con un texto que ya no significa
+    nada. En HEAD ese aviso ya no existe (murió con el residuo que lo hacía
+    posible: `BudgetPanel.tsx:421`, y su ausencia está fijada en
+    `BudgetPanel.test.tsx`), y precisamente por eso el cero no se puede quitar
+    todavía: el único lector que aún reacciona al delta es el JS que ya no
+    volveríamos a escribir. Cero es la respuesta correcta, y el `budget` y la
     `property` que viajan aquí al lado dicen el total con la cifra en la mano."""
     return {
         "line": line,
