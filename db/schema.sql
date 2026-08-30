@@ -268,7 +268,7 @@ CREATE TABLE public.budget_lines (
 -- Name: COLUMN budget_lines.is_residual; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.budget_lines.is_residual IS 'MUERTA desde la migración 053: ya no existe el renglón residual. Su regla —«el importe es el total del presupuesto menos la suma de los detallados»— se retiró: el total es la suma de sus renglones y una holgura es un renglón normal, con el nombre que alguien le puso, que se edita y se borra como cualquier otro. Sobrevive en FALSE únicamente para que los pods viejos no truenen durante el rollout (las migraciones corren como hook PreSync, antes de que entren los nuevos). Pendiente de DROP en la 054; nada debe volver a leerla ni escribirla.';
+COMMENT ON COLUMN public.budget_lines.is_residual IS 'MUERTA desde la migración 053: ya no existe el renglón residual. Su regla —«el importe es el total del presupuesto menos la suma de los detallados»— se retiró: el total es la suma de sus renglones y una holgura es un renglón normal, con el nombre que alguien le puso, que se edita y se borra como cualquier otro. Sobrevive en FALSE únicamente para que los pods viejos no truenen durante el rollout (las migraciones corren como hook PreSync, antes de que entren los nuevos). Pendiente de DROP en PR 2 · Contract; nada debe volver a leerla ni escribirla.';
 
 
 --
