@@ -59,9 +59,11 @@ const categoria = (id: number, name: string) => ({ id, name, description: '', cr
  */
 const FUENTES: BudgetSource[] = [
   { id: 500, name: 'Zaragoza 100', propertyId: 4, lineCount: 18, total: 1_800_000,
-    planId: null, planName: null, sqmConstruction: 200, constructionCostPerSqm: 10_000 },
+    planId: null, planName: null, sqmConstruction: 200, constructionCostPerSqm: 10_000,
+    replaceable: true },
   { id: 501, name: 'Modesto 415', propertyId: 3, lineCount: 22, total: 2_300_000,
-    planId: null, planName: null, sqmConstruction: 250, constructionCostPerSqm: 10_000 },
+    planId: null, planName: null, sqmConstruction: 250, constructionCostPerSqm: 10_000,
+    replaceable: true },
 ]
 
 /**
@@ -75,7 +77,11 @@ const destino = (over: Partial<BudgetSource>): BudgetSource => ({
   // otro; hoy hay una sola suma y el cliente dejó de leer el campo viejo.
   id: 300, name: 'Modesto 415', propertyId: 3, lineCount: 12, total: 2_000_000,
   planId: null, planName: null,
-  sqmConstruction: null, constructionCostPerSqm: null, ...over,
+  sqmConstruction: null, constructionCostPerSqm: null,
+  // Lo normal: un destino que todavía no tiene más que su estimado inicial, que
+  // es donde la copia proporcional puede reemplazar. Lo contrario se pide por
+  // `over`, y entonces el destino queda bloqueado ANTES de llamar.
+  replaceable: true, ...over,
 })
 const DESTINOS: BudgetSource[] = [
   destino({}),
@@ -1156,6 +1162,69 @@ describe('BudgetPanel', () => {
     expect(vi.mocked(api.applyBudgetSource).mock.calls)
       .toEqual([[3, 9, null, true, undefined], [4, 9, null, true, undefined]])
     expect(await screen.findByText(/Modesto 415: no se copió — El presupuesto de destino está cerrado\./))
+      .not.toBeNull()
+    expect(await screen.findByText(/Zaragoza 100: 2 renglones agregados/)).not.toBeNull()
+  })
+
+  it('elegir capítulos APAGA la proporcional: un capítulo suelto no puede reemplazar un presupuesto', async () => {
+    // `_require_replaceable` la rechaza de plano cuando `chapters` no es null: la
+    // proporcional dimensiona lo copiado al costo del destino Y lo reemplaza, y
+    // un capítulo suelto no puede sumar el presupuesto completo. Ofrecerla aquí
+    // era prometer un total que iba a volver como 422. No se esconde el error:
+    // el estado ilegal deja de poder representarse.
+    await renderPanel(DETALLADO)
+    await abrirEmpujar()
+    fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    // Con el presupuesto entero sí se puede, y se ve a qué costo entra
+    expect(screen.getByText('$2,000,000')).not.toBeNull()
+
+    fireEvent.click(screen.getByLabelText('Copiar capítulo Instalaciones'))
+
+    const prop = screen.getByLabelText('Copia proporcional a otras obras') as HTMLInputElement
+    expect(prop.disabled).toBe(true)
+    expect(prop.checked).toBe(false)
+    // Y el modo no queda en el aire: cae a DIRECTO, que sí se puede
+    expect((screen.getByLabelText('Copia directa a otras obras') as HTMLInputElement).checked)
+      .toBe(true)
+    // Apagado CON su motivo: un control muerto sin explicación es peor que uno
+    // que se rompe
+    expect(screen.getByText(/un capítulo suelto no puede sumar el presupuesto completo/))
+      .not.toBeNull()
+    // Y con el modo caído, el preview del objetivo se va con él
+    expect(screen.queryByText('$2,000,000')).toBeNull()
+  })
+
+  it('un destino con presupuesto propio se bloquea ANTES de llamar, y no frena a los demás', async () => {
+    // `replaceable` lo contesta el servidor por fila: la proporcional sólo entra
+    // donde no hay más que el estimado inicial. Sin ese dato el cliente prometía
+    // «entra a $2,400,000» y el servidor devolvía 422 —el lugar ya estaba
+    // ocupado, y lo copiado se habría sumado encima—.
+    await renderPanel(CON_FIJA)
+    await abrirEmpujar([
+      destino({ total: 2_400_000, replaceable: false }),
+      destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, total: 3_000_000 }),
+    ])
+    fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
+    vi.mocked(api.applyBudgetSource).mockResolvedValue(copiado(2, 0))
+
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    fireEvent.click(screen.getByLabelText('Copiar a Zaragoza 100'))
+
+    // El motivo es accionable: dice qué hacer en vez de enseñar el rechazo crudo
+    expect(screen.getByText(/ya tiene renglones capturados/)).not.toBeNull()
+    expect(screen.getByText(/Cópiale DIRECTO, o borra allá esos renglones/)).not.toBeNull()
+    expect(screen.getByText(/1 de las elegidas se quedan fuera/)).not.toBeNull()
+    // Y la que sí puede conserva su preview: una bloqueada no apaga a las demás
+    expect(screen.getByText('$3,000,000')).not.toBeNull()
+    expect(screen.getByText(/EL RESTO ×/)).not.toBeNull()
+
+    fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
+
+    // UNA sola llamada, y es la de la obra que sí: la bloqueada nunca se pide
+    await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(api.applyBudgetSource).mock.calls[0]).toEqual([4, 9, null, true, undefined])
+    expect(await screen.findByText(/Modesto 415: no se copió — esa obra ya tiene renglones capturados/))
       .not.toBeNull()
     expect(await screen.findByText(/Zaragoza 100: 2 renglones agregados/)).not.toBeNull()
   })

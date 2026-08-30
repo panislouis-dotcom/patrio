@@ -195,9 +195,15 @@ interface Scope {
  * Es la MISMA cuenta que hace `_proportional_factor` en el servidor, y por eso
  * el denominador es «el total del origen menos las fijas» y no «la suma de lo
  * proporcional»: las fijas se apartan de las dos puntas de la razón —ni
- * consumen factor ni lo reciben— y se restan solo sobre los capítulos que esta
- * copia sí se lleva. Cuando viaja el presupuesto entero, que es el caso normal,
- * las dos formas de escribirlo dan el mismo número.
+ * consumen factor ni lo reciben—.
+ *
+ * **LAS DOS SUMAS SALEN DEL MISMO CONJUNTO DE FILAS**, que es lo que esta copia
+ * se lleva. El filtro de capítulos iba puesto sobre las fijas y no sobre el
+ * total, así que un escalable que NO viajaba entraba igual al denominador y el
+ * factor prometía algo sobre filas que nunca se copiaron. Hoy no se nota —la
+ * proporcional exige el presupuesto entero, así que `chapters` llega en `null`—
+ * pero la garantía enunciada y la aritmética tienen que ser la misma frase, no
+ * dos que hoy dan igual.
  *
  * Cuenta TODOS los renglones, sin excepción: una holgura («por detallar») es un
  * renglón como cualquier otro, así que escala como cualquier otro y el destino
@@ -215,8 +221,8 @@ function scopeOf(lines: BudgetLine[], chapters: string[] | null): Scope {
   let total = 0
   let fixed = 0
   for (const l of lines) {
-    total += l.budgetedAmount
     if (chapters !== null && !chapters.includes(l.chapterName)) continue
+    total += l.budgetedAmount
     if (l.isProportional === false) fixed += l.budgetedAmount
   }
   return { fixed, scaling: total - fixed }
@@ -253,13 +259,27 @@ interface Plan {
  * se captura: su ficha. La guarda de las fijas se queda porque es una imposi-
  * bilidad aritmética real —el servidor la rechaza con 422— y trae los dos montos,
  * porque «no caben» sin las cifras no dice cuánto le falta al objetivo.
+ *
+ * `replaceable` lo contesta el servidor por cada destino: la proporcional
+ * REEMPLAZA, y sólo reemplaza donde no hay más que el estimado inicial. Se
+ * pregunta aquí y no después porque un destino ocupado se rechaza SIEMPRE, y
+ * enseñar «entra a $2,400,000» para luego devolver un 422 es prometer un número
+ * que nunca iba a pasar. El predicado no se rehace de este lado —vive en
+ * `_UNTOUCHED_BUDGET`, sobre columnas que el renglón ni siquiera publica— así
+ * que se transporta, no se adivina.
  */
-function planFor(target: number | null | undefined, scope: Scope): Plan {
+function planFor(target: number | null | undefined, scope: Scope, replaceable: boolean): Plan {
   const base = { target: null, fixed: scope.fixed, scaling: scope.scaling, factor: null }
   if (target == null || target <= 0) {
     return {
       ...base,
       blocker: 'esa obra todavía no tiene costo de obra: se captura renglón por renglón en su presupuesto',
+    }
+  }
+  if (!replaceable) {
+    return {
+      ...base, target,
+      blocker: 'esa obra ya tiene renglones capturados, y la proporcional dimensiona lo copiado a ese mismo costo: entraría encima y el total quedaría al doble. Cópiale DIRECTO, o borra allá esos renglones',
     }
   }
   if (target <= scope.fixed) {
@@ -363,7 +383,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
    * selección cuando llegan los datos.
    */
   const [pickedChapters, setPickedChapters] = useState<Set<string> | null>(null)
-  const [pushMode, setPushMode] = useState<CopyMode>('directo')
+  const [pushModePicked, setPushModePicked] = useState<CopyMode>('directo')
   /** Copiando ahora mismo: hay N llamadas en vuelo, una tras otra. */
   const [copying, setCopying] = useState(false)
   const [pushResults, setPushResults] = useState<PushResult[]>([])
@@ -590,6 +610,30 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
     : copyableChapters.filter(c => pickedChapters.has(c))
 
   /**
+   * Por qué la proporcional no está disponible ahora mismo, o null cuando sí.
+   *
+   * Es la MITAD del `_require_replaceable` del servidor que se contesta de este
+   * lado: la proporcional dimensiona lo copiado al costo de obra del destino y
+   * lo REEMPLAZA, así que un capítulo suelto —que por definición no suma el
+   * presupuesto completo— no puede hacerlo. La otra mitad, si el destino está
+   * ocupado, la contesta él en `replaceable`.
+   */
+  const pushProportionalBlocked = chaptersToPush === null
+    ? null
+    : 'un capítulo suelto no puede sumar el presupuesto completo del destino'
+
+  /**
+   * El modo con el que se copia DE VERDAD, que no siempre es el que dice el
+   * radio: con capítulos elegidos, la proporcional deja de ser alcanzable y el
+   * modo cae a directo. Derivado en vez de un `setPushMode` dentro de
+   * `toggleChapter` porque así el estado ilegal no EXISTE: escrito como efecto
+   * habría un render con el modo y los capítulos contradiciéndose, y sobre todo
+   * habría dos sitios que mantener de acuerdo —el mismo desfase que ya se pagó
+   * una vez entre el `disabled` del botón y su cursor—.
+   */
+  const pushMode: CopyMode = pushProportionalBlocked === null ? pushModePicked : 'directo'
+
+  /**
    * Lo que de ESTE presupuesto escala y lo que no, ya acotado a los capítulos
    * elegidos. Es el origen de todos los planes de empuje: la forma es la misma
    * para las cinco obras destino, lo que cambia entre ellas es el objetivo.
@@ -600,7 +644,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
    * El plan de UNA obra destino, contra SU costo de obra. En directo no hay nada
    * que planear: se copia tal cual y ninguna obra puede quedar bloqueada.
    */
-  const planOf = (t: BudgetSource): Plan => planFor(t.total, pushScope)
+  const planOf = (t: BudgetSource): Plan => planFor(t.total, pushScope, t.replaceable)
   /** «Casa Modesto» o «Casa Modesto · Plan A»: un escenario se nombra con su obra. */
   const budgetLabel = (s: BudgetSource) => (s.planName ? `${s.name} · ${s.planName}` : s.name)
 
@@ -625,9 +669,20 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
     && readyTargets.length > 0
     && (chaptersToPush === null || chaptersToPush.length > 0)
 
-  /** Lo que de aquel presupuesto escala y lo que no, y el objetivo de ESTA obra. */
+  /**
+   * Lo que de aquel presupuesto escala y lo que no, y el objetivo de ESTA obra.
+   *
+   * Aquí el destino es ESTA obra, y su `replaceable` NO viaja: la lista de
+   * `/api/budget/sources` excluye al presupuesto que pregunta, así que el campo
+   * existe para todos menos para el único que hace falta en este sentido. Se
+   * pasa `true` —no bloquear— antes que rehacer `_UNTOUCHED_BUDGET` de este lado
+   * sobre columnas que el renglón no publica: una segunda copia de la regla se
+   * desincronizaría en silencio, y un bloqueo equivocado es peor que el 422 que
+   * ya se enseña con su motivo. Falta `replaceable` en el payload del propio
+   * presupuesto; queda reportado.
+   */
   const sourceScope = scopeOf(sourceBudget?.lines ?? [], null)
-  const sourcePlan = planFor(property.constructionBudgeted, sourceScope)
+  const sourcePlan = planFor(property.constructionBudgeted, sourceScope, true)
   /** En directo se copia tal cual; en proporcional hace falta que el plan cierre. */
   const canPull = pickedSource !== ''
     && (sourceMode === 'directo' || sourcePlan.blocker === null)
@@ -761,29 +816,43 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
    *
    * `scope` desambigua los dos grupos de radios cuando los dos paneles están
    * abiertos —comparten pantalla, y sin `name` distinto serían un solo grupo.
+   *
+   * `blocked` es el motivo por el que la PROPORCIONAL no se puede ahora, o null.
+   * Deshabilita el radio en vez de dejar que se marque y falle después: el
+   * servidor la rechaza de plano en ese caso, y ofrecerla sería prometer un
+   * total que nunca iba a entrar. El motivo va al lado, porque un control
+   * apagado sin explicación es peor que uno que se rompe.
    */
-  const modeChoice = (scope: string, value: CopyMode, onPick: (m: CopyMode) => void) => (
+  const modeChoice = (
+    scope: string, value: CopyMode, onPick: (m: CopyMode) => void,
+    blocked: string | null = null,
+  ) => (
     <div style={panelRow}>
       <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>CÓMO SE COPIA</span>
       {([
         ['directo', 'directa', 'Los mismos montos, tal cual.'],
         ['proporcional', 'proporcional', 'La misma forma, dimensionada al costo de la obra destino.'],
-      ] as const).map(([m, adj, dice]) => (
-        <label key={m} style={checkLabel}>
-          <input
-            type="radio"
-            name={`modo-${scope}`}
-            checked={value === m}
-            aria-label={`Copia ${adj} ${scope}`}
-            onChange={() => onPick(m)}
-            style={{ accentColor: colors.primary, cursor: 'pointer' }}
-          />
-          <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
-            {m.toUpperCase()}
-          </span>
-          {value === m && <span style={micro}>{dice}</span>}
-        </label>
-      ))}
+      ] as const).map(([m, adj, dice]) => {
+        const off = m === 'proporcional' && blocked !== null
+        return (
+          <label key={m} style={{ ...checkLabel, opacity: off ? 0.5 : 1 }}>
+            <input
+              type="radio"
+              name={`modo-${scope}`}
+              checked={value === m}
+              disabled={off}
+              aria-label={`Copia ${adj} ${scope}`}
+              onChange={() => onPick(m)}
+              style={{ accentColor: colors.primary, cursor: off ? 'not-allowed' : 'pointer' }}
+            />
+            <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
+              {m.toUpperCase()}
+            </span>
+            {off && <span style={micro}>No se puede: {blocked}.</span>}
+            {!off && value === m && <span style={micro}>{dice}</span>}
+          </label>
+        )
+      })}
     </div>
   )
 
@@ -1063,7 +1132,10 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
             ))}
           </div>
 
-          {modeChoice('a otras obras', pushMode, setPushMode)}
+          {/* Con capítulos elegidos la proporcional queda apagada CON SU MOTIVO:
+              el servidor la rechaza de plano, así que ofrecerla aquí sería
+              prometer un dimensionado que iba a volver como 422. */}
+          {modeChoice('a otras obras', pushMode, setPushModePicked, pushProportionalBlocked)}
 
           {/* CADA DESTINO CON SU PROPIO COSTO DE OBRA, leído de su ficha. Dos
               obras del mismo tamaño pueden construirse a niveles de costo
@@ -1099,12 +1171,12 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
               Se agregan a lo que cada obra ya tenga; los renglones que ya existan allá
               se saltan sin tocarse. El total de cada una sube en lo que le entre.
             </span>
-            {/* Una obra sin metraje no cancela a las demás: se queda fuera con
-                su motivo y las otras se copian igual. */}
+            {/* Una obra bloqueada no cancela a las demás: se queda fuera con su
+                motivo —arriba, renglón por renglón— y las otras se copian igual. */}
             {pushMode === 'proporcional' && readyTargets.length < chosenTargets.length && (
               <span style={{ ...micro, color: '#c0392b' }}>
                 {chosenTargets.length - readyTargets.length} de las elegidas se quedan fuera
-                por lo que les falta; a las demás sí se les copia.
+                por su motivo, arriba; a las demás sí se les copia.
               </span>
             )}
           </div>

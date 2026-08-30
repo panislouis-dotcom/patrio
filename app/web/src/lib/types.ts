@@ -950,6 +950,18 @@ export interface BudgetSource {
    * después, así que se puede prometer tal cual. */
   lineCount: number
   /**
+   * Si el servidor aceptaría una copia PROPORCIONAL *hacia* este presupuesto,
+   * por lo que toca a su CONTENIDO: la proporcional reemplaza, y sólo reemplaza
+   * donde no hay más que el estimado con el que nació la obra. Un presupuesto ya
+   * capturado la rechaza con 422 —lo copiado se sumaría encima y el total
+   * quedaría al doble—, y el cliente lo sabe antes de prometer un número.
+   *
+   * NO dice nada sobre la regla del capítulo suelto: ésa el cliente ya la
+   * conoce, porque es él quien elige los capítulos. Son dos mitades del mismo
+   * `_require_replaceable`, y cada una se contesta donde vive su dato.
+   */
+  replaceable: boolean
+  /**
    * La suma de sus renglones — y por eso es también el objetivo del destino en
    * una copia proporcional. `fullTotal` acompañaba a este campo cuando el
    * residuo entraba en uno y no en el otro; hoy serían el mismo número, y el
