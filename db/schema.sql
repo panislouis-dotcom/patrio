@@ -1,7 +1,7 @@
 \restrict dbmate
 
--- Dumped from database version 16.14
--- Dumped by pg_dump version 18.4
+-- Dumped from database version 16.13
+-- Dumped by pg_dump version 18.6
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -267,7 +267,7 @@ CREATE TABLE public.budget_lines (
 -- Name: COLUMN budget_lines.is_residual; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.budget_lines.is_residual IS 'El renglón que absorbe lo que todavía no se detalla: su importe es el total del presupuesto menos la suma de los detallados. No se captura a mano — convertir una resta determinista en una segunda captura es donde nace el descuadre. Uno por presupuesto, y el índice único parcial lo garantiza.';
+COMMENT ON COLUMN public.budget_lines.is_residual IS 'MUERTA desde la migración 053: ya no existe el renglón residual. Su regla —«el importe es el total del presupuesto menos la suma de los detallados»— se retiró: el total es la suma de sus renglones y una holgura es un renglón normal, con el nombre que alguien le puso, que se edita y se borra como cualquier otro. Sobrevive en FALSE únicamente para que los pods viejos no truenen durante el rollout (las migraciones corren como hook PreSync, antes de que entren los nuevos). Pendiente de DROP en la 054; nada debe volver a leerla ni escribirla.';
 
 
 --
@@ -1028,14 +1028,14 @@ COMMENT ON COLUMN public.properties.acquisition_cost_pct IS 'Supuesto: costos de
 -- Name: COLUMN properties.construction_cost_per_sqm; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.properties.construction_cost_per_sqm IS 'RETIRADA como insumo del costo de obra: desde la fase 2 el costo de obra es la suma del presupuesto (budget_lines) y esta cifra se DERIVA —presupuesto ÷ m² de obra— para mostrarse. El API ya no la lee ni la escribe; solo las semillas la usan para calcular el primer renglón. Pendiente de DROP junto con la reescritura de db/seeds.';
+COMMENT ON COLUMN public.properties.construction_cost_per_sqm IS 'Supuesto CAPTURADO: el costo por m² que teclea quien evalúa la propiedad. Vuelve a ser insumo —la 033 lo había convertido en derivado (presupuesto ÷ m²)— porque desde la 053 convive CON ese derivado en pantalla, rotulados: tu estimado contra el presupuesto. Dos números reales, ninguno gobierna al otro y ninguno es el fallback del otro; solo así la comparación es honesta. No mueve el presupuesto: la calculadora escribe UN renglón al nacer la propiedad y de ahí en adelante el presupuesto es dato propio.';
 
 
 --
 -- Name: COLUMN properties.construction_overhead; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.properties.construction_overhead IS 'RETIRADO como multiplicador vivo: la 032 lo aplicó UNA sola vez al sembrar y el 30% de indirectos ya vive dentro del importe del presupuesto. Volver a multiplicar por él inflaría cada costo de obra sin que nada se viera roto. El API ya no lo lee ni lo publica como supuesto; solo las semillas lo usan para calcular el primer renglón. Pendiente de DROP junto con la reescritura de db/seeds.';
+COMMENT ON COLUMN public.properties.construction_overhead IS 'Supuesto: multiplicador de costos indirectos de obra. NULL = se aplica el default del sistema (1.3); un 0 capturado es identidad 1, nunca ×0. Aplica SOLO al producir el estimado inicial —el renglón que la calculadora escribe al nacer la propiedad, con el overhead ya dentro del importe— y nunca vuelve a multiplicar el presupuesto, que es la suma de sus renglones. Pendiente de DROP junto con la reescritura de db/seeds.';
 
 
 --
@@ -2781,13 +2781,6 @@ CREATE INDEX idx_template_nodes_supplier_cat ON public.template_nodes USING btre
 
 
 --
--- Name: uq_budget_lines_residual; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX uq_budget_lines_residual ON public.budget_lines USING btree (budget_id) WHERE is_residual;
-
-
---
 -- Name: uq_budgets_property; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3312,4 +3305,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('049'),
     ('050'),
     ('051'),
-    ('052');
+    ('052'),
+    ('053');
