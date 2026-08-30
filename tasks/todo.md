@@ -79,14 +79,16 @@ que la PRIMERA partida tecleada a mano cae en la misma transacción y se lee com
 y las semillas corren con `psql -f` sin `-1`, autocommit por statement, así que las que SÍ
 son sembradas no coinciden. Se registra el hecho en vez de inferirlo.
 
-- [ ] `054_renglon_sembrado.sql` — `budget_lines.seeded BOOLEAN NOT NULL DEFAULT FALSE`
-- [ ] Backfill con el predicado de hoy: única partida, sin ejecución, `created_at` igual al del presupuesto
-- [ ] `seed_estimate_line` es el ÚNICO escritor que la pone en `TRUE`
-- [ ] `_UNTOUCHED_BUDGET` usa `seeded` en lugar de la igualdad de `created_at`
-- [ ] `seed_zz_presupuestos.sql` la pone explícita; se cae la necesidad del `BEGIN;`/`COMMIT;`
-- [ ] Mismo archivo: el nombre sembrado sale con puntos colgando (`100. m² × $9,000./m²`) — igualar a `estimate_line_name`
-- [ ] Nota en la migración: los pods VIEJOS del rollout escriben `seeded = FALSE`; ventana sub-minuto, se corrige a mano
-- [ ] `seeded` viaja al payload por el `l.*` de `_LINES_SQL` — queda en el contrato del wire desde que existe
+- [x] `054_renglon_sembrado.sql` — `budget_lines.seeded BOOLEAN NOT NULL DEFAULT FALSE`
+- [x] Backfill con el predicado de hoy: única partida, sin ejecución, `created_at` igual al del presupuesto
+- [x] `seed_estimate_line` la pone en `TRUE`; `_COPIED_LINE_COLUMNS` la arrastra —
+      la procedencia tiene que sobrevivir a la copia o un escenario de plan nace
+      leyéndose como trabajo tecleado (desviación aprobada, la encontró una prueba roja)
+- [x] `_UNTOUCHED_BUDGET` usa `seeded` en lugar de la igualdad de `created_at`
+- [x] `seed_zz_presupuestos.sql` la pone explícita; se cae la necesidad del `BEGIN;`/`COMMIT;`
+- [x] Mismo archivo: el nombre sembrado sale con puntos colgando (`100. m² × $9,000./m²`) — igualar a `estimate_line_name`
+- [x] Nota en la migración: los pods VIEJOS del rollout escriben `seeded = FALSE`; ventana sub-minuto, se corrige a mano
+- [x] `seeded` viaja al payload por el `l.*` de `_LINES_SQL` — queda en el contrato del wire desde que existe
 
 
 ### PR 1 · Backend — quitar la liga viva
