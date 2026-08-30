@@ -1,141 +1,150 @@
-# Prospecto a la medida — elegir secciones y subsecciones
+# El presupuesto es la suma de sus renglones — plan de implementación
 
-**Objetivo:** al dar click en `📄 PROSPECTO`, abrir un menú con checkboxes para elegir
-qué entra al PDF: qué propiedades y qué tan detallada es cada página de oportunidad.
+**Diseño:** `docs/plans/2026-08-30-presupuesto-independiente-design.md`
+**Objetivo:** que el total del presupuesto sea la suma de sus renglones, siempre; que
+editar la ficha nunca lo mueva; y que `$/m²` vuelva a ser un supuesto tuyo que se
+compara contra el presupuesto en vez de derivarse de él.
 
 ## Decisiones (confirmadas con Eduardo)
 
-1. **Subsecciones = las dos cosas**: propiedades individuales Y bloques de contenido.
-2. **Favoritos = el default, el menú = el ajuste**: el menú lista SOLO las favoritas,
-   todas palomeadas. Despalomear afecta a ESTE PDF, no a la estrella. La estrella
-   sigue siendo "mi portafolio de siempre"; el menú es "esta vez, esto".
-3. **La selección se recuerda** entre sesiones (localStorage), con botón de restaurar.
+1. **Total = Σ renglones.** Sin modos, sin fallback, sin campo de «base».
+2. **`is_residual` desaparece**: sin bandera, sin índice, sin renglón especial.
+3. **`AJUSTAR` se va** junto con `set_total`.
+4. **La calculadora es un botón, no una liga**: escribe UN renglón al nacer y hay un
+   «re-estimar» explícito que lo reemplaza.
+5. **Migración: el residuo se CONVIERTE, no se borra.** Ningún número se mueve el día
+   de la migración.
+6. **`$/m²` vuelve a capturarse** y se muestra al lado del derivado `presupuesto ÷ m²`.
 
-## Las dos decisiones de diseño que importan
+## Las tres decisiones de implementación que importan
 
-### A. Se guardan las EXCLUSIONES, no las inclusiones
+### A. Dos PRs, no uno: expand/contract sobre la columna
 
-Guardar "lo que sí quiero" se rompe solo: marcas una propiedad nueva como favorita,
-generas el PDF, y no aparece — porque no estaba en la lista guardada de hace un mes.
-Falla en silencio, que es justo lo que este documento no debe hacer.
+Mergear a `main` despliega a producción, y las migraciones corren en un hook PreSync
+—**antes** de que entren los pods nuevos—. Si la misma migración que convierte también
+hace `DROP COLUMN is_residual`, los pods **viejos** que aún atienden tráfico durante el
+rollout ejecutan `FILTER (WHERE NOT l.is_residual)` contra una columna que ya no existe
+y devuelven 500. La ventana es corta y real.
 
-Guardando "lo que apagué", todo lo nuevo entra por default. La lista guardada se
-poda contra las favoritas actuales al abrir el menú: si despalomeas una propiedad de
-favoritos y la vuelves a palomear, regresa incluida (una exclusión vieja no la
-esconde para siempre).
+Por eso:
 
-### B. Las secciones NO necesitan su propio booleano
+- **PR 1** — convierte (`is_residual = FALSE`), tira el índice único parcial, y saca
+  todo uso de la columna del código. La columna **se queda**, con default `FALSE`: el
+  código viejo la lee y ve lo mismo que el nuevo.
+- **PR 2** — `DROP COLUMN`, una vez que en prod ya sólo corre código que no la nombra.
 
-`Track Record`, `En Desarrollo` y `Oportunidades` son *derivadas* de qué propiedades
-entran: si ninguna propiedad en desarrollo entra, la sección desaparece sola.
-El checkbox de la sección en el menú es puro azúcar de UI (palomea/despalomea a sus
-hijas), no un dato que viaje al API. Eso deja el contrato del API mínimo y sin dos
-maneras de decir lo mismo.
+Tirar el índice en PR 1 sí es seguro: ningún código lo nombra, y un índice de más nunca
+rompe una lectura.
 
-Solo las tres páginas que NO dependen de propiedades llevan booleano propio:
-Portada, Resumen de portafolio, Cierre.
+### B. El derivado y el capturado necesitan nombres distintos en el API
 
-## Contrato del API
+Hoy `constructionCostPerSqm` de salida es `presupuesto ÷ m²` (`budget_db.py:239`) y la
+columna del mismo nombre no se escribe. Si el capturado vuelve, dos cosas distintas
+comparten nombre — que es justo el olor que este trabajo viene a quitar.
 
-`POST /api/documents/prospectus` — hoy no recibe body. Pasa a recibir uno OPCIONAL;
-sin body, el comportamiento es idéntico al de hoy (todo entra). Esa es la garantía de
-compatibilidad y se prueba explícitamente.
+- `constructionCostPerSqm` → **el supuesto capturado** (vuelve a `WRITABLE_FIELDS`).
+- `budgetedCostPerSqm` → **el derivado**, `presupuesto ÷ m²`, sólo lectura.
 
-```python
-class ProspectusOptions(BaseModel):
-    # None = todas las favoritas (el default de hoy). Una lista NARROWS sobre las
-    # favoritas: nunca mete algo que no esté marcado, solo saca.
-    propertyIds: list[int] | None = None
-    # Las tres páginas sin propiedad detrás
-    cover: bool = True
-    portfolioSummary: bool = True
-    closing: bool = True
-    # Qué lleva CADA página de oportunidad (aplica a todas por igual)
-    opportunityFees: bool = True       # fila de comisiones/totales del fondo
-    opportunityGallery: bool = True    # galería de fotos
-    opportunityPlans: bool = True      # "Plano y propuesta"
-    opportunityRenders: bool = True    # "Fotos y propuesta"
-    opportunityBudget: bool = True     # "Presupuesto de obra"
-```
+La UI los rotula: *tu estimado* contra *el presupuesto*.
 
-Los 5 bloques mapean 1:1 a llamadas que ya existen en `prospectus_html.py`
-(`_opportunity_fees_metrics`, `_strip`, y las tres `detail-section` de
-`_opportunity_detail`) — no hay que inventar cortes nuevos en el documento.
+### C. Un presupuesto vacío es legal, y hay que probarlo
 
-**Siempre entran** (no son negociables, son el pitch): banda con nombre/dirección,
-foto principal, columnas Financieros/Propiedad, y la fila de proyección
-(plazo, venta, ganancia, cap rate, rendimiento).
+`_require_budget()` sigue creando presupuesto al leer —la invariante «toda propiedad
+tiene presupuesto» se conserva— pero ahora nace **vacío**. Es la primera vez que
+`construction_budgeted = 0` es un estado legítimo y no un síntoma. Todo lo que lo
+consume (`investment_raw()`, la comisión de obra, el prospecto) tiene que aguantarlo
+sin ramas nuevas: 0 es un número, no un faltante.
+
+---
 
 ## Tareas
 
-### Backend
-- [ ] `ProspectusOptions` en `routes/documents.py`, body opcional en el endpoint
-- [ ] Filtrar favoritas por `propertyIds` cuando venga (intersección, nunca unión)
-- [ ] Pasar los flags a `build_prospectus_html(...)`
-- [ ] `build_prospectus_html`: parámetro de opciones; saltar portada/resumen/cierre
-- [ ] `_opportunity()`: recibir los 5 flags y omitir cada bloque
-- [ ] `_opportunity_detail()`: recibir plans/renders/budget
-- [ ] 400 con frase legible si la selección deja el PDF vacío
-- [ ] Tests: sin body == comportamiento de hoy; cada flag apaga lo suyo y NADA más;
-      `propertyIds` filtra; selección vacía → 400
+### PR 1 · Migración
 
-### Frontend
-- [ ] `ProspectusMenu.tsx` — panel anclado al botón (patrón de `TabBar` settings:
-      `getBoundingClientRect` + cerrar al click afuera), `maxHeight` + scroll
-- [ ] Árbol: sección (padre) → propiedades (hijas), + bloques bajo Oportunidades
-- [ ] Padre palomea/despalomea hijas; estado indeterminado si están mezcladas
-- [ ] Persistencia de exclusiones en localStorage + poda contra favoritas actuales
-- [ ] Botón "Restaurar todo"
-- [ ] `GENERAR PDF` deshabilitado si no queda nada seleccionado
-- [ ] `generateProspectus(options)` en `lib/api.ts` manda el body
-- [ ] Tests del componente: agrupado por sección, padre↔hijas, persistencia,
-      restaurar, propiedad nueva entra por default (la regla de la sección A)
+- [ ] `053_presupuesto_suma.sql` con `lock_timeout`/`statement_timeout` (patrón de la 048)
+- [ ] `UPDATE budget_lines SET is_residual = FALSE WHERE is_residual` — la conversión
+- [ ] `DROP INDEX IF EXISTS uq_budget_lines_residual`
+- [ ] `COMMENT ON COLUMN budget_lines.is_residual` → marcada como muerta, pendiente de DROP en la 054
+- [ ] `COMMENT ON COLUMN properties.construction_cost_per_sqm` → vuelve a ser insumo capturado
+- [ ] `COMMENT ON COLUMN properties.construction_overhead` → sólo aplica al estimar
+- [ ] Guarda de no-movimiento dentro de la migración: aborta si algún `construction_budgeted` cambió (patrón de la 032:313-341)
+- [ ] Idempotente (`IF EXISTS` / `WHERE is_residual`), corre dos veces sin efecto
 
-### Verificación
-- [ ] Suite backend + frontend en verde
-- [ ] PDF real generado con varias combinaciones, revisado visualmente
-- [ ] Confirmar que "sin selección guardada" produce el MISMO PDF que hoy
+### PR 1 · Backend — quitar la liga viva
+
+- [ ] `properties_db.py:867-874` — borrar el bloque completo. **Es el arreglo central.**
+- [ ] `constructionCostPerSqm` de vuelta a `WRITABLE_FIELDS` (`properties_db.py:169-181`)
+- [ ] `budget_db.py:239` — el derivado se publica como `budgetedCostPerSqm`; `constructionCostPerSqm` sale de la columna
+
+### PR 1 · Backend — quitar el residuo
+
+- [ ] Borrar `set_total()` `:1051-1072`, `_settle_residual()` `:393-421`, `current_total()` `:386-391`
+- [ ] Borrar `RESIDUAL_CHAPTER` / `RESIDUAL_NAME` `:46-48`
+- [ ] Borrar la ruta `PUT /api/properties/{id}/budget/total` (`routes/budget.py:302-313`) y su `TotalUpdate`
+- [ ] `delete_line()` `:1040-1044` — fuera la guarda «no se borra»
+- [ ] `update_line()` `:1018` — fuera la restricción a `notes`
+- [ ] `delete_chapter()` `:1109` — fuera el `AND NOT is_residual`
+- [ ] Quitar `FILTER (WHERE NOT l.is_residual)` y equivalentes: `_totals` `:378`, `:469`, `:591`, `:626`, `:824`, `:1167`
+- [ ] `ORDER BY l.is_residual, ...` `:270` — reemplazar por orden estable sin la bandera
+- [ ] `_totals()` devuelve un solo total (ya no hay «detallado» contra «total»); ajustar call sites
+
+### PR 1 · Backend — la calculadora como botón
+
+- [ ] `create_budget()` `:343-360` — escribe un renglón normal con el estimado, nombrado con su propia aritmética (p. ej. «Estimado inicial · 200 m² × $8,000/m²»)
+- [ ] `_require_budget()` `:339` — crea el presupuesto **vacío**, sin renglón fantasma
+- [ ] Endpoint `POST /api/properties/{id}/budget/re-estimate` — recalcula `m² × $/m² × overhead` y **reemplaza** el renglón de estimación (o lo crea si no está); nunca toca partidas detalladas
+- [ ] `calculator_estimate()` `:127-144` se queda tal cual; sus únicos call sites quedan ser creación y re-estimar
+
+### PR 1 · Frontend
+
+- [ ] `BudgetPanel.tsx:1528` — fuera `AJUSTAR`, su estado `adjusting` y el comentario `:1283`
+- [ ] `BudgetPanel.tsx:1008` / `:1098` — dejar de mostrar dos `$/m²` sin rótulo; mostrar *tu estimado* (capturado, editable) contra *el presupuesto* (`budgetedCostPerSqm`, derivado)
+- [ ] El renglón de estimación se edita y se borra como cualquier otro (sin caso especial)
+- [ ] Botón «re-estimar» que llama al endpoint nuevo, con confirmación de que reemplaza ese renglón
+- [ ] `PropertyDetailPage.tsx:964,985-995` — m² y $/m² quedan como campos sin efecto colateral
+- [ ] `lib/api.ts` — fuera `setBudgetTotal`; alta de `reEstimateBudget`
+
+### PR 1 · Prospecto
+
+- [ ] `prospectus_html.py:954` — actualizar el comentario de maquetación (ya no hay residuo)
+- [ ] Rótulo derivado: si el presupuesto es un solo renglón de estimación, el PDF lo dice («estimado paramétrico, no cotizado»). Derivado, sin campo nuevo.
+
+### PR 1 · Tests
+
+- [ ] **Invertir** `test_budget.py:604-659`: hoy afirman que el total se movía al editar la ficha; pasan a afirmar que **no** se mueve. Los tres caminos (solo $/m², ambos, solo m²), cada uno nombrado por su caso.
+- [ ] Agregar una partida **sube** el total exactamente su importe
+- [ ] Borrar una partida **baja** el total exactamente su importe
+- [ ] Un presupuesto sin renglones da `construction_budgeted = 0` y no rompe `investment_raw()`, la comisión de obra ni el prospecto
+- [ ] El renglón de estimación se puede editar y borrar (antes eran 400)
+- [ ] `re-estimate` reemplaza el renglón de estimación y **no toca** las partidas detalladas
+- [ ] Prueba de conservación de la migración, **apareando por nombre y no por id** (la suite e2e recicla ids — lección 2026-08-03)
+- [ ] Tests que nombren `is_residual` / `RESIDUAL_*`: borrados o reescritos, ninguno dejado en skip
+- [ ] Vitest de `BudgetPanel`: sin `AJUSTAR`, los dos `$/m²` rotulados, renglón de estimación borrable
+
+### PR 1 · Documentación que hoy miente
+
+- [ ] `app/README.md:36` — la calculadora ya no «retires»; describe el modelo nuevo
+- [ ] `db/schema.sql:1031` — se regenera con la migración; verificar que quede correcto
+- [ ] `tasks/lessons.md` — nota: un comentario que describe comportamiento que vive en OTRO archivo se pudre en silencio (`67e05bf` re-ató la liga sin tocar ninguno de los dos comentarios que la negaban, y eso indujo un diagnóstico equivocado en esta misma sesión)
+
+### PR 2 · Contract (después de que PR 1 esté vivo en prod)
+
+- [ ] Confirmar que prod sirve el sha de PR 1 (`/api/version`)
+- [ ] `054_drop_is_residual.sql` — `ALTER TABLE budget_lines DROP COLUMN IF EXISTS is_residual`
+- [ ] `grep -rn is_residual app/ db/` devuelve vacío salvo las migraciones históricas
+
+## Verificación
+
+- [ ] `pytest app/api/tests/ -q` verde
+- [ ] `cd app/web && npm test` verde
+- [ ] `cd app/web && npx tsc --noEmit` limpio
+- [ ] `cd app/e2e && npm test` verde (ojo: la suite trae ~18% de flake, ver `docs`)
+- [ ] Migración corrida contra una base fresca 000→053 y contra una copia con datos
+- [ ] **Reporte pre-flight**: por propiedad, `construction_budgeted` antes → después. Todos iguales.
+- [ ] A mano en el navegador: editar m² y ver que el presupuesto **no** se mueve
+- [ ] A mano: agregar una partida y ver que el total **sí** sube
+- [ ] PDF real de una propiedad estimada y una detallada, revisados a ojo
 
 ## Review
 
-Hecho. Backend 681 pruebas, frontend 706, `tsc` limpio.
-
-**Lo que cambió respecto al plan, y por qué:**
-
-1. **El guard de selección vacía no incluye `portfolioSummary`.** El plan decía
-   "sin propiedades Y sin portada/resumen/cierre". Pero el resumen NO imprime
-   nada sin propiedades (resume el track record), así que
-   `{propertyIds: [], cover: false, closing: false, portfolioSummary: true}`
-   habría pasado el guard literal y devuelto un PDF genuinamente en blanco —
-   justo el caso que el guard existe para negar. Quedó
-   `not favorites and not (cover or closing)`.
-
-2. **Bug de frontera atrapado en revisión:** el front y el back opinaban
-   distinto sobre ese mismo caso. El botón `GENERAR` sí contaba el resumen como
-   página, así que se habilitaba para una combinación que el servidor rechazaba
-   con 400. Se alineó el front al back y se fijó con una prueba que nombra el
-   caso, para que las dos reglas no vuelvan a separarse.
-
-3. **Los bloques se cortan en el origen, no borrando HTML ya armado.**
-   `opportunityPlans=False` produce `rows = []`, `opportunityBudget=False`
-   produce `budget = {}`. Así cada decisión río abajo —¿existe la sección?,
-   ¿el presupuesto fuerza salto de página?— corre el mismo camino que ya corría
-   cuando el dato simplemente no estaba. El salto de página del presupuesto
-   salió gratis: la condición `if (plan_html or photos_html)` ya lo contemplaba.
-
-4. **El recorte por `propertyIds` corre ANTES de enriquecer** (imágenes,
-   renders, planos): lo que no va al PDF no se descarga ni se dibuja.
-
-**Falsa alarma descartada:** se sospechó que una favorita archivada podía
-colarse al PDF. No: `get_properties()` ya nace con `include_archived=False`.
-
-**Verificación con PDFs reales** (no solo pruebas): sin cuerpo = 10 páginas;
-sin presupuesto = 8; sin planos ni renders = 8; sin portada ni cierre = 8;
-`propertyIds:[5]` = 5 páginas con solo esa propiedad; `propertyIds:[999]`
-(no favorita) = 2 páginas sin ninguna propiedad colada — la intersección
-aguanta. Los dos guards devuelven 400 con frase legible. Revisado a ojo que una
-página con bloques apagados no deja huecos ni encabezados huérfanos.
-
-**Pendiente, a propósito:** `plano_js.render_plan_sheets` sigue lanzando
-Chromium aunque `opportunityPlans=False`. Es el único trabajo desperdiciado que
-queda; se dejó fuera para no ampliar el radio del cambio.
+_(pendiente — se llena al terminar)_
