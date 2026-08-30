@@ -125,8 +125,11 @@ const holgura = (unitPrice: number): BudgetLine => line({
   quantity: 1, unitPrice, budgetedAmount: unitPrice,
 })
 
-const budget = (lines: BudgetLine[]): Budget => ({
-  id: 9, propertyId: 7, lines,
+const budget = (lines: BudgetLine[], replaceable = true): Budget => ({
+  // `replaceable` es de ESTE presupuesto como DESTINO: al jalar de otra obra, el
+  // que se reemplaza es éste. Por default sí, que es como nace una obra recién
+  // capturada; en `false` la proporcional queda bloqueada antes de pedir.
+  id: 9, propertyId: 7, lines, replaceable,
   // El servidor publica los capítulos en su orden de lectura. Ninguno es
   // especial: el de la holgura se renombra, se borra y recibe partidas como
   // todos los demás.
@@ -1227,5 +1230,61 @@ describe('BudgetPanel', () => {
     expect(await screen.findByText(/Modesto 415: no se copió — esa obra ya tiene renglones capturados/))
       .not.toBeNull()
     expect(await screen.findByText(/Zaragoza 100: 2 renglones agregados/)).not.toBeNull()
+  })
+
+  it('VOLVER A TODO EL PRESUPUESTO devuelve el pedido entero, y con él la proporcional', async () => {
+    // Tocar una casilla saca a `pickedChapters` de `null` para siempre, así que
+    // sin este botón la proporcional quedaba apagada hasta recargar. El regreso
+    // es explícito y NO se infiere de «están todas marcadas»: `chapters: null` y
+    // `chapters: [todos]` son pedidos distintos —`entero` gobierna un DELETE en
+    // el destino— y colapsarlos convertiría la copia directa en un borrado.
+    await renderPanel(DETALLADO)
+    await abrirEmpujar()
+    fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
+    fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
+    expect(screen.getByText(/· TODO EL PRESUPUESTO/)).not.toBeNull()
+    expect(screen.queryByText('VOLVER A TODO EL PRESUPUESTO')).toBeNull()
+
+    fireEvent.click(screen.getByLabelText('Copiar capítulo Instalaciones'))
+
+    // Los dos estados se distinguen a la vista: ya no es «todo el presupuesto»
+    expect(screen.getByText(/· 2 DE 3 CAPÍTULOS/)).not.toBeNull()
+    expect((screen.getByLabelText('Copia proporcional a otras obras') as HTMLInputElement).disabled)
+      .toBe(true)
+
+    // Volver a marcarla NO alcanza: la selección sigue siendo una lista
+    fireEvent.click(screen.getByLabelText('Copiar capítulo Instalaciones'))
+    expect(screen.getByText(/· 3 DE 3 CAPÍTULOS/)).not.toBeNull()
+    expect((screen.getByLabelText('Copia proporcional a otras obras') as HTMLInputElement).disabled)
+      .toBe(true)
+
+    fireEvent.click(screen.getByText('VOLVER A TODO EL PRESUPUESTO'))
+
+    expect(screen.getByText(/· TODO EL PRESUPUESTO/)).not.toBeNull()
+    const prop = screen.getByLabelText('Copia proporcional a otras obras') as HTMLInputElement
+    expect(prop.disabled).toBe(false)
+    // Y la elección que ya se había hecho vuelve con él: el modo es derivado, no
+    // se perdió al caer a directo
+    expect(prop.checked).toBe(true)
+    expect(screen.getByText('$2,000,000')).not.toBeNull()
+  })
+
+  it('al JALAR, un presupuesto propio ya capturado bloquea la proporcional antes de pedir', async () => {
+    // El destino aquí es ESTA obra, y la lista de fuentes la excluye a propósito
+    // —nadie se copia sobre sí mismo—, así que su `replaceable` viaja en su
+    // propio payload. Sin él, éste era el sentido que descubría el 422 después
+    // de haber prometido un total.
+    await renderPanel(budget([
+      line({ id: 1, chapterName: 'Albañilería', name: 'Muro', budgetedAmount: 900_000 }),
+      line({ id: 2, chapterName: 'Albañilería', name: 'Firme', budgetedAmount: 600_000 }),
+    ], false), propiedad({ constructionBudgeted: 1_500_000 }))
+    await abrirProporcional()
+    fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '500' } })
+
+    expect(await screen.findByText(/ya tiene renglones capturados/)).not.toBeNull()
+    expect(screen.getByText(/Cópiale DIRECTO, o borra allá esos renglones/)).not.toBeNull()
+
+    fireEvent.click(screen.getByText('COPIAR RENGLONES'))
+    await waitFor(() => expect(api.applyBudgetSource).not.toHaveBeenCalled())
   })
 })

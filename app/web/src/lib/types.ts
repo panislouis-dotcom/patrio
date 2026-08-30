@@ -836,6 +836,19 @@ export interface BudgetLine {
 export interface Budget {
   id: number
   propertyId: number
+  /**
+   * Si una copia PROPORCIONAL sobre ESTE presupuesto sería aceptada, por lo que
+   * toca a su contenido. Misma expresión y mismas palabras que el de
+   * `BudgetSource`, y callado sobre la misma mitad: el alcance por capítulos lo
+   * sabe el cliente.
+   *
+   * Vive aquí porque la lista de fuentes no puede contestarlo en el sentido de
+   * JALAR: ahí el destino es el presupuesto de esta misma obra, que es justo el
+   * que la lista excluye a propósito. Es una FOTO de la última lectura entera
+   * —una celda que se guarda sola no la refresca— y por eso bloquea antes de
+   * pedir, pero no manda: la autoridad sigue siendo el 422.
+   */
+  replaceable: boolean
   lines: BudgetLine[]
   chapters: string[]
 }

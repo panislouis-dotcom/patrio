@@ -351,6 +351,12 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
   const [pickedSource, setPickedSource] = useState<number | ''>('')
   /** El id del PRESUPUESTO de esta obra: es lo que se copia al empujarlo a otras. */
   const [budgetId, setBudgetId] = useState<number | null>(null)
+  /**
+   * Si este presupuesto —el DESTINO cuando se jala de otra obra— admitiría una
+   * copia proporcional. Arranca en `true`: mientras no se haya leído nada no hay
+   * por qué bloquear, y la primera lectura llega antes que el panel de copiar.
+   */
+  const [budgetReplaceable, setBudgetReplaceable] = useState(true)
   const [sourceMode, setSourceMode] = useState<CopyMode>('directo')
   /**
    * El presupuesto del ORIGEN, entero, solo para el preview: sin sus renglones
@@ -416,6 +422,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
     setLines(next.lines)
     setChapters(next.chapters)
     setBudgetId(next.id)
+    setBudgetReplaceable(next.replaceable)
   }
 
   useEffect(() => {
@@ -629,7 +636,9 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
    * `toggleChapter` porque así el estado ilegal no EXISTE: escrito como efecto
    * habría un render con el modo y los capítulos contradiciéndose, y sobre todo
    * habría dos sitios que mantener de acuerdo —el mismo desfase que ya se pagó
-   * una vez entre el `disabled` del botón y su cursor—.
+   * una vez entre el `disabled` del botón y su cursor—. Y porque la elección no
+   * se pierde: al volver al presupuesto entero, el modo que ya se había pedido
+   * regresa con él en lugar de haberse olvidado.
    */
   const pushMode: CopyMode = pushProportionalBlocked === null ? pushModePicked : 'directo'
 
@@ -672,17 +681,18 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
   /**
    * Lo que de aquel presupuesto escala y lo que no, y el objetivo de ESTA obra.
    *
-   * Aquí el destino es ESTA obra, y su `replaceable` NO viaja: la lista de
-   * `/api/budget/sources` excluye al presupuesto que pregunta, así que el campo
-   * existe para todos menos para el único que hace falta en este sentido. Se
-   * pasa `true` —no bloquear— antes que rehacer `_UNTOUCHED_BUDGET` de este lado
-   * sobre columnas que el renglón no publica: una segunda copia de la regla se
-   * desincronizaría en silencio, y un bloqueo equivocado es peor que el 422 que
-   * ya se enseña con su motivo. Falta `replaceable` en el payload del propio
-   * presupuesto; queda reportado.
+   * Aquí el destino es ESTA obra, así que la reemplazabilidad que importa es la
+   * SUYA, y viene en su propio payload: la lista de `/api/budget/sources` no
+   * podía contestarla porque excluye a propósito al presupuesto que pregunta.
+   * Con eso los dos sentidos bloquean antes de pedir, en vez de que uno de ellos
+   * descubra el 422 después de haber prometido un total.
+   *
+   * El capítulo suelto no entra en la cuenta de este lado: al jalar se copia
+   * siempre el presupuesto entero (`chapters` viaja en `null`), así que la mitad
+   * de la regla que el cliente contesta ya está contestada que sí.
    */
   const sourceScope = scopeOf(sourceBudget?.lines ?? [], null)
-  const sourcePlan = planFor(property.constructionBudgeted, sourceScope, true)
+  const sourcePlan = planFor(property.constructionBudgeted, sourceScope, budgetReplaceable)
   /** En directo se copia tal cual; en proporcional hace falta que el plan cierre. */
   const canPull = pickedSource !== ''
     && (sourceMode === 'directo' || sourcePlan.blocker === null)
@@ -1116,20 +1126,54 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
               <span style={micro}>
                 Todavía no hay partidas que copiar: este presupuesto está vacío.
               </span>
-            ) : copyableChapters.map(c => (
-              <label key={c} style={checkLabel}>
-                <input
-                  type="checkbox"
-                  checked={chapterPicked(c)}
-                  aria-label={`Copiar capítulo ${c}`}
-                  onChange={() => toggleChapter(c)}
-                  style={{ accentColor: colors.primary, cursor: 'pointer' }}
-                />
-                <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
-                  {c}
-                </span>
-              </label>
-            ))}
+            ) : (
+              <>
+                {copyableChapters.map(c => (
+                  <label key={c} style={checkLabel}>
+                    <input
+                      type="checkbox"
+                      checked={chapterPicked(c)}
+                      aria-label={`Copiar capítulo ${c}`}
+                      onChange={() => toggleChapter(c)}
+                      style={{ accentColor: colors.primary, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
+                      {c}
+                    </span>
+                  </label>
+                ))}
+                {/* LOS DOS ESTADOS NO SON EL MISMO PEDIDO, y por eso se rotulan
+                    distinto: «todo el presupuesto» viaja como `chapters: null`
+                    —de ahí sale `entero`, y con él la proporcional— y una
+                    selección viaja como lista, aunque tenga dentro todos los
+                    capítulos.
+
+                    El regreso es este BOTÓN y no una inferencia. Colapsar «están
+                    todas marcadas» a `null` parece lo mismo y no lo es: `entero`
+                    gobierna un `DELETE FROM budget_lines` en el destino, así que
+                    la copia DIRECTA pasaría de sumarse a lo que hay a borrarle
+                    primero su estimado. Un borrado disparado por marcar casillas
+                    de vuelta no lo ve venir nadie. El botón, en cambio, devuelve
+                    el estado con el que el panel ABRE: no inventa un significado
+                    nuevo para un gesto que ya tenía otro. */}
+                {chaptersToPush === null ? (
+                  <span style={{ ...micro, letterSpacing: '0.1em' }}>· TODO EL PRESUPUESTO</span>
+                ) : (
+                  <>
+                    <span style={{ ...micro, letterSpacing: '0.1em' }}>
+                      · {chaptersToPush.length} DE {copyableChapters.length} CAPÍTULOS
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPickedChapters(null)}
+                      style={ghost}
+                    >
+                      VOLVER A TODO EL PRESUPUESTO
+                    </button>
+                  </>
+                )}
+              </>
+            )}
           </div>
 
           {/* Con capítulos elegidos la proporcional queda apagada CON SU MOTIVO:
