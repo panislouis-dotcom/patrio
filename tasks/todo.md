@@ -177,13 +177,17 @@ son sembradas no coinciden. Se registra el hecho en vez de inferirlo.
 
 ## Review
 
-**Estado: listo para merge.** 34 commits sobre `origin/main`, HEAD `4d25d60`, árbol limpio.
+**Estado: listo para merge.** 38 commits sobre `origin/main`, HEAD `101d668`, árbol limpio.
+
+Se declaró «listo» una vez ANTES de tiempo: la verificación adversarial encontró después un
+bug de dinero en uno de los arreglos, descrito en el punto 6. Este encabezado se escribe
+de nuevo sólo ahora, con esa corrección adentro.
 
 ### Verificación independiente (corrida por el lead, base propia, no reportada por agentes)
 
 | Comprobación | Resultado en `4d25d60` |
 |---|---|
-| `pytest app/api/tests/ -q` | **745 passed**, 0 skipped |
+| `pytest app/api/tests/ -q` | **748 passed**, 0 skipped |
 | `npx tsc --noEmit` (`app/web`) | **exit 0** |
 | `npx vitest run` (`app/web`) | **47 archivos, 759 passed** |
 | `app/e2e` | **213 passed, 0 failed** contra HEAD |
@@ -217,13 +221,30 @@ la suite en verde y dos revisores aprobando. Se hace desde una base construida c
    impide la combinación por ruta— pero medido: pidiendo un solo capítulo contra un objetivo
    de $300,000 el factor viejo entregaba **$21,951**. El error escala con la razón entre el
    presupuesto entero y el capítulo pedido, así que empeora cuanto más se acota la copia.
-5. **15 frases de prosa describían el mundo anterior a esta rama.** La peor, `api.ts:871`,
+5. **Una copia proporcional y luego una directa duplicaban el estimado.** Lo introdujo el
+   arreglo del punto 3: la nota de escalado vive en el NOMBRE, y el nombre es la llave de la
+   dedup, así que la llave pasó a depender del MODO de copia. Secuencia alcanzable por el
+   API: proporcional A→F, teclear un renglón, directa A→F → `(1 añadido, 0 saltados)`, tres
+   renglones, el estimado contado dos veces. Hoy `_identidad()` quita la nota de los DOS
+   lados de la comparación —quitarla de uno solo se ve bien de ida y falla en la copia de la
+   copia— y la secuencia da `(0, 1)`. **Este defecto lo causó una instrucción mía**: pedí la
+   marca en el nombre sabiendo que el nombre es la llave, y no seguí la consecuencia.
+6. **15 frases de prosa describían el mundo anterior a esta rama.** La peor, `api.ts:871`,
    le prometía al frontend que copiar renglones deja el total quieto «porque el residuo baja
    lo que ellos suben» — exactamente lo que esta rama abolió, al revés, en el archivo que se
    consulta primero. Y la `053` decía tres veces que el `DROP` va en la `054`, que dejó de ser
    cierto cuando la `054` se la quedó `seeded`; una de las tres es un `COMMENT ON COLUMN`, o
    sea **dato que se escribe en el catálogo de producción**, apuntando a una migración que
    nunca va a existir. Por eso hoy apunta a «PR 2 · Contract» y no a un número.
+
+### Sobre el proceso, porque cuesta caro
+
+Una observación retirada por su propio autor se retransmitió como instrucción antes de estar
+pensada, y `conftest.py` fue y volvió tres veces por eso. Lo zanjó leer el código en vez de
+arbitrar entre dos agentes: el helper inserta capítulo `'Otros'` y unidad `'lote'`, que son
+`ESTIMATE_CHAPTER` y `LUMP_SUM_UNIT` — la fila ES un estimado sembrado, así que marcarla
+como trabajo tecleado la deja incoherente consigo misma. La regla que faltaba: **verificar
+antes de retransmitir, y leer el código antes de arbitrar.**
 
 ### Huecos conocidos, declarados y no tapados
 
