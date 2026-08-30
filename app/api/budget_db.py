@@ -336,7 +336,23 @@ def get_budget(conn, property_id: int, plan_id: str | None = None) -> dict:
     Un solo orden para todos los renglones —capítulo, luego el orden que se les
     dio dentro de él— porque ya no hay dos clases. El residuo salía al final por
     no ser un capítulo más; una holgura es hoy un renglón con el nombre que
-    alguien le puso y se lee donde su capítulo la ponga."""
+    alguien le puso y se lee donde su capítulo la ponga.
+
+    `replaceable` DICE SI UNA COPIA PROPORCIONAL SOBRE ESTE PRESUPUESTO SERÍA
+    ACEPTADA en lo que a su contenido respecta, con las mismas palabras y la
+    misma expresión que en `list_sources` — y callado, igual que allá, sobre la
+    otra mitad de la regla: el alcance por capítulos lo sabe el cliente.
+
+    Va aquí porque `list_sources` no puede contestarlo para el caso de JALAR.
+    Ahí el destino es el presupuesto de esta misma obra, que es justo el que la
+    lista excluye a propósito —nadie se copia sobre sí mismo—, así que la única
+    fila que faltaba era la que el usuario tiene enfrente. Con `?planId=`
+    describe el ESCENARIO, no el presupuesto de la propiedad: `_require_budget`
+    ya devolvió el id del que este payload habla, y la respuesta es sobre ése.
+
+    Un presupuesto vacío contesta `true`, y aquí pesa más que en la lista: nacer
+    vacío es el estado normal de una propiedad recién capturada sin calculadora,
+    y jalar sobre ella es lo más común que alguien va a hacer."""
     budget_id = _require_budget(conn, property_id, plan_id)
     rows = conn.execute(_LINES_SQL, (budget_id,)).fetchall()
     lines = []
@@ -348,6 +364,10 @@ def get_budget(conn, property_id: int, plan_id: str | None = None) -> dict:
         "id": budget_id,
         "propertyId": property_id,
         "planId": plan_id,
+        # Cuarto lector de la misma expresión, y por eso `_UNTOUCHED_BUDGET` es
+        # un fragmento de SQL y no un helper de Python: se deja usar desde una
+        # lista y desde una lectura suelta sin volverse a escribir.
+        "replaceable": budget_holds_only_initial_estimate(conn, budget_id),
         "lines": lines,
         # Los capítulos son los que los renglones nombran: `chapter_name` es una
         # COPIA en la fila, no una referencia, así que un capítulo no existe sin

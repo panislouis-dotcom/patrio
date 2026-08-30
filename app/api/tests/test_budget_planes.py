@@ -73,6 +73,23 @@ def test_el_escenario_conserva_la_cuenta_del_estimado_porque_es_la_suya(
     assert [ln["name"] for ln in r.json()["budget"]["lines"]] == [de_la_obra]
 
 
+def test_replaceable_habla_del_presupuesto_del_payload_y_no_del_de_la_obra(
+        client, test_property):
+    """Con `?planId=` el payload describe el ESCENARIO, así que `replaceable`
+    tiene que describirlo a él. Aquí se separan a propósito: al escenario se le
+    teclea una partida y al de la propiedad no, y las dos respuestas difieren en
+    la misma llamada por el solo query param."""
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    assert client.post(f"/api/properties/{pid}/budget/plans/plan-a").status_code == 201
+    assert _budget(client, pid, "plan-a").json()["replaceable"] is True
+
+    _line(client, pid, "Mármol del escenario", 500_000, plan_id="plan-a")
+
+    assert _budget(client, pid, "plan-a").json()["replaceable"] is False
+    assert _budget(client, pid).json()["replaceable"] is True
+
+
 def test_el_escenario_puede_nacer_vacio(client, test_property):
     pid = test_property["id"]
     _seed_plans(client, pid, "plan-a")

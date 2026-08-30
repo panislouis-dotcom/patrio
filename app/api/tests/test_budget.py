@@ -969,6 +969,34 @@ def _source(client, budget_id: int) -> dict:
     return next(s for s in r.json() if s["id"] == budget_id)
 
 
+def test_the_budget_says_of_itself_whether_a_proportional_copy_could_replace_it(
+        client, test_property):
+    """LA FILA QUE LA LISTA DE FUENTES NO PUEDE DAR: la de uno mismo.
+
+    Empujar y jalar preguntan lo mismo desde puntas distintas. Empujando, el
+    destino es otra obra y sale en `GET /api/budget/sources`. Jalando —«arranco
+    desde X»— el destino es ESTE presupuesto, que es justo el que esa lista
+    excluye a propósito, así que era el único que no tenía respuesta y el único
+    que el usuario tiene enfrente.
+
+    Mismos tres estados y la misma expresión. El vacío pesa más aquí: nacer
+    vacío es el estado normal de una obra capturada sin calculadora."""
+    pid = test_property["id"]
+    assert _budget(client, pid)["replaceable"] is True
+
+    linea = _add(client, pid, chapterName="Clósets", name="Clósets cotizados",
+                 unit="lote", quantity=1, unitPrice=950_000)["line"]["id"]
+    assert _budget(client, pid)["replaceable"] is False
+
+    for l in _budget(client, pid)["lines"]:
+        assert client.delete(
+            f"/api/properties/{pid}/budget/lines/{l['id']}").status_code == 200
+    vacio = _budget(client, pid)
+    assert vacio["lines"] == []
+    assert vacio["replaceable"] is True
+    assert linea not in [l["id"] for l in vacio["lines"]]
+
+
 def test_the_source_list_says_which_budgets_a_proportional_copy_could_replace(
         client, test_property, origen):
     """`replaceable` EXISTE PARA QUE LA PANTALLA NO OFREZCA LO QUE EL SERVIDOR
