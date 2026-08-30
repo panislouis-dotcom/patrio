@@ -159,10 +159,12 @@ def _cifra(number) -> str:
     return f"{to_decimal(number):,.4f}".rstrip("0").rstrip(".")
 
 
-# El renglón sin su cuenta. Es como queda un estimado que se copió a OTRA
-# propiedad: la aritmética sólo significa algo dentro de la obra que describe
-# (ver `_copied_name`).
 ESTIMATE_LINE_LABEL = "Estimado inicial"
+
+# Con qué se abre la atribución que lleva un estimado copiado a otra obra —
+# «… (de «Casa Edison»)», ver `_copied_name`—. Es también cómo se reconoce una
+# que ya está puesta, así que vive aquí y no tecleada en dos lados.
+ATTRIBUTION_OPEN = " (de «"
 
 
 def estimate_line_name(sqm_construction, construction_cost_per_sqm,
@@ -654,12 +656,28 @@ def _copied_name(misma_propiedad: bool) -> str:
     EL NOMBRE DEL SEMBRADO LLEVA SU CUENTA ADENTRO —«Estimado inicial · 200 m² ×
     $8,000/m²»— y esa cuenta habla de UNA propiedad. Copiado a otra obra, el
     nombre afirma metros que no son los del destino: alguien abre su presupuesto
-    y lee un cálculo sobre un edificio que no es el suyo. Se le quita la cuenta y
-    queda «Estimado inicial», que es verdad en cualquier parte.
+    y lee un cálculo sobre un edificio que no es el suyo, divide por SUS 200 m² y
+    saca un $/m² que no existe. Se le agrega de quién es:
+
+        Estimado inicial · 150 m² × $10,000/m² (de «Casa Edison»)
+
+    SE ATRIBUYE, NO SE RECORTA. Quitarle la cuenta escondería la contradicción en
+    vez de resolverla: el importe seguiría siendo el del origen y quedaría un
+    «Estimado inicial» de $1,500,000 sin manera de contestar de dónde salió ese
+    número. El nombre es la única memoria que queda de esa cuenta
+    (`estimate_line_name`); truncarlo la borra, atribuirlo la completa.
 
     Copiado al ESCENARIO DE PLAN de la misma propiedad se conserva entero: ahí
     los metros sí son los suyos, y el escenario existe justamente para
-    espejearla.
+    espejearla. Lo que separa los dos casos es `budgets.property_id` y no que el
+    destino sea un plan: `create_plan_budget` acepta como origen el escenario de
+    OTRA obra, así que ser-plan y ser-de-la-misma-obra son preguntas distintas.
+
+    ES IDEMPOTENTE PORQUE EL NOMBRE ES LA LLAVE DE LA DEDUP: una copia de una
+    copia tiene que producir el mismo texto o el segundo `apply` deja de
+    deduplicar. Si el nombre ya trae atribución se deja como está, y A→B→C
+    conserva «(de «A»)», que además es la respuesta verdadera — la aritmética de
+    ese nombre son los metros de A, nunca los de B.
 
     No se recalcula contra las métricas del destino, que sería el arreglo
     aparente: el importe que viaja es el del ORIGEN —escalado, incluso— así que
@@ -667,8 +685,14 @@ def _copied_name(misma_propiedad: bool) -> str:
     defecto del que venimos."""
     if misma_propiedad:
         return "l.name"
-    return (f"CASE WHEN l.seeded THEN '{ESTIMATE_LINE_LABEL}'"
-            "      ELSE l.name END AS name")
+    # Sin parámetros a propósito: el nombre de la obra sale de un subquery y no
+    # de una interpolación, que con un nombre que traiga comilla sería inyección.
+    return (f"CASE WHEN l.seeded AND strpos(l.name, '{ATTRIBUTION_OPEN}') = 0"
+            f"     THEN l.name || '{ATTRIBUTION_OPEN}'"
+            "            || (SELECT p.name FROM properties p JOIN budgets o"
+            "                  ON o.property_id = p.id WHERE o.id = l.budget_id)"
+            "            || '»)'"
+            "     ELSE l.name END AS name")
 
 
 def _candidate_columns(factor, misma_propiedad: bool) -> tuple[str, list]:
@@ -722,8 +746,8 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
     propiedad, porque es el que va a quedar guardado—.
 
     LO ÚNICO QUE LA COPIA REESCRIBE ES EL NOMBRE DEL SEMBRADO, y sólo al cruzar
-    de propiedad: su cuenta habla de metros que no son los del destino. Ver
-    `_copied_name`, que explica por qué no se recalcula.
+    de propiedad: se le agrega de qué obra viene, porque su cuenta habla de
+    metros que no son los del destino. Ver `_copied_name`.
 
     `chapters` recorta el origen a esos capítulos; `None` los copia todos, que es
     el comportamiento de siempre.
@@ -987,6 +1011,13 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
     convención—, o sea una cifra que este mismo sistema escribió y que vuelve a
     escribirse sola si la propiedad se recaptura. Reportarlo obligaría a la
     pantalla a explicar una pérdida que no lo es.
+
+    Con una salvedad que hay que decir: `seeded` sobrevive a las EDICIONES, así
+    que quien habló con su contratista y corrigió el estimado de $2,340,000 a
+    $2,800,000 sigue teniendo un renglón sembrado, y esta rama lo borra con su
+    cifra adentro. Se acepta —una sola cifra global la sustituye el desglose que
+    viene a sustentarla, que es la operación entera— pero no es cierto que no
+    haya nada suyo en juego.
 
     De lo mismo se sigue que la rama es RE-ENTRANTE: copiar una fuente que sólo
     trae su estimado deja aquí un renglón sembrado —la marca viaja con la copia—

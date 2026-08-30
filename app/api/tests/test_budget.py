@@ -55,6 +55,12 @@ def _estimate_of(budget: dict, sqm, cost_per_sqm) -> dict:
     return next(line for line in budget["lines"] if line["name"] == nombre)
 
 
+def _de(name: str, property_name: str) -> str:
+    """El nombre con el que un estimado llega a OTRA obra: el suyo, más de quién
+    es. Ver `budget_db._copied_name`."""
+    return f"{name} (de «{property_name}»)"
+
+
 def _line_by_id(budget: dict, line_id: int) -> dict:
     return next(line for line in budget["lines"] if line["id"] == line_id)
 
@@ -986,17 +992,18 @@ def test_copying_a_source_that_is_only_its_estimate_leaves_the_destination_repla
     algo que el sistema mismo escribió dos veces —la regresión que `seeded` vino
     a cerrar—, sólo que con un rodeo.
 
-    Y EL NOMBRE LLEGA SIN SU CUENTA: la fuente es de 150 m² y esta obra de 200,
-    así que la aritmética se queda del otro lado y aquí sólo entra «Estimado
-    inicial» (ver `_copied_name`). Un nombre que afirma metros ajenos es un
-    cálculo sobre un edificio que no es el del lector."""
+    Y EL NOMBRE LLEGA ATRIBUIDO: la fuente es de 150 m² y esta obra de 200, así
+    que el renglón dice de quién es esa cuenta (ver `_copied_name`). Sin eso, un
+    nombre que afirma metros ajenos es un cálculo sobre un edificio que no es el
+    del lector; recortado, un importe sin manera de explicarse."""
     pid = test_property["id"]
     assert len(_budget(client, pid)["lines"]) == 1
 
     assert _apply(client, pid, origen_sin_detalle["budgetId"]).status_code == 201
     lineas = _budget(client, pid)["lines"]
     assert len(lineas) == 1
-    assert lineas[0]["name"] == "Estimado inicial"
+    assert lineas[0]["name"] == _de("Estimado inicial · 150 m² × $10,000/m²",
+                                    "[TEST] Obra Sin Detalle")
     assert _dec(lineas[0]["budgetedAmount"]) == Decimal("1500000")
     assert lineas[0]["seeded"] is True
 
@@ -1040,16 +1047,16 @@ def test_the_replace_branch_removes_without_reporting_it_and_can_run_again(
     assert r["linesAdded"] == 1
     assert len(r["budget"]["lines"]) == 1
 
-    # Hasta que entra trabajo tecleado: ahí la rama se cierra y se suma. Del
-    # origen entran sus tres partidas; su estimado NO, porque cruzó de propiedad
-    # y se llama «Estimado inicial» igual que el que ya estaba aquí —también
-    # copiado— y la dedup de siempre lo salta. Quitarle la cuenta a los estimados
-    # ajenos tiene ese efecto lateral, y es el bueno: no se apilan.
+    # Hasta que entra trabajo tecleado: ahí la rama se cierra y se suma. Entran
+    # los cuatro del origen, su estimado incluido: viene atribuido a SU obra, así
+    # que no choca con el que ya estaba aquí —atribuido a la otra—. Dos estimados
+    # ajenos de obras distintas son dos renglones distintos, que es lo correcto:
+    # son dos cuentas sobre dos edificios.
     _add(client, pid, chapterName="Clósets", name="Clósets cotizados",
          unit="lote", quantity=1, unitPrice=950_000)
     r = _apply(client, pid, origen["budgetId"]).json()
-    assert (r["linesAdded"], r["linesSkipped"]) == (3, 1)
-    assert len(r["budget"]["lines"]) == 5
+    assert (r["linesAdded"], r["linesSkipped"]) == (4, 0)
+    assert len(r["budget"]["lines"]) == 6
 
 
 def test_a_copied_estimate_never_carries_another_propertys_arithmetic(
@@ -1065,12 +1072,43 @@ def test_a_copied_estimate_never_carries_another_propertys_arithmetic(
     assert _apply(client, pid, origen_sin_detalle["budgetId"]).status_code == 201
 
     copiado = _budget(client, pid)["lines"][0]
-    assert copiado["name"] == "Estimado inicial"
-    assert "m²" not in copiado["name"]
+    assert copiado["name"] == _de("Estimado inicial · 150 m² × $10,000/m²",
+                                  "[TEST] Obra Sin Detalle")
     assert _dec(copiado["budgetedAmount"]) == Decimal("1500000")
     # Y el original no se movió: copiar lee, no reescribe la obra de al lado.
     origen_linea = _budget(client, origen_sin_detalle["propertyId"])["lines"][0]
     assert origen_linea["name"] == "Estimado inicial · 150 m² × $10,000/m²"
+
+
+def test_the_attribution_is_written_once_even_copying_a_copy(
+        client, test_property, origen_sin_detalle, destino):
+    """A → B → C SE QUEDA CON «(de «A»)», y esa es la respuesta verdadera: la
+    aritmética de ese nombre son los metros de A, nunca los de B.
+
+    Que sea idempotente no es elegancia, es requisito: EL NOMBRE ES LA LLAVE DE
+    LA DEDUP. Si cada salto encadenara otra atribución, el mismo renglón tendría
+    un texto distinto en cada obra y el segundo `apply` dejaría de reconocerlo —
+    se copiaría otra vez, y otra—."""
+    a, b, c = origen_sin_detalle["propertyId"], test_property["id"], destino["id"]
+    esperado = _de("Estimado inicial · 150 m² × $10,000/m²", "[TEST] Obra Sin Detalle")
+
+    assert _apply(client, b, origen_sin_detalle["budgetId"]).status_code == 201
+    assert _budget(client, b)["lines"][0]["name"] == esperado
+
+    assert _apply(client, c, _budget(client, b)["id"]).status_code == 201
+    en_c = next(l for l in _budget(client, c)["lines"] if l["seeded"])
+    assert en_c["name"] == esperado          # sin «(de «…»)» encadenado
+    assert en_c["name"].count("(de «") == 1
+
+    # Y por eso vuelve a deduplicar. Se le teclea algo a C para cerrarle la rama
+    # del reemplazo —si no, el segundo apply borraría y volvería a copiar, que es
+    # otra cosa— y ahí se ve: el mismo renglón se reconoce y se salta.
+    _add(client, c, chapterName="Clósets", name="Clósets cotizados",
+         unit="lote", quantity=1, unitPrice=950_000)
+    r = _apply(client, c, _budget(client, b)["id"]).json()
+    assert r["linesSkipped"] == 1
+    assert r["linesAdded"] == 0
+    assert len([l for l in r["budget"]["lines"] if l["name"] == esperado]) == 1
 
 
 def test_a_copied_estimate_does_not_hold_the_property_back_either(
@@ -1112,10 +1150,10 @@ def test_a_budget_with_work_of_its_own_is_added_to_and_never_replaced(
     así que no borra nada: los renglones se suman y el total sube con ellos.
     Aquí el destino queda en su estimado + su partida + los cuatro del origen,
     su estimado incluido: cuatro copiados y ninguno saltado. El del origen ya no
-    choca con el de acá porque cruzó de propiedad y llegó sin su cuenta —«Estimado
-    inicial» a secas, ver `_copied_name`—. Antes se saltaban por gemelos, pero
-    eran gemelos de casualidad: este fixture y el destino traen las mismas
-    métricas. Con métricas distintas los nombres ya diferían y entraban los dos."""
+    choca con el de acá porque cruzó de propiedad y llegó atribuido —«… (de «[TEST]
+    Obra Origen»)», ver `_copied_name`—. Antes se saltaban por gemelos, pero eran
+    gemelos de casualidad: este fixture y el destino traen las mismas métricas.
+    Con métricas distintas los nombres ya diferían y entraban los dos."""
     _add(client, test_property["id"], chapterName="Albañilería", name="Muros",
          quantity=1, unitPrice=400_000)
 
@@ -1126,7 +1164,8 @@ def test_a_budget_with_work_of_its_own_is_added_to_and_never_replaced(
     # El estimado del destino sigue ahí, con su cuenta y su importe intactos.
     assert (r["linesAdded"], r["linesSkipped"]) == (4, 0)
     assert _dec(_estimate(r["budget"])["budgetedAmount"]) == ESTIMADO_MXN
-    ajeno = next(l for l in r["budget"]["lines"] if l["name"] == "Estimado inicial")
+    ajeno = next(l for l in r["budget"]["lines"]
+                 if l["name"] == _de(ESTIMADO, "[TEST] Obra Origen"))
     assert _dec(ajeno["budgetedAmount"]) == ESTIMADO_MXN
     assert _dec(r["property"]["constructionBudgeted"]) == (
         ESTIMADO_MXN + Decimal("400000") + Decimal("650000") + ESTIMADO_MXN)
@@ -1434,7 +1473,9 @@ def test_the_target_is_read_from_the_destination_and_never_received(
     # Lo copiado suma el nuevo objetivo, no los $4,050,000 viejos, y como
     # reemplazó al estimado el total ES ese objetivo.
     assert _dec(r["property"]["constructionBudgeted"]) == Decimal("2050000")
-    heredado = next(l for l in r["budget"]["lines"] if l["name"] == "Estimado inicial")
+    heredado = next(l for l in r["budget"]["lines"]
+                    if l["name"] == _de(budget_db.estimate_line_name(100, 16_500, 1),
+                                        "[TEST] Obra Modelo"))
     assert _dec(heredado["budgetedAmount"]) == Decimal("1650000")
 
 
@@ -1489,16 +1530,18 @@ def test_the_destination_inherits_how_much_is_left_to_detail(
     Un origen 100% detallado no traería ningún renglón de holgura, por la misma
     aritmética y sin un caso especial.
 
-    Y AQUÍ SE VE POR QUÉ EL NOMBRE COPIADO NO SE RECALCULA. La holgura heredada
-    llega escalada —$1,650,000 × 2— así que un nombre armado con las métricas de
-    quien sea diría «100 m² × $16,500/m²», que da 1,650,000 y no 3,300,000: un
-    nombre que contradice su propia cifra. Cruzó de propiedad, así que llega sin
-    cuenta: «Estimado inicial»."""
+    Y AQUÍ SE VE POR QUÉ EL NOMBRE COPIADO NO SE RECALCULA NI SE RECORTA. La
+    holgura heredada llega escalada —$1,650,000 × 2— así que un nombre armado con
+    las métricas del destino diría «200 m² × $20,250/m²», que da otra cosa; y uno
+    recortado a «Estimado inicial» dejaría $3,300,000 sin explicación. Llega la
+    cuenta del origen más de quién es, que es lo único verdadero de las tres."""
     r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
     assert r.status_code == 201, r.text
     r = r.json()
 
-    heredado = next(l for l in r["budget"]["lines"] if l["name"] == "Estimado inicial")
+    heredado = next(l for l in r["budget"]["lines"]
+                    if l["name"] == _de(budget_db.estimate_line_name(100, 16_500, 1),
+                                        "[TEST] Obra Modelo"))
     assert _dec(heredado["budgetedAmount"]) == Decimal("3300000")
     # Y el origen no se movió: copiar lee, no escribe en la obra de al lado.
     assert _dec(_estimate_of(_budget(client, modelo["propertyId"]), 100, 16_500)
