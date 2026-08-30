@@ -154,6 +154,15 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .budget-grand-total { margin-top: 3mm; }
 .budget-grand-total td { font-size: 10pt; font-weight: 600; padding-top: 6px;
                           border-top: 2px solid var(--ink); border-bottom: none; }
+/* La nota de madurez del presupuesto, pegada al Total que califica. Mismo
+   tratamiento tipográfico que la nota al pie del portafolio (.valuation-note):
+   itálica, secundaria, chica — es una precisión sobre la cifra de al lado, no
+   una advertencia, y se lee después de ella. `break-before: avoid` porque una
+   nota que califica un número y aterriza sola en la hoja siguiente califica,
+   desde donde cae, a nada. */
+.budget-note { font-family: 'Inter', sans-serif; font-size: 7pt; font-style: italic;
+               color: var(--sec); line-height: 1.45; margin-top: 2.5mm;
+               break-before: avoid; page-break-before: avoid; }
 
 /* ══ COVER ═══════════════════════════════════════════════════════════════ */
 .cover { height: 297mm; padding: 24mm var(--pad) 20mm; display: flex; flex-direction: column; }
@@ -928,14 +937,60 @@ def _development_card(p: dict, kicker: str) -> str:
 # dejaría la segunda visiblemente vacía en vez de ahorrar espacio.
 _BUDGET_TWO_COLUMN_THRESHOLD = 12
 
+# Dónde vive la EJECUCIÓN de un renglón. Basta uno de estos —más un pago— para
+# que el renglón haya dejado de ser una estimación: alguien lo adjudicó, lo
+# comprometió con un monto, midió lo que de verdad se hizo o lo cerró.
+_LINE_EXECUTION_FIELDS = ("supplierId", "committedAmount", "actualQuantity", "closedAt")
+
+
+def _is_lone_estimate(lines: list[dict]) -> bool:
+    """El presupuesto es una sola cifra global sin cotizar: un renglón, y nadie
+    ha ejecutado nada contra él.
+
+    ES LA APROXIMACIÓN A TIEMPO DE IMPRESIÓN de `budget_db.
+    budget_holds_only_initial_estimate`, y la diferencia está escrita a
+    propósito. Aquella contesta con un hecho estructural —`l.created_at =
+    b.created_at`, la marca que solo comparten el presupuesto y el renglón que
+    la calculadora sembró en la misma transacción—; ésta no puede, porque el
+    prospecto recibe los renglones ya serializados y ahí no viaja el
+    `created_at` del presupuesto. Pedirlo obligaría a un campo de API nuevo o a
+    una conexión en la capa de presentación, y ninguna de las dos cosas se paga
+    con un rótulo.
+
+    DÓNDE DISCREPAN, en una sola dirección: un presupuesto cuyo estimado
+    sembrado alguien borró y sustituyó por UN renglón tecleado a mano, todavía
+    sin proveedor ni monto comprometido, aquí cuenta como estimación y allá no.
+    El rótulo sigue siendo cierto de lo que afirma —una cifra global sin
+    desglose y sin nada contratado detrás— porque no dice quién la escribió,
+    dice qué tan madura está. Al revés no discrepan: todo lo que trae ejecución
+    o un segundo renglón queda fuera de las dos.
+
+    `payments` viene de `get_budget` como lista (vacía si no hay), pero se lee
+    con `.get`: las fixtures de esta capa arman renglones mínimos y un renglón
+    sin la llave es un renglón sin pagos."""
+    if len(lines) != 1:
+        return False
+    line = lines[0]
+    return (not any(line.get(field) is not None for field in _LINE_EXECUTION_FIELDS)
+            and not line.get("payments"))
+
 
 def _budget_full(lines: list[dict], chapters: list[str]) -> str:
     """El presupuesto renglón por renglón, agrupado por capítulo (en el orden
-    que `chapters` ya trae — residuo al final, ver budget_db._chapters), con
-    un subtotal por capítulo y un Total general. Pedido explícito: un solo
-    agregado por capítulo escondía la granularidad real del presupuesto —
-    esto es cada partida, su cantidad y su monto. Sin renglones → "", el
-    bloque desaparece del mismo modo que un `_strip` vacío.
+    que `chapters` ya trae — ver budget_db._chapters), con un subtotal por
+    capítulo y un Total general. Pedido explícito: un solo agregado por capítulo
+    escondía la granularidad real del presupuesto — esto es cada partida, su
+    cantidad y su monto.
+
+    SIN RENGLONES IMPRIME UN CERO, no una cadena vacía. Desde que el total es la
+    suma de sus renglones, un presupuesto vacío es un estado legítimo —«todavía
+    no se ha capturado obra»— y suma $0 en `investment_raw` y en la comisión de
+    obra como el número que es. Devolver "" lo volvía indistinguible de un deck
+    pedido sin la sección de presupuesto (`opportunity_budget=False`), que
+    produce exactamente el mismo vacío: el lector no podía saber si la obra vale
+    cero o si no se la enseñaron. Quién decide si HAY presupuesto que imprimir
+    es el llamador —tiene el dato para contestarlo—; esta función imprime el que
+    le den, y $0 es un presupuesto.
 
     Sin subtotal cuando un capítulo trae un solo renglón: repetir la misma
     cifra dos veces (la partida y "Subtotal" idénticos) no añade información,
@@ -950,11 +1005,17 @@ def _budget_full(lines: list[dict], chapters: list[str]) -> str:
     `break-inside: avoid`: el comentario de `table.kv` ya explica por qué un
     capítulo largo puede partirse — aquí igual, entre columnas y no solo entre
     páginas — mientras cada renglón (`table.kv tr`) y el título de capítulo
-    pegado a su primer renglón sigan intactos. Un presupuesto corto (la
-    mayoría: una sola línea "Otros, por detallar") se queda en una columna —
-    dos columnas ahí solo dejarían una segunda columna vacía."""
-    if not lines:
-        return ""
+    pegado a su primer renglón sigan intactos. Un presupuesto de pocos renglones
+    —el estimado inicial es uno solo— se queda en una columna: dos columnas ahí
+    solo dejarían una segunda columna vacía.
+
+    Y CUANDO NO HAY MÁS QUE ESE ESTIMADO, EL PROSPECTO LO DICE. Un renglón
+    global sin cotizar y trece capítulos con proveedor son objetos distintos:
+    el primero es un supuesto, el segundo es obra costeada. Las dos cifras se
+    imprimen igual de grandes bajo la palabra «Total», así que la diferencia
+    tiene que estar escrita o el lector la pierde. Se DERIVA de los renglones
+    (`_is_lone_estimate`) — no hay clase de estimación capturada en ninguna
+    parte, nada que mantener en sync, nada que se pueda quedar mintiendo."""
     by_chapter: dict[str, list[dict]] = {}
     for line in lines:
         by_chapter.setdefault(line.get("chapterName") or "", []).append(line)
@@ -989,7 +1050,25 @@ def _budget_full(lines: list[dict], chapters: list[str]) -> str:
     if len(lines) > _BUDGET_TWO_COLUMN_THRESHOLD:
         body = f'<div class="budget-columns">{body}</div>'
     total = f'<table class="kv budget-grand-total"><tr><td>Total</td><td class="n">{_fmt_mxn(grand_total)}</td></tr></table>'
-    return body + total
+    return body + total + _budget_note(lines)
+
+
+def _budget_note(lines: list[dict]) -> str:
+    """La precisión que acompaña al Total cuando el Total, solo, diría de más.
+
+    Dos casos y nada más; un presupuesto con varias partidas se explica solo y
+    no lleva nota. Están redactados en el registro del documento —«las que
+    siguen en renta entran por una valuación estimada […], no un avalúo
+    formal»—: dicen QUÉ ES la cifra, no advierten de ella. Un presupuesto
+    paramétrico no es un defecto, es la clase de estimación que le toca a una
+    propiedad que todavía no se compra."""
+    if not lines:
+        return ('<div class="budget-note">Sin partidas capturadas: '
+                'la obra todavía no está presupuestada.</div>')
+    if _is_lone_estimate(lines):
+        return ('<div class="budget-note">Estimación de orden de magnitud: '
+                'una cifra global, todavía sin desglosar ni cotizar por partidas.</div>')
+    return ""
 
 
 def _summary_card(sold: list[dict], rented: list[dict]) -> str:
@@ -1231,12 +1310,16 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
             # su propia sección — distinto del "Presupuesto de obra" de la
             # propiedad (más abajo), que es el compromiso vigente y se imprime
             # igual que siempre. Sin escenario, nada: null sobre fabricado.
+            # Existir es el único requisito: un escenario que alguien creó
+            # vacío imprime su Total en $0 con su nota, igual que el
+            # presupuesto de la propiedad. La rama de «y además que
+            # `_budget_full` haya devuelto algo» se fue con el vacío que ya no
+            # devuelve — era la misma pregunta contestada dos veces, y la
+            # segunda copia habría vuelto a esconder un cero legítimo.
             budget = plan_budgets.get(plan_id)
             if not budget:
                 return ""
             h = _budget_full(budget.get("lines", []), budget.get("chapters", []))
-            if not h:
-                return ""
             title = f"Presupuesto · {plan_name}" if plan_name else "Presupuesto del plan"
             return (f'<div class="detail-section">'
                     f'<div class="col-label">{_esc(title)}</div>{h}</div>')
@@ -1270,8 +1353,15 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
                   if sections.opportunity_renders else [])
     photos_html = _photo_block(photo_rows)
 
-    budget = (p.get("budget") or {}) if sections.opportunity_budget else {}
-    budget_html = _budget_full(budget.get("lines", []), budget.get("chapters", []))
+    # «¿Hay presupuesto que imprimir?» se contesta AQUÍ, y solo aquí: la
+    # propiedad lo trae (`_embed_opportunity_extras` lo lee siempre, y toda
+    # propiedad tiene presupuesto) o la sección viene apagada. Antes la
+    # pregunta la contestaba `_budget_full` devolviendo "" sin renglones, y
+    # entonces un presupuesto vacío y un deck pedido sin presupuesto salían
+    # idénticos — el cero legítimo se leía como sección omitida.
+    budget = p.get("budget") if sections.opportunity_budget else None
+    budget_html = (_budget_full(budget.get("lines", []), budget.get("chapters", []))
+                   if budget else "")
 
     if not (plan_sections_html or photos_html or budget_html):
         return ""

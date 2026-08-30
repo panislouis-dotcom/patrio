@@ -197,3 +197,47 @@ Corolario del mismo día: la duda vale en las dos direcciones. Cuatro veces se
 reportó como pendiente algo ya hecho, y también llegaron reportes de errores ya
 arreglados. **Antes de actuar sobre el reporte de otro —o sobre el propio de
 hace una hora— vuelve a medir.**
+
+---
+
+## Un comentario que describe lo que hace OTRO archivo se pudre sin que nada falle
+
+**2026-08-30 · «la calculadora se retira» — llevaba 25 días sin retirarse**
+
+`67e05bf` (2026-08-05) volvió a atar la liga viva métricas→presupuesto: desde ese
+commit, editar los m² de la ficha reprecia el presupuesto entero. No tocó ninguna de
+las dos frases que lo negaban, escritas cada una en un archivo distinto del código
+que describían:
+
+- `app/README.md:36` — «it is the calculator that produces that first line and then
+  **retires**».
+- `db/schema.sql:1031` — «El API ya no la lee ni la escribe».
+
+**Nada falló.** No hay prueba que compare una oración con una rama, ni compilador que
+enumere los usos de un párrafo. Las dos siguieron leyéndose como verdad.
+
+**Lo que costó**: al abrir este trabajo diagnostiqué sobre esas frases y le dije a Ed
+que el acoplamiento *ya estaba quitado*. Tuve que retractarme. La prosa no me hizo
+perder tiempo: me hizo dar una respuesta equivocada sobre su propio sistema, que es
+más caro. Es la misma familia que [[Una salvedad sobre el estado ajeno caduca]] —una
+afirmación cierta el día que se escribe y que nadie vuelve a medir—, solo que aquí el
+«estado ajeno» es otro archivo del mismo repo.
+
+**Y volvió a pasar en este mismo trabajo, cuatro veces**: además de esas dos, la skill
+`app/.claude/skills/generate-prospectus.md` rotulaba `constructionCostPerSqm` como
+«derived, display-only», un comentario de `conftest.py` afirmaba que ese campo no era
+escribible, y `properties_db.py:658` decía que no hacía falta que estuviera. Cuatro
+descripciones del mismo campo, en cuatro archivos, ninguna en el archivo que lo
+gobierna, todas equivocadas al mismo tiempo.
+
+**Cómo aplicarlo**, dos reglas:
+
+1. **Una frase sobre código que vive en otro archivo es una pista, nunca evidencia.**
+   Si vas a diagnosticar, decidir o citarla, abre primero el código que describe. Vale
+   para el README, para el `COMMENT ON COLUMN`, para la skill y para tu propio
+   comentario de hace un mes.
+2. **Cambiar un comportamiento no termina en sus llamadores.** Antes de cerrar,
+   `grep` del NOMBRE de lo que moviste —`construction_cost_per_sqm`, `set_total`,
+   `is_residual`— sobre `*.md`, `*.sql`, las skills y los comentarios, no solo sobre
+   el código que lo invoca. Los llamadores los encuentra el compilador; las oraciones
+   no las encuentra nadie más que tú.
