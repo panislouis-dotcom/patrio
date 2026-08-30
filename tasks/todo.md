@@ -136,7 +136,13 @@ son sembradas no coinciden. Se registra el hecho en vez de inferirlo.
 - [x] Borrar una partida **baja** el total exactamente su importe
 - [x] Un presupuesto sin renglones da `construction_budgeted = 0` y no rompe `investment_raw()`, la comisión de obra ni el prospecto
 - [x] El renglón de estimación se puede editar y borrar (antes eran 400)
-- [ ] Prueba de conservación de la migración, **apareando por nombre y no por id** (la suite e2e recicla ids — lección 2026-08-03)
+- [x] Prueba de conservación de la migración — **resuelta por la guarda dentro de la
+      migración, no por un pytest.** `conftest` aplica TODAS las migraciones de golpe,
+      así que un pytest jamás ve el «antes»: tendría que reconstruirlo con datos
+      sintéticos y acabaría probando la maqueta, no la migración. Las guardas de la
+      053 y la 054 corren contra los datos REALES en el PreSync y abortan el deploy
+      si algún `construction_budgeted` se mueve —demostrado disparándolas a mano con
+      perturbaciones inyectadas—. Es más fuerte que la prueba que pedía este renglón.
 - [x] Tests que nombren `is_residual` / `RESIDUAL_*`: borrados o reescritos, ninguno dejado en skip
 - [x] Vitest de `BudgetPanel`: sin `AJUSTAR`, los dos `$/m²` rotulados, renglón de estimación borrable
 
