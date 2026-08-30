@@ -278,3 +278,30 @@ migración, lo que está mal es el método del dump, no el esquema. La regla gen
 te ocurrió revisar, y el dump es donde eso sale a la superficie. Mismo consejo que
 cierra [[Verde en local puede significar «contaminado», no «correcto»]]: cuando un
 entorno da un resultado y otro da otro, compara sus recetas antes de teorizar.
+
+## Retransmitir un hallazgo ajeno sin verificarlo lo convierte en instrucción
+
+Un revisor marcó que `conftest.py` insertaba sin `seeded`. Lo retransmití como orden.
+El propio revisor lo **retiró** minutos después —al leer bien el docstring— pero la
+orden ya iba en camino: el implementador revirtió un cambio correcto, mi corrección
+cruzó con su commit, y el mismo hunk de cuatro líneas fue y volvió **tres veces**.
+
+Dos cosas lo hicieron caro. La primera es que retransmitir borra la incertidumbre: el
+revisor escribió una observación, y al llegar firmada por quien coordina llegó como
+decisión. La segunda es que el cambio era **inerte** —ninguna prueba lo distinguía,
+verificado desde dos bases independientes—, así que nada downstream iba a arbitrarlo
+nunca. Un cambio que ninguna prueba puede distinguir se re-litiga gratis y para siempre.
+
+Lo zanjó dejar de arbitrar entre dos prosas y mirar el dato: el helper inserta capítulo
+`'Otros'` y unidad `'lote'`, que son `ESTIMATE_CHAPTER` y `LUMP_SUM_UNIT`. La fila YA
+era un estimado sembrado en todo menos la bandera, así que `seeded = FALSE` la dejaba
+incoherente consigo misma. Ninguna de las dos lecturas del docstring era el argumento
+bueno.
+
+**Cómo aplicarlo**: antes de convertir el hallazgo de un revisor en instrucción,
+verifícalo tú contra el código — un hallazgo ajeno es una pista, no evidencia, igual
+que en [[Un comentario que describe lo que hace OTRO archivo se pudre sin que nada
+falle]]. Cuando dos lecturas de una prosa compiten, **el desempate está en lo que el
+código escribe**, no en la paráfrasis mejor. Y si un cambio es inerte para toda la
+suite, da el argumento de la forma del código a la primera: nada más lo va a decidir
+por ti.
