@@ -10,8 +10,9 @@ compara contra el presupuesto en vez de derivarse de él.
 1. **Total = Σ renglones.** Sin modos, sin fallback, sin campo de «base».
 2. **`is_residual` desaparece**: sin bandera, sin índice, sin renglón especial.
 3. **`AJUSTAR` se va** junto con `set_total`.
-4. **La calculadora es un botón, no una liga**: escribe UN renglón al nacer y hay un
-   «re-estimar» explícito que lo reemplaza.
+4. **La calculadora escribe UNA vez, al nacer la propiedad.** Después NO existe
+   ningún camino de escritura de la métrica hacia el presupuesto — ni automático ni
+   a botón. Son dos números independientes: la métrica cruda y el presupuesto.
 5. **Migración: el residuo se CONVIERTE, no se borra.** Ningún número se mueve el día
    de la migración.
 6. **`$/m²` vuelve a capturarse** y se muestra al lado del derivado `presupuesto ÷ m²`.
@@ -88,21 +89,20 @@ sin ramas nuevas: 0 es un número, no un faltante.
 - [ ] `ORDER BY l.is_residual, ...` `:270` — reemplazar por orden estable sin la bandera
 - [ ] `_totals()` devuelve un solo total (ya no hay «detallado» contra «total»); ajustar call sites
 
-### PR 1 · Backend — la calculadora como botón
+### PR 1 · Backend — la calculadora escribe una sola vez
 
-- [ ] `create_budget()` `:343-360` — escribe un renglón normal con el estimado, nombrado con su propia aritmética (p. ej. «Estimado inicial · 200 m² × $8,000/m²»)
+- [ ] `create_budget()` `:343-360` — escribe un renglón normal con el estimado, nombrado con su propia aritmética: «Estimado inicial · 200 m² × $8,000/m²» (confirmado con Eduardo)
 - [ ] `_require_budget()` `:339` — crea el presupuesto **vacío**, sin renglón fantasma
-- [ ] Endpoint `POST /api/properties/{id}/budget/re-estimate` — recalcula `m² × $/m² × overhead` y **reemplaza** el renglón de estimación (o lo crea si no está); nunca toca partidas detalladas
-- [ ] `calculator_estimate()` `:127-144` se queda tal cual; sus únicos call sites quedan ser creación y re-estimar
+- [ ] `calculator_estimate()` `:127-144` se queda tal cual; su ÚNICO call site queda ser `create_budget()`
+- [ ] Verificar por grep que no queda ningún otro camino que escriba el presupuesto desde m²/$/m²
 
 ### PR 1 · Frontend
 
 - [ ] `BudgetPanel.tsx:1528` — fuera `AJUSTAR`, su estado `adjusting` y el comentario `:1283`
 - [ ] `BudgetPanel.tsx:1008` / `:1098` — dejar de mostrar dos `$/m²` sin rótulo; mostrar *tu estimado* (capturado, editable) contra *el presupuesto* (`budgetedCostPerSqm`, derivado)
 - [ ] El renglón de estimación se edita y se borra como cualquier otro (sin caso especial)
-- [ ] Botón «re-estimar» que llama al endpoint nuevo, con confirmación de que reemplaza ese renglón
 - [ ] `PropertyDetailPage.tsx:964,985-995` — m² y $/m² quedan como campos sin efecto colateral
-- [ ] `lib/api.ts` — fuera `setBudgetTotal`; alta de `reEstimateBudget`
+- [ ] `lib/api.ts` — fuera `setBudgetTotal`, sin función nueva que la sustituya
 
 ### PR 1 · Prospecto
 
@@ -116,7 +116,6 @@ sin ramas nuevas: 0 es un número, no un faltante.
 - [ ] Borrar una partida **baja** el total exactamente su importe
 - [ ] Un presupuesto sin renglones da `construction_budgeted = 0` y no rompe `investment_raw()`, la comisión de obra ni el prospecto
 - [ ] El renglón de estimación se puede editar y borrar (antes eran 400)
-- [ ] `re-estimate` reemplaza el renglón de estimación y **no toca** las partidas detalladas
 - [ ] Prueba de conservación de la migración, **apareando por nombre y no por id** (la suite e2e recicla ids — lección 2026-08-03)
 - [ ] Tests que nombren `is_residual` / `RESIDUAL_*`: borrados o reescritos, ninguno dejado en skip
 - [ ] Vitest de `BudgetPanel`: sin `AJUSTAR`, los dos `$/m²` rotulados, renglón de estimación borrable
