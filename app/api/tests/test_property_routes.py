@@ -176,17 +176,30 @@ def test_a_seeded_budget_does_not_block_the_delete(client, test_property):
     assert client.get(f"/api/properties/{pid}").status_code == 404
 
 
+def test_a_budget_born_empty_on_read_does_not_block_the_delete(client, test_property):
+    """`_require_budget` fabrica el presupuesto AL LEERLO, y el que fabrica nace
+    VACÍO —sin renglón sembrado—. Es el único camino por el que existe un
+    presupuesto sin nada dentro, y tiene que seguir sin retener: cero renglones
+    es cero trabajo capturado, no un dato faltante."""
+    pid = test_property["id"]
+    with get_db() as conn:
+        conn.execute("DELETE FROM budgets WHERE property_id = %s", (pid,))
+    assert client.get(f"/api/properties/{pid}/budget").json()["lines"] == []
+    assert client.get(f"/api/properties/{pid}").json()["constructionBudgeted"] == 0
+
+    assert client.delete(f"/api/properties/{pid}").status_code == 204
+    assert client.get(f"/api/properties/{pid}").status_code == 404
+
+
 def test_a_line_you_typed_yourself_holds_the_property_back_from_the_first_one(
         client, test_property):
     """UN RENGLÓN TECLEADO RETIENE, sin necesidad de ejecución encima.
 
     «¿Trabajó alguien aquí?» no se contesta por el nombre del renglón —el del
     estimado lleva dentro los m² y el $/m², así que corregir la ficha lo
-    cambiaría— sino por un hecho de escritura: `l.created_at = b.created_at`.
-    Las dos columnas son `DEFAULT now()` y `now()` es la hora de INICIO DE
-    TRANSACCIÓN, así que el presupuesto y su renglón sembrado —escritos en el
-    mismo `with get_db()` de `create_property`— quedan con la marca idéntica, y
-    todo lo tecleado después llega en otra transacción y difiere.
+    cambiaría— ni por la hora en que se escribió, sino por un hecho REGISTRADO:
+    `budget_lines.seeded`. Lo pone en TRUE quien siembra; lo tecleado nace
+    `FALSE` por default de la columna, sin que nadie tenga que acordarse.
 
     Aquí se borra el estimado y se teclea uno propio sin proveedor, sin
     comprometido, sin cantidad real, sin cierre y sin pagos: el caso que antes
