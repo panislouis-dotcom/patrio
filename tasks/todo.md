@@ -163,7 +163,12 @@ son sembradas no coinciden. Se registra el hecho en vez de inferirlo.
 - [x] `pytest app/api/tests/ -q` verde
 - [x] `cd app/web && npm test` verde
 - [x] `cd app/web && npx tsc --noEmit` limpio
-- [ ] `cd app/e2e && npm test` verde (ojo: la suite trae ~18% de flake, ver `docs`)
+- [x] `cd app/e2e && npm test` verde — **213 passed, 0 failed** contra HEAD, con servidor
+      levantado de nuevo (la primera corrida no contaba: el uvicorn tenía cargado código
+      anterior a los commits de atribución). El ~18% de flake **no se reprodujo**: 1,047
+      ejecuciones locales, cero fallos, cero reintentos. Queda como pregunta abierta del
+      ENTORNO de CI —`retries: 1` sólo en CI, `vite preview` sobre bundle contra dev server,
+      Postgres compartido, caché fría de Playwright—, no como «la suite está sana».
 - [x] Migración corrida contra una base fresca 000→053 y contra una copia con datos
 - [x] **Reporte pre-flight**: por propiedad, `construction_budgeted` antes → después. Todos iguales.
 - [x] A mano en el navegador: editar m² y ver que el presupuesto **no** se mueve
@@ -172,4 +177,75 @@ son sembradas no coinciden. Se registra el hecho en vez de inferirlo.
 
 ## Review
 
-_(pendiente — se llena al terminar)_
+**Estado: listo para merge.** 34 commits sobre `origin/main`, HEAD `4d25d60`, árbol limpio.
+
+### Verificación independiente (corrida por el lead, base propia, no reportada por agentes)
+
+| Comprobación | Resultado en `4d25d60` |
+|---|---|
+| `pytest app/api/tests/ -q` | **745 passed**, 0 skipped |
+| `npx tsc --noEmit` (`app/web`) | **exit 0** |
+| `npx vitest run` (`app/web`) | **47 archivos, 759 passed** |
+| `app/e2e` | **213 passed, 0 failed** contra HEAD |
+| `db/schema.sql` contra reconstrucción `000→054` desde cero | **idéntico byte a byte** |
+| Símbolos retirados (`is_residual`, `set_total`, `AJUSTAR`, …) | sin una sola referencia viva |
+
+El chequeo del `schema.sql` es el que encontró que la `054` nunca se había regenerado, con
+la suite en verde y dos revisores aprobando. Se hace desde una base construida como
+`make reset-db` (`DROP SCHEMA public CASCADE; CREATE SCHEMA public`), nunca con un
+`CREATE DATABASE` a secas, que hereda el comentario de `template1` y mete un hunk fantasma.
+
+### Lo que la revisión final encontró, y que la suite verde no
+
+1. **`scripts/seed-e2e-user.py` quedó fuera de la migración.** Seguía escribiendo
+   `is_residual = TRUE` sin poner `seeded`, así que las dos propiedades semilla de E2E se
+   leían como trabajo capturado: `DELETE` daba **422** donde en `main` daba 204, y habría
+   reventado en el `DROP COLUMN` de la PR 2. El backfill de la `054` sólo arregla las filas
+   que existían cuando corrió; un escritor fuera de su alcance produce `seeded = FALSE` para
+   siempre. Mi propio barrido de greps lo perdió por estar acotado a `app/` y `db/`.
+2. **El cliente ofrecía una copia proporcional que el servidor rechaza de plano.** La regla
+   está partida en dos cláusulas con dos dueños: el alcance por capítulos lo sabe el cliente,
+   el estado del destino lo sabe el servidor. Contestar las dos de un solo lado producía o un
+   predicado duplicado o un 422 después de haber prometido un número. Se resolvió publicando
+   `replaceable` (misma expresión `_UNTOUCHED_BUDGET`, hoy con cuatro lectores) y dejando la
+   cláusula de capítulos donde vive su dato.
+3. **Un estimado copiado y escalado contradecía su propia cuenta.** `proportional` y la
+   atribución entre obras son condiciones ortogonales y coinciden: el renglón aterrizaba con
+   $2,340,000 y un nombre cuya aritmética da $1,500,000. El importe siempre estuvo bien; el
+   nombre no. Hoy lo dice: «… (de «Casa Edison», importe ajustado a esta obra)».
+4. **`_proportional_factor` mezclaba dos conjuntos de filas.** Latente —`_require_replaceable`
+   impide la combinación por ruta— pero medido: pidiendo un solo capítulo contra un objetivo
+   de $300,000 el factor viejo entregaba **$21,951**. El error escala con la razón entre el
+   presupuesto entero y el capítulo pedido, así que empeora cuanto más se acota la copia.
+5. **15 frases de prosa describían el mundo anterior a esta rama.** La peor, `api.ts:871`,
+   le prometía al frontend que copiar renglones deja el total quieto «porque el residuo baja
+   lo que ellos suben» — exactamente lo que esta rama abolió, al revés, en el archivo que se
+   consulta primero. Y la `053` decía tres veces que el `DROP` va en la `054`, que dejó de ser
+   cierto cuando la `054` se la quedó `seeded`; una de las tres es un `COMMENT ON COLUMN`, o
+   sea **dato que se escribe en el catálogo de producción**, apuntando a una migración que
+   nunca va a existir. Por eso hoy apunta a «PR 2 · Contract» y no a un número.
+
+### Huecos conocidos, declarados y no tapados
+
+- **`app/e2e` no pasa `tsc`**: 61 errores, todos de la clase `@types/node` ausente más un
+  error de tipos de Playwright. **Cero** en el spec nuevo. Es previo a esta rama y no se
+  arregla aquí; instalar la dependencia era ampliar el alcance.
+- **`replaceable` en el cliente es una FOTO** de la última lectura entera. Una celda que se
+  autoguarda voltea el predicado en el servidor sin pasar por `receive`, así que hay una
+  ventana en la que el bloqueo previo no se entera. Bloquea antes de pedir; **no manda**: la
+  autoridad sigue siendo el 422, que se sigue enseñando con su motivo.
+- **El flake de ~18% de CI sigue sin explicarse.** No se reprodujo en 1,047 ejecuciones
+  locales. Es una pregunta del entorno de CI, no de esta rama.
+
+### Decisiones que se tomaron aquí y conviene no deshacer
+
+- **`chapters: null` y `chapters: [todos los capítulos]` NO son la misma petición.** `entero`
+  alimenta a `reemplaza`, y `reemplaza` gobierna un `DELETE FROM budget_lines`. Colapsarlas
+  por comodidad de UI convertiría «marqué todo» en «bórrame el estimado del destino». El
+  regreso a «todo el presupuesto» es un botón explícito, no una inferencia — y hay una prueba
+  que fija que volver a marcar todas las casillas **no** alcanza.
+- **El estimado copiado se ATRIBUYE, no se recorta.** El nombre es la única memoria de esa
+  cuenta y además es la llave de la dedup, así que la atribución es idempotente
+  (`strpos(l.name, ' (de «') = 0`): A→B→C conserva «(de «A»)».
+- **La columna `is_residual` se queda.** Expand/contract: las migraciones corren en un hook
+  PreSync, antes de que entren los pods nuevos. El `DROP` es la PR 2.
