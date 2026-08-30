@@ -223,12 +223,20 @@ más caro. Es la misma familia que [[Una salvedad sobre el estado ajeno caduca]]
 afirmación cierta el día que se escribe y que nadie vuelve a medir—, solo que aquí el
 «estado ajeno» es otro archivo del mismo repo.
 
-**Y volvió a pasar en este mismo trabajo, cuatro veces**: además de esas dos, la skill
-`app/.claude/skills/generate-prospectus.md` rotulaba `constructionCostPerSqm` como
-«derived, display-only», un comentario de `conftest.py` afirmaba que ese campo no era
-escribible, y `properties_db.py:658` decía que no hacía falta que estuviera. Cuatro
-descripciones del mismo campo, en cuatro archivos, ninguna en el archivo que lo
-gobierna, todas equivocadas al mismo tiempo.
+**Y NO FUERON DOS: FUERON SEIS**, todas encontradas en este mismo trabajo. Además de
+las dos de arriba, `app/.claude/skills/generate-prospectus.md` rotulaba
+`constructionCostPerSqm` como «derived, display-only», un comentario de
+`app/api/tests/conftest.py` afirmaba que ese campo no era escribible,
+`properties_db.py:658` decía que no hacía falta que estuviera, y
+`prospectus_html.py:954` describía la maquetación del presupuesto en términos de un
+residuo —«la mayoría: una sola línea Otros, por detallar»— que ya no existía.
+
+Cuatro de las seis —`db/schema.sql:1031`, la skill, el `conftest.py` y
+`properties_db.py:658`— describen **el mismo campo**, cada una desde un archivo
+distinto, **ninguna desde el archivo que lo gobierna**, y las cuatro estaban
+equivocadas al mismo tiempo. Ese es el número que hay que mirar: no «se nos pasó un
+comentario», sino que la descripción de un campo se replicó en cuatro lugares que
+nadie puede mantener a la vez.
 
 **Cómo aplicarlo**, dos reglas:
 
