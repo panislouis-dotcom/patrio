@@ -772,6 +772,47 @@ def _no_such_chapters(conn, source_budget_id: int, chapters: list[str]) -> str:
 # renglones copiados: tal cual los del origen, o dimensionados a lo que esta
 # obra tenía presupuestado.
 
+def _property_name(conn, property_id: int) -> str:
+    """El nombre de la obra, para que un rechazo diga de cuál habla."""
+    return conn.execute(
+        "SELECT name FROM properties WHERE id = %s", (property_id,)
+    ).fetchone()["name"]
+
+
+def _require_replaceable(conn, property_id: int, entero: bool, reemplaza: bool) -> None:
+    """La copia PROPORCIONAL solo existe donde la copia reemplaza, y aquí se
+    exige.
+
+    El factor dimensiona lo copiado para que sume «lo que esta obra ya tenía
+    presupuestado». Si ese lugar sigue ocupado —porque hay renglones propios que
+    no se van a borrar, o porque se pidió un capítulo suelto que no puede
+    sustituir a un presupuesto entero— la copia aterriza ENCIMA y el total queda
+    en algo que el propio objetivo desmiente: ≈2×.
+
+    Se rechaza en vez de aproximar. Una operación que no puede cumplir su
+    garantía tiene dos salidas honestas —declinar, o borrar de más para hacerse
+    lugar— y la segunda no está disponible: identificar cuál renglón vino a
+    sustituir exige reconocer el estimado por su nombre, y un nombre lo teclea o
+    lo renombra cualquiera (el mismo argumento con el que la 033 desmontó «Otros,
+    por detallar»). La copia DIRECTA sigue funcionando en los dos casos: trae los
+    importes del origen y no promete nada sobre el total."""
+    if reemplaza:
+        return
+    nombre = _property_name(conn, property_id)
+    if not entero:
+        raise BudgetError(
+            f"La copia proporcional dimensiona lo copiado al costo de obra de "
+            f"«{nombre}», y un capítulo suelto no puede sumar el presupuesto "
+            f"completo. Copia ese capítulo tal cual, o pide el presupuesto "
+            f"entero en proporcional.")
+    raise BudgetError(
+        f"«{nombre}» ya tiene renglones capturados en su presupuesto de obra, y "
+        f"la copia proporcional dimensiona lo copiado a ese costo —el lugar ya "
+        f"está ocupado, así que lo copiado se sumaría encima y el total quedaría "
+        f"al doble—. Copia el presupuesto tal cual, o borra esos renglones y "
+        f"vuelve a intentar.")
+
+
 def _require_cost_of_works(conn, property_id: int, objetivo: Decimal) -> None:
     """El objetivo de la copia proporcional SE LEE, NO SE RECIBE: es el costo de
     obra que la propiedad ya tiene. Lo único que hay que exigirle es existir.
@@ -781,11 +822,8 @@ def _require_cost_of_works(conn, property_id: int, objetivo: Decimal) -> None:
     el que sea. Ahí manda el rechazo, nombrando la obra."""
     if objetivo > 0:
         return
-    nombre = conn.execute(
-        "SELECT name FROM properties WHERE id = %s", (property_id,)
-    ).fetchone()["name"]
     raise BudgetError(
-        f"«{nombre}» tiene el presupuesto de obra en $0, y la copia proporcional "
+        f"«{_property_name(conn, property_id)}» tiene el presupuesto de obra en $0, y la copia proporcional "
         f"dimensiona lo copiado a ese costo. Captura al menos un renglón —aunque "
         f"sea el estimado grueso, m² × $/m²— y vuelve a intentar, o copia el "
         f"presupuesto tal cual.")
@@ -840,18 +878,25 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
 
     DOS CASOS, Y LOS SEPARA QUÉ HABÍA EN EL DESTINO:
 
-    - Si el destino no tiene más que el estimado inicial de la calculadora, ese
-      renglón SE REEMPLAZA por lo que llega. Es el movimiento que esta operación
+    - Si el destino no tiene más que el estimado inicial de la calculadora Y se
+      copia el presupuesto ENTERO, ese renglón SE REEMPLAZA por lo que llega. Es el movimiento que esta operación
       existe para hacer —la cifra paramétrica se vuelve el desglose que la
       sustenta, Clase 5 → Clase 3 (ver el diseño)— y sumarlos contaría dos veces
       la misma obra: el desglose no se agrega al estimado, ES el estimado, ahora
       dicho por partidas. En la proporcional se ve solo: el factor dimensiona lo
       copiado para que sume exactamente el total que el destino ya tenía, así
       que sumarlo encima daría 2×, un número que la propia aritmética del modo
-      desmiente.
-    - Si hay algo más —un renglón tecleado, cualquier captura de ejecución— los
-      renglones se SUMAN a lo que ya hubiera y el total sube con ellos. Nada de
-      lo que alguien capturó se toca, ni siquiera para hacerle lugar a una copia.
+      desmiente. Un capítulo suelto NO reemplaza: no sustituye a un presupuesto
+      entero, y cambiar un estimado de $2,340,000 por los $150,000 de una sección
+      sería pérdida de datos con cara de función.
+    - Si hay algo más —un renglón tecleado, cualquier captura de ejecución— o si
+      se pidieron capítulos sueltos, los renglones se SUMAN a lo que ya hubiera y
+      el total sube con ellos. Nada de lo que alguien capturó se toca, ni
+      siquiera para hacerle lugar a una copia.
+
+    Y LA PROPORCIONAL SOLO EXISTE EN LA PRIMERA RAMA: fuera de ella rechaza
+    (`_require_replaceable`) en vez de aterrizar encima. La directa funciona en
+    las dos, porque no promete nada sobre el total.
 
     La pregunta que separa los dos casos es la MISMA que decide si una propiedad
     se puede borrar (`budget_holds_only_initial_estimate`), y trae su misma
@@ -877,14 +922,11 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
     INSERT.
 
     Y ahí hay que ser preciso, porque la frase se presta: el factor garantiza lo
-    que suma LO COPIADO, no en qué queda el total. Las dos coinciden en la rama
-    del reemplazo —lo que había se fue, así que el total ES lo copiado— y NO
-    coinciden en la de suma: sobre un presupuesto que ya trae renglones propios,
-    la proporcional aterriza otro tanto encima y el total queda en la suma de
-    los dos. Con un solo renglón tecleado sobre el estimado eso es ≈2×T, y el
-    reemplazo no lo puede evitar sin adivinar cuál de los renglones vino a
-    sustituir —adivinar de más sería borrar trabajo real, en silencio—. Queda
-    abierto a propósito: ver la nota de `_NOTHING_BUT_THE_ESTIMATE`.
+    que suma LO COPIADO, no en qué queda el total. Las dos coinciden únicamente
+    en la rama del reemplazo —lo que había se fue, así que el total ES lo
+    copiado— y por eso la proporcional no se ofrece en ninguna otra: donde no
+    coinciden, la garantía enunciada y el resultado se contradicen, y una
+    operación que no puede cumplir lo que promete declina.
 
     EL FACTOR LO CALCULA ESTE SERVIDOR, siempre, contra el costo de obra que el
     destino ya tiene capturado. Un factor mandado por el cliente volvería la
@@ -897,10 +939,14 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
                     (source_budget_id,)).fetchone() is None:
         raise BudgetNotFound(f"No existe el presupuesto {source_budget_id} que se quiere copiar")
     # Las dos lecturas van ANTES de tocar nada: sobre los renglones de ahora,
-    # incluido el estimado que quizá no sobreviva a esta misma llamada.
-    reemplaza = budget_holds_only_initial_estimate(conn, budget_id)
+    # incluido el estimado que quizá no sobreviva a esta misma llamada. Y el
+    # reemplazo exige copia ENTERA: un capítulo suelto no sustituye a un
+    # presupuesto, así que sumarlo es lo único honesto que puede hacer.
+    entero = chapters is None
+    reemplaza = entero and budget_holds_only_initial_estimate(conn, budget_id)
     factor = None
     if proportional:
+        _require_replaceable(conn, property_id, entero, reemplaza)
         # El objetivo es el costo de obra que esta propiedad ya tiene: se lee,
         # no se recibe.
         objetivo = _totals(conn, budget_id)

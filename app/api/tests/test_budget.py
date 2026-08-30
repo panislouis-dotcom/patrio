@@ -853,11 +853,11 @@ def test_only_the_chapters_asked_for_are_copied(client, test_property, origen):
     capítulo no es una entidad —es el nombre que copian sus renglones— así que
     copiar una sección es la misma copia con un WHERE.
 
-    El reemplazo NO distingue la copia entera de la parcial: el destino no tenía
-    más que su estimado, así que se va, y el presupuesto queda en los $150,000
-    que llegaron. Es la consecuencia áspera de la regla —copiar una sección
-    sobre una obra apenas estimada la deja en el tamaño de esa sección— y se fija
-    aquí en vez de dejarla como sorpresa."""
+    Y LA COPIA PARCIAL SUMA, NUNCA REEMPLAZA, aunque el destino no tenga más que
+    su estimado. Reemplazar solo se sostiene cuando lo que llega SUSTITUYE al
+    estimado, y una sección no sustituye a un presupuesto entero: cambiar los
+    $2,340,000 estimados por los $150,000 de «Acabados» sería pérdida de datos
+    con cara de función. Así que el estimado se queda y la sección se suma."""
     r = _apply(client, test_property["id"], origen["budgetId"], chapters=["Acabados"])
     assert r.status_code == 201, r.text
     r = r.json()
@@ -865,7 +865,8 @@ def test_only_the_chapters_asked_for_are_copied(client, test_property, origen):
     assert r["linesAdded"] == 1
     assert r["linesSkipped"] == 0
     assert set(_detailed(r["budget"])) == {"Piso cerámico"}
-    assert _dec(r["property"]["constructionBudgeted"]) == Decimal("150000")
+    assert _dec(_estimate(r["budget"])["budgetedAmount"]) == ESTIMADO_MXN
+    assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("150000")
 
 
 def test_applying_the_same_source_twice_adds_nothing_the_second_time(
@@ -1221,6 +1222,48 @@ def test_the_target_is_read_from_the_destination_and_never_received(
     assert _dec(_estimate_of(r["budget"], 100, 16_500)["budgetedAmount"]) == Decimal("1650000")
 
 
+def test_the_proportional_copy_refuses_when_it_cannot_honour_its_own_target(
+        client, destino, modelo):
+    """LA OPERACIÓN QUE NO PUEDE CUMPLIR SU GARANTÍA DECLINA, no aproxima.
+
+    El factor dimensiona lo copiado para que sume «lo que esta obra ya tenía
+    presupuestado». Con renglones propios en el destino ese lugar está ocupado:
+    lo copiado aterrizaría encima y el total quedaría en ≈2×T, un número que el
+    objetivo del que salió el factor desmiente. Y con un capítulo suelto no hay
+    reemplazo posible —una sección no sustituye a un presupuesto—, así que la
+    proporcional tampoco aplica.
+
+    La salida no es borrar de más para hacerse lugar: eso exigiría reconocer el
+    estimado por su nombre, y un nombre lo teclea o lo renombra cualquiera. Se
+    rechaza diciendo qué hacer, y la copia DIRECTA sigue disponible en los dos
+    casos.
+
+    Este rechazo ABSORBE la vieja prueba de deduplicación en modo proporcional
+    («un renglón que ya está aquí se salta, no se escala»): esa garantía ya no
+    se puede ni ejercer, porque donde la proporcional corre el destino tiene a
+    lo más el estimado y se vacía antes de copiar. La protección del dinero
+    capturado no se perdió —se volvió más fuerte—: en vez de escalar alrededor
+    de lo capturado, la operación no corre."""
+    # (a) capítulo suelto: no hay presupuesto que sustituir.
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"],
+                            chapters=["Acabados"])
+    assert r.status_code == 422, r.text
+    assert "capítulo suelto" in r.json()["error"]["message"]
+
+    # (b) renglones propios: el lugar del objetivo ya está ocupado.
+    _add(client, destino["id"], chapterName="Albañilería", name="Muros",
+         quantity=1, unitPrice=400_000)
+    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
+    assert r.status_code == 422, r.text
+    assert "ya tiene renglones capturados" in r.json()["error"]["message"]
+
+    # Y en ese mismo estado la directa funciona: trae los importes del origen.
+    r = _apply(client, destino["id"], modelo["budgetId"])
+    assert r.status_code == 201, r.text
+    assert _dec(r.json()["property"]["constructionBudgeted"]) == (
+        OBJETIVO + Decimal("400000") + Decimal("2050000"))
+
+
 def test_the_destination_inherits_how_much_is_left_to_detail(
         client, destino, modelo):
     """El estimado del origen entra al denominador del factor, y por eso el
@@ -1240,27 +1283,6 @@ def test_the_destination_inherits_how_much_is_left_to_detail(
     # Y el origen no se movió: copiar lee, no escribe en la obra de al lado.
     assert _dec(_estimate_of(_budget(client, modelo["propertyId"]), 100, 16_500)
                 ["budgetedAmount"]) == Decimal("1650000")
-
-
-def test_the_proportional_copy_still_skips_what_the_destination_already_has(
-        client, destino, modelo):
-    """La dedup no cambia con el modo: un renglón que ya está aquí se SALTA —no se
-    escala, no se actualiza—. Es la misma garantía de siempre, y el factor no la
-    toca: el de acá puede traer proveedor, comprometido o pagos, y escalarle el
-    precio sería reescribir dinero ya capturado."""
-    linea = _add(client, destino["id"], chapterName="Instalaciones",
-                 name="Hidráulica", unit="lote", quantity=1,
-                 unitPrice=100_000)["line"]["id"]
-
-    r = _apply_proporcional(client, destino["id"], modelo["budgetId"])
-    assert r.status_code == 201, r.text
-    r = r.json()
-
-    assert (r["linesAdded"], r["linesSkipped"]) == (3, 1)
-    hidraulica = _line_by_id(r["budget"], linea)
-    assert _dec(hidraulica["unitPrice"]) == Decimal("100000")   # ni escalado ni pisado
-    # Y no entró una segunda: la dedup es saltar, no actualizar ni duplicar.
-    assert [l["name"] for l in r["budget"]["lines"]].count("Hidráulica") == 1
 
 
 def test_the_direct_copy_does_not_scale_a_single_peso(client, test_property, modelo):
