@@ -64,6 +64,18 @@ SET LOCAL statement_timeout = '150s';
 -- un plan (`plan_id` NOT NULL, migración 051) jamás entra a las finanzas, pero
 -- su total tampoco tiene por qué moverse, y cubrirlo no cuesta un statement de
 -- más.
+-- La foto y la verificación tienen que mirar la MISMA tabla. dbmate corre en
+-- READ COMMITTED: un INSERT de un usuario que commitea ENTRE la foto y la
+-- relectura de la guarda es invisible para la foto y visible para la guarda, y
+-- el deploy abortaría diciendo «convertir el residuo movió el presupuesto»
+-- cuando lo que se movió fue una captura legítima. La migración se llevaría la
+-- culpa de un renglón que alguien metió bien, y el rollout se cae por algo que
+-- no hizo. El lock cierra la ventana: bloquea escrituras pero no lecturas —un
+-- SELECT toma ACCESS SHARE y no choca—, y respeta el lock_timeout de arriba,
+-- así que si de veras hay una edición en curso falla rápido y ruidosa (55P03)
+-- en vez de colgarse.
+LOCK TABLE budget_lines IN SHARE ROW EXCLUSIVE MODE;
+
 CREATE TEMP TABLE _053_antes ON COMMIT DROP AS
 SELECT b.id                                        AS budget_id,
        b.property_id,
@@ -110,21 +122,33 @@ COMMENT ON COLUMN properties.construction_overhead IS
 -- investment_raw(), la comisión de obra, el ROI y el prospecto, y en prod no
 -- hay nadie mirando. En local no imprime nada; allá prefiere abortar con
 -- nombres y cifras a dejar pasar un centavo. La segunda es que le queda de red
--- a quien edite este archivo después: cualquier statement que se agregue
--- arriba y mueva dinero muere aquí en vez de llegar a un PDF.
+-- a quien edite este archivo después: con el LOCK de arriba sosteniendo la
+-- tabla, lo único que puede mover dinero entre la foto y esta relectura es un
+-- statement de esta misma migración — así que si esto dispara, la culpa es de
+-- este archivo y de nadie más, y muere aquí en vez de llegar a un PDF.
 
 DO $$
 DECLARE txt TEXT;
 BEGIN
     SELECT string_agg(format('%s [%s]%s: antes %s vs ahora %s',
-                             p.name, p.id,
+                             coalesce(p.name, '(propiedad borrada)'),
+                             coalesce(a.property_id::text, '—'),
                              CASE WHEN a.plan_id IS NULL
                                   THEN '' ELSE ' · plan ' || a.plan_id END,
                              a.total, coalesce(d.total, 0)),
                       '; ' ORDER BY a.budget_id)
       INTO txt
       FROM _053_antes a
-      JOIN properties p ON p.id = a.property_id
+      -- LEFT, y el nombre con coalesce: `properties` entra aquí SOLO para poder
+      -- decir de quién es el presupuesto. Hoy un INNER daría el mismo resultado
+      -- —`property_id` es NOT NULL y su FK es RESTRICT, así que un presupuesto
+      -- huérfano no es representable— y por eso esto no repara ningún hueco
+      -- vivo. Va igual, porque la garantía que lo sostiene vive en OTRA tabla:
+      -- el día que alguien ponga ON DELETE CASCADE o afloje el NOT NULL, un
+      -- INNER empezaría a descartar filas en silencio y un presupuesto podría
+      -- moverse entero sin que esta guarda dijera nada. Una guarda de
+      -- conservación no apuesta su cobertura a un constraint ajeno.
+      LEFT JOIN properties p ON p.id = a.property_id
       LEFT JOIN LATERAL (SELECT coalesce(sum(l.quantity * l.unit_price), 0) AS total
                            FROM budget_lines l WHERE l.budget_id = a.budget_id) d ON TRUE
      WHERE coalesce(d.total, 0) <> a.total;
@@ -142,12 +166,25 @@ $$;
 -- de que el código dejó de saber de ella.
 
 DO $$
-DECLARE n INT;
+DECLARE txt TEXT;
 BEGIN
-    SELECT count(*) INTO n FROM budget_lines WHERE is_residual;
-    IF n > 0 THEN
+    SELECT string_agg(format('%s [%s]%s: %s',
+                             coalesce(p.name, '(propiedad borrada)'),
+                             coalesce(b.property_id::text, '—'),
+                             CASE WHEN b.plan_id IS NULL
+                                  THEN '' ELSE ' · plan ' || b.plan_id END,
+                             CASE WHEN r.n = 1 THEN '1 renglón'
+                                  ELSE r.n || ' renglones' END),
+                      '; ' ORDER BY b.id)
+      INTO txt
+      FROM budgets b
+      LEFT JOIN properties p ON p.id = b.property_id
+      JOIN LATERAL (SELECT count(*) AS n FROM budget_lines l
+                     WHERE l.budget_id = b.id AND l.is_residual) r ON TRUE
+     WHERE r.n > 0;
+    IF txt IS NOT NULL THEN
         RAISE EXCEPTION
-            '053: quedaron % renglones con is_residual prendida; la conversión no cubrió toda la tabla.', n
+            '053: estos presupuestos conservan renglones con is_residual prendida; la conversión no cubrió toda la tabla: %', txt
             USING ERRCODE = 'check_violation';
     END IF;
 END;
@@ -175,6 +212,14 @@ $$;
 -- `_settle_residual` actualizan cero filas —el total deja de poder moverse
 -- desde la ficha, que es justo el defecto que este trabajo vino a quitar— sin
 -- romper una sola lectura.
+
+-- El SET LOCAL del up murió en aquel COMMIT y dbmate corre el down en su propia
+-- transacción, así que hay que repetirlo. La 033 no lo trae y aquí se deja a
+-- propósito: un rollback se intenta DURANTE un incidente, que es justo cuando
+-- hay gente editando presupuestos, y el SHARE que toma CREATE UNIQUE INDEX
+-- choca contra esa edición. Sin timeout se cuelga sin límite, y colgado es la
+-- peor forma de fallar cuando alguien está tratando de revertir.
+SET LOCAL lock_timeout = '5s';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_budget_lines_residual
   ON budget_lines (budget_id) WHERE is_residual;
