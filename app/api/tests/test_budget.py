@@ -1479,6 +1479,36 @@ def test_the_target_is_read_from_the_destination_and_never_received(
     assert _dec(heredado["budgetedAmount"]) == Decimal("1650000")
 
 
+def test_the_factor_is_computed_over_what_gets_copied_and_nothing_else(
+        client, destino, modelo):
+    """EL FACTOR SE CALCULA SOBRE LO QUE SE VA A COPIAR, no sobre el origen entero.
+
+    Por la ruta esto es inalcanzable —`_require_replaceable` obliga a copiar el
+    presupuesto completo en la proporcional— así que la invariante se afirma
+    directo sobre la función, que es donde vive. Escrita con la versión anterior
+    fallaba: las fijas se sumaban sobre los capítulos pedidos y lo escalable
+    sobre el presupuesto completo, así que el denominador traía renglones que la
+    copia nunca se iba a llevar y el factor salía chico. Nadie lo veía porque las
+    dos puntas coinciden mientras `chapters` sea None.
+
+    Aquí se pide sólo «Acabados»: $150,000 escalables y ni una fija. Para un
+    objetivo de $300,000 el factor es exactamente 2, y sería otro si Hidráulica y
+    Licencias —que no viajan— pesaran en la cuenta."""
+    with get_db() as conn:
+        origen_id = _budget(client, modelo["propertyId"])["id"]
+        factor = budget_db._proportional_factor(
+            conn, origen_id, ["Acabados"], Decimal("300000"))
+    assert factor == Decimal(2)
+
+    # Y sobre el presupuesto entero sigue dando lo de siempre: el objetivo menos
+    # la fija, entre lo que sí escala.
+    with get_db() as conn:
+        completo = budget_db._proportional_factor(
+            conn, origen_id, None, Decimal("4050000"))
+    assert completo == (Decimal("4050000") - Decimal("50000")) / (
+        Decimal("1650000") + Decimal("200000") + Decimal("150000"))
+
+
 def test_the_proportional_copy_refuses_when_it_cannot_honour_its_own_target(
         client, destino, modelo):
     """LA OPERACIÓN QUE NO PUEDE CUMPLIR SU GARANTÍA DECLINA, no aproxima.

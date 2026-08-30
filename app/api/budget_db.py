@@ -939,14 +939,27 @@ def _proportional_factor(conn, source_budget_id: int,
     quepa en `objetivo`.
 
     Las fijas se apartan de las dos puntas de la razón: entran al destino con su
-    monto original, así que ni consumen factor ni lo reciben. Se suman sobre los
-    MISMOS candidatos que se van a copiar (`_CANDIDATES`), no sobre el origen
-    entero, porque una fija de un capítulo que esta copia no se lleva no va a
-    cobrarle nada al destino."""
-    fijas = money(conn.execute(
+    monto original, así que ni consumen factor ni lo reciben.
+
+    LAS DOS SUMAS SALEN DEL MISMO CONJUNTO DE FILAS —los candidatos de
+    `_CANDIDATES`, que es exactamente lo que se va a copiar— y salen de la MISMA
+    consulta, para que no puedan despegarse. Una fija de un capítulo que esta
+    copia no se lleva no le cobra nada al destino, y un escalable que tampoco
+    viaja no puede entrar al denominador: el factor promete algo sobre lo
+    COPIADO, así que se calcula sobre lo copiado y sobre nada más.
+
+    Hoy `_require_replaceable` obliga a `chapters is None` en la proporcional,
+    así que candidatos y origen entero coinciden y la distinción no se nota. No
+    por eso se deja al azar: la garantía enunciada y la aritmética tienen que ser
+    la misma frase, no dos que hoy dan igual. Y esa restricción NO queda de más
+    —vive por otra razón, que la garantía sólo es cierta en la rama del
+    reemplazo—; lo que sí queda cubierto por aquí es su mitad de alcance."""
+    fila = conn.execute(
         "SELECT coalesce(sum(l.quantity * l.unit_price)"
-        "         FILTER (WHERE NOT l.is_proportional), 0) AS fijas"
-        + _CANDIDATES, (source_budget_id, chapters, chapters)).fetchone()["fijas"])
+        "         FILTER (WHERE NOT l.is_proportional), 0) AS fijas,"
+        "       coalesce(sum(l.quantity * l.unit_price), 0) AS candidatos"
+        + _CANDIDATES, (source_budget_id, chapters, chapters)).fetchone()
+    fijas = money(fila["fijas"])
     if objetivo <= fijas:
         raise BudgetError(
             f"No se puede copiar proporcional: las partidas fijas del presupuesto "
@@ -954,7 +967,7 @@ def _proportional_factor(conn, source_budget_id: int,
             f"${objetivo:,.0f}. Una partida fija cuesta lo que cuesta —no encoge "
             f"con la obra— así que ya no cabe. Sube el costo de obra de esta "
             f"propiedad, o desmarca las partidas que sí deban escalar.")
-    escalable = _totals(conn, source_budget_id) - fijas
+    escalable = money(fila["candidatos"]) - fijas
     # Sin nada que escalar el factor no multiplica nada: todo el origen es fijo.
     # Devolver 1 evita una división entre cero para dejar exactamente el mismo
     # resultado —las fijas entran tal cual, con su monto propio—.
