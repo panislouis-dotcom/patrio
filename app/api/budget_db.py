@@ -415,6 +415,9 @@ def seed_estimate_line(conn, budget_id: int, sqm_construction,
     calculadora, entero, con el nombre que dice de dónde salió. Devuelve su
     importe.
 
+    Es el ÚNICO lugar del código que pone `seeded = TRUE`, y lo pone en el mismo
+    INSERT: la procedencia se declara al escribir, no se deduce después.
+
     ES UN RENGLÓN COMO CUALQUIER OTRO desde el instante en que existe: se edita,
     se renombra y se borra sin caso especial, y nada vuelve a reescribirlo. Ahí
     está la diferencia entre un DEFAULT y una LIGA VIVA — corre una vez, deja un
@@ -430,8 +433,8 @@ def seed_estimate_line(conn, budget_id: int, sqm_construction,
         return Decimal(0)
     conn.execute(
         "INSERT INTO budget_lines"
-        " (budget_id, chapter_name, name, unit, quantity, unit_price)"
-        " VALUES (%s, %s, %s, %s, 1, %s)",
+        " (budget_id, chapter_name, name, unit, quantity, unit_price, seeded)"
+        " VALUES (%s, %s, %s, %s, 1, %s, TRUE)",
         (budget_id, ESTIMATE_CHAPTER,
          estimate_line_name(sqm_construction, construction_cost_per_sqm,
                             construction_overhead),
@@ -449,26 +452,36 @@ def seed_estimate_line(conn, budget_id: int, sqm_construction,
 # se despegarían, y el día que se despeguen una copia pisa trabajo capturado o
 # una propiedad se vuelve indeleble.
 #
-# LO QUE LA CONTESTA ES UN HECHO ESTRUCTURAL, NO UN PARECIDO: `l.created_at =
-# b.created_at`. Las dos columnas traen `DEFAULT now()`, y `now()` en Postgres
-# es la hora de INICIO DE LA TRANSACCIÓN, no del reloj. El presupuesto y su
-# renglón sembrado se escriben en la misma transacción —`create_property` llama
-# a `create_budget` y a `seed_estimate_line` dentro del mismo `with get_db()`—
-# así que sus marcas son idénticas al microsegundo. Cualquier renglón tecleado
-# después llega en OTRA transacción y necesariamente difiere. No hay ventana:
-# la igualdad no es «casi al mismo tiempo», es «en el mismo acto de escritura».
+# LA CONTESTA UN DATO DECLARADO: `l.seeded`, la columna que puso la 054. La
+# escribe `seed_estimate_line` —el único lugar del código que la pone en TRUE— en
+# el mismo INSERT que crea el renglón, y NADIE la actualiza después.
+#
+# Se intentó antes deducirla del reloj (`l.created_at = b.created_at`, las dos
+# `DEFAULT now()` y `now()` congelado al inicio de la transacción) y la deducción
+# falla en los dos sentidos, que es por lo que se retiró: `_require_budget` crea
+# el presupuesto al vuelo y `create_line` mete presupuesto y renglón en la MISMA
+# transacción, así que el primer renglón tecleado de una propiedad que entró
+# fuera del API heredaba la marca y `apply` lo borraba; y las semillas corren en
+# autocommit por sentencia, así que el renglón sembrado NO la heredaba y las 18
+# propiedades sembradas quedaban indelebles. La igualdad de relojes correlaciona
+# con el origen del renglón; no es el origen del renglón.
 #
 # NO SE PREGUNTA POR EL NOMBRE, y es deliberado. El del estimado lleva dentro
 # los m² y el $/m² —«Estimado inicial · 200 m² × $8,000/m²»—, así que corregir
 # el metraje de la ficha lo cambiaría y el presupuesto dejaría de reconocerse a
 # sí mismo sin que nadie lo tocara. Es el mismo argumento con el que la 033
 # desmontó «Otros, por detallar»: un nombre lo teclea o lo renombra cualquiera.
-# La marca de tiempo no se puede teclear, sobrevive a renombres y a ediciones de
-# importe, y no depende de ninguna métrica.
+# La columna no se puede teclear, sobrevive a renombres y a ediciones de importe,
+# y no depende de ninguna métrica.
 #
-# Con eso la vieja rendija SE CIERRA: quien borre el estimado y teclee uno
-# propio ya no cae del lado equivocado —su renglón nació en otra transacción, así
-# que retiene y no lo reemplaza una copia—. Se conservan las dos mitades que
+# Y NO ES `is_residual` OTRA VEZ. Aquella bandera definía ARITMÉTICA —el total se
+# expresaba en términos de ella, así que toda escritura tenía que mantenerla—.
+# `seeded` es procedencia de escritura única: nada la suma, nada la asienta,
+# ningún importe depende de ella. Que se quede vieja no descuadra un peso.
+#
+# Con eso la vieja rendija SE CIERRA: quien borre el estimado y teclee uno propio
+# ya no cae del lado equivocado —su renglón nace con `seeded = FALSE`, así que
+# retiene y no lo reemplaza una copia—. Se conservan las dos mitades que
 # antes competían: la propiedad recién dada de alta se puede borrar, y el
 # trabajo tecleado a mano se protege desde el primer renglón, sin ejecución
 # encima. Lo que sigue contando como «nada que perder» es exactamente: ningún
@@ -483,7 +496,7 @@ def seed_estimate_line(conn, budget_id: int, sqm_construction,
 _UNTOUCHED_BUDGET = (
     "(SELECT count(l.id) <= 1"
     "    AND NOT coalesce(bool_or("
-    "          l.created_at      <> b.created_at"
+    "          NOT l.seeded"
     "       OR l.supplier_id      IS NOT NULL"
     "       OR l.committed_amount IS NOT NULL"
     "       OR l.actual_quantity  IS NOT NULL"
@@ -555,9 +568,17 @@ def _norm(column: str) -> str:
 # `is_proportional` SÍ viaja, por lo mismo que el oficio: «los permisos no crecen
 # con la obra» es verdad de la PARTIDA, no de una copia. Al viajar, un
 # presupuesto copiado nace sabiendo cuáles no escalan — aprender sin catálogo.
+# `seeded` VIAJA con la copia, y tiene que hacerlo: un escenario de plan nace
+# copiando el presupuesto de la obra (`create_plan_budget`), así que si la
+# procedencia no viajara, el renglón sembrado llegaría al escenario como si
+# alguien lo hubiera tecleado y la propiedad entera volvería a ser indeleble —el
+# defecto que la 054 vino a quitar—. Viajar es lo correcto además de lo cómodo:
+# la columna dice «esto lo escribió el sistema, nadie lo tecleó», y copiar no
+# convierte en tecleado lo que no lo era. Un renglón capturado a mano viaja con
+# su FALSE por la misma regla.
 _COPIED_LINE_COLUMNS = ("chapter_name", "name", "unit",
                         "quantity", "unit_price", "supplier_category_id",
-                        "sort_order", "notes", "is_proportional")
+                        "sort_order", "notes", "is_proportional", "seeded")
 
 
 # Qué renglones del origen entran a la copia. `NULL` es «todos los capítulos»,
@@ -892,8 +913,8 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
     DOS CASOS, Y LOS SEPARA QUÉ HABÍA EN EL DESTINO:
 
     - Si el destino no tiene NADA MÁS QUE LO QUE EL SISTEMA SEMBRÓ —ningún
-      renglón, o uno solo escrito en el mismo acto que el presupuesto y sin
-      ejecución encima, que es exactamente lo que pregunta
+      renglón, o uno solo marcado `seeded` y sin ejecución encima, que es
+      exactamente lo que pregunta
       `budget_holds_only_initial_estimate`— Y se copia el presupuesto ENTERO,
       ese renglón SE REEMPLAZA por lo que llega. Es el movimiento que esta operación
       existe para hacer —la cifra paramétrica se vuelve el desglose que la
@@ -905,9 +926,8 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
       desmiente. Un capítulo suelto NO reemplaza: no sustituye a un presupuesto
       entero, y cambiar un estimado de $2,340,000 por los $150,000 de una sección
       sería pérdida de datos con cara de función.
-    - Si hay algo más —un segundo renglón, uno tecleado después (nació en otra
-      transacción, así que su `created_at` no es el del presupuesto), cualquier
-      captura de ejecución— o si se pidieron capítulos sueltos, los renglones se
+    - Si hay algo más —un segundo renglón, uno tecleado (nace con
+      `seeded = FALSE`), cualquier captura de ejecución— o si se pidieron capítulos sueltos, los renglones se
       SUMAN a lo que ya hubiera y el total sube con ellos. Nada de lo que alguien
       tecleó se toca, ni siquiera para hacerle lugar a una copia.
 

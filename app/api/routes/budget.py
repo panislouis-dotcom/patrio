@@ -235,11 +235,13 @@ def delete_line(property_id: int, line_id: int, planId: str | None = None,
 # editar el origen mañana no mueve un peso de lo que hoy se copió, porque aquí
 # el objeto es dinero y tiene lectores fuera de la app.
 #
-# LOS RENGLONES COPIADOS SE SUMAN A LOS QUE YA HABÍA, y el total sube con ellos:
-# es la suma de sus renglones y acaban de llegar renglones. En proporcional
-# vienen dimensionados a lo que la obra ya tenía presupuestado, así que el
-# presupuesto queda al doble hasta que se borre lo que sobra —el estimado con el
-# que nació la propiedad, casi siempre—, que se borra como cualquier renglón.
+# LOS RENGLONES COPIADOS SE SUMAN A LOS QUE YA HABÍA, y el total sube con ellos
+# —es la suma de sus renglones y acaban de llegar renglones—, CON UNA EXCEPCIÓN:
+# si lo único que hay en el destino es el estimado que sembró la calculadora al
+# nacer la propiedad (`budget_lines.seeded`, sin nada de ejecución encima) y se
+# copia el presupuesto entero, ese renglón se REEMPLAZA. El desglose no se agrega
+# al estimado, ES el estimado dicho por partidas, y sumarlos contaría dos veces la
+# misma obra. La regla vive en `budget_db.apply_budget`, que la explica entera.
 
 @router.post("/api/properties/{property_id}/budget/apply", status_code=201,
              operation_id="budget_apply")
@@ -291,11 +293,11 @@ def list_sources(excludeBudgetId: Optional[int] = None,
     """Los presupuestos entre los que se puede copiar — el de cada obra y los
     escenarios de plan, etiquetados con su plan.
 
-    `lineCount` es lo que de verdad se va a copiar —el residuo queda fuera— y
-    sin `includeEmpty` los presupuestos sin nada copiable no aparecen: uno del
-    que no sale nada no es una respuesta a «de dónde puedo copiar» (como
-    DESTINO de empuje sí lo es, y para eso existe la bandera). El `id` va
-    directo a `POST .../budget/apply`."""
+    `lineCount` es lo que de verdad se va a copiar —todos sus renglones; ya no
+    hay ninguno que quede fuera— y sin `includeEmpty` los presupuestos sin nada
+    copiable no aparecen: uno del que no sale nada no es una respuesta a «de
+    dónde puedo copiar» (como DESTINO de empuje sí lo es, y para eso existe la
+    bandera). El `id` va directo a `POST .../budget/apply`."""
     with get_db() as conn:
         return budget_db.list_sources(conn, exclude_budget_id=excludeBudgetId,
                                       include_empty=includeEmpty)

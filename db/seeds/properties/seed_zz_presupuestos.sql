@@ -19,8 +19,17 @@
 -- nombre que alguien le puso. Por eso el nombre lleva la cuenta que lo produjo,
 -- igual que el que escribe `budget_db.seed_estimate_line` al dar de alta una
 -- propiedad — una base sembrada y una capturada por el API se leen igual. El
--- `FM` de to_char es lo que quita el relleno de ceros, como el `_cifra` de allá,
--- y el overhead solo aparece cuando de verdad multiplica.
+-- `FM` de to_char quita el relleno de ceros, y el `rtrim(…, '.')` quita el punto
+-- que FM deja atrás cuando no queda un solo decimal: sin él, 100 m² se
+-- imprimía «100. m²». Entre los dos reproducen el `.rstrip("0").rstrip(".")` de
+-- `_cifra`. El overhead solo aparece cuando de verdad multiplica, igual que allá.
+--
+-- Y `seeded = TRUE` se DECLARA aquí, que es la razón de que este archivo no
+-- necesite abrir una transacción: las semillas corren con `psql -f` sin `-1`, o
+-- sea autocommit por sentencia, así que el presupuesto y su renglón caen en
+-- transacciones distintas. Cuando la procedencia se deducía de `created_at` eso
+-- dejaba a las 18 propiedades sembradas indelebles; declarándola, el límite
+-- transaccional deja de importar. Es exactamente lo que la 054 vino a arreglar.
 --
 -- Solo siembra lo que falta: correr las semillas dos veces no duplica el costo
 -- de obra de nadie.
@@ -31,19 +40,24 @@ SELECT p.id
  WHERE NOT EXISTS (SELECT 1 FROM budgets b WHERE b.property_id = p.id)
  ORDER BY p.id;
 
-INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity, unit_price)
+INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity,
+                          unit_price, seeded)
 SELECT b.id, 'Otros',
        'Estimado inicial · '
-         || trim(to_char(coalesce(p.sqm_construction::numeric, 0), 'FM999,999,990.999'))
+         || rtrim(trim(to_char(coalesce(p.sqm_construction::numeric, 0),
+                               'FM999,999,990.999')), '.')
          || ' m² × $'
-         || trim(to_char(coalesce(p.construction_cost_per_sqm, 0), 'FM999,999,990.99'))
+         || rtrim(trim(to_char(coalesce(p.construction_cost_per_sqm, 0),
+                               'FM999,999,990.99')), '.')
          || '/m²'
          || CASE WHEN overhead.factor = 1 THEN ''
-                 ELSE ' × ' || trim(to_char(overhead.factor, 'FM999,990.9999')) END,
+                 ELSE ' × ' || rtrim(trim(to_char(overhead.factor,
+                                                  'FM999,990.9999')), '.') END,
        'lote', 1,
        (coalesce(p.sqm_construction::numeric, 0)
         * coalesce(p.construction_cost_per_sqm, 0)
-        * overhead.factor)
+        * overhead.factor),
+       TRUE
   FROM budgets b
   JOIN properties p ON p.id = b.property_id
   JOIN LATERAL (SELECT CASE WHEN p.construction_overhead IS NULL THEN 1.3

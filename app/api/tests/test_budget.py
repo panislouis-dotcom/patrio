@@ -890,6 +890,41 @@ def test_applying_the_same_source_twice_adds_nothing_the_second_time(
     assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("650000")
 
 
+def test_the_first_line_of_a_budget_created_on_the_fly_is_not_taken_for_seeded(
+        client, test_property, origen):
+    """EL CONTRAEJEMPLO QUE RETIRÓ LA DEDUCCIÓN POR RELOJ, fijado para que no
+    vuelva.
+
+    `_require_budget` crea el presupuesto al vuelo para propiedades que entraron
+    fuera del API, y `create_line` envuelve esa creación y el INSERT del renglón
+    en UN solo `with get_db()`. Con la procedencia deducida de `created_at`, el
+    PRIMER renglón tecleado de esa propiedad heredaba la marca del presupuesto y
+    se leía como sembrado: `apply` lo borraba en silencio.
+
+    Hoy la procedencia se declara —`seeded` la pone solo `seed_estimate_line`—
+    así que un renglón tecleado nace en FALSE aunque comparta transacción con su
+    presupuesto, y ni la copia lo reemplaza ni el borrado se lo lleva."""
+    pid = test_property["id"]
+    with get_db() as conn:
+        conn.execute("DELETE FROM budgets WHERE property_id = %s", (pid,))
+    linea = _add(client, pid, chapterName="Clósets", name="Clósets cotizados",
+                 unit="lote", quantity=1, unitPrice=950_000)["line"]["id"]
+    with get_db() as conn:
+        fila = conn.execute(
+            "SELECT l.seeded, l.created_at = b.created_at AS mismas_marcas"
+            "  FROM budget_lines l JOIN budgets b ON b.id = l.budget_id"
+            " WHERE l.id = %s", (linea,)).fetchone()
+    # La trampa vieja sigue ahí —comparten transacción— y ya no engaña a nadie.
+    assert fila["mismas_marcas"] is True
+    assert fila["seeded"] is False
+
+    r = _apply(client, pid, origen["budgetId"])
+    assert r.status_code == 201, r.text
+    assert _line_by_id(r.json()["budget"], linea)["name"] == "Clósets cotizados"
+    assert _dec(r.json()["property"]["constructionBudgeted"]) == (
+        Decimal("950000") + ESTIMADO_MXN + Decimal("650000"))
+
+
 def test_a_hand_typed_line_is_never_deleted_by_a_copy_even_if_it_is_the_only_one(
         client, test_property, origen):
     """EL ESPEJO DE LA RETENCIÓN, del lado que borra sin avisar.

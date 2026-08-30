@@ -68,8 +68,15 @@ def test_no_total_is_stored():
         # propósito: la columna sobrevive en FALSE un despliegue más para que los
         # pods viejos no truenen durante el rollout (las migraciones corren como
         # hook PreSync, antes de que entren los nuevos). Nada la lee ni la
-        # escribe. Se va en la 054, y este renglón se va con ella.
+        # escribe. Se va en el PR 2, y este renglón se va con ella.
         "is_residual",
+        # `seeded` (054) tampoco es un total: es PROCEDENCIA. Dice si el renglón
+        # lo escribió el sistema al crear el presupuesto o lo tecleó una persona,
+        # y de eso dependen dos decisiones —si una copia lo reemplaza y si la
+        # propiedad se puede borrar— que antes se adivinaban comparando relojes.
+        # Se pone al INSERT y no se actualiza nunca; ningún importe la usa, que
+        # es lo que la separa de `is_residual`.
+        "seeded",
         # `supplier_category_id` tampoco es un total: es el OFICIO, y es lo que
         # se sabe mucho antes que el proveedor. Captura manual, como el nombre y
         # la unidad — no hay catálogo del que heredarlo.
