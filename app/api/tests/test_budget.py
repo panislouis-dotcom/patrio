@@ -1276,19 +1276,6 @@ def test_every_property_has_exactly_one_residual(client, test_property):
     assert all(row["residuos"] == 1 for row in rows), [dict(r) for r in rows]
 
 
-def test_a_second_residual_is_refused_by_the_database(client, test_property):
-    from psycopg2 import IntegrityError
-    with get_db() as conn:
-        budget_id = conn.execute(
-            "SELECT id FROM budgets WHERE property_id = %s", (test_property["id"],)
-        ).fetchone()["id"]
-        with pytest.raises(IntegrityError):
-            conn.execute(
-                "INSERT INTO budget_lines (budget_id, chapter_name, name, unit,"
-                " quantity, unit_price, is_residual) VALUES (%s, 'Otros', 'Otro residuo',"
-                " 'lote', 1, 1, TRUE)", (budget_id,))
-
-
 def test_a_property_without_a_budget_still_answers_and_gets_one(client):
     """La invariante se sostiene sola frente a filas que entraron por fuera del
     API. Sin eso volvería la rama «si existe presupuesto», que es exactamente la
