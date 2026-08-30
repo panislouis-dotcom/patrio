@@ -291,7 +291,8 @@ def test_budget_full_labels_a_lone_uncosted_line_as_an_order_of_magnitude_estima
     igual de grandes bajo la palabra «Total». El prospecto va a inversionistas:
     la diferencia de madurez se dice, no se deduce."""
     lines = [{"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $8,000/m² × 1.3",
-              "budgetedAmount": 2_080_000, "quantity": 1, "unit": "lote", "payments": []}]
+              "budgetedAmount": 2_080_000, "quantity": 1, "unit": "lote",
+              "seeded": True, "payments": []}]
     html = _budget_full(lines, ["Otros"])
     assert "Estimación de orden de magnitud" in html
     assert "$2,080,000" in html
@@ -305,20 +306,45 @@ def test_the_estimate_label_is_derived_and_disappears_the_moment_the_budget_grow
     segundo renglón para que el presupuesto deje de ser una sola cifra."""
     lines = [
         {"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $8,000/m²",
-         "budgetedAmount": 1_600_000, "quantity": 1, "unit": "lote", "payments": []},
+         "budgetedAmount": 1_600_000, "quantity": 1, "unit": "lote",
+         "seeded": True, "payments": []},
         {"chapterName": "Albañilería", "name": "Cimentación", "budgetedAmount": 100_000,
-         "quantity": 1, "unit": "lote", "payments": []},
+         "quantity": 1, "unit": "lote", "seeded": False, "payments": []},
     ]
     html = _budget_full(lines, ["Otros", "Albañilería"])
     assert "budget-note" not in html
 
 
-def test_a_lone_line_with_execution_captured_is_no_longer_an_estimate():
+def test_a_lone_line_typed_by_hand_never_wears_the_estimate_label():
+    """EL CASO QUE MOTIVÓ `seeded`. Una suma alzada que un contratista cotizó y
+    alguien tecleó de un tirón es un solo renglón sin desglose y sin ejecución
+    —indistinguible del estimado por su forma— pero está COTIZADA. Rotularla de
+    paramétrica sería una falsedad chica y confiada en un documento que va a
+    inversionistas."""
+    lines = [{"chapterName": "Otros", "name": "Remodelación integral (suma alzada)",
+              "budgetedAmount": 1_850_000, "quantity": 1, "unit": "lote",
+              "seeded": False, "payments": []}]
+    html = _budget_full(lines, ["Otros"])
+    assert "$1,850,000" in html
+    assert "budget-note" not in html
+
+
+def test_editing_the_seeded_line_amount_keeps_the_label():
+    """`seeded` es procedencia, no un candado: corregir el importe del estimado
+    lo deja siendo una sola cifra global sin partidas detrás."""
+    lines = [{"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $8,000/m²",
+              "budgetedAmount": 1_900_000, "quantity": 1, "unit": "lote",
+              "seeded": True, "payments": []}]
+    assert "Estimación de orden de magnitud" in _budget_full(lines, ["Otros"])
+
+
+def test_a_lone_seeded_line_with_execution_captured_is_no_longer_an_estimate():
     """Un renglón adjudicado, comprometido, medido, cerrado o pagado ya es obra
     costeada aunque siga siendo el único. Cada campo por separado, porque el
     rótulo es una afirmación sobre el dinero de alguien más."""
-    base = {"chapterName": "Otros", "name": "Remodelación integral",
-            "budgetedAmount": 1_600_000, "quantity": 1, "unit": "lote", "payments": []}
+    base = {"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $8,000/m²",
+            "budgetedAmount": 1_600_000, "quantity": 1, "unit": "lote",
+            "seeded": True, "payments": []}
     assert "budget-note" in _budget_full([base], ["Otros"])
     for ejecucion in ({"supplierId": 7}, {"committedAmount": 1_500_000},
                       {"actualQuantity": 1}, {"closedAt": "2026-08-01"},

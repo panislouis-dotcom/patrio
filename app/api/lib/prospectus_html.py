@@ -944,26 +944,31 @@ _LINE_EXECUTION_FIELDS = ("supplierId", "committedAmount", "actualQuantity", "cl
 
 
 def _is_lone_estimate(lines: list[dict]) -> bool:
-    """El presupuesto es una sola cifra global sin cotizar: un renglón, y nadie
-    ha ejecutado nada contra él.
+    """El presupuesto no es más que el estimado que sembró la calculadora: un
+    solo renglón, escrito por el sistema, y nadie ha ejecutado nada contra él.
 
-    ES LA APROXIMACIÓN A TIEMPO DE IMPRESIÓN de `budget_db.
-    budget_holds_only_initial_estimate`, y la diferencia está escrita a
-    propósito. Aquella contesta con un hecho estructural —`l.created_at =
-    b.created_at`, la marca que solo comparten el presupuesto y el renglón que
-    la calculadora sembró en la misma transacción—; ésta no puede, porque el
-    prospecto recibe los renglones ya serializados y ahí no viaja el
-    `created_at` del presupuesto. Pedirlo obligaría a un campo de API nuevo o a
-    una conexión en la capa de presentación, y ninguna de las dos cosas se paga
-    con un rótulo.
+    ES LA MISMA PREGUNTA QUE `budget_db.budget_holds_only_initial_estimate`,
+    contestada con los mismos dos hechos y sin ninguna aproximación:
+    `seeded` —la columna de la 054, que solo escribe `seed_estimate_line` y
+    nadie actualiza después— dice QUIÉN escribió el renglón, y los campos de
+    ejecución dicen si algo le ha pasado desde entonces. Hacen falta los dos: un
+    estimado que ya se adjudicó a un proveedor sigue siendo un solo renglón, y
+    dejó de ser una cifra de orden de magnitud.
 
-    DÓNDE DISCREPAN, en una sola dirección: un presupuesto cuyo estimado
-    sembrado alguien borró y sustituyó por UN renglón tecleado a mano, todavía
-    sin proveedor ni monto comprometido, aquí cuenta como estimación y allá no.
-    El rótulo sigue siendo cierto de lo que afirma —una cifra global sin
-    desglose y sin nada contratado detrás— porque no dice quién la escribió,
-    dice qué tan madura está. Al revés no discrepan: todo lo que trae ejecución
-    o un segundo renglón queda fuera de las dos.
+    LOS DOS HECHOS, NO EL PARECIDO, y eso es lo que deja escribir «todavía sin
+    desglosar ni cotizar» sin mentir. Preguntar solo «¿un renglón sin
+    ejecución?» rotularía como paramétrica la suma alzada que un contratista
+    cotizó y alguien tecleó de un tirón: sin desglosar, sí, pero cotizada. El
+    nombre tampoco serviría —el del estimado lleva dentro los m², así que
+    corregir el metraje de la ficha lo cambia; ver la nota de `_UNTOUCHED_BUDGET`
+    en budget_db—. Editar el IMPORTE del renglón sembrado sí conserva el rótulo,
+    y debe: sigue siendo una sola cifra global sin partidas detrás.
+
+    Llega gratis al prospecto: `_LINES_SQL` es `SELECT l.*`, así que `seeded`
+    viaja en la fila y `_row_to_dict` la publica con su propio nombre. Y viaja
+    también en la COPIA (`_COPIED_LINE_COLUMNS`), así que el escenario de un
+    plan que espejea el presupuesto de la propiedad se rotula por la misma
+    regla, sin un caso aparte.
 
     `payments` viene de `get_budget` como lista (vacía si no hay), pero se lee
     con `.get`: las fixtures de esta capa arman renglones mínimos y un renglón
@@ -971,7 +976,8 @@ def _is_lone_estimate(lines: list[dict]) -> bool:
     if len(lines) != 1:
         return False
     line = lines[0]
-    return (not any(line.get(field) is not None for field in _LINE_EXECUTION_FIELDS)
+    return (bool(line.get("seeded"))
+            and not any(line.get(field) is not None for field in _LINE_EXECUTION_FIELDS)
             and not line.get("payments"))
 
 
