@@ -16,7 +16,6 @@ vi.mock('../../lib/api', async importOriginal => {
     createBudgetLine: vi.fn(),
     updateBudgetLine: vi.fn(),
     deleteBudgetLine: vi.fn(),
-    setBudgetTotal: vi.fn(),
     renameBudgetChapter: vi.fn(),
     deleteBudgetChapter: vi.fn(),
     addBudgetPayment: vi.fn(),
@@ -60,9 +59,9 @@ const categoria = (id: number, name: string) => ({ id, name, description: '', cr
  */
 const FUENTES: BudgetSource[] = [
   { id: 500, name: 'Zaragoza 100', propertyId: 4, lineCount: 18, total: 1_800_000,
-    planId: null, planName: null, fullTotal: 2_000_000, sqmConstruction: 200, constructionCostPerSqm: 10_000 },
+    planId: null, planName: null, sqmConstruction: 200, constructionCostPerSqm: 10_000 },
   { id: 501, name: 'Modesto 415', propertyId: 3, lineCount: 22, total: 2_300_000,
-    planId: null, planName: null, fullTotal: 2_500_000, sqmConstruction: 250, constructionCostPerSqm: 10_000 },
+    planId: null, planName: null, sqmConstruction: 250, constructionCostPerSqm: 10_000 },
 ]
 
 /**
@@ -71,13 +70,16 @@ const FUENTES: BudgetSource[] = [
  * servidor por id de presupuesto, no este cliente).
  */
 const destino = (over: Partial<BudgetSource>): BudgetSource => ({
-  id: 300, name: 'Modesto 415', propertyId: 3, lineCount: 0, total: 0,
-  planId: null, planName: null, fullTotal: 2_000_000,
+  // `total` ES el objetivo de una copia proporcional: la suma de los renglones
+  // de esa obra. Era `fullTotal` mientras el residuo entraba en uno y no en el
+  // otro; hoy hay una sola suma y el cliente dejó de leer el campo viejo.
+  id: 300, name: 'Modesto 415', propertyId: 3, lineCount: 12, total: 2_000_000,
+  planId: null, planName: null,
   sqmConstruction: null, constructionCostPerSqm: null, ...over,
 })
 const DESTINOS: BudgetSource[] = [
   destino({}),
-  destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, fullTotal: 3_000_000 }),
+  destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, total: 3_000_000 }),
 ]
 
 const PROVEEDORES: Proveedor[] = [
@@ -97,23 +99,31 @@ const line = (over: Partial<BudgetLine>): BudgetLine => ({
   supplierCategoryId: null,
   supplierId: null, committedAmount: null, committedOn: null, committedVariance: null,
   actualQuantity: null, paidAmount: null, paidVariance: null, payments: [],
-  closedAt: null, sortOrder: 0, notes: '', isResidual: false,
+  closedAt: null, sortOrder: 0, notes: '',
   // Como nace en la 045: la mayoría de las partidas SÍ crecen con el tamaño de
   // la obra, así que lo que se captura a mano es la excepción.
   isProportional: true,
   createdAt: '', updatedAt: '', ...over,
 })
 
-/** El renglón que la 032 le siembra a toda propiedad: el estimado grueso entero. */
-const residual = (unitPrice: number): BudgetLine => line({
+/**
+ * La HOLGURA: lo que todavía no se detalla, cargado como un renglón más.
+ *
+ * Era el residuo —una bandera del servidor, un importe que ponía una resta, sin
+ * ✕ y sin casillas— y hoy es una partida ordinaria con el nombre que alguien le
+ * puso. Se teclea, se borra y escala como cualquier otra, y por eso esta fixture
+ * no le pasa nada especial a `line()`.
+ */
+const holgura = (unitPrice: number): BudgetLine => line({
   id: 99, chapterName: 'Otros', name: 'Otros, por detallar', unit: 'lote',
-  quantity: 1, unitPrice, budgetedAmount: unitPrice, isResidual: true,
+  quantity: 1, unitPrice, budgetedAmount: unitPrice,
 })
 
 const budget = (lines: BudgetLine[]): Budget => ({
   id: 9, propertyId: 7, lines,
-  // El servidor publica los capítulos en su orden de lectura, con el residuo al
-  // final: es lo que queda por detallar, no un capítulo más.
+  // El servidor publica los capítulos en su orden de lectura. Ninguno es
+  // especial: el de la holgura se renombra, se borra y recibe partidas como
+  // todos los demás.
   chapters: [...new Set(lines.map(l => l.chapterName))],
 })
 
@@ -121,23 +131,23 @@ type PanelProperty = React.ComponentProps<typeof BudgetPanel>['property']
 
 const propiedad = (over: Partial<PanelProperty> = {}): PanelProperty => ({
   // `constructionBudgeted` ES el costo objetivo cuando ESTA obra es el destino:
-  // el total de su presupuesto, leído, no tecleado.
+  // la suma de los renglones de su presupuesto, leída, no tecleada.
   id: 7, constructionBudgeted: 1_000_000,
   constructionCommitted: null, constructionPaid: null, constructionPaidVariance: null,
-  // Las dos mitades que solo se ENSEÑAN («275 m² × $3,500/m² = $962,500»). Nacen
-  // vacías porque el 40% de las propiedades reales no tiene metraje: sin ellas
-  // el costo de obra sigue siendo el mismo número, y se enseña a secas.
-  sqmConstruction: null, constructionCostPerSqm: null,
+  // LOS DOS `$/m²`, que el pie enseña rotulados. Nacen vacíos porque el 40% de
+  // las propiedades reales no tiene metraje ni supuesto capturado, y un
+  // presupuesto sin ninguno de los dos sigue siendo un presupuesto.
+  constructionCostPerSqm: null, budgetedCostPerSqm: null,
   ...over,
 })
 
 /**
- * La fila de un capítulo. Se busca por su caja de nombre —el capítulo se
- * renombra en su lugar, como toda celda de esta tabla— salvo el del residuo, que
- * es texto porque no se renombra.
+ * La fila de un capítulo. Se busca SIEMPRE por su caja de nombre: todos se
+ * renombran en su lugar, como toda celda de esta tabla. El del residuo era la
+ * excepción —texto muerto, sin caja— y se fue con el residuo.
  */
-const chapterRow = (name: string, locked = false) =>
-  (locked ? screen.getByText(name) : screen.getByLabelText(`Capítulo ${name}`)).closest('tr')!
+const chapterRow = (name: string) =>
+  screen.getByLabelText(`Capítulo ${name}`).closest('tr')!
 
 async function renderPanel(b: Budget, property = propiedad(), onChange = vi.fn()) {
   vi.mocked(api.fetchBudget).mockResolvedValue(b)
@@ -151,7 +161,7 @@ const DETALLADO = budget([
   line({ id: 1, chapterName: 'Albañilería', name: 'Muro de block', quantity: 10, unitPrice: 1_000, budgetedAmount: 10_000 }),
   line({ id: 2, chapterName: 'Albañilería', name: 'Firme', quantity: 20, unitPrice: 1_500, budgetedAmount: 30_000 }),
   line({ id: 3, chapterName: 'Instalaciones', name: 'Hidráulica', quantity: 1, unitPrice: 60_000, budgetedAmount: 60_000 }),
-  residual(900_000),
+  holgura(900_000),
 ])
 
 describe('BudgetPanel', () => {
@@ -231,40 +241,56 @@ describe('BudgetPanel', () => {
     expect(within(instalaciones).getByText('$60,000')).not.toBeNull()
   })
 
-  it('«Otros, por detallar» es residuo automático y no se edita', async () => {
-    // Baja al detallar y sube al quitar detalle. Editarlo a mano convertiría una
-    // resta determinista en una segunda captura, y ahí nace el descuadre.
-    await renderPanel(DETALLADO)
+  it('«Otros, por detallar» SE EDITA Y SE BORRA como cualquier otra partida', async () => {
+    // LA INVERSIÓN DE LA REGLA VIEJA. Era un renglón de solo lectura —sin caja
+    // de nombre, sin cantidad, sin precio, sin proveedor y sin ✕— porque su
+    // importe lo ponía una resta contra un total fijado por fuera. Hoy no hay
+    // resta que proteger: una holgura es un renglón con el nombre que alguien le
+    // puso, y el renglón que la calculadora siembra al nacer la propiedad
+    // («Estimado inicial · 200 m² × $8,000/m²») entra por esta misma puerta.
+    const b = budget([line({ id: 1, name: 'Muro de block' }), holgura(900_000)])
+    await renderPanel(b)
     fireEvent.click(screen.getByLabelText('Abrir Otros'))
+    vi.mocked(api.updateBudgetLine).mockResolvedValue({
+      line: null, budget: b, property: propiedad() as Property,
+    })
 
-    const fila = screen.getByText('Otros, por detallar').closest('tr')!
-    // El importe y el precio unitario son el mismo peso: el residuo es un lote
-    // de cantidad 1, y ésa es justamente la forma que lo hace una resta.
-    expect(within(fila).getAllByText('$900,000')).toHaveLength(2)
-    // Ni nombre, ni cantidad, ni precio, ni proveedor, ni forma de borrarlo
-    expect(within(fila).queryByLabelText('Partida Otros, por detallar')).toBeNull()
-    expect(within(fila).queryByLabelText('Cantidad de Otros, por detallar')).toBeNull()
-    expect(within(fila).queryByLabelText('Precio unitario de Otros, por detallar')).toBeNull()
-    expect(within(fila).queryByLabelText('Proveedor de Otros, por detallar')).toBeNull()
-    // Ni oficio: el remanente no es trabajo de nadie —en cuanto se sepa de qué
-    // es, deja de ser remanente y se vuelve una partida. El CHECK de la 035 lo
-    // sostiene también en la base.
-    expect(within(fila).queryByLabelText('Oficio de Otros, por detallar')).toBeNull()
-    expect(within(fila).queryByLabelText('Quitar Otros, por detallar')).toBeNull()
-    // Y dice lo que es, para que se vea que se reparte en vez de crecer
-    expect(within(fila).getByText('SE REPARTE AL DETALLAR')).not.toBeNull()
+    const fila = screen.getByLabelText('Partida Otros, por detallar').closest('tr')!
+    // Las mismas celdas que cualquier partida, todas activas
+    expect(within(fila).getByLabelText('Cantidad de Otros, por detallar')).not.toBeNull()
+    expect(within(fila).getByLabelText('Precio unitario de Otros, por detallar')).not.toBeNull()
+    expect(within(fila).getByLabelText('Oficio de Otros, por detallar')).not.toBeNull()
+    expect(within(fila).getByLabelText('Proveedor de Otros, por detallar')).not.toBeNull()
+    // Y ya no dice que se reparte, porque no se reparte
+    expect(within(fila).queryByText('SE REPARTE AL DETALLAR')).toBeNull()
+
+    // Se teclea
+    const precio = within(fila).getByLabelText('Precio unitario de Otros, por detallar')
+    fireEvent.change(precio, { target: { value: '800000' } })
+    fireEvent.blur(precio)
+    await waitFor(() => expect(api.updateBudgetLine).toHaveBeenCalled())
+    expect(vi.mocked(api.updateBudgetLine).mock.calls[0].slice(1))
+      .toEqual([99, { unitPrice: 800000 }, undefined])
+
+    // Y se borra, que era el 400 más caro de la pantalla vieja
+    vi.mocked(api.deleteBudgetLine).mockResolvedValue({
+      line: null, budget: budget([line({ id: 1, name: 'Muro de block' })]),
+      property: propiedad({ constructionBudgeted: 10_000 }) as Property,
+    })
+    fireEvent.click(within(fila).getByLabelText('Quitar Otros, por detallar'))
+    await waitFor(() => expect(api.deleteBudgetLine).toHaveBeenCalledWith(7, 99, undefined))
   })
 
-  it('su capítulo tampoco se renombra ni se borra', async () => {
+  it('su capítulo se renombra, se borra y recibe partidas, como todos', async () => {
+    // Era el único capítulo bloqueado —el que alojaba el residuo— y con él se
+    // fue la última fila con dos clases de comportamiento en esta tabla.
     await renderPanel(DETALLADO)
 
-    expect(screen.queryByLabelText('Capítulo Otros')).toBeNull()
-    expect(screen.queryByLabelText('Quitar capítulo Otros')).toBeNull()
-    // Ni recibe partidas nuevas: es donde queda lo que falta por repartir, no
-    // un capítulo más donde detallar.
+    expect(screen.getByLabelText('Capítulo Otros')).not.toBeNull()
+    expect(screen.getByLabelText('Quitar capítulo Otros')).not.toBeNull()
     fireEvent.click(screen.getByLabelText('Abrir Otros'))
-    expect(screen.queryByText('+ PARTIDA EN OTROS')).toBeNull()
-    // Los demás sí, las tres
+    expect(screen.getByText('+ PARTIDA EN OTROS')).not.toBeNull()
+    // Y los demás siguen igual que siempre
     expect(screen.getByLabelText('Capítulo Albañilería')).not.toBeNull()
     expect(screen.getByLabelText('Quitar capítulo Albañilería')).not.toBeNull()
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
@@ -277,7 +303,7 @@ describe('BudgetPanel', () => {
     await renderPanel(budget([
       line({ id: 1, chapterName: 'Firmado en cero', committedAmount: 0, budgetedAmount: 10_000 }),
       line({ id: 2, chapterName: 'Sin firmar', committedAmount: null, budgetedAmount: 5_000 }),
-      residual(0),
+      holgura(0),
     ]))
 
     const firmado = chapterRow('Firmado en cero')
@@ -286,12 +312,11 @@ describe('BudgetPanel', () => {
     const sinFirmar = chapterRow('Sin firmar')
     expect(within(sinFirmar).getByText(/COMP — · PAG —/)).not.toBeNull()
 
-    // Y un residuo en 0 se imprime $0: el presupuesto está repartido al 100%,
-    // que es un hecho, no un dato que falte.
+    // Y una holgura en 0 se imprime $0: no queda nada por detallar, que es un
+    // hecho, no un dato que falte.
     fireEvent.click(screen.getByLabelText('Abrir Otros'))
-    const otros = screen.getByText('Otros, por detallar').closest('tr')!
+    const otros = screen.getByLabelText('Partida Otros, por detallar').closest('tr')!
     expect(within(otros).getAllByText('$0').length).toBeGreaterThan(0)
-    expect(within(otros).queryByText('—')).toBeNull()
   })
 
   it('pagar exactamente lo presupuestado da una variación de $0, no un guion', async () => {
@@ -301,7 +326,7 @@ describe('BudgetPanel', () => {
         budgetedAmount: 10_000, paidAmount: 10_000, paidVariance: 0,
         payments: [{ id: 1, amount: 10_000, paidOn: '2026-05-01', notes: '', createdAt: '' }],
       }),
-      residual(0),
+      holgura(0),
     ]))
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
 
@@ -329,12 +354,12 @@ describe('BudgetPanel', () => {
   it('una celda de dinero guarda al soltarse, no a cada tecla', async () => {
     // `NumericInput.onChange` dispara con cada dígito: teclear «1500» serían
     // cuatro escrituras, y cada una recalcula el residuo en el servidor.
-    const b = budget([line({ id: 1, name: 'Muro de block', unitPrice: 1_000 }), residual(0)])
+    const b = budget([line({ id: 1, name: 'Muro de block', unitPrice: 1_000 }), holgura(0)])
     await renderPanel(b)
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
 
     vi.mocked(api.updateBudgetLine).mockResolvedValue({
-      line: null, budget: b, property: {} as Property, budgetIncrease: 0,
+      line: null, budget: b, property: {} as Property,
     })
 
     const caja = screen.getByLabelText('Precio unitario de Muro de block')
@@ -354,7 +379,7 @@ describe('BudgetPanel', () => {
     // una cadena vacía llegaría hasta el CHECK. No contradice la regla de las
     // celdas de dinero: en el comprometido el vacío ES el mensaje, y aquí no hay
     // ningún mensaje que mandar porque el campo no tiene estado vacío.
-    const b = budget([line({ id: 1, name: 'Muro de block', unit: 'm²' }), residual(0)])
+    const b = budget([line({ id: 1, name: 'Muro de block', unit: 'm²' }), holgura(0)])
     await renderPanel(b)
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
 
@@ -370,11 +395,11 @@ describe('BudgetPanel', () => {
   it('vaciar la unidad tampoco, y no se lleva por delante lo demás del renglón', async () => {
     // El nombre nuevo sí se guarda: revertir la celda que no puede quedar vacía
     // no puede descartar los cambios buenos que la acompañaban.
-    const b = budget([line({ id: 1, name: 'Muro de block', unit: 'm²' }), residual(0)])
+    const b = budget([line({ id: 1, name: 'Muro de block', unit: 'm²' }), holgura(0)])
     await renderPanel(b)
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
     vi.mocked(api.updateBudgetLine).mockResolvedValue({
-      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
+      line: null, budget: b, property: propiedad() as Property,
     })
 
     fireEvent.change(screen.getByLabelText('Partida Muro de block'), { target: { value: 'Muro de tabique' } })
@@ -389,7 +414,7 @@ describe('BudgetPanel', () => {
   it('mientras se teclea, el importe sigue a la cantidad en vez de quedarse viejo', async () => {
     await renderPanel(budget([
       line({ id: 1, name: 'Muro de block', quantity: 10, unitPrice: 1_000, budgetedAmount: 10_000 }),
-      residual(0),
+      holgura(0),
     ]))
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
 
@@ -400,20 +425,20 @@ describe('BudgetPanel', () => {
     expect(within(fila()).getByText('$25,000')).not.toBeNull()
   })
 
-  it('detallar reparte: el residuo baja y el total no se mueve', async () => {
-    // Es la respuesta del servidor la que se pinta, no un append local. Con un
-    // append, «Otros» seguiría en su valor viejo y la tabla sumaría de más
-    // contradiciendo al total que llegó en el mismo JSON.
+  it('agregar una partida SUBE el total en su importe: nada la absorbe', async () => {
+    // La regla nueva, y la vieja al revés. Antes «Otros» bajaba lo que subiera
+    // el detalle y el total no se enteraba; hoy el total es la suma de sus
+    // renglones, así que una partida de $45,000 lo sube $45,000 y ese
+    // movimiento ES el hallazgo. Se pinta la respuesta del servidor y no un
+    // append local: la tabla y `constructionBudgeted` vienen del mismo JSON.
     const onChange = await renderPanel(DETALLADO)
     const despues = budget([
-      ...DETALLADO.lines.filter(l => !l.isResidual),
-      line({ id: 4, chapterName: 'Albañilería', name: 'Partida nueva', quantity: 1, unitPrice: 0, budgetedAmount: 0 }),
-      residual(880_000),
+      ...DETALLADO.lines,
+      line({ id: 4, chapterName: 'Albañilería', name: 'Partida nueva', quantity: 1, unitPrice: 45_000, budgetedAmount: 45_000 }),
     ])
     vi.mocked(api.createBudgetLine).mockResolvedValue({
       line: null, budget: despues,
-      property: { ...propiedad(), name: 'refrescada' } as Property,
-      budgetIncrease: 0,
+      property: { ...propiedad({ constructionBudgeted: 1_045_000 }), name: 'refrescada' } as Property,
     })
 
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
@@ -423,26 +448,36 @@ describe('BudgetPanel', () => {
     expect(vi.mocked(api.createBudgetLine).mock.calls[0][1]).toEqual({
       chapterName: 'Albañilería', name: 'Partida nueva',
     })
-    // El residuo bajó solo, sin que el cliente lo calculara
-    expect(within(chapterRow('Otros', true)).getByText('$880,000')).not.toBeNull()
-    // Y la ficha entera se refresca con la propiedad que vino en la respuesta
+    // La holgura NO se movió: nadie la reparte
+    expect(within(chapterRow('Otros')).getByText('$900,000')).not.toBeNull()
+    // Y el capítulo que recibió la partida subió su importe exacto
+    expect(within(chapterRow('Albañilería')).getByText('$85,000')).not.toBeNull()
+    // El total del pie es de la PROPIEDAD, y sube porque la respuesta lo trae
+    // así: $1,000,000 + $45,000. Es la ficha la que lo vuelve a bajar aquí, con
+    // la propiedad recalculada que llegó en la misma transacción.
     await waitFor(() => expect(onChange).toHaveBeenCalled())
-    expect(onChange.mock.calls[0][0]).toMatchObject({ name: 'refrescada' })
+    expect(onChange.mock.calls[0][0]).toMatchObject({
+      name: 'refrescada', constructionBudgeted: 1_045_000,
+    })
   })
 
-  it('cuando el detalle rebasa el estimado, dice que el presupuesto creció', async () => {
-    // Detallar y aumentar el presupuesto son dos operaciones. Que el total suba
-    // en silencio las volvería indistinguibles.
+  it('agregar una partida no avisa nada: ya no existe «el detalle rebasó el estimado»', async () => {
+    // El aviso decía cuánto había rebasado el detalle al residuo, y era la única
+    // forma en que el total podía moverse cuando detallar no lo movía. Esa
+    // condición ya no puede ocurrir —toda escritura mueve el total su propio
+    // importe— así que el texto sería falso en cada renglón que se agregue.
     await renderPanel(DETALLADO)
     vi.mocked(api.createBudgetLine).mockResolvedValue({
-      line: null, budget: budget([...DETALLADO.lines.filter(l => !l.isResidual), residual(0)]),
-      property: propiedad() as Property, budgetIncrease: 120_000,
+      line: null, budget: budget([...DETALLADO.lines, line({ id: 4, name: 'Extra', budgetedAmount: 120_000 })]),
+      property: propiedad({ constructionBudgeted: 1_120_000 }) as Property,
     })
 
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
     fireEvent.click(screen.getByText('+ PARTIDA EN ALBAÑILERÍA'))
 
-    expect(await screen.findByText(/el presupuesto de obra subió \$120,000/)).not.toBeNull()
+    await waitFor(() => expect(api.createBudgetLine).toHaveBeenCalled())
+    expect(screen.queryByText(/rebasó/)).toBeNull()
+    expect(screen.queryByText(/el presupuesto de obra subió/)).toBeNull()
   })
 
   it('el oficio del renglón sugiere, pero ningún proveedor queda fuera', async () => {
@@ -453,7 +488,7 @@ describe('BudgetPanel', () => {
     // categorías dadas de alta el grupo salía siempre vacío sin decirlo.
     await renderPanel(budget([
       line({ id: 1, name: 'Muro de block', supplierCategoryId: 7 }),
-      residual(0),
+      holgura(0),
     ]))
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
 
@@ -487,11 +522,11 @@ describe('BudgetPanel', () => {
     // EL PUNTO DEL CAMBIO: se sabe qué TIPO de persona hace falta mucho antes
     // que quién. Un renglón con oficio y sin proveedor es el estado normal de
     // toda la obra mientras se presupuesta, no una fila a medio llenar.
-    const b = budget([line({ id: 1, name: 'Muro de block' }), residual(0)])
+    const b = budget([line({ id: 1, name: 'Muro de block' }), holgura(0)])
     await renderPanel(b)
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
     vi.mocked(api.updateBudgetLine).mockResolvedValue({
-      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
+      line: null, budget: b, property: propiedad() as Property,
     })
 
     const oficio = screen.getByLabelText('Oficio de Muro de block') as HTMLSelectElement
@@ -527,7 +562,7 @@ describe('BudgetPanel', () => {
     // borraría el proveedor sin que nadie lo hubiera pedido.
     await renderPanel(budget([
       line({ id: 1, name: 'Muro de block', supplierId: 13 }),
-      residual(0),
+      holgura(0),
     ]))
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
 
@@ -538,11 +573,11 @@ describe('BudgetPanel', () => {
   })
 
   it('quitar el proveedor manda null: en una celda, la caja vacía SÍ vacía', async () => {
-    const b = budget([line({ id: 1, name: 'Muro de block', supplierId: 11 }), residual(0)])
+    const b = budget([line({ id: 1, name: 'Muro de block', supplierId: 11 }), holgura(0)])
     await renderPanel(b)
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
     vi.mocked(api.updateBudgetLine).mockResolvedValue({
-      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
+      line: null, budget: b, property: propiedad() as Property,
     })
 
     fireEvent.change(screen.getByLabelText('Proveedor de Muro de block'), { target: { value: '' } })
@@ -551,36 +586,93 @@ describe('BudgetPanel', () => {
     expect(vi.mocked(api.updateBudgetLine).mock.calls[0][2]).toEqual({ supplierId: null })
   })
 
-  it('ajustar el total es su propia operación, y mueve el residuo', async () => {
-    const onChange = await renderPanel(DETALLADO)
-    vi.mocked(api.setBudgetTotal).mockResolvedValue({
-      line: null, budget: budget([...DETALLADO.lines.filter(l => !l.isResidual), residual(1_400_000)]),
-      property: { ...propiedad({ constructionBudgeted: 1_500_000 }), name: 'crecida' } as Property,
-      budgetIncrease: 0,
-    })
+  it('los dos $/m² se enseñan ROTULADOS: tu estimado contra el presupuesto', async () => {
+    // Son dos cifras de dos preguntas distintas —«a cuánto supuse el m²» y «a
+    // cuánto va el m² con lo que llevo capturado»— y hasta el 2026-08-30
+    // compartían el nombre `constructionCostPerSqm` y se enseñaban sin rótulo en
+    // dos pantallas, que es como se leían como una sola que a veces cambiaba
+    // sola. Los números del caso real: $50,000 supuestos contra $4,850
+    // presupuestados. Separarse ES el dato, así que ninguno se esconde ni se
+    // pinta como error.
+    await renderPanel(DETALLADO, propiedad({
+      constructionCostPerSqm: 50_000, budgetedCostPerSqm: 4_850,
+    }))
 
-    fireEvent.click(screen.getByText('AJUSTAR'))
-    fireEvent.change(screen.getByLabelText('Nuevo total de obra'), { target: { value: '1500000' } })
-    fireEvent.click(screen.getByText('FIJAR TOTAL'))
+    const total = screen.getByText('TOTAL · ES EL COSTO DE OBRA').closest('tr')!
+    expect(within(total).getByText('TU ESTIMADO')).not.toBeNull()
+    expect(within(total).getByText('$50,000/m²')).not.toBeNull()
+    expect(within(total).getByText('· EL PRESUPUESTO')).not.toBeNull()
+    expect(within(total).getByText('$4,850/m²')).not.toBeNull()
+    // Y se dice de dónde sale cada uno, para que la distancia se lea como dato
+    expect(within(total).getByText(/Tu estimado se captura en la ficha/)).not.toBeNull()
+  })
 
-    await waitFor(() => expect(api.setBudgetTotal).toHaveBeenCalledWith(7, 1_500_000, undefined))
-    await waitFor(() => expect(onChange).toHaveBeenCalled())
+  it('sin supuesto capturado el derivado se enseña igual, y el que falta es «—»', async () => {
+    // El 40% de las propiedades reales no tiene el supuesto tecleado. Enseñar
+    // ahí el derivado bajo el rótulo «tu estimado» lo convertiría en el fallback
+    // del que falta, que es exactamente lo que hace deshonesta la comparación.
+    await renderPanel(DETALLADO, propiedad({
+      constructionCostPerSqm: null, budgetedCostPerSqm: 4_850,
+    }))
+
+    const total = screen.getByText('TOTAL · ES EL COSTO DE OBRA').closest('tr')!
+    expect(within(total).getByText('—')).not.toBeNull()
+    expect(within(total).getByText('$4,850/m²')).not.toBeNull()
+  })
+
+  it('un presupuesto VACÍO es un estado legítimo: $0 de verdad, no un faltante', async () => {
+    // Es la primera vez que `constructionBudgeted = 0` es legal —`_require_budget`
+    // ya no siembra un renglón fantasma— y 0 es un número, no un dato que falte:
+    // ni «—», ni «cargando», ni una tabla en blanco.
+    await renderPanel(budget([]), propiedad({
+      constructionBudgeted: 0, constructionCostPerSqm: 8_000, budgetedCostPerSqm: 0,
+    }))
+
+    const total = screen.getByText('TOTAL · ES EL COSTO DE OBRA').closest('tr')!
+    expect(within(total).getByText('$0')).not.toBeNull()
+    expect(within(total).getByText('$0/m²')).not.toBeNull()
+    expect(within(total).getByText('$8,000/m²')).not.toBeNull()
+    expect(screen.queryByText('Cargando…')).toBeNull()
+    // Y desde el vacío se sigue pudiendo capturar: el + CAPÍTULO no depende de
+    // que ya haya algo.
+    expect(screen.getByText('+ CAPÍTULO')).not.toBeNull()
+  })
+
+  it('sin ninguno de los dos $/m² no se inventa un renglón de comparación', async () => {
+    await renderPanel(DETALLADO, propiedad({
+      constructionCostPerSqm: null, budgetedCostPerSqm: null,
+    }))
+
+    expect(screen.queryByText('TU ESTIMADO')).toBeNull()
+    expect(screen.queryByText('· EL PRESUPUESTO')).toBeNull()
+  })
+
+  it('no hay AJUSTAR: el total no se fija por fuera, se mueve moviendo renglones', async () => {
+    // Fijar el total desde afuera era la otra mitad de la absorción: alguien
+    // decía «que sean $1.5M» y «Otros» cargaba con la diferencia. Sin residuo no
+    // hay dónde alojar esa resta, y con el total = suma no hay nada que fijar.
+    await renderPanel(DETALLADO)
+
+    expect(screen.queryByText('AJUSTAR')).toBeNull()
+    expect(screen.queryByText('FIJAR TOTAL')).toBeNull()
+    expect(screen.queryByLabelText('Nuevo total de obra')).toBeNull()
   })
 
   it('el rechazo del servidor se lee tal como lo escribió', async () => {
-    // «Otros» no se teclea y bajar el total por debajo de lo detallado tampoco:
-    // las dos frases están escritas para quien las va a corregir, así que se
-    // enseñan enteras en vez de un «error al guardar».
-    await renderPanel(DETALLADO)
-    vi.mocked(api.setBudgetTotal).mockRejectedValue(
-      new Error('El presupuesto no puede quedar en $50,000 porque ya hay $100,000 detallados en partidas.'),
+    // Las frases del servidor están escritas para quien las va a corregir, así
+    // que se enseñan enteras en vez de un «error al guardar».
+    const b = budget([line({ id: 1, name: 'Muro de block' }), holgura(0)])
+    await renderPanel(b)
+    fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
+    vi.mocked(api.updateBudgetLine).mockRejectedValue(
+      new Error('La cantidad no puede ser negativa: un renglón de obra no se descuenta.'),
     )
 
-    fireEvent.click(screen.getByText('AJUSTAR'))
-    fireEvent.change(screen.getByLabelText('Nuevo total de obra'), { target: { value: '50000' } })
-    fireEvent.click(screen.getByText('FIJAR TOTAL'))
+    const caja = screen.getByLabelText('Cantidad de Muro de block')
+    fireEvent.change(caja, { target: { value: '-5' } })
+    fireEvent.blur(caja)
 
-    expect(await screen.findByText(/ya hay \$100,000 detallados en partidas/)).not.toBeNull()
+    expect(await screen.findByText(/un renglón de obra no se descuenta/)).not.toBeNull()
   })
 
   it('los pagos se agregan y se borran; nunca se corrigen en su lugar', async () => {
@@ -589,7 +681,7 @@ describe('BudgetPanel', () => {
       paidAmount: 4_000, paidVariance: -6_000,
       payments: [{ id: 55, amount: 4_000, paidOn: '2026-05-01', notes: 'anticipo', createdAt: '' }],
     })
-    const b = budget([conPago, residual(0)])
+    const b = budget([conPago, holgura(0)])
     await renderPanel(b)
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
     fireEvent.click(screen.getByLabelText('Pagos de Muro de block'))
@@ -599,7 +691,7 @@ describe('BudgetPanel', () => {
     expect(screen.getByLabelText('Borrar pago de $4,000')).not.toBeNull()
 
     vi.mocked(api.addBudgetPayment).mockResolvedValue({
-      line: null, budget: b, property: propiedad() as Property, budgetIncrease: 0,
+      line: null, budget: b, property: propiedad() as Property,
     })
     fireEvent.change(screen.getByLabelText('Monto del pago'), { target: { value: '6000' } })
     fireEvent.change(screen.getByLabelText('Fecha del pago'), { target: { value: '2026-06-15' } })
@@ -619,7 +711,7 @@ describe('BudgetPanel', () => {
     const selector = await screen.findByLabelText('Presupuesto de origen')
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.applyBudgetSource).mockResolvedValue({
-      line: null, budget: DETALLADO, property: propiedad() as Property, budgetIncrease: 0,
+      line: null, budget: DETALLADO, property: propiedad() as Property,
     })
 
     // Una sola clase de origen: la lista va PLANA, sin encabezados de sección
@@ -637,8 +729,9 @@ describe('BudgetPanel', () => {
     fireEvent.click(screen.getByText('COPIAR RENGLONES'))
     await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledWith(7, 501, null, false, undefined))
 
-    // Y se dice que reparten en vez de crecer, que es lo que hace el residuo
-    expect(screen.getByText(/el residuo baja y el total no se mueve/)).not.toBeNull()
+    // Y se dice que SUMAN, que es lo que ahora pasa de verdad: no hay residuo
+    // que reparta nada, así que lo copiado se ve en el total.
+    expect(screen.getByText(/el total sube en lo que sumen/)).not.toBeNull()
   })
 
   it('la obra que pregunta se excluye del servidor, no filtrando aquí', async () => {
@@ -687,7 +780,7 @@ describe('BudgetPanel', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.applyBudgetSource).mockResolvedValue({
       line: null, budget: DETALLADO, property: propiedad() as Property,
-      budgetIncrease: 0, linesAdded: 18,
+      linesAdded: 18,
     })
 
     fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '500' } })
@@ -709,7 +802,7 @@ describe('BudgetPanel', () => {
   /** Lo que contesta `apply` en el DESTINO: lo que entró y lo que ya estaba. */
   const copiado = (added: number, skipped: number) => ({
     line: null, budget: DETALLADO, property: propiedad() as Property,
-    budgetIncrease: 0, linesAdded: added, linesSkipped: skipped,
+    linesAdded: added, linesSkipped: skipped,
   })
 
   it('empuja con UNA llamada por obra destino, con los capítulos elegidos', async () => {
@@ -722,8 +815,10 @@ describe('BudgetPanel', () => {
 
     fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
     fireEvent.click(screen.getByLabelText('Copiar a Zaragoza 100'))
-    // Todos los capítulos vienen marcados; se desmarca uno para copiar el otro
+    // Todos los capítulos vienen marcados —los TRES, que hoy incluye el de la
+    // holgura— y se desmarcan dos para copiar el que queda.
     fireEvent.click(screen.getByLabelText('Copiar capítulo Instalaciones'))
+    fireEvent.click(screen.getByLabelText('Copiar capítulo Otros'))
     fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
 
     await waitFor(() => expect(api.applyBudgetSource).toHaveBeenCalledTimes(2))
@@ -807,19 +902,22 @@ describe('BudgetPanel', () => {
     expect(within(total).getByText('$1,000,000')).not.toBeNull()
   })
 
-  it('este presupuesto se excluye en el servidor, y el residuo no se ofrece como capítulo', async () => {
+  it('este presupuesto se excluye en el servidor, y TODOS sus capítulos se ofrecen', async () => {
     // Copiarse sobre sí mismo da 422, y ofrecer una opción que solo puede fallar
     // es hacer que alguien descubra la regla chocando con ella. La exclusión es
     // por id de PRESUPUESTO (así los escenarios de esta obra sí aparecen), y
-    // `includeEmpty`: a un presupuesto vacío sí se le puede copiar. El capítulo
-    // del residuo tampoco viaja nunca, así que su casilla no haría nada.
+    // `includeEmpty`: a un presupuesto vacío sí se le puede copiar.
+    //
+    // El capítulo de la holgura SÍ se ofrece, y ése es el cambio: era el único
+    // que se quedaba —el servidor nunca copiaba el residuo— y hoy viaja como
+    // cualquier otro, porque ya no hay nada que lo distinga.
     await renderPanel(DETALLADO)
     await abrirEmpujar()
 
     expect(api.fetchBudgetSources).toHaveBeenCalledWith(9, true)
     expect(screen.getByLabelText('Copiar capítulo Albañilería')).not.toBeNull()
     expect(screen.getByLabelText('Copiar capítulo Instalaciones')).not.toBeNull()
-    expect(screen.queryByLabelText('Copiar capítulo Otros')).toBeNull()
+    expect(screen.getByLabelText('Copiar capítulo Otros')).not.toBeNull()
   })
 
   it('sin obra elegida no se copia: el botón no dispara nada', async () => {
@@ -833,6 +931,7 @@ describe('BudgetPanel', () => {
     fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
     fireEvent.click(screen.getByLabelText('Copiar capítulo Albañilería'))
     fireEvent.click(screen.getByLabelText('Copiar capítulo Instalaciones'))
+    fireEvent.click(screen.getByLabelText('Copiar capítulo Otros'))
     fireEvent.click(screen.getByText('COPIAR A ESTAS OBRAS'))
     expect(api.applyBudgetSource).not.toHaveBeenCalled()
   })
@@ -853,7 +952,7 @@ describe('BudgetPanel', () => {
       id: 2, chapterName: 'Permisos', name: 'Licencia de construcción',
       quantity: 1, unitPrice: 90_000, budgetedAmount: 90_000, isProportional: false,
     }),
-    residual(900_000),
+    holgura(900_000),
   ])
 
   it('la casilla PROPORCIONAL vive en la tabla, no en el popup, y guarda al marcarse', async () => {
@@ -862,7 +961,7 @@ describe('BudgetPanel', () => {
     // se teclea la partida, que es cuando se sabe.
     await renderPanel(CON_FIJA)
     vi.mocked(api.updateBudgetLine).mockResolvedValue({
-      line: null, budget: CON_FIJA, property: propiedad() as Property, budgetIncrease: 0,
+      line: null, budget: CON_FIJA, property: propiedad() as Property,
     })
     fireEvent.click(screen.getByLabelText('Abrir Albañilería'))
     fireEvent.click(screen.getByLabelText('Abrir Permisos'))
@@ -871,9 +970,11 @@ describe('BudgetPanel', () => {
       .toBe(true)
     const fija = screen.getByLabelText('Proporcional Licencia de construcción') as HTMLInputElement
     expect(fija.checked).toBe(false)
-    // El residuo no lleva casilla: escala siempre, y por eso el destino hereda
-    // también cuánto le falta por detallar.
-    expect(screen.queryByLabelText('Proporcional Otros, por detallar')).toBeNull()
+    // Y la holgura lleva su casilla como todas: es un renglón ordinario, no un
+    // renglón que escala «siempre» porque una regla del servidor lo diga.
+    fireEvent.click(screen.getByLabelText('Abrir Otros'))
+    expect((screen.getByLabelText('Proporcional Otros, por detallar') as HTMLInputElement).checked)
+      .toBe(true)
 
     // Un cambio ES un cambio: guarda al marcarse, como el oficio y el proveedor.
     fireEvent.click(fija)
@@ -906,7 +1007,7 @@ describe('BudgetPanel', () => {
     const VIEJO = budget([
       sinCampo({ id: 1, chapterName: 'Albañilería', name: 'Muro de block', budgetedAmount: 10_000 }),
       sinCampo({ id: 2, chapterName: 'Albañilería', name: 'Firme', budgetedAmount: 30_000 }),
-      residual(960_000),
+      holgura(960_000),
     ])
     vi.mocked(api.fetchProperties).mockResolvedValue([
       { id: 3, name: 'Modesto 415', constructionBudgeted: 2_000_000 },
@@ -922,25 +1023,29 @@ describe('BudgetPanel', () => {
     fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
     fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
 
-    // Nada es fijo: F = $0, S + R = $1,000,000, T = $2,000,000 → ×2.00
+    // Nada es fijo: F = $0, S = $1,000,000, T = $2,000,000 → ×2.00
     expect(screen.getByText(/TODO ESCALA · EL RESTO ×2\.00/)).not.toBeNull()
     expect(screen.queryByText(/las partidas fijas suman/)).toBeNull()
     expect(screen.queryByText(/se quedan fuera/)).toBeNull()
   })
 
   it('el objetivo se LEE del destino y se muestra en solo lectura: no hay nada que teclear', async () => {
-    // El costo de obra de una propiedad ya está capturado —es el total de su
-    // presupuesto, que la ficha calculó como m² × $/m²— y volver a preguntarlo
-    // aquí dejaba copiar dimensionado a un número que esa obra nunca dijo costar.
+    // El costo de obra de una propiedad ya está capturado —es la SUMA de los
+    // renglones de su presupuesto— y volver a preguntarlo aquí dejaba copiar
+    // dimensionado a un número que esa obra nunca dijo costar.
+    //
+    // Aquí se enseñaba además «275 m² × $3,500/m² = $962,500». Esa igualdad
+    // dejó de ser cierta el día que el total pasó a ser la suma: ni el metraje
+    // ni el supuesto de $/m² lo determinan ya, así que la descomposición se fue.
     await renderPanel(DETALLADO, propiedad({
-      constructionBudgeted: 962_500, sqmConstruction: 275, constructionCostPerSqm: 3_500,
+      constructionBudgeted: 962_500, constructionCostPerSqm: 3_500, budgetedCostPerSqm: 3_500,
     }))
     await abrirProporcional()
 
-    // Se lee como información, con sus dos mitades a la vista — y el objetivo es
-    // el MISMO número que el total de la tabla, porque es el mismo dato
-    const renglon = screen.getByText('275 m² × $3,500/m² =').closest('div')!
+    // El objetivo es el MISMO número que el total de la tabla, a secas
+    const renglon = screen.getByText('COSTO DE OBRA').closest('div')!
     expect(within(renglon).getByText('$962,500')).not.toBeNull()
+    expect(screen.queryByText(/275 m² ×/)).toBeNull()
     // Y ni una caja: ni la del $/m² ni la del metraje
     expect(screen.queryByLabelText(/Costo por m²/)).toBeNull()
     expect(screen.queryByLabelText(/Metraje de construcción/)).toBeNull()
@@ -969,7 +1074,7 @@ describe('BudgetPanel', () => {
     await abrirProporcional()
     fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '500' } })
 
-    expect(await screen.findByText(/todavía no tiene costo de obra: se captura en su ficha/))
+    expect(await screen.findByText(/todavía no tiene costo de obra: se captura renglón por renglón/))
       .not.toBeNull()
     fireEvent.click(screen.getByText('COPIAR RENGLONES'))
     await waitFor(() => expect(api.applyBudgetSource).not.toHaveBeenCalled())
@@ -985,7 +1090,7 @@ describe('BudgetPanel', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.applyBudgetSource).mockResolvedValue({
       line: null, budget: DETALLADO, property: propiedad() as Property,
-      budgetIncrease: 0, linesAdded: 18,
+      linesAdded: 18,
     })
 
     fireEvent.change(screen.getByLabelText('Presupuesto de origen'), { target: { value: '500' } })
@@ -1001,8 +1106,8 @@ describe('BudgetPanel', () => {
     // distintos: el objetivo es de cada una, leído de su propio presupuesto.
     await renderPanel(CON_FIJA)
     await abrirEmpujar([
-      destino({ fullTotal: 2_400_000, sqmConstruction: 200, constructionCostPerSqm: 12_000 }),
-      destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, fullTotal: 0 }),
+      destino({ total: 2_400_000 }),
+      destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, total: 0 }),
     ])
     fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
     vi.mocked(api.applyBudgetSource).mockResolvedValue(copiado(2, 0))
@@ -1010,9 +1115,8 @@ describe('BudgetPanel', () => {
     fireEvent.click(screen.getByLabelText('Copiar a Modesto 415'))
     fireEvent.click(screen.getByLabelText('Copiar a Zaragoza 100'))
 
-    // T de Modesto es SU costo de obra, con su desglose a la vista, y el preview
-    // aparta las fijas del origen
-    expect(screen.getByText('200 m² × $12,000/m² =')).not.toBeNull()
+    // T de Modesto es SU costo de obra —la suma de sus renglones, a secas— y el
+    // preview aparta las fijas del origen
     expect(screen.getByText('$2,400,000')).not.toBeNull()
     expect(screen.getByText(/NO ESCALAN \$90,000/)).not.toBeNull()
     // Zaragoza queda bloqueada con el motivo a la vista, no en silencio
@@ -1036,8 +1140,8 @@ describe('BudgetPanel', () => {
     // llamada, y el rechazo del servidor se lee junto al nombre de la suya.
     await renderPanel(CON_FIJA)
     await abrirEmpujar([
-      destino({ fullTotal: 2_400_000 }),
-      destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, fullTotal: 3_000_000 }),
+      destino({ total: 2_400_000 }),
+      destino({ id: 400, name: 'Zaragoza 100', propertyId: 4, total: 3_000_000 }),
     ])
     fireEvent.click(screen.getByLabelText('Copia proporcional a otras obras'))
     vi.mocked(api.applyBudgetSource)

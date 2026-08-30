@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import {
-  fetchBudget, createBudgetLine, updateBudgetLine, deleteBudgetLine, setBudgetTotal,
+  fetchBudget, createBudgetLine, updateBudgetLine, deleteBudgetLine,
   renameBudgetChapter, deleteBudgetChapter, addBudgetPayment, deleteBudgetPayment, getProveedores,
   getCategories, fetchBudgetSources, applyBudgetSource,
 } from '../../lib/api'
@@ -58,17 +58,14 @@ interface Props {
     'id' | 'constructionBudgeted' | 'constructionCommitted' | 'constructionPaid'
     | 'constructionPaidVariance'
     /**
-     * El costo objetivo al copiar PROPORCIONAL hacia esta obra ES
-     * `constructionBudgeted`: el total de su presupuesto, que por construcción
-     * vale `m² × $/m²` —así lo calcula la ficha al dar de alta la propiedad—.
-     * No se teclea en ningún lado: se LEE, aquí y en el servidor.
-     *
-     * El metraje y el `$/m²` viajan solo para ENSEÑAR de dónde sale ese número
-     * («275 m² × $3,500/m² = $962,500»). Ninguna cuenta de dinero los usa: el
-     * producto ya está guardado, y volver a multiplicarlo aquí sería una segunda
-     * respuesta a la misma pregunta.
+     * LOS DOS `$/m²`, que son dos cosas y por eso tienen dos nombres.
+     * `constructionCostPerSqm` es el supuesto que alguien TECLEÓ en la ficha;
+     * `budgetedCostPerSqm` es presupuesto ÷ metraje, derivado de esta misma
+     * tabla. El pie los enseña rotulados, uno junto al otro, porque la distancia
+     * entre ellos es información —dice cuánto se aleja el supuesto de lo que ya
+     * está capturado— y no un descuadre que haya que corregir.
      */
-    | 'sqmConstruction' | 'constructionCostPerSqm'>
+    | 'constructionCostPerSqm' | 'budgetedCostPerSqm'>
   /**
    * Toda escritura devuelve la propiedad recalculada: la suma presupuestada ES
    * el costo de obra, así que mover un renglón mueve la inversión total, la
@@ -85,13 +82,7 @@ interface Props {
 
 /** Una fila de la tabla. Un capítulo NO es una entidad: es agrupar por nombre. */
 type Row =
-  /**
-   * `locked` marca el capítulo donde vive el residuo. No se renombra, no se
-   * borra y no recibe partidas nuevas: es donde queda lo que falta por repartir,
-   * no un capítulo más donde detallar. Las tres las rechaza también el servidor,
-   * con su razón — aquí simplemente no se ofrecen.
-   */
-  | { kind: 'chapter'; id: number; parentId: null; name: string; lines: BudgetLine[]; locked: boolean }
+  | { kind: 'chapter'; id: number; parentId: null; name: string; lines: BudgetLine[] }
   | { kind: 'line'; id: number; parentId: number; line: BudgetLine }
   | { kind: 'add'; id: number; parentId: number; chapterName: string }
 
@@ -159,6 +150,16 @@ function rollupOf(lines: BudgetLine[]): Rollup {
 }
 
 /**
+ * Un `$/m²` como se lee: «$8,000/m²». El guion va a secas —«—/m²» sería ponerle
+ * unidad a un dato que no existe— y el CERO SÍ se imprime: un presupuesto vacío
+ * vale $0/m², que es un número y no un faltante. Es la misma regla de `fmt.ts`:
+ * vacío es «—», cero es cero.
+ */
+function perSqm(n: number | null | undefined): string {
+  return n != null ? `${fmtMXN(n)}/m²` : '—'
+}
+
+/**
  * La vista previa de un renglón editado. Vuelve a multiplicar porque
  * presupuestado es cantidad × precio, y la pantalla no puede enseñar una
  * cantidad nueva junto a un importe viejo mientras se teclea.
@@ -186,7 +187,7 @@ type CopyMode = 'directo' | 'proporcional'
 interface Scope {
   /** F — las partidas fijas: entran con su monto original. */
   fixed: number
-  /** S + R — el resto del origen, residuo incluido: lo que el factor multiplica. */
+  /** S — el resto del origen: lo que el factor multiplica. */
   scaling: number
 }
 
@@ -198,10 +199,9 @@ interface Scope {
  * copia sí se lleva. Cuando viaja el presupuesto entero, que es el caso normal,
  * las dos formas de escribirlo dan el mismo número.
  *
- * El residuo entra en el total a propósito: es lo que hace que el destino herede
- * también cuánto le falta por detallar. Si el origen estaba a medio detallar, el
- * destino también; un origen detallado al 100% deja el residuo del destino en
- * cero sin ningún caso especial.
+ * Cuenta TODOS los renglones, sin excepción: una holgura («por detallar») es un
+ * renglón como cualquier otro, así que escala como cualquier otro y el destino
+ * hereda también lo que al origen le falta por detallar.
  *
  * **La pregunta por lo fijo es `=== false`, no `!`.** El campo nace en TRUE en la
  * base, así que su ausencia significa «sí escala»: preguntado por falsedad, un
@@ -216,7 +216,6 @@ function scopeOf(lines: BudgetLine[], chapters: string[] | null): Scope {
   let fixed = 0
   for (const l of lines) {
     total += l.budgetedAmount
-    if (l.isResidual) continue
     if (chapters !== null && !chapters.includes(l.chapterName)) continue
     if (l.isProportional === false) fixed += l.budgetedAmount
   }
@@ -236,7 +235,7 @@ interface Plan {
   target: number | null
   fixed: number
   scaling: number
-  /** (T − F) / (S + R). Null cuando falta el objetivo o no hay nada que escalar. */
+  /** (T − F) / S. Null cuando falta el objetivo o no hay nada que escalar. */
   factor: number | null
   /** Por qué NO se puede copiar proporcional a esta obra. Null cuando sí se puede. */
   blocker: string | null
@@ -245,10 +244,10 @@ interface Plan {
 /**
  * El plan de una obra destino, a partir de su costo de obra ya capturado.
  *
- * **El objetivo no se teclea: se lee.** Cada propiedad ya tiene el suyo —el
- * total de su presupuesto, que la ficha calculó como `m² × $/m²` al darla de
- * alta— y preguntarlo otra vez aquí abriría la puerta a copiar dimensionado a un
- * número que no es el que esa obra dice costar.
+ * **El objetivo no se teclea: se lee.** Cada propiedad ya tiene el suyo —la
+ * suma de los renglones de su presupuesto— y preguntarlo otra vez aquí abriría
+ * la puerta a copiar dimensionado a un número que no es el que esa obra dice
+ * costar.
  *
  * Por eso queda UN solo insumo que puede faltar, y el bloqueo manda a donde sí
  * se captura: su ficha. La guarda de las fijas se queda porque es una imposi-
@@ -260,7 +259,7 @@ function planFor(target: number | null | undefined, scope: Scope): Plan {
   if (target == null || target <= 0) {
     return {
       ...base,
-      blocker: 'esa obra todavía no tiene costo de obra: se captura en su ficha, con su metraje y su $/m²',
+      blocker: 'esa obra todavía no tiene costo de obra: se captura renglón por renglón en su presupuesto',
     }
   }
   if (target <= scope.fixed) {
@@ -301,7 +300,8 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
   const [categories, setCategories] = useState<ProveedorCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  /** Lo que el servidor avisa cuando el detalle rebasó el estimado. */
+  /** Lo que hay que decir de una escritura cuyo efecto no se ve entero en
+   * pantalla — hoy solo copiar, que mete renglones en capítulos cerrados. */
   const [notice, setNotice] = useState<string | null>(null)
 
   /**
@@ -317,8 +317,6 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
   const [openPayments, setOpenPayments] = useState<number | null>(null)
   const [payAmount, setPayAmount] = useState<number | undefined>(undefined)
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [adjusting, setAdjusting] = useState(false)
-  const [newTotal, setNewTotal] = useState<number | undefined>(undefined)
 
   /**
    * El panel de arrancar desde otra obra, y lo que necesita.
@@ -373,7 +371,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
   /**
    * Lo que se cambió y todavía no se manda, por renglón. Las celdas de texto y
    * de dinero guardan al SOLTARSE y no a cada tecla —teclear «1500» serían
-   * cuatro escrituras, y cada una recalcula el residuo— que es el mismo trato
+   * cuatro escrituras, y cada una mueve el total— que es el mismo trato
    * que `ProcesoInstanceDetail` le da a sus notas. Los controles discretos
    * (proveedor, fecha) sí guardan al cambiar: ahí un cambio es un cambio.
    */
@@ -415,20 +413,20 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
   async function run(op: () => Promise<BudgetWrite>) {
     setError(null)
     try {
-      const { budget, property: updated, budgetIncrease, linesAdded, linesSkipped } = await op()
+      const { budget, property: updated, linesAdded, linesSkipped } = await op()
       receive(budget)
       onPropertyChange(updated)
-      // Detallar reparte un total que no se mueve. Cuando el detalle lo rebasa,
-      // el residuo llega a 0 y la obra sí pasa a costar más — que ya no es
-      // detallar sino aumentar el presupuesto. Se dice en vez de dejar que el
-      // total suba en silencio.
+      // No hay nada que avisar sobre el TOTAL: es la suma de los renglones, así
+      // que toda escritura lo mueve exactamente su propio importe y eso ya se ve
+      // en el pie. El aviso que decía «el detalle rebasó el estimado» murió con
+      // el residuo que lo hacía posible.
       //
       // `linesAdded` y `linesSkipped` solo llegan al copiar, y se dicen porque
       // copiar es la única escritura cuyo efecto no se ve entero en pantalla:
       // los renglones caen dentro de capítulos que están colapsados. Los
       // saltados se dicen aparte porque son lo que NO pasó: el destino ya los
       // tenía y no se sobrescriben nunca.
-      setNotice([
+      setNotice(
         linesAdded != null
           ? ([
               linesAdded > 0 ? `Se copiaron ${linesAdded} renglones.` : null,
@@ -436,10 +434,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
             ].filter(Boolean).join(' ')
               || 'No había nada nuevo que copiar: esas partidas ya estaban.')
           : null,
-        budgetIncrease > 0
-          ? `El detalle rebasó el estimado: el presupuesto de obra subió ${fmtMXN(budgetIncrease)}.`
-          : null,
-      ].filter(Boolean).join(' ') || null)
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar')
       fetchBudget(propertyId, planId).then(receive).catch(() => {})
@@ -503,10 +498,9 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
       // impares para que el capítulo y su fila de agregar tampoco choquen.
       const chapterId = -(2 * i + 1)
       const chapterLines = lines.filter(l => l.chapterName === name)
-      const locked = chapterLines.some(l => l.isResidual)
-      out.push({ kind: 'chapter', id: chapterId, parentId: null, name, lines: chapterLines, locked })
+      out.push({ kind: 'chapter', id: chapterId, parentId: null, name, lines: chapterLines })
       chapterLines.forEach(line => out.push({ kind: 'line', id: line.id, parentId: chapterId, line }))
-      if (!locked) out.push({ kind: 'add', id: -(2 * i + 2), parentId: chapterId, chapterName: name })
+      out.push({ kind: 'add', id: -(2 * i + 2), parentId: chapterId, chapterName: name })
     })
     return out
   }, [lines, chapters])
@@ -569,15 +563,12 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
   }
 
   /**
-   * Los capítulos que SÍ se pueden copiar. El del residuo queda fuera: es lo que
-   * a ESTA obra le falta por detallar, y en la de al lado sería una partida que
-   * le come su propio residuo. El servidor nunca lo copia —por eso `lineCount`
-   * cuenta lo copiable— así que ofrecerlo sería una casilla que no hace nada.
+   * Los capítulos que se pueden copiar: TODOS. Hubo uno que se quedaba —el del
+   * residuo, que era lo que a ESTA obra le faltaba por detallar y allá habría
+   * sido una partida ajena— y con él se fue la única excepción. Un capítulo de
+   * holgura de hoy es un capítulo normal, y viaja como los demás.
    */
-  const copyableChapters = useMemo(
-    () => chapters.filter(c => lines.some(l => l.chapterName === c && !l.isResidual)),
-    [chapters, lines],
-  )
+  const copyableChapters = chapters
 
   const chapterPicked = (name: string) => (pickedChapters === null ? true : pickedChapters.has(name))
 
@@ -609,7 +600,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
    * El plan de UNA obra destino, contra SU costo de obra. En directo no hay nada
    * que planear: se copia tal cual y ninguna obra puede quedar bloqueada.
    */
-  const planOf = (t: BudgetSource): Plan => planFor(t.fullTotal, pushScope)
+  const planOf = (t: BudgetSource): Plan => planFor(t.total, pushScope)
   /** «Casa Modesto» o «Casa Modesto · Plan A»: un escenario se nombra con su obra. */
   const budgetLabel = (s: BudgetSource) => (s.planName ? `${s.name} · ${s.planName}` : s.name)
 
@@ -800,10 +791,14 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
    * El costo objetivo de UNA obra destino, EN SOLO LECTURA.
    *
    * **Aquí no se captura nada.** T es el costo de obra que esa propiedad ya
-   * tiene —el total de su presupuesto—, y el metraje y el `$/m²` se enseñan solo
-   * para que se lea de dónde sale: «275 m² × $3,500/m² = $962,500». Tecleados,
-   * eran una segunda respuesta a una pregunta que la ficha ya contestó, y la
-   * copia podía dimensionarse a un número que esa obra nunca dijo costar.
+   * tiene: la SUMA DE LOS RENGLONES de su presupuesto. Tecleado, era una segunda
+   * respuesta a una pregunta que su presupuesto ya contesta, y la copia podía
+   * dimensionarse a un número que esa obra nunca dijo costar.
+   *
+   * Aquí vivía la descomposición «275 m² × $3,500/m² = $962,500», y se fue con
+   * la liga: el total ya no es ese producto —es lo que sumen los renglones— así
+   * que la igualdad había dejado de ser cierta. Los dos `$/m²` que sí importan
+   * están rotulados en el pie de la tabla, que es donde se comparan.
    *
    * Y el preview APARTA LAS FIJAS. Enseñar solo el objetivo dejaría creer que
    * todo el presupuesto se mueve con el factor, cuando los permisos y las
@@ -811,20 +806,12 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
    */
   const targetRow = (opts: {
     label: string
-    sqm: number | null | undefined
-    costPerSqm: number | null | undefined
     plan: Plan
   }) => (
     // La etiqueta es el nombre de la obra destino cuando son varias, así que
     // sirve de llave: no hay dos destinos con el mismo renglón.
     <div key={opts.label} style={panelRow}>
       <span style={{ ...micro, letterSpacing: '0.1em', minWidth: '130px' }}>{opts.label}</span>
-      {/* La descomposición solo si la ficha tiene las dos partes. Sin ellas el
-          costo de obra sigue siendo el mismo número: se enseña a secas en vez de
-          inventar una división que nadie capturó. */}
-      {opts.sqm != null && opts.costPerSqm != null && (
-        <span style={micro}>{opts.sqm} m² × {fmtMXN(opts.costPerSqm)}/m² =</span>
-      )}
       <span style={{ ...money, fontFamily: fonts.label }}>{fmtMXN(opts.plan.target)}</span>
       {opts.plan.blocker ? (
         <span style={{ ...micro, color: '#c0392b' }}>
@@ -992,7 +979,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
                 selector se lee como «se rompió». */}
             <span style={micro}>
               {sources.length > 0
-                ? 'Se suman a lo que ya hay; el residuo baja y el total no se mueve.'
+                ? 'Se suman a lo que ya hay, y el total sube en lo que sumen.'
                 : 'Todavía no hay de dónde copiar. Detalla partidas en otra obra y aparecerá aquí.'}
             </span>
           </div>
@@ -1004,8 +991,6 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
 
           {sourceMode === 'proporcional' && targetRow({
             label: 'COSTO DE OBRA',
-            sqm: property.sqmConstruction,
-            costPerSqm: property.constructionCostPerSqm,
             plan: sourcePlan,
           })}
 
@@ -1060,7 +1045,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
             </span>
             {copyableChapters.length === 0 ? (
               <span style={micro}>
-                Todavía no hay partidas detalladas que copiar: el residuo no viaja.
+                Todavía no hay partidas que copiar: este presupuesto está vacío.
               </span>
             ) : copyableChapters.map(c => (
               <label key={c} style={checkLabel}>
@@ -1094,8 +1079,6 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
               </span>
             ) : chosenTargets.map(p => targetRow({
               label: budgetLabel(p),
-              sqm: p.sqmConstruction,
-              costPerSqm: p.constructionCostPerSqm,
               plan: planOf(p),
             }))
           )}
@@ -1114,7 +1097,7 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
                 pagos, y sobrescribirlo reescribiría dinero ya capturado. */}
             <span style={micro}>
               Se agregan a lo que cada obra ya tenga; los renglones que ya existan allá
-              se saltan sin tocarse. El residuo de cada una se reajusta solo.
+              se saltan sin tocarse. El total de cada una sube en lo que le entre.
             </span>
             {/* Una obra sin metraje no cancela a las demás: se queda fuera con
                 su motivo y las otras se copian igual. */}
@@ -1195,7 +1178,6 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
               // ── Capítulo: suma solo, nunca captura ──
               if (row.kind === 'chapter') {
                 const r = rollupOf(row.lines)
-                const { locked } = row
                 return (
                   <tr key={`c${row.id}`} style={{
                     background: colors.surfaceAlt,
@@ -1211,20 +1193,14 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
                         >
                           {isCollapsed(row.name) ? '▶' : '▼'}
                         </button>
-                        {locked ? (
-                          <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.neutral }}>
-                            {row.name}
-                          </span>
-                        ) : (
-                          <input
-                            key={row.name}
-                            defaultValue={row.name}
-                            aria-label={`Capítulo ${row.name}`}
-                            onFocus={e => e.target.select()}
-                            onBlur={e => renameChapter(row.name, e.target.value)}
-                            style={{ ...cellInput, background: 'transparent', border: 'none', padding: '3px 0' }}
-                          />
-                        )}
+                        <input
+                          key={row.name}
+                          defaultValue={row.name}
+                          aria-label={`Capítulo ${row.name}`}
+                          onFocus={e => e.target.select()}
+                          onBlur={e => renameChapter(row.name, e.target.value)}
+                          style={{ ...cellInput, background: 'transparent', border: 'none', padding: '3px 0' }}
+                        />
                         <span style={{ ...micro, flexShrink: 0 }}>({row.lines.length})</span>
                       </div>
                     </td>
@@ -1238,18 +1214,16 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
                         mismo hecho que se desincroniza con sus partidas. */}
                     <td style={td} colSpan={2} />
                     <td style={{ ...td, textAlign: 'right' }}>
-                      {!locked && (
-                        <button
-                          onClick={() => {
-                            if (!window.confirm(`¿Quitar el capítulo «${row.name}» con sus ${row.lines.length} partidas? Lo detallado vuelve a «Otros, por detallar» y el total no se mueve.`)) return
-                            void run(() => deleteBudgetChapter(propertyId, row.name, planId))
-                          }}
-                          aria-label={`Quitar capítulo ${row.name}`}
-                          style={kill}
-                        >
-                          ✕
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          if (!window.confirm(`¿Quitar el capítulo «${row.name}» con sus ${row.lines.length} partidas? El costo de obra baja en ${fmtMXN(r.budgeted)}.`)) return
+                          void run(() => deleteBudgetChapter(propertyId, row.name, planId))
+                        }}
+                        aria-label={`Quitar capítulo ${row.name}`}
+                        style={kill}
+                      >
+                        ✕
+                      </button>
                     </td>
                   </tr>
                 )
@@ -1277,34 +1251,12 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
               const line = row.line
               if (isCollapsed(line.chapterName)) return null
 
-              // ── El residuo: se calcula solo, no se teclea ──
-              // Baja al detallar y sube al quitar detalle. Editarlo a mano
-              // convertiría una resta determinista en una segunda captura, y ahí
-              // es donde nace el descuadre. Para mover el total está AJUSTAR, que
-              // es otra operación precisamente porque significa otra cosa.
-              if (line.isResidual) {
-                return (
-                  <tr key={line.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                    <td style={{ ...td, paddingLeft: `${6 + indent}px` }}>
-                      <span style={{ fontFamily: fonts.sans, fontSize: '11px', color: colors.secondary }}>
-                        {line.name}
-                      </span>
-                    </td>
-                    <td style={{ ...td, ...money, color: colors.secondary }}>{line.quantity}</td>
-                    <td style={{ ...td, ...micro }}>{line.unit}</td>
-                    <td style={{ ...td, ...money, color: colors.secondary }}>{fmtMXN(line.unitPrice)}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>
-                      <div style={{ ...money, color: colors.secondary }}>{fmtMXN(line.budgetedAmount)}</div>
-                      <div style={{ ...micro, marginTop: '2px' }}>SE REPARTE AL DETALLAR</div>
-                    </td>
-                    {/* El residuo no lleva casilla: escala SIEMPRE, y por eso el
-                        destino hereda también cuánto le falta por detallar. No
-                        es una elección que se pueda contestar de otra manera. */}
-                    <td style={td} colSpan={3} />
-                  </tr>
-                )
-              }
-
+              // Aquí vivía el caso especial del residuo: un renglón de solo
+              // lectura, sin ✕ y sin casilla de proporcional, porque su importe
+              // lo ponía una resta. Ya no hay resta que proteger. El renglón que
+              // siembra la calculadora al nacer la propiedad —«Estimado inicial ·
+              // 200 m² × $8,000/m²»— se teclea y se borra como cualquier otro, y
+              // cae por el mismo camino que los demás.
               const { sugeridos, resto } = supplierOptions(line.supplierCategoryId, line.supplierId)
               const oficio = categoryName(line.supplierCategoryId)
               return [
@@ -1516,41 +1468,45 @@ export function BudgetPanel({ property, onPropertyChange, planId }: Props) {
             })}
 
             {/* El TOTAL se lee de la propiedad: es la MISMA cifra que la ficha
-                enseña como obra del desglose y que alimenta la inversión. */}
+                enseña como obra del desglose y que alimenta la inversión. Y no
+                se teclea: aquí vivía AJUSTAR, que fijaba el total por fuera y
+                dejaba que «Otros» absorbiera la diferencia. Para mover el total
+                se mueven los renglones — no hay otra puerta, y por eso el total
+                siempre es exacto. */}
             <tr style={{ borderTop: `2px solid ${colors.border}`, background: colors.surface }}>
               <td colSpan={4} style={{ ...td, paddingTop: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ ...micro, letterSpacing: '0.1em' }}>TOTAL · ES EL COSTO DE OBRA</span>
-                  <button
-                    onClick={() => { setAdjusting(v => !v); setNewTotal(property.constructionBudgeted ?? 0) }}
-                    style={ghost}
-                  >
-                    {adjusting ? 'CANCELAR' : 'AJUSTAR'}
-                  </button>
-                </div>
-                {/* Aumentar el presupuesto y detallarlo son dos operaciones, y
-                    ésta es la que sí mueve el total. Separarlas es lo que
-                    permite contestar si el alcance creció o solo se abrió. */}
-                {adjusting && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
-                    <NumericInput
-                      value={newTotal}
-                      ariaLabel="Nuevo total de obra"
-                      onChange={setNewTotal}
-                      style={{ ...numInput, width: '130px' }}
-                    />
-                    <button
-                      onClick={() => {
-                        if (newTotal == null) return
-                        void run(() => setBudgetTotal(propertyId, newTotal, planId))
-                        setAdjusting(false)
-                      }}
-                      style={{ ...ghost, borderColor: colors.primary, color: colors.primary }}
-                    >
-                      FIJAR TOTAL
-                    </button>
-                    <span style={micro}>Mueve «Otros», no las partidas detalladas.</span>
-                  </div>
+                <span style={{ ...micro, letterSpacing: '0.1em' }}>TOTAL · ES EL COSTO DE OBRA</span>
+                {/* LOS DOS `$/m²`, ROTULADOS Y JUNTOS. Son dos cifras reales de
+                    dos preguntas distintas —«a cuánto supuse el m²» y «a cuánto
+                    va el m² con lo que llevo capturado»— y ninguna es el relevo
+                    de la otra: la comparación solo es honesta mientras ninguna
+                    sea el fallback de la que falta. Antes compartían el nombre
+                    `constructionCostPerSqm` y se enseñaban sin rótulo en dos
+                    pantallas distintas, que es como se leían como una sola cifra
+                    que a veces cambiaba sola.
+
+                    SEPARARSE ES EL DATO, no un descuadre: $50,000 supuestos
+                    contra $4,850 presupuestados dicen que el supuesto va muy
+                    arriba de lo capturado, y eso se lee, no se corrige. Por eso
+                    ninguna va en rojo ni pide nada. */}
+                {(property.constructionCostPerSqm != null || property.budgetedCostPerSqm != null) && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                      <span style={{ ...micro, letterSpacing: '0.1em' }}>TU ESTIMADO</span>
+                      <span style={{ ...money, fontFamily: fonts.label }}>
+                        {perSqm(property.constructionCostPerSqm)}
+                      </span>
+                      <span style={{ ...micro, letterSpacing: '0.1em' }}>· EL PRESUPUESTO</span>
+                      <span style={{ ...money, fontFamily: fonts.label }}>
+                        {perSqm(property.budgetedCostPerSqm)}
+                      </span>
+                    </div>
+                    <div style={{ ...micro, whiteSpace: 'normal', maxWidth: '380px', marginTop: '3px' }}>
+                      Tu estimado se captura en la ficha y no mueve un peso de aquí; el del
+                      presupuesto es esta suma entre los m². Que se separen es el dato: dice
+                      cuánto se aleja el supuesto de lo que ya llevas capturado.
+                    </div>
+                  </>
                 )}
               </td>
               <td style={{ ...td, textAlign: 'right', paddingTop: '8px' }}>

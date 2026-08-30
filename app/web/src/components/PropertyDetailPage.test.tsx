@@ -58,8 +58,11 @@ const BASE_PROPERTY: Property = {
   images: [], geometry: {}, milestones: {},
   sqmLand: 400, sqmConstruction: 250, purchasePrice: 3_000_000,
   acquisitionCostPct: 0.065, permitsCost: 150_000, subdivisionCost: 50_000,
-  // Derivada, no capturada: 3,900,000 presupuestados ÷ 250 m² de obra.
-  constructionCostPerSqm: 15_600,
+  // CAPTURADA: el supuesto que alguien tecleó. A propósito NO coincide con
+  // `budgetedCostPerSqm` de abajo (3,900,000 ÷ 250 = 15,600): son dos cifras de
+  // dos preguntas distintas, y una fixture donde empataran dejaría pasar el día
+  // que una volviera a derivarse de la otra.
+  constructionCostPerSqm: 8_000,
   projectedSale: 9_000_000, holdMonths: 12,
   rentMonthlyProjected: 30_000, rentMonthlyActual: null,
   // Nadie ha decidido todavía el camino de salida (migración 049), y ya no
@@ -95,6 +98,8 @@ const BASE_PROPERTY: Property = {
   constructionBudgeted: 3_900_000,
   constructionCommitted: null, constructionPaid: null,
   constructionCommittedVariance: null, constructionPaidVariance: null,
+  // DERIVADA: 3,900,000 presupuestados ÷ 250 m² de obra.
+  budgetedCostPerSqm: 15_600,
   projectedProfit: 1_705_000, projectedRoi: 0.23, projectedRoiTotal: 0.23,
   capRate: 0.049, rentAnnual: 360_000,
   unrealizedGain: null, unrealizedGainPct: null, roi: null, holdMonthsActual: null,
@@ -1074,18 +1079,18 @@ describe('PropertyDetailPage', () => {
     expect(api.fetchBudget).toHaveBeenCalledWith(7, undefined)
   })
 
-  it('el costo de obra por m² se prellena con el cociente derivado al entrar a edición', async () => {
-    // Presupuesto ÷ metraje. Sin overhead escondido en esta ruta, ese mismo
-    // cociente es exactamente lo que se reproduciría si se guardara sin
-    // tocarlo, así que prellenarlo es seguro — no hay multiplicador que se
-    // aplique una segunda vez. 3,900,000 ÷ 250 m² de obra = 15,600.
+  it('el costo de obra por m² es un campo capturado: se prellena con lo guardado, no con el cociente', async () => {
+    // La caja trae la COLUMNA ($8,000), no `presupuesto ÷ metraje` ($15,600).
+    // Los dos números existen y valen distinto a propósito: prellenar con el
+    // derivado convertiría el supuesto en un eco del presupuesto, que es el
+    // enredo que este trabajo vino a deshacer.
     await renderPage(BASE_PROPERTY)
 
     fireEvent.click(screen.getByText('EDITAR'))
     // El metraje sí se queda: es FÍSICO, y lo leen el analizador y el PDF.
     expect(screen.getByLabelText('M² DE CONSTRUCCIÓN')).not.toBeNull()
     const input = screen.getByLabelText('COSTO OBRA/m²') as HTMLInputElement
-    expect(input.value).toBe('15,600')
+    expect(input.value).toBe('8,000')
 
     fireEvent.change(input, { target: { value: '9000' } })
     fireEvent.click(screen.getByText('GUARDAR ▸'))
@@ -1093,6 +1098,25 @@ describe('PropertyDetailPage', () => {
     await waitFor(() => expect(api.updateProperty).toHaveBeenCalled())
     const payload = vi.mocked(api.updateProperty).mock.calls[0][1] as Record<string, unknown>
     expect(payload).toEqual({ constructionCostPerSqm: 9000 })
+  })
+
+  it('editar m² o $/m² NO mueve el presupuesto: son campos de la ficha y nada más', async () => {
+    // EL DEFECTO QUE MOTIVÓ TODO EL TRABAJO. Hasta el 2026-08-30 corregir el
+    // metraje de 250 a 275 repreciaba la obra entera —los capítulos cotizados
+    // con proveedor incluidos— porque el PATCH de la ficha recalculaba el total
+    // del presupuesto. Hoy los dos viajan como cualquier otra columna: un solo
+    // PATCH, ninguna escritura al presupuesto, y la obra del desglose la sigue
+    // diciendo la suma de sus renglones.
+    await renderPage(BASE_PROPERTY)
+
+    fireEvent.click(screen.getByText('EDITAR'))
+    fireEvent.change(screen.getByLabelText('M² DE CONSTRUCCIÓN'), { target: { value: '275' } })
+    fireEvent.change(screen.getByLabelText('COSTO OBRA/m²'), { target: { value: '9000' } })
+    fireEvent.click(screen.getByText('GUARDAR ▸'))
+
+    await waitFor(() => expect(api.updateProperty).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(api.updateProperty).mock.calls[0][1])
+      .toEqual({ sqmConstruction: 275, constructionCostPerSqm: 9000 })
   })
 
   it('la barra de obra del desglose es la suma del presupuesto', async () => {

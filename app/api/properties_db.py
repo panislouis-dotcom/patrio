@@ -655,9 +655,11 @@ def score(prop: dict, peers: list[dict]) -> int | None:
 # presupuesto de una base recién sembrada, igual que los campos homónimos de
 # POST /api/properties. Su DROP va con la reescritura de db/seeds.
 #
-# `construction_cost_per_sqm` no necesita estar aquí: el cómputo lo pisa con el
-# cociente derivado, así que lo que se publica bajo ese nombre ya es el número
-# nuevo y no el de la columna.
+# `construction_cost_per_sqm` no está aquí porque NO se retiró: volvió a ser el
+# supuesto que alguien captura, se escribe por `WRITABLE_FIELDS` y se publica tal
+# cual. El derivado —presupuesto ÷ m²— viaja al lado con su propio nombre,
+# `budgetedCostPerSqm`, que es justo lo que evita que los dos vuelvan a
+# confundirse bajo una sola etiqueta.
 _RETIRED_COLUMNS = ("constructionOverhead",)
 
 
@@ -962,7 +964,7 @@ _DELETE_BLOCKERS = {
     # El presupuesto de obra retiene, no cae en cascada: sus renglones llevan
     # cantidades medidas, precios negociados y pagos hechos, y eso es captura
     # manual que ningún borrado debe llevarse sin que alguien lo decida.
-    "budgets": "tiene un presupuesto de obra",
+    "budgets": "tiene renglones capturados en su presupuesto de obra",
     "profit_split_config": "tiene un reparto de utilidades configurado",
     "signals": "está ligada a una señal del sonar",
 }

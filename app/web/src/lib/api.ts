@@ -837,17 +837,6 @@ export function usePlanBudget(propertyId: number, planId: string): Promise<Budge
 }
 
 /**
- * La operación que SÍ mueve cuánto va a costar la obra, moviendo el residuo.
- * Existe aparte de detallar precisamente para que las dos se distingan:
- * detallar reparte un total que no cambia, esto cambia el total sin tocar una
- * sola partida. Mezclarlas volvería imposible contestar si el presupuesto
- * creció o solo se abrió.
- */
-export function setBudgetTotal(propertyId: number, amount: number, planId?: string): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, '/total', planId), 'PUT', { amount })
-}
-
-/**
  * Renombrar y borrar un capítulo son las dos únicas operaciones que tocan
  * varios renglones a la vez; hacerlas renglón por renglón dejaría el
  * presupuesto a medio renombrar si algo falla en medio.

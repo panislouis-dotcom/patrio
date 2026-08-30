@@ -449,44 +449,57 @@ def seed_estimate_line(conn, budget_id: int, sqm_construction,
 # se despegarían, y el día que se despeguen una copia pisa trabajo capturado o
 # una propiedad se vuelve indeleble.
 #
-# ES UNA HEURÍSTICA, NO UN HECHO, y conviene leerla como tal. Lo que el sistema
-# deja al nacer es, como mucho, UN renglón —el estimado de la calculadora, o
-# ninguno—, así que «nadie ha trabajado aquí» se contesta «hay a lo más un
-# renglón y ninguno carga ejecución» (proveedor, comprometido, cantidad real,
-# cierre o pago). No pregunta CUÁL renglón, y ahí está la rendija: quien BORRE
-# el estimado, teclee UNO propio y no le ponga ejecución cae del lado
-# equivocado —ese renglón lo reemplaza una copia, o se va con la propiedad que
-# borre— sin aviso. Tampoco lo cierra editar: corregirle el importe al estimado
-# no lo vuelve otro renglón, porque lo que se cuenta son renglones y ejecución,
-# no ediciones. Se elige a sabiendas contra la alternativa: retener por cualquier
-# renglón vuelve indeleble a TODA propiedad dada de alta con la calculadora y le
-# pone al 422 una fila que puso el sistema. Lo fija, con ese nombre,
-# `test_a_line_of_your_own_with_no_execution_is_knowingly_not_protected`.
+# LO QUE LA CONTESTA ES UN HECHO ESTRUCTURAL, NO UN PARECIDO: `l.created_at =
+# b.created_at`. Las dos columnas traen `DEFAULT now()`, y `now()` en Postgres
+# es la hora de INICIO DE LA TRANSACCIÓN, no del reloj. El presupuesto y su
+# renglón sembrado se escriben en la misma transacción —`create_property` llama
+# a `create_budget` y a `seed_estimate_line` dentro del mismo `with get_db()`—
+# así que sus marcas son idénticas al microsegundo. Cualquier renglón tecleado
+# después llega en OTRA transacción y necesariamente difiere. No hay ventana:
+# la igualdad no es «casi al mismo tiempo», es «en el mismo acto de escritura».
 #
 # NO SE PREGUNTA POR EL NOMBRE, y es deliberado. El del estimado lleva dentro
 # los m² y el $/m² —«Estimado inicial · 200 m² × $8,000/m²»—, así que corregir
 # el metraje de la ficha lo cambiaría y el presupuesto dejaría de reconocerse a
-# sí mismo sin que nadie lo tocara: una propiedad que se vuelve indeleble en
-# silencio, por una edición que no habla del presupuesto. Contar no depende de
-# la métrica.
-_NOTHING_BUT_THE_ESTIMATE = (
-    "SELECT count(*) <= 1"
-    "   AND NOT coalesce(bool_or("
-    "         l.supplier_id      IS NOT NULL"
-    "      OR l.committed_amount IS NOT NULL"
-    "      OR l.actual_quantity  IS NOT NULL"
-    "      OR l.closed_at        IS NOT NULL"
-    "      OR EXISTS (SELECT 1 FROM budget_line_payments p WHERE p.line_id = l.id)"
-    "       ), FALSE) AS intacto"
-    "  FROM budget_lines l"
+# sí mismo sin que nadie lo tocara. Es el mismo argumento con el que la 033
+# desmontó «Otros, por detallar»: un nombre lo teclea o lo renombra cualquiera.
+# La marca de tiempo no se puede teclear, sobrevive a renombres y a ediciones de
+# importe, y no depende de ninguna métrica.
+#
+# Con eso la vieja rendija SE CIERRA: quien borre el estimado y teclee uno
+# propio ya no cae del lado equivocado —su renglón nació en otra transacción, así
+# que retiene y no lo reemplaza una copia—. Se conservan las dos mitades que
+# antes competían: la propiedad recién dada de alta se puede borrar, y el
+# trabajo tecleado a mano se protege desde el primer renglón, sin ejecución
+# encima. Lo que sigue contando como «nada que perder» es exactamente: ningún
+# renglón, o uno solo escrito en el mismo acto que el presupuesto y sin
+# ejecución —proveedor, comprometido, cantidad real, cierre o pago—.
+#
+# Va como fragmento CORRELACIONADO con `b` porque la pregunta es POR
+# PRESUPUESTO: «el sistema siembra a lo más un renglón» es invariante de cada
+# presupuesto, no de la propiedad entera. Contarlos todos juntos volvía indeleble
+# a una propiedad con un escenario de plan recién copiado —un renglón aquí más
+# uno allá son dos, y nadie había capturado nada—.
+_UNTOUCHED_BUDGET = (
+    "(SELECT count(l.id) <= 1"
+    "    AND NOT coalesce(bool_or("
+    "          l.created_at      <> b.created_at"
+    "       OR l.supplier_id      IS NOT NULL"
+    "       OR l.committed_amount IS NOT NULL"
+    "       OR l.actual_quantity  IS NOT NULL"
+    "       OR l.closed_at        IS NOT NULL"
+    "       OR EXISTS (SELECT 1 FROM budget_line_payments p WHERE p.line_id = l.id)"
+    "        ), FALSE)"
+    "   FROM budget_lines l WHERE l.budget_id = b.id)"
 )
 
 
 def budget_holds_only_initial_estimate(conn, budget_id: int) -> bool:
-    """Este presupuesto no tiene más que lo que el sistema sembró —o no tiene
-    nada—. Heurística: ver `_NOTHING_BUT_THE_ESTIMATE`, con su rendija."""
+    """Este presupuesto no tiene más que lo que el sistema sembró en el mismo
+    acto en que lo creó —o no tiene nada—. Ver `_UNTOUCHED_BUDGET`."""
     return bool(conn.execute(
-        _NOTHING_BUT_THE_ESTIMATE + " WHERE l.budget_id = %s", (budget_id,),
+        f"SELECT {_UNTOUCHED_BUDGET} AS intacto FROM budgets b WHERE b.id = %s",
+        (budget_id,),
     ).fetchone()["intacto"])
 
 
@@ -878,8 +891,11 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
 
     DOS CASOS, Y LOS SEPARA QUÉ HABÍA EN EL DESTINO:
 
-    - Si el destino no tiene más que el estimado inicial de la calculadora Y se
-      copia el presupuesto ENTERO, ese renglón SE REEMPLAZA por lo que llega. Es el movimiento que esta operación
+    - Si el destino no tiene NADA MÁS QUE LO QUE EL SISTEMA SEMBRÓ —ningún
+      renglón, o uno solo escrito en el mismo acto que el presupuesto y sin
+      ejecución encima, que es exactamente lo que pregunta
+      `budget_holds_only_initial_estimate`— Y se copia el presupuesto ENTERO,
+      ese renglón SE REEMPLAZA por lo que llega. Es el movimiento que esta operación
       existe para hacer —la cifra paramétrica se vuelve el desglose que la
       sustenta, Clase 5 → Clase 3 (ver el diseño)— y sumarlos contaría dos veces
       la misma obra: el desglose no se agrega al estimado, ES el estimado, ahora
@@ -889,19 +905,24 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
       desmiente. Un capítulo suelto NO reemplaza: no sustituye a un presupuesto
       entero, y cambiar un estimado de $2,340,000 por los $150,000 de una sección
       sería pérdida de datos con cara de función.
-    - Si hay algo más —un renglón tecleado, cualquier captura de ejecución— o si
-      se pidieron capítulos sueltos, los renglones se SUMAN a lo que ya hubiera y
-      el total sube con ellos. Nada de lo que alguien capturó se toca, ni
-      siquiera para hacerle lugar a una copia.
+    - Si hay algo más —un segundo renglón, uno tecleado después (nació en otra
+      transacción, así que su `created_at` no es el del presupuesto), cualquier
+      captura de ejecución— o si se pidieron capítulos sueltos, los renglones se
+      SUMAN a lo que ya hubiera y el total sube con ellos. Nada de lo que alguien
+      tecleó se toca, ni siquiera para hacerle lugar a una copia.
+
+    ESTA RAMA BORRA, y por eso la pregunta se contesta con un hecho estructural
+    y no con un parecido: `apply` no se lee como destructiva y no tiene paso de
+    confirmación.
 
     Y LA PROPORCIONAL SOLO EXISTE EN LA PRIMERA RAMA: fuera de ella rechaza
     (`_require_replaceable`) en vez de aterrizar encima. La directa funciona en
     las dos, porque no promete nada sobre el total.
 
     La pregunta que separa los dos casos es la MISMA que decide si una propiedad
-    se puede borrar (`budget_holds_only_initial_estimate`), y trae su misma
-    rendija. El reemplaza va antes de copiar, no después, para que la dedup no
-    compare contra un renglón que ya está sentenciado.
+    se puede borrar (`budget_holds_only_initial_estimate`). El reemplazo va antes
+    de copiar, no después, para que la dedup no compare contra un renglón que ya
+    está sentenciado.
 
     No hay composición de bloques ni expansión recursiva —eso es lo que hacen
     las plantillas de proceso con `source_template_id`, y ahí se ve el costo: la
@@ -1288,14 +1309,22 @@ def holds_captured_work(conn, property_id: int) -> bool:
     que ninguna propiedad se pudiera borrar jamás — y el presupuesto recién
     sembrado no es trabajo de nadie, es la fila que el sistema puso.
 
-    Es `_NOTHING_BUT_THE_ESTIMATE` al derecho —la MISMA pregunta que decide si
-    una copia reemplaza el estimado, con la misma rendija documentada— evaluada
-    sobre TODOS los presupuestos de la propiedad, el de la obra y los escenarios
-    de plan, porque el borrado se los lleva todos. Antes se contestaba por la
-    bandera del remanente; hoy se cuenta, que es lo mismo dicho sin bandera."""
+    Es `_UNTOUCHED_BUDGET` al derecho —la MISMA pregunta que decide si una copia
+    reemplaza el estimado— exigida a CADA presupuesto de la propiedad por
+    separado: el de la obra y los escenarios de plan, porque el borrado se los
+    lleva todos. Basta con que UNO traiga trabajo para que retenga.
+
+    Por separado y no en un solo conteo, que es donde estaba el error: «el
+    sistema siembra a lo más un renglón» vale por presupuesto, no por propiedad.
+    Sumándolos, una obra recién capturada con un escenario de plan copiado daba
+    dos renglones —uno suyo, uno del escenario— y quedaba retenida para siempre
+    sin que nadie hubiera capturado nada, con la única salida de borrar los
+    renglones del escenario a mano. Antes la pregunta la contestaba la bandera
+    del remanente; hoy la contesta cada presupuesto por su cuenta."""
     return not bool(conn.execute(
-        _NOTHING_BUT_THE_ESTIMATE
-        + " WHERE l.budget_id IN (SELECT id FROM budgets WHERE property_id = %s)",
+        f"SELECT NOT EXISTS (SELECT 1 FROM budgets b"
+        f"                    WHERE b.property_id = %s AND NOT {_UNTOUCHED_BUDGET})"
+        f"    AS intacto",
         (property_id,),
     ).fetchone()["intacto"])
 

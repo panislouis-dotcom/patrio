@@ -890,6 +890,34 @@ def test_applying_the_same_source_twice_adds_nothing_the_second_time(
     assert _dec(r["property"]["constructionBudgeted"]) == ESTIMADO_MXN + Decimal("650000")
 
 
+def test_a_hand_typed_line_is_never_deleted_by_a_copy_even_if_it_is_the_only_one(
+        client, test_property, origen):
+    """EL ESPEJO DE LA RETENCIÓN, del lado que borra sin avisar.
+
+    Un presupuesto cuyo ÚNICO renglón lo tecleó alguien —borró el estimado y
+    capturó sus clósets en $950,000— no es «lo que sembró el sistema», aunque
+    contarlo dé uno. `apply` lo borraría en silencio: no se lee como destructiva
+    y no tiene paso de confirmación, así que aquí no hay red que lo detenga
+    después. Lo separa el mismo hecho que retiene la propiedad: ese renglón nació
+    en otra transacción, así que su `created_at` no es el del presupuesto.
+
+    Se suma, no reemplaza, y el renglón sigue ahí con su importe."""
+    pid = test_property["id"]
+    estimado = _estimate(_budget(client, pid))["id"]
+    client.delete(f"/api/properties/{pid}/budget/lines/{estimado}")
+    propio = _add(client, pid, chapterName="Clósets", name="Clósets cotizados",
+                  unit="lote", quantity=1, unitPrice=950_000)["line"]["id"]
+
+    r = _apply(client, pid, origen["budgetId"])
+    assert r.status_code == 201, r.text
+    r = r.json()
+
+    assert _line_by_id(r["budget"], propio)["name"] == "Clósets cotizados"
+    assert _dec(_line_by_id(r["budget"], propio)["budgetedAmount"]) == Decimal("950000")
+    assert _dec(r["property"]["constructionBudgeted"]) == (
+        Decimal("950000") + ESTIMADO_MXN + Decimal("650000"))
+
+
 def test_a_budget_with_work_of_its_own_is_added_to_and_never_replaced(
         client, test_property, origen):
     """EL OTRO LADO DEL REEMPLAZO, que es donde vive la garantía: basta UN
