@@ -42,6 +42,7 @@ const base = (over: Partial<Property>): Property => ({
   totalFeesVenta: null, totalFeesRenta: null,
   totalInvestmentWithFeesVenta: null, totalInvestmentWithFeesRenta: null,
   feesMissingInputsVenta: ['salePrice'], feesMissingInputsRenta: ['rentMonthly'],
+  saleFeeTiers: [], rentFeeTiers: [],
   totalUnits: null, acquisitionDate: null, firstRentDate: null,
   valuationDate: null, currentValuation: null, saleDate: null, salePrice: null,
   acquisitionCosts: null, acquisitionTotal: null,

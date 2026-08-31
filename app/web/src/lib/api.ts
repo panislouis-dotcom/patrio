@@ -1,4 +1,4 @@
-import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, RenderPromptKind, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetSource } from './types'
+import type { Property, PropertyCreate, PropertyPatch, ClearableField, Transition, PropertyStatus, QualityEntry, SonarSignal, SonarState, TeamMember, MemberRole, ProcessTemplate, TemplateNode, GanttNode, ProcessInstance, NodeState, InstanceDetail, InstanceFile, NodeFile, NodeComment, NodeDetail, ProfitSplitConfig, ProfitWaterfall, Investor, PropertyInvestor, User, ParsedProperty, Zone, Comparable, PropertyImage, ImageType, Proveedor, ProveedorCategory, ProveedorPhoto, Cotizacion, RenderPrompt, RenderPromptKind, PropertyRender, Budget, BudgetLineCreate, BudgetLinePatch, BudgetPaymentCreate, BudgetWrite, BudgetSource, FeeTier } from './types'
 import type { FloorPlanModel, PlanKey } from './floorplan/types'
 import { getToken, clearToken } from './auth'
 
@@ -175,6 +175,18 @@ export async function reorderPropertyImages(id: number, imageIds: number[]): Pro
 
 export async function deletePropertyImage(id: number, imageId: number): Promise<void> {
   await request<void>(`${BASE}/api/properties/${id}/images/${imageId}`, { method: 'DELETE' })
+}
+
+// ─── Escalera de comisión de salida ──────────────────────────────────────────
+
+/** Reemplazo atómico de la escalera de un lado (venta o renta) — nunca un PATCH
+ * parcial de tramos. El servidor envuelve la lista en `tiers` (ver
+ * `FeeTiersReplaceRequest` en routes/properties.py), igual que el reorder de
+ * imágenes envuelve la suya en `image_ids`. */
+export async function replaceFeeTiers(
+  id: number, kind: 'venta' | 'renta', tiers: FeeTier[],
+): Promise<FeeTier[]> {
+  return request(`${BASE}/api/properties/${id}/fee-tiers/${kind}`, { method: 'PUT', json: { tiers } })
 }
 
 // ─── Renders y su biblioteca de prompts ──────────────────────────────────────

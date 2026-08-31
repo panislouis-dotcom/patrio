@@ -79,12 +79,15 @@ import statusSource from './status.ts?raw'
  * Los campos de un `frozenset({…})` de Python, leídos del archivo fuente.
  *
  * El recorte busca la línea literal `NOMBRE = frozenset({` y lee hasta el primer
- * `})`. Está anotado también del lado de `properties_db.py`, encima de las dos
- * listas: renombrarlas o cambiar esa forma rompe esta prueba, y romper está bien.
+ * `})` — le da igual que el literal esté en una sola línea (como
+ * `_MODEL_ONLY_DEFAULTS`) o partido en varias (como las dos de
+ * `properties_db.py`), porque busca el primer `})` después del inicio, no un
+ * salto de línea. Está anotado también del lado de cada fuente, encima de la
+ * lista: renombrarla o cambiar esa forma rompe esta prueba, y romper está bien.
  */
 function pythonSet(source: string, name: string): string[] {
   const start = source.indexOf(`${name} = frozenset({`)
-  if (start < 0) throw new Error(`No encontré ${name} en properties_db.py`)
+  if (start < 0) throw new Error(`No encontré ${name} en la fuente`)
   const end = source.indexOf('})', start)
   // Los comentarios se quitan ANTES de buscar lo entrecomillado. Sin esto, una
   // palabra entre comillas dobles dentro de un `#` agrega un campo fantasma y la
@@ -167,7 +170,19 @@ describe('el espejo del contrato no se desincroniza en silencio', () => {
     const bloque = underwritingSource.slice(
       underwritingSource.indexOf('ASSUMPTION_DEFAULTS'),
       underwritingSource.indexOf('ASSUMPTION_KEYS'))
-    const servidor = [...bloque.matchAll(/"([a-z_]+)":/g)].map(m => snakeToCamel(m[1]))
+    const todas = [...bloque.matchAll(/"([a-z_]+)":/g)].map(m => m[1])
+
+    // `_MODEL_ONLY_DEFAULTS` vive DENTRO del mismo bloque (es la línea que viene
+    // justo antes de `ASSUMPTION_KEYS`), así que el recorte de arriba encuentra
+    // sus claves igual que las de `ASSUMPTION_DEFAULTS` — el regex no sabe que
+    // una está en un dict que sí se publica y la otra en un frozenset que la
+    // excluye. `exit_rent_commission_pct` es una key real de
+    // `ASSUMPTION_DEFAULTS` (el modelo la necesita para el default de la
+    // escalera de renta vacía) pero nunca llega a `assumptions()` — la resta
+    // acá es lo que hace que esta prueba siga contra lo que el servidor
+    // PUBLICA, no contra lo que el dict de Python declara.
+    const soloModelo = new Set(pythonSet(underwritingSource, '_MODEL_ONLY_DEFAULTS'))
+    const servidor = todas.filter(k => !soloModelo.has(k)).map(snakeToCamel)
 
     expect([...ASSUMPTION_FIELDS].sort()).toEqual(servidor.sort())
   })

@@ -87,6 +87,9 @@ const BASE_PROPERTY: Property = {
   totalFeesVenta: 1_185_000, totalFeesRenta: 825_000,
   totalInvestmentWithFeesVenta: 8_480_000, totalInvestmentWithFeesRenta: 8_120_000,
   feesMissingInputsVenta: [], feesMissingInputsRenta: [],
+  // Sin tramos configurados: la comisión de salida cae al % plano de arriba
+  // (default del modelo), igual que documenta la nota de `saleFeeTiers` en types.ts.
+  saleFeeTiers: [], rentFeeTiers: [],
   totalUnits: null, acquisitionDate: null, firstRentDate: null,
   valuationDate: null, currentValuation: null, saleDate: null, salePrice: null,
   acquisitionCosts: 195_000, acquisitionTotal: 3_195_000,
