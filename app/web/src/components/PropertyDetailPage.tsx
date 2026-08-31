@@ -42,6 +42,7 @@ import { PlanesPanel } from './PlanesPanel'
 import { getPlan, LEGACY_PLAN_NAME, migrateGeometry, removePlan, withOriginal, withPlan, type FloorPlanModel, type FloorSet, type ProjectPlan, type VariantKey } from '../lib/floorplan/types'
 import { DetailHeader } from './detail/DetailHeader'
 import { EditableRow } from './detail/EditableRow'
+import { FeeTierEditor } from './detail/FeeTierEditor'
 import { MapPanel } from './detail/MapPanel'
 import { MediaTabs } from './detail/MediaTabs'
 import { FotosPanel } from './detail/FotosPanel'
@@ -478,7 +479,6 @@ export function PropertyDetailPage() {
   const acquisitionCostPct = field('acquisitionCostPct')
   const landCommissionPct = field('landCommissionPct')
   const constructionCommissionPct = field('constructionCommissionPct')
-  const exitSaleCommissionPct = field('exitSaleCommissionPct')
 
   // Un supuesto siempre tiene un valor en uso; lo que cambia es quién lo puso.
   // Vaciarlo solo es una operación cuando hay una captura que quitar — de otro
@@ -1030,18 +1030,21 @@ export function PropertyDetailPage() {
                   cifra o dos parecidas. */}
 
               <SectionDivider label="COMISIONES DEL FONDO" />
-              {/* Las mismas 4 filas que antes vivían en SUPUESTOS, mudadas aquí: son
-                  supuestos del fondo, no del inmueble, y perdidas entre COSTOS ADQ. /
-                  PLAZO PROYECTADO / VENTA PROYECTADA nadie las encontraba. Cada
-                  comisión enseña su % (editable, mismo badge CAPTURADO/SUPUESTO POR
-                  OMISIÓN de siempre) seguido de su monto en pesos — que el backend ya
-                  calculaba y la ficha nunca pintaba.
+              {/* Las mismas 4 comisiones que antes vivían en SUPUESTOS, mudadas aquí:
+                  son supuestos del fondo, no del inmueble, y perdidas entre COSTOS
+                  ADQ. / PLAZO PROYECTADO / VENTA PROYECTADA nadie las encontraba.
+                  TERRENO y OBRA siguen siendo un % plano (editable, mismo badge
+                  CAPTURADO/SUPUESTO POR OMISIÓN de siempre) seguido de su monto en
+                  pesos. VENTA y RENTA ya no son un % plano (migración 053, Tarea 6):
+                  cada una es una escalera de tramos (`FeeTierEditor`) seguida del
+                  mismo monto en pesos de siempre — que el backend ya calculaba y la
+                  ficha nunca pintaba antes de esta sección.
 
                   Ya no hay un selector ESTRATEGIA DE SALIDA (feedback en vivo del
                   dueño del producto: obligar a elegir venta o renta para ver su
-                  comisión pedía una decisión que nadie tiene tomada de antemano).
-                  COMISIÓN VENTA (%) y MESES DE RENTA se ven siempre las dos, cada
-                  una con su propio monto — compute_fees() (fees.py) calcula los dos
+                  comisión pedía una decisión que nadie tiene tomada de antemano). La
+                  escalera de VENTA y la de RENTA se ven siempre las dos, cada una con
+                  su propio monto — compute_fees() (fees.py) calcula los dos
                   escenarios siempre que haya con qué, sin depender de una estrategia
                   elegida. `exitStrategy` sigue en la BD (migración 049) por si sirve
                   para otro uso, pero ya no tiene control aquí.
@@ -1051,17 +1054,18 @@ export function PropertyDetailPage() {
                   lugar» de la nota de arriba. Ahí es una regla real: DATOS es un
                   resumen terso. Aquí el cierre de la sección compara los dos
                   escenarios lado a lado — ver más abajo. */}
-              {/* Ocho filas en dos columnas cuando el ancho lo permite, con el mismo
-                  `narrow` que ya parte la página entera en dos (línea ~682) — no un
-                  breakpoint nuevo. En angosto siguen apiladas. Cada fila usa
-                  `stacked` (feedback en vivo, segunda ronda): etiqueta+hint arriba,
-                  valor/input abajo, alineados a la izquierda — el renglón normal de
-                  `EditableRow` se amontona en media columna de grid. Por default
-                  sigue apagada — ningún otro renglón de la ficha cambió.
+              {/* Cuatro filas (TERRENO, OBRA — %/$ cada una) en dos columnas cuando el
+                  ancho lo permite, con el mismo `narrow` que ya parte la página entera
+                  en dos (línea ~682) — no un breakpoint nuevo. En angosto siguen
+                  apiladas. Cada fila usa `stacked` (feedback en vivo, segunda ronda):
+                  etiqueta+hint arriba, valor/input abajo, alineados a la izquierda —
+                  el renglón normal de `EditableRow` se amontona en media columna de
+                  grid. Por default sigue apagada — ningún otro renglón de la ficha
+                  cambió.
 
-                  El orden empareja %/$ de cada comisión, una comisión por renglón
-                  del grid: terreno, obra, venta, renta — simétrico, sin huecos ni
-                  filas que compartan renglón por necesidad. */}
+                  VENTA y RENTA (escalera + $) NO viven en este grid: son una lista de
+                  alto variable, no una fila de altura fija, así que van en su propio
+                  bloque de dos columnas justo abajo. */}
               <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
                 <EditableRow
                   label="COMISIÓN COMPRA TERRENO (%)"
@@ -1111,42 +1115,40 @@ export function PropertyDetailPage() {
                   hint="% SOBRE OBRA A EJECUTAR"
                   stacked
                 />
-                <EditableRow
-                  label="COMISIÓN VENTA (%)"
-                  editing={editing}
-                  value={fmtPct(exitSaleCommissionPct)}
-                  hint={assumptionHint('exitSaleCommissionPct')}
-                  stacked
-                  onClear={isCaptured('exitSaleCommissionPct') ? () => clearField('exitSaleCommissionPct') : undefined}
-                  input={
-                    <NumericInput
-                      value={exitSaleCommissionPct != null ? exitSaleCommissionPct * 100 : undefined}
-                      onChange={n => setField('exitSaleCommissionPct', n != null ? n / 100 : undefined)}
-                      step={0.1}
-                      ariaLabel="COMISIÓN VENTA (%)"
-                      style={fieldInput}
+              </div>
+              {/* COMISIÓN VENTA y COMISIÓN RENTA ya no caben en el grid de arriba
+                  (feedback en vivo, Tarea 6 de metas-venta-renta): el % plano de
+                  cada una se volvió una escalera de tramos —FeeTierEditor, su
+                  propio sub-recurso fuera de useEdits/PATCH, siempre activo, sin
+                  depender de `editing`— y una lista de renglones no cabe en una
+                  fila de altura fija. Mismo patrón `narrow` de dos columnas que el
+                  cierre de la sección, un poco más abajo: cada editor va
+                  INMEDIATAMENTE seguido de su fila ($), que sigue sin cambios —
+                  sigue mostrando el monto que ya calculaba el servidor, ahora
+                  resuelto contra la escalera en vez del % plano. */}
+              <div style={{ marginTop: '16px' }}>
+                <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
+                  <div>
+                    <FeeTierEditor property={p} kind="venta" onPropertyChange={setProperty} />
+                    <EditableRow
+                      label="COMISIÓN VENTA ($)"
+                      editing={editing}
+                      value={p.exitFeeVenta != null ? fmtMXN(p.exitFeeVenta) : '—'}
+                      hint={exitFeeHint(p.exitFeeVenta, 'venta')}
+                      stacked
                     />
-                  }
-                />
-                <EditableRow
-                  label="COMISIÓN VENTA ($)"
-                  editing={editing}
-                  value={p.exitFeeVenta != null ? fmtMXN(p.exitFeeVenta) : '—'}
-                  hint={exitFeeHint(p.exitFeeVenta, 'venta')}
-                  stacked
-                />
-                {numRow('MESES DE RENTA (COMISIÓN SALIDA)', 'exitRentMonths', fmtNum, {
-                  clearable: isCaptured('exitRentMonths') ? 'exitRentMonths' : undefined,
-                  hint: assumptionHint('exitRentMonths'),
-                  stacked: true,
-                })}
-                <EditableRow
-                  label="COMISIÓN RENTA ($)"
-                  editing={editing}
-                  value={p.exitFeeRenta != null ? fmtMXN(p.exitFeeRenta) : '—'}
-                  hint={exitFeeHint(p.exitFeeRenta, 'renta')}
-                  stacked
-                />
+                  </div>
+                  <div style={narrow ? { marginTop: '20px' } : undefined}>
+                    <FeeTierEditor property={p} kind="renta" onPropertyChange={setProperty} />
+                    <EditableRow
+                      label="COMISIÓN RENTA ($)"
+                      editing={editing}
+                      value={p.exitFeeRenta != null ? fmtMXN(p.exitFeeRenta) : '—'}
+                      hint={exitFeeHint(p.exitFeeRenta, 'renta')}
+                      stacked
+                    />
+                  </div>
+                </div>
               </div>
               {/* El cierre de la sección, no una celda más del grid (feedback en
                   vivo del dueño del producto, dos rondas: primero que la cifra final

@@ -29,6 +29,9 @@ vi.mock('../lib/api', async importOriginal => {
     deleteProperty: vi.fn(),
     clearPropertyFields: vi.fn(),
     transitionProperty: vi.fn(),
+    // FeeTierEditor (Tarea 6) vive montado siempre en COMISIONES DEL FONDO —
+    // sin mockearlo, un test que dispare un commit pegaría de verdad al backend.
+    replaceFeeTiers: vi.fn(),
     fetchPropertyGeometry: vi.fn(async () => ({ geometry: {}, revision: 0 })),
     savePropertyGeometry: vi.fn(),
     fetchPropertyInvestors: vi.fn(async () => []),
@@ -430,15 +433,17 @@ describe('PropertyDetailPage', () => {
     expect(within(rentaRow).getByText('MESES × RENTA COBRADA/ESTIMADA')).not.toBeNull()
   })
 
-  it('ya no hay selector ESTRATEGIA DE SALIDA: COMISIÓN VENTA (%) y MESES DE RENTA se ven siempre las dos', async () => {
+  it('ya no hay selector ESTRATEGIA DE SALIDA: la escalera de venta y de renta se ven siempre las dos', async () => {
     // Antes había que elegir un camino para ver su comisión — se leía como si
     // hubiera que decidir de antemano algo que nadie sabe todavía. Ahora las
-    // dos entradas conviven, sin importar exitStrategy.
+    // dos escaleras conviven, sin importar exitStrategy. El % plano
+    // (exitSaleCommissionPct/exitRentMonths) quedó reemplazado por
+    // FeeTierEditor (Tarea 6, migración 053).
     await renderPage(BASE_PROPERTY)
     expect(screen.queryByLabelText('ESTRATEGIA DE SALIDA')).toBeNull()
     expect(screen.queryByText('ESTRATEGIA DE SALIDA')).toBeNull()
-    expect(screen.getByText('COMISIÓN VENTA (%)')).not.toBeNull()
-    expect(screen.getByText('MESES DE RENTA (COMISIÓN SALIDA)')).not.toBeNull()
+    expect(screen.getByText('COMISIÓN VENTA — TRAMOS')).not.toBeNull()
+    expect(screen.getByText('COMISIÓN RENTA — TRAMOS')).not.toBeNull()
   })
 
   it('COMISIÓN VENTA ($) y COMISIÓN RENTA ($) nombran su propio insumo faltante, cada una por separado', async () => {
