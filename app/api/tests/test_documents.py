@@ -4,13 +4,16 @@ Two questions, in this order: does the right data reach the PDF, partitioned by
 the right rule, and does each stage get presented with the figures it can
 actually sostener — una vendida por su resultado realizado, una en renta por su
 marca, una en desarrollo por su proyección."""
+from decimal import Decimal
 from unittest import mock
 
 import pytest
 
+from api import properties_db
 from api.db import get_db
 from api.lib.prospectus_html import build_prospectus_html
 from api.properties_db import get_property
+from api.tests.test_property_fee_tiers import ESCOBECO_VENTA
 
 
 def _metric(value: str, label: str) -> str:
@@ -459,13 +462,15 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _metric('$351K <small>15.0%</small>', "Comisión de obra") in html
     # La comisión de salida no venía desglosada en ningún lado — a diferencia
     # de terreno y obra, aquí sí sale su propio $ por escenario. Venta: precio
-    # proyectado 2,500,000 x 5%. Renta: 18,000 x 5% (default de la escalera,
-    # sin tramos configurados) — el "3 meses" que sigue imprimiendo la
-    # etiqueta viene de exitRentMonths, que la propiedad sigue publicando sin
-    # usarse ya en el cálculo; la etiqueta se corrige en la tarea del PDF que
-    # reemplaza esta línea por `_fee_tier_lines` (fuera de este cambio).
-    assert _metric('$125K <small>5.0%</small>', "Comisión de salida · venta") in html
-    assert _metric('$900 <small>3 meses</small>', "Comisión de salida · renta") in html
+    # proyectado 2,500,000 x 5%. Renta: 18,000 x 5% — ambas al default de la
+    # escalera (`ASSUMPTION_DEFAULTS`, underwriting.py), porque `test_property`
+    # no tiene tramos configurados en ningún lado. `_fee_tier_lines()` nombra
+    # ese default en vez de imprimir `exitSaleCommissionPct`/`exitRentMonths`
+    # (los campos planos que precedieron a la escalera): el segundo en
+    # particular llevaba meses mintiendo — "3 meses" describía una fórmula
+    # que Task 2 ya había reemplazado por "un mes de renta × tasa del tramo".
+    assert _metric('$125K <small class="tiers">sin tramos · 5.0% por omisión</small>', "Comisión de salida · venta") in html
+    assert _metric('$900 <small class="tiers">sin tramos · 5.0% por omisión</small>', "Comisión de salida · renta") in html
     # Y los totales quedan tal cual estaban — cada uno en su propia celda, sin
     # fundirse en una sola: 3,480,000 + 401,000 (terreno+obra) + comisión de
     # salida de cada escenario.
@@ -479,6 +484,46 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     # el nombre distinto de cada una ya dice cuál es cuál.
     assert _metric("8.6%", "Cap rate") in html
     assert _metric("5.4%", "Rendimiento sobre inversión") in html
+
+
+def test_the_opportunity_card_prints_the_sale_fee_ladder(client, test_property):
+    """Con una escalera de venta configurada (Salón Escobedo:
+    ≥$6.5M→7%, ≥$5.5M→6%, si no→5%), la sub-línea de la comisión de salida ·
+    venta describe la escalera guardada, no el `exitSaleCommissionPct` plano
+    ni un default inventado. `test_property` proyecta una venta de 2,500,000
+    — bajo el piso de $5.5M — así que la tasa que de hecho aplica es la del
+    piso, 5%, igual que el caso sin tramos; lo que este test prueba es la
+    ETIQUETA, no el monto."""
+    pid = test_property["id"]
+    properties_db.replace_fee_tiers(pid, "venta", ESCOBECO_VENTA)
+    p = get_property(pid)
+    html = build_prospectus_html([], [], [], [p])
+    # 2,500,000 x 5% (piso de la escalera, el mismo 5% que el default —
+    # el monto no cambia, la etiqueta sí).
+    assert _metric(
+        '$125K <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0% · si no→5.0%</small>',
+        "Comisión de salida · venta",
+    ) in html
+
+
+def test_the_opportunity_card_prints_the_rent_fee_ladder(client, test_property):
+    """Espejo del test anterior para el lado de renta: una escalera propia
+    (≥$15K→6%, si no→3%) reemplaza la sub-línea plana. `test_property`
+    proyecta 18,000 de renta mensual — por encima del único umbral — así que
+    aquí sí aplica un tramo real, no el piso: la comisión deja de ser la del
+    default (5% · 900) y pasa a ser la del tramo (6% · 1,080)."""
+    pid = test_property["id"]
+    properties_db.replace_fee_tiers(pid, "renta", [
+        {"threshold": Decimal("15000"), "rate": Decimal("0.06")},
+        {"threshold": None, "rate": Decimal("0.03")},
+    ])
+    p = get_property(pid)
+    html = build_prospectus_html([], [], [], [p])
+    # 18,000 x 6% (tramo ≥15,000, el que de hecho aplica) = 1,080.
+    assert _metric(
+        '$1K <small class="tiers">≥$15K→6.0% · si no→3.0%</small>',
+        "Comisión de salida · renta",
+    ) in html
 
 
 def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):

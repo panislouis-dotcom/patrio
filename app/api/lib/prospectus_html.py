@@ -7,6 +7,8 @@ import os
 import tempfile
 from markupsafe import escape as _esc
 
+from api.finance.underwriting import ASSUMPTION_DEFAULTS
+
 logger = logging.getLogger(__name__)
 
 _FONTS_DIR = Path(__file__).resolve().parent.parent / "fonts"
@@ -251,6 +253,22 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    cuando en la fila de 4 el mismo patrón cabe en uno. */
 .opp .metrics-6 .metric { padding: 3mm 2.5mm; }
 .opp .metrics-6 .metric .v { font-size: 13pt; }
+/* .tiers (la escalera de comisión, `_fee_tier_lines()`) es la única
+   anotación de esta rejilla que no tiene un techo de longitud fijo — de un
+   tramo a cuatro, "si no→5.0%" a "≥$6.5M→7.0% · ≥$5.5M→6.0% · si no→5.0%" —
+   así que NO puede compartir el nowrap de `.metric .v small` de más arriba:
+   ese nowrap existe para que una anotación CORTA ("3 meses", "5.0%") brinque
+   entera a su propia línea sin partirse a la mitad, pero forzarlo aquí solo
+   cambia el problema — en vez de partirse, la línea entera se sale de la
+   celda y se monta sobre las columnas vecinas (comprobado: en la columna de
+   3 tramos ya tapaba la celda de al lado; con 4 tramos se salía de la
+   hoja). `white-space: normal` + `display: block` (esto último para
+   heredar el mismo "brinca a su propia línea" del nowrap, ya que un bloque
+   nuevo hace lo mismo sin impedir el wrap interno) + un tamaño más chico le
+   dan a la escalera el espacio de 2-3 líneas que sí necesita dentro de su
+   propia celda, en vez de invadir la de al lado. */
+.opp .metrics-6 .metric .v small.tiers { white-space: normal; font-size: 8pt;
+                                          line-height: 1.3; display: block; margin-top: 1px; }
 .opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
             break-inside: avoid; page-break-inside: avoid; }
 .opp .strip { margin-top: 6mm; }
@@ -503,6 +521,39 @@ def _fee_scenario_missing(reasons: list[str] | None) -> str:
     return f'— <small>{_esc(text)}</small>' if text else "—"
 
 
+def _fee_tier_lines(tiers: list[dict], default_rate) -> str:
+    """La escalera de comisión guardada, en una sola línea compacta —
+    reemplaza al `exitSaleCommissionPct`/`exitRentMonths` planos que
+    `_opportunity_fees_metrics()` imprimía antes de la escalera (Task 2):
+    ninguno de los dos describe ya cómo se calculó `exitFeeVenta`/
+    `exitFeeRenta` (`compute_fees()`, fees.py), y `exitRentMonths` en
+    particular queda flatamente mal desde que la renta pasó de "N meses de
+    renta" a "un mes de renta × tasa del tramo".
+
+    Con tramos: el techo primero, el piso (`threshold is None`) siempre al
+    final — mismo orden en el que ya persiste `replace_fee_tiers()`
+    (properties_db.py), así que el sort aquí es cosmético para el caso común
+    y solo hace falta de verdad si algún día un caller pasa la lista sin
+    pasar por ese endpoint.
+
+    Sin tramos: no hay escalera que describir, así que no se inventa una —
+    se nombra el único número real en juego, el default del modelo
+    (`ASSUMPTION_DEFAULTS`, underwriting.py) que `compute_fees()` usó en su
+    lugar. Derivar una tasa "efectiva" de `exitFeeVenta ÷ salePrice` parecería
+    más preciso pero mentiría: esta celda describe la CONFIGURACIÓN
+    guardada, no el resultado ya calculado (que vive en su propia celda, al
+    lado)."""
+    if not tiers:
+        return f"sin tramos · {_fmt_pct(default_rate)} por omisión"
+    ordered = sorted(tiers, key=lambda t: (t["threshold"] is None, -(t["threshold"] or 0)))
+    parts = [
+        f"si no→{_fmt_pct(t['rate'])}" if t["threshold"] is None
+        else f"≥{_fmt_mxn_compact(t['threshold'])}→{_fmt_pct(t['rate'])}"
+        for t in ordered
+    ]
+    return " · ".join(parts)
+
+
 def _opportunity_fees_metrics(p: dict) -> str:
     """Comisiones del fondo, en su propia fila. Solo en _opportunity(): es la
     única etapa donde el camino de salida sigue genuinamente indeciso.
@@ -530,10 +581,10 @@ def _opportunity_fees_metrics(p: dict) -> str:
     restantes sí pueden faltar, cada una por su cuenta (sin precio de venta
     no hay comisión de venta NI total con comisiones de venta), y entonces
     nombran su propio insumo ausente vía `_fee_scenario_missing()`."""
-    salida_venta = (f'{_fmt_mxn_compact(p["exitFeeVenta"])} <small>{_fmt_pct(p.get("exitSaleCommissionPct"))}</small>'
+    salida_venta = (f'{_fmt_mxn_compact(p["exitFeeVenta"])} <small class="tiers">{_fee_tier_lines(p.get("saleFeeTiers", []), ASSUMPTION_DEFAULTS["exit_sale_commission_pct"])}</small>'
                     if p.get("exitFeeVenta") is not None
                     else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
-    salida_renta = (f'{_fmt_mxn_compact(p["exitFeeRenta"])} <small>{int(_num(p.get("exitRentMonths")))} meses</small>'
+    salida_renta = (f'{_fmt_mxn_compact(p["exitFeeRenta"])} <small class="tiers">{_fee_tier_lines(p.get("rentFeeTiers", []), ASSUMPTION_DEFAULTS["exit_rent_commission_pct"])}</small>'
                     if p.get("exitFeeRenta") is not None
                     else _fee_scenario_missing(p.get("feesMissingInputsRenta")))
     total_venta = (_fmt_mxn_compact(p["totalInvestmentWithFeesVenta"])
