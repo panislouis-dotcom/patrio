@@ -13,8 +13,16 @@ interface Props {
 }
 
 /** Un tramo en edición: `undefined` es "caja vacía todavía", distinto de un 0
- * capturado — igual que en el resto de la ficha, una caja vacía no es un cero. */
+ * capturado — igual que en el resto de la ficha, una caja vacía no es un cero.
+ *
+ * `id` es identidad de RENDERIZADO local, nunca se manda al servidor
+ * (`tiersOf` arma `{threshold, rate}` a mano): sirve solo para el `key` del
+ * renglón en el JSX, para que borrar el tramo N no le herede su
+ * `NumericInput` al que era N+1 —un `key={idx}` los reasigna por posición y
+ * hoy "funciona" de pura casualidad, porque `NumericInput` resincroniza su
+ * texto visible al perder el foco. */
 interface DraftTier {
+  id: string
   threshold: number | undefined
   rate: number | undefined
 }
@@ -60,7 +68,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
 
   const [hasLadder, setHasLadder] = useState(stored.length > 0)
   const [nonFloor, setNonFloor] = useState<DraftTier[]>(
-    stored.filter(t => t.threshold !== null).map(t => ({ threshold: t.threshold ?? undefined, rate: t.rate })),
+    stored.filter(t => t.threshold !== null).map(t => ({ id: crypto.randomUUID(), threshold: t.threshold ?? undefined, rate: t.rate })),
   )
   const [floorRate, setFloorRate] = useState<number | undefined>(stored.find(t => t.threshold === null)?.rate)
   const [error, setError] = useState<string | null>(null)
@@ -70,9 +78,24 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   // un renglón del presupuesto, GUARDAR de la ficha): la clave es el contenido
   // de los tramos de ESTE lado, no la propiedad entera, para no pisar un tramo
   // a medio teclear por un cambio que no le pertenece.
+  //
+  // Riesgo conocido y aceptado: esta resync SÍ puede pisar un tramo que se
+  // está editando en ese instante, no solo uno ajeno. Si el usuario cambia el
+  // umbral de un renglón y tabula (el blur dispara `commit`: PUT + GET, dos
+  // vueltas), y antes de que resuelva hace clic en la TASA de ESE MISMO
+  // renglón y teclea sin soltar, cuando el commit del umbral por fin resuelve
+  // esta lambda reconstruye `nonFloor` entero desde el servidor y pisa esa
+  // tasa a medio teclear en memoria —aunque la caja siga mostrando lo
+  // tecleado, porque `NumericInput` solo resincroniza su texto visible cuando
+  // no tiene foco—. Si el usuario suelta después, se manda la tasa VIEJA sin
+  // ningún error. Mismo trato que `BudgetPanel.receive()` le da a
+  // `pending.current` y que `replace_fee_tiers` (properties_db.py) documenta
+  // en su propio docstring: se acepta sin blindaje porque esta es una
+  // herramienta interna de un solo editor a la vez, no un formulario con
+  // escrituras concurrentes reales.
   useEffect(() => {
     setHasLadder(stored.length > 0)
-    setNonFloor(stored.filter(t => t.threshold !== null).map(t => ({ threshold: t.threshold ?? undefined, rate: t.rate })))
+    setNonFloor(stored.filter(t => t.threshold !== null).map(t => ({ id: crypto.randomUUID(), threshold: t.threshold ?? undefined, rate: t.rate })))
     setFloorRate(stored.find(t => t.threshold === null)?.rate)
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,11 +155,11 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
     setError(null)
     if (!hasLadder) {
       setHasLadder(true)
-      setNonFloor([{ threshold: undefined, rate: undefined }])
+      setNonFloor([{ id: crypto.randomUUID(), threshold: undefined, rate: undefined }])
       setFloorRate(undefined)
       return
     }
-    setNonFloor(prev => [...prev, { threshold: undefined, rate: undefined }])
+    setNonFloor(prev => [...prev, { id: crypto.randomUUID(), threshold: undefined, rate: undefined }])
   }
 
   function deleteTier(idx: number) {
@@ -180,7 +203,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
       {hasLadder && (
         <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {nonFloor.map((tier, idx) => (
-            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div key={tier.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>DESDE $</span>
               <NumericInput
                 value={tier.threshold}
