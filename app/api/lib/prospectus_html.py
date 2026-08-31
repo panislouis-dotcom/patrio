@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import tempfile
+from decimal import Decimal
 from markupsafe import escape as _esc
 
 from api.finance.underwriting import ASSUMPTION_DEFAULTS
@@ -521,7 +522,7 @@ def _fee_scenario_missing(reasons: list[str] | None) -> str:
     return f'— <small>{_esc(text)}</small>' if text else "—"
 
 
-def _fee_tier_lines(tiers: list[dict], default_rate) -> str:
+def _fee_tier_lines(tiers: list[dict], default_rate: Decimal) -> str:
     """La escalera de comisión guardada, en una sola línea compacta —
     reemplaza al `exitSaleCommissionPct`/`exitRentMonths` planos que
     `_opportunity_fees_metrics()` imprimía antes de la escalera (Task 2):

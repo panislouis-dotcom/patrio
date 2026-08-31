@@ -13,7 +13,17 @@ from api import properties_db
 from api.db import get_db
 from api.lib.prospectus_html import build_prospectus_html
 from api.properties_db import get_property
-from api.tests.test_property_fee_tiers import ESCOBECO_VENTA
+
+# Misma escalera de ejemplo del feature — Salón Escobedo, venta ≥$6.5M→7%,
+# ≥$5.5M→6%, si no→5%. A propósito NO en orden ascendente: `_fee_tier_lines`
+# debe ordenar por su cuenta, no confiar en el orden que mandó el cliente.
+# Copiado en vez de importado de test_property_fee_tiers.py — este suite no
+# comparte fixtures entre archivos de prueba, solo vía conftest.py.
+_ESCOBECO_VENTA = [
+    {"threshold": Decimal("6500000"), "rate": Decimal("0.07")},
+    {"threshold": None, "rate": Decimal("0.05")},
+    {"threshold": Decimal("5500000"), "rate": Decimal("0.06")},
+]
 
 
 def _metric(value: str, label: str) -> str:
@@ -495,7 +505,7 @@ def test_the_opportunity_card_prints_the_sale_fee_ladder(client, test_property):
     piso, 5%, igual que el caso sin tramos; lo que este test prueba es la
     ETIQUETA, no el monto."""
     pid = test_property["id"]
-    properties_db.replace_fee_tiers(pid, "venta", ESCOBECO_VENTA)
+    properties_db.replace_fee_tiers(pid, "venta", _ESCOBECO_VENTA)
     p = get_property(pid)
     html = build_prospectus_html([], [], [], [p])
     # 2,500,000 x 5% (piso de la escalera, el mismo 5% que el default —
