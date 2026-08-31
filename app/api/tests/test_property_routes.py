@@ -332,3 +332,75 @@ def test_reorder_repeating_an_image_is_422(client, test_property):
 def test_reorder_on_a_missing_property_is_404(client):
     r = client.put("/api/properties/999999999/images/reorder", json={"image_ids": []})
     assert r.status_code == 404
+
+
+# ─── Fee tiers ────────────────────────────────────────────────────────────────
+# properties_db.replace_fee_tiers()/validate_tiers() are already exercised
+# thoroughly at the properties_db layer in test_property_fee_tiers.py — these
+# only prove the HTTP wiring: the route delegates without adding its own
+# validation, and the two domain errors map to the status codes main.py's
+# global handlers promise (PropertyNotFound → 404, PropertyError → 422).
+
+_ESCOBEDO_VENTA = {"tiers": [
+    {"threshold": 6_500_000, "rate": 0.07},
+    {"threshold": 5_500_000, "rate": 0.06},
+    {"threshold": None, "rate": 0.05},
+]}
+
+
+def test_put_fee_tiers_venta_returns_the_stored_ladder(client, test_property):
+    pid = test_property["id"]
+    r = client.put(f"/api/properties/{pid}/fee-tiers/venta", json=_ESCOBEDO_VENTA)
+    assert r.status_code == 200, r.text
+    assert r.json() == [
+        {"threshold": 5_500_000, "rate": 0.06},
+        {"threshold": 6_500_000, "rate": 0.07},
+        {"threshold": None, "rate": 0.05},
+    ]
+
+    after = client.get(f"/api/properties/{pid}").json()
+    assert after["saleFeeTiers"] == [
+        {"threshold": 5_500_000, "rate": 0.06},
+        {"threshold": 6_500_000, "rate": 0.07},
+        {"threshold": None, "rate": 0.05},
+    ]
+    assert after["rentFeeTiers"] == []
+
+
+def test_put_fee_tiers_renta_returns_the_stored_ladder(client, test_property):
+    pid = test_property["id"]
+    body = {"tiers": [{"threshold": None, "rate": 0.08}]}
+    r = client.put(f"/api/properties/{pid}/fee-tiers/renta", json=body)
+    assert r.status_code == 200, r.text
+    assert r.json() == [{"threshold": None, "rate": 0.08}]
+
+    after = client.get(f"/api/properties/{pid}").json()
+    assert after["rentFeeTiers"] == [{"threshold": None, "rate": 0.08}]
+    assert after["saleFeeTiers"] == []
+
+
+def test_put_fee_tiers_invalid_kind_is_422(client, test_property):
+    r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/foo",
+                    json={"tiers": [{"threshold": None, "rate": 0.05}]})
+    assert r.status_code == 422
+
+
+def test_put_fee_tiers_missing_floor_tier_is_422(client, test_property):
+    """No floor tier: validate_tiers rejects it, and properties_db surfaces it
+    as a PropertyError — main.py's _property_rejected handler turns that into
+    a 422, same status as every other domain rejection on this router."""
+    r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/venta",
+                    json={"tiers": [{"threshold": 100, "rate": 0.05}]})
+    assert r.status_code == 422
+
+
+def test_put_fee_tiers_rate_out_of_range_is_422(client, test_property):
+    r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/venta",
+                    json={"tiers": [{"threshold": None, "rate": 1.5}]})
+    assert r.status_code == 422
+
+
+def test_put_fee_tiers_on_a_missing_property_is_404(client):
+    r = client.put("/api/properties/999999999/fee-tiers/venta",
+                    json={"tiers": [{"threshold": None, "rate": 0.05}]})
+    assert r.status_code == 404
