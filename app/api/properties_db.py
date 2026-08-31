@@ -64,7 +64,7 @@ from psycopg2.extras import Json
 from api import budget_db
 from api.checks import run_checks, stage_requirements
 from api.db import get_db, _camel_to_snake, _row_to_dict, _snake_to_camel
-from api.finance import fees, underwriting
+from api.finance import fee_tiers, fees, underwriting
 from api.finance.analysis import months_between, parse_date, roi_cagr
 from api.finance.quantize import frac4, money0, to_decimal
 
@@ -176,8 +176,7 @@ WRITABLE_FIELDS = frozenset({
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
     "currentValuation", "valuationDate", "milestones",
     "notes", "isFavorite",
-    "landCommissionPct", "constructionCommissionPct", "exitSaleCommissionPct",
-    "exitRentMonths", "exitStrategy",
+    "landCommissionPct", "constructionCommissionPct", "exitStrategy",
 })
 
 # Emptying a field is its own operation (POST /clear-fields): PATCH uses
@@ -185,13 +184,21 @@ WRITABLE_FIELDS = frozenset({
 # way to happen. Everything nullable is listed; whether a *particular* row may
 # lose a *particular* field is decided by stage_requirements, not by this set.
 #
-# The six assumptions (acquisitionCostPct, holdMonths, and the four
-# commission/exit-timing ones the fund's fee structure needs) are clearable
-# like anything else, and clearing one is a real operation with a visible
-# meaning: it hands the field back to the model's default and the ficha starts
-# labelling it «supuesto por omisión». exitStrategy is clearable too but is not
-# one of the six — it is a captured fact with no default (migration 049), so
-# clearing it means «nadie ha decidido todavía», not «vuelve al modelo».
+# The four assumptions (acquisitionCostPct, holdMonths, and the two commission
+# ones the fund's fee structure needs) are clearable like anything else, and
+# clearing one is a real operation with a visible meaning: it hands the field
+# back to the model's default and the ficha starts labelling it «supuesto por
+# omisión». exitStrategy is clearable too but is not one of the four — it is a
+# captured fact with no default (migration 049), so clearing it means «nadie
+# ha decidido todavía», not «vuelve al modelo».
+#
+# exitSaleCommissionPct/exitRentMonths dropped out of both frozensets
+# (migration 053): la comisión de salida plana quedó reemplazada por la
+# escalera de tramos en `property_fee_tiers` (`replace_fee_tiers`, más abajo),
+# que es su propio sub-recurso fuera de PATCH — no hay campo plano que
+# escribir ni vaciar. Las columnas siguen en `properties` (sin uso, retiro
+# diferido — ver 053_property_fee_tiers.sql), así que un GET todavía las
+# publica tal cual quedaron, pero ningún PATCH/clear-fields vuelve a tocarlas.
 CLEARABLE_FIELDS = frozenset({
     "assetType", "strategyType",
     "sqmLand", "sqmConstruction", "purchasePrice", "acquisitionCostPct",
@@ -200,8 +207,7 @@ CLEARABLE_FIELDS = frozenset({
     "rentMonthlyProjected", "rentMonthlyActual",
     "totalUnits", "acquisitionDate", "firstRentDate", "saleDate", "salePrice",
     "currentValuation", "valuationDate",
-    "landCommissionPct", "constructionCommissionPct", "exitSaleCommissionPct",
-    "exitRentMonths", "exitStrategy",
+    "landCommissionPct", "constructionCommissionPct", "exitStrategy",
 })
 
 _DATE_FIELDS = frozenset({"acquisitionDate", "firstRentDate", "saleDate", "valuationDate"})
@@ -648,7 +654,9 @@ def score(prop: dict, peers: list[dict]) -> int | None:
 _RETIRED_COLUMNS = ("constructionOverhead",)
 
 
-def parse_property(row, images: list | None = None) -> dict:
+def parse_property(row, images: list | None = None,
+                    sale_tiers: list | None = None,
+                    rent_tiers: list | None = None) -> dict:
     """Raw row → the unified camelCase contract: stored columns as they are, plus
     the stage-appropriate metrics, the stage's issues and its images. Issues are
     computed here rather than in a router so every read of a property carries the
@@ -657,8 +665,23 @@ def parse_property(row, images: list | None = None) -> dict:
     `totalInvestment` is derived, always, from the five stored costs — so it
     shadows no column and contradicts none. There is exactly one investment
     figure in the payload, which is why nothing here has to say where it came
-    from."""
+    from.
+
+    `sale_tiers`/`rent_tiers` are the property's fee-tier ladders (empty list
+    when nobody configured one — same "no ladder = model default" semantics
+    `fee_tiers.select_tier` already assumes). They are stashed on `raw` under
+    `sale_fee_tiers`/`rent_fee_tiers` — snake_case, like every other key on
+    `raw`, which `metrics()` and `checks.py` both document as the "raw
+    property row (snake_case keys)" — BEFORE calling `metrics()`, because
+    `fees.compute_fees()` (called from inside `metrics()`) reads
+    `row.get("sale_fee_tiers")`/`row.get("rent_fee_tiers")` to pick the tier
+    that applies to the resolved sale value/rent — the ladder has to be
+    visible to the fee math, not just to the payload it ends up in. `parsed`
+    still publishes them under their camelCase contract keys
+    (`saleFeeTiers`/`rentFeeTiers`), same as every other field."""
     raw = dict(row)
+    raw["sale_fee_tiers"] = sale_tiers if sale_tiers is not None else []
+    raw["rent_fee_tiers"] = rent_tiers if rent_tiers is not None else []
     computed = metrics(raw)
     parsed = _row_to_dict(row)
     for retired in _RETIRED_COLUMNS:
@@ -666,6 +689,8 @@ def parse_property(row, images: list | None = None) -> dict:
     parsed.update(computed)
     parsed["issues"] = [asdict(i) for i in run_checks(raw, computed)]
     parsed["images"] = images if images is not None else []
+    parsed["saleFeeTiers"] = raw["sale_fee_tiers"]
+    parsed["rentFeeTiers"] = raw["rent_fee_tiers"]
     return parsed
 
 
@@ -681,6 +706,31 @@ def _images_by_property(conn, ids: list[int]) -> dict[int, list]:
     grouped: dict[int, list] = {}
     for row in rows:
         grouped.setdefault(row["property_id"], []).append(_row_to_dict(row))
+    return grouped
+
+
+def _fee_tiers_by_property(conn, ids: list[int]) -> dict[int, dict[str, list]]:
+    """Una escalera de venta y una de renta por propiedad, en un solo viaje —
+    mismo patrón que `_images_by_property`: un `SELECT ... WHERE property_id
+    IN (...)` batched por la lista completa de ids, agrupado en Python, para
+    que tanto `get_property` como `get_properties` (ambos vía `_fetch`) paguen
+    exactamente una consulta sin importar cuántas propiedades traigan.
+
+    `ORDER BY property_id, threshold NULLS LAST` entrega cada escalera ya en
+    el orden que el contrato promete: ascendente por threshold, con el tramo
+    piso (`threshold IS NULL`) al final — no hace falta reordenar en Python."""
+    if not ids:
+        return {}
+    placeholders = ",".join(["%s"] * len(ids))
+    rows = conn.execute(
+        f"SELECT * FROM property_fee_tiers WHERE property_id IN ({placeholders})"
+        " ORDER BY property_id, threshold NULLS LAST",
+        ids,
+    ).fetchall()
+    grouped: dict[int, dict[str, list]] = {}
+    for row in rows:
+        sides = grouped.setdefault(row["property_id"], {"venta": [], "renta": []})
+        sides[row["kind"]].append({"threshold": row["threshold"], "rate": row["rate"]})
     return grouped
 
 
@@ -706,8 +756,22 @@ _FETCH_SQL = f"""
 
 def _fetch(conn, where: str = "", params: tuple | list = ()) -> list[dict]:
     rows = conn.execute(_FETCH_SQL.format(where=where), params).fetchall()
-    images = _images_by_property(conn, [r["id"] for r in rows])
-    return [parse_property(r, images.get(r["id"], [])) for r in rows]
+    ids = [r["id"] for r in rows]
+    images = _images_by_property(conn, ids)
+    # Nombrado distinto al módulo `fee_tiers` importado arriba (`from
+    # api.finance import fee_tiers`) a propósito: una variable local del mismo
+    # nombre lo taparía dentro de esta función, y `replace_fee_tiers` sí
+    # necesita ese módulo accesible sin ambigüedad.
+    tiers_by_property = _fee_tiers_by_property(conn, ids)
+    parsed = []
+    for r in rows:
+        sides = tiers_by_property.get(r["id"], {})
+        parsed.append(parse_property(
+            r, images.get(r["id"], []),
+            sale_tiers=sides.get("venta", []),
+            rent_tiers=sides.get("renta", []),
+        ))
+    return parsed
 
 
 def _scored(properties: list[dict], peers: list[dict]) -> list[dict]:
@@ -1057,6 +1121,88 @@ def reorder_images(property_id: int, image_ids: list[int]) -> list[dict]:
             conn.execute("UPDATE property_images SET sort_order = %s WHERE id = %s",
                          (index, image_id))
     return get_images(property_id)
+
+
+# ─── Fee tiers ────────────────────────────────────────────────────────────────
+
+_FEE_TIER_KINDS = ("venta", "renta")
+
+
+def replace_fee_tiers(property_id: int, kind: str, tiers: list[dict]) -> list[dict]:
+    """Reemplazo atómico de la escalera completa de un lado (`kind` ∈ {'venta',
+    'renta'}) — no hay upsert fila por fila. Una escalera es una colección
+    ordenada, no columnas sueltas: agregar un tramo en medio desplaza el
+    sort_order de todos los que le siguen, así que la operación natural es
+    "borra la escalera vieja de este lado, escribe la nueva completa" — mismo
+    criterio que `reorder_images` aplica al orden, un paso más allá porque
+    aquí hasta el CONJUNTO de filas cambia, no solo su posición.
+
+    `validate_tiers` corre primero, fuera de cualquier transacción: es una
+    validación de forma (thresholds únicos y ascendentes, no negativos,
+    exactamente un piso, tasas en [0, 1]) que no necesita tocar la base, y
+    dejarla propagar su PropertyError antes de abrir la transacción evita un
+    DELETE que después habría que revertir por un error que ya se veía venir
+    sin consultar nada.
+
+    DELETE + INSERT viven en el `with get_db()` de abajo, que get_db() ya
+    envuelve en una única transacción (commit al salir, rollback en
+    excepción): no hay ventana en la que la tabla quede sin filas para este
+    (property_id, kind) — o la escalera nueva reemplaza a la vieja entera, o
+    la escritura entera se revierte.
+
+    Riesgo conocido y aceptado: la transacción no toma row lock ni hace
+    `SELECT ... FOR UPDATE` sobre las filas existentes, así que dos PUT
+    concurrentes al mismo (property_id, kind) pueden pisarse entre sí (mismo
+    riesgo de carrera que el revisor de la Task 1 ya señaló como riesgo
+    futuro). No se blinda aquí a propósito: esta es una herramienta interna
+    de un solo editor a la vez, no un formulario público con escrituras
+    simultáneas reales.
+
+    `sort_order` se asigna por posición tras ordenar `tiers` ascendente por
+    threshold, con el piso (threshold=None) al final — el mismo contrato de
+    lectura que `_fee_tiers_by_property` espera (`ORDER BY threshold NULLS
+    LAST`), así que sort_order y el orden de lectura coinciden por
+    construcción, no por casualidad. El threshold se pasa por `to_decimal()`
+    antes de comparar — mismo criterio que `fee_tiers.select_tier()` — para
+    no comparar un float contra un Decimal si el payload trae tipos mixtos.
+
+    `_readable_rejection()` es la red de seguridad, no la validación: para
+    que dispare hace falta una violación de restricción que `validate_tiers`
+    ya debería haber atrapado (una carrera real entre dos escrituras
+    concurrentes, por ejemplo), así que no hace falta una entrada nueva en
+    `_CONSTRAINT_MESSAGES` para property_fee_tiers — el mensaje crudo de
+    Postgres es un caso que no debería pasar nunca en el camino normal."""
+    if kind not in _FEE_TIER_KINDS:
+        raise PropertyError(
+            f"Tipo de escalera inválido: se espera venta o renta (se recibió {kind!r})."
+        )
+    fee_tiers.validate_tiers(tiers)
+
+    ordered = sorted(
+        tiers,
+        key=lambda t: (t.get("threshold") is None, to_decimal(t.get("threshold"))),
+    )
+
+    with get_db() as conn:
+        _require_row(conn, property_id)
+        with _readable_rejection():
+            conn.execute(
+                "DELETE FROM property_fee_tiers WHERE property_id = %s AND kind = %s",
+                (property_id, kind),
+            )
+            for index, tier in enumerate(ordered):
+                conn.execute(
+                    "INSERT INTO property_fee_tiers"
+                    " (property_id, kind, threshold, rate, sort_order)"
+                    " VALUES (%s, %s, %s, %s, %s)",
+                    (property_id, kind, tier.get("threshold"), tier["rate"], index),
+                )
+        rows = conn.execute(
+            "SELECT threshold, rate FROM property_fee_tiers"
+            " WHERE property_id = %s AND kind = %s ORDER BY threshold NULLS LAST",
+            (property_id, kind),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 # ─── Geometry ─────────────────────────────────────────────────────────────────

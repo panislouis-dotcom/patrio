@@ -34,8 +34,8 @@ def _row(**over):
         "exit_strategy": None,
         "land_commission_pct": None,
         "construction_commission_pct": None,
-        "saleFeeTiers": [],
-        "rentFeeTiers": [],
+        "sale_fee_tiers": [],
+        "rent_fee_tiers": [],
     }
     base.update(over)
     return base
@@ -244,8 +244,8 @@ def test_sin_saleFeeTiers_ni_rentFeeTiers_en_la_fila_se_comporta_como_lista_vaci
     # Filas reales de hoy no traen estas keys todavía (las llena una tarea
     # posterior) — compute_fees debe seguir funcionando igual que con [] explícito.
     row = _row()
-    del row["saleFeeTiers"]
-    del row["rentFeeTiers"]
+    del row["sale_fee_tiers"]
+    del row["rent_fee_tiers"]
     out = fees.compute_fees(row, basis=Decimal("1500000"))
     assert out["exitFeeVenta"] == Decimal("100000")
     assert out["exitFeeRenta"] == Decimal("750")
@@ -271,24 +271,24 @@ def test_locked_oracle():
 # ── compute_fees con una escalera real configurada ──────────────────────────
 
 def test_compute_fees_con_escalera_de_venta_debajo_del_piso():
-    row = _row(projected_sale=Decimal("5000000"), saleFeeTiers=ESCOBECO_VENTA_TIERS)
+    row = _row(projected_sale=Decimal("5000000"), sale_fee_tiers=ESCOBECO_VENTA_TIERS)
     out = fees.compute_fees(row, basis=Decimal("1500000"))
     assert out["exitFeeVenta"] == Decimal("250000")  # 5% de 5,000,000 (piso)
 
 
 def test_compute_fees_con_escalera_de_venta_en_el_umbral_inferior_exacto():
-    row = _row(projected_sale=Decimal("5500000"), saleFeeTiers=ESCOBECO_VENTA_TIERS)
+    row = _row(projected_sale=Decimal("5500000"), sale_fee_tiers=ESCOBECO_VENTA_TIERS)
     out = fees.compute_fees(row, basis=Decimal("1500000"))
     assert out["exitFeeVenta"] == Decimal("330000")  # 6% de 5,500,000
 
 
 def test_compute_fees_con_escalera_de_venta_en_el_umbral_superior_exacto():
-    row = _row(projected_sale=Decimal("6500000"), saleFeeTiers=ESCOBECO_VENTA_TIERS)
+    row = _row(projected_sale=Decimal("6500000"), sale_fee_tiers=ESCOBECO_VENTA_TIERS)
     out = fees.compute_fees(row, basis=Decimal("1500000"))
     assert out["exitFeeVenta"] == Decimal("455000")  # 7% de 6,500,000
 
 
 def test_compute_fees_con_escalera_de_venta_arriba_de_todo():
-    row = _row(projected_sale=Decimal("9000000"), saleFeeTiers=ESCOBECO_VENTA_TIERS)
+    row = _row(projected_sale=Decimal("9000000"), sale_fee_tiers=ESCOBECO_VENTA_TIERS)
     out = fees.compute_fees(row, basis=Decimal("1500000"))
     assert out["exitFeeVenta"] == Decimal("630000")  # 7% de 9,000,000, no interpola

@@ -117,6 +117,36 @@ def test_invalid_exit_strategy_is_rejected(client, test_property):
     assert r.status_code == 422
 
 
+def test_patch_silently_ignores_the_flat_exit_commission_fields(client, test_property):
+    """exitSaleCommissionPct/exitRentMonths salieron de WRITABLE_FIELDS (053):
+    la escalera de tramos (replace_fee_tiers) los reemplaza y vive en su
+    propio sub-recurso, fuera del PATCH batched. to_columns() los descarta en
+    silencio, igual que cualquier otro campo fuera de WRITABLE_FIELDS — la
+    petición no truena y la propiedad no cambia."""
+    pid = test_property["id"]
+    before = client.get(f"/api/properties/{pid}").json()
+
+    r = client.patch(f"/api/properties/{pid}", json={
+        "exitSaleCommissionPct": 0.09, "exitRentMonths": 4,
+    })
+    assert r.status_code == 200, r.text
+    after = r.json()
+    assert after["exitSaleCommissionPct"] == before["exitSaleCommissionPct"]
+    assert after["exitRentMonths"] == before["exitRentMonths"]
+
+
+def test_clear_fields_rejects_the_flat_exit_commission_fields(client, test_property):
+    """Salieron de CLEARABLE_FIELDS junto con WRITABLE_FIELDS: vaciarlos ya no
+    es una operación que este endpoint entienda."""
+    pid = test_property["id"]
+    r = client.post(f"/api/properties/{pid}/clear-fields",
+                     json={"fields": ["exitSaleCommissionPct"]})
+    assert r.status_code == 422
+    r = client.post(f"/api/properties/{pid}/clear-fields",
+                     json={"fields": ["exitRentMonths"]})
+    assert r.status_code == 422
+
+
 def test_delete(client, test_property):
     assert client.delete(f"/api/properties/{test_property['id']}").status_code == 204
     assert client.get(f"/api/properties/{test_property['id']}").status_code == 404

@@ -61,7 +61,7 @@ def compute_fees(row: dict, basis: Decimal | None) -> dict:
     # valor PRIMERO y recién entonces preguntar qué tasa le toca.
     sale_value = _resolve_sale_value(row)
     sale_pct = select_tier(
-        row.get("saleFeeTiers", []), sale_value, ASSUMPTION_DEFAULTS["exit_sale_commission_pct"],
+        row.get("sale_fee_tiers", []), sale_value, ASSUMPTION_DEFAULTS["exit_sale_commission_pct"],
     ) if sale_value is not None else None
     exit_fee_venta = sale_value * sale_pct if sale_value is not None else None
     missing_venta = [] if exit_fee_venta is not None else ["salePrice"]
@@ -71,7 +71,7 @@ def compute_fees(row: dict, basis: Decimal | None) -> dict:
     # mensual que _resolve_rent ya resuelve, sin contar meses aquí.
     rent = _resolve_rent(row)
     rent_pct = select_tier(
-        row.get("rentFeeTiers", []), rent, ASSUMPTION_DEFAULTS["exit_rent_commission_pct"],
+        row.get("rent_fee_tiers", []), rent, ASSUMPTION_DEFAULTS["exit_rent_commission_pct"],
     ) if rent is not None else None
     exit_fee_renta = rent * rent_pct if rent is not None else None
     missing_renta = [] if exit_fee_renta is not None else ["rentMonthly"]

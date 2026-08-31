@@ -28,3 +28,15 @@ def test_clearable_is_a_subset_of_writable_plus_lifecycle_facts():
 def test_status_is_writable_through_neither_door():
     assert "status" not in WRITABLE_FIELDS
     assert "status" not in CLEARABLE_FIELDS
+
+
+def test_flat_exit_commission_fields_are_no_longer_writable_or_clearable():
+    """La comisión de salida plana (exitSaleCommissionPct/exitRentMonths)
+    quedó reemplazada por la escalera de tramos en `property_fee_tiers`
+    (`replace_fee_tiers`, migración 053) — su propio sub-recurso, fuera del
+    PATCH batched. Las columnas siguen en `properties` (retiro diferido) pero
+    ningún cliente puede volver a escribirlas ni vaciarlas por aquí."""
+    assert "exitSaleCommissionPct" not in WRITABLE_FIELDS
+    assert "exitSaleCommissionPct" not in CLEARABLE_FIELDS
+    assert "exitRentMonths" not in WRITABLE_FIELDS
+    assert "exitRentMonths" not in CLEARABLE_FIELDS
