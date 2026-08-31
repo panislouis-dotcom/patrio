@@ -425,10 +425,10 @@ def test_a_rented_property_reports_its_mark_with_the_valuation_date(client, desa
     # Solo renta aparece en la sub-línea de comisiones: venta es
     # contrafactual — esta propiedad nunca se vendió, aunque
     # compute_fees() la calcule igual con la venta proyectada
-    # (2,500,000). Renta usa la renta REAL ya cobrada (30,000 x 3 meses +
-    # terreno/obra = 3,971,000, que redondea igual que la venta a "$4.0M").
-    # Este es el mismo bug que se corrigió en _sold_card(), en espejo.
-    assert _metric('$3.5M <small>R $4.0M c/comisiones</small>', "Inversión sin comisiones") in html
+    # (2,500,000). Renta usa la renta REAL ya cobrada: 5% (default de la
+    # escalera, sin tramos configurados) de 30,000 + terreno/obra
+    # (401,000) = 3,882,500, que redondea a "$3.9M".
+    assert _metric('$3.5M <small>R $3.9M c/comisiones</small>', "Inversión sin comisiones") in html
     assert "V $" not in html
     assert _metric("$6.0M", "Valuación · ene 2026") in html
     # (6,000,000 - 3,480,000) / 3,480,000
@@ -459,9 +459,13 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _metric('$351K <small>15.0%</small>', "Comisión de obra") in html
     # La comisión de salida no venía desglosada en ningún lado — a diferencia
     # de terreno y obra, aquí sí sale su propio $ por escenario. Venta: precio
-    # proyectado 2,500,000 x 5%. Renta: 18,000 x 3 meses.
+    # proyectado 2,500,000 x 5%. Renta: 18,000 x 5% (default de la escalera,
+    # sin tramos configurados) — el "3 meses" que sigue imprimiendo la
+    # etiqueta viene de exitRentMonths, que la propiedad sigue publicando sin
+    # usarse ya en el cálculo; la etiqueta se corrige en la tarea del PDF que
+    # reemplaza esta línea por `_fee_tier_lines` (fuera de este cambio).
     assert _metric('$125K <small>5.0%</small>', "Comisión de salida · venta") in html
-    assert _metric('$54K <small>3 meses</small>', "Comisión de salida · renta") in html
+    assert _metric('$900 <small>3 meses</small>', "Comisión de salida · renta") in html
     # Y los totales quedan tal cual estaban — cada uno en su propia celda, sin
     # fundirse en una sola: 3,480,000 + 401,000 (terreno+obra) + comisión de
     # salida de cada escenario.

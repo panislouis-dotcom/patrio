@@ -23,8 +23,9 @@ que un exit_price ausente en waterfall.py.
 """
 from decimal import Decimal
 
+from .fee_tiers import select_tier
 from .quantize import money0, to_decimal
-from .underwriting import assumption
+from .underwriting import ASSUMPTION_DEFAULTS, assumption
 
 
 def _resolve_sale_value(row: dict) -> Decimal | None:
@@ -49,19 +50,30 @@ def _resolve_rent(row: dict) -> Decimal | None:
 def compute_fees(row: dict, basis: Decimal | None) -> dict:
     land_pct = to_decimal(assumption(row, "land_commission_pct")[0])
     construction_pct = to_decimal(assumption(row, "construction_commission_pct")[0])
-    sale_pct = to_decimal(assumption(row, "exit_sale_commission_pct")[0])
-    rent_months = to_decimal(assumption(row, "exit_rent_months")[0])
 
     land_fee = to_decimal(row.get("purchase_price")) * land_pct
     construction_fee = to_decimal(row.get("construction_budgeted")) * construction_pct
     base_fees = land_fee + construction_fee
 
+    # La comisión de salida ya no es un % plano: es una escalera de tramos por
+    # valor alcanzado (finance/fee_tiers.py), y el tramo que aplica depende del
+    # valor — al revés que land/construction arriba, aquí hay que resolver el
+    # valor PRIMERO y recién entonces preguntar qué tasa le toca.
     sale_value = _resolve_sale_value(row)
+    sale_pct = select_tier(
+        row.get("saleFeeTiers", []), sale_value, ASSUMPTION_DEFAULTS["exit_sale_commission_pct"],
+    ) if sale_value is not None else None
     exit_fee_venta = sale_value * sale_pct if sale_value is not None else None
     missing_venta = [] if exit_fee_venta is not None else ["salePrice"]
 
+    # Base de la comisión de renta: UN MES de renta (ya no exit_rent_months de
+    # meses multiplicando) — la tasa del tramo alcanzado aplicada a la renta
+    # mensual que _resolve_rent ya resuelve, sin contar meses aquí.
     rent = _resolve_rent(row)
-    exit_fee_renta = rent * rent_months if rent is not None else None
+    rent_pct = select_tier(
+        row.get("rentFeeTiers", []), rent, ASSUMPTION_DEFAULTS["exit_rent_commission_pct"],
+    ) if rent is not None else None
+    exit_fee_renta = rent * rent_pct if rent is not None else None
     missing_renta = [] if exit_fee_renta is not None else ["rentMonthly"]
 
     total_fees_venta = None if exit_fee_venta is None else base_fees + exit_fee_venta

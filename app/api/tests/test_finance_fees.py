@@ -1,6 +1,25 @@
 from decimal import Decimal
 
-from api.finance import fees
+import pytest
+
+from api.finance import fee_tiers, fees
+from api.properties_db import PropertyError
+
+# Sentinel para los tests de select_tier(): un valor que ninguna tasa real del
+# negocio usaría, a propósito — si apareciera en el resultado por accidente
+# (en vez del default real de ASSUMPTION_DEFAULTS que compute_fees() sí pasa)
+# sería obvio. select_tier() no sabe nada de "venta"/"renta" ni de
+# ASSUMPTION_DEFAULTS: solo recibe el default ya resuelto por quien llama.
+_SENTINEL_DEFAULT = Decimal("0.42")
+
+# Escalera de ejemplo del propio feature: Salón Escobedo — venta ≥ $6.5M → 7%,
+# ≥ $5.5M → 6%, si no → 5%. A propósito NO está en orden ascendente/descendente:
+# select_tier no debe asumir orden, lo encuentra comparando.
+ESCOBECO_VENTA_TIERS = [
+    {"threshold": Decimal("6500000"), "rate": Decimal("0.07")},
+    {"threshold": None, "rate": Decimal("0.05")},
+    {"threshold": Decimal("5500000"), "rate": Decimal("0.06")},
+]
 
 
 def _row(**over):
@@ -15,12 +34,111 @@ def _row(**over):
         "exit_strategy": None,
         "land_commission_pct": None,
         "construction_commission_pct": None,
-        "exit_sale_commission_pct": None,
-        "exit_rent_months": None,
+        "saleFeeTiers": [],
+        "rentFeeTiers": [],
     }
     base.update(over)
     return base
 
+
+# ── select_tier ───────────────────────────────────────────────────────────
+
+def test_select_tier_lista_vacia_usa_el_default_que_le_pasan():
+    # select_tier no conoce "venta"/"renta" ni ASSUMPTION_DEFAULTS — el default
+    # es lo que sea que quien llama haya resuelto y pasado.
+    assert fee_tiers.select_tier([], Decimal("9000000"), _SENTINEL_DEFAULT) == _SENTINEL_DEFAULT
+    assert fee_tiers.select_tier([], Decimal("20000"), Decimal("0.03")) == Decimal("0.03")
+
+
+def test_select_tier_valor_por_debajo_de_todos_los_umbrales_usa_el_piso():
+    assert fee_tiers.select_tier(ESCOBECO_VENTA_TIERS, Decimal("5000000"), _SENTINEL_DEFAULT) == Decimal("0.05")
+
+
+def test_select_tier_valor_exacto_en_el_umbral_es_inclusive():
+    # Justo en el límite: >= , no >. 5.5M exacto ya es el tramo del 6%, no el piso.
+    assert fee_tiers.select_tier(ESCOBECO_VENTA_TIERS, Decimal("5500000"), _SENTINEL_DEFAULT) == Decimal("0.06")
+    assert fee_tiers.select_tier(ESCOBECO_VENTA_TIERS, Decimal("6500000"), _SENTINEL_DEFAULT) == Decimal("0.07")
+
+
+def test_select_tier_valor_arriba_de_todos_los_umbrales_gana_el_mas_alto():
+    assert fee_tiers.select_tier(ESCOBECO_VENTA_TIERS, Decimal("8000000"), _SENTINEL_DEFAULT) == Decimal("0.07")
+
+
+def test_select_tier_justo_debajo_de_un_umbral_cae_al_tramo_anterior():
+    assert fee_tiers.select_tier(ESCOBECO_VENTA_TIERS, Decimal("6499999.99"), _SENTINEL_DEFAULT) == Decimal("0.06")
+    assert fee_tiers.select_tier(ESCOBECO_VENTA_TIERS, Decimal("5499999.99"), _SENTINEL_DEFAULT) == Decimal("0.05")
+
+
+def test_select_tier_lista_no_vacia_sin_piso_truena_por_precondicion():
+    # No es el trabajo de select_tier revalidar (eso es validate_tiers), pero si
+    # de algún modo llega una lista sin piso, el assert defensivo debe fallar
+    # claro en vez de dejar pasar un None que reviente varios frames después.
+    sin_piso = [{"threshold": Decimal("5000000"), "rate": Decimal("0.05")}]
+    with pytest.raises(AssertionError):
+        fee_tiers.select_tier(sin_piso, Decimal("1000"), _SENTINEL_DEFAULT)
+
+
+# ── validate_tiers ────────────────────────────────────────────────────────
+
+def test_validate_tiers_lista_vacia_es_valida():
+    fee_tiers.validate_tiers([])  # no debe lanzar
+
+
+def test_validate_tiers_acepta_una_escalera_bien_formada():
+    fee_tiers.validate_tiers(ESCOBECO_VENTA_TIERS)  # no debe lanzar
+
+
+def test_validate_tiers_rechaza_rate_fuera_de_rango():
+    with pytest.raises(PropertyError):
+        fee_tiers.validate_tiers([{"threshold": None, "rate": Decimal("1.5")}])
+    with pytest.raises(PropertyError):
+        fee_tiers.validate_tiers([{"threshold": None, "rate": Decimal("-0.01")}])
+
+
+def test_validate_tiers_acepta_rate_en_los_bordes():
+    fee_tiers.validate_tiers([{"threshold": None, "rate": Decimal("0")}])
+    fee_tiers.validate_tiers([{"threshold": None, "rate": Decimal("1")}])
+
+
+def test_validate_tiers_rechaza_lista_sin_tramo_piso():
+    with pytest.raises(PropertyError):
+        fee_tiers.validate_tiers([{"threshold": Decimal("5000000"), "rate": Decimal("0.05")}])
+
+
+def test_validate_tiers_rechaza_dos_tramos_piso():
+    with pytest.raises(PropertyError):
+        fee_tiers.validate_tiers([
+            {"threshold": None, "rate": Decimal("0.05")},
+            {"threshold": None, "rate": Decimal("0.06")},
+        ])
+
+
+def test_validate_tiers_rechaza_thresholds_duplicados():
+    with pytest.raises(PropertyError):
+        fee_tiers.validate_tiers([
+            {"threshold": Decimal("5000000"), "rate": Decimal("0.05")},
+            {"threshold": Decimal("5000000"), "rate": Decimal("0.06")},
+            {"threshold": None, "rate": Decimal("0.04")},
+        ])
+
+
+def test_validate_tiers_rechaza_threshold_negativo():
+    with pytest.raises(PropertyError):
+        fee_tiers.validate_tiers([
+            {"threshold": Decimal("-100"), "rate": Decimal("0.05")},
+            {"threshold": None, "rate": Decimal("0.04")},
+        ])
+
+
+def test_validate_tiers_rechaza_threshold_cero():
+    with pytest.raises(PropertyError):
+        fee_tiers.validate_tiers([
+            {"threshold": Decimal("0"), "rate": Decimal("0.05")},
+            {"threshold": None, "rate": Decimal("0.04")},
+        ])
+
+
+# ── compute_fees ──────────────────────────────────────────────────────────
 
 def test_land_and_construction_fees_use_model_defaults_when_uncaptured():
     out = fees.compute_fees(_row(), basis=Decimal("1500000"))
@@ -37,8 +155,8 @@ def test_los_dos_escenarios_se_calculan_siempre_sin_importar_exit_strategy():
     # No hace falta elegir un camino para ver su número: los dos se calculan
     # en cuanto hay con qué, exit_strategy capturado o no.
     out = fees.compute_fees(_row(exit_strategy=None), basis=Decimal("1500000"))
-    assert out["exitFeeVenta"] == Decimal("100000")   # 5% of 2,000,000 projected_sale
-    assert out["exitFeeRenta"] == Decimal("45000")    # 15,000 * 3
+    assert out["exitFeeVenta"] == Decimal("100000")   # 5% (default) of 2,000,000 projected_sale
+    assert out["exitFeeRenta"] == Decimal("750")      # 5% (default) of 15,000 (un mes)
     assert out["missingInputsVenta"] == []
     assert out["missingInputsRenta"] == []
 
@@ -57,20 +175,20 @@ def test_venta_usa_sale_price_una_vez_vendida():
     assert out["exitFeeVenta"] == Decimal("110000")   # 5% of 2,200,000 sale_price, not projected_sale
 
 
-def test_renta_usa_rent_monthly_projected_por_los_meses_configurados():
+def test_renta_usa_rent_monthly_projected_por_la_tasa_del_default():
     out = fees.compute_fees(_row(), basis=Decimal("1500000"))
-    assert out["exitFeeRenta"] == Decimal("45000")    # 15,000 * 3
+    assert out["exitFeeRenta"] == Decimal("750")    # 5% of 15,000 (un mes de renta)
 
 
 def test_renta_usa_rent_monthly_actual_una_vez_rentada():
     out = fees.compute_fees(_row(rent_monthly_actual=Decimal("18000")), basis=Decimal("1500000"))
-    assert out["exitFeeRenta"] == Decimal("54000")    # 18,000 * 3, not projected
+    assert out["exitFeeRenta"] == Decimal("900")    # 5% of 18,000, not projected
 
 
 def test_total_fees_y_total_investment_with_fees_suman_las_tres_por_escenario():
     out = fees.compute_fees(_row(), basis=Decimal("1500000"))
     assert out["totalFeesVenta"] == Decimal("50000") + Decimal("75000") + Decimal("100000")
-    assert out["totalFeesRenta"] == Decimal("50000") + Decimal("75000") + Decimal("45000")
+    assert out["totalFeesRenta"] == Decimal("50000") + Decimal("75000") + Decimal("750")
     assert out["totalInvestmentWithFeesVenta"] == Decimal("1500000") + out["totalFeesVenta"]
     assert out["totalInvestmentWithFeesRenta"] == Decimal("1500000") + out["totalFeesRenta"]
 
@@ -91,7 +209,7 @@ def test_venta_sin_projected_sale_ni_sale_price_nombra_el_faltante_solo_del_lado
     assert out["totalInvestmentWithFeesVenta"] is None
     assert "salePrice" in out["missingInputsVenta"]
     # El lado de renta no se contagia: sigue calculándose con lo que sí tiene.
-    assert out["exitFeeRenta"] == Decimal("45000")
+    assert out["exitFeeRenta"] == Decimal("750")
     assert out["missingInputsRenta"] == []
 
 
@@ -122,6 +240,17 @@ def test_sin_ningun_dato_de_salida_faltan_los_dos_escenarios_por_separado():
     assert out["constructionFee"] == Decimal("75000")
 
 
+def test_sin_saleFeeTiers_ni_rentFeeTiers_en_la_fila_se_comporta_como_lista_vacia():
+    # Filas reales de hoy no traen estas keys todavía (las llena una tarea
+    # posterior) — compute_fees debe seguir funcionando igual que con [] explícito.
+    row = _row()
+    del row["saleFeeTiers"]
+    del row["rentFeeTiers"]
+    out = fees.compute_fees(row, basis=Decimal("1500000"))
+    assert out["exitFeeVenta"] == Decimal("100000")
+    assert out["exitFeeRenta"] == Decimal("750")
+
+
 def test_locked_oracle():
     """Números de mano, congelados — mismo patrón que test_metrics_matches_locked_oracle."""
     row = _row(
@@ -130,11 +259,36 @@ def test_locked_oracle():
         rent_monthly_projected=Decimal("22000"),
         land_commission_pct=Decimal("0.05"),
         construction_commission_pct=Decimal("0.15"),
-        exit_rent_months=Decimal("3"),
     )
     out = fees.compute_fees(row, basis=Decimal("4500000"))
     assert out["landFee"] == Decimal("160000")       # 3,200,000 * 0.05
     assert out["constructionFee"] == Decimal("132000")  # 880,000 * 0.15
-    assert out["exitFeeRenta"] == Decimal("66000")   # 22,000 * 3
-    assert out["totalFeesRenta"] == Decimal("358000")
-    assert out["totalInvestmentWithFeesRenta"] == Decimal("4858000")
+    assert out["exitFeeRenta"] == Decimal("1100")    # 22,000 * 5% (default, un mes)
+    assert out["totalFeesRenta"] == Decimal("293100")
+    assert out["totalInvestmentWithFeesRenta"] == Decimal("4793100")
+
+
+# ── compute_fees con una escalera real configurada ──────────────────────────
+
+def test_compute_fees_con_escalera_de_venta_debajo_del_piso():
+    row = _row(projected_sale=Decimal("5000000"), saleFeeTiers=ESCOBECO_VENTA_TIERS)
+    out = fees.compute_fees(row, basis=Decimal("1500000"))
+    assert out["exitFeeVenta"] == Decimal("250000")  # 5% de 5,000,000 (piso)
+
+
+def test_compute_fees_con_escalera_de_venta_en_el_umbral_inferior_exacto():
+    row = _row(projected_sale=Decimal("5500000"), saleFeeTiers=ESCOBECO_VENTA_TIERS)
+    out = fees.compute_fees(row, basis=Decimal("1500000"))
+    assert out["exitFeeVenta"] == Decimal("330000")  # 6% de 5,500,000
+
+
+def test_compute_fees_con_escalera_de_venta_en_el_umbral_superior_exacto():
+    row = _row(projected_sale=Decimal("6500000"), saleFeeTiers=ESCOBECO_VENTA_TIERS)
+    out = fees.compute_fees(row, basis=Decimal("1500000"))
+    assert out["exitFeeVenta"] == Decimal("455000")  # 7% de 6,500,000
+
+
+def test_compute_fees_con_escalera_de_venta_arriba_de_todo():
+    row = _row(projected_sale=Decimal("9000000"), saleFeeTiers=ESCOBECO_VENTA_TIERS)
+    out = fees.compute_fees(row, basis=Decimal("1500000"))
+    assert out["exitFeeVenta"] == Decimal("630000")  # 7% de 9,000,000, no interpola

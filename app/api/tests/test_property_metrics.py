@@ -517,19 +517,20 @@ def test_fee_lines_reach_the_property_payload_regardless_of_exit_strategy(
         client, test_property):
     """test_property trae el desglose completo (compra 1,000,000, obra
     presupuestada 2,340,000, base 3,480,000), una venta proyectada de
-    2,500,000 y una renta proyectada de 18,000/mes, sin comisiones
-    capturadas — así que las cuatro corren con el default del modelo: terreno
-    5%, obra 15%, venta 5%, renta 3 meses. Los dos escenarios de salida
-    llegan siempre, exit_strategy capturado o no."""
+    2,500,000 y una renta proyectada de 18,000/mes, sin comisiones ni
+    escalera capturadas — así que las cuatro corren con el default del
+    modelo: terreno 5%, obra 15%, venta 5%, renta 5% de un mes (escalera
+    vacía → default de fee_tiers.select_tier, ya no exit_rent_months). Los
+    dos escenarios de salida llegan siempre, exit_strategy capturado o no."""
     p = _get(client, test_property["id"])
     assert Decimal(str(p["landFee"])) == Decimal("50000")            # 5% de 1,000,000
     assert Decimal(str(p["constructionFee"])) == Decimal("351000")   # 15% de 2,340,000
     assert Decimal(str(p["exitFeeVenta"])) == Decimal("125000")      # 5% de 2,500,000 proyectada
-    assert Decimal(str(p["exitFeeRenta"])) == Decimal("54000")       # 18,000 * 3 meses
+    assert Decimal(str(p["exitFeeRenta"])) == Decimal("900")         # 5% de 18,000 (un mes)
     assert Decimal(str(p["totalFeesVenta"])) == Decimal("526000")
-    assert Decimal(str(p["totalFeesRenta"])) == Decimal("455000")
+    assert Decimal(str(p["totalFeesRenta"])) == Decimal("401900")
     assert Decimal(str(p["totalInvestmentWithFeesVenta"])) == Decimal("4006000")
-    assert Decimal(str(p["totalInvestmentWithFeesRenta"])) == Decimal("3935000")
+    assert Decimal(str(p["totalInvestmentWithFeesRenta"])) == Decimal("3881900")
     assert p["feesMissingInputsVenta"] == []
     assert p["feesMissingInputsRenta"] == []
 
