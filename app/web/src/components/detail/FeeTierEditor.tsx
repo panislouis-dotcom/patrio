@@ -66,7 +66,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
 
   const [hasLadder, setHasLadder] = useState(stored.length > 0)
   const [nonFloor, setNonFloor] = useState<DraftTier[]>(
-    stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold ?? undefined, rate: t.rate })),
+    stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold, rate: t.rate })),
   )
   const [error, setError] = useState<string | null>(null)
 
@@ -92,7 +92,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   // escrituras concurrentes reales.
   useEffect(() => {
     setHasLadder(stored.length > 0)
-    setNonFloor(stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold ?? undefined, rate: t.rate })))
+    setNonFloor(stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold, rate: t.rate })))
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storedKey])

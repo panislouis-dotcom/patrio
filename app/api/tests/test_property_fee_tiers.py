@@ -175,7 +175,7 @@ def test_replace_fee_tiers_invalido_no_deja_a_medias_la_escalera_vieja(client, t
     assert len(p["saleFeeTiers"]) == 2
 
 
-def test_replace_fee_tiers_sin_piso_no_vacia_persiste_y_hace_round_trip(client, test_property):
+def test_replace_fee_tiers_no_vacia_persiste_y_hace_round_trip(client, test_property):
     """Una escalera con tramos de umbral pero sin piso ya no es inválida —
     replace_fee_tiers debe aceptarla y devolverla intacta en el round-trip."""
     pid = test_property["id"]
@@ -185,7 +185,7 @@ def test_replace_fee_tiers_sin_piso_no_vacia_persiste_y_hace_round_trip(client, 
     assert properties_db.get_property(pid)["saleFeeTiers"] == sin_piso
 
 
-def test_get_property_con_escalera_sin_piso_debajo_del_umbral_trae_fee_cero(client, test_property):
+def test_get_property_con_escalera_debajo_de_todos_los_umbrales_trae_fee_cero(client, test_property):
     """Si el valor proyectado no alcanza el único umbral y no hay piso, la
     comisión calculada debe ser 0 — no el default del modelo."""
     pid = test_property["id"]

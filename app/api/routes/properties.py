@@ -163,7 +163,7 @@ class ImageReorderRequest(BaseModel):
 
 
 class FeeTierBody(BaseModel):
-    threshold: Optional[float] = None
+    threshold: float
     rate: float
 
 
