@@ -15,13 +15,12 @@ from api.lib.prospectus_html import build_prospectus_html
 from api.properties_db import get_property
 
 # Misma escalera de ejemplo del feature — Salón Escobedo, venta ≥$6.5M→7%,
-# ≥$5.5M→6%, si no→5%. A propósito NO en orden ascendente: `_fee_tier_lines`
-# debe ordenar por su cuenta, no confiar en el orden que mandó el cliente.
+# ≥$5.5M→6%. A propósito NO en orden ascendente: `_fee_tier_lines` debe
+# ordenar por su cuenta, no confiar en el orden que mandó el cliente.
 # Copiado en vez de importado de test_property_fee_tiers.py — este suite no
 # comparte fixtures entre archivos de prueba, solo vía conftest.py.
 _ESCOBECO_VENTA = [
     {"threshold": Decimal("6500000"), "rate": Decimal("0.07")},
-    {"threshold": None, "rate": Decimal("0.05")},
     {"threshold": Decimal("5500000"), "rate": Decimal("0.06")},
 ]
 
@@ -497,41 +496,38 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
 
 
 def test_the_opportunity_card_prints_the_sale_fee_ladder(client, test_property):
-    """Con una escalera de venta configurada (Salón Escobedo:
-    ≥$6.5M→7%, ≥$5.5M→6%, si no→5%), la sub-línea de la comisión de salida ·
-    venta describe la escalera guardada, no el `exitSaleCommissionPct` plano
-    ni un default inventado. `test_property` proyecta una venta de 2,500,000
-    — bajo el piso de $5.5M — así que la tasa que de hecho aplica es la del
-    piso, 5%, igual que el caso sin tramos; lo que este test prueba es la
-    ETIQUETA, no el monto."""
+    """Con una escalera de venta configurada (Salón Escobedo: ≥$6.5M→7%,
+    ≥$5.5M→6%), la sub-línea de la comisión de salida · venta describe la
+    escalera guardada, no el `exitSaleCommissionPct` plano ni un default
+    inventado. `test_property` proyecta una venta de 2,500,000 — por debajo
+    de TODOS los umbrales, y ya no hay tramo piso que la rescate — así que la
+    comisión que de hecho aplica es $0, y la etiqueta no debe traer ningún
+    segmento "si no→"."""
     pid = test_property["id"]
     properties_db.replace_fee_tiers(pid, "venta", _ESCOBECO_VENTA)
     p = get_property(pid)
     html = build_prospectus_html([], [], [], [p])
-    # 2,500,000 x 5% (piso de la escalera, el mismo 5% que el default —
-    # el monto no cambia, la etiqueta sí).
     assert _metric(
-        '$125K <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0% · si no→5.0%</small>',
+        '$0 <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0%</small>',
         "Comisión de salida · venta",
     ) in html
 
 
 def test_the_opportunity_card_prints_the_rent_fee_ladder(client, test_property):
     """Espejo del test anterior para el lado de renta: una escalera propia
-    (≥$15K→6%, si no→3%) reemplaza la sub-línea plana. `test_property`
-    proyecta 18,000 de renta mensual — por encima del único umbral — así que
-    aquí sí aplica un tramo real, no el piso: la comisión deja de ser la del
-    default (5% · 900) y pasa a ser la del tramo (6% · 1,080)."""
+    (≥$15K→6%) reemplaza la sub-línea plana. `test_property` proyecta 18,000
+    de renta mensual — por encima del único umbral — así que aquí sí aplica
+    un tramo real: la comisión deja de ser la del default (5% · 900) y pasa a
+    ser la del tramo (6% · 1,080)."""
     pid = test_property["id"]
     properties_db.replace_fee_tiers(pid, "renta", [
         {"threshold": Decimal("15000"), "rate": Decimal("0.06")},
-        {"threshold": None, "rate": Decimal("0.03")},
     ])
     p = get_property(pid)
     html = build_prospectus_html([], [], [], [p])
     # 18,000 x 6% (tramo ≥15,000, el que de hecho aplica) = 1,080.
     assert _metric(
-        '$1K <small class="tiers">≥$15K→6.0% · si no→3.0%</small>',
+        '$1K <small class="tiers">≥$15K→6.0%</small>',
         "Comisión de salida · renta",
     ) in html
 

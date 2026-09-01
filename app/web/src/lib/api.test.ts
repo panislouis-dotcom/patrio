@@ -57,12 +57,12 @@ describe('replaceFeeTiers', () => {
     const fetchMock = stubFetch([])
     await replaceFeeTiers(1, 'venta', [
       { threshold: 6_500_000, rate: 0.07 },
-      { threshold: null, rate: 0.05 },
+      { threshold: 5_500_000, rate: 0.06 },
     ])
 
     expect(fetchMock.mock.calls[0][0]).toContain('/api/properties/1/fee-tiers/venta')
     expect(bodyOf(fetchMock)).toEqual({
-      tiers: [{ threshold: 6_500_000, rate: 0.07 }, { threshold: null, rate: 0.05 }],
+      tiers: [{ threshold: 6_500_000, rate: 0.07 }, { threshold: 5_500_000, rate: 0.06 }],
     })
   })
 })

@@ -717,8 +717,11 @@ def _fee_tiers_by_property(conn, ids: list[int]) -> dict[int, dict[str, list]]:
     exactamente una consulta sin importar cuántas propiedades traigan.
 
     `ORDER BY property_id, threshold NULLS LAST` entrega cada escalera ya en
-    el orden que el contrato promete: ascendente por threshold, con el tramo
-    piso (`threshold IS NULL`) al final — no hace falta reordenar en Python."""
+    el orden que el contrato promete: ascendente por threshold. La cláusula
+    `NULLS LAST` es dead capacity inofensiva desde que se quitó el tramo piso
+    por completo: ya no existe un `threshold IS NULL` que persistir, así que
+    nunca hay nada que ordenar al final — se deja tal cual porque sigue siendo
+    correcta, solo que ya no tiene nada que hacer."""
     if not ids:
         return {}
     placeholders = ",".join(["%s"] * len(ids))
@@ -1138,11 +1141,11 @@ def replace_fee_tiers(property_id: int, kind: str, tiers: list[dict]) -> list[di
     aquí hasta el CONJUNTO de filas cambia, no solo su posición.
 
     `validate_tiers` corre primero, fuera de cualquier transacción: es una
-    validación de forma (thresholds únicos y ascendentes, no negativos,
-    a lo más un piso, tasas en [0, 1]) que no necesita tocar la base, y
-    dejarla propagar su PropertyError antes de abrir la transacción evita un
-    DELETE que después habría que revertir por un error que ya se veía venir
-    sin consultar nada.
+    validación de forma (thresholds únicos y positivos, tasas en [0, 1], sin
+    tramo piso — ya no se admite ninguno, ni siquiera uno solo) que no
+    necesita tocar la base, y dejarla propagar su PropertyError antes de abrir
+    la transacción evita un DELETE que después habría que revertir por un
+    error que ya se veía venir sin consultar nada.
 
     DELETE + INSERT viven en el `with get_db()` de abajo, que get_db() ya
     envuelve en una única transacción (commit al salir, rollback en
@@ -1159,12 +1162,13 @@ def replace_fee_tiers(property_id: int, kind: str, tiers: list[dict]) -> list[di
     simultáneas reales.
 
     `sort_order` se asigna por posición tras ordenar `tiers` ascendente por
-    threshold, con el piso (threshold=None) al final — el mismo contrato de
-    lectura que `_fee_tiers_by_property` espera (`ORDER BY threshold NULLS
-    LAST`), así que sort_order y el orden de lectura coinciden por
-    construcción, no por casualidad. El threshold se pasa por `to_decimal()`
-    antes de comparar — mismo criterio que `fee_tiers.select_tier()` — para
-    no comparar un float contra un Decimal si el payload trae tipos mixtos.
+    threshold — el mismo contrato de lectura que `_fee_tiers_by_property`
+    espera (`ORDER BY threshold NULLS LAST`, hoy sin nada que mandar al final
+    porque `validate_tiers` ya garantiza que no hay tramo piso), así que
+    sort_order y el orden de lectura coinciden por construcción, no por
+    casualidad. El threshold se pasa por `to_decimal()` antes de comparar —
+    mismo criterio que `fee_tiers.select_tier()` — para no comparar un float
+    contra un Decimal si el payload trae tipos mixtos.
 
     `_readable_rejection()` es la red de seguridad, no la validación: para
     que dispare hace falta una violación de restricción que `validate_tiers`
@@ -1178,10 +1182,7 @@ def replace_fee_tiers(property_id: int, kind: str, tiers: list[dict]) -> list[di
         )
     fee_tiers.validate_tiers(tiers)
 
-    ordered = sorted(
-        tiers,
-        key=lambda t: (t.get("threshold") is None, to_decimal(t.get("threshold"))),
-    )
+    ordered = sorted(tiers, key=lambda t: to_decimal(t["threshold"]))
 
     with get_db() as conn:
         _require_row(conn, property_id)
@@ -1195,7 +1196,7 @@ def replace_fee_tiers(property_id: int, kind: str, tiers: list[dict]) -> list[di
                     "INSERT INTO property_fee_tiers"
                     " (property_id, kind, threshold, rate, sort_order)"
                     " VALUES (%s, %s, %s, %s, %s)",
-                    (property_id, kind, tier.get("threshold"), tier["rate"], index),
+                    (property_id, kind, tier["threshold"], tier["rate"], index),
                 )
         rows = conn.execute(
             "SELECT threshold, rate FROM property_fee_tiers"

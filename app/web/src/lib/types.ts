@@ -125,11 +125,11 @@ export type AssumptionField = typeof ASSUMPTION_FIELDS[number]
 
 export type Assumptions = Record<AssumptionField, Assumption>
 
-// Un tramo de la escalera de comisión de salida (finance/fee_tiers.py):
-// `threshold: null` es el tramo piso ("si no", el que aplica cuando ningún
-// otro alcanza); los demás tramos dicen desde qué monto aplica su `rate`.
+// Un tramo de la escalera de comisión de salida (finance/fee_tiers.py): dice
+// desde qué monto aplica su `rate`. No existe tramo piso ("si no") — si el
+// valor no alcanza ningún umbral, la tasa es 0% automáticamente.
 export interface FeeTier {
-  threshold: number | null
+  threshold: number
   rate: number   // fracción, ej. 0.07 = 7%
 }
 
@@ -230,9 +230,9 @@ export interface Property {
   feesMissingInputsVenta: string[]
   feesMissingInputsRenta: string[]
   // La escalera que reemplaza el % plano de comisión de salida (migración 053):
-  // cada tramo dice desde qué monto aplica su tasa; `threshold: null` es el
-  // tramo piso, el que aplica cuando ninguno de los otros alcanza ("si no").
-  // Siempre presentes — arreglo vacío cuando la propiedad no tiene tramos
+  // cada tramo dice desde qué monto aplica su tasa. Sin tramo piso — si el
+  // valor no alcanza ningún umbral, la tasa es 0%. Siempre presentes —
+  // arreglo vacío cuando la propiedad no tiene tramos
   // configurados y `exitFeeVenta`/`exitFeeRenta` caen al default del modelo
   // (`ASSUMPTION_DEFAULTS` en underwriting.py). Se leen y escriben aparte de
   // PATCH, por PUT /api/properties/{id}/fee-tiers/{kind} (`replaceFeeTiers`,

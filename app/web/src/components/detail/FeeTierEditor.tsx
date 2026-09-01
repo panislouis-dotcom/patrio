@@ -50,19 +50,14 @@ const smallBtn: React.CSSProperties = {
  * "agregué un tramo" ni "borré un tramo".
  *
  * **Cada campo comita solo, al soltarlo** (`onBlur`), igual que
- * `BudgetPanel.commit`. Un tramo se manda ENTERO (el arreglo completo, piso
- * incluido) porque `replaceFeeTiers` es un reemplazo atómico, no un CRUD por
- * renglón — no hay "PATCH del tramo 2". Borrar un renglón es distinto: ya es
- * una decisión completa al hacer clic, así que comita de inmediato
- * (`editNow`, mismo patrón que `BudgetPanel`), sin esperar un blur que nunca
- * llega en un botón.
+ * `BudgetPanel.commit`. Un tramo se manda ENTERO (el arreglo completo) porque
+ * `replaceFeeTiers` es un reemplazo atómico, no un CRUD por renglón — no hay
+ * "PATCH del tramo 2". Borrar un renglón es distinto: ya es una decisión
+ * completa al hacer clic, así que comita de inmediato (`editNow`, mismo
+ * patrón que `BudgetPanel`), sin esperar un blur que nunca llega en un botón.
  *
- * El tramo piso (`threshold: null`, "si no") es opcional — el servidor acepta
- * una escalera con solo tramos de umbral, y en ese caso un valor que no
- * alcanza ninguno paga 0%. "+ agregar tramo" desde vacío sigue sembrando el
- * renglón de umbral Y el renglón "si no" juntos, por estabilidad de layout
- * (evita que el formulario salte de alto cuando aparece la escalera), pero
- * dejar la caja del piso vacía es válido: simplemente no se manda ese tramo.
+ * No hay tramo piso ("si no") — el servidor lo rechaza de plano. Si el valor
+ * no alcanza ningún umbral, la tasa que aplica es 0% automáticamente.
  */
 export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   const stored = kind === 'venta' ? property.saleFeeTiers : property.rentFeeTiers
@@ -71,9 +66,8 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
 
   const [hasLadder, setHasLadder] = useState(stored.length > 0)
   const [nonFloor, setNonFloor] = useState<DraftTier[]>(
-    stored.filter(t => t.threshold !== null).map(t => ({ id: crypto.randomUUID(), threshold: t.threshold ?? undefined, rate: t.rate })),
+    stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold ?? undefined, rate: t.rate })),
   )
-  const [floorRate, setFloorRate] = useState<number | undefined>(stored.find(t => t.threshold === null)?.rate)
   const [error, setError] = useState<string | null>(null)
 
   // Re-sincroniza el borrador cuando la escalera GUARDADA cambia de verdad —no
@@ -98,32 +92,24 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   // escrituras concurrentes reales.
   useEffect(() => {
     setHasLadder(stored.length > 0)
-    setNonFloor(stored.filter(t => t.threshold !== null).map(t => ({ id: crypto.randomUUID(), threshold: t.threshold ?? undefined, rate: t.rate })))
-    setFloorRate(stored.find(t => t.threshold === null)?.rate)
+    setNonFloor(stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold ?? undefined, rate: t.rate })))
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storedKey])
 
-  function tiersOf(nf: DraftTier[], fr: number | undefined, ladder: boolean): FeeTier[] {
+  function tiersOf(nf: DraftTier[], ladder: boolean): FeeTier[] {
     if (!ladder) return []
-    const floor: FeeTier[] = fr != null ? [{ threshold: null, rate: fr }] : []
-    return [...nf.map(t => ({ threshold: t.threshold ?? NaN, rate: t.rate ?? NaN })), ...floor]
+    return nf.map(t => ({ threshold: t.threshold ?? NaN, rate: t.rate ?? NaN }))
   }
 
   /** Mismo espejo que `validate_tiers` (fee_tiers.py): tasa en [0,1], umbrales
-   * positivos y únicos, y a lo más un piso. No exige orden ascendente — el
-   * servidor reordena. */
+   * positivos y únicos. No exige orden ascendente — el servidor reordena. */
   function validate(tiers: FeeTier[]): string | null {
     if (tiers.length === 0) return null
-    let floorCount = 0
     const seen = new Set<number>()
     for (const t of tiers) {
       if (!Number.isFinite(t.rate) || t.rate < 0 || t.rate > 1) {
         return 'Cada tramo necesita una tasa entre 0% y 100%.'
-      }
-      if (t.threshold === null) {
-        floorCount++
-        continue
       }
       if (!Number.isFinite(t.threshold) || t.threshold <= 0) {
         return 'El umbral de cada tramo debe ser mayor a $0.'
@@ -132,9 +118,6 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
         return `Los umbrales deben ser únicos (se repite ${t.threshold.toLocaleString('en-US')}).`
       }
       seen.add(t.threshold)
-    }
-    if (floorCount > 1) {
-      return 'La escalera no puede tener más de un tramo piso ("si no").'
     }
     return null
   }
@@ -157,7 +140,6 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
     if (!hasLadder) {
       setHasLadder(true)
       setNonFloor([{ id: crypto.randomUUID(), threshold: undefined, rate: undefined }])
-      setFloorRate(undefined)
       return
     }
     setNonFloor(prev => [...prev, { id: crypto.randomUUID(), threshold: undefined, rate: undefined }])
@@ -166,13 +148,12 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   function deleteTier(idx: number) {
     const nf = nonFloor.filter((_, i) => i !== idx)
     setNonFloor(nf)
-    void commit(tiersOf(nf, floorRate, hasLadder))
+    void commit(tiersOf(nf, hasLadder))
   }
 
   function clearAll() {
     setHasLadder(false)
     setNonFloor([])
-    setFloorRate(undefined)
     setError(null)
     void commit([])
   }
@@ -209,7 +190,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
               <NumericInput
                 value={tier.threshold}
                 onChange={n => updateNonFloor(idx, { threshold: n })}
-                onBlur={() => commit(tiersOf(nonFloor, floorRate, hasLadder))}
+                onBlur={() => commit(tiersOf(nonFloor, hasLadder))}
                 ariaLabel={`Umbral tramo ${idx + 1} — ${label}`}
                 style={{ ...fieldInput, width: '110px' }}
               />
@@ -217,7 +198,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
               <NumericInput
                 value={tier.rate != null ? tier.rate * 100 : undefined}
                 onChange={n => updateNonFloor(idx, { rate: n != null ? n / 100 : undefined })}
-                onBlur={() => commit(tiersOf(nonFloor, floorRate, hasLadder))}
+                onBlur={() => commit(tiersOf(nonFloor, hasLadder))}
                 step={0.1}
                 ariaLabel={`Tasa tramo ${idx + 1} — ${label}`}
                 style={{ ...fieldInput, width: '70px' }}
@@ -228,21 +209,6 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
 
           <div>
             <button onClick={addTier} style={smallBtn}>+ agregar tramo</button>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0, width: '110px' }}>SI NO</span>
-            <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>TASA %</span>
-            <NumericInput
-              value={floorRate != null ? floorRate * 100 : undefined}
-              onChange={n => setFloorRate(n != null ? n / 100 : undefined)}
-              onBlur={() => commit(tiersOf(nonFloor, floorRate, hasLadder))}
-              step={0.1}
-              placeholder="0"
-              ariaLabel={`Tasa piso ("si no") — ${label}`}
-              style={{ ...fieldInput, width: '70px' }}
-            />
-            <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>(opcional — 0% si se deja vacío)</span>
           </div>
         </div>
       )}

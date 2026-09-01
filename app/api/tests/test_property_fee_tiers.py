@@ -16,11 +16,10 @@ from api.db import get_db
 from api.properties_db import PropertyError, PropertyNotFound
 
 # Misma escalera de ejemplo del feature — Salón Escobedo, venta ≥$6.5M→7%,
-# ≥$5.5M→6%, si no→5%. A propósito NO en orden ascendente: replace_fee_tiers
-# debe ordenar por su cuenta, no confiar en el orden que mandó el cliente.
+# ≥$5.5M→6%. A propósito NO en orden ascendente: replace_fee_tiers debe
+# ordenar por su cuenta, no confiar en el orden que mandó el cliente.
 ESCOBECO_VENTA = [
     {"threshold": Decimal("6500000"), "rate": Decimal("0.07")},
-    {"threshold": None, "rate": Decimal("0.05")},
     {"threshold": Decimal("5500000"), "rate": Decimal("0.06")},
 ]
 
@@ -42,8 +41,7 @@ def test_get_properties_trae_saleFeeTiers_y_rentFeeTiers_en_cada_fila(client, te
     assert target["rentFeeTiers"] == []
 
 
-def test_tramos_sembrados_a_mano_salen_ordenados_ascendente_con_el_piso_al_final(
-        client, test_property):
+def test_tramos_sembrados_a_mano_salen_ordenados_ascendente(client, test_property):
     """Filas insertadas directamente (no vía replace_fee_tiers) en un orden que
     no es el de lectura — el batched fetch debe ordenar por threshold, no
     confiar en sort_order de captura."""
@@ -51,17 +49,12 @@ def test_tramos_sembrados_a_mano_salen_ordenados_ascendente_con_el_piso_al_final
     with get_db() as conn:
         conn.execute(
             "INSERT INTO property_fee_tiers (property_id, kind, threshold, rate, sort_order)"
-            " VALUES (%s, 'venta', NULL, %s, 0)",
-            (pid, Decimal("0.05")),
-        )
-        conn.execute(
-            "INSERT INTO property_fee_tiers (property_id, kind, threshold, rate, sort_order)"
-            " VALUES (%s, 'venta', %s, %s, 1)",
+            " VALUES (%s, 'venta', %s, %s, 0)",
             (pid, Decimal("6500000"), Decimal("0.07")),
         )
         conn.execute(
             "INSERT INTO property_fee_tiers (property_id, kind, threshold, rate, sort_order)"
-            " VALUES (%s, 'venta', %s, %s, 2)",
+            " VALUES (%s, 'venta', %s, %s, 1)",
             (pid, Decimal("5500000"), Decimal("0.06")),
         )
 
@@ -69,7 +62,6 @@ def test_tramos_sembrados_a_mano_salen_ordenados_ascendente_con_el_piso_al_final
     assert p["saleFeeTiers"] == [
         {"threshold": Decimal("5500000"), "rate": Decimal("0.06")},
         {"threshold": Decimal("6500000"), "rate": Decimal("0.07")},
-        {"threshold": None, "rate": Decimal("0.05")},
     ]
     assert p["rentFeeTiers"] == []  # kind='renta' no tiene filas: sigue vacío
 
@@ -89,13 +81,12 @@ def test_escalera_de_venta_configurada_mueve_exitFeeVenta_en_el_payload(client, 
 
 # ── replace_fee_tiers() ──────────────────────────────────────────────────────
 
-def test_replace_fee_tiers_persiste_ordenado_con_el_piso_al_final(client, test_property):
+def test_replace_fee_tiers_persiste_ordenado_ascendente(client, test_property):
     pid = test_property["id"]
     stored = properties_db.replace_fee_tiers(pid, "venta", ESCOBECO_VENTA)
     expected = [
         {"threshold": Decimal("5500000"), "rate": Decimal("0.06")},
         {"threshold": Decimal("6500000"), "rate": Decimal("0.07")},
-        {"threshold": None, "rate": Decimal("0.05")},
     ]
     assert stored == expected
     assert properties_db.get_property(pid)["saleFeeTiers"] == expected
@@ -108,8 +99,8 @@ def test_replace_fee_tiers_segunda_llamada_reemplaza_entera_la_primera(client, t
     properties_db.replace_fee_tiers(pid, "venta", ESCOBECO_VENTA)
 
     segunda = [
+        {"threshold": Decimal("2000000"), "rate": Decimal("0.02")},
         {"threshold": Decimal("4000000"), "rate": Decimal("0.03")},
-        {"threshold": None, "rate": Decimal("0.02")},
     ]
     stored = properties_db.replace_fee_tiers(pid, "venta", segunda)
     assert stored == segunda
@@ -124,25 +115,25 @@ def test_replace_fee_tiers_segunda_llamada_reemplaza_entera_la_primera(client, t
             "SELECT COUNT(*) AS n FROM property_fee_tiers WHERE property_id = %s AND kind = 'venta'",
             (pid,),
         ).fetchone()["n"]
-    assert count == 2  # nada de la primera escalera (3 tramos) sobrevive
+    assert count == 2  # nada de la primera escalera (2 tramos) sobrevive
 
 
 def test_replace_fee_tiers_venta_y_renta_son_lados_independientes(client, test_property):
     pid = test_property["id"]
     properties_db.replace_fee_tiers(pid, "venta", ESCOBECO_VENTA)
     properties_db.replace_fee_tiers(
-        pid, "renta", [{"threshold": None, "rate": Decimal("0.08")}])
+        pid, "renta", [{"threshold": Decimal("15000"), "rate": Decimal("0.08")}])
 
     p = properties_db.get_property(pid)
-    assert len(p["saleFeeTiers"]) == 3
-    assert p["rentFeeTiers"] == [{"threshold": None, "rate": Decimal("0.08")}]
+    assert len(p["saleFeeTiers"]) == 2
+    assert p["rentFeeTiers"] == [{"threshold": Decimal("15000"), "rate": Decimal("0.08")}]
 
     # Reemplazar el lado de venta no toca el de renta.
     properties_db.replace_fee_tiers(
-        pid, "venta", [{"threshold": None, "rate": Decimal("0.04")}])
+        pid, "venta", [{"threshold": Decimal("1000000"), "rate": Decimal("0.04")}])
     p = properties_db.get_property(pid)
-    assert p["saleFeeTiers"] == [{"threshold": None, "rate": Decimal("0.04")}]
-    assert p["rentFeeTiers"] == [{"threshold": None, "rate": Decimal("0.08")}]
+    assert p["saleFeeTiers"] == [{"threshold": Decimal("1000000"), "rate": Decimal("0.04")}]
+    assert p["rentFeeTiers"] == [{"threshold": Decimal("15000"), "rate": Decimal("0.08")}]
 
 
 def test_replace_fee_tiers_lista_vacia_borra_la_escalera_existente(client, test_property):
@@ -162,16 +153,13 @@ def test_replace_fee_tiers_input_invalido_delega_a_validate_tiers(client, test_p
     PropertyError hasta esta capa."""
     pid = test_property["id"]
     with pytest.raises(PropertyError):
-        # dos tramos piso
+        # un solo tramo piso ya basta para rechazar
         properties_db.replace_fee_tiers(
-            pid, "venta", [
-                {"threshold": None, "rate": Decimal("0.05")},
-                {"threshold": None, "rate": Decimal("0.06")},
-            ])
+            pid, "venta", [{"threshold": None, "rate": Decimal("0.05")}])
     with pytest.raises(PropertyError):
         # rate fuera de rango
         properties_db.replace_fee_tiers(
-            pid, "venta", [{"threshold": None, "rate": Decimal("1.5")}])
+            pid, "venta", [{"threshold": Decimal("6500000"), "rate": Decimal("1.5")}])
 
 
 def test_replace_fee_tiers_invalido_no_deja_a_medias_la_escalera_vieja(client, test_property):
@@ -180,14 +168,11 @@ def test_replace_fee_tiers_invalido_no_deja_a_medias_la_escalera_vieja(client, t
     pid = test_property["id"]
     properties_db.replace_fee_tiers(pid, "venta", ESCOBECO_VENTA)
     with pytest.raises(PropertyError):
-        # dos tramos piso
+        # un solo tramo piso ya basta para rechazar
         properties_db.replace_fee_tiers(
-            pid, "venta", [
-                {"threshold": None, "rate": Decimal("0.05")},
-                {"threshold": None, "rate": Decimal("0.06")},
-            ])
+            pid, "venta", [{"threshold": None, "rate": Decimal("0.05")}])
     p = properties_db.get_property(pid)
-    assert len(p["saleFeeTiers"]) == 3
+    assert len(p["saleFeeTiers"]) == 2
 
 
 def test_replace_fee_tiers_sin_piso_no_vacia_persiste_y_hace_round_trip(client, test_property):
@@ -215,10 +200,10 @@ def test_get_property_con_escalera_sin_piso_debajo_del_umbral_trae_fee_cero(clie
 def test_replace_fee_tiers_propiedad_inexistente_es_not_found():
     with pytest.raises(PropertyNotFound):
         properties_db.replace_fee_tiers(
-            999_999_999, "venta", [{"threshold": None, "rate": Decimal("0.05")}])
+            999_999_999, "venta", [{"threshold": Decimal("6500000"), "rate": Decimal("0.05")}])
 
 
 def test_replace_fee_tiers_kind_invalido_es_rechazado(client, test_property):
     with pytest.raises(PropertyError):
         properties_db.replace_fee_tiers(
-            test_property["id"], "alquiler", [{"threshold": None, "rate": Decimal("0.05")}])
+            test_property["id"], "alquiler", [{"threshold": Decimal("6500000"), "rate": Decimal("0.05")}])

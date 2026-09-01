@@ -1,12 +1,12 @@
 """Escalera de comisión de salida — reemplaza el % plano de `exit_sale_commission_pct`/
 `exit_rent_months` por tramos que dependen de cuánto se vendió o rentó realmente.
 
-Una escalera es una lista de tramos `{"threshold": Decimal | None, "rate": Decimal}`,
-ordenada o no — este módulo no asume orden, encuentra el tramo correcto por comparación
-directa. A lo más un tramo puede tener `threshold=None`: es el piso, el que aplica
-cuando el valor alcanzado no llega a ningún umbral. El piso es opcional — si la escalera
-no trae uno y el valor no alcanza ningún umbral, la tasa que aplica es 0%, no el default
-del modelo (ese default es exclusivo de una lista completamente vacía, ver `select_tier`).
+Una escalera es una lista de tramos `{"threshold": Decimal, "rate": Decimal}`, ordenada
+o no — este módulo no asume orden, encuentra el tramo correcto por comparación directa.
+No existe un tramo piso ("si no"): si el valor alcanzado no llega a ningún umbral, la
+tasa que aplica es 0%, sin excepción — "obviamente si no se alcanza ningún umbral no se
+gana esa comisión", como lo puso el dueño del producto al pedir que se quitara el piso
+por completo (antes era opcional, ahora ni siquiera es una opción configurable).
 
 Evaluación tipo escalón, no marginal: se busca el tramo con el threshold más alto que el
 valor satisface (`threshold <= value`, ≥ inclusivo — confirmado por el usuario, "arriba de
@@ -33,12 +33,10 @@ def select_tier(tiers: list[dict], value: Decimal, default: Decimal) -> Decimal:
     (venta o renta) contra el que se evalúa el tramo.
 
     Tramo ganador: el de threshold más alto tal que `threshold <= value`. Si ninguno
-    aplica (value por debajo de todos los umbrales), gana el tramo piso
-    (`threshold is None`) si la escalera trae uno. El piso es opcional: una escalera
-    con tramos de umbral pero sin piso simplemente no cubre los valores por debajo de
-    su umbral más bajo, y en ese caso la tasa que aplica es 0% — no `default`, que
-    queda reservado exclusivamente para una lista `tiers` completamente vacía (ver
-    abajo). Se asume que `tiers` ya pasó por `validate_tiers` — no se revalida aquí.
+    aplica (value por debajo de todos los umbrales), la tasa es 0% — no hay tramo piso
+    que rescate ese caso, ni siquiera opcionalmente. `default` queda reservado
+    exclusivamente para una lista `tiers` completamente vacía (ver abajo). Se asume
+    que `tiers` ya pasó por `validate_tiers` — no se revalida aquí.
 
     Lista vacía → no hay escalera configurada para esta propiedad: se usa `default`
     tal cual lo resolvió quien llama (típicamente
@@ -49,25 +47,18 @@ def select_tier(tiers: list[dict], value: Decimal, default: Decimal) -> Decimal:
         return to_decimal(default)
 
     target = to_decimal(value)
-    floor_rate: Decimal | None = None
     best_threshold: Decimal | None = None
     best_rate: Decimal | None = None
 
     for tier in tiers:
-        threshold = tier["threshold"]
+        threshold = to_decimal(tier["threshold"])
         rate = to_decimal(tier["rate"])
-        if threshold is None:
-            floor_rate = rate
-            continue
-        threshold = to_decimal(threshold)
         if threshold <= target and (best_threshold is None or threshold > best_threshold):
             best_threshold = threshold
             best_rate = rate
 
     if best_rate is not None:
         return best_rate
-    if floor_rate is not None:
-        return floor_rate
     return to_decimal("0")
 
 
@@ -76,6 +67,8 @@ def validate_tiers(tiers: list[dict]) -> None:
     Lista vacía es válida — significa "sin escalera, usar el default". Lanza
     `PropertyError` (mismo patrón que el resto de rechazos de dominio en
     properties_db.py) con mensaje en español apuntando a la regla que falló.
+    Un tramo con `threshold=None` (el antiguo tramo piso, "si no") se rechaza de
+    inmediato — ya no existe como concepto configurable, ni siquiera opcional.
 
     Import de PropertyError diferido a dentro de la función, a propósito: a nivel de
     módulo crearía un ciclo real con properties_db.py, que importa `api.finance.fees`
@@ -88,7 +81,6 @@ def validate_tiers(tiers: list[dict]) -> None:
     if not tiers:
         return
 
-    floor_count = 0
     thresholds_seen: set[Decimal] = set()
 
     for tier in tiers:
@@ -103,8 +95,10 @@ def validate_tiers(tiers: list[dict]) -> None:
 
         threshold = tier.get("threshold")
         if threshold is None:
-            floor_count += 1
-            continue
+            raise PropertyError(
+                "Ya no se admite un tramo piso ('si no'): un valor que no alcanza"
+                " ningún umbral gana 0% automáticamente."
+            )
 
         threshold_dec = to_decimal(threshold)
         if threshold_dec <= 0:
@@ -116,8 +110,3 @@ def validate_tiers(tiers: list[dict]) -> None:
                 f"Los umbrales de la escalera deben ser únicos (se repite {threshold_dec})."
             )
         thresholds_seen.add(threshold_dec)
-
-    if floor_count > 1:
-        raise PropertyError(
-            "La escalera no puede tener más de un tramo piso (threshold vacío)."
-        )

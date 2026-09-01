@@ -201,24 +201,21 @@ def test_opportunity_fees_metrics_shows_the_exit_fee_venta_and_renta_as_their_ow
 
 def test_opportunity_fees_metrics_shows_the_configured_fee_tier_ladder():
     """Con `saleFeeTiers`/`rentFeeTiers` configurados, la sub-línea describe
-    la escalera guardada — techo primero, piso al final — en vez del
-    fallback de default."""
+    la escalera guardada — techo primero — en vez del fallback de default."""
     p = {**BASE_PROPERTY,
          "exitFeeVenta": 195_000,
          "saleFeeTiers": [{"threshold": 6_500_000, "rate": 0.07},
-                           {"threshold": None, "rate": 0.05},
                            {"threshold": 5_500_000, "rate": 0.06}],
          "exitFeeRenta": 144_000,
-         "rentFeeTiers": [{"threshold": 15_000, "rate": 0.06},
-                           {"threshold": None, "rate": 0.03}]}
+         "rentFeeTiers": [{"threshold": 15_000, "rate": 0.06}]}
     html = _opportunity_fees_metrics(p)
-    assert '$195K <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0% · si no→5.0%</small>' in html
-    assert '$144K <small class="tiers">≥$15K→6.0% · si no→3.0%</small>' in html
+    assert '$195K <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0%</small>' in html
+    assert '$144K <small class="tiers">≥$15K→6.0%</small>' in html
 
 
 def test_opportunity_fees_metrics_ladder_without_floor_has_no_si_no_segment():
-    """El piso es opcional — una escalera con solo tramos de umbral no debe
-    imprimir un segmento "si no→" que no existe."""
+    """No existe tramo piso — una escalera con solo tramos de umbral (el único
+    caso posible) no debe imprimir un segmento "si no→"."""
     p = {**BASE_PROPERTY,
          "exitFeeVenta": 0,
          "saleFeeTiers": [{"threshold": 6_500_000, "rate": 0.07}]}

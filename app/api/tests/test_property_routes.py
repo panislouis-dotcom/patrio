@@ -344,7 +344,6 @@ def test_reorder_on_a_missing_property_is_404(client):
 _ESCOBEDO_VENTA = {"tiers": [
     {"threshold": 6_500_000, "rate": 0.07},
     {"threshold": 5_500_000, "rate": 0.06},
-    {"threshold": None, "rate": 0.05},
 ]}
 
 
@@ -355,53 +354,58 @@ def test_put_fee_tiers_venta_returns_the_stored_ladder(client, test_property):
     assert r.json() == [
         {"threshold": 5_500_000, "rate": 0.06},
         {"threshold": 6_500_000, "rate": 0.07},
-        {"threshold": None, "rate": 0.05},
     ]
 
     after = client.get(f"/api/properties/{pid}").json()
     assert after["saleFeeTiers"] == [
         {"threshold": 5_500_000, "rate": 0.06},
         {"threshold": 6_500_000, "rate": 0.07},
-        {"threshold": None, "rate": 0.05},
     ]
     assert after["rentFeeTiers"] == []
 
 
 def test_put_fee_tiers_renta_returns_the_stored_ladder(client, test_property):
     pid = test_property["id"]
-    body = {"tiers": [{"threshold": None, "rate": 0.08}]}
+    body = {"tiers": [{"threshold": 15_000, "rate": 0.08}]}
     r = client.put(f"/api/properties/{pid}/fee-tiers/renta", json=body)
     assert r.status_code == 200, r.text
-    assert r.json() == [{"threshold": None, "rate": 0.08}]
+    assert r.json() == [{"threshold": 15_000, "rate": 0.08}]
 
     after = client.get(f"/api/properties/{pid}").json()
-    assert after["rentFeeTiers"] == [{"threshold": None, "rate": 0.08}]
+    assert after["rentFeeTiers"] == [{"threshold": 15_000, "rate": 0.08}]
     assert after["saleFeeTiers"] == []
 
 
 def test_put_fee_tiers_invalid_kind_is_422(client, test_property):
     r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/foo",
-                    json={"tiers": [{"threshold": None, "rate": 0.05}]})
+                    json={"tiers": [{"threshold": 100, "rate": 0.05}]})
     assert r.status_code == 422
 
 
 def test_put_fee_tiers_missing_floor_tier_is_allowed(client, test_property):
-    """The floor tier is optional now: a threshold-only ladder with no floor is
-    valid, and validate_tiers no longer rejects it — the PUT should succeed
-    and echo back exactly what was submitted."""
+    """There is no floor tier concept at all — a threshold-only ladder is the
+    only valid shape, and validate_tiers accepts it as-is."""
     r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/venta",
                     json={"tiers": [{"threshold": 100, "rate": 0.05}]})
     assert r.status_code == 200
     assert r.json() == [{"threshold": 100, "rate": 0.05}]
 
 
+def test_put_fee_tiers_floor_tier_is_rejected(client, test_property):
+    """The floor tier ('si no', threshold: null) used to be optional — it is
+    now rejected outright, even as a single tier."""
+    r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/venta",
+                    json={"tiers": [{"threshold": None, "rate": 0.05}]})
+    assert r.status_code == 422
+
+
 def test_put_fee_tiers_rate_out_of_range_is_422(client, test_property):
     r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/venta",
-                    json={"tiers": [{"threshold": None, "rate": 1.5}]})
+                    json={"tiers": [{"threshold": 100, "rate": 1.5}]})
     assert r.status_code == 422
 
 
 def test_put_fee_tiers_on_a_missing_property_is_404(client):
     r = client.put("/api/properties/999999999/fee-tiers/venta",
-                    json={"tiers": [{"threshold": None, "rate": 0.05}]})
+                    json={"tiers": [{"threshold": 100, "rate": 0.05}]})
     assert r.status_code == 404

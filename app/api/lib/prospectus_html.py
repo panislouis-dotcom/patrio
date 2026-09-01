@@ -256,7 +256,7 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
 .opp .metrics-6 .metric .v { font-size: 13pt; }
 /* .tiers (la escalera de comisión, `_fee_tier_lines()`) es la única
    anotación de esta rejilla que no tiene un techo de longitud fijo — de un
-   tramo a cuatro, "si no→5.0%" a "≥$6.5M→7.0% · ≥$5.5M→6.0% · si no→5.0%" —
+   tramo a cuatro, "≥$6.5M→7.0%" a "≥$6.5M→7.0% · ≥$5.5M→6.0% · ≥$4.5M→5.0%" —
    así que NO puede compartir el nowrap de `.metric .v small` de más arriba:
    ese nowrap existe para que una anotación CORTA ("3 meses", "5.0%") brinque
    entera a su propia línea sin partirse a la mitad, pero forzarlo aquí solo
@@ -531,11 +531,11 @@ def _fee_tier_lines(tiers: list[dict], default_rate: Decimal) -> str:
     particular queda flatamente mal desde que la renta pasó de "N meses de
     renta" a "un mes de renta × tasa del tramo".
 
-    Con tramos: el techo primero, el piso (`threshold is None`), si lo hay,
-    siempre al final — mismo orden en el que ya persiste `replace_fee_tiers()`
-    (properties_db.py), así que el sort aquí es cosmético para el caso común
-    y solo hace falta de verdad si algún día un caller pasa la lista sin
-    pasar por ese endpoint.
+    Con tramos: el techo primero — mismo orden en el que ya persiste
+    `replace_fee_tiers()` (properties_db.py), así que el sort aquí es
+    cosmético para el caso común y solo hace falta de verdad si algún día un
+    caller pasa la lista sin pasar por ese endpoint. No hay tramo piso que
+    tratar aparte: ya no existe como concepto.
 
     Sin tramos: no hay escalera que describir, así que no se inventa una —
     se nombra el único número real en juego, el default del modelo
@@ -546,12 +546,8 @@ def _fee_tier_lines(tiers: list[dict], default_rate: Decimal) -> str:
     lado)."""
     if not tiers:
         return f"sin tramos · {_fmt_pct(default_rate)} por omisión"
-    ordered = sorted(tiers, key=lambda t: (t["threshold"] is None, -(t["threshold"] or 0)))
-    parts = [
-        f"si no→{_fmt_pct(t['rate'])}" if t["threshold"] is None
-        else f"≥{_fmt_mxn_compact(t['threshold'])}→{_fmt_pct(t['rate'])}"
-        for t in ordered
-    ]
+    ordered = sorted(tiers, key=lambda t: -t["threshold"])
+    parts = [f"≥{_fmt_mxn_compact(t['threshold'])}→{_fmt_pct(t['rate'])}" for t in ordered]
     return " · ".join(parts)
 
 
