@@ -69,13 +69,18 @@ def test_select_tier_justo_debajo_de_un_umbral_cae_al_tramo_anterior():
     assert fee_tiers.select_tier(ESCOBECO_VENTA_TIERS, Decimal("5499999.99"), _SENTINEL_DEFAULT) == Decimal("0.05")
 
 
-def test_select_tier_lista_no_vacia_sin_piso_truena_por_precondicion():
-    # No es el trabajo de select_tier revalidar (eso es validate_tiers), pero si
-    # de algún modo llega una lista sin piso, el assert defensivo debe fallar
-    # claro en vez de dejar pasar un None que reviente varios frames después.
+def test_select_tier_sin_piso_valor_debajo_del_umbral_es_cero():
+    # El piso es opcional. Si la escalera no trae uno y el valor no alcanza
+    # ningún umbral, la tasa es 0% — no el `default` que pasa quien llama, ese
+    # queda reservado exclusivamente para una lista completamente vacía.
     sin_piso = [{"threshold": Decimal("5000000"), "rate": Decimal("0.05")}]
-    with pytest.raises(AssertionError):
-        fee_tiers.select_tier(sin_piso, Decimal("1000"), _SENTINEL_DEFAULT)
+    assert fee_tiers.select_tier(sin_piso, Decimal("1000"), _SENTINEL_DEFAULT) == Decimal("0")
+
+
+def test_select_tier_sin_piso_valor_en_el_umbral_usa_la_tasa_del_tramo():
+    sin_piso = [{"threshold": Decimal("5000000"), "rate": Decimal("0.05")}]
+    assert fee_tiers.select_tier(sin_piso, Decimal("5000000"), _SENTINEL_DEFAULT) == Decimal("0.05")
+    assert fee_tiers.select_tier(sin_piso, Decimal("8000000"), _SENTINEL_DEFAULT) == Decimal("0.05")
 
 
 # ── validate_tiers ────────────────────────────────────────────────────────
@@ -100,9 +105,8 @@ def test_validate_tiers_acepta_rate_en_los_bordes():
     fee_tiers.validate_tiers([{"threshold": None, "rate": Decimal("1")}])
 
 
-def test_validate_tiers_rechaza_lista_sin_tramo_piso():
-    with pytest.raises(PropertyError):
-        fee_tiers.validate_tiers([{"threshold": Decimal("5000000"), "rate": Decimal("0.05")}])
+def test_validate_tiers_acepta_lista_sin_tramo_piso():
+    fee_tiers.validate_tiers([{"threshold": Decimal("5000000"), "rate": Decimal("0.05")}])  # no debe lanzar
 
 
 def test_validate_tiers_rechaza_dos_tramos_piso():
@@ -280,6 +284,13 @@ def test_compute_fees_con_escalera_de_venta_en_el_umbral_inferior_exacto():
     row = _row(projected_sale=Decimal("5500000"), sale_fee_tiers=ESCOBECO_VENTA_TIERS)
     out = fees.compute_fees(row, basis=Decimal("1500000"))
     assert out["exitFeeVenta"] == Decimal("330000")  # 6% de 5,500,000
+
+
+def test_compute_fees_con_escalera_sin_piso_debajo_del_unico_umbral_es_cero():
+    sin_piso = [{"threshold": Decimal("6500000"), "rate": Decimal("0.07")}]
+    row = _row(projected_sale=Decimal("5000000"), sale_fee_tiers=sin_piso)
+    out = fees.compute_fees(row, basis=Decimal("1500000"))
+    assert out["exitFeeVenta"] == Decimal("0")
 
 
 def test_compute_fees_con_escalera_de_venta_en_el_umbral_superior_exacto():

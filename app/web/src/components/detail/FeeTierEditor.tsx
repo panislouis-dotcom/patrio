@@ -57,9 +57,12 @@ const smallBtn: React.CSSProperties = {
  * (`editNow`, mismo patrón que `BudgetPanel`), sin esperar un blur que nunca
  * llega en un botón.
  *
- * El servidor rechaza una lista no vacía sin exactamente un tramo piso
- * (`threshold: null`, "si no") — por eso "+ agregar tramo" desde vacío siembra
- * los dos renglones juntos: nadie puede llegar a ese rechazo por omisión.
+ * El tramo piso (`threshold: null`, "si no") es opcional — el servidor acepta
+ * una escalera con solo tramos de umbral, y en ese caso un valor que no
+ * alcanza ninguno paga 0%. "+ agregar tramo" desde vacío sigue sembrando el
+ * renglón de umbral Y el renglón "si no" juntos, por estabilidad de layout
+ * (evita que el formulario salte de alto cuando aparece la escalera), pero
+ * dejar la caja del piso vacía es válido: simplemente no se manda ese tramo.
  */
 export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   const stored = kind === 'venta' ? property.saleFeeTiers : property.rentFeeTiers
@@ -103,15 +106,13 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
 
   function tiersOf(nf: DraftTier[], fr: number | undefined, ladder: boolean): FeeTier[] {
     if (!ladder) return []
-    return [
-      ...nf.map(t => ({ threshold: t.threshold ?? NaN, rate: t.rate ?? NaN })),
-      { threshold: null, rate: fr ?? NaN },
-    ]
+    const floor: FeeTier[] = fr != null ? [{ threshold: null, rate: fr }] : []
+    return [...nf.map(t => ({ threshold: t.threshold ?? NaN, rate: t.rate ?? NaN })), ...floor]
   }
 
   /** Mismo espejo que `validate_tiers` (fee_tiers.py): tasa en [0,1], umbrales
-   * positivos y únicos, y exactamente un piso cuando la lista no está vacía.
-   * No exige orden ascendente — el servidor reordena. */
+   * positivos y únicos, y a lo más un piso. No exige orden ascendente — el
+   * servidor reordena. */
   function validate(tiers: FeeTier[]): string | null {
     if (tiers.length === 0) return null
     let floorCount = 0
@@ -132,8 +133,8 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
       }
       seen.add(t.threshold)
     }
-    if (floorCount !== 1) {
-      return 'La escalera necesita exactamente un tramo piso ("si no").'
+    if (floorCount > 1) {
+      return 'La escalera no puede tener más de un tramo piso ("si no").'
     }
     return null
   }
@@ -237,9 +238,11 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
               onChange={n => setFloorRate(n != null ? n / 100 : undefined)}
               onBlur={() => commit(tiersOf(nonFloor, floorRate, hasLadder))}
               step={0.1}
+              placeholder="0"
               ariaLabel={`Tasa piso ("si no") — ${label}`}
               style={{ ...fieldInput, width: '70px' }}
             />
+            <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>(opcional — 0% si se deja vacío)</span>
           </div>
         </div>
       )}

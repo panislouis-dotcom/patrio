@@ -3,9 +3,10 @@
 
 Una escalera es una lista de tramos `{"threshold": Decimal | None, "rate": Decimal}`,
 ordenada o no — este módulo no asume orden, encuentra el tramo correcto por comparación
-directa. Exactamente un tramo puede tener `threshold=None`: es el piso, el que aplica
-cuando el valor alcanzado no llega a ningún umbral. Sin él la escalera no cubre todos los
-valores posibles, por eso `validate_tiers` lo exige en cuanto la lista no está vacía.
+directa. A lo más un tramo puede tener `threshold=None`: es el piso, el que aplica
+cuando el valor alcanzado no llega a ningún umbral. El piso es opcional — si la escalera
+no trae uno y el valor no alcanza ningún umbral, la tasa que aplica es 0%, no el default
+del modelo (ese default es exclusivo de una lista completamente vacía, ver `select_tier`).
 
 Evaluación tipo escalón, no marginal: se busca el tramo con el threshold más alto que el
 valor satisface (`threshold <= value`, ≥ inclusivo — confirmado por el usuario, "arriba de
@@ -33,8 +34,11 @@ def select_tier(tiers: list[dict], value: Decimal, default: Decimal) -> Decimal:
 
     Tramo ganador: el de threshold más alto tal que `threshold <= value`. Si ninguno
     aplica (value por debajo de todos los umbrales), gana el tramo piso
-    (`threshold is None`). Se asume que `tiers` ya pasó por `validate_tiers` — no se
-    revalida aquí, así que si la lista no está vacía debe traer un piso.
+    (`threshold is None`) si la escalera trae uno. El piso es opcional: una escalera
+    con tramos de umbral pero sin piso simplemente no cubre los valores por debajo de
+    su umbral más bajo, y en ese caso la tasa que aplica es 0% — no `default`, que
+    queda reservado exclusivamente para una lista `tiers` completamente vacía (ver
+    abajo). Se asume que `tiers` ya pasó por `validate_tiers` — no se revalida aquí.
 
     Lista vacía → no hay escalera configurada para esta propiedad: se usa `default`
     tal cual lo resolvió quien llama (típicamente
@@ -62,13 +66,9 @@ def select_tier(tiers: list[dict], value: Decimal, default: Decimal) -> Decimal:
 
     if best_rate is not None:
         return best_rate
-    # Precondición: una lista no vacía siempre trae un piso — validate_tiers lo exige
-    # antes de persistir. Si esto truena es que algo se saltó esa validación (datos
-    # sembrados a mano, un fixture de prueba incompleto): mejor un AssertionError
-    # claro aquí que un TypeError confuso varios frames más abajo al multiplicar
-    # `None * value`.
-    assert floor_rate is not None, "tiers sin tramo piso — ¿se saltó validate_tiers?"
-    return floor_rate
+    if floor_rate is not None:
+        return floor_rate
+    return to_decimal("0")
 
 
 def validate_tiers(tiers: list[dict]) -> None:
@@ -117,11 +117,6 @@ def validate_tiers(tiers: list[dict]) -> None:
             )
         thresholds_seen.add(threshold_dec)
 
-    if floor_count == 0:
-        raise PropertyError(
-            "La escalera necesita exactamente un tramo piso (threshold vacío) para "
-            "cubrir los valores que no alcanzan ningún umbral."
-        )
     if floor_count > 1:
         raise PropertyError(
             "La escalera no puede tener más de un tramo piso (threshold vacío)."

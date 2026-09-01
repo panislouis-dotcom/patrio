@@ -216,6 +216,17 @@ def test_opportunity_fees_metrics_shows_the_configured_fee_tier_ladder():
     assert '$144K <small class="tiers">≥$15K→6.0% · si no→3.0%</small>' in html
 
 
+def test_opportunity_fees_metrics_ladder_without_floor_has_no_si_no_segment():
+    """El piso es opcional — una escalera con solo tramos de umbral no debe
+    imprimir un segmento "si no→" que no existe."""
+    p = {**BASE_PROPERTY,
+         "exitFeeVenta": 0,
+         "saleFeeTiers": [{"threshold": 6_500_000, "rate": 0.07}]}
+    html = _opportunity_fees_metrics(p)
+    assert '<small class="tiers">≥$6.5M→7.0%</small>' in html
+    assert "si no" not in html
+
+
 def test_opportunity_fees_metrics_names_the_reason_when_an_exit_fee_is_missing():
     p = {**BASE_PROPERTY,
          "exitFeeVenta": None, "feesMissingInputsVenta": ["salePrice"],

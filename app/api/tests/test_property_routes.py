@@ -385,13 +385,14 @@ def test_put_fee_tiers_invalid_kind_is_422(client, test_property):
     assert r.status_code == 422
 
 
-def test_put_fee_tiers_missing_floor_tier_is_422(client, test_property):
-    """No floor tier: validate_tiers rejects it, and properties_db surfaces it
-    as a PropertyError — main.py's _property_rejected handler turns that into
-    a 422, same status as every other domain rejection on this router."""
+def test_put_fee_tiers_missing_floor_tier_is_allowed(client, test_property):
+    """The floor tier is optional now: a threshold-only ladder with no floor is
+    valid, and validate_tiers no longer rejects it — the PUT should succeed
+    and echo back exactly what was submitted."""
     r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/venta",
                     json={"tiers": [{"threshold": 100, "rate": 0.05}]})
-    assert r.status_code == 422
+    assert r.status_code == 200
+    assert r.json() == [{"threshold": 100, "rate": 0.05}]
 
 
 def test_put_fee_tiers_rate_out_of_range_is_422(client, test_property):

@@ -1139,7 +1139,7 @@ def replace_fee_tiers(property_id: int, kind: str, tiers: list[dict]) -> list[di
 
     `validate_tiers` corre primero, fuera de cualquier transacción: es una
     validación de forma (thresholds únicos y ascendentes, no negativos,
-    exactamente un piso, tasas en [0, 1]) que no necesita tocar la base, y
+    a lo más un piso, tasas en [0, 1]) que no necesita tocar la base, y
     dejarla propagar su PropertyError antes de abrir la transacción evita un
     DELETE que después habría que revertir por un error que ya se veía venir
     sin consultar nada.

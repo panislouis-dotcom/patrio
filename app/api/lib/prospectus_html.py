@@ -531,8 +531,8 @@ def _fee_tier_lines(tiers: list[dict], default_rate: Decimal) -> str:
     particular queda flatamente mal desde que la renta pasó de "N meses de
     renta" a "un mes de renta × tasa del tramo".
 
-    Con tramos: el techo primero, el piso (`threshold is None`) siempre al
-    final — mismo orden en el que ya persiste `replace_fee_tiers()`
+    Con tramos: el techo primero, el piso (`threshold is None`), si lo hay,
+    siempre al final — mismo orden en el que ya persiste `replace_fee_tiers()`
     (properties_db.py), así que el sort aquí es cosmético para el caso común
     y solo hace falta de verdad si algún día un caller pasa la lista sin
     pasar por ese endpoint.

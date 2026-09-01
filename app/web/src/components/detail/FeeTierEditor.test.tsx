@@ -37,7 +37,7 @@ describe('FeeTierEditor — estado vacío', () => {
 })
 
 describe('FeeTierEditor — agregar y comitir', () => {
-  it('agregar tramo siembra el renglón Y el piso obligatorio, sin llamar al API todavía', () => {
+  it('agregar tramo siembra el renglón Y el renglón del piso, sin llamar al API todavía', () => {
     render(<FeeTierEditor property={property()} kind="venta" onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('+ agregar tramo'))
 
@@ -59,14 +59,19 @@ describe('FeeTierEditor — agregar y comitir', () => {
     const umbral = screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`)
     fireEvent.change(umbral, { target: { value: '5000000' } })
     fireEvent.blur(umbral)
-    // Falta la tasa del tramo y la del piso: ninguna escritura todavía.
+    // Falta la tasa del tramo: sin ella el tramo es inválido (rate no finito),
+    // así que ninguna escritura todavía — el piso, en cambio, ya no bloquea
+    // nada por estar vacío.
     expect(api.replaceFeeTiers).not.toHaveBeenCalled()
 
     const tasa = screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`)
     fireEvent.change(tasa, { target: { value: '6' } })
     fireEvent.blur(tasa)
-    // Falta el piso: sigue sin escribir.
-    expect(api.replaceFeeTiers).not.toHaveBeenCalled()
+    // El piso sigue vacío, pero eso ya es válido (piso opcional): este blur
+    // SÍ comita, solo que sin el tramo piso todavía.
+    await waitFor(() => expect(api.replaceFeeTiers).toHaveBeenCalledWith(
+      7, 'venta', [{ threshold: 5_000_000, rate: 0.06 }],
+    ))
 
     const piso = screen.getByLabelText(`Tasa piso ("si no") — ${LABEL}`)
     fireEvent.change(piso, { target: { value: '5' } })
@@ -78,6 +83,32 @@ describe('FeeTierEditor — agregar y comitir', () => {
     // El PUT solo trae la lista de tramos — hace falta el refetch para las
     // cifras en pesos que dependen de la escalera.
     await waitFor(() => expect(api.fetchProperty).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(onPropertyChange).toHaveBeenCalledWith(refreshed))
+  })
+
+  it('al completar solo umbral y tasa, sin tocar el piso, el blur de la tasa comita sin el tramo piso', async () => {
+    const onPropertyChange = vi.fn()
+    const refreshed = property({ saleFeeTiers: [{ threshold: 5_000_000, rate: 0.06 }] })
+    vi.mocked(api.replaceFeeTiers).mockResolvedValue([{ threshold: 5_000_000, rate: 0.06 }])
+    vi.mocked(api.fetchProperty).mockResolvedValue(refreshed)
+
+    render(<FeeTierEditor property={property()} kind="venta" onPropertyChange={onPropertyChange} />)
+    fireEvent.click(screen.getByText('+ agregar tramo'))
+
+    const umbral = screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`)
+    fireEvent.change(umbral, { target: { value: '5000000' } })
+    fireEvent.blur(umbral)
+
+    const tasa = screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`)
+    fireEvent.change(tasa, { target: { value: '6' } })
+    fireEvent.blur(tasa)
+    // El piso nunca se tocó — se comita sin él, no como {threshold: null, ...}.
+
+    await waitFor(() => expect(api.replaceFeeTiers).toHaveBeenCalledWith(
+      7, 'venta', [{ threshold: 5_000_000, rate: 0.06 }],
+    ))
+    const [, , sentTiers] = vi.mocked(api.replaceFeeTiers).mock.calls[0]
+    expect(sentTiers.some(t => t.threshold === null)).toBe(false)
     await waitFor(() => expect(onPropertyChange).toHaveBeenCalledWith(refreshed))
   })
 })

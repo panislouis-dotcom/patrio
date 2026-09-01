@@ -162,9 +162,12 @@ def test_replace_fee_tiers_input_invalido_delega_a_validate_tiers(client, test_p
     PropertyError hasta esta capa."""
     pid = test_property["id"]
     with pytest.raises(PropertyError):
-        # sin tramo piso
+        # dos tramos piso
         properties_db.replace_fee_tiers(
-            pid, "venta", [{"threshold": Decimal("100"), "rate": Decimal("0.05")}])
+            pid, "venta", [
+                {"threshold": None, "rate": Decimal("0.05")},
+                {"threshold": None, "rate": Decimal("0.06")},
+            ])
     with pytest.raises(PropertyError):
         # rate fuera de rango
         properties_db.replace_fee_tiers(
@@ -177,10 +180,36 @@ def test_replace_fee_tiers_invalido_no_deja_a_medias_la_escalera_vieja(client, t
     pid = test_property["id"]
     properties_db.replace_fee_tiers(pid, "venta", ESCOBECO_VENTA)
     with pytest.raises(PropertyError):
+        # dos tramos piso
         properties_db.replace_fee_tiers(
-            pid, "venta", [{"threshold": Decimal("100"), "rate": Decimal("0.05")}])
+            pid, "venta", [
+                {"threshold": None, "rate": Decimal("0.05")},
+                {"threshold": None, "rate": Decimal("0.06")},
+            ])
     p = properties_db.get_property(pid)
     assert len(p["saleFeeTiers"]) == 3
+
+
+def test_replace_fee_tiers_sin_piso_no_vacia_persiste_y_hace_round_trip(client, test_property):
+    """Una escalera con tramos de umbral pero sin piso ya no es inválida —
+    replace_fee_tiers debe aceptarla y devolverla intacta en el round-trip."""
+    pid = test_property["id"]
+    sin_piso = [{"threshold": Decimal("6500000"), "rate": Decimal("0.07")}]
+    stored = properties_db.replace_fee_tiers(pid, "venta", sin_piso)
+    assert stored == sin_piso
+    assert properties_db.get_property(pid)["saleFeeTiers"] == sin_piso
+
+
+def test_get_property_con_escalera_sin_piso_debajo_del_umbral_trae_fee_cero(client, test_property):
+    """Si el valor proyectado no alcanza el único umbral y no hay piso, la
+    comisión calculada debe ser 0 — no el default del modelo."""
+    pid = test_property["id"]
+    client.patch(f"/api/properties/{pid}", json={"projectedSale": 1_000_000})
+    properties_db.replace_fee_tiers(
+        pid, "venta", [{"threshold": Decimal("6500000"), "rate": Decimal("0.07")}])
+
+    p = properties_db.get_property(pid)
+    assert Decimal(str(p["exitFeeVenta"])) == Decimal("0")
 
 
 def test_replace_fee_tiers_propiedad_inexistente_es_not_found():
