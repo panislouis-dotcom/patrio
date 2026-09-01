@@ -58,6 +58,12 @@ const smallBtn: React.CSSProperties = {
  *
  * No hay tramo piso ("si no") — el servidor lo rechaza de plano. Si el valor
  * no alcanza ningún umbral, la tasa que aplica es 0% automáticamente.
+ *
+ * **Un renglón a medio llenar no intenta guardar ni muestra error** — ver el
+ * corte al principio de `commit`. Como cada campo comita en SU PROPIO blur,
+ * tabular de DESDE $ a TASA % en un renglón nuevo dispara el blur de DESDE
+ * con la tasa todavía vacía; sin este corte eso mostraba el error de
+ * `validate` antes de que el usuario alcanzara a escribir la tasa.
  */
 export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   const stored = kind === 'venta' ? property.saleFeeTiers : property.rentFeeTiers
@@ -123,6 +129,18 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   }
 
   async function commit(tiers: FeeTier[]) {
+    // Un tramo a medio llenar (se sopló el umbral, todavía no la tasa —o al
+    // revés) no es un error todavía, es trabajo en progreso: `tiersOf` ya lo
+    // convirtió en NaN (`?? NaN`), así que basta con detectarlo aquí y salir
+    // en silencio, sin mandar ni el PUT ni el mensaje rojo de `validate`. Sin
+    // este corte, tabular de DESDE $ a TASA % en un renglón recién agregado
+    // disparaba el blur de DESDE con la tasa todavía vacía, y el usuario veía
+    // "cada tramo necesita una tasa..." antes de haber tenido oportunidad de
+    // escribirla — se leía como si guardar estuviera roto.
+    if (tiers.some(t => Number.isNaN(t.threshold) || Number.isNaN(t.rate))) {
+      setError(null)
+      return
+    }
     const err = validate(tiers)
     if (err) { setError(err); return }
     setError(null)

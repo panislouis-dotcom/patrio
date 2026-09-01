@@ -58,9 +58,13 @@ describe('FeeTierEditor — agregar y comitir', () => {
     const umbral = screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`)
     fireEvent.change(umbral, { target: { value: '5000000' } })
     fireEvent.blur(umbral)
-    // Falta la tasa del tramo: sin ella el tramo es inválido (rate no
-    // finito), así que ninguna escritura todavía.
+    // Falta la tasa del tramo: es trabajo en progreso, no un error todavía —
+    // ni escritura ni mensaje rojo mientras el usuario sigue llenando el
+    // renglón (antes de este corte, tabular de DESDE $ a TASA % mostraba
+    // "cada tramo necesita una tasa..." antes de que hubiera oportunidad de
+    // escribirla).
     expect(api.replaceFeeTiers).not.toHaveBeenCalled()
+    expect(screen.queryByText(/tasa entre 0% y 100%/i)).toBeNull()
 
     const tasa = screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`)
     fireEvent.change(tasa, { target: { value: '6' } })
