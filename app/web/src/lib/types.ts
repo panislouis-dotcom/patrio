@@ -228,8 +228,11 @@ export interface Property {
   // vacía (conocido de entrada, sin esperar precio/renta). Null solo cuando
   // SÍ hay tramos configurados pero todavía no hay valor contra qué elegir
   // uno — mismo caso que deja exitFeeVenta/Renta en null.
+  // exitFeeVentaRate es una FRACCIÓN de precio de venta (0-1). exitFeeRentaMonths
+  // es un NÚMERO DE RENTAS (meses de renta, típicamente 2-4) — unidades
+  // distintas, de ahí el nombre distinto en vez de reusar "Rate".
   exitFeeVentaRate: number | null
-  exitFeeRentaRate: number | null
+  exitFeeRentaMonths: number | null
   totalFeesVenta: number | null
   totalFeesRenta: number | null
   totalInvestmentWithFeesVenta: number | null

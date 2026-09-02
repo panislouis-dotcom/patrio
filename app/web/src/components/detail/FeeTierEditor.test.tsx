@@ -179,6 +179,57 @@ describe('FeeTierEditor — validación local', () => {
   })
 })
 
+describe('FeeTierEditor — renta (número de rentas, no un %)', () => {
+  const RENTA_LABEL = 'COMISIÓN RENTA — TRAMOS'
+  const RENTA_SAVE = 'GUARDAR CAMBIOS DE RENTA ▸'
+
+  it('sin tramos, el default se lee "N rentas", no un %', () => {
+    render(<FeeTierEditor property={property()} kind="renta" defaultRatePct={3} onPropertyChange={vi.fn()} />)
+    expect(screen.getByText('3 rentas')).not.toBeNull()
+    expect(screen.queryByText('300.0%')).toBeNull()
+  })
+
+  it('un tramo guardado enseña RENTAS (no TASA %) y el número crudo, sin ×100', () => {
+    const existing: Property['rentFeeTiers'] = [{ threshold: 15_000, rate: 4 }]
+    render(<FeeTierEditor property={property({ rentFeeTiers: existing })} kind="renta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
+
+    expect(screen.getByText('RENTAS')).not.toBeNull()
+    expect(screen.queryByText('TASA %')).toBeNull()
+    expect(screen.getByText('4')).not.toBeNull()
+    expect(screen.queryByText('400')).toBeNull()
+  })
+
+  it('un número de rentas > 1 se guarda tal cual — el tope de venta no aplica del lado de renta', async () => {
+    const onPropertyChange = vi.fn()
+    const refreshed = property({ rentFeeTiers: [{ threshold: 15_000, rate: 4 }] })
+    vi.mocked(api.replaceFeeTiers).mockResolvedValue([{ threshold: 15_000, rate: 4 }])
+    vi.mocked(api.fetchProperty).mockResolvedValue(refreshed)
+
+    render(<FeeTierEditor property={property()} kind="renta" defaultRatePct={null} onPropertyChange={onPropertyChange} />)
+    fireEvent.click(screen.getByText('+ agregar tramo'))
+    fireEvent.change(screen.getByLabelText(`Umbral tramo 1 — ${RENTA_LABEL}`), { target: { value: '15000' } })
+    fireEvent.change(screen.getByLabelText(`Número de rentas tramo 1 — ${RENTA_LABEL}`), { target: { value: '4' } })
+    fireEvent.click(screen.getByText(RENTA_SAVE))
+
+    await waitFor(() => expect(api.replaceFeeTiers).toHaveBeenCalledWith(
+      7, 'renta', [{ threshold: 15_000, rate: 4 }],
+    ))
+    await waitFor(() => expect(onPropertyChange).toHaveBeenCalledWith(refreshed))
+  })
+
+  it('un número de rentas negativo se rechaza al hacer clic en Guardar, sin llamar al API', () => {
+    const existing: Property['rentFeeTiers'] = [{ threshold: 15_000, rate: 3 }]
+    render(<FeeTierEditor property={property({ rentFeeTiers: existing })} kind="renta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
+    fireEvent.click(screen.getByText('editar tramos'))
+
+    fireEvent.change(screen.getByLabelText(`Número de rentas tramo 1 — ${RENTA_LABEL}`), { target: { value: '-1' } })
+    fireEvent.click(screen.getByText(RENTA_SAVE))
+
+    expect(screen.getByText(/número de rentas mayor o igual a 0/i)).not.toBeNull()
+    expect(api.replaceFeeTiers).not.toHaveBeenCalled()
+  })
+})
+
 describe('FeeTierEditor — rechazo del servidor', () => {
   it('si el servidor rechaza el PUT, su mensaje se muestra, no se llama fetchProperty y se sigue en edición', async () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.05 }]

@@ -437,10 +437,10 @@ def test_a_rented_property_reports_its_mark_with_the_valuation_date(client, desa
     # Solo renta aparece en la sub-línea de comisiones: venta es
     # contrafactual — esta propiedad nunca se vendió, aunque
     # compute_fees() la calcule igual con la venta proyectada
-    # (2,500,000). Renta usa la renta REAL ya cobrada: 5% (default de la
-    # escalera, sin tramos configurados) de 30,000 + terreno/obra
-    # (401,000) = 3,882,500, que redondea a "$3.9M".
-    assert _metric('$3.5M <small>R $3.9M c/comisiones</small>', "Inversión sin comisiones") in html
+    # (2,500,000). Renta usa la renta REAL ya cobrada: 3 rentas (default de
+    # la escalera, sin tramos configurados) de 30,000 = 90,000, + terreno/obra
+    # (401,000) + base (3,480,000) = 3,971,000, que redondea a "$4.0M".
+    assert _metric('$3.5M <small>R $4.0M c/comisiones</small>', "Inversión sin comisiones") in html
     assert "V $" not in html
     assert _metric("$6.0M", "Valuación · ene 2026") in html
     # (6,000,000 - 3,480,000) / 3,480,000
@@ -471,18 +471,21 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _metric('$351K <small>15.0%</small>', "Comisión de obra") in html
     # La comisión de salida no venía desglosada en ningún lado — a diferencia
     # de terreno y obra, aquí sí sale su propio $ por escenario. Venta: precio
-    # proyectado 2,500,000 x 5%. Renta: 18,000 x 5% — ambas al default de la
-    # escalera (`ASSUMPTION_DEFAULTS`, underwriting.py), porque `test_property`
-    # no tiene tramos configurados en ningún lado. `_fee_tier_lines()` nombra
-    # ese default en vez de imprimir `exitSaleCommissionPct`/`exitRentMonths`
-    # (los campos planos que precedieron a la escalera): el segundo en
-    # particular llevaba meses mintiendo — "3 meses" describía una fórmula
-    # que Task 2 ya había reemplazado por "un mes de renta × tasa del tramo".
+    # proyectado 2,500,000 x 5%. Renta: 18,000 x 3 rentas — ambas al default
+    # de la escalera (`ASSUMPTION_DEFAULTS`, underwriting.py), porque
+    # `test_property` no tiene tramos configurados en ningún lado.
+    # `_fee_tier_lines()` nombra ese default en vez de imprimir
+    # `exitSaleCommissionPct`/`exitRentMonths` (los campos planos que
+    # precedieron a la escalera): el segundo en particular llevaba meses
+    # mintiendo — "3 meses" describía una fórmula que Task 2 ya había
+    # reemplazado (y que ahora sí vuelve a ser un número de rentas, esta vez
+    # por tramo, no plano).
     assert _metric('$125K <small class="tiers">sin tramos · 5.0% por omisión</small>', "Comisión de salida · venta") in html
-    assert _metric('$900 <small class="tiers">sin tramos · 5.0% por omisión</small>', "Comisión de salida · renta") in html
+    assert _metric('$54K <small class="tiers">sin tramos · 3 rentas por omisión</small>', "Comisión de salida · renta") in html
     # Y los totales quedan tal cual estaban — cada uno en su propia celda, sin
     # fundirse en una sola: 3,480,000 + 401,000 (terreno+obra) + comisión de
-    # salida de cada escenario.
+    # salida de cada escenario. Renta sube de 3,881,900 a 3,935,000 con el
+    # nuevo default (3 rentas en vez de 5% de un mes) — mismo redondeo a $3.9M.
     assert _metric('$4.0M', "Inversión c/comisiones · venta") in html
     assert _metric('$3.9M', "Inversión c/comisiones · renta") in html
     assert "metric-wide" not in html
@@ -515,19 +518,19 @@ def test_the_opportunity_card_prints_the_sale_fee_ladder(client, test_property):
 
 def test_the_opportunity_card_prints_the_rent_fee_ladder(client, test_property):
     """Espejo del test anterior para el lado de renta: una escalera propia
-    (≥$15K→6%) reemplaza la sub-línea plana. `test_property` proyecta 18,000
-    de renta mensual — por encima del único umbral — así que aquí sí aplica
-    un tramo real: la comisión deja de ser la del default (5% · 900) y pasa a
-    ser la del tramo (6% · 1,080)."""
+    (≥$15K→4 rentas) reemplaza la sub-línea plana. `test_property` proyecta
+    18,000 de renta mensual — por encima del único umbral — así que aquí sí
+    aplica un tramo real: la comisión deja de ser la del default (3 rentas ·
+    54,000) y pasa a ser la del tramo (4 rentas · 72,000)."""
     pid = test_property["id"]
     properties_db.replace_fee_tiers(pid, "renta", [
-        {"threshold": Decimal("15000"), "rate": Decimal("0.06")},
+        {"threshold": Decimal("15000"), "rate": Decimal("4")},
     ])
     p = get_property(pid)
     html = build_prospectus_html([], [], [], [p])
-    # 18,000 x 6% (tramo ≥15,000, el que de hecho aplica) = 1,080.
+    # 18,000 x 4 rentas (tramo ≥15,000, el que de hecho aplica) = 72,000.
     assert _metric(
-        '$1K <small class="tiers">≥$15K→6.0%</small>',
+        '$72K <small class="tiers">≥$15K→4 rentas</small>',
         "Comisión de salida · renta",
     ) in html
 

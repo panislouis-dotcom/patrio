@@ -20,6 +20,18 @@ export function fmtPct(n: number | null | undefined): string {
 }
 
 /**
+ * Un número de rentas guardado (3, 2.5) → «3 rentas», «2.5 rentas». La unidad
+ * de la comisión de renta desde que dejó de ser una fracción de una
+ * mensualidad — ver `_fmt_rentas` en prospectus_html.py, mismo criterio de
+ * recorte de ceros sobrantes.
+ */
+export function fmtRentas(n: number | null | undefined): string {
+  if (n == null) return '—'
+  const trimmed = n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+  return `${trimmed} rentas`
+}
+
+/**
  * Lo mismo, con signo: «+21.0%», «-15.3%».
  *
  * El signo no es decoración ni se pone en todas partes — se pone donde el número

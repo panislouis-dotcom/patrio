@@ -513,7 +513,7 @@ def metrics(row: dict) -> dict:
         "exitFeeVenta": fee_lines["exitFeeVenta"],
         "exitFeeRenta": fee_lines["exitFeeRenta"],
         "exitFeeVentaRate": fee_lines["exitFeeVentaRate"],
-        "exitFeeRentaRate": fee_lines["exitFeeRentaRate"],
+        "exitFeeRentaMonths": fee_lines["exitFeeRentaMonths"],
         "totalFeesVenta": fee_lines["totalFeesVenta"],
         "totalFeesRenta": fee_lines["totalFeesRenta"],
         "totalInvestmentWithFeesVenta": fee_lines["totalInvestmentWithFeesVenta"],
@@ -1143,9 +1143,11 @@ def replace_fee_tiers(property_id: int, kind: str, tiers: list[dict]) -> list[di
     aquí hasta el CONJUNTO de filas cambia, no solo su posición.
 
     `validate_tiers` corre primero, fuera de cualquier transacción: es una
-    validación de forma (thresholds únicos y positivos, tasas en [0, 1], sin
-    tramo piso — ya no se admite ninguno, ni siquiera uno solo) que no
-    necesita tocar la base, y dejarla propagar su PropertyError antes de abrir
+    validación de forma (thresholds únicos y positivos, tasas en [0, 1] del
+    lado de venta / número de rentas no negativo del lado de renta — `kind`
+    decide cuál regla aplica —, sin tramo piso — ya no se admite ninguno, ni
+    siquiera uno solo) que no necesita tocar la base, y dejarla propagar su
+    PropertyError antes de abrir
     la transacción evita un DELETE que después habría que revertir por un
     error que ya se veía venir sin consultar nada.
 
@@ -1182,7 +1184,7 @@ def replace_fee_tiers(property_id: int, kind: str, tiers: list[dict]) -> list[di
         raise PropertyError(
             f"Tipo de escalera inválido: se espera venta o renta (se recibió {kind!r})."
         )
-    fee_tiers.validate_tiers(tiers)
+    fee_tiers.validate_tiers(tiers, kind)
 
     ordered = sorted(tiers, key=lambda t: to_decimal(t["threshold"]))
 

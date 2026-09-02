@@ -83,15 +83,14 @@ const BASE_PROPERTY: Property = {
   totalInvestment: 7_295_000,
   // landFee = 3,000,000 × 5%; constructionFee = 3,900,000 × 15%. Los dos
   // escenarios de salida se calculan siempre que haya con qué — no dependen
-  // de exitStrategy: venta al 5% de 9,000,000 proyectada. exitFeeRenta queda
-  // como cifra fija del fixture (no se deriva aquí de rentMonthlyProjected ×
-  // exitFeeRentaRate) — dato histórico previo a la escalera de tramos.
+  // de exitStrategy: venta al 5% de 9,000,000 proyectada; renta a 3 rentas
+  // (default del modelo) × 30,000 (rentMonthlyProjected) = 90,000.
   landFee: 150_000, constructionFee: 585_000,
   exitFeeVenta: 450_000, exitFeeRenta: 90_000,
   // Sin tramos configurados (saleFeeTiers/rentFeeTiers vacíos, más abajo): la
-  // tasa vigente es el default del modelo, la misma que fees.py aplicaría —
-  // ver exitFeeVentaRate/exitFeeRentaRate en fees.py.
-  exitFeeVentaRate: 0.05, exitFeeRentaRate: 0.05,
+  // tasa/cantidad vigente es el default del modelo, la misma que fees.py
+  // aplicaría — ver exitFeeVentaRate/exitFeeRentaMonths en fees.py.
+  exitFeeVentaRate: 0.05, exitFeeRentaMonths: 3,
   totalFeesVenta: 1_185_000, totalFeesRenta: 825_000,
   totalInvestmentWithFeesVenta: 8_480_000, totalInvestmentWithFeesRenta: 8_120_000,
   feesMissingInputsVenta: [], feesMissingInputsRenta: [],
@@ -431,14 +430,14 @@ describe('PropertyDetailPage', () => {
     expect(within(constructionFeeRow).getByText('$585,000')).not.toBeNull()
     const ventaRow = screen.getByText('COMISIÓN VENTA ($)').closest('div')!
     expect(within(ventaRow).getByText('$450,000')).not.toBeNull()
-    // El hint lleva la tasa que de verdad se aplicó (exitFeeVentaRate/
-    // exitFeeRentaRate de fees.py), no un texto genérico — y ya no dice
-    // "MESES ×" del lado de renta, texto huérfano desde que la escalera de
-    // tramos reemplazó "N meses de renta" por un % de un mes, igual que venta.
+    // El hint lleva la tasa/cantidad que de verdad se aplicó (exitFeeVentaRate/
+    // exitFeeRentaMonths de fees.py), no un texto genérico. Venta sigue siendo
+    // una fracción de precio; renta es un NÚMERO DE RENTAS (2-4 mensualidades,
+    // la convención real del fondo), no un % de una sola mensualidad.
     expect(within(ventaRow).getByText('5.0% SOBRE PRECIO/PROYECCIÓN DE VENTA')).not.toBeNull()
     const rentaRow = screen.getByText('COMISIÓN RENTA ($)').closest('div')!
     expect(within(rentaRow).getByText('$90,000')).not.toBeNull()
-    expect(within(rentaRow).getByText('5.0% SOBRE RENTA MENSUAL')).not.toBeNull()
+    expect(within(rentaRow).getByText('3 RENTAS SOBRE RENTA MENSUAL')).not.toBeNull()
   })
 
   it('ya no hay selector ESTRATEGIA DE SALIDA: la escalera de venta y de renta se ven siempre las dos', async () => {

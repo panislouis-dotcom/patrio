@@ -408,6 +408,14 @@ def _fmt_pct_or_dash(frac, decimals: int = 1) -> str:
     return _fmt_pct(frac, decimals) if frac is not None else "—"
 
 
+def _fmt_rentas(n) -> str:
+    """Un número de rentas (meses de renta) → '3 rentas', '2.5 rentas' — la
+    unidad de la comisión de renta, no una fracción de precio como venta."""
+    v = _num(n)
+    trimmed = f"{v:.2f}".rstrip("0").rstrip(".")
+    return f"{trimmed} rentas"
+
+
 def _fmt_mxn_compact_or_dash(val) -> str:
     """No value means no metric — '—', never a fabricated $0."""
     return _fmt_mxn_compact(val) if val is not None else "—"
@@ -522,14 +530,16 @@ def _fee_scenario_missing(reasons: list[str] | None) -> str:
     return f'— <small>{_esc(text)}</small>' if text else "—"
 
 
-def _fee_tier_lines(tiers: list[dict], default_rate: Decimal) -> str:
+def _fee_tier_lines(tiers: list[dict], default_rate: Decimal, kind: str) -> str:
     """La escalera de comisión guardada, en una sola línea compacta —
     reemplaza al `exitSaleCommissionPct`/`exitRentMonths` planos que
     `_opportunity_fees_metrics()` imprimía antes de la escalera (Task 2):
     ninguno de los dos describe ya cómo se calculó `exitFeeVenta`/
-    `exitFeeRenta` (`compute_fees()`, fees.py), y `exitRentMonths` en
-    particular queda flatamente mal desde que la renta pasó de "N meses de
-    renta" a "un mes de renta × tasa del tramo".
+    `exitFeeRenta` (`compute_fees()`, fees.py).
+
+    `rate` es una unidad distinta según `kind`: en venta, una fracción de
+    precio de venta ('6.0%'); en renta, un número de rentas — meses de renta
+    cobrada/proyectada ('3 rentas'), la magnitud real que cobra el fondo.
 
     Con tramos: el techo primero — mismo orden en el que ya persiste
     `replace_fee_tiers()` (properties_db.py), así que el sort aquí es
@@ -544,10 +554,11 @@ def _fee_tier_lines(tiers: list[dict], default_rate: Decimal) -> str:
     más preciso pero mentiría: esta celda describe la CONFIGURACIÓN
     guardada, no el resultado ya calculado (que vive en su propia celda, al
     lado)."""
+    fmt_rate = _fmt_pct if kind == "venta" else _fmt_rentas
     if not tiers:
-        return f"sin tramos · {_fmt_pct(default_rate)} por omisión"
+        return f"sin tramos · {fmt_rate(default_rate)} por omisión"
     ordered = sorted(tiers, key=lambda t: -t["threshold"])
-    parts = [f"≥{_fmt_mxn_compact(t['threshold'])}→{_fmt_pct(t['rate'])}" for t in ordered]
+    parts = [f"≥{_fmt_mxn_compact(t['threshold'])}→{fmt_rate(t['rate'])}" for t in ordered]
     return " · ".join(parts)
 
 
@@ -578,10 +589,10 @@ def _opportunity_fees_metrics(p: dict) -> str:
     restantes sí pueden faltar, cada una por su cuenta (sin precio de venta
     no hay comisión de venta NI total con comisiones de venta), y entonces
     nombran su propio insumo ausente vía `_fee_scenario_missing()`."""
-    salida_venta = (f'{_fmt_mxn_compact(p["exitFeeVenta"])} <small class="tiers">{_fee_tier_lines(p.get("saleFeeTiers", []), ASSUMPTION_DEFAULTS["exit_sale_commission_pct"])}</small>'
+    salida_venta = (f'{_fmt_mxn_compact(p["exitFeeVenta"])} <small class="tiers">{_fee_tier_lines(p.get("saleFeeTiers", []), ASSUMPTION_DEFAULTS["exit_sale_commission_pct"], "venta")}</small>'
                     if p.get("exitFeeVenta") is not None
                     else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
-    salida_renta = (f'{_fmt_mxn_compact(p["exitFeeRenta"])} <small class="tiers">{_fee_tier_lines(p.get("rentFeeTiers", []), ASSUMPTION_DEFAULTS["exit_rent_commission_pct"])}</small>'
+    salida_renta = (f'{_fmt_mxn_compact(p["exitFeeRenta"])} <small class="tiers">{_fee_tier_lines(p.get("rentFeeTiers", []), ASSUMPTION_DEFAULTS["exit_rent_commission_months"], "renta")}</small>'
                     if p.get("exitFeeRenta") is not None
                     else _fee_scenario_missing(p.get("feesMissingInputsRenta")))
     total_venta = (_fmt_mxn_compact(p["totalInvestmentWithFeesVenta"])

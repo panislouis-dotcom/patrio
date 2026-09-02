@@ -176,7 +176,7 @@ describe('el espejo del contrato no se desincroniza en silencio', () => {
     // justo antes de `ASSUMPTION_KEYS`), así que el recorte de arriba encuentra
     // sus claves igual que las de `ASSUMPTION_DEFAULTS` — el regex no sabe que
     // una está en un dict que sí se publica y la otra en un frozenset que la
-    // excluye. `exit_rent_commission_pct` es una key real de
+    // excluye. `exit_rent_commission_months` es una key real de
     // `ASSUMPTION_DEFAULTS` (el modelo la necesita para el default de la
     // escalera de renta vacía) pero nunca llega a `assumptions()` — la resta
     // acá es lo que hace que esta prueba siga contra lo que el servidor

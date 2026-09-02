@@ -4,17 +4,19 @@ import { fetchProperty, replaceFeeTiers } from '../../lib/api'
 import type { FeeTier, Property } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
 import { fieldInput } from '../../lib/styles'
-import { fmtPct } from '../../lib/fmt'
+import { fmtPct, fmtRentas } from '../../lib/fmt'
 import { NumericInput } from '../NumericInput'
 
 interface Props {
   property: Property
   kind: 'venta' | 'renta'
-  // La tasa que aplica cuando no hay tramos — `exitFeeVentaRate`/`exitFeeRentaRate`
-  // de fees.py, que YA resuelve al default del modelo sin tramos configurados
-  // (ver comentario en fees.py). Solo se lee en el estado sin tramos: con
-  // tramos, la tasa vigente depende del valor y ya la enseña la fila ($)
-  // de abajo vía su propio hint.
+  // La tasa/cantidad que aplica cuando no hay tramos — `exitFeeVentaRate`
+  // (fracción 0-1) o `exitFeeRentaMonths` (número de rentas) de fees.py, que
+  // YA resuelve al default del modelo sin tramos configurados (ver
+  // comentario en fees.py). Solo se lee en el estado sin tramos: con tramos,
+  // la tasa vigente depende del valor y ya la enseña la fila ($) de abajo
+  // vía su propio hint. El nombre quedó de cuando ambos lados eran una
+  // fracción — sigue sirviendo para los dos, solo cambia cómo se formatea.
   defaultRatePct: number | null
   onPropertyChange: (property: Property) => void
 }
@@ -116,6 +118,9 @@ export function FeeTierEditor({ property, kind, defaultRatePct, onPropertyChange
   const stored = kind === 'venta' ? property.saleFeeTiers : property.rentFeeTiers
   const storedKey = JSON.stringify(stored)
   const label = kind === 'venta' ? 'COMISIÓN VENTA — TRAMOS' : 'COMISIÓN RENTA — TRAMOS'
+  // Venta captura una FRACCIÓN de precio (se muestra ×100 como %); renta
+  // captura un NÚMERO DE RENTAS crudo, sin conversión.
+  const rateLabel = kind === 'venta' ? 'TASA %' : 'RENTAS'
 
   const [editing, setEditing] = useState(false)
   const [nonFloor, setNonFloor] = useState<DraftTier[]>(
@@ -141,14 +146,19 @@ export function FeeTierEditor({ property, kind, defaultRatePct, onPropertyChange
     return nf.map(t => ({ threshold: t.threshold ?? NaN, rate: t.rate ?? NaN }))
   }
 
-  /** Mismo espejo que `validate_tiers` (fee_tiers.py): tasa en [0,1], umbrales
-   * positivos y únicos. No exige orden ascendente — el servidor reordena. */
+  /** Mismo espejo que `validate_tiers` (fee_tiers.py): en venta la tasa es
+   * una fracción en [0,1]; en renta es un número de rentas, sin tope
+   * superior (2, 3, 4+ son valores reales, muy por arriba de 1) — solo se
+   * exige que no sea negativo. Umbrales positivos y únicos en ambos casos.
+   * No exige orden ascendente — el servidor reordena. */
   function validate(tiers: FeeTier[]): string | null {
     if (tiers.length === 0) return null
     const seen = new Set<number>()
     for (const t of tiers) {
-      if (!Number.isFinite(t.rate) || t.rate < 0 || t.rate > 1) {
-        return 'Cada tramo necesita una tasa entre 0% y 100%.'
+      if (!Number.isFinite(t.rate) || t.rate < 0 || (kind === 'venta' && t.rate > 1)) {
+        return kind === 'venta'
+          ? 'Cada tramo necesita una tasa entre 0% y 100%.'
+          : 'Cada tramo necesita un número de rentas mayor o igual a 0.'
       }
       if (!Number.isFinite(t.threshold) || t.threshold <= 0) {
         return 'El umbral de cada tramo debe ser mayor a $0.'
@@ -223,7 +233,7 @@ export function FeeTierEditor({ property, kind, defaultRatePct, onPropertyChange
       {!editing && stored.length === 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
           <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary }}>SUPUESTO POR OMISIÓN</span>
-          <span style={tierValueDisplay}>{fmtPct(defaultRatePct)}</span>
+          <span style={tierValueDisplay}>{kind === 'venta' ? fmtPct(defaultRatePct) : fmtRentas(defaultRatePct)}</span>
           <button onClick={addTier} style={smallBtn}>+ agregar tramo</button>
         </div>
       )}
@@ -234,8 +244,8 @@ export function FeeTierEditor({ property, kind, defaultRatePct, onPropertyChange
             <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>DESDE $</span>
               <span style={tierValueDisplay}>{fmtNumber(tier.threshold)}</span>
-              <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>TASA %</span>
-              <span style={tierValueDisplay}>{fmtNumber(tier.rate * 100, true)}</span>
+              <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>{rateLabel}</span>
+              <span style={tierValueDisplay}>{kind === 'venta' ? fmtNumber(tier.rate * 100, true) : fmtNumber(tier.rate, true)}</span>
             </div>
           ))}
           <div>
@@ -260,12 +270,12 @@ export function FeeTierEditor({ property, kind, defaultRatePct, onPropertyChange
                 ariaLabel={`Umbral tramo ${idx + 1} — ${label}`}
                 style={{ ...fieldInput, width: '110px' }}
               />
-              <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>TASA %</span>
+              <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>{rateLabel}</span>
               <NumericInput
-                value={tier.rate != null ? tier.rate * 100 : undefined}
-                onChange={n => updateNonFloor(idx, { rate: n != null ? n / 100 : undefined })}
-                step={0.1}
-                ariaLabel={`Tasa tramo ${idx + 1} — ${label}`}
+                value={kind === 'venta' ? (tier.rate != null ? tier.rate * 100 : undefined) : tier.rate}
+                onChange={n => updateNonFloor(idx, { rate: kind === 'venta' ? (n != null ? n / 100 : undefined) : n })}
+                step={kind === 'venta' ? 0.1 : 0.5}
+                ariaLabel={`${kind === 'venta' ? 'Tasa' : 'Número de rentas'} tramo ${idx + 1} — ${label}`}
                 style={{ ...fieldInput, width: '70px' }}
               />
               <button onClick={() => deleteTier(idx)} title="Quitar tramo" aria-label={`Quitar tramo ${idx + 1} — ${label}`} style={smallBtn}>✕</button>

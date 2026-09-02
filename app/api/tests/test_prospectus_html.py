@@ -195,7 +195,7 @@ def test_opportunity_fees_metrics_shows_the_exit_fee_venta_and_renta_as_their_ow
     html = _opportunity_fees_metrics(p)
     assert '$195K <small class="tiers">sin tramos · 5.0% por omisión</small>' in html
     assert "Comisión de salida · venta" in html
-    assert '$144K <small class="tiers">sin tramos · 5.0% por omisión</small>' in html
+    assert '$144K <small class="tiers">sin tramos · 3 rentas por omisión</small>' in html
     assert "Comisión de salida · renta" in html
 
 
@@ -207,10 +207,10 @@ def test_opportunity_fees_metrics_shows_the_configured_fee_tier_ladder():
          "saleFeeTiers": [{"threshold": 6_500_000, "rate": 0.07},
                            {"threshold": 5_500_000, "rate": 0.06}],
          "exitFeeRenta": 144_000,
-         "rentFeeTiers": [{"threshold": 15_000, "rate": 0.06}]}
+         "rentFeeTiers": [{"threshold": 15_000, "rate": 3}]}
     html = _opportunity_fees_metrics(p)
     assert '$195K <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0%</small>' in html
-    assert '$144K <small class="tiers">≥$15K→6.0%</small>' in html
+    assert '$144K <small class="tiers">≥$15K→3 rentas</small>' in html
 
 
 def test_opportunity_fees_metrics_ladder_without_floor_has_no_si_no_segment():
@@ -230,7 +230,7 @@ def test_opportunity_fees_metrics_names_the_reason_when_an_exit_fee_is_missing()
          "exitFeeRenta": 144_000, "exitRentMonths": 3}
     html = _opportunity_fees_metrics(p)
     assert '— <small>falta precio de venta</small>' in html
-    assert '$144K <small class="tiers">sin tramos · 5.0% por omisión</small>' in html
+    assert '$144K <small class="tiers">sin tramos · 3 rentas por omisión</small>' in html
 
 
 def test_opportunity_fees_metrics_shows_the_two_totals_as_separate_cells():

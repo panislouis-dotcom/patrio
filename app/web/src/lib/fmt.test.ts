@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtPct, fmtPctSigned, fmtMonth, fmtM, fmtMXN, plural } from './fmt'
+import { fmtPct, fmtPctSigned, fmtMonth, fmtM, fmtMXN, fmtRentas, plural } from './fmt'
 
 /**
  * Una sola regla, y es la que el backend defiende columna por columna: vacío es
@@ -31,6 +31,23 @@ describe('fmtPct', () => {
 
   it('un rendimiento negativo conserva su signo', () => {
     expect(fmtPct(-0.153)).toBe('-15.3%')
+  })
+})
+
+describe('fmtRentas', () => {
+  it('un número entero de rentas no arrastra decimales', () => {
+    expect(fmtRentas(3)).toBe('3 rentas')
+    expect(fmtRentas(0)).toBe('0 rentas')
+  })
+
+  it('un número fraccionario recorta solo los ceros sobrantes', () => {
+    expect(fmtRentas(2.5)).toBe('2.5 rentas')
+    expect(fmtRentas(2.55)).toBe('2.55 rentas')
+  })
+
+  it('null/undefined dan guion, igual que las demás', () => {
+    expect(fmtRentas(null)).toBe('—')
+    expect(fmtRentas(undefined)).toBe('—')
   })
 })
 

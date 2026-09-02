@@ -26,7 +26,7 @@ import {
 import type { PropertyStatus } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
 import { fieldInput, pageFill } from '../lib/styles'
-import { fmtMXN, fmtPct, fmtPctSigned, fmtMonth } from '../lib/fmt'
+import { fmtMXN, fmtPct, fmtPctSigned, fmtMonth, fmtRentas } from '../lib/fmt'
 import { fieldLabel } from '../lib/fields'
 import { useEdits } from '../lib/useEdits'
 import { useNarrowViewport } from '../lib/useNarrowViewport'
@@ -95,15 +95,16 @@ const fmtGain = (amount: number | null | undefined, pct: number | null | undefin
  * falta, `missingInputsRenta` siempre `rentMonthly`. No hace falta
  * inspeccionar el arreglo: el modo ya dice cuál es.
  *
- * Antes decía "MESES × RENTA COBRADA/ESTIMADA" del lado de renta — texto
- * huérfano desde que la migración 053 reemplazó "N meses de renta" por un %
- * de un mes, igual que venta. `rate` es `exitFeeVentaRate`/`exitFeeRentaRate`
- * (fees.py): siempre viene junto con `fee` cuando `fee` no es null.
+ * `rate` es `exitFeeVentaRate` (fracción de precio) del lado de venta o
+ * `exitFeeRentaMonths` (número de rentas, ya no una fracción — el dueño del
+ * producto marcó el % de una sola mensualidad como irreal frente a la
+ * convención real de 2-4 rentas) del lado de renta: siempre viene junto con
+ * `fee` cuando `fee` no es null.
  */
 function exitFeeHint(fee: number | null, rate: number | null, mode: 'venta' | 'renta'): string {
   if (fee != null) {
-    const pct = fmtPct(rate)
-    return mode === 'venta' ? `${pct} SOBRE PRECIO/PROYECCIÓN DE VENTA` : `${pct} SOBRE RENTA MENSUAL`
+    if (mode === 'venta') return `${fmtPct(rate)} SOBRE PRECIO/PROYECCIÓN DE VENTA`
+    return `${fmtRentas(rate).toUpperCase()} SOBRE RENTA MENSUAL`
   }
   return mode === 'venta' ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)' : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
 }
@@ -1181,12 +1182,12 @@ export function PropertyDetailPage() {
                     />
                   </div>
                   <div style={narrow ? { marginTop: '20px' } : undefined}>
-                    <FeeTierEditor property={p} kind="renta" defaultRatePct={p.exitFeeRentaRate} onPropertyChange={setProperty} />
+                    <FeeTierEditor property={p} kind="renta" defaultRatePct={p.exitFeeRentaMonths} onPropertyChange={setProperty} />
                     <EditableRow
                       label="COMISIÓN RENTA ($)"
                       editing={editing}
                       value={p.exitFeeRenta != null ? fmtMXN(p.exitFeeRenta) : '—'}
-                      hint={exitFeeHint(p.exitFeeRenta, p.exitFeeRentaRate, 'renta')}
+                      hint={exitFeeHint(p.exitFeeRenta, p.exitFeeRentaMonths, 'renta')}
                       stacked
                     />
                   </div>

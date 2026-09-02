@@ -41,7 +41,7 @@ def select_tier(tiers: list[dict], value: Decimal, default: Decimal) -> Decimal:
     Lista vacía → no hay escalera configurada para esta propiedad: se usa `default`
     tal cual lo resolvió quien llama (típicamente
     `underwriting.ASSUMPTION_DEFAULTS["exit_sale_commission_pct"]` o
-    `["exit_rent_commission_pct"]`, según el lado), mismo relevo que
+    `["exit_rent_commission_months"]`, según el lado), mismo relevo que
     `underwriting.assumption()`."""
     if not tiers:
         return to_decimal(default)
@@ -62,13 +62,19 @@ def select_tier(tiers: list[dict], value: Decimal, default: Decimal) -> Decimal:
     return to_decimal("0")
 
 
-def validate_tiers(tiers: list[dict]) -> None:
+def validate_tiers(tiers: list[dict], kind: str) -> None:
     """Valida una escalera completa antes de persistirla (PUT de reemplazo atómico).
     Lista vacía es válida — significa "sin escalera, usar el default". Lanza
     `PropertyError` (mismo patrón que el resto de rechazos de dominio en
     properties_db.py) con mensaje en español apuntando a la regla que falló.
     Un tramo con `threshold=None` (el antiguo tramo piso, "si no") se rechaza de
     inmediato — ya no existe como concepto configurable, ni siquiera opcional.
+
+    `rate` significa algo distinto según `kind`, y por eso se valida distinto:
+    en venta es una FRACCIÓN de precio de venta ([0, 1] — 0% a 100%). En renta es
+    un NÚMERO DE RENTAS (meses de renta cobrada/proyectada que se cobran de
+    comisión) — 2, 3, 4 meses son valores reales del fondo, muy por arriba de 1,
+    así que el mismo tope de "100%" no aplica: solo se exige que no sea negativo.
 
     Import de PropertyError diferido a dentro de la función, a propósito: a nivel de
     módulo crearía un ciclo real con properties_db.py, que importa `api.finance.fees`
@@ -88,10 +94,16 @@ def validate_tiers(tiers: list[dict]) -> None:
         if rate is None:
             raise PropertyError("Cada tramo necesita una tasa (rate).")
         rate_dec = to_decimal(rate)
-        if rate_dec < 0 or rate_dec > 1:
-            raise PropertyError(
-                f"La tasa del tramo debe estar entre 0% y 100% (se recibió {rate!r})."
-            )
+        if kind == "venta":
+            if rate_dec < 0 or rate_dec > 1:
+                raise PropertyError(
+                    f"La tasa del tramo debe estar entre 0% y 100% (se recibió {rate!r})."
+                )
+        else:
+            if rate_dec < 0:
+                raise PropertyError(
+                    f"El número de rentas del tramo no puede ser negativo (se recibió {rate!r})."
+                )
 
         threshold = tier.get("threshold")
         if threshold is None:
