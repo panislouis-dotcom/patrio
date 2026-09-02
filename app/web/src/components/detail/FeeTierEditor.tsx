@@ -128,7 +128,10 @@ export function FeeTierEditor({ property, kind, defaultRatePct, onPropertyChange
   // de a qué escala pertenece cada uno hasta DESPUÉS de guardar y ver un
   // resultado en $0 — como pasó en vivo con un umbral de renta copiado de la
   // escala de venta.
-  const thresholdBasis = kind === 'venta' ? 'SOBRE PRECIO/PROYECCIÓN DE VENTA' : 'SOBRE RENTA MENSUAL'
+  // Más corto que el de `exitFeeHint` a propósito — ese vive junto al monto
+  // resuelto y le sobra ancho; este va pegado al encabezado y con
+  // "/PROYECCIÓN" desbordaba a dos líneas.
+  const thresholdBasis = kind === 'venta' ? 'SOBRE PRECIO DE VENTA' : 'SOBRE RENTA MENSUAL'
 
   const [editing, setEditing] = useState(false)
   const [nonFloor, setNonFloor] = useState<DraftTier[]>(

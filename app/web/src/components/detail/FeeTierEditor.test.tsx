@@ -32,9 +32,9 @@ describe('FeeTierEditor — a qué se compara "DESDE $"', () => {
   // capturan en la misma caja "$" — sin esta pista, nada distingue las dos
   // escalas hasta ver un resultado en $0 (pasó en vivo con un umbral de
   // renta copiado de la escala de venta).
-  it('venta aclara que el umbral es sobre precio/proyección de venta', () => {
+  it('venta aclara que el umbral es sobre precio de venta', () => {
     render(<FeeTierEditor property={property()} kind="venta" defaultRatePct={0.05} onPropertyChange={vi.fn()} />)
-    expect(screen.getByText('· SOBRE PRECIO/PROYECCIÓN DE VENTA')).not.toBeNull()
+    expect(screen.getByText('· SOBRE PRECIO DE VENTA')).not.toBeNull()
   })
 
   it('renta aclara que el umbral es sobre renta mensual, no sobre venta', () => {
