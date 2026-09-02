@@ -434,7 +434,7 @@ describe('PropertyDetailPage', () => {
     // exitFeeRentaMonths de fees.py), no un texto genérico. Venta sigue siendo
     // una fracción de precio; renta es un NÚMERO DE RENTAS (2-4 mensualidades,
     // la convención real del fondo), no un % de una sola mensualidad.
-    expect(within(ventaRow).getByText('5.0% SOBRE PRECIO/PROYECCIÓN DE VENTA')).not.toBeNull()
+    expect(within(ventaRow).getByText('5.0% SOBRE PRECIO DE VENTA')).not.toBeNull()
     const rentaRow = screen.getByText('COMISIÓN RENTA ($)').closest('div')!
     expect(within(rentaRow).getByText('$90,000')).not.toBeNull()
     expect(within(rentaRow).getByText('3 RENTAS SOBRE RENTA MENSUAL')).not.toBeNull()

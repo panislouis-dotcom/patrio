@@ -103,7 +103,7 @@ const fmtGain = (amount: number | null | undefined, pct: number | null | undefin
  */
 function exitFeeHint(fee: number | null, rate: number | null, mode: 'venta' | 'renta'): string {
   if (fee != null) {
-    if (mode === 'venta') return `${fmtPct(rate)} SOBRE PRECIO/PROYECCIÓN DE VENTA`
+    if (mode === 'venta') return `${fmtPct(rate)} SOBRE PRECIO DE VENTA`
     return `${fmtRentas(rate).toUpperCase()} SOBRE RENTA MENSUAL`
   }
   return mode === 'venta' ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)' : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
