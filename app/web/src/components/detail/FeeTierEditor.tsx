@@ -121,6 +121,14 @@ export function FeeTierEditor({ property, kind, defaultRatePct, onPropertyChange
   // Venta captura una FRACCIÓN de precio (se muestra ×100 como %); renta
   // captura un NÚMERO DE RENTAS crudo, sin conversión.
   const rateLabel = kind === 'venta' ? 'TASA %' : 'RENTAS'
+  // Contra qué se compara "DESDE $" en esta escalera — mismo texto que usa
+  // `exitFeeHint` (PropertyDetailPage) para la fila ($) de abajo, repetido
+  // aquí a propósito: sin esto, un umbral de renta ($ decenas de miles) y uno
+  // de venta ($ millones) se capturan en la misma caja "$" sin ninguna pista
+  // de a qué escala pertenece cada uno hasta DESPUÉS de guardar y ver un
+  // resultado en $0 — como pasó en vivo con un umbral de renta copiado de la
+  // escala de venta.
+  const thresholdBasis = kind === 'venta' ? 'SOBRE PRECIO/PROYECCIÓN DE VENTA' : 'SOBRE RENTA MENSUAL'
 
   const [editing, setEditing] = useState(false)
   const [nonFloor, setNonFloor] = useState<DraftTier[]>(
@@ -229,6 +237,9 @@ export function FeeTierEditor({ property, kind, defaultRatePct, onPropertyChange
   return (
     <div style={{ padding: '10px 0', borderBottom: `1px solid ${colors.border}` }}>
       <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>{label}</span>
+      <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginLeft: '6px' }}>
+        · {thresholdBasis}
+      </span>
 
       {!editing && stored.length === 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>

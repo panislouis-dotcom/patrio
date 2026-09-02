@@ -27,6 +27,22 @@ beforeEach(() => {
   vi.mocked(api.fetchProperty).mockReset()
 })
 
+describe('FeeTierEditor — a qué se compara "DESDE $"', () => {
+  // Un umbral de renta ($ decenas de miles) y uno de venta ($ millones) se
+  // capturan en la misma caja "$" — sin esta pista, nada distingue las dos
+  // escalas hasta ver un resultado en $0 (pasó en vivo con un umbral de
+  // renta copiado de la escala de venta).
+  it('venta aclara que el umbral es sobre precio/proyección de venta', () => {
+    render(<FeeTierEditor property={property()} kind="venta" defaultRatePct={0.05} onPropertyChange={vi.fn()} />)
+    expect(screen.getByText('· SOBRE PRECIO/PROYECCIÓN DE VENTA')).not.toBeNull()
+  })
+
+  it('renta aclara que el umbral es sobre renta mensual, no sobre venta', () => {
+    render(<FeeTierEditor property={property()} kind="renta" defaultRatePct={3} onPropertyChange={vi.fn()} />)
+    expect(screen.getByText('· SOBRE RENTA MENSUAL')).not.toBeNull()
+  })
+})
+
 describe('FeeTierEditor — vista (sin tramos guardados)', () => {
   it('sin tramos, enseña SUPUESTO POR OMISIÓN con su tasa y el botón de agregar — nada de Guardar ni cajas', () => {
     render(<FeeTierEditor property={property()} kind="venta" defaultRatePct={0.05} onPropertyChange={vi.fn()} />)
