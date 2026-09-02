@@ -3,7 +3,6 @@ import type React from 'react'
 import { fetchProperty, replaceFeeTiers } from '../../lib/api'
 import type { FeeTier, Property } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
-import { fieldInput } from '../../lib/styles'
 import { NumericInput } from '../NumericInput'
 
 interface Props {
@@ -27,6 +26,30 @@ interface DraftTier {
   rate: number | undefined
 }
 
+/**
+ * El valor de un tramo se ve como el resto de los valores capturados en esta
+ * ficha (`EditableRow` en su estado de solo-lectura: `fonts.sans`, 11px,
+ * `colors.neutral`, sin caja) — aunque, a diferencia de `EditableRow`, SIGUE
+ * siendo la caja editable de verdad, todo el tiempo, sin un toggle EDITAR que
+ * la muestre así. No es reutilizar un estilo existente: en el resto de la
+ * ficha "se ve como texto" y "es de solo lectura" son la misma condición
+ * (depende del toggle global); aquí las separamos a propósito porque este
+ * panel nunca tuvo modo edición (ver docstring del componente). Antes esta
+ * caja usaba `fieldInput` (borde, fondo, padding) y por eso el renglón se
+ * leía como "está en edición" de forma permanente, aunque no hubiera nada
+ * pendiente por guardar — se confundía con la ✕ de arriba, que si borra de
+ * verdad la escalera entera.
+ */
+const tierValueInput: React.CSSProperties = {
+  fontFamily: fonts.sans,
+  fontSize: '11px',
+  color: colors.neutral,
+  background: 'transparent',
+  border: 'none',
+  padding: 0,
+  outline: 'none',
+}
+
 const smallBtn: React.CSSProperties = {
   flexShrink: 0,
   background: 'transparent',
@@ -48,6 +71,15 @@ const smallBtn: React.CSSProperties = {
  * **Sin modo edición.** Mismo motivo que `BudgetPanel`: las cajas están
  * siempre activas. El toggle EDITAR/GUARDAR de la ficha no sabría representar
  * "agregué un tramo" ni "borré un tramo".
+ *
+ * **"Siempre activas" no es "siempre con pinta de caja"** — a diferencia de
+ * `BudgetPanel`, aquí el valor se ve como el resto de los datos capturados de
+ * la ficha (texto plano, sin borde ni fondo — ver `tierValueInput`), aunque
+ * siga siendo la caja editable de verdad todo el tiempo. Se probó lo
+ * contrario (heredando `fieldInput`, con borde y fondo) y el renglón se leía
+ * como si estuviera permanentemente "en edición" incluso sin nada pendiente
+ * por guardar — confundible con la ✕ de arriba, que si es una acción
+ * destructiva real (borra la escalera entera, no "cierra" nada).
  *
  * **Cada campo comita solo, al soltarlo** (`onBlur`), igual que
  * `BudgetPanel.commit`. Un tramo se manda ENTERO (el arreglo completo) porque
@@ -210,7 +242,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
                 onChange={n => updateNonFloor(idx, { threshold: n })}
                 onBlur={() => commit(tiersOf(nonFloor, hasLadder))}
                 ariaLabel={`Umbral tramo ${idx + 1} — ${label}`}
-                style={{ ...fieldInput, width: '110px' }}
+                style={{ ...tierValueInput, width: '90px' }}
               />
               <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>TASA %</span>
               <NumericInput
@@ -219,7 +251,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
                 onBlur={() => commit(tiersOf(nonFloor, hasLadder))}
                 step={0.1}
                 ariaLabel={`Tasa tramo ${idx + 1} — ${label}`}
-                style={{ ...fieldInput, width: '70px' }}
+                style={{ ...tierValueInput, width: '40px' }}
               />
               <button onClick={() => deleteTier(idx)} title="Quitar tramo" aria-label={`Quitar tramo ${idx + 1} — ${label}`} style={smallBtn}>✕</button>
             </div>
