@@ -21,7 +21,7 @@ import {
 } from '../lib/types'
 import {
   ALLOWED_TRANSITIONS, PROPERTY_STATUS_COLOR, PROPERTY_STATUS_LABEL,
-  hasScore, takesInvestors, takesTasks, hasProfitSplit,
+  takesInvestors, takesTasks, hasProfitSplit,
 } from '../lib/status'
 import type { PropertyStatus } from '../lib/status'
 import { colors, fonts } from '../lib/theme'
@@ -30,7 +30,6 @@ import { fmtMXN, fmtPct, fmtPctSigned, fmtMonth, fmtRentas } from '../lib/fmt'
 import { fieldLabel } from '../lib/fields'
 import { useEdits } from '../lib/useEdits'
 import { useNarrowViewport } from '../lib/useNarrowViewport'
-import { MetricHero } from './finance/MetricHero'
 import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { LatLonPicker } from './LatLonPicker'
 import { NumericInput } from './NumericInput'
@@ -57,8 +56,8 @@ import { TasksPanel } from './detail/TasksPanel'
 /**
  * Una sola ficha para todo el ciclo de vida. Las herramientas aparecen cuando su
  * etapa las abre, pero nada se esconde al avanzar: en pasos de después se ve
- * todo lo de antes, en lectura. Por eso PROYECCIÓN sigue ahí en una propiedad
- * rentada.
+ * todo lo de antes, en lectura. Por eso PLAN ORIGINAL (dentro de RESULTADO)
+ * sigue ahí en una propiedad rentada.
  *
  * Escribir tiene tres puertas y solo tres, cada una con su significado:
  *   · PATCH sube o cambia un valor — una caja vacía significa "no lo toques".
@@ -71,8 +70,6 @@ type NumKey = { [K in keyof RawPropertyFields]-?: NonNullable<RawPropertyFields[
 
 const fmtNum = (n: number | null | undefined) => (n != null ? String(n) : '—')
 const fmtMonths = (n: number | null | undefined) => (n != null ? `${n} meses` : '—')
-const roiColorOf = (roi: number | null | undefined) =>
-  roi == null ? colors.secondary : roi > 0.5 ? colors.primary : roi > 0.25 ? colors.tertiary : '#c0392b'
 /**
  * Una ganancia, entera. Monto y porcentaje son la misma cifra en dos unidades y
  * viajan juntas: separarlas dejaba media pareja arriba y media abajo, las dos
@@ -109,80 +106,12 @@ function exitFeeHint(fee: number | null, rate: number | null, mode: 'venta' | 'r
   return mode === 'venta' ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)' : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
 }
 
-/** Las dos cifras grandes de la ficha, ya formateadas. */
-interface Heroes {
-  label: string; value: string; color: string; barPct?: number; caption?: string
-  second?: string; secondValue?: string; secondColor?: string
-}
-
-/**
- * Qué contesta la ficha con su elemento más grande.
- *
- * No lo elige la etapa: lo elige QUÉ TANTA REALIDAD respalda cada respuesta. Una
- * propiedad contesta con lo realizado si vendió, con su marca si es suya y
- * alguien la valuó, y con su proyección si todavía es un plan. Amarrado a la
- * etapa, el héroe prometía una cifra que el dato no tenía: una en desarrollo sin
- * avalúo enseñaba «— / —» arriba mientras su proyección viva estaba treinta
- * filas más abajo, y una archivada enseñaba dos guiones el 100% de las veces.
- *
- * Es la misma precedencia que el servidor usa en headline_roi() y la tabla en
- * headlineRoi(): una sola idea de «el ROI que esta propiedad tiene para dar».
- *
- * Cada familia decide con su GANANCIA % y no con su ROI, porque la ganancia sobre
- * el plazo completo es la que menos condiciones necesita (no depende de que
- * exista un periodo). Así el ROI puede faltar sin arrastrarse a la familia entera.
- *
- * Las tres parejas son un ROI y una ganancia %, y los nombres son los de
- * docs/glosario.md: **ROI significa siempre anualizado**, y la cifra sobre el
- * plazo completo se llama Ganancia. Cuando ambas se llamaban ROI, el héroe grande
- * decía +112% donde lo ganado fue +45.6%, y el usuario reportó lo contrario desde
- * el otro lado — «Roi esta mal porque no se mueve cuando muevo el plazo», mirando
- * la total, que por definición no depende del plazo.
- */
-function heroesFor(p: Property): Heroes {
-  if (p.realizedGainPct != null) {
-    return {
-      label: 'ROI REAL ANUAL', value: fmtPctSigned(p.realizedRoi), color: roiColorOf(p.realizedRoi),
-      barPct: (p.realizedRoi ?? 0) * 100,
-      // Cada ROI cierra su reloj el día de su propio numerador, y el caption dice
-      // cuál es ese día. Antes cargaba la ganancia en pesos, que ya la dice el
-      // segundo héroe con su etiqueta — un número sin etiqueta se escapaba de la
-      // regla de «cada cifra una vez» justamente por no tener etiqueta.
-      caption: p.saleDate ? `AL ${fmtMonth(p.saleDate).toUpperCase()}` : undefined,
-      second: 'GANANCIA REALIZADA', secondValue: fmtGain(p.realizedGain, p.realizedGainPct),
-      secondColor: roiColorOf(p.realizedGainPct),
-    }
-  }
-  if (p.unrealizedGainPct != null) {
-    return {
-      label: 'ROI ANUAL', value: fmtPctSigned(p.roi), color: roiColorOf(p.roi),
-      barPct: (p.roi ?? 0) * 100,
-      // El ROI de la marca se anualiza de la compra a la fecha de la valuación,
-      // así que el héroe dice hasta cuándo cuenta. Sin fecha de corte el reloj sí
-      // corre a hoy, y entonces lo dice con esas palabras en vez de dejar que la
-      // cifra se lea como si fuera de cualquier día.
-      caption: `AL ${p.valuationDate ? fmtMonth(p.valuationDate).toUpperCase() : 'DÍA DE HOY'}`,
-      second: 'GANANCIA NO REALIZADA', secondValue: fmtGain(p.unrealizedGain, p.unrealizedGainPct),
-      secondColor: roiColorOf(p.unrealizedGainPct),
-    }
-  }
-  if (p.projectedRoiTotal != null) {
-    return {
-      label: 'ROI PROY. ANUAL', value: fmtPctSigned(p.projectedRoi), color: roiColorOf(p.projectedRoi),
-      barPct: (p.projectedRoi ?? 0) * 100,
-      // El reloj de este ROI no es una fecha sino el plazo que supone el modelo,
-      // y SUPUESTOS lo publica con su origen. Aquí el caption lleva el score,
-      // que es lo que califica a un candidato mientras sigue compitiendo.
-      caption: hasScore(p.status) ? `Score ${p.score ?? '—'}` : undefined,
-      second: 'GANANCIA PROYECTADA', secondValue: fmtGain(p.projectedProfit, p.projectedRoiTotal),
-      secondColor: roiColorOf(p.projectedRoiTotal),
-    }
-  }
-  // Sin venta, sin marca y sin proyección no hay ningún rendimiento que anunciar,
-  // y dos guiones enormes no son una respuesta. Lo que sí se sabe de una
-  // propiedad así es cuánto capital pide, así que eso dice. Un solo héroe: no hay
-  // segundo número que no sea inventarlo.
-  return { label: 'INVERSIÓN', value: fmtMXN(p.totalInvestment), color: colors.neutral }
+/** Agrupa filas DENTRO de RESULTADO (PLAN ORIGINAL, cada escenario, MARCA
+ * ACTUAL) sin abrir un `SectionDivider` propio — mismo peso visual que ya usa
+ * `FeeTierEditor` para su propia etiqueta dentro de COMISIONES DEL FONDO. */
+const resultSubheading: React.CSSProperties = {
+  fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.secondary,
+  marginTop: '16px', marginBottom: '4px',
 }
 
 export function PropertyDetailPage() {
@@ -206,10 +135,6 @@ export function PropertyDetailPage() {
   const [leftTab, setLeftTab] = useState<'general' | 'finanzas'>('general')
   const [transitionTo, setTransitionTo] = useState<Exclude<PropertyStatus, 'prospecto'> | null>(null)
   const [showAdvance, setShowAdvance] = useState(false)
-  // Desglose de INVERSIÓN CON COMISIONES (venta/renta) — independientes entre
-  // sí: el pedido fue poder VER los dos a la vez para comparar, no elegir uno.
-  const [showFeeBreakdownVenta, setShowFeeBreakdownVenta] = useState(false)
-  const [showFeeBreakdownRenta, setShowFeeBreakdownRenta] = useState(false)
 
   /** Debajo de 900px las dos columnas se apilan. Es el único breakpoint del repo. */
   const narrow = useNarrowViewport()
@@ -598,19 +523,6 @@ export function PropertyDetailPage() {
     />
   )
 
-  // ── Héroes ──────────────────────────────────────────────────────────────────
-  const heroes = heroesFor(p)
-
-  // Un héroe es una PROMOCIÓN, no una copia: la cifra que sube deja su fila. Una
-  // misma cifra dos veces en la misma pantalla se lee como dos cifras, que es
-  // exactamente lo que hacía confundir el par anualizado/total. Regla única para
-  // las cinco etapas — antes PROYECCIÓN repetía sus dos héroes y RESULTADO no.
-  //
-  // Se compara por etiqueta a propósito: que el héroe y la fila que sustituye se
-  // llamen con las mismas palabras es la condición para que sustituirla no
-  // esconda nada, y hacerlo así deja esa condición verificada en vez de supuesta.
-  const promoted = new Set([heroes.label, heroes.second])
-
   // El precio de compra es lo que cuesta adquirir el inmueble como está; la
   // obra es lo que se va a ejecutar encima. Nada de lo que ya está construido
   // y ya está dentro del precio aparece dos veces.
@@ -635,20 +547,6 @@ export function PropertyDetailPage() {
   ]
 
   /**
-   * El desglose de INVERSIÓN CON COMISIONES (venta/renta): las mismas cuatro
-   * partidas que `fees.py` suma para llegar a `totalInvestmentWithFeesVenta`/
-   * `Renta` — misma garantía que `investmentItems` de arriba, el total que
-   * `InvestmentBreakdown` enseña es la SUMA de estas partidas, no una cifra
-   * aparte que pudiera no cuadrar con ellas.
-   */
-  const feeBreakdownItems = (kind: 'venta' | 'renta') => [
-    { label: 'Inversión sin comisiones', amount: p.totalInvestment ?? 0 },
-    { label: 'Comisión terreno', amount: p.landFee ?? 0 },
-    { label: 'Comisión obra', amount: p.constructionFee ?? 0 },
-    { label: `Comisión ${kind}`, amount: (kind === 'venta' ? p.exitFeeVenta : p.exitFeeRenta) ?? 0 },
-  ]
-
-  /**
    * Una sección de cifras DERIVADAS se dibuja solo si alguna de sus filas tiene
    * valor — la política de vacío de InvestmentBreakdown, aplicada a las demás.
    * Una derivada sin valor no es un pendiente de captura sino una pregunta que
@@ -665,7 +563,7 @@ export function PropertyDetailPage() {
      * SÍ es información, es lo que falta teclear. */
     captured?: React.ReactNode,
   ) => {
-    const visible = rows.filter(([label, value]) => value != null && !promoted.has(label))
+    const visible = rows.filter(([, value]) => value != null)
     if (visible.length === 0 && !captured) return null
     return (
       <>
@@ -802,52 +700,18 @@ export function PropertyDetailPage() {
           {leftTab === 'general' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
 
-              <MetricHero
-                label={heroes.label}
-                value={heroes.value}
-                color={heroes.color}
-                barPct={heroes.barPct}
-                barsReady={barsReady}
-                caption={heroes.caption}
-              />
-              {heroes.second && (
-                <MetricHero
-                  label={heroes.second}
-                  value={heroes.secondValue!}
-                  color={heroes.secondColor!}
-                  size={24}
-                />
-              )}
-
               <SectionDivider label="DATOS" />
-              {/* La inversión no se teclea: es la suma del desglose, en toda
-                  etapa y sin ramas. Había además una fila para capturarla a
-                  mano, y con el desglose completo se anunciaba a sí misma como
-                  «NO SE USA» — un campo que existía para decir que no servía.
-                  Un total all-in se dice donde siempre estuvo su lugar: precio
-                  de compra, con los costos de adquisición en 0. */}
-              <EditableRow
-                label="INVERSIÓN SIN COMISIONES"
-                editing={editing}
-                value={fmtMXN(p.totalInvestment)}
-                hint="SUMA DEL DESGLOSE"
-              />
-              {/* La fila CON COMISIONES ya no vive aquí: sin una estrategia de
-                  salida elegida —el pedido explícito es no obligar a elegir una—
-                  no hay UNA cifra que este resumen terso pueda promover sin
-                  fingir que un escenario le gana al otro. Los dos, venta y
-                  renta, se comparan en COMISIONES DEL FONDO, donde hay espacio
-                  para las dos lado a lado. */}
               {numRow('VALUACIÓN', 'currentValuation', fmtMXN, { clearable: 'currentValuation' })}
               {/* La ESTIMADA se fue a SUPUESTOS: es una apuesta sobre el futuro,
                   no un hecho. La COBRADA se queda — es lo que de verdad entró,
                   un hecho tan real como la dirección o las unidades. */}
               {(editing || p.rentMonthlyActual != null) &&
                 numRow('RENTA/MES COBRADA', 'rentMonthlyActual', fmtMXN, { clearable: 'rentMonthlyActual' })}
-              {/* La renta anual cobrada vive aquí y no en PROYECCIÓN, que
-                  contesta por lo estimado. Antes de partir la renta en dos, la
-                  anual de una rentada salía —correctamente— de lo que cobraba;
-                  al separarlas, esa cifra se quedó sin fila y desapareció de la
+              {/* La renta anual cobrada vive aquí y no en RESULTADO, que
+                  contesta por lo estimado (RENTA ANUAL ESTIMADA, en PLAN
+                  ORIGINAL). Antes de partir la renta en dos, la anual de una
+                  rentada salía —correctamente— de lo que cobraba; al
+                  separarlas, esa cifra se quedó sin fila y desapareció de la
                   ficha. Esto la devuelve, del lado que le toca. */}
               {(p.capRateActual != null || p.rentMonthlyActual != null) && (
                 <>
@@ -953,22 +817,6 @@ export function PropertyDetailPage() {
               {numRow('RENTA/MES ESTIMADA', 'rentMonthlyProjected', fmtMXN, { clearable: 'rentMonthlyProjected' })}
               {numRow('VENTA PROYECTADA', 'projectedSale', fmtMXN, { clearable: 'projectedSale' })}
 
-              {/* La proyección va junto a sus supuestos, no junto al desglose:
-                  es lo que esos supuestos producen, y nada de esto se teclea —
-                  todo es resultado. Sobrevive a la compra Y a la venta —es
-                  contra ella que se mide la realidad, y apagarla al vender la
-                  apagaba justo cuando se volvía comprobable—. Los dos ROI solo
-                  aparecen aquí cuando el héroe no los subió, en una propiedad
-                  que ya tiene una respuesta con más realidad detrás.
-                  CAP RATE PROY. entra por `captured` y no por las filas: esas
-                  se ocultan solas si valen null, y este cap rate siempre se
-                  enseña, aunque sea en «—» — igual que su par REAL en DATOS. */}
-              {statSection('PROYECCIÓN', [
-                ['GANANCIA PROYECTADA', p.projectedProfit, v => fmtGain(v, p.projectedRoiTotal)],
-                ['ROI PROY. ANUAL', p.projectedRoi, fmtPctSigned],
-                ['RENTA ANUAL ESTIMADA', p.rentAnnual, fmtMXN],
-              ], <EditableRow label="CAP RATE PROY. S/ VENTA" editing={editing} value={fmtPct(p.capRate)} />)}
-
               {/* El desglose se captura en cualquier etapa: es el modelo que se
                   compara contra la realidad, no un formulario de prospecto.
 
@@ -1048,15 +896,6 @@ export function PropertyDetailPage() {
                 </>
               )}
 
-              {/* La marca y el resultado NO tienen sección propia, y es la misma
-                  regla que gobierna todo lo de arriba: cada cifra etiquetada vive
-                  en un solo lugar. Sus dos cifras derivadas son precisamente las
-                  que el héroe promueve, y las capturadas ya viven donde se
-                  capturan — VALUACIÓN en DATOS, PRECIO DE VENTA en FECHAS, PLAZO
-                  REAL en DATOS. Una sección que solo puede repetir lo que ya está
-                  en pantalla no organiza nada: solo hace dudar de si son la misma
-                  cifra o dos parecidas. */}
-
               <SectionDivider label="COMISIONES DEL FONDO" />
               {/* Las mismas 4 comisiones que antes vivían en SUPUESTOS, mudadas aquí:
                   son supuestos del fondo, no del inmueble, y perdidas entre COSTOS
@@ -1077,11 +916,10 @@ export function PropertyDetailPage() {
                   elegida. `exitStrategy` sigue en la BD (migración 049) por si sirve
                   para otro uso, pero ya no tiene control aquí.
 
-                  Esta sección repite a propósito INVERSIÓN SIN COMISIONES, que ya
-                  vive en DATOS — la única excepción a «cada cifra vive en un solo
-                  lugar» de la nota de arriba. Ahí es una regla real: DATOS es un
-                  resumen terso. Aquí el cierre de la sección compara los dos
-                  escenarios lado a lado — ver más abajo. */}
+                  Esta sección es pura captura — % de terreno/obra y las escaleras
+                  de venta/renta. El resultado que producen (inversión con
+                  comisiones, ganancia bruta/neta, yield) vive todo junto en
+                  RESULTADO, al final de la columna. */}
               {/* Cuatro filas (TERRENO, OBRA — %/$ cada una) en dos columnas cuando el
                   ancho lo permite, con el mismo `narrow` que ya parte la página entera
                   en dos (línea ~682) — no un breakpoint nuevo. En angosto siguen
@@ -1178,67 +1016,72 @@ export function PropertyDetailPage() {
                   </div>
                 </div>
               </div>
-              {/* El cierre de la sección, no una celda más del grid (feedback en
-                  vivo del dueño del producto, dos rondas: primero que la cifra final
-                  se perdía entre once renglones chicos, luego que quería ver los dos
-                  escenarios —venta y renta— lado a lado, no uno elegido). SIN
-                  COMISIONES es una sola cifra —no depende de la salida— y va chica y
-                  centrada arriba; las dos CON COMISIONES son las cifras grandes,
-                  una por columna, sin nada más compitiendo por la vista. */}
-              <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}`, textAlign: 'center' }}>
-                {/* `label` es un <span>, no un <div>: las pruebas ubican cada
-                    cifra con `getByText(label).closest('div')`, que en un
-                    <span> sube hasta ESTE contenedor —el mismo truco que ya usa
-                    `EditableRow` en su modo normal. */}
-                <div style={{ marginBottom: '20px' }}>
-                  <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN SIN COMISIONES</span>
-                  <div style={{ fontFamily: fonts.serif, fontSize: '22px', color: colors.secondary, marginTop: '8px' }}>{fmtMXN(p.totalInvestment)}</div>
+              {/* RESULTADO: la misma forma en las 5 etapas — lo que cambia es
+                  qué filas tienen dato, no la estructura. INVERSIÓN SIN
+                  COMISIONES/COMISIÓN TERRENO/COMISIÓN OBRA son el ancla —
+                  retoman lo que DESGLOSE DE INVERSIÓN y COMISIONES DEL FONDO
+                  ya explicaron arriba para armar lo que sigue. PLAN ORIGINAL
+                  congela projectedProfit/projectedRoi contra VENTA
+                  PROYECTADA aunque la propiedad ya haya vendido: es la
+                  promesa original, no se mueve. Las dos columnas de escenario
+                  corren siempre las dos, sin depender de una estrategia de
+                  salida elegida — el badge REAL/PROYECTADO(A) depende del
+                  DATO (salePrice/rentMonthlyActual), no de la etapa, así que
+                  una `desarrollo` y una `vendida` corren exactamente el mismo
+                  layout. Una vez vendida, ESCENARIO VENTA YA ES la cifra
+                  realizada (precio real, comisión real, badge REAL) —
+                  reemplaza la lectura aparte de GANANCIA REALIZADA que existía
+                  antes de este cambio. MARCA ACTUAL es la única fila que NO se
+                  funde con venta/renta: mide el avalúo de hoy, no una salida
+                  modelada, y no neta ninguna comisión de salida. */}
+              <SectionDivider label="RESULTADO" />
+              <StatRow label="INVERSIÓN SIN COMISIONES" value={fmtMXN(p.totalInvestment)} />
+              <StatRow label="COMISIÓN TERRENO" value={fmtMXN(p.landFee)} />
+              <StatRow label="COMISIÓN OBRA" value={fmtMXN(p.constructionFee)} />
+
+              {p.projectedRoiTotal != null && (
+                <>
+                  <div style={resultSubheading}>PLAN ORIGINAL</div>
+                  <StatRow label="GANANCIA PROYECTADA" value={fmtGain(p.projectedProfit, p.projectedRoiTotal)} />
+                  <StatRow label="ROI PROY. ANUAL" value={fmtPctSigned(p.projectedRoi)} />
+                  <StatRow label="RENTA ANUAL ESTIMADA" value={fmtMXN(p.rentAnnual)} />
+                  <StatRow label="CAP RATE PROY. S/ VENTA" value={fmtPct(p.capRate)} />
+                </>
+              )}
+
+              <div style={narrow ? { marginTop: '16px' } : { marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
+                <div>
+                  <div style={resultSubheading}>ESCENARIO VENTA · {p.salePrice != null ? 'REAL' : 'PROYECTADO'}</div>
+                  <StatRow label="PRECIO DE VENTA" value={fmtMXN(p.salePrice ?? p.projectedSale)} />
+                  <StatRow
+                    label="COMISIÓN VENTA"
+                    value={p.exitFeeVenta != null ? fmtMXN(p.exitFeeVenta) : exitFeeHint(p.exitFeeVenta, p.exitFeeVentaRate, 'venta')}
+                  />
+                  <StatRow label="INVERSIÓN CON COMISIONES" value={fmtMXN(p.totalInvestmentWithFeesVenta)} />
+                  <StatRow label="GANANCIA BRUTA" value={fmtGain(p.grossGainVenta, p.grossGainVentaPct)} />
+                  <StatRow label="GANANCIA NETA" value={fmtGain(p.netGainVenta, p.netGainVentaPct)} />
+                  <StatRow label="ROI NETO ANUAL" value={fmtPctSigned(p.netRoiVenta)} />
                 </div>
-                <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
-                  <div>
-                    <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN CON COMISIONES (VENTA)</span>
-                    <div style={{ fontFamily: fonts.serif, fontSize: '30px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
-                      {p.totalInvestmentWithFeesVenta != null ? fmtMXN(p.totalInvestmentWithFeesVenta) : '—'}
-                    </div>
-                    {p.totalInvestmentWithFeesVenta != null && (
-                      <>
-                        <button
-                          onClick={() => setShowFeeBreakdownVenta(v => !v)}
-                          style={{ display: 'block', margin: '10px auto 0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.secondary, padding: 0 }}
-                        >
-                          {showFeeBreakdownVenta ? '▾' : '▸'} VER DESGLOSE
-                        </button>
-                        {showFeeBreakdownVenta && (
-                          <div style={{ textAlign: 'left' }}>
-                            <InvestmentBreakdown items={feeBreakdownItems('venta')} barsReady={barsReady} showTotal={false} />
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <div style={narrow ? { marginTop: '20px' } : undefined}>
-                    <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN CON COMISIONES (RENTA)</span>
-                    <div style={{ fontFamily: fonts.serif, fontSize: '30px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
-                      {p.totalInvestmentWithFeesRenta != null ? fmtMXN(p.totalInvestmentWithFeesRenta) : '—'}
-                    </div>
-                    {p.totalInvestmentWithFeesRenta != null && (
-                      <>
-                        <button
-                          onClick={() => setShowFeeBreakdownRenta(v => !v)}
-                          style={{ display: 'block', margin: '10px auto 0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.secondary, padding: 0 }}
-                        >
-                          {showFeeBreakdownRenta ? '▾' : '▸'} VER DESGLOSE
-                        </button>
-                        {showFeeBreakdownRenta && (
-                          <div style={{ textAlign: 'left' }}>
-                            <InvestmentBreakdown items={feeBreakdownItems('renta')} barsReady={barsReady} showTotal={false} />
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
+                <div style={narrow ? { marginTop: '20px' } : undefined}>
+                  <div style={resultSubheading}>ESCENARIO RENTA · {p.rentMonthlyActual != null ? 'REAL' : 'PROYECTADA'}</div>
+                  <StatRow label="RENTA/MES" value={fmtMXN(p.rentMonthlyActual ?? p.rentMonthlyProjected)} />
+                  <StatRow
+                    label="COMISIÓN RENTA"
+                    value={p.exitFeeRenta != null ? fmtMXN(p.exitFeeRenta) : exitFeeHint(p.exitFeeRenta, p.exitFeeRentaMonths, 'renta')}
+                  />
+                  <StatRow label="INVERSIÓN CON COMISIONES" value={fmtMXN(p.totalInvestmentWithFeesRenta)} />
+                  <StatRow label="YIELD BRUTO (s/comisión)" value={fmtPct(p.grossYieldRenta)} />
+                  <StatRow label="YIELD NETO (c/comisión)" value={fmtPct(p.netYieldRenta)} />
                 </div>
               </div>
+
+              {p.unrealizedGainPct != null && (
+                <>
+                  <div style={resultSubheading}>MARCA ACTUAL</div>
+                  <StatRow label="GANANCIA NO REALIZADA" value={fmtGain(p.unrealizedGain, p.unrealizedGainPct)} />
+                  <StatRow label="ROI (MARCA) ANUAL" value={fmtPctSigned(p.roi)} />
+                </>
+              )}
 
               {p.issues.length > 0 && (
                 <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: `1px solid ${colors.border}` }}>

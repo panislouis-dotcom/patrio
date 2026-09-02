@@ -563,3 +563,77 @@ def test_fees_missing_inputs_names_the_gap_per_scenario_and_that_totals_stay_non
     assert p["feesMissingInputsRenta"] == ["rentMonthly"]
     assert Decimal(str(p["landFee"])) == Decimal("50000")
     assert Decimal(str(p["constructionFee"])) == Decimal("351000")
+
+
+# ── RESULTADO ────────────────────────────────────────────────────────────────
+# Bruto vs. neto, venta vs. renta — misma forma en las 5 etapas. Bruto contra
+# `totalInvestment`, neto contra `totalInvestmentWithFees{Venta,Renta}`; ambos
+# leen real-antes-que-proyectado (fees.resolve_sale_value/resolve_rent), así
+# que el reloj de venta también cambia: exit_months una vez vendida, la
+# asunción de holdMonths mientras tanto.
+
+RESULTADO = ("grossGainVenta", "grossGainVentaPct", "netGainVenta", "netGainVentaPct",
+             "grossRoiVenta", "netRoiVenta", "grossYieldRenta", "netYieldRenta")
+
+
+def test_resultado_before_any_sale_uses_the_projection_and_the_hold_months_clock(client, test_property):
+    """Sin sale_price, resolve_sale_value cae a projected_sale y el reloj es la
+    asunción de holdMonths (18) — el mismo par que ya usa projectedProfit/
+    projectedRoi, así que netGainVenta/netGainVentaPct/netRoiVenta tienen que
+    coincidir exactamente con ellos."""
+    p = _get(client, test_property["id"])
+    assert _all_present(p, RESULTADO)
+    assert Decimal(str(p["grossGainVenta"])) == Decimal("-980000")
+    assert Decimal(str(p["grossGainVentaPct"])) == Decimal("-0.2816")
+    assert Decimal(str(p["netGainVenta"])) == Decimal(str(p["projectedProfit"])) == Decimal("-1506000")
+    assert Decimal(str(p["netGainVentaPct"])) == Decimal(str(p["projectedRoiTotal"])) == Decimal("-0.3759")
+    assert Decimal(str(p["grossRoiVenta"])) == Decimal("-0.1979")
+    assert Decimal(str(p["netRoiVenta"])) == Decimal(str(p["projectedRoi"])) == Decimal("-0.2697")
+    assert Decimal(str(p["grossYieldRenta"])) == Decimal("0.0621")
+    assert Decimal(str(p["netYieldRenta"])) == Decimal("0.0549")
+
+
+def test_resultado_after_a_real_sale_uses_the_real_price_and_its_own_exit_clock(client, desarrollo_property):
+    """Vendida en 5,000,000 el 2026-03 (14 meses desde la compra en 2025-01,
+    distinto de los 18 de holdMonths a propósito): resolve_sale_value ya
+    devuelve el precio real, y el reloj tiene que ser exit_months (14), no la
+    asunción congelada. grossGainVenta/grossGainVentaPct/grossRoiVenta —que no
+    netean comisión— coinciden con realizedGain/realizedGainPct/realizedRoi,
+    que corren sobre la misma base y el mismo reloj."""
+    p = _advance(client, desarrollo_property["id"], to="vendida",
+                 saleDate="2026-03", salePrice=5_000_000)
+    assert _all_present(p, RESULTADO)
+    assert Decimal(str(p["grossGainVenta"])) == Decimal(str(p["realizedGain"])) == Decimal("1520000")
+    assert Decimal(str(p["grossGainVentaPct"])) == Decimal(str(p["realizedGainPct"])) == Decimal("0.4368")
+    assert Decimal(str(p["grossRoiVenta"])) == Decimal(str(p["realizedRoi"])) == Decimal("0.3643")
+    # netGainVenta/netRoiVenta netean la comisión de venta sobre el precio REAL
+    # (5% de 5,000,000 = 250,000, no de los 2,500,000 proyectados) — distintos
+    # de projectedProfit/projectedRoi, que se quedan congelados sobre la promesa.
+    assert Decimal(str(p["netGainVenta"])) == Decimal("869000")
+    assert Decimal(str(p["netGainVentaPct"])) == Decimal("0.2104")
+    assert Decimal(str(p["netRoiVenta"])) == Decimal("0.1778")
+    assert Decimal(str(p["netRoiVenta"])) != Decimal(str(p["projectedRoi"]))
+
+
+def test_resultado_is_all_none_without_a_modeled_sale_or_rent(client, test_property):
+    """Ni venta (real o proyectada) ni renta (real o proyectada): las 8 cifras
+    salen None, la misma respuesta que ya da feesMissingInputsVenta/Renta —
+    nunca un cero fabricado."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE properties SET projected_sale = NULL, rent_monthly_projected = NULL"
+            " WHERE id = %s", (test_property["id"],))
+    p = _get(client, test_property["id"])
+    assert _all_none(p, RESULTADO)
+
+
+def test_resultado_renta_prefers_the_collected_rent_over_the_projected_one(client, desarrollo_property):
+    """rentMonthlyActual (20,000) cobrada gana sobre los 18,000 proyectados —
+    mismo relevo que resolve_rent ya aplica en fees.py — así que
+    grossYieldRenta/netYieldRenta se mueven con la renta real, no la estimada."""
+    p = _advance(client, desarrollo_property["id"], to="en_renta",
+                 firstRentDate="2026-03", rentMonthlyActual=20_000)
+    assert Decimal(str(p["rentMonthlyProjected"])) == Decimal("18000")
+    assert Decimal(str(p["grossYieldRenta"])) == Decimal("0.0690")
+    assert Decimal(str(p["netYieldRenta"])) == Decimal("0.0609")
+    assert p["grossYieldRenta"] != Decimal(str(p["capRate"]))   # capRate sigue leyendo lo proyectado

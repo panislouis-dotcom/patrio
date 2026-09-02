@@ -597,6 +597,32 @@ def metrics(row: dict) -> dict:
         "yieldOnCost": underwriting.cap_rate(row.get("rent_monthly_projected"), inv_with_fees_venta),
     })
 
+    # RESULTADO: bruto vs. neto, venta vs. renta, misma forma en las 5 etapas.
+    # Bruto descuenta contra `basis` (sin comisiones); neto descuenta contra
+    # `fee_lines["totalInvestmentWithFees{Venta,Renta}"]` (con ellas) — la
+    # diferencia entre ambos ES la comisión del fondo, mostrada explícita en
+    # vez de escondida dentro de una sola cifra. A diferencia de projectedProfit
+    # (congelado sobre projected_sale/hold_months, la promesa original que no
+    # se mueve), estos leen resolve_sale_value/resolve_rent: real una vez que
+    # existe, proyectado mientras tanto — por eso el reloj también cambia con
+    # el dato (exit_months una vez vendida, la asunción de hold_months antes),
+    # igual que ya hace realizedRoi vs. projectedRoi.
+    exit_value_venta = fees.resolve_sale_value(row)
+    clock_venta = exit_months(row) if row.get("sale_price") is not None else underwriting.assumption(row, "hold_months")[0]
+    inv_fees_venta = fee_lines["totalInvestmentWithFeesVenta"]
+    resolved_rent = fees.resolve_rent(row)
+    inv_fees_renta = fee_lines["totalInvestmentWithFeesRenta"]
+    out.update({
+        "grossGainVenta": underwriting.gain(basis, exit_value_venta),
+        "grossGainVentaPct": underwriting.gain_pct(basis, exit_value_venta),
+        "netGainVenta": underwriting.gain(inv_fees_venta, exit_value_venta),
+        "netGainVentaPct": underwriting.gain_pct(inv_fees_venta, exit_value_venta),
+        "grossRoiVenta": _cagr(basis, exit_value_venta, clock_venta),
+        "netRoiVenta": _cagr(inv_fees_venta, exit_value_venta, clock_venta),
+        "grossYieldRenta": underwriting.cap_rate(resolved_rent, basis),
+        "netYieldRenta": underwriting.cap_rate(resolved_rent, inv_fees_renta),
+    })
+
     if status in _MARK_STATUSES:
         valuation = row.get("current_valuation")
         out.update({

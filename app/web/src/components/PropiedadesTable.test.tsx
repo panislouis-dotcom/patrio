@@ -54,6 +54,8 @@ const base = (over: Partial<Property>): Property => ({
   unrealizedGain: null, unrealizedGainPct: null, roi: null, holdMonthsActual: null,
   capRateActual: null, rentAnnualActual: null,
   realizedGain: null, realizedGainPct: null, realizedRoi: null,
+  grossGainVenta: null, grossGainVentaPct: null, netGainVenta: null, netGainVentaPct: null,
+  grossRoiVenta: null, netRoiVenta: null, grossYieldRenta: null, netYieldRenta: null,
   score: null, issues: [],
   ...over,
 })

@@ -28,7 +28,7 @@ from .quantize import money0, to_decimal
 from .underwriting import ASSUMPTION_DEFAULTS, assumption
 
 
-def _resolve_sale_value(row: dict) -> Decimal | None:
+def resolve_sale_value(row: dict) -> Decimal | None:
     """Precio de venta REAL una vez que existe, la proyección mientras tanto —
     mismo relevo que gain()/roi ya usan en underwriting.py."""
     sale_price = row.get("sale_price")
@@ -38,7 +38,7 @@ def _resolve_sale_value(row: dict) -> Decimal | None:
     return to_decimal(projected) if projected else None
 
 
-def _resolve_rent(row: dict) -> Decimal | None:
+def resolve_rent(row: dict) -> Decimal | None:
     """Renta COBRADA una vez que existe, la proyectada mientras tanto."""
     actual = row.get("rent_monthly_actual")
     if actual:
@@ -64,7 +64,7 @@ def compute_fees(row: dict, basis: Decimal | None) -> dict:
     # todavía no exista con qué cobrarlo — por eso se resuelve aparte del
     # monto, y la ficha puede mostrarla incluso antes de tener precio/renta.
     sale_tiers = row.get("sale_fee_tiers", [])
-    sale_value = _resolve_sale_value(row)
+    sale_value = resolve_sale_value(row)
     if sale_value is not None:
         sale_pct = select_tier(sale_tiers, sale_value, ASSUMPTION_DEFAULTS["exit_sale_commission_pct"])
     elif not sale_tiers:
@@ -79,11 +79,11 @@ def compute_fees(row: dict, basis: Decimal | None) -> dict:
     # de renta como comisión de colocación, y esa magnitud real no cabe en el
     # mismo molde de "% de precio" que usa venta, así que el tramo alcanzado
     # aplica su número de rentas directo sobre la renta mensual que
-    # _resolve_rent ya resuelve: `exit_fee_renta = meses × renta_mensual`.
+    # resolve_rent ya resuelve: `exit_fee_renta = meses × renta_mensual`.
     # Mismo relevo que arriba: sin tramos, el número de rentas es el default
     # fijo (`exit_rent_commission_months`).
     rent_tiers = row.get("rent_fee_tiers", [])
-    rent = _resolve_rent(row)
+    rent = resolve_rent(row)
     if rent is not None:
         rent_months = select_tier(rent_tiers, rent, ASSUMPTION_DEFAULTS["exit_rent_commission_months"])
     elif not rent_tiers:

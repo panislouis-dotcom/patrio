@@ -110,6 +110,15 @@ const BASE_PROPERTY: Property = {
   unrealizedGain: null, unrealizedGainPct: null, roi: null, holdMonthsActual: null,
   capRateActual: null, rentAnnualActual: null,
   realizedGain: null, realizedGainPct: null, realizedRoi: null,
+  // RESULTADO, escenario VENTA (proyectado — sin salePrice, corre sobre
+  // projectedSale 9,000,000 y el reloj de holdMonths, 12): bruto contra
+  // totalInvestment (7,295,000), neto contra totalInvestmentWithFeesVenta
+  // (8,480,000) — visiblemente distintos, la comisión de venta ($450,000)
+  // es la diferencia. Escenario RENTA (proyectado — sin rentMonthlyActual,
+  // corre sobre rentMonthlyProjected 30,000): bruto contra totalInvestment,
+  // neto contra totalInvestmentWithFeesRenta (8,120,000).
+  grossGainVenta: 1_705_000, grossGainVentaPct: 0.2337, netGainVenta: 520_000, netGainVentaPct: 0.0613,
+  grossRoiVenta: 0.2337, netRoiVenta: 0.0613, grossYieldRenta: 0.0493, netYieldRenta: 0.0443,
   score: 78, issues: [],
 }
 
@@ -139,6 +148,20 @@ const RENTED: Property = {
   capRate: 0.0965,
   rentMonthlyActual: 34_000, capRateActual: 0.1094, rentAnnualActual: 408_000,
   unrealizedGain: 2_470_000, unrealizedGainPct: 0.6622, roi: 0.1385, holdMonthsActual: 47,
+  // Las comisiones del fondo se recalculan sobre ESTA compra (3,730,000 de
+  // precio, 0 de obra): landFee = 3,730,000 × 5%; constructionFee = 0.
+  // exitFeeVenta sigue sobre projectedSale (9,000,000, sin salePrice) × 5%;
+  // exitFeeRenta sobre rentMonthlyActual (34,000, ya cobrada) × 3 rentas —
+  // resolve_rent prefiere la real sobre la proyectada.
+  landFee: 186_500, constructionFee: 0,
+  exitFeeVenta: 450_000, exitFeeRenta: 102_000,
+  totalFeesVenta: 636_500, totalFeesRenta: 288_500,
+  totalInvestmentWithFeesVenta: 4_366_500, totalInvestmentWithFeesRenta: 4_018_500,
+  // RESULTADO, escenario VENTA (proyectado — sin salePrice): bruto contra
+  // totalInvestment, neto contra totalInvestmentWithFeesVenta — visiblemente
+  // distintos. Escenario RENTA (real — rentMonthlyActual ya cobrada).
+  grossGainVenta: 5_270_000, grossGainVentaPct: 1.4129, netGainVenta: 4_633_500, netGainVentaPct: 1.0611,
+  grossRoiVenta: 1.4129, netRoiVenta: 1.0611, grossYieldRenta: 0.1094, netYieldRenta: 0.1015,
   score: null,
 }
 
@@ -150,6 +173,16 @@ const SOLD: Property = {
   // vendida no tiene ganancia «no realizada»: la realizó.
   unrealizedGain: null, unrealizedGainPct: null, roi: null,
   realizedGain: 4_270_000, realizedGainPct: 1.1448, realizedRoi: 0.2251,
+  // exitFeeVenta se recalcula sobre el salePrice REAL (8,000,000), no sobre
+  // projectedSale: resolve_sale_value() prefiere el real en cuanto existe.
+  // El lado renta no se mueve — nada de la venta lo toca.
+  exitFeeVenta: 400_000, totalFeesVenta: 586_500, totalInvestmentWithFeesVenta: 4_316_500,
+  // RESULTADO, escenario VENTA (real — salePrice ya existe): bruto y neto
+  // coinciden con realizedGain/realizedGainPct de arriba (misma cuenta,
+  // sin comisión) — la comisión de venta ($400,000) es la diferencia con
+  // el neto. Escenario RENTA no cambia por la venta.
+  grossGainVenta: 4_270_000, grossGainVentaPct: 1.1448, netGainVenta: 3_683_500, netGainVentaPct: 0.8534,
+  grossRoiVenta: 0.2257, netRoiVenta: 0.1788,
 }
 
 /**
@@ -190,14 +223,15 @@ async function renderPage(property: Property) {
 describe('PropertyDetailPage', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
-  it('un prospecto muestra su score y su proyección, y ningún resultado de venta', async () => {
+  it('un prospecto muestra su proyección, y ningún resultado de venta real', async () => {
+    // El héroe se retiró (con él, el score dejó de imprimirse en la ficha): la
+    // proyección vive ahora dentro de RESULTADO, en su bloque PLAN ORIGINAL.
     await renderPage(BASE_PROPERTY)
 
     expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
-    expect(screen.getByText('Score 78')).not.toBeNull()
-    expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
-    // Lo realizado solo existe cuando hay una venta que reportar
-    expect(screen.queryByText('GANANCIA REALIZADA')).toBeNull()
+    expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
+    // Sin venta ni renta reales, ESCENARIO VENTA corre proyectado
+    expect(screen.getByText('ESCENARIO VENTA · PROYECTADO')).not.toBeNull()
     // Antes de la oferta no hay capital que levantar
     expect(screen.queryByText('FINANZAS')).toBeNull()
   })
@@ -226,56 +260,24 @@ describe('PropertyDetailPage', () => {
   it('una propiedad en renta muestra lo realizado sin esconder lo de antes', async () => {
     await renderPage(RENTED)
 
-    expect(screen.getByText('ROI ANUAL')).not.toBeNull()
     expect(screen.getByText('GANANCIA NO REALIZADA')).not.toBeNull()
-    // "En pasos de después ves todo lo de antes": la proyección sigue ahí
-    expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
+    // "En pasos de después ves todo lo de antes": la proyección sigue ahí,
+    // ahora dentro de RESULTADO en vez de en su propia sección.
+    expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
     expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
-    // El score dejó de existir al comprar: no hay a quién ganarle
+    // El score dejó de existir al comprar (y con el héroe, dejó de imprimirse
+    // del todo en la ficha): no hay a quién ganarle
     expect(screen.queryByText(/^Score/)).toBeNull()
     // Y las herramientas de etapa ya abrieron
     expect(screen.getByText('FINANZAS')).not.toBeNull()
     expect(screen.getByText('TAREAS')).not.toBeNull()
   })
 
-  it('solo una vendida muestra las métricas realizadas', async () => {
+  it('una vendida ya no ofrece a dónde avanzar: es terminal', async () => {
     await renderPage(SOLD)
 
-    expect(screen.getByText('ROI REAL ANUAL')).not.toBeNull()
-    expect(screen.getByText('GANANCIA REALIZADA')).not.toBeNull()
-    // Y ya no ofrece a dónde avanzar: vendida es terminal
     expect(screen.queryByText('AVANZAR A ▸')).toBeNull()
     expect(screen.queryByText('ARCHIVAR')).toBeNull()
-  })
-
-  it('la ganancia se imprime entera: monto y porcentaje son la misma cifra', async () => {
-    // 4,270,000 sobre 3,730,000 en 47 meses: +114.5% en total, +22.5% al año.
-    // El anualizado y el total son dos hechos distintos y cada uno lleva su
-    // nombre — «ROI» solo el anualizado. Pero el monto y su porcentaje son UNO,
-    // y separarlos dejaba media pareja arriba y media veinte filas abajo, las
-    // dos llamadas «ganancia realizada».
-    await renderPage(SOLD)
-
-    expect(screen.getByText('ROI REAL ANUAL')).not.toBeNull()
-    expect(screen.getByText('+22.5%')).not.toBeNull()
-    expect(screen.getByText('GANANCIA REALIZADA')).not.toBeNull()
-    expect(screen.getByText('$4,270,000 +114.5%')).not.toBeNull()
-    // Y ninguna de las dos mitades anda suelta por ahí bajo otro nombre.
-    expect(screen.queryByText('$4,270,000')).toBeNull()
-    expect(screen.queryByText('+114.5%')).toBeNull()
-    expect(screen.queryByText('GANANCIA REALIZADA %')).toBeNull()
-  })
-
-  it('el ROI dice hasta qué fecha cuenta, y no repite la ganancia sin etiqueta', async () => {
-    // El caption cargaba la ganancia en pesos, que ya la dice el segundo héroe
-    // con su nombre: un número sin etiqueta se escapaba de la regla de «cada
-    // cifra una vez» justamente por no tener etiqueta. Ahora califica al ROI —
-    // el realizado cierra su reloj en la fecha de venta —, que es lo único para
-    // lo que sirve un caption.
-    await renderPage(SOLD)
-
-    expect(screen.getByText('AL JUN 2026')).not.toBeNull()
-    expect(screen.queryByText('$4,270,000')).toBeNull()
   })
 
   it('AVANZAR A ofrece solo los destinos que la etapa permite', async () => {
@@ -356,22 +358,23 @@ describe('PropertyDetailPage', () => {
     await renderPage(BASE_PROPERTY)
     const orden = document.body.textContent!
     const supuestos = orden.indexOf('SUPUESTOS')
-    const proyeccion = orden.indexOf('PROYECCIÓN')
+    const desglose = orden.indexOf('DESGLOSE DE INVERSIÓN')
     expect(supuestos).toBeGreaterThan(-1)
-    expect(proyeccion).toBeGreaterThan(supuestos)
+    expect(desglose).toBeGreaterThan(supuestos)
     for (const campo of ['COSTOS ADQ. (%)', 'PLAZO PROYECTADO (MESES)', 'RENTA/MES ESTIMADA', 'VENTA PROYECTADA']) {
       const pos = orden.indexOf(campo)
       expect(pos, campo).toBeGreaterThan(supuestos)
-      expect(pos, campo).toBeLessThan(proyeccion)
+      expect(pos, campo).toBeLessThan(desglose)
     }
   })
 
-  it('CAP RATE PROY. se mudó a PROYECCIÓN: es un resultado, no un dato de la ficha', async () => {
-    // Antes vivía en DATOS junto a hechos capturados; es 100% calculado, así
-    // que se muda con las demás cifras que produce el modelo.
+  it('CAP RATE PROY. vive en RESULTADO: es un resultado, no un dato de la ficha', async () => {
+    // Antes vivía en DATOS junto a hechos capturados, y luego en su propia
+    // sección PROYECCIÓN; ahora corre con el resto de lo que el modelo
+    // produce, dentro del bloque PLAN ORIGINAL de RESULTADO.
     await renderPage(BASE_PROPERTY)
     const orden = document.body.textContent!
-    expect(orden.indexOf('CAP RATE PROY. S/ VENTA')).toBeGreaterThan(orden.indexOf('PROYECCIÓN'))
+    expect(orden.indexOf('CAP RATE PROY. S/ VENTA')).toBeGreaterThan(orden.indexOf('RESULTADO'))
   })
 
   it('la ficha nunca ofrece capturar un total: la inversión es el desglose', async () => {
@@ -380,34 +383,32 @@ describe('PropertyDetailPage', () => {
     // existir era avisar que no servía. Con un solo origen la pregunta muere.
     await renderPage(BASE_PROPERTY)
 
-    // El hint solo vive en DATOS: el cierre grande y centrado de COMISIONES DEL
-    // FONDO (INVERSIÓN SIN/CON COMISIONES) no lleva "SUMA DEL DESGLOSE" — es la
-    // cifra la que se promueve ahí, sin el hint compitiendo por la vista.
-    expect(screen.getAllByText('SUMA DEL DESGLOSE')).toHaveLength(1)
-    // Y $7,295,000 sale una tercera vez del propio total de InvestmentBreakdown,
-    // que solo se pinta fuera de edición. La fila INVERSIÓN y el total del
-    // DESGLOSE son la misma cifra por construcción: 3,000,000 + 195,000 +
-    // 150,000 + 50,000 + 3,900,000.
-    expect(screen.getAllByText('$7,295,000')).toHaveLength(3)
+    // $7,295,000 sale del total de InvestmentBreakdown (DESGLOSE DE
+    // INVERSIÓN, solo fuera de edición) y de la fila ancla de RESULTADO —
+    // la misma cifra por construcción, sin una tercera copia capturable.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
 
     fireEvent.click(screen.getByText('EDITAR'))
     expect(screen.queryByText('INVERSIÓN CAPTURADA')).toBeNull()
     // Ni siquiera en edición hay caja: la fila sigue siendo la suma, en lectura.
     expect(screen.queryByLabelText('INVERSIÓN')).toBeNull()
-    // En edición InvestmentBreakdown no se pinta, así que solo quedan las dos
-    // filas de solo lectura: DATOS y COMISIONES DEL FONDO.
-    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
-    expect(screen.getAllByText('SUMA DEL DESGLOSE')).toHaveLength(1)
+    // En edición InvestmentBreakdown no se pinta, así que solo queda RESULTADO.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(1)
   })
 
-  it('DATOS ya no ofrece una sola cifra CON COMISIONES: los dos escenarios se comparan en COMISIONES DEL FONDO', async () => {
+  it('DATOS ya no ofrece ninguna cifra de inversión: vive solo en RESULTADO', async () => {
     // Obligar a un resumen terso a elegir entre venta y renta sería fingir que
     // un escenario le gana al otro — el pedido explícito fue lo contrario: ver
-    // los dos, no uno elegido. La etiqueta ya no vive en ningún lado de DATOS.
+    // los dos, no uno elegido. La etiqueta ya no vive en DATOS ni en el cierre
+    // de COMISIONES DEL FONDO (retirado): vive una sola vez, en RESULTADO.
     await renderPage(BASE_PROPERTY)
-    // Vive dos veces: DATOS (resumen) y el cierre de COMISIONES DEL FONDO.
-    expect(screen.getAllByText('INVERSIÓN SIN COMISIONES')).toHaveLength(2)
-    expect(screen.queryByText('INVERSIÓN CON COMISIONES')).toBeNull()
+    expect(screen.getAllByText('INVERSIÓN SIN COMISIONES')).toHaveLength(1)
+    // Ya no hay una etiqueta por escenario (VENTA)/(RENTA): cada columna de
+    // RESULTADO ya se identifica con su propio encabezado ESCENARIO VENTA/
+    // RENTA, así que la fila repite la misma etiqueta corta en las dos.
+    expect(screen.queryByText('INVERSIÓN CON COMISIONES (VENTA)')).toBeNull()
+    expect(screen.queryByText('INVERSIÓN CON COMISIONES (RENTA)')).toBeNull()
+    expect(screen.getAllByText('INVERSIÓN CON COMISIONES')).toHaveLength(2)
   })
 
   // ── COMISIONES DEL FONDO ──────────────────────────────────────────────────
@@ -472,67 +473,6 @@ describe('PropertyDetailPage', () => {
     expect(within(rentaRow).getByText('FALTA RENTA MENSUAL (REAL O PROYECTADA)')).not.toBeNull()
   })
 
-  it('el cierre de COMISIONES DEL FONDO compara los dos escenarios finales en columnas', async () => {
-    await renderPage(BASE_PROPERTY)
-
-    const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
-    expect(within(venta).getByText('$8,480,000')).not.toBeNull()
-    const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
-    expect(within(renta).getByText('$8,120,000')).not.toBeNull()
-  })
-
-  it('un escenario final ausente enseña el guion, sin apagar al otro', async () => {
-    // El hint de variación en pesos/% que vivía aquí (feedback en vivo: se
-    // veía redundante junto al ▾ VER DESGLOSE, que ya desglosa exactamente
-    // esa diferencia partida por partida) se quitó — el guion solo ya basta
-    // para decir "falta este escenario".
-    await renderPage({
-      ...BASE_PROPERTY,
-      exitFeeVenta: null, totalFeesVenta: null, totalInvestmentWithFeesVenta: null,
-      feesMissingInputsVenta: ['salePrice'],
-    })
-
-    const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
-    expect(within(venta).getByText('—')).not.toBeNull()
-    // Sin cifra que explicar no hay "VER DESGLOSE" que ofrecer de ese lado.
-    expect(within(venta).queryByText(/VER DESGLOSE/)).toBeNull()
-    const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
-    expect(within(renta).getByText('$8,120,000')).not.toBeNull()
-    expect(within(renta).getByText('▸ VER DESGLOSE')).not.toBeNull()
-  })
-
-  it('«VER DESGLOSE» abre las partidas —terreno, obra y salida— que suman exactamente el total de arriba', async () => {
-    await renderPage(BASE_PROPERTY)
-
-    const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
-    // Cerrado por default: ninguna partida a la vista todavía.
-    expect(within(venta).queryByText('Comisión venta')).toBeNull()
-
-    fireEvent.click(within(venta).getByText('▸ VER DESGLOSE'))
-
-    // $8,480,000 ya vive arriba, en la cifra grande antes del toggle — el
-    // desglose no la repite (showTotal={false}), solo enseña las partidas.
-    expect(within(venta).getAllByText('$8,480,000')).toHaveLength(1)
-
-    // Las cuatro partidas de fees.py, una por una — la misma suma que ya
-    // enseña $8,480,000 arriba, no una cifra aparte que pudiera no cuadrar.
-    expect(within(venta).getByText('INVERSIÓN SIN COMISIONES')).not.toBeNull()
-    expect(within(venta).getByText('COMISIÓN TERRENO')).not.toBeNull()
-    expect(within(venta).getByText('COMISIÓN OBRA')).not.toBeNull()
-    expect(within(venta).getByText('COMISIÓN VENTA')).not.toBeNull()
-    expect(within(venta).getByText('$7,295,000')).not.toBeNull()
-    expect(within(venta).getByText('$150,000')).not.toBeNull()
-    expect(within(venta).getByText('$585,000')).not.toBeNull()
-    expect(within(venta).getByText('$450,000')).not.toBeNull()
-
-    // La renta sigue cerrada — los dos toggles son independientes, para poder
-    // comparar los dos escenarios abiertos a la vez si hace falta.
-    const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
-    expect(within(renta).queryByText('Comisión renta')).toBeNull()
-
-    fireEvent.click(within(venta).getByText('▾ VER DESGLOSE'))
-    expect(within(venta).queryByText('COMISIÓN VENTA')).toBeNull()
-  })
 
   it('la renta cobrada se pide vacía: confirmar sin leer ya no borra la proyección', async () => {
     const inDevelopment: Property = {
@@ -680,21 +620,23 @@ describe('PropertyDetailPage', () => {
   it('una vendida sigue enseñando el plan contra el que se mide', async () => {
     await renderPage(SOLD)
 
-    // 5,270,000 proyectados contra 4,270,000 realizados: el par que el modelo
+    // 5,270,000 proyectados (PLAN ORIGINAL, congelado) contra 4,270,000
+    // brutos realizados (ESCENARIO VENTA, badge REAL): el par que el modelo
     // promete, legible completo y en la misma pantalla.
-    expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
+    expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
     expect(screen.getByText('$5,270,000 +141.3%')).not.toBeNull()
+    expect(screen.getByText('ESCENARIO VENTA · REAL')).not.toBeNull()
     expect(screen.getByText('$4,270,000 +114.5%')).not.toBeNull()
-    // Aquí sí los ROI proyectados vuelven a ser filas: el héroe lo ocupa el
-    // resultado, que es la respuesta con más realidad detrás.
+    // ROI PROY. ANUAL sigue siendo una fila, sin importar la etapa.
     expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
     // Pero la marca viva sí murió: una vendida no tiene ganancia sin realizar
     expect(screen.queryByText('GANANCIA NO REALIZADA')).toBeNull()
   })
 
-  it('en desarrollo sin avalúo el héroe es la proyección, no dos guiones', async () => {
+  it('en desarrollo sin avalúo, RESULTADO sigue enseñando la proyección, no dos guiones', async () => {
     // Amarrado a la etapa, el elemento más grande de la pantalla decía «— / —»
-    // mientras la proyección viva estaba treinta filas más abajo.
+    // mientras la proyección viva estaba treinta filas más abajo — con el
+    // héroe retirado, PLAN ORIGINAL no depende de que exista una marca viva.
     await renderPage({
       ...BASE_PROPERTY, status: 'desarrollo', score: null, totalUnits: 2,
       acquisitionDate: '2025-01-01', currentValuation: null,
@@ -704,19 +646,8 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
     expect(screen.getByText('+23.0%')).not.toBeNull()
     expect(screen.getByText('$1,705,000 +23.0%')).not.toBeNull()
-    expect(screen.queryByText('ROI ANUAL')).toBeNull()
-  })
-
-  it('el ROI de la marca dice hasta qué fecha cuenta, o que cuenta a hoy', async () => {
-    // El numerador es una valuación con fecha y el reloj cierra en ella, así que
-    // la ficha dice cuál es esa fecha en vez de dejar leer la cifra como si fuera
-    // de cualquier día. Sin fecha de corte el reloj sí corre a hoy, y entonces lo
-    // dice con esas palabras.
-    await renderPage(RENTED)
-    expect(screen.getByText('AL ABR 2026')).not.toBeNull()
-
-    await renderPage({ ...RENTED, valuationDate: null })
-    expect(screen.getByText('AL DÍA DE HOY')).not.toBeNull()
+    // Sin valuación no hay MARCA ACTUAL que ofrecer
+    expect(screen.queryByText('MARCA ACTUAL')).toBeNull()
   })
 
   it('una archivada conserva lo que tenía al archivarse', async () => {
@@ -725,19 +656,20 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
     expect(screen.getByText('$1,705,000 +23.0%')).not.toBeNull()
     expect(screen.getByText('DESGLOSE DE INVERSIÓN')).not.toBeNull()
-    expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
+    expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
   })
 
-  it('PROYECCIÓN sí se dibuja con solo VENTA PROYECTADA: es capturable, no derivada', async () => {
-    // VENTA PROYECTADA vive en esta sección pero no es una de sus cifras
-    // derivadas — es la misma regla que DATOS y FECHAS: un guion en un campo
-    // capturable SÍ es información, señala qué falta teclear. Ocultar la
-    // sección entera porque las derivadas están vacías escondería el único
-    // dato que alguien sí podría capturar aquí.
+  it('RESULTADO no ofrece PLAN ORIGINAL sin proyección, pero VENTA PROYECTADA sigue siendo capturable', async () => {
+    // VENTA PROYECTADA vive en SUPUESTOS y no es una cifra derivada — es la
+    // misma regla que DATOS y FECHAS: un guion en un campo capturable SÍ es
+    // información, señala qué falta teclear. PLAN ORIGINAL sí depende de que
+    // haya proyección (projectedRoiTotal != null) y se oculta sin ella —
+    // ocultar el campo capturable también habría escondido el único dato
+    // que alguien sí podría capturar aquí.
     await renderPage(ALL_IN)
 
-    expect(screen.getByText('PROYECCIÓN')).not.toBeNull()
     expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
+    expect(screen.queryByText('PLAN ORIGINAL')).toBeNull()
     expect(screen.queryByText('GANANCIA PROYECTADA')).toBeNull()
   })
 
@@ -1180,9 +1112,9 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('$200,000')).not.toBeNull()
     expect(screen.getByText('-$200,000')).not.toBeNull()
     // Y ninguna de las tres redefine la inversión: sigue siendo la del plan.
-    // Tres apariciones fuera de edición: DATOS, el total de InvestmentBreakdown
-    // y la fila «sin comisiones» de COMISIONES DEL FONDO.
-    expect(screen.getAllByText('$7,295,000')).toHaveLength(3)
+    // Dos apariciones fuera de edición: el total de InvestmentBreakdown y la
+    // fila «sin comisiones» de RESULTADO.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
   })
 
   it('vaciar un campo pasa por clear-fields, con su propio botón', async () => {
@@ -1193,5 +1125,64 @@ describe('PropertyDetailPage', () => {
 
     await waitFor(() => expect(api.clearPropertyFields).toHaveBeenCalledWith(7, ['rentMonthlyProjected']))
     expect(api.updateProperty).not.toHaveBeenCalled()
+  })
+
+  describe('RESULTADO', () => {
+    it('un prospecto muestra PLAN ORIGINAL y los dos escenarios proyectados, sin MARCA ACTUAL', async () => {
+      await renderPage(BASE_PROPERTY)
+
+      expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
+      expect(screen.getByText('ESCENARIO VENTA · PROYECTADO')).not.toBeNull()
+      expect(screen.getByText('ESCENARIO RENTA · PROYECTADA')).not.toBeNull()
+      expect(screen.queryByText('MARCA ACTUAL')).toBeNull()
+    })
+
+    it('una vendida muestra ESCENARIO VENTA real, con ganancia bruta y neta visiblemente distintas', async () => {
+      await renderPage(SOLD)
+
+      expect(screen.getByText('ESCENARIO VENTA · REAL')).not.toBeNull()
+      // Bruta contra totalInvestment, neta contra totalInvestmentWithFeesVenta:
+      // nunca coinciden por casualidad, la comisión de venta es la diferencia.
+      expect(screen.getByText('$4,270,000 +114.5%')).not.toBeNull()
+      expect(screen.getByText('$3,683,500 +85.3%')).not.toBeNull()
+    })
+
+    it('una propiedad en renta con avalúo muestra MARCA ACTUAL junto a los dos escenarios', async () => {
+      await renderPage(RENTED)
+
+      expect(screen.getByText('MARCA ACTUAL')).not.toBeNull()
+      expect(screen.getByText('GANANCIA NO REALIZADA')).not.toBeNull()
+      expect(screen.getByText('$2,470,000 +66.2%')).not.toBeNull()
+      expect(screen.getByText('ESCENARIO VENTA · PROYECTADO')).not.toBeNull()
+      expect(screen.getByText('ESCENARIO RENTA · REAL')).not.toBeNull()
+    })
+
+    it('sin datos de venta ni renta, ambas columnas dicen qué falta capturar en vez de quedar vacías', async () => {
+      await renderPage({
+        ...BASE_PROPERTY, status: 'desarrollo', score: null,
+        projectedSale: null, salePrice: null,
+        exitFeeVenta: null, totalFeesVenta: null, totalInvestmentWithFeesVenta: null,
+        rentMonthlyProjected: null, rentMonthlyActual: null,
+        exitFeeRenta: null, totalFeesRenta: null, totalInvestmentWithFeesRenta: null,
+        feesMissingInputsVenta: ['salePrice'], feesMissingInputsRenta: ['rentMonthly'],
+        projectedProfit: null, projectedRoi: null, projectedRoiTotal: null, capRate: null, rentAnnual: null,
+        grossGainVenta: null, grossGainVentaPct: null, netGainVenta: null, netGainVentaPct: null,
+        grossRoiVenta: null, netRoiVenta: null, grossYieldRenta: null, netYieldRenta: null,
+      })
+
+      expect(screen.queryByText('PLAN ORIGINAL')).toBeNull()
+      expect(screen.getByText('ESCENARIO VENTA · PROYECTADO')).not.toBeNull()
+      expect(screen.getByText('ESCENARIO RENTA · PROYECTADA')).not.toBeNull()
+      // El mismo hint aparece dos veces: una en COMISIONES DEL FONDO (captura)
+      // y otra en RESULTADO (COMISIÓN VENTA/RENTA de cada escenario) — mismo
+      // texto reusado, no reinventado, en las dos secciones.
+      expect(screen.getAllByText('FALTA PRECIO DE VENTA (REAL O PROYECTADO)')).toHaveLength(2)
+      expect(screen.getAllByText('FALTA RENTA MENSUAL (REAL O PROYECTADA)')).toHaveLength(2)
+    })
+
+    it('INVERSIÓN SIN COMISIONES aparece una sola vez en toda la ficha', async () => {
+      await renderPage(BASE_PROPERTY)
+      expect(screen.getAllByText('INVERSIÓN SIN COMISIONES')).toHaveLength(1)
+    })
   })
 })

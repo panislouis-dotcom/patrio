@@ -311,6 +311,23 @@ export interface Property {
   realizedGainPct: number | null
   realizedRoi: number | null
 
+  // --- RESULTADO: bruto vs. neto, venta vs. renta, misma forma en las 5
+  // etapas. Bruto descuenta contra la inversión SIN comisiones (`totalInvestment`);
+  // neto contra la inversión CON comisiones (`totalInvestmentWithFeesVenta`/`Renta`)
+  // — la diferencia entre ambos es la comisión del fondo, explícita. Leen
+  // real-antes-que-proyectado (precio/renta real una vez que existe), por eso
+  // el reloj de venta también cambia con el dato: `exit_months` una vez
+  // vendida, la asunción de `holdMonths` mientras tanto — igual que
+  // `realizedRoi` vs. `projectedRoi`.
+  grossGainVenta: number | null
+  grossGainVentaPct: number | null
+  netGainVenta: number | null
+  netGainVentaPct: number | null
+  grossRoiVenta: number | null
+  netRoiVenta: number | null
+  grossYieldRenta: number | null
+  netYieldRenta: number | null
+
   // --- Calculados por el servidor (única casa) ---
   score: number | null    // solo prospecto/oferta
   issues: Issue[]
