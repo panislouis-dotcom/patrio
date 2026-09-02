@@ -27,51 +27,77 @@ beforeEach(() => {
   vi.mocked(api.fetchProperty).mockReset()
 })
 
-describe('FeeTierEditor — estado vacío', () => {
-  it('sin tramos, enseña SUPUESTO POR OMISIÓN, el botón de agregar y ningún botón de guardar', () => {
+describe('FeeTierEditor — vista (sin tramos guardados)', () => {
+  it('sin tramos, enseña SUPUESTO POR OMISIÓN y el botón de agregar — nada de Guardar ni cajas', () => {
     render(<FeeTierEditor property={property()} kind="venta" onPropertyChange={vi.fn()} />)
     expect(screen.getByText('SUPUESTO POR OMISIÓN')).not.toBeNull()
     expect(screen.getByText('+ agregar tramo')).not.toBeNull()
-    // Sin escalera todavía no hay nada que limpiar ni nada que guardar.
+    expect(screen.queryByText(SAVE)).toBeNull()
+    expect(screen.queryByLabelText(`Umbral tramo 1 — ${LABEL}`)).toBeNull()
+  })
+})
+
+describe('FeeTierEditor — vista (con tramos guardados)', () => {
+  it('enseña los tramos como texto fijo, sin ✕ de ningún tipo, con un botón «editar tramos»', () => {
+    const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.06 }]
+    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+
+    expect(screen.getByText('5,000,000')).not.toBeNull()
+    expect(screen.getByText('6')).not.toBeNull()
+    expect(screen.getByText('editar tramos')).not.toBeNull()
+    // Nada de ✕ visible en vista: ni la de "quitar todo" (ya no existe) ni
+    // la de un renglón individual (solo aparece en edición).
+    expect(screen.queryByText('✕')).toBeNull()
     expect(screen.queryByLabelText(`Quitar escalera de ${LABEL}`)).toBeNull()
+    expect(screen.queryByLabelText(`Quitar tramo 1 — ${LABEL}`)).toBeNull()
+    // Tampoco hay cajas de captura ni botón de Guardar hasta entrar a editar.
+    expect(screen.queryByLabelText(`Umbral tramo 1 — ${LABEL}`)).toBeNull()
     expect(screen.queryByText(SAVE)).toBeNull()
   })
 })
 
-describe('FeeTierEditor — nada se guarda solo', () => {
-  it('agregar tramo siembra un renglón y muestra Guardar, sin llamar al API todavía', () => {
+describe('FeeTierEditor — entrar y salir de edición', () => {
+  it('«editar tramos» abre las cajas, la ✕ por renglón y Guardar/cancelar', () => {
+    const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.06 }]
+    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    fireEvent.click(screen.getByText('editar tramos'))
+
+    expect(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`)).not.toBeNull()
+    expect(screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`)).not.toBeNull()
+    expect(screen.getByLabelText(`Quitar tramo 1 — ${LABEL}`)).not.toBeNull()
+    expect(screen.getByText(SAVE)).not.toBeNull()
+    expect(screen.getByText('cancelar')).not.toBeNull()
+    expect(api.replaceFeeTiers).not.toHaveBeenCalled()
+  })
+
+  it('«+ agregar tramo» desde vacío entra a edición sembrando un renglón', () => {
     render(<FeeTierEditor property={property()} kind="venta" onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('+ agregar tramo'))
 
     expect(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`)).not.toBeNull()
-    expect(screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`)).not.toBeNull()
-    // Agregar un renglón ya es un cambio sin guardar — el botón aparece de
-    // inmediato, antes de tocar ningún campo.
     expect(screen.getByText(SAVE)).not.toBeNull()
     expect(api.replaceFeeTiers).not.toHaveBeenCalled()
   })
 
-  it('teclear un campo no guarda nada por sí solo — ni al cambiarlo ni al soltarlo (blur)', () => {
+  it('cancelar descarta el borrador y regresa a vista con los valores guardados', () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.06 }]
     render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    fireEvent.click(screen.getByText('editar tramos'))
+    fireEvent.change(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`), { target: { value: '9000000' } })
 
-    const tasa = screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`)
-    fireEvent.change(tasa, { target: { value: '7' } })
-    fireEvent.blur(tasa)
+    fireEvent.click(screen.getByText('cancelar'))
 
+    expect(screen.queryByLabelText(`Umbral tramo 1 — ${LABEL}`)).toBeNull()
+    expect(screen.getByText('5,000,000')).not.toBeNull()
+    expect(screen.getByText('editar tramos')).not.toBeNull()
     expect(api.replaceFeeTiers).not.toHaveBeenCalled()
-    expect(screen.getByText(SAVE)).not.toBeNull()
   })
 
   it('un renglón a medio llenar no muestra error hasta que se intenta Guardar', () => {
     render(<FeeTierEditor property={property()} kind="venta" onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('+ agregar tramo'))
 
-    const umbral = screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`)
-    fireEvent.change(umbral, { target: { value: '5000000' } })
-    fireEvent.blur(umbral)
-    // Falta la tasa: trabajo en progreso, no un error todavía.
-    expect(screen.queryByText(/tasa entre 0% y 100%/i)).toBeNull()
+    fireEvent.change(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`), { target: { value: '5000000' } })
     expect(screen.queryByText(/completa el umbral y la tasa/i)).toBeNull()
 
     fireEvent.click(screen.getByText(SAVE))
@@ -81,7 +107,7 @@ describe('FeeTierEditor — nada se guarda solo', () => {
 })
 
 describe('FeeTierEditor — Guardar cambios', () => {
-  it('agregar tramo, llenarlo y hacer clic en Guardar manda el arreglo completo', async () => {
+  it('agregar tramo, llenarlo y hacer clic en Guardar manda el arreglo completo y regresa a vista', async () => {
     const onPropertyChange = vi.fn()
     const refreshed = property({ saleFeeTiers: [{ threshold: 5_000_000, rate: 0.06 }] })
     vi.mocked(api.replaceFeeTiers).mockResolvedValue([{ threshold: 5_000_000, rate: 0.06 }])
@@ -91,44 +117,19 @@ describe('FeeTierEditor — Guardar cambios', () => {
     fireEvent.click(screen.getByText('+ agregar tramo'))
     fireEvent.change(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`), { target: { value: '5000000' } })
     fireEvent.change(screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`), { target: { value: '6' } })
-
-    expect(api.replaceFeeTiers).not.toHaveBeenCalled()
     fireEvent.click(screen.getByText(SAVE))
 
     await waitFor(() => expect(api.replaceFeeTiers).toHaveBeenCalledWith(
       7, 'venta', [{ threshold: 5_000_000, rate: 0.06 }],
     ))
-    // El PUT solo trae la lista de tramos — hace falta el refetch para las
-    // cifras en pesos que dependen de la escalera.
     await waitFor(() => expect(api.fetchProperty).toHaveBeenCalledWith(7))
     await waitFor(() => expect(onPropertyChange).toHaveBeenCalledWith(refreshed))
-    // Guardado: ya no hay nada pendiente, el botón desaparece.
-    await waitFor(() => expect(screen.queryByText(SAVE)).toBeNull())
+    // De vuelta a vista: ya no hay cajas ni botón de Guardar.
+    await waitFor(() => expect(screen.queryByLabelText(`Umbral tramo 1 — ${LABEL}`)).toBeNull())
+    expect(screen.queryByText(SAVE)).toBeNull()
   })
 
-  it('borrar un renglón es un cambio pendiente — se manda hasta hacer clic en Guardar', async () => {
-    const onPropertyChange = vi.fn()
-    const existing: Property['saleFeeTiers'] = [
-      { threshold: 5_000_000, rate: 0.06 },
-      { threshold: 6_500_000, rate: 0.07 },
-    ]
-    const refreshed = property({ saleFeeTiers: [{ threshold: 6_500_000, rate: 0.07 }] })
-    vi.mocked(api.replaceFeeTiers).mockResolvedValue([{ threshold: 6_500_000, rate: 0.07 }])
-    vi.mocked(api.fetchProperty).mockResolvedValue(refreshed)
-
-    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={onPropertyChange} />)
-    fireEvent.click(screen.getByLabelText(`Quitar tramo 1 — ${LABEL}`))
-
-    expect(api.replaceFeeTiers).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByText(SAVE))
-
-    await waitFor(() => expect(api.replaceFeeTiers).toHaveBeenCalledWith(
-      7, 'venta', [{ threshold: 6_500_000, rate: 0.07 }],
-    ))
-    await waitFor(() => expect(onPropertyChange).toHaveBeenCalledWith(refreshed))
-  })
-
-  it('quitar toda la escalera (✕) vuelve al default en pantalla, pero solo se persiste al hacer clic en Guardar', async () => {
+  it('borrar todos los renglones y guardar vacía la escalera — reemplaza la vieja ✕ de "quitar todo"', async () => {
     const onPropertyChange = vi.fn()
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.05 }]
     const refreshed = property({ saleFeeTiers: [] })
@@ -136,13 +137,9 @@ describe('FeeTierEditor — Guardar cambios', () => {
     vi.mocked(api.fetchProperty).mockResolvedValue(refreshed)
 
     render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={onPropertyChange} />)
-    fireEvent.click(screen.getByLabelText(`Quitar escalera de ${LABEL}`))
-
-    // El borrador ya se ve vacío...
-    expect(screen.getByText('SUPUESTO POR OMISIÓN')).not.toBeNull()
-    // ...pero el servidor todavía no se tocó — Guardar sigue pendiente.
-    expect(api.replaceFeeTiers).not.toHaveBeenCalled()
-    expect(screen.getByText(SAVE)).not.toBeNull()
+    fireEvent.click(screen.getByText('editar tramos'))
+    fireEvent.click(screen.getByLabelText(`Quitar tramo 1 — ${LABEL}`))
+    expect(screen.getByText(/sin tramos/i)).not.toBeNull()
 
     fireEvent.click(screen.getByText(SAVE))
     await waitFor(() => expect(api.replaceFeeTiers).toHaveBeenCalledWith(7, 'venta', []))
@@ -154,11 +151,11 @@ describe('FeeTierEditor — validación local', () => {
   it('un umbral repetido se rechaza al hacer clic en Guardar, sin llamar al API', () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.06 }]
     render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    fireEvent.click(screen.getByText('editar tramos'))
     fireEvent.click(screen.getByText('+ agregar tramo'))
 
     fireEvent.change(screen.getByLabelText(`Umbral tramo 2 — ${LABEL}`), { target: { value: '5000000' } })
     fireEvent.change(screen.getByLabelText(`Tasa tramo 2 — ${LABEL}`), { target: { value: '4' } })
-    expect(screen.queryByText(/umbrales deben ser únicos/i)).toBeNull()
 
     fireEvent.click(screen.getByText(SAVE))
     expect(screen.getByText(/umbrales deben ser únicos/i)).not.toBeNull()
@@ -168,6 +165,7 @@ describe('FeeTierEditor — validación local', () => {
   it('una tasa fuera de [0,1] se rechaza al hacer clic en Guardar, sin llamar al API', () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.05 }]
     render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    fireEvent.click(screen.getByText('editar tramos'))
 
     fireEvent.change(screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`), { target: { value: '150' } })
     fireEvent.click(screen.getByText(SAVE))
@@ -178,17 +176,18 @@ describe('FeeTierEditor — validación local', () => {
 })
 
 describe('FeeTierEditor — rechazo del servidor', () => {
-  it('si el servidor rechaza el PUT, su mensaje se muestra y no se llama fetchProperty', async () => {
+  it('si el servidor rechaza el PUT, su mensaje se muestra, no se llama fetchProperty y se sigue en edición', async () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.05 }]
     vi.mocked(api.replaceFeeTiers).mockRejectedValue(new Error('No se pudo guardar la escalera.'))
 
     render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    fireEvent.click(screen.getByText('editar tramos'))
     fireEvent.change(screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`), { target: { value: '7' } })
     fireEvent.click(screen.getByText(SAVE))
 
     await waitFor(() => expect(screen.getByText('No se pudo guardar la escalera.')).not.toBeNull())
     expect(api.fetchProperty).not.toHaveBeenCalled()
-    // El PUT falló: el cambio sigue pendiente, Guardar no desaparece.
+    // El PUT falló: se queda en edición, con Guardar todavía disponible.
     expect(screen.getByText(SAVE)).not.toBeNull()
   })
 })

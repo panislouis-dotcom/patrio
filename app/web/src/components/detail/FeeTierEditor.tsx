@@ -27,26 +27,10 @@ interface DraftTier {
   rate: number | undefined
 }
 
-/**
- * Dos pintas para el mismo campo, según haya algo sin guardar (`dirty`):
- * guardado → se ve como el resto de los valores capturados de la ficha
- * (`EditableRow` en modo lectura: `fonts.sans`, 11px, `colors.neutral`, sin
- * caja). Con cambios pendientes → caja de captura de verdad (`fieldInput`,
- * mismo estilo que el resto del formulario), para que se note a simple vista
- * que hay algo sin guardar. Antes el campo era SIEMPRE una caja (o SIEMPRE
- * texto) sin importar si había algo pendiente — en ambos casos se leía mal:
- * como caja permanente parecía "siempre en edición" aunque no hubiera nada
- * que guardar; como texto permanente no se notaba cuándo sí había algo sin
- * guardar.
- */
 const tierValueDisplay: React.CSSProperties = {
   fontFamily: fonts.sans,
   fontSize: '11px',
   color: colors.neutral,
-  background: 'transparent',
-  border: 'none',
-  padding: 0,
-  outline: 'none',
 }
 
 const smallBtn: React.CSSProperties = {
@@ -59,6 +43,18 @@ const smallBtn: React.CSSProperties = {
   fontSize: '9px',
   lineHeight: 1,
   padding: '4px 6px',
+}
+
+const linkBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: colors.secondary,
+  cursor: 'pointer',
+  fontFamily: fonts.label,
+  fontSize: '9px',
+  letterSpacing: '0.06em',
+  textDecoration: 'underline',
+  padding: 0,
 }
 
 /** Mismo botón primario que `DetailHeader`'s GUARDAR — mismo `colors.primary`
@@ -78,28 +74,33 @@ const saveBtn: React.CSSProperties = {
   transition: 'opacity 0.2s',
 }
 
+function fmtNumber(n: number, decimal = false): string {
+  if (decimal) return String(Math.round(n * 1e6) / 1e6)
+  return Math.round(n).toLocaleString('en-US')
+}
+
 /**
  * La escalera de comisión de salida de un lado (`venta` o `renta`) de UNA
  * propiedad: `property.saleFeeTiers`/`rentFeeTiers`, escrita entera por PUT
  * (`replaceFeeTiers`, api.ts) — su propio sub-recurso, fuera de
  * `useEdits`/PATCH.
  *
- * **Guardado explícito, no automático.** A diferencia de `BudgetPanel` (que
- * comita cada celda sola, al soltarla), aquí NADA toca el servidor hasta que
- * se hace clic en «Guardar cambios de {kind}»: agregar un tramo, teclear un
- * umbral o una tasa, borrar un renglón o quitar la escalera entera son puras
- * mutaciones del borrador local (`nonFloor`/`hasLadder`/`dirty`). El botón
- * solo aparece cuando `dirty` es cierto (hay algo sin guardar) y manda el
- * arreglo COMPLETO de tramos —`replaceFeeTiers` es un reemplazo atómico, no
- * un CRUD por renglón, no hay "PATCH del tramo 2".
+ * **Dos estados fijos, no un híbrido.** VISTA: los tramos guardados se leen
+ * como texto plano, sin ninguna ✕ ni caja — nada sugiere que se puede tocar
+ * algo salvo el botón «editar tramos» (o «+ agregar tramo» si no hay ninguno
+ * todavía). EDICIÓN (`editing`): recién ahí aparecen las cajas de captura,
+ * la ✕ por renglón, «+ agregar tramo» y los botones Guardar/Cancelar. No hay
+ * una ✕ aparte para "quitar toda la escalera": para vaciarla se borran sus
+ * renglones uno por uno (mismo control que borrar cualquier otro) y se
+ * guarda con la lista en cero — una escalera vacía es, para el servidor, el
+ * mismo caso que nunca haber tenido una.
  *
- * Se probaron antes dos variantes de guardado automático (comitar en cada
- * blur, con y sin caja visible) y las dos confundían: sin un botón visible no
- * quedaba claro que sí se había guardado, y validar en cada blur mostraba un
- * error real ("cada tramo necesita una tasa...") en un renglón que el usuario
- * apenas empezaba a llenar, antes de tener oportunidad de terminarlo. Con
- * guardado explícito ninguno de los dos pasa: la validación solo corre al
- * hacer clic en Guardar, nunca a medio tecleo.
+ * Se probaron antes variantes con guardado automático al blur (con y sin
+ * caja visible) y con guardado explícito pero sin separar vista/edición —
+ * las tres confundían: sin botón visible no quedaba claro que se había
+ * guardado; con la ✕ de "quitar todo" y la ✕ por renglón siempre a la vista
+ * no quedaba claro cuál de las dos hacía qué, ni por qué se veían fuera de
+ * cualquier "modo edición" explícito.
  *
  * No hay tramo piso ("si no") — el servidor lo rechaza de plano. Si el valor
  * no alcanza ningún umbral, la tasa que aplica es 0% automáticamente.
@@ -109,31 +110,27 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   const storedKey = JSON.stringify(stored)
   const label = kind === 'venta' ? 'COMISIÓN VENTA — TRAMOS' : 'COMISIÓN RENTA — TRAMOS'
 
-  const [hasLadder, setHasLadder] = useState(stored.length > 0)
+  const [editing, setEditing] = useState(false)
   const [nonFloor, setNonFloor] = useState<DraftTier[]>(
     stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold, rate: t.rate })),
   )
-  const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Re-sincroniza el borrador cuando la escalera GUARDADA cambia de verdad —no
-  // cuando `property` cambia de referencia por cualquier otro motivo (guardar
-  // un renglón del presupuesto, GUARDAR de la ficha): la clave es el contenido
-  // de los tramos de ESTE lado, no la propiedad entera, para no pisar un tramo
-  // a medio teclear por un cambio que no le pertenece. Incluye el propio
-  // refetch que hace `save()` al terminar — ahí `dirty` ya se puso en falso a
-  // mano, esto es un segundo cierre del mismo círculo, no el único.
+  // Re-sincroniza el borrador y regresa a VISTA cuando la escalera GUARDADA
+  // cambia de verdad —no cuando `property` cambia de referencia por
+  // cualquier otro motivo (guardar un renglón del presupuesto, GUARDAR de la
+  // ficha): la clave es el contenido de los tramos de ESTE lado, no la
+  // propiedad entera. Cubre tanto el refetch del propio `save()` de este
+  // componente como un cambio externo (otra pestaña, otro editor).
   useEffect(() => {
-    setHasLadder(stored.length > 0)
+    setEditing(false)
     setNonFloor(stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold, rate: t.rate })))
-    setDirty(false)
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storedKey])
 
-  function tiersOf(nf: DraftTier[], ladder: boolean): FeeTier[] {
-    if (!ladder) return []
+  function tiersOf(nf: DraftTier[]): FeeTier[] {
     return nf.map(t => ({ threshold: t.threshold ?? NaN, rate: t.rate ?? NaN }))
   }
 
@@ -158,7 +155,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   }
 
   async function save() {
-    const tiers = tiersOf(nonFloor, hasLadder)
+    const tiers = tiersOf(nonFloor)
     if (tiers.some(t => Number.isNaN(t.threshold) || Number.isNaN(t.rate))) {
       setError('Completa el umbral y la tasa de cada tramo antes de guardar.')
       return
@@ -171,7 +168,13 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
       await replaceFeeTiers(property.id, kind, tiers)
       const fresh = await fetchProperty(property.id)
       onPropertyChange(fresh)
-      setDirty(false)
+      // El `useEffect` de arriba también apaga `editing` cuando `storedKey`
+      // cambia, pero si se guarda una lista igual a la que ya estaba (ej.
+      // se agregó y luego se borró el mismo tramo antes de guardar, o la
+      // escalera ya estaba vacía y se guarda vacía otra vez) `storedKey` no
+      // cambia y ese efecto nunca se dispara — este apagado explícito cubre
+      // ese caso.
+      setEditing(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar la escalera')
     } finally {
@@ -179,60 +182,67 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
     }
   }
 
+  function startEditing() {
+    setError(null)
+    setEditing(true)
+  }
+
+  function cancelEditing() {
+    setError(null)
+    setEditing(false)
+    setNonFloor(stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold, rate: t.rate })))
+  }
+
   function addTier() {
     setError(null)
-    setDirty(true)
-    if (!hasLadder) {
-      setHasLadder(true)
-      setNonFloor([{ id: crypto.randomUUID(), threshold: undefined, rate: undefined }])
-      return
-    }
+    setEditing(true)
     setNonFloor(prev => [...prev, { id: crypto.randomUUID(), threshold: undefined, rate: undefined }])
   }
 
   function deleteTier(idx: number) {
     setError(null)
-    setDirty(true)
     setNonFloor(prev => prev.filter((_, i) => i !== idx))
-  }
-
-  function clearAll() {
-    setError(null)
-    setDirty(true)
-    setHasLadder(false)
-    setNonFloor([])
   }
 
   function updateNonFloor(idx: number, patch: Partial<DraftTier>) {
     setError(null)
-    setDirty(true)
     setNonFloor(prev => prev.map((t, i) => (i === idx ? { ...t, ...patch } : t)))
   }
 
-  const clearButton = hasLadder && (
-    <button onClick={clearAll} title="Quitar la escalera y volver al default" aria-label={`Quitar escalera de ${label}`} style={smallBtn}>
-      ✕
-    </button>
-  )
-
-  const valueStyle = dirty ? fieldInput : tierValueDisplay
-
   return (
     <div style={{ padding: '10px 0', borderBottom: `1px solid ${colors.border}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-        <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>{label}</span>
-        {clearButton}
-      </div>
+      <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary }}>{label}</span>
 
-      {!hasLadder && (
+      {!editing && stored.length === 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
           <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary }}>SUPUESTO POR OMISIÓN</span>
           <button onClick={addTier} style={smallBtn}>+ agregar tramo</button>
         </div>
       )}
 
-      {hasLadder && (
+      {!editing && stored.length > 0 && (
         <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {stored.map((tier, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>DESDE $</span>
+              <span style={tierValueDisplay}>{fmtNumber(tier.threshold)}</span>
+              <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>TASA %</span>
+              <span style={tierValueDisplay}>{fmtNumber(tier.rate * 100, true)}</span>
+            </div>
+          ))}
+          <div>
+            <button onClick={startEditing} style={smallBtn}>editar tramos</button>
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {nonFloor.length === 0 && (
+            <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary }}>
+              SIN TRAMOS — SE USARÁ EL SUPUESTO POR OMISIÓN
+            </span>
+          )}
           {nonFloor.map((tier, idx) => (
             <div key={tier.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>DESDE $</span>
@@ -240,7 +250,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
                 value={tier.threshold}
                 onChange={n => updateNonFloor(idx, { threshold: n })}
                 ariaLabel={`Umbral tramo ${idx + 1} — ${label}`}
-                style={{ ...valueStyle, width: dirty ? '110px' : '90px' }}
+                style={{ ...fieldInput, width: '110px' }}
               />
               <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>TASA %</span>
               <NumericInput
@@ -248,27 +258,23 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
                 onChange={n => updateNonFloor(idx, { rate: n != null ? n / 100 : undefined })}
                 step={0.1}
                 ariaLabel={`Tasa tramo ${idx + 1} — ${label}`}
-                style={{ ...valueStyle, width: dirty ? '70px' : '40px' }}
+                style={{ ...fieldInput, width: '70px' }}
               />
               <button onClick={() => deleteTier(idx)} title="Quitar tramo" aria-label={`Quitar tramo ${idx + 1} — ${label}`} style={smallBtn}>✕</button>
             </div>
           ))}
 
-          <div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px' }}>
             <button onClick={addTier} style={smallBtn}>+ agregar tramo</button>
+            <button
+              onClick={() => void save()}
+              disabled={saving}
+              style={{ ...saveBtn, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}
+            >
+              {saving ? 'GUARDANDO…' : `GUARDAR CAMBIOS DE ${kind.toUpperCase()} ▸`}
+            </button>
+            <button onClick={cancelEditing} disabled={saving} style={linkBtn}>cancelar</button>
           </div>
-        </div>
-      )}
-
-      {dirty && (
-        <div style={{ marginTop: '8px' }}>
-          <button
-            onClick={() => void save()}
-            disabled={saving}
-            style={{ ...saveBtn, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}
-          >
-            {saving ? 'GUARDANDO…' : `GUARDAR CAMBIOS DE ${kind.toUpperCase()} ▸`}
-          </button>
         </div>
       )}
 
