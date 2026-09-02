@@ -223,6 +223,13 @@ export interface Property {
   constructionFee: number | null
   exitFeeVenta: number | null
   exitFeeRenta: number | null
+  // La tasa vigente para cada lado: el tramo alcanzado si hay escalera y ya
+  // hay valor con qué evaluarla, o el default del modelo si la escalera está
+  // vacía (conocido de entrada, sin esperar precio/renta). Null solo cuando
+  // SÍ hay tramos configurados pero todavía no hay valor contra qué elegir
+  // uno — mismo caso que deja exitFeeVenta/Renta en null.
+  exitFeeVentaRate: number | null
+  exitFeeRentaRate: number | null
   totalFeesVenta: number | null
   totalFeesRenta: number | null
   totalInvestmentWithFeesVenta: number | null

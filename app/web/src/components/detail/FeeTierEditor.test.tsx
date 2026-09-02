@@ -28,9 +28,13 @@ beforeEach(() => {
 })
 
 describe('FeeTierEditor — vista (sin tramos guardados)', () => {
-  it('sin tramos, enseña SUPUESTO POR OMISIÓN y el botón de agregar — nada de Guardar ni cajas', () => {
-    render(<FeeTierEditor property={property()} kind="venta" onPropertyChange={vi.fn()} />)
+  it('sin tramos, enseña SUPUESTO POR OMISIÓN con su tasa y el botón de agregar — nada de Guardar ni cajas', () => {
+    render(<FeeTierEditor property={property()} kind="venta" defaultRatePct={0.05} onPropertyChange={vi.fn()} />)
     expect(screen.getByText('SUPUESTO POR OMISIÓN')).not.toBeNull()
+    // La tasa que de verdad aplicaría (exitFeeVentaRate de fees.py) se ve aquí
+    // mismo, no solo en el hint de la fila ($) de abajo — mismo patrón que
+    // COMISIÓN COMPRA TERRENO (%) ya usa para su propio default.
+    expect(screen.getByText('5.0%')).not.toBeNull()
     expect(screen.getByText('+ agregar tramo')).not.toBeNull()
     expect(screen.queryByText(SAVE)).toBeNull()
     expect(screen.queryByLabelText(`Umbral tramo 1 — ${LABEL}`)).toBeNull()
@@ -40,7 +44,7 @@ describe('FeeTierEditor — vista (sin tramos guardados)', () => {
 describe('FeeTierEditor — vista (con tramos guardados)', () => {
   it('enseña los tramos como texto fijo, sin ✕ de ningún tipo, con un botón «editar tramos»', () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.06 }]
-    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
 
     expect(screen.getByText('5,000,000')).not.toBeNull()
     expect(screen.getByText('6')).not.toBeNull()
@@ -59,7 +63,7 @@ describe('FeeTierEditor — vista (con tramos guardados)', () => {
 describe('FeeTierEditor — entrar y salir de edición', () => {
   it('«editar tramos» abre las cajas, la ✕ por renglón y Guardar/cancelar', () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.06 }]
-    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('editar tramos'))
 
     expect(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`)).not.toBeNull()
@@ -71,7 +75,7 @@ describe('FeeTierEditor — entrar y salir de edición', () => {
   })
 
   it('«+ agregar tramo» desde vacío entra a edición sembrando un renglón', () => {
-    render(<FeeTierEditor property={property()} kind="venta" onPropertyChange={vi.fn()} />)
+    render(<FeeTierEditor property={property()} kind="venta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('+ agregar tramo'))
 
     expect(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`)).not.toBeNull()
@@ -81,7 +85,7 @@ describe('FeeTierEditor — entrar y salir de edición', () => {
 
   it('cancelar descarta el borrador y regresa a vista con los valores guardados', () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.06 }]
-    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('editar tramos'))
     fireEvent.change(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`), { target: { value: '9000000' } })
 
@@ -94,7 +98,7 @@ describe('FeeTierEditor — entrar y salir de edición', () => {
   })
 
   it('un renglón a medio llenar no muestra error hasta que se intenta Guardar', () => {
-    render(<FeeTierEditor property={property()} kind="venta" onPropertyChange={vi.fn()} />)
+    render(<FeeTierEditor property={property()} kind="venta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('+ agregar tramo'))
 
     fireEvent.change(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`), { target: { value: '5000000' } })
@@ -113,7 +117,7 @@ describe('FeeTierEditor — Guardar cambios', () => {
     vi.mocked(api.replaceFeeTiers).mockResolvedValue([{ threshold: 5_000_000, rate: 0.06 }])
     vi.mocked(api.fetchProperty).mockResolvedValue(refreshed)
 
-    render(<FeeTierEditor property={property()} kind="venta" onPropertyChange={onPropertyChange} />)
+    render(<FeeTierEditor property={property()} kind="venta" defaultRatePct={null} onPropertyChange={onPropertyChange} />)
     fireEvent.click(screen.getByText('+ agregar tramo'))
     fireEvent.change(screen.getByLabelText(`Umbral tramo 1 — ${LABEL}`), { target: { value: '5000000' } })
     fireEvent.change(screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`), { target: { value: '6' } })
@@ -136,7 +140,7 @@ describe('FeeTierEditor — Guardar cambios', () => {
     vi.mocked(api.replaceFeeTiers).mockResolvedValue([])
     vi.mocked(api.fetchProperty).mockResolvedValue(refreshed)
 
-    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={onPropertyChange} />)
+    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" defaultRatePct={null} onPropertyChange={onPropertyChange} />)
     fireEvent.click(screen.getByText('editar tramos'))
     fireEvent.click(screen.getByLabelText(`Quitar tramo 1 — ${LABEL}`))
     expect(screen.getByText(/sin tramos/i)).not.toBeNull()
@@ -150,7 +154,7 @@ describe('FeeTierEditor — Guardar cambios', () => {
 describe('FeeTierEditor — validación local', () => {
   it('un umbral repetido se rechaza al hacer clic en Guardar, sin llamar al API', () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.06 }]
-    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('editar tramos'))
     fireEvent.click(screen.getByText('+ agregar tramo'))
 
@@ -164,7 +168,7 @@ describe('FeeTierEditor — validación local', () => {
 
   it('una tasa fuera de [0,1] se rechaza al hacer clic en Guardar, sin llamar al API', () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.05 }]
-    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('editar tramos'))
 
     fireEvent.change(screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`), { target: { value: '150' } })
@@ -180,7 +184,7 @@ describe('FeeTierEditor — rechazo del servidor', () => {
     const existing: Property['saleFeeTiers'] = [{ threshold: 5_000_000, rate: 0.05 }]
     vi.mocked(api.replaceFeeTiers).mockRejectedValue(new Error('No se pudo guardar la escalera.'))
 
-    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" onPropertyChange={vi.fn()} />)
+    render(<FeeTierEditor property={property({ saleFeeTiers: existing })} kind="venta" defaultRatePct={null} onPropertyChange={vi.fn()} />)
     fireEvent.click(screen.getByText('editar tramos'))
     fireEvent.change(screen.getByLabelText(`Tasa tramo 1 — ${LABEL}`), { target: { value: '7' } })
     fireEvent.click(screen.getByText(SAVE))

@@ -85,7 +85,8 @@ const fmtGain = (amount: number | null | undefined, pct: number | null | undefin
 
 /**
  * El hint de COMISIÓN VENTA ($) / COMISIÓN RENTA ($): describe la fórmula que
- * corrió si el monto ya existe, o nombra el insumo que falta si no.
+ * corrió —con la tasa que de verdad se aplicó, tramo o default— si el monto ya
+ * existe, o nombra el insumo que falta si no.
  *
  * Los dos escenarios se calculan siempre, sin depender de una estrategia de
  * salida elegida (`compute_fees()` en fees.py ya no lee `exit_strategy` para
@@ -93,9 +94,17 @@ const fmtGain = (amount: number | null | undefined, pct: number | null | undefin
  * insumo: `missingInputsVenta` siempre trae exactamente `salePrice` cuando
  * falta, `missingInputsRenta` siempre `rentMonthly`. No hace falta
  * inspeccionar el arreglo: el modo ya dice cuál es.
+ *
+ * Antes decía "MESES × RENTA COBRADA/ESTIMADA" del lado de renta — texto
+ * huérfano desde que la migración 053 reemplazó "N meses de renta" por un %
+ * de un mes, igual que venta. `rate` es `exitFeeVentaRate`/`exitFeeRentaRate`
+ * (fees.py): siempre viene junto con `fee` cuando `fee` no es null.
  */
-function exitFeeHint(fee: number | null, mode: 'venta' | 'renta'): string {
-  if (fee != null) return mode === 'venta' ? '% SOBRE PRECIO/PROYECCIÓN DE VENTA' : 'MESES × RENTA COBRADA/ESTIMADA'
+function exitFeeHint(fee: number | null, rate: number | null, mode: 'venta' | 'renta'): string {
+  if (fee != null) {
+    const pct = fmtPct(rate)
+    return mode === 'venta' ? `${pct} SOBRE PRECIO/PROYECCIÓN DE VENTA` : `${pct} SOBRE RENTA MENSUAL`
+  }
   return mode === 'venta' ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)' : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
 }
 
@@ -196,6 +205,10 @@ export function PropertyDetailPage() {
   const [leftTab, setLeftTab] = useState<'general' | 'finanzas'>('general')
   const [transitionTo, setTransitionTo] = useState<Exclude<PropertyStatus, 'prospecto'> | null>(null)
   const [showAdvance, setShowAdvance] = useState(false)
+  // Desglose de INVERSIÓN CON COMISIONES (venta/renta) — independientes entre
+  // sí: el pedido fue poder VER los dos a la vez para comparar, no elegir uno.
+  const [showFeeBreakdownVenta, setShowFeeBreakdownVenta] = useState(false)
+  const [showFeeBreakdownRenta, setShowFeeBreakdownRenta] = useState(false)
 
   /** Debajo de 900px las dos columnas se apilan. Es el único breakpoint del repo. */
   const narrow = useNarrowViewport()
@@ -618,6 +631,20 @@ export function PropertyDetailPage() {
     // costar la obra» en cuanto alguien empezara a detallarla. Ahora nunca hay
     // dos —y no porque una gane, sino porque nunca hubo dos.
     { label: 'Obra a ejecutar', amount: p.constructionBudgeted ?? 0 },
+  ]
+
+  /**
+   * El desglose de INVERSIÓN CON COMISIONES (venta/renta): las mismas cuatro
+   * partidas que `fees.py` suma para llegar a `totalInvestmentWithFeesVenta`/
+   * `Renta` — misma garantía que `investmentItems` de arriba, el total que
+   * `InvestmentBreakdown` enseña es la SUMA de estas partidas, no una cifra
+   * aparte que pudiera no cuadrar con ellas.
+   */
+  const feeBreakdownItems = (kind: 'venta' | 'renta') => [
+    { label: 'Inversión sin comisiones', amount: p.totalInvestment ?? 0 },
+    { label: 'Comisión terreno', amount: p.landFee ?? 0 },
+    { label: 'Comisión obra', amount: p.constructionFee ?? 0 },
+    { label: `Comisión ${kind}`, amount: (kind === 'venta' ? p.exitFeeVenta : p.exitFeeRenta) ?? 0 },
   ]
 
   /**
@@ -1129,22 +1156,22 @@ export function PropertyDetailPage() {
               <div style={{ marginTop: '16px' }}>
                 <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
                   <div>
-                    <FeeTierEditor property={p} kind="venta" onPropertyChange={setProperty} />
+                    <FeeTierEditor property={p} kind="venta" defaultRatePct={p.exitFeeVentaRate} onPropertyChange={setProperty} />
                     <EditableRow
                       label="COMISIÓN VENTA ($)"
                       editing={editing}
                       value={p.exitFeeVenta != null ? fmtMXN(p.exitFeeVenta) : '—'}
-                      hint={exitFeeHint(p.exitFeeVenta, 'venta')}
+                      hint={exitFeeHint(p.exitFeeVenta, p.exitFeeVentaRate, 'venta')}
                       stacked
                     />
                   </div>
                   <div style={narrow ? { marginTop: '20px' } : undefined}>
-                    <FeeTierEditor property={p} kind="renta" onPropertyChange={setProperty} />
+                    <FeeTierEditor property={p} kind="renta" defaultRatePct={p.exitFeeRentaRate} onPropertyChange={setProperty} />
                     <EditableRow
                       label="COMISIÓN RENTA ($)"
                       editing={editing}
                       value={p.exitFeeRenta != null ? fmtMXN(p.exitFeeRenta) : '—'}
-                      hint={exitFeeHint(p.exitFeeRenta, 'renta')}
+                      hint={exitFeeHint(p.exitFeeRenta, p.exitFeeRentaRate, 'renta')}
                       stacked
                     />
                   </div>
@@ -1175,6 +1202,21 @@ export function PropertyDetailPage() {
                     <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
                       {p.totalInvestmentWithFeesVenta != null ? 'SIN COMISIONES + COMISIONES (VENTA)' : 'FALTA PRECIO DE VENTA (VER ARRIBA)'}
                     </span>
+                    {p.totalInvestmentWithFeesVenta != null && (
+                      <>
+                        <button
+                          onClick={() => setShowFeeBreakdownVenta(v => !v)}
+                          style={{ display: 'block', margin: '10px auto 0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.secondary, padding: 0 }}
+                        >
+                          {showFeeBreakdownVenta ? '▾' : '▸'} VER DESGLOSE
+                        </button>
+                        {showFeeBreakdownVenta && (
+                          <div style={{ textAlign: 'left' }}>
+                            <InvestmentBreakdown items={feeBreakdownItems('venta')} barsReady={barsReady} />
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                   <div style={narrow ? { marginTop: '20px' } : undefined}>
                     <span style={{ fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.15em', color: colors.secondary }}>INVERSIÓN CON COMISIONES (RENTA)</span>
@@ -1184,6 +1226,21 @@ export function PropertyDetailPage() {
                     <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
                       {p.totalInvestmentWithFeesRenta != null ? 'SIN COMISIONES + COMISIONES (RENTA)' : 'FALTA RENTA MENSUAL (VER ARRIBA)'}
                     </span>
+                    {p.totalInvestmentWithFeesRenta != null && (
+                      <>
+                        <button
+                          onClick={() => setShowFeeBreakdownRenta(v => !v)}
+                          style={{ display: 'block', margin: '10px auto 0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.secondary, padding: 0 }}
+                        >
+                          {showFeeBreakdownRenta ? '▾' : '▸'} VER DESGLOSE
+                        </button>
+                        {showFeeBreakdownRenta && (
+                          <div style={{ textAlign: 'left' }}>
+                            <InvestmentBreakdown items={feeBreakdownItems('renta')} barsReady={barsReady} />
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

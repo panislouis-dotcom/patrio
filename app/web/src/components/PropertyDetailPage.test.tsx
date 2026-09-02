@@ -83,10 +83,15 @@ const BASE_PROPERTY: Property = {
   totalInvestment: 7_295_000,
   // landFee = 3,000,000 × 5%; constructionFee = 3,900,000 × 15%. Los dos
   // escenarios de salida se calculan siempre que haya con qué — no dependen
-  // de exitStrategy: venta 5% de 9,000,000 proyectada, renta 3 meses de
-  // 30,000 proyectada.
+  // de exitStrategy: venta al 5% de 9,000,000 proyectada. exitFeeRenta queda
+  // como cifra fija del fixture (no se deriva aquí de rentMonthlyProjected ×
+  // exitFeeRentaRate) — dato histórico previo a la escalera de tramos.
   landFee: 150_000, constructionFee: 585_000,
   exitFeeVenta: 450_000, exitFeeRenta: 90_000,
+  // Sin tramos configurados (saleFeeTiers/rentFeeTiers vacíos, más abajo): la
+  // tasa vigente es el default del modelo, la misma que fees.py aplicaría —
+  // ver exitFeeVentaRate/exitFeeRentaRate en fees.py.
+  exitFeeVentaRate: 0.05, exitFeeRentaRate: 0.05,
   totalFeesVenta: 1_185_000, totalFeesRenta: 825_000,
   totalInvestmentWithFeesVenta: 8_480_000, totalInvestmentWithFeesRenta: 8_120_000,
   feesMissingInputsVenta: [], feesMissingInputsRenta: [],
@@ -410,9 +415,8 @@ describe('PropertyDetailPage', () => {
 
   it('COMISIONES DEL FONDO enseña el monto en pesos de cada comisión, no solo el %', async () => {
     // BASE_PROPERTY: landFee = 3,000,000 × 5%; constructionFee = 3,900,000 ×
-    // 15%; exitFeeVenta = 9,000,000 proyectada × 5%; exitFeeRenta = 30,000
-    // proyectada × 3 meses. Los cuatro se calculan siempre — ninguno depende
-    // de exitStrategy ni de elegir un camino.
+    // 15%; exitFeeVenta = 9,000,000 proyectada × 5%. Los cuatro se calculan
+    // siempre — ninguno depende de exitStrategy ni de elegir un camino.
     await renderPage(BASE_PROPERTY)
 
     expect(screen.getByText('COMISIONES DEL FONDO')).not.toBeNull()
@@ -427,10 +431,14 @@ describe('PropertyDetailPage', () => {
     expect(within(constructionFeeRow).getByText('$585,000')).not.toBeNull()
     const ventaRow = screen.getByText('COMISIÓN VENTA ($)').closest('div')!
     expect(within(ventaRow).getByText('$450,000')).not.toBeNull()
-    expect(within(ventaRow).getByText('% SOBRE PRECIO/PROYECCIÓN DE VENTA')).not.toBeNull()
+    // El hint lleva la tasa que de verdad se aplicó (exitFeeVentaRate/
+    // exitFeeRentaRate de fees.py), no un texto genérico — y ya no dice
+    // "MESES ×" del lado de renta, texto huérfano desde que la escalera de
+    // tramos reemplazó "N meses de renta" por un % de un mes, igual que venta.
+    expect(within(ventaRow).getByText('5.0% SOBRE PRECIO/PROYECCIÓN DE VENTA')).not.toBeNull()
     const rentaRow = screen.getByText('COMISIÓN RENTA ($)').closest('div')!
     expect(within(rentaRow).getByText('$90,000')).not.toBeNull()
-    expect(within(rentaRow).getByText('MESES × RENTA COBRADA/ESTIMADA')).not.toBeNull()
+    expect(within(rentaRow).getByText('5.0% SOBRE RENTA MENSUAL')).not.toBeNull()
   })
 
   it('ya no hay selector ESTRATEGIA DE SALIDA: la escalera de venta y de renta se ven siempre las dos', async () => {
@@ -484,8 +492,40 @@ describe('PropertyDetailPage', () => {
     const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
     expect(within(venta).getByText('—')).not.toBeNull()
     expect(within(venta).getByText('FALTA PRECIO DE VENTA (VER ARRIBA)')).not.toBeNull()
+    // Sin cifra que explicar no hay "VER DESGLOSE" que ofrecer de ese lado.
+    expect(within(venta).queryByText(/VER DESGLOSE/)).toBeNull()
     const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
     expect(within(renta).getByText('$8,120,000')).not.toBeNull()
+    expect(within(renta).getByText('▸ VER DESGLOSE')).not.toBeNull()
+  })
+
+  it('«VER DESGLOSE» abre las partidas —terreno, obra y salida— que suman exactamente el total de arriba', async () => {
+    await renderPage(BASE_PROPERTY)
+
+    const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
+    // Cerrado por default: ninguna partida a la vista todavía.
+    expect(within(venta).queryByText('Comisión venta')).toBeNull()
+
+    fireEvent.click(within(venta).getByText('▸ VER DESGLOSE'))
+
+    // Las cuatro partidas de fees.py, una por una — la misma suma que ya
+    // enseña $8,480,000 arriba, no una cifra aparte que pudiera no cuadrar.
+    expect(within(venta).getByText('INVERSIÓN SIN COMISIONES')).not.toBeNull()
+    expect(within(venta).getByText('COMISIÓN TERRENO')).not.toBeNull()
+    expect(within(venta).getByText('COMISIÓN OBRA')).not.toBeNull()
+    expect(within(venta).getByText('COMISIÓN VENTA')).not.toBeNull()
+    expect(within(venta).getByText('$7,295,000')).not.toBeNull()
+    expect(within(venta).getByText('$150,000')).not.toBeNull()
+    expect(within(venta).getByText('$585,000')).not.toBeNull()
+    expect(within(venta).getByText('$450,000')).not.toBeNull()
+
+    // La renta sigue cerrada — los dos toggles son independientes, para poder
+    // comparar los dos escenarios abiertos a la vez si hace falta.
+    const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
+    expect(within(renta).queryByText('Comisión renta')).toBeNull()
+
+    fireEvent.click(within(venta).getByText('▾ VER DESGLOSE'))
+    expect(within(venta).queryByText('COMISIÓN VENTA')).toBeNull()
   })
 
   it('la renta cobrada se pide vacía: confirmar sin leer ya no borra la proyección', async () => {

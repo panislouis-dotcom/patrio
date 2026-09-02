@@ -512,6 +512,8 @@ def metrics(row: dict) -> dict:
         "constructionFee": fee_lines["constructionFee"],
         "exitFeeVenta": fee_lines["exitFeeVenta"],
         "exitFeeRenta": fee_lines["exitFeeRenta"],
+        "exitFeeVentaRate": fee_lines["exitFeeVentaRate"],
+        "exitFeeRentaRate": fee_lines["exitFeeRentaRate"],
         "totalFeesVenta": fee_lines["totalFeesVenta"],
         "totalFeesRenta": fee_lines["totalFeesRenta"],
         "totalInvestmentWithFeesVenta": fee_lines["totalInvestmentWithFeesVenta"],

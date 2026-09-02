@@ -4,11 +4,18 @@ import { fetchProperty, replaceFeeTiers } from '../../lib/api'
 import type { FeeTier, Property } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
 import { fieldInput } from '../../lib/styles'
+import { fmtPct } from '../../lib/fmt'
 import { NumericInput } from '../NumericInput'
 
 interface Props {
   property: Property
   kind: 'venta' | 'renta'
+  // La tasa que aplica cuando no hay tramos — `exitFeeVentaRate`/`exitFeeRentaRate`
+  // de fees.py, que YA resuelve al default del modelo sin tramos configurados
+  // (ver comentario en fees.py). Solo se lee en el estado sin tramos: con
+  // tramos, la tasa vigente depende del valor y ya la enseña la fila ($)
+  // de abajo vía su propio hint.
+  defaultRatePct: number | null
   onPropertyChange: (property: Property) => void
 }
 
@@ -105,7 +112,7 @@ function fmtNumber(n: number, decimal = false): string {
  * No hay tramo piso ("si no") — el servidor lo rechaza de plano. Si el valor
  * no alcanza ningún umbral, la tasa que aplica es 0% automáticamente.
  */
-export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
+export function FeeTierEditor({ property, kind, defaultRatePct, onPropertyChange }: Props) {
   const stored = kind === 'venta' ? property.saleFeeTiers : property.rentFeeTiers
   const storedKey = JSON.stringify(stored)
   const label = kind === 'venta' ? 'COMISIÓN VENTA — TRAMOS' : 'COMISIÓN RENTA — TRAMOS'
@@ -216,6 +223,7 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
       {!editing && stored.length === 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
           <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary }}>SUPUESTO POR OMISIÓN</span>
+          <span style={tierValueDisplay}>{fmtPct(defaultRatePct)}</span>
           <button onClick={addTier} style={smallBtn}>+ agregar tramo</button>
         </div>
       )}

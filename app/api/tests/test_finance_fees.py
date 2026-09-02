@@ -297,6 +297,37 @@ def test_compute_fees_con_escalera_de_venta_en_el_umbral_superior_exacto():
     assert out["exitFeeVenta"] == Decimal("455000")  # 7% de 6,500,000
 
 
+# ── exitFeeVentaRate / exitFeeRentaRate — la tasa vigente, aparte del monto ──
+
+def test_sin_escalera_ni_valor_la_tasa_es_el_default_del_modelo():
+    # El "caso base": propiedad recién creada, sin tramos y sin precio/renta
+    # todavía. La tasa ya se conoce — es el default— aunque el monto no.
+    out = fees.compute_fees(
+        _row(projected_sale=None, sale_price=None,
+             rent_monthly_projected=None, rent_monthly_actual=None),
+        basis=Decimal("1500000"),
+    )
+    assert out["exitFeeVenta"] is None
+    assert out["exitFeeRenta"] is None
+    assert out["exitFeeVentaRate"] == Decimal("0.05")
+    assert out["exitFeeRentaRate"] == Decimal("0.05")
+
+
+def test_con_escalera_configurada_pero_sin_valor_la_tasa_es_null():
+    # Hay tramos, pero sin precio de venta no hay contra qué evaluarlos —
+    # a diferencia del caso sin escalera, aquí la tasa de verdad no se sabe.
+    row = _row(projected_sale=None, sale_price=None, sale_fee_tiers=ESCOBECO_VENTA_TIERS)
+    out = fees.compute_fees(row, basis=Decimal("1500000"))
+    assert out["exitFeeVenta"] is None
+    assert out["exitFeeVentaRate"] is None
+
+
+def test_con_escalera_configurada_y_valor_la_tasa_es_la_del_tramo_ganador():
+    row = _row(projected_sale=Decimal("5500000"), sale_fee_tiers=ESCOBECO_VENTA_TIERS)
+    out = fees.compute_fees(row, basis=Decimal("1500000"))
+    assert out["exitFeeVentaRate"] == Decimal("0.06")
+
+
 def test_compute_fees_con_escalera_de_venta_arriba_de_todo():
     row = _row(projected_sale=Decimal("9000000"), sale_fee_tiers=ESCOBECO_VENTA_TIERS)
     out = fees.compute_fees(row, basis=Decimal("1500000"))
