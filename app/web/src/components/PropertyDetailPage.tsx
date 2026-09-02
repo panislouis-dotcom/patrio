@@ -109,21 +109,6 @@ function exitFeeHint(fee: number | null, rate: number | null, mode: 'venta' | 'r
   return mode === 'venta' ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)' : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
 }
 
-/**
- * El hint bajo INVERSIÓN CON COMISIONES (VENTA/RENTA): antes era una
- * descripción fija de la fórmula ("SIN COMISIONES + COMISIONES (VENTA)"),
- * sin ninguna cifra — el mismo hueco que tenía COMISIÓN VENTA ($) antes de
- * que `exitFeeHint` empezara a cargar la tasa real. Ahora carga la
- * variación real contra la inversión sin comisiones, con `fmtGain` (mismo
- * formato que GANANCIA PROYECTADA): cuánto más cuesta esta salida, en pesos
- * y en porcentaje, no solo que "es la suma".
- */
-function investmentDeltaHint(withFees: number | null, base: number | null, missingLabel: string): string {
-  if (withFees == null || base == null) return missingLabel
-  const delta = withFees - base
-  return `${fmtGain(delta, base > 0 ? delta / base : null)} SOBRE INVERSIÓN SIN COMISIONES`
-}
-
 /** Las dos cifras grandes de la ficha, ya formateadas. */
 interface Heroes {
   label: string; value: string; color: string; barPct?: number; caption?: string
@@ -1215,9 +1200,6 @@ export function PropertyDetailPage() {
                     <div style={{ fontFamily: fonts.serif, fontSize: '30px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
                       {p.totalInvestmentWithFeesVenta != null ? fmtMXN(p.totalInvestmentWithFeesVenta) : '—'}
                     </div>
-                    <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
-                      {investmentDeltaHint(p.totalInvestmentWithFeesVenta, p.totalInvestment, 'FALTA PRECIO DE VENTA (VER ARRIBA)')}
-                    </span>
                     {p.totalInvestmentWithFeesVenta != null && (
                       <>
                         <button
@@ -1239,9 +1221,6 @@ export function PropertyDetailPage() {
                     <div style={{ fontFamily: fonts.serif, fontSize: '30px', color: colors.neutral, lineHeight: 1, marginTop: '8px' }}>
                       {p.totalInvestmentWithFeesRenta != null ? fmtMXN(p.totalInvestmentWithFeesRenta) : '—'}
                     </div>
-                    <span style={{ display: 'block', fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.08em', color: colors.secondary, marginTop: '8px' }}>
-                      {investmentDeltaHint(p.totalInvestmentWithFeesRenta, p.totalInvestment, 'FALTA RENTA MENSUAL (VER ARRIBA)')}
-                    </span>
                     {p.totalInvestmentWithFeesRenta != null && (
                       <>
                         <button

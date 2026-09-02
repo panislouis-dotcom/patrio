@@ -481,19 +481,11 @@ describe('PropertyDetailPage', () => {
     expect(within(renta).getByText('$8,120,000')).not.toBeNull()
   })
 
-  it('cada escenario enseña su variación en pesos y porcentaje contra la inversión sin comisiones', async () => {
-    // Antes el hint solo describía la fórmula en prosa ("SIN COMISIONES +
-    // COMISIONES (VENTA)"), sin ninguna cifra — el mismo hueco que tenía
-    // COMISIÓN VENTA ($) antes de cargar la tasa real.
-    await renderPage(BASE_PROPERTY)
-
-    const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
-    expect(within(venta).getByText('$1,185,000 +16.2% SOBRE INVERSIÓN SIN COMISIONES')).not.toBeNull()
-    const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
-    expect(within(renta).getByText('$825,000 +11.3% SOBRE INVERSIÓN SIN COMISIONES')).not.toBeNull()
-  })
-
-  it('un escenario final ausente enseña el guion y el porqué, sin apagar al otro', async () => {
+  it('un escenario final ausente enseña el guion, sin apagar al otro', async () => {
+    // El hint de variación en pesos/% que vivía aquí (feedback en vivo: se
+    // veía redundante junto al ▾ VER DESGLOSE, que ya desglosa exactamente
+    // esa diferencia partida por partida) se quitó — el guion solo ya basta
+    // para decir "falta este escenario".
     await renderPage({
       ...BASE_PROPERTY,
       exitFeeVenta: null, totalFeesVenta: null, totalInvestmentWithFeesVenta: null,
@@ -502,7 +494,6 @@ describe('PropertyDetailPage', () => {
 
     const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
     expect(within(venta).getByText('—')).not.toBeNull()
-    expect(within(venta).getByText('FALTA PRECIO DE VENTA (VER ARRIBA)')).not.toBeNull()
     // Sin cifra que explicar no hay "VER DESGLOSE" que ofrecer de ese lado.
     expect(within(venta).queryByText(/VER DESGLOSE/)).toBeNull()
     const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
