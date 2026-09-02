@@ -3,6 +3,7 @@ import type React from 'react'
 import { fetchProperty, replaceFeeTiers } from '../../lib/api'
 import type { FeeTier, Property } from '../../lib/types'
 import { colors, fonts } from '../../lib/theme'
+import { fieldInput } from '../../lib/styles'
 import { NumericInput } from '../NumericInput'
 
 interface Props {
@@ -27,20 +28,18 @@ interface DraftTier {
 }
 
 /**
- * El valor de un tramo se ve como el resto de los valores capturados en esta
- * ficha (`EditableRow` en su estado de solo-lectura: `fonts.sans`, 11px,
- * `colors.neutral`, sin caja) — aunque, a diferencia de `EditableRow`, SIGUE
- * siendo la caja editable de verdad, todo el tiempo, sin un toggle EDITAR que
- * la muestre así. No es reutilizar un estilo existente: en el resto de la
- * ficha "se ve como texto" y "es de solo lectura" son la misma condición
- * (depende del toggle global); aquí las separamos a propósito porque este
- * panel nunca tuvo modo edición (ver docstring del componente). Antes esta
- * caja usaba `fieldInput` (borde, fondo, padding) y por eso el renglón se
- * leía como "está en edición" de forma permanente, aunque no hubiera nada
- * pendiente por guardar — se confundía con la ✕ de arriba, que si borra de
- * verdad la escalera entera.
+ * Dos pintas para el mismo campo, según haya algo sin guardar (`dirty`):
+ * guardado → se ve como el resto de los valores capturados de la ficha
+ * (`EditableRow` en modo lectura: `fonts.sans`, 11px, `colors.neutral`, sin
+ * caja). Con cambios pendientes → caja de captura de verdad (`fieldInput`,
+ * mismo estilo que el resto del formulario), para que se note a simple vista
+ * que hay algo sin guardar. Antes el campo era SIEMPRE una caja (o SIEMPRE
+ * texto) sin importar si había algo pendiente — en ambos casos se leía mal:
+ * como caja permanente parecía "siempre en edición" aunque no hubiera nada
+ * que guardar; como texto permanente no se notaba cuándo sí había algo sin
+ * guardar.
  */
-const tierValueInput: React.CSSProperties = {
+const tierValueDisplay: React.CSSProperties = {
   fontFamily: fonts.sans,
   fontSize: '11px',
   color: colors.neutral,
@@ -62,40 +61,48 @@ const smallBtn: React.CSSProperties = {
   padding: '4px 6px',
 }
 
+/** Mismo botón primario que `DetailHeader`'s GUARDAR — mismo `colors.primary`
+ * de fondo, mismo `padding`/`letterSpacing`, misma flecha ▸ y el mismo
+ * "GUARDANDO…" mientras se resuelve, para que se lea como el mismo tipo de
+ * acción aunque viva en un sub-panel y no en el encabezado de la ficha. */
+const saveBtn: React.CSSProperties = {
+  cursor: 'pointer',
+  fontFamily: fonts.label,
+  fontSize: '9px',
+  letterSpacing: '0.1em',
+  flexShrink: 0,
+  background: colors.primary,
+  border: 'none',
+  color: colors.neutral,
+  padding: '6px 16px',
+  transition: 'opacity 0.2s',
+}
+
 /**
  * La escalera de comisión de salida de un lado (`venta` o `renta`) de UNA
  * propiedad: `property.saleFeeTiers`/`rentFeeTiers`, escrita entera por PUT
  * (`replaceFeeTiers`, api.ts) — su propio sub-recurso, fuera de
  * `useEdits`/PATCH.
  *
- * **Sin modo edición.** Mismo motivo que `BudgetPanel`: las cajas están
- * siempre activas. El toggle EDITAR/GUARDAR de la ficha no sabría representar
- * "agregué un tramo" ni "borré un tramo".
+ * **Guardado explícito, no automático.** A diferencia de `BudgetPanel` (que
+ * comita cada celda sola, al soltarla), aquí NADA toca el servidor hasta que
+ * se hace clic en «Guardar cambios de {kind}»: agregar un tramo, teclear un
+ * umbral o una tasa, borrar un renglón o quitar la escalera entera son puras
+ * mutaciones del borrador local (`nonFloor`/`hasLadder`/`dirty`). El botón
+ * solo aparece cuando `dirty` es cierto (hay algo sin guardar) y manda el
+ * arreglo COMPLETO de tramos —`replaceFeeTiers` es un reemplazo atómico, no
+ * un CRUD por renglón, no hay "PATCH del tramo 2".
  *
- * **"Siempre activas" no es "siempre con pinta de caja"** — a diferencia de
- * `BudgetPanel`, aquí el valor se ve como el resto de los datos capturados de
- * la ficha (texto plano, sin borde ni fondo — ver `tierValueInput`), aunque
- * siga siendo la caja editable de verdad todo el tiempo. Se probó lo
- * contrario (heredando `fieldInput`, con borde y fondo) y el renglón se leía
- * como si estuviera permanentemente "en edición" incluso sin nada pendiente
- * por guardar — confundible con la ✕ de arriba, que si es una acción
- * destructiva real (borra la escalera entera, no "cierra" nada).
- *
- * **Cada campo comita solo, al soltarlo** (`onBlur`), igual que
- * `BudgetPanel.commit`. Un tramo se manda ENTERO (el arreglo completo) porque
- * `replaceFeeTiers` es un reemplazo atómico, no un CRUD por renglón — no hay
- * "PATCH del tramo 2". Borrar un renglón es distinto: ya es una decisión
- * completa al hacer clic, así que comita de inmediato (`editNow`, mismo
- * patrón que `BudgetPanel`), sin esperar un blur que nunca llega en un botón.
+ * Se probaron antes dos variantes de guardado automático (comitar en cada
+ * blur, con y sin caja visible) y las dos confundían: sin un botón visible no
+ * quedaba claro que sí se había guardado, y validar en cada blur mostraba un
+ * error real ("cada tramo necesita una tasa...") en un renglón que el usuario
+ * apenas empezaba a llenar, antes de tener oportunidad de terminarlo. Con
+ * guardado explícito ninguno de los dos pasa: la validación solo corre al
+ * hacer clic en Guardar, nunca a medio tecleo.
  *
  * No hay tramo piso ("si no") — el servidor lo rechaza de plano. Si el valor
  * no alcanza ningún umbral, la tasa que aplica es 0% automáticamente.
- *
- * **Un renglón a medio llenar no intenta guardar ni muestra error** — ver el
- * corte al principio de `commit`. Como cada campo comita en SU PROPIO blur,
- * tabular de DESDE $ a TASA % en un renglón nuevo dispara el blur de DESDE
- * con la tasa todavía vacía; sin este corte eso mostraba el error de
- * `validate` antes de que el usuario alcanzara a escribir la tasa.
  */
 export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   const stored = kind === 'venta' ? property.saleFeeTiers : property.rentFeeTiers
@@ -106,31 +113,21 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   const [nonFloor, setNonFloor] = useState<DraftTier[]>(
     stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold, rate: t.rate })),
   )
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Re-sincroniza el borrador cuando la escalera GUARDADA cambia de verdad —no
   // cuando `property` cambia de referencia por cualquier otro motivo (guardar
   // un renglón del presupuesto, GUARDAR de la ficha): la clave es el contenido
   // de los tramos de ESTE lado, no la propiedad entera, para no pisar un tramo
-  // a medio teclear por un cambio que no le pertenece.
-  //
-  // Riesgo conocido y aceptado: esta resync SÍ puede pisar un tramo que se
-  // está editando en ese instante, no solo uno ajeno. Si el usuario cambia el
-  // umbral de un renglón y tabula (el blur dispara `commit`: PUT + GET, dos
-  // vueltas), y antes de que resuelva hace clic en la TASA de ESE MISMO
-  // renglón y teclea sin soltar, cuando el commit del umbral por fin resuelve
-  // esta lambda reconstruye `nonFloor` entero desde el servidor y pisa esa
-  // tasa a medio teclear en memoria —aunque la caja siga mostrando lo
-  // tecleado, porque `NumericInput` solo resincroniza su texto visible cuando
-  // no tiene foco—. Si el usuario suelta después, se manda la tasa VIEJA sin
-  // ningún error. Mismo trato que `BudgetPanel.receive()` le da a
-  // `pending.current` y que `replace_fee_tiers` (properties_db.py) documenta
-  // en su propio docstring: se acepta sin blindaje porque esta es una
-  // herramienta interna de un solo editor a la vez, no un formulario con
-  // escrituras concurrentes reales.
+  // a medio teclear por un cambio que no le pertenece. Incluye el propio
+  // refetch que hace `save()` al terminar — ahí `dirty` ya se puso en falso a
+  // mano, esto es un segundo cierre del mismo círculo, no el único.
   useEffect(() => {
     setHasLadder(stored.length > 0)
     setNonFloor(stored.map(t => ({ id: crypto.randomUUID(), threshold: t.threshold, rate: t.rate })))
+    setDirty(false)
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storedKey])
@@ -160,33 +157,31 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
     return null
   }
 
-  async function commit(tiers: FeeTier[]) {
-    // Un tramo a medio llenar (se sopló el umbral, todavía no la tasa —o al
-    // revés) no es un error todavía, es trabajo en progreso: `tiersOf` ya lo
-    // convirtió en NaN (`?? NaN`), así que basta con detectarlo aquí y salir
-    // en silencio, sin mandar ni el PUT ni el mensaje rojo de `validate`. Sin
-    // este corte, tabular de DESDE $ a TASA % en un renglón recién agregado
-    // disparaba el blur de DESDE con la tasa todavía vacía, y el usuario veía
-    // "cada tramo necesita una tasa..." antes de haber tenido oportunidad de
-    // escribirla — se leía como si guardar estuviera roto.
+  async function save() {
+    const tiers = tiersOf(nonFloor, hasLadder)
     if (tiers.some(t => Number.isNaN(t.threshold) || Number.isNaN(t.rate))) {
-      setError(null)
+      setError('Completa el umbral y la tasa de cada tramo antes de guardar.')
       return
     }
     const err = validate(tiers)
     if (err) { setError(err); return }
     setError(null)
+    setSaving(true)
     try {
       await replaceFeeTiers(property.id, kind, tiers)
       const fresh = await fetchProperty(property.id)
       onPropertyChange(fresh)
+      setDirty(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar la escalera')
+    } finally {
+      setSaving(false)
     }
   }
 
   function addTier() {
     setError(null)
+    setDirty(true)
     if (!hasLadder) {
       setHasLadder(true)
       setNonFloor([{ id: crypto.randomUUID(), threshold: undefined, rate: undefined }])
@@ -196,19 +191,21 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
   }
 
   function deleteTier(idx: number) {
-    const nf = nonFloor.filter((_, i) => i !== idx)
-    setNonFloor(nf)
-    void commit(tiersOf(nf, hasLadder))
+    setError(null)
+    setDirty(true)
+    setNonFloor(prev => prev.filter((_, i) => i !== idx))
   }
 
   function clearAll() {
+    setError(null)
+    setDirty(true)
     setHasLadder(false)
     setNonFloor([])
-    setError(null)
-    void commit([])
   }
 
   function updateNonFloor(idx: number, patch: Partial<DraftTier>) {
+    setError(null)
+    setDirty(true)
     setNonFloor(prev => prev.map((t, i) => (i === idx ? { ...t, ...patch } : t)))
   }
 
@@ -217,6 +214,8 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
       ✕
     </button>
   )
+
+  const valueStyle = dirty ? fieldInput : tierValueDisplay
 
   return (
     <div style={{ padding: '10px 0', borderBottom: `1px solid ${colors.border}` }}>
@@ -240,18 +239,16 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
               <NumericInput
                 value={tier.threshold}
                 onChange={n => updateNonFloor(idx, { threshold: n })}
-                onBlur={() => commit(tiersOf(nonFloor, hasLadder))}
                 ariaLabel={`Umbral tramo ${idx + 1} — ${label}`}
-                style={{ ...tierValueInput, width: '90px' }}
+                style={{ ...valueStyle, width: dirty ? '110px' : '90px' }}
               />
               <span style={{ fontFamily: fonts.label, fontSize: '7px', letterSpacing: '0.06em', color: colors.secondary, flexShrink: 0 }}>TASA %</span>
               <NumericInput
                 value={tier.rate != null ? tier.rate * 100 : undefined}
                 onChange={n => updateNonFloor(idx, { rate: n != null ? n / 100 : undefined })}
-                onBlur={() => commit(tiersOf(nonFloor, hasLadder))}
                 step={0.1}
                 ariaLabel={`Tasa tramo ${idx + 1} — ${label}`}
-                style={{ ...tierValueInput, width: '40px' }}
+                style={{ ...valueStyle, width: dirty ? '70px' : '40px' }}
               />
               <button onClick={() => deleteTier(idx)} title="Quitar tramo" aria-label={`Quitar tramo ${idx + 1} — ${label}`} style={smallBtn}>✕</button>
             </div>
@@ -260,6 +257,18 @@ export function FeeTierEditor({ property, kind, onPropertyChange }: Props) {
           <div>
             <button onClick={addTier} style={smallBtn}>+ agregar tramo</button>
           </div>
+        </div>
+      )}
+
+      {dirty && (
+        <div style={{ marginTop: '8px' }}>
+          <button
+            onClick={() => void save()}
+            disabled={saving}
+            style={{ ...saveBtn, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}
+          >
+            {saving ? 'GUARDANDO…' : `GUARDAR CAMBIOS DE ${kind.toUpperCase()} ▸`}
+          </button>
         </div>
       )}
 
