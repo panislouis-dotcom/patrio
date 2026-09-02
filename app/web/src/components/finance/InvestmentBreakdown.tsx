@@ -16,10 +16,17 @@ export interface BreakdownItem { label: string; amount: number }
  * llamarlo mal. Que las partidas expliquen todo el capital es responsabilidad
  * de quien las arma — aquí solo no se puede prometer un total que no se enseña.
  */
-export function InvestmentBreakdown({ label, items, barsReady }: {
+export function InvestmentBreakdown({ label, items, barsReady, showTotal = true }: {
   /** Omitir cuando quien llama ya puso su propio SectionDivider con el mismo
    * título: repetirlo aquí lo duplicaría en pantalla. */
   label?: string; items: BreakdownItem[]; barsReady: boolean
+  /** `false` cuando quien llama ya pintó esta misma suma como su propia cifra
+   * grande antes del toggle que revela este desglose (INVERSIÓN CON
+   * COMISIONES VENTA/RENTA) — repetirla aquí abajo es el mismo número dos
+   * veces en la misma pantalla, no una segunda cifra. Default `true`: la
+   * mayoría de los llamadores (DESGLOSE DE INVERSIÓN) no muestran el total
+   * en ningún otro lado, así que aquí es su único lugar. */
+  showTotal?: boolean
 }) {
   const visible = items.filter(i => i.amount > 0)
   if (visible.length === 0) return null
@@ -31,7 +38,9 @@ export function InvestmentBreakdown({ label, items, barsReady }: {
           {label}
         </div>
       )}
-      <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>{fmtMXN(total)}</div>
+      {showTotal && (
+        <div style={{ fontFamily: fonts.serif, fontSize: '28px', color: colors.neutral, marginBottom: '20px' }}>{fmtMXN(total)}</div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {visible.map(({ label: l, amount }, i) => {
           const pct = total > 0 ? (amount / total) * 100 : 0

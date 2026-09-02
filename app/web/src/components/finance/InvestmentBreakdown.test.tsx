@@ -39,4 +39,17 @@ describe('InvestmentBreakdown', () => {
     expect(pcts).toEqual([70, 30])
     expect(pcts.reduce((a, b) => a + b, 0)).toBe(100)
   })
+
+  it('showTotal={false} omite la cifra grande cuando quien llama ya la pintó por su cuenta', () => {
+    // INVERSIÓN CON COMISIONES (VENTA/RENTA) ya enseña su total antes del
+    // toggle "VER DESGLOSE" — sin esto, el mismo número salía dos veces.
+    render(<InvestmentBreakdown barsReady showTotal={false} items={[
+      { label: 'Precio de compra', amount: 7_000_000 },
+      { label: 'Obra a ejecutar', amount: 3_000_000 },
+    ]} />)
+
+    expect(screen.queryByText('$10,000,000')).toBeNull()
+    expect(screen.getByText('$7,000,000')).not.toBeNull()
+    expect(screen.getByText('$3,000,000')).not.toBeNull()
+  })
 })

@@ -482,6 +482,18 @@ describe('PropertyDetailPage', () => {
     expect(within(renta).getByText('$8,120,000')).not.toBeNull()
   })
 
+  it('cada escenario enseña su variación en pesos y porcentaje contra la inversión sin comisiones', async () => {
+    // Antes el hint solo describía la fórmula en prosa ("SIN COMISIONES +
+    // COMISIONES (VENTA)"), sin ninguna cifra — el mismo hueco que tenía
+    // COMISIÓN VENTA ($) antes de cargar la tasa real.
+    await renderPage(BASE_PROPERTY)
+
+    const venta = screen.getByText('INVERSIÓN CON COMISIONES (VENTA)').closest('div')!
+    expect(within(venta).getByText('$1,185,000 +16.2% SOBRE INVERSIÓN SIN COMISIONES')).not.toBeNull()
+    const renta = screen.getByText('INVERSIÓN CON COMISIONES (RENTA)').closest('div')!
+    expect(within(renta).getByText('$825,000 +11.3% SOBRE INVERSIÓN SIN COMISIONES')).not.toBeNull()
+  })
+
   it('un escenario final ausente enseña el guion y el porqué, sin apagar al otro', async () => {
     await renderPage({
       ...BASE_PROPERTY,
@@ -507,6 +519,10 @@ describe('PropertyDetailPage', () => {
     expect(within(venta).queryByText('Comisión venta')).toBeNull()
 
     fireEvent.click(within(venta).getByText('▸ VER DESGLOSE'))
+
+    // $8,480,000 ya vive arriba, en la cifra grande antes del toggle — el
+    // desglose no la repite (showTotal={false}), solo enseña las partidas.
+    expect(within(venta).getAllByText('$8,480,000')).toHaveLength(1)
 
     // Las cuatro partidas de fees.py, una por una — la misma suma que ya
     // enseña $8,480,000 arriba, no una cifra aparte que pudiera no cuadrar.
