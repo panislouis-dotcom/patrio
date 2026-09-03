@@ -1017,27 +1017,32 @@ export function PropertyDetailPage() {
                 </div>
               </div>
               {/* RESULTADO: la misma forma en las 5 etapas — lo que cambia es
-                  qué filas tienen dato, no la estructura. INVERSIÓN SIN
-                  COMISIONES/COMISIÓN TERRENO/COMISIÓN OBRA son el ancla —
-                  retoman lo que DESGLOSE DE INVERSIÓN y COMISIONES DEL FONDO
-                  ya explicaron arriba para armar lo que sigue. PLAN ORIGINAL
-                  congela projectedProfit/projectedRoi contra VENTA
-                  PROYECTADA aunque la propiedad ya haya vendido: es la
-                  promesa original, no se mueve. Las dos columnas de escenario
-                  corren siempre las dos, sin depender de una estrategia de
-                  salida elegida — el badge REAL/PROYECTADO(A) depende del
-                  DATO (salePrice/rentMonthlyActual), no de la etapa, así que
-                  una `desarrollo` y una `vendida` corren exactamente el mismo
-                  layout. Una vez vendida, ESCENARIO VENTA YA ES la cifra
-                  realizada (precio real, comisión real, badge REAL) —
-                  reemplaza la lectura aparte de GANANCIA REALIZADA que existía
-                  antes de este cambio. MARCA ACTUAL es la única fila que NO se
-                  funde con venta/renta: mide el avalúo de hoy, no una salida
-                  modelada, y no neta ninguna comisión de salida. */}
+                  qué filas tienen dato, no la estructura. Cada columna de
+                  escenario es su propio waterfall completo — INVERSIÓN SIN
+                  COMISIONES, las 3 comisiones desglosadas (terreno, obra, y
+                  la de esa salida), INVERSIÓN CON COMISIONES, el precio/renta,
+                  y por último bruto (contra INVERSIÓN SIN COMISIONES) vs.
+                  neto (contra INVERSIÓN CON COMISIONES) — para que cada
+                  columna se lea de arriba a abajo sin tener que buscar el
+                  costo base en otro lado. INVERSIÓN SIN COMISIONES/TERRENO/
+                  OBRA se repiten entre VENTA y RENTA a propósito: son el
+                  mismo costo base leído dos veces, una por columna, no la
+                  dispersión de antes (la misma cifra en 5 secciones distintas
+                  de la página). PLAN ORIGINAL congela projectedProfit/
+                  projectedRoi contra VENTA PROYECTADA aunque la propiedad ya
+                  haya vendido: es la promesa original, no se mueve. Las dos
+                  columnas de escenario corren siempre las dos, sin depender
+                  de una estrategia de salida elegida — el badge
+                  REAL/PROYECTADO(A) depende del DATO (salePrice/
+                  rentMonthlyActual), no de la etapa, así que una `desarrollo`
+                  y una `vendida` corren exactamente el mismo layout. Una vez
+                  vendida, ESCENARIO VENTA YA ES la cifra realizada (precio
+                  real, comisión real, badge REAL) — reemplaza la lectura
+                  aparte de GANANCIA REALIZADA que existía antes de este
+                  cambio. MARCA ACTUAL es la única fila que NO se funde con
+                  venta/renta: mide el avalúo de hoy, no una salida modelada,
+                  y no neta ninguna comisión de salida. */}
               <SectionDivider label="RESULTADO" />
-              <StatRow label="INVERSIÓN SIN COMISIONES" value={fmtMXN(p.totalInvestment)} />
-              <StatRow label="COMISIÓN TERRENO" value={fmtMXN(p.landFee)} />
-              <StatRow label="COMISIÓN OBRA" value={fmtMXN(p.constructionFee)} />
 
               {p.projectedRoiTotal != null && (
                 <>
@@ -1052,24 +1057,30 @@ export function PropertyDetailPage() {
               <div style={narrow ? { marginTop: '16px' } : { marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
                 <div>
                   <div style={resultSubheading}>ESCENARIO VENTA · {p.salePrice != null ? 'REAL' : 'PROYECTADO'}</div>
-                  <StatRow label="PRECIO DE VENTA" value={fmtMXN(p.salePrice ?? p.projectedSale)} />
+                  <StatRow label="INVERSIÓN SIN COMISIONES" value={fmtMXN(p.totalInvestment)} />
+                  <StatRow label="COMISIÓN TERRENO" value={fmtMXN(p.landFee)} />
+                  <StatRow label="COMISIÓN OBRA" value={fmtMXN(p.constructionFee)} />
                   <StatRow
                     label="COMISIÓN VENTA"
                     value={p.exitFeeVenta != null ? fmtMXN(p.exitFeeVenta) : exitFeeHint(p.exitFeeVenta, p.exitFeeVentaRate, 'venta')}
                   />
                   <StatRow label="INVERSIÓN CON COMISIONES" value={fmtMXN(p.totalInvestmentWithFeesVenta)} />
-                  <StatRow label="GANANCIA BRUTA" value={fmtGain(p.grossGainVenta, p.grossGainVentaPct)} />
-                  <StatRow label="GANANCIA NETA" value={fmtGain(p.netGainVenta, p.netGainVentaPct)} />
+                  <StatRow label="PRECIO DE VENTA" value={fmtMXN(p.salePrice ?? p.projectedSale)} />
+                  <StatRow label="GANANCIA BRUTA (s/comisiones)" value={fmtGain(p.grossGainVenta, p.grossGainVentaPct)} />
+                  <StatRow label="GANANCIA NETA (c/comisiones)" value={fmtGain(p.netGainVenta, p.netGainVentaPct)} />
                   <StatRow label="ROI NETO ANUAL" value={fmtPctSigned(p.netRoiVenta)} />
                 </div>
                 <div style={narrow ? { marginTop: '20px' } : undefined}>
                   <div style={resultSubheading}>ESCENARIO RENTA · {p.rentMonthlyActual != null ? 'REAL' : 'PROYECTADA'}</div>
-                  <StatRow label="RENTA/MES" value={fmtMXN(p.rentMonthlyActual ?? p.rentMonthlyProjected)} />
+                  <StatRow label="INVERSIÓN SIN COMISIONES" value={fmtMXN(p.totalInvestment)} />
+                  <StatRow label="COMISIÓN TERRENO" value={fmtMXN(p.landFee)} />
+                  <StatRow label="COMISIÓN OBRA" value={fmtMXN(p.constructionFee)} />
                   <StatRow
                     label="COMISIÓN RENTA"
                     value={p.exitFeeRenta != null ? fmtMXN(p.exitFeeRenta) : exitFeeHint(p.exitFeeRenta, p.exitFeeRentaMonths, 'renta')}
                   />
                   <StatRow label="INVERSIÓN CON COMISIONES" value={fmtMXN(p.totalInvestmentWithFeesRenta)} />
+                  <StatRow label="RENTA/MES" value={fmtMXN(p.rentMonthlyActual ?? p.rentMonthlyProjected)} />
                   <StatRow label="YIELD BRUTO (s/comisión)" value={fmtPct(p.grossYieldRenta)} />
                   <StatRow label="YIELD NETO (c/comisión)" value={fmtPct(p.netYieldRenta)} />
                 </div>

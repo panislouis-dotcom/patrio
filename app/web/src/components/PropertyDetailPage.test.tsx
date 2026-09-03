@@ -384,25 +384,29 @@ describe('PropertyDetailPage', () => {
     await renderPage(BASE_PROPERTY)
 
     // $7,295,000 sale del total de InvestmentBreakdown (DESGLOSE DE
-    // INVERSIÓN, solo fuera de edición) y de la fila ancla de RESULTADO —
-    // la misma cifra por construcción, sin una tercera copia capturable.
-    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
+    // INVERSIÓN, solo fuera de edición) y de la fila ancla de RESULTADO,
+    // repetida una vez por columna de escenario (VENTA y RENTA parten del
+    // mismo costo base) — la misma cifra por construcción, sin una copia
+    // capturable aparte.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(3)
 
     fireEvent.click(screen.getByText('EDITAR'))
     expect(screen.queryByText('INVERSIÓN CAPTURADA')).toBeNull()
     // Ni siquiera en edición hay caja: la fila sigue siendo la suma, en lectura.
     expect(screen.queryByLabelText('INVERSIÓN')).toBeNull()
-    // En edición InvestmentBreakdown no se pinta, así que solo queda RESULTADO.
-    expect(screen.getAllByText('$7,295,000')).toHaveLength(1)
+    // En edición InvestmentBreakdown no se pinta, así que solo quedan las dos
+    // columnas de RESULTADO.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
   })
 
   it('DATOS ya no ofrece ninguna cifra de inversión: vive solo en RESULTADO', async () => {
     // Obligar a un resumen terso a elegir entre venta y renta sería fingir que
     // un escenario le gana al otro — el pedido explícito fue lo contrario: ver
     // los dos, no uno elegido. La etiqueta ya no vive en DATOS ni en el cierre
-    // de COMISIONES DEL FONDO (retirado): vive una sola vez, en RESULTADO.
+    // de COMISIONES DEL FONDO (retirado): vive en RESULTADO, una vez por
+    // columna de escenario — cada una es su propio waterfall completo.
     await renderPage(BASE_PROPERTY)
-    expect(screen.getAllByText('INVERSIÓN SIN COMISIONES')).toHaveLength(1)
+    expect(screen.getAllByText('INVERSIÓN SIN COMISIONES')).toHaveLength(2)
     // Ya no hay una etiqueta por escenario (VENTA)/(RENTA): cada columna de
     // RESULTADO ya se identifica con su propio encabezado ESCENARIO VENTA/
     // RENTA, así que la fila repite la misma etiqueta corta en las dos.
@@ -1112,9 +1116,9 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('$200,000')).not.toBeNull()
     expect(screen.getByText('-$200,000')).not.toBeNull()
     // Y ninguna de las tres redefine la inversión: sigue siendo la del plan.
-    // Dos apariciones fuera de edición: el total de InvestmentBreakdown y la
-    // fila «sin comisiones» de RESULTADO.
-    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
+    // Tres apariciones fuera de edición: el total de InvestmentBreakdown y la
+    // fila «sin comisiones» de RESULTADO, una vez por columna de escenario.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(3)
   })
 
   it('vaciar un campo pasa por clear-fields, con su propio botón', async () => {
@@ -1180,9 +1184,32 @@ describe('PropertyDetailPage', () => {
       expect(screen.getAllByText('FALTA RENTA MENSUAL (REAL O PROYECTADA)')).toHaveLength(2)
     })
 
-    it('INVERSIÓN SIN COMISIONES aparece una sola vez en toda la ficha', async () => {
+    it('INVERSIÓN SIN COMISIONES aparece una vez por columna de escenario, no dispersa por la ficha', async () => {
+      // Antes vivía en 5 lugares distintos de la página (DATOS, el cierre de
+      // COMISIONES DEL FONDO ×2, sus desgloses ×2). Ahora vive solo dentro de
+      // RESULTADO, una vez por columna — VENTA y RENTA parten del mismo costo
+      // base, así que cada una lo repite para ser su propio waterfall
+      // completo, sin que el lector tenga que buscarlo en otra parte.
       await renderPage(BASE_PROPERTY)
-      expect(screen.getAllByText('INVERSIÓN SIN COMISIONES')).toHaveLength(1)
+      expect(screen.getAllByText('INVERSIÓN SIN COMISIONES')).toHaveLength(2)
+    })
+
+    it('ESCENARIO VENTA lee de arriba a abajo: costo base, las 3 comisiones, costo total, precio, y bruto antes que neto', async () => {
+      await renderPage(BASE_PROPERTY)
+      const orden = document.body.textContent!
+      const ventaHeader = orden.indexOf('ESCENARIO VENTA · PROYECTADO')
+      const rentaHeader = orden.indexOf('ESCENARIO RENTA · PROYECTADA')
+      const secuencia = [
+        'INVERSIÓN SIN COMISIONES', 'COMISIÓN TERRENO', 'COMISIÓN OBRA', 'COMISIÓN VENTA',
+        'INVERSIÓN CON COMISIONES', 'PRECIO DE VENTA', 'GANANCIA BRUTA', 'GANANCIA NETA', 'ROI NETO ANUAL',
+      ]
+      let cursor = ventaHeader
+      for (const etiqueta of secuencia) {
+        const pos = orden.indexOf(etiqueta, cursor)
+        expect(pos, etiqueta).toBeGreaterThan(cursor)
+        expect(pos, `${etiqueta} debe quedar dentro de la columna VENTA`).toBeLessThan(rentaHeader)
+        cursor = pos
+      }
     })
   })
 })
