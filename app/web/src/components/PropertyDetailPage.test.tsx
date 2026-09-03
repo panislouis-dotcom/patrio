@@ -374,19 +374,16 @@ describe('PropertyDetailPage', () => {
     // existir era avisar que no servía. Con un solo origen la pregunta muere.
     await renderPage(BASE_PROPERTY)
 
-    // $7,295,000 sale del total de InvestmentBreakdown (DESGLOSE DE
-    // INVERSIÓN, solo fuera de edición) y de la fila ancla de RESULTADO,
-    // repetida una vez por columna de escenario (VENTA y RENTA parten del
-    // mismo costo base) — la misma cifra por construcción, sin una copia
-    // capturable aparte.
-    expect(screen.getAllByText('$7,295,000')).toHaveLength(3)
+    // $7,295,000 sale de la fila ancla de RESULTADO, repetida una vez por
+    // columna de escenario (VENTA y RENTA parten del mismo costo base) — la
+    // misma cifra por construcción, sin una copia capturable aparte.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
 
     fireEvent.click(screen.getByText('EDITAR'))
     expect(screen.queryByText('INVERSIÓN CAPTURADA')).toBeNull()
     // Ni siquiera en edición hay caja: la fila sigue siendo la suma, en lectura.
     expect(screen.queryByLabelText('INVERSIÓN')).toBeNull()
-    // En edición InvestmentBreakdown no se pinta, así que solo quedan las dos
-    // columnas de RESULTADO.
+    // RESULTADO no cambia con edición: siguen las mismas dos columnas.
     expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
   })
 
@@ -642,13 +639,14 @@ describe('PropertyDetailPage', () => {
   it('un total all-in se dice como precio de compra, y explica el capital entero', async () => {
     // La propiedad cuya inversión se tecleaba a mano ahora la dice donde
     // siempre estuvo su lugar. El desglose la explica al 100%: no hay resto sin
-    // clasificar porque ya no hay dos totales entre los que pueda haber hueco.
+    // clasificar porque ya no hay dos totales entre los que pueda haber hueco —
+    // PRECIO DE COMPRA por sí solo iguala el total que RESULTADO reporta.
     await renderPage(ALL_IN)
 
     expect(screen.queryByText('SIN DESGLOSAR')).toBeNull()
-    expect(screen.getByText('PRECIO DE COMPRA')).not.toBeNull()
-    const pcts = screen.getAllByText(/^\d+%$/).map(n => Number(n.textContent!.replace('%', '')))
-    expect(pcts).toEqual([100])
+    const precioCompraRow = screen.getByText('PRECIO DE COMPRA').closest('div')!
+    expect(within(precioCompraRow).getByText('$10,000,000')).not.toBeNull()
+    expect(screen.getAllByText('$10,000,000').length).toBeGreaterThan(0)
   })
 
   it('un 0% capturado se lee como cero, no como dato faltante', async () => {
@@ -1047,13 +1045,6 @@ describe('PropertyDetailPage', () => {
     expect(payload).toEqual({ constructionCostPerSqm: 9000 })
   })
 
-  it('la barra de obra del desglose es la suma del presupuesto', async () => {
-    await renderPage(BASE_PROPERTY)
-
-    expect(screen.getByText('OBRA A EJECUTAR')).not.toBeNull()
-    expect(screen.getByText('$3,900,000')).not.toBeNull()
-  })
-
   it('el avance de obra no existe hasta que alguien firma o paga', async () => {
     // Cuatro guiones bajo un título no informan de nada, y un $0 ahí diría que
     // se firmó en cero — que es un hecho distinto de no haber firmado.
@@ -1078,9 +1069,9 @@ describe('PropertyDetailPage', () => {
     expect(screen.getByText('$200,000')).not.toBeNull()
     expect(screen.getByText('-$200,000')).not.toBeNull()
     // Y ninguna de las tres redefine la inversión: sigue siendo la del plan.
-    // Tres apariciones fuera de edición: el total de InvestmentBreakdown y la
-    // fila «sin comisiones» de RESULTADO, una vez por columna de escenario.
-    expect(screen.getAllByText('$7,295,000')).toHaveLength(3)
+    // Dos apariciones: la fila «sin comisiones» de RESULTADO, una vez por
+    // columna de escenario.
+    expect(screen.getAllByText('$7,295,000')).toHaveLength(2)
   })
 
   it('vaciar un campo pasa por clear-fields, con su propio botón', async () => {

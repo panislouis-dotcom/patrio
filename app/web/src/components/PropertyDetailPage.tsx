@@ -30,7 +30,6 @@ import { fmtMXN, fmtPct, fmtPctSigned, fmtMonth, fmtRentas } from '../lib/fmt'
 import { fieldLabel } from '../lib/fields'
 import { useEdits } from '../lib/useEdits'
 import { useNarrowViewport } from '../lib/useNarrowViewport'
-import { InvestmentBreakdown } from './finance/InvestmentBreakdown'
 import { LatLonPicker } from './LatLonPicker'
 import { NumericInput } from './NumericInput'
 import { StatRow } from './StatRow'
@@ -131,7 +130,6 @@ export function PropertyDetailPage() {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const [barsReady, setBarsReady] = useState(false)
   const [leftTab, setLeftTab] = useState<'general' | 'finanzas'>('general')
   const [transitionTo, setTransitionTo] = useState<Exclude<PropertyStatus, 'prospecto'> | null>(null)
   const [showAdvance, setShowAdvance] = useState(false)
@@ -176,7 +174,6 @@ export function PropertyDetailPage() {
         setGeometry(migrateGeometry(geo.geometry))
         geometryRevision.current = geo.revision
         setTimeout(() => setMounted(true), 40)
-        setTimeout(() => setBarsReady(true), 420)
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Error al cargar la propiedad'))
       .finally(() => setLoading(false))
@@ -523,36 +520,13 @@ export function PropertyDetailPage() {
     />
   )
 
-  // El precio de compra es lo que cuesta adquirir el inmueble como está; la
-  // obra es lo que se va a ejecutar encima. Nada de lo que ya está construido
-  // y ya está dentro del precio aparece dos veces.
-  //
-  // Estas cinco partidas SON la inversión: el total sale de sumarlas, así que
-  // las barras explican todo el capital por construcción. Hubo una sexta,
-  // «Sin desglosar», para el hueco entre un total tecleado a mano y lo que el
-  // desglose sabía explicar; sin ese segundo origen el hueco no existe, y una
-  // fila que solo puede aparecer si el servidor se contradice es una que
-  // taparía la contradicción en vez de dejarla salir.
-  const investmentItems = [
-    { label: 'Precio de compra', amount: p.purchasePrice ?? 0 },
-    { label: 'Costos adq.', amount: p.acquisitionCosts ?? 0 },
-    { label: 'Permisos', amount: p.permitsCost ?? 0 },
-    { label: 'Subdivisión', amount: p.subdivisionCost ?? 0 },
-    // La obra ya no es una fórmula: es la SUMA DEL PRESUPUESTO, capturada
-    // renglón por renglón en la pestaña PRESUPUESTO. Antes era
-    // `m² × $/m² × overhead`, y con eso vivían dos respuestas a «cuánto va a
-    // costar la obra» en cuanto alguien empezara a detallarla. Ahora nunca hay
-    // dos —y no porque una gane, sino porque nunca hubo dos.
-    { label: 'Obra a ejecutar', amount: p.constructionBudgeted ?? 0 },
-  ]
-
   /**
    * Una sección de cifras DERIVADAS se dibuja solo si alguna de sus filas tiene
-   * valor — la política de vacío de InvestmentBreakdown, aplicada a las demás.
-   * Una derivada sin valor no es un pendiente de captura sino una pregunta que
-   * esta propiedad no puede contestar, y tres guiones seguidos bajo un título no
-   * informan de nada. Las filas capturables (DATOS, FECHAS) no pasan por aquí:
-   * ahí el guion sí es información, porque señala qué falta teclear.
+   * valor. Una derivada sin valor no es un pendiente de captura sino una
+   * pregunta que esta propiedad no puede contestar, y tres guiones seguidos
+   * bajo un título no informan de nada. Las filas capturables (DATOS, FECHAS)
+   * no pasan por aquí: ahí el guion sí es información, porque señala qué falta
+   * teclear.
    */
   const statSection = (
     title: string,
@@ -820,19 +794,23 @@ export function PropertyDetailPage() {
               {/* El desglose se captura en cualquier etapa: es el modelo que se
                   compara contra la realidad, no un formulario de prospecto.
 
-                  M² DE TERRENO, M² DE CONSTRUCCIÓN y COSTO OBRA/m² van FUERA del
-                  `editing ? :` de abajo, a diferencia de PRECIO DE COMPRA /
-                  PERMISOS / SUBDIVISIÓN: esos tres sí tienen una representación
-                  de solo lectura genuina —las barras de InvestmentBreakdown— y
-                  por eso alternan de forma correcta. Estos tres no tienen ninguna
-                  otra forma en que mostrarse, así que van como cualquier otra fila
-                  capturable de la ficha: una sola vez, con `numRow`/`EditableRow`
-                  resolviendo edición/lectura por su cuenta. Vivir dentro del
-                  `editing ? :` era exactamente el bug que a VENTA PROYECTADA ya se
-                  le había corregido aquí mismo: una caja que solo existe editando
-                  desaparece del todo al salir de edición. */}
+                  Ya no hay una gráfica de barras propia aquí (InvestmentBreakdown,
+                  retirada): su total repetía la misma cifra que RESULTADO ya
+                  muestra como INVERSIÓN SIN COMISIONES, y su barra «Obra a
+                  ejecutar» repetía el TOTAL que PRESUPUESTO ya enseña
+                  (BudgetPanel, «TOTAL · ES EL COSTO DE OBRA» — misma
+                  `constructionBudgeted`). Por eso PRECIO DE COMPRA / PERMISOS /
+                  SUBDIVISIÓN, que antes solo tenían esa gráfica como
+                  representación de lectura, se unen aquí a M² DE TERRENO / M² DE
+                  CONSTRUCCIÓN / COSTO OBRA/m²: ninguno vive ya dentro de un
+                  `editing ? :` — todos son una fila capturable normal, con
+                  `numRow`/`EditableRow` resolviendo edición/lectura por su
+                  cuenta. Vivir dentro del `editing ? :` era exactamente el bug
+                  que a VENTA PROYECTADA ya se le había corregido aquí mismo: una
+                  caja que solo existe editando desaparece del todo al salir de
+                  edición. */}
               <SectionDivider label="DESGLOSE DE INVERSIÓN" />
-              {editing && numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
+              {numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
               {numRow('M² DE TERRENO', 'sqmLand', fmtNum, { clearable: 'sqmLand' })}
               {/* El metraje se queda: es FÍSICO, y lo leen el analizador de
                   mercado y el PDF, a los que no les importa lo que cueste la
@@ -868,33 +846,21 @@ export function PropertyDetailPage() {
                   />
                 }
               />
-              {editing ? (
-                <>
-                  {numRow('PERMISOS', 'permitsCost', fmtMXN, { clearable: 'permitsCost' })}
-                  {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN, { clearable: 'subdivisionCost' })}
-                </>
-              ) : (
-                <>
-                  <InvestmentBreakdown
-                    items={investmentItems}
-                    barsReady={barsReady}
-                  />
-                  {/* El avance de obra EN DINERO. Son cifras NUEVAS, no otra
-                      versión de la inversión: lo que la obra va a costar y lo
-                      que ya se pagó de ella son dos preguntas distintas, y solo
-                      la primera es capital invertido. Lo presupuestado no está
-                      aquí porque ya es la barra «Obra a ejecutar» de arriba —
-                      cada cifra etiquetada vive en un solo lugar.
-                      La sección entera desaparece mientras nadie firme ni pague:
-                      cuatro guiones bajo un título no informan de nada. */}
-                  {statSection('AVANCE DE OBRA', [
-                    ['OBRA COMPROMETIDA', p.constructionCommitted, fmtMXN],
-                    ['OBRA PAGADA', p.constructionPaid, fmtMXN],
-                    ['COMPROMETIDO VS PRESUPUESTO', p.constructionCommittedVariance, fmtMXN],
-                    ['PAGADO VS PRESUPUESTO', p.constructionPaidVariance, fmtMXN],
-                  ])}
-                </>
-              )}
+              {numRow('PERMISOS', 'permitsCost', fmtMXN, { clearable: 'permitsCost' })}
+              {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN, { clearable: 'subdivisionCost' })}
+              {/* El avance de obra EN DINERO. Son cifras NUEVAS, no otra versión
+                  de la inversión: lo que la obra va a costar y lo que ya se
+                  pagó de ella son dos preguntas distintas, y solo la primera es
+                  capital invertido. Lo presupuestado no está aquí porque ya es
+                  el TOTAL de PRESUPUESTO — cada cifra etiquetada vive en un solo
+                  lugar. La sección entera desaparece mientras nadie firme ni
+                  pague: cuatro guiones bajo un título no informan de nada. */}
+              {statSection('AVANCE DE OBRA', [
+                ['OBRA COMPROMETIDA', p.constructionCommitted, fmtMXN],
+                ['OBRA PAGADA', p.constructionPaid, fmtMXN],
+                ['COMPROMETIDO VS PRESUPUESTO', p.constructionCommittedVariance, fmtMXN],
+                ['PAGADO VS PRESUPUESTO', p.constructionPaidVariance, fmtMXN],
+              ])}
 
               <SectionDivider label="COMISIONES DEL FONDO" />
               {/* Las mismas 4 comisiones que antes vivían en SUPUESTOS, mudadas aquí:
