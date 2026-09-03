@@ -1096,17 +1096,29 @@ describe('PropertyDetailPage', () => {
     })
 
     it('las cuatro cifras que deciden se repiten hasta arriba, antes de DATOS', async () => {
-      // La tira del encabezado existe para no tener que bajar toda la columna
+      // La tira destacada existe para no tener que bajar toda la columna
       // GENERAL hasta RESULTADO — si aparece después de DATOS, no cumplió su
-      // propósito.
+      // propósito. Etiquetas cortas propias (sin BRUTA/NETA/BRUTO/NETO): s/
+      // comisiones y c/ comisiones ya dicen cuál es cuál, sin repetir lo que
+      // RESULTADO dice completo más abajo.
       await renderPage(BASE_PROPERTY)
       const orden = document.body.textContent!
       const datos = orden.indexOf('DATOS')
-      for (const etiqueta of ['GANANCIA BRUTA', 'GANANCIA NETA', 'YIELD BRUTO', 'YIELD NETO']) {
+      for (const etiqueta of ['GANANCIA S/ COMISIONES', 'GANANCIA C/ COMISIONES', 'YIELD S/ COMISIÓN', 'YIELD C/ COMISIÓN']) {
         const pos = orden.indexOf(etiqueta)
         expect(pos, etiqueta).toBeGreaterThan(-1)
         expect(pos, `${etiqueta} debe aparecer antes de DATOS`).toBeLessThan(datos)
       }
+    })
+
+    it('la tira destacada pone VENTA y RENTA en dos columnas, no apiladas', async () => {
+      await renderPage(BASE_PROPERTY)
+      const ventaLabel = screen.getByText('VENTA · PROYECTADO')
+      const rentaLabel = screen.getByText('RENTA · PROYECTADA')
+      // Mismo padre en grid de 2 columnas: cada badge es la primera fila de
+      // su propia columna, no un subtítulo que separa dos bloques apilados.
+      expect(ventaLabel.parentElement).not.toBe(rentaLabel.parentElement)
+      expect(ventaLabel.parentElement!.parentElement).toBe(rentaLabel.parentElement!.parentElement)
     })
 
     it('la tira del encabezado no elige un escenario: badge REAL/PROYECTADO por dato, igual que RESULTADO', async () => {

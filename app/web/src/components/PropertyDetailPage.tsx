@@ -122,11 +122,12 @@ const heroGroupLabel: React.CSSProperties = {
 const heroMetricLabel: React.CSSProperties = {
   fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary,
 }
-/** Serif grande, mismo criterio de tamaño que el antiguo `MetricHero` (42px
- * para una sola cifra dominante) pero a una escala que cuatro cifras puedan
- * compartir sin pelearse por el espacio. */
+/** Serif grande, mismo criterio que el antiguo `MetricHero` (42px para una
+ * sola cifra dominante) pero a una escala que dos columnas (VENTA/RENTA) de
+ * ~150px puedan compartir sin desbordarse — `$2,196,555 +53.5%` cabe en una
+ * línea a este tamaño; si no cupiera, envuelve en dos antes que recortarse. */
 const heroMetricValue: React.CSSProperties = {
-  fontFamily: fonts.serif, fontSize: '24px', color: colors.neutral, lineHeight: 1.15, marginTop: '3px',
+  fontFamily: fonts.serif, fontSize: '17px', color: colors.neutral, lineHeight: 1.25, marginTop: '3px',
 }
 
 export function PropertyDetailPage() {
@@ -699,25 +700,31 @@ export function PropertyDetailPage() {
                   permanentemente. Mismo criterio que ya rige RESULTADO: los
                   dos escenarios siempre, bruto Y neto siempre juntos, badge
                   REAL/PROYECTADO(A) según el dato, no la etapa. */}
-              <div style={{ paddingBottom: '18px', marginBottom: '4px', borderBottom: `1px solid ${colors.border}` }}>
-                <div style={heroGroupLabel}>VENTA · {p.salePrice != null ? 'REAL' : 'PROYECTADO'}</div>
-                <div style={{ marginTop: '8px' }}>
-                  <div style={heroMetricLabel}>GANANCIA BRUTA (s/comisiones)</div>
-                  <div style={heroMetricValue}>{fmtGain(p.grossGainVenta, p.grossGainVentaPct)}</div>
+              <div style={{
+                paddingBottom: '18px', marginBottom: '4px', borderBottom: `1px solid ${colors.border}`,
+                display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '20px',
+              }}>
+                <div>
+                  <div style={heroGroupLabel}>VENTA · {p.salePrice != null ? 'REAL' : 'PROYECTADO'}</div>
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={heroMetricLabel}>GANANCIA S/ COMISIONES</div>
+                    <div style={heroMetricValue}>{fmtGain(p.grossGainVenta, p.grossGainVentaPct)}</div>
+                  </div>
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={heroMetricLabel}>GANANCIA C/ COMISIONES</div>
+                    <div style={heroMetricValue}>{fmtGain(p.netGainVenta, p.netGainVentaPct)}</div>
+                  </div>
                 </div>
-                <div style={{ marginTop: '12px' }}>
-                  <div style={heroMetricLabel}>GANANCIA NETA (c/comisiones)</div>
-                  <div style={heroMetricValue}>{fmtGain(p.netGainVenta, p.netGainVentaPct)}</div>
-                </div>
-
-                <div style={{ ...heroGroupLabel, marginTop: '18px' }}>RENTA · {p.rentMonthlyActual != null ? 'REAL' : 'PROYECTADA'}</div>
-                <div style={{ marginTop: '8px' }}>
-                  <div style={heroMetricLabel}>YIELD BRUTO (s/comisión)</div>
-                  <div style={heroMetricValue}>{fmtPct(p.grossYieldRenta)}</div>
-                </div>
-                <div style={{ marginTop: '12px' }}>
-                  <div style={heroMetricLabel}>YIELD NETO (c/comisión)</div>
-                  <div style={heroMetricValue}>{fmtPct(p.netYieldRenta)}</div>
+                <div style={{ borderLeft: `1px solid ${colors.border}`, paddingLeft: '20px' }}>
+                  <div style={heroGroupLabel}>RENTA · {p.rentMonthlyActual != null ? 'REAL' : 'PROYECTADA'}</div>
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={heroMetricLabel}>YIELD S/ COMISIÓN</div>
+                    <div style={heroMetricValue}>{fmtPct(p.grossYieldRenta)}</div>
+                  </div>
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={heroMetricLabel}>YIELD C/ COMISIÓN</div>
+                    <div style={heroMetricValue}>{fmtPct(p.netYieldRenta)}</div>
+                  </div>
                 </div>
               </div>
 
