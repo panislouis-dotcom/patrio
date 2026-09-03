@@ -129,6 +129,12 @@ table.kv tr { break-inside: avoid; page-break-inside: avoid; }
 table.kv td { font-family: 'Inter', sans-serif; font-size: 8.5pt; padding: 4.5px 0;
               border-bottom: 1px solid var(--border); }
 table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
+/* La sub-línea de "Ganancia" en las columnas de RESULTADO (_opportunity_result_col)
+   — la bruta, más chica y en gris, bajo la neta que ya lleva el peso visual
+   principal. Mismo tratamiento que `.tiers` ya usa para la escalera de
+   comisión: una anotación secundaria dentro de la misma celda, en su propio
+   bloque en vez de compartir línea con el valor que sí manda. */
+table.kv td.n small.sub { display: block; font-weight: 400; font-size: 7.5pt; color: var(--sec); margin-top: 1px; }
 /* Sin esto un encabezado como "PRESUPUESTO DE OBRA" puede quedar solo al pie
    de una página con toda su tabla en la siguiente. */
 .col-label { font-family: 'Inter', sans-serif; font-size: 6.5pt; font-weight: 600;
@@ -245,31 +251,6 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    página que las envuelve a todas. */
 .opp-body { padding: 8mm var(--pad) 7mm;
             -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.opp .metrics { margin-bottom: 7mm; break-inside: avoid; page-break-inside: avoid; }
-/* Dos filas de 6 (comisiones/totales, luego plazo/venta/ganancia/cap
-   rate/rendimiento): mismo motivo que .summary ya tenía para su fila de 5 —
-   la celda del .metric base (padding 5mm, valor a 20pt) está pensada para una
-   fila de 4, y en una más ancha el texto no cabe: cada etiqueta envuelve a dos
-   líneas, y un valor con porcentaje ("$1.9M 51.7%") se parte en dos renglones
-   cuando en la fila de 4 el mismo patrón cabe en uno. */
-.opp .metrics-6 .metric { padding: 3mm 2.5mm; }
-.opp .metrics-6 .metric .v { font-size: 13pt; }
-/* .tiers (la escalera de comisión, `_fee_tier_lines()`) es la única
-   anotación de esta rejilla que no tiene un techo de longitud fijo — de un
-   tramo a cuatro, "≥$6.5M→7.0%" a "≥$6.5M→7.0% · ≥$5.5M→6.0% · ≥$4.5M→5.0%" —
-   así que NO puede compartir el nowrap de `.metric .v small` de más arriba:
-   ese nowrap existe para que una anotación CORTA ("3 meses", "5.0%") brinque
-   entera a su propia línea sin partirse a la mitad, pero forzarlo aquí solo
-   cambia el problema — en vez de partirse, la línea entera se sale de la
-   celda y se monta sobre las columnas vecinas (comprobado: en la columna de
-   3 tramos ya tapaba la celda de al lado; con 4 tramos se salía de la
-   hoja). `white-space: normal` + `display: block` (esto último para
-   heredar el mismo "brinca a su propia línea" del nowrap, ya que un bloque
-   nuevo hace lo mismo sin impedir el wrap interno) + un tamaño más chico le
-   dan a la escalera el espacio de 2-3 líneas que sí necesita dentro de su
-   propia celda, en vez de invadir la de al lado. */
-.opp .metrics-6 .metric .v small.tiers { white-space: normal; font-size: 8pt;
-                                          line-height: 1.3; display: block; margin-top: 1px; }
 .opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
             break-inside: avoid; page-break-inside: avoid; }
 .opp .strip { margin-top: 6mm; }
@@ -421,6 +402,23 @@ def _fmt_mxn_compact_or_dash(val) -> str:
     return _fmt_mxn_compact(val) if val is not None else "—"
 
 
+def _fmt_mxn_or_dash(val) -> str:
+    """No value means no metric — '—', never a fabricated $0. Espejo de
+    `_fmt_mxn_compact_or_dash`, en el formato completo que usan las columnas
+    de `_opportunity_result_col()` (una tabla, no una tarjeta compacta)."""
+    return _fmt_mxn(val) if val is not None else "—"
+
+
+def _fmt_pct_signed(frac, decimals: int = 1) -> str:
+    """Como `_fmt_pct`, con signo — '+30.2%', '-15.3%' — mismo criterio que
+    `fmtPctSigned` en la ficha (web/src/lib/fmt.ts): una ganancia SÍ puede
+    ser negativa, y ahí el signo cambia la lectura. Cero no lleva signo,
+    igual que allá."""
+    v = _num(frac)
+    sign = "+" if v > 0 else ""
+    return f"{sign}{v * 100:.{decimals}f}%"
+
+
 def _fmt_years_or_dash(months) -> str:
     """meses (el que guarda paybackMonths) → años, 1 decimal — pedido explícito:
     redondear a un año entero perdería demasiada precisión en un plazo que
@@ -503,9 +501,9 @@ def _inv_value(total_inv, with_fees_venta, with_fees_renta) -> str:
     imprime lo que le pasan. Esa decisión es de cada CALLER, por etapa:
     vendida solo pasa venta (renta ya es contrafactual, nunca se cobró),
     rentada solo pasa renta (venta es el espejo), desarrollo pasa los dos (la
-    salida sigue genuinamente indecisa), oportunidad no pasa ninguno (el
-    detalle vive en su propia fila, `_opportunity_fees_metrics()`) y resumen
-    ya no llama a esta función. Por eso aquí pueden llegar los dos, uno solo,
+    salida sigue genuinamente indecisa), oportunidad no pasa ninguno (su
+    desglose vive en las columnas de RESULTADO, `_opportunity_result_col()`)
+    y resumen ya no llama a esta función. Por eso aquí pueden llegar los dos, uno solo,
     o ninguno — nunca por ambigüedad, siempre porque el llamador ya resolvió
     cuál escenario es real para su propia tarjeta."""
     v = _fmt_mxn_compact_or_dash(total_inv)
@@ -533,7 +531,7 @@ def _fee_scenario_missing(reasons: list[str] | None) -> str:
 def _fee_tier_lines(tiers: list[dict], default_rate: Decimal, kind: str) -> str:
     """La escalera de comisión guardada, en una sola línea compacta —
     reemplaza al `exitSaleCommissionPct`/`exitRentMonths` planos que
-    `_opportunity_fees_metrics()` imprimía antes de la escalera (Task 2):
+    `_opportunity_result_col()` imprimía antes de la escalera (Task 2):
     ninguno de los dos describe ya cómo se calculó `exitFeeVenta`/
     `exitFeeRenta` (`compute_fees()`, fees.py).
 
@@ -562,53 +560,99 @@ def _fee_tier_lines(tiers: list[dict], default_rate: Decimal, kind: str) -> str:
     return " · ".join(parts)
 
 
-def _opportunity_fees_metrics(p: dict) -> str:
-    """Comisiones del fondo, en su propia fila. Solo en _opportunity(): es la
-    única etapa donde el camino de salida sigue genuinamente indeciso.
+def _opportunity_gain_venta(p: dict) -> str:
+    """Ganancia (venta) de RESULTADO, columna venta de `_opportunity_result_col()`:
+    la neta como cifra principal, la bruta como dato secundario más chico —
+    pedido explícito, a diferencia del yield de renta (que sí pide el par
+    completo con el mismo peso). Mismo patrón `<small>` que ya usa
+    `_inv_value()` para su detalle secundario, pero en su propio renglón
+    (`<br>` + `.sub`, CSS) y no compartiendo línea con el de neta: la bruta
+    trae SU PROPIO porcentaje, y los dos juntos en una sola línea no dejaban
+    claro a cuál pertenecía cada uno.
 
-    Seis celdas en un solo renglón — pedido explícito, tras ver la primera
-    versión partida en dos: se leía como si las cuatro comisiones y los dos
-    totales fueran grupos distintos, cuando en realidad son la misma cuenta
-    de principio a fin. `.metrics-6` (CSS) + el override `.opp .metrics-6`
-    (padding y tamaño de valor recortados, ver el comentario ahí arriba) es
-    lo que hace caber seis columnas — la misma clase que usa la fila de
-    proyección justo abajo (plazo/venta/ganancia/cap rate/rendimiento),
-    también de seis, pedido explícito: el desglose de comisiones va primero.
+    Gatea en `netGainVentaPct` — el mismo campo que antes gateaba
+    `roi_total` en la vieja "Ganancia proyectada": sin venta modelada (un
+    prospecto solo de renta) no hay ganancia que mostrar. La bruta se
+    imprime solo si también existe: en la práctica viajan juntas (misma
+    venta, dos bases distintas), pero esta función no asume esa garantía por
+    el llamador."""
+    net_pct = p.get("netGainVentaPct")
+    if net_pct is None:
+        return "—"
+    html = f'{_fmt_mxn(p.get("netGainVenta"))} <small>{_fmt_pct_signed(net_pct)}</small>'
+    gross_pct = p.get("grossGainVentaPct")
+    if gross_pct is not None:
+        html += f'<br><small class="sub">bruta {_fmt_mxn(p.get("grossGainVenta"))} {_fmt_pct_signed(gross_pct)}</small>'
+    return html
 
-    El orden importa aunque ya no haya renglones que lo marquen: primero las
-    CUATRO comisiones que se cobran (terreno, obra, salida·venta,
-    salida·renta), luego los DOS totales que resultan de sumarlas a la
-    inversión (venta, renta) — se lee como el desglose seguido de su suma,
-    no como una mezcla intercalada.
 
-    Terreno y obra nunca faltan — siempre hay una base y un % (el default si
-    nadie lo capturó), así que sus dos celdas acceden a `landFee`/
-    `constructionFee` con corchetes, no `.get()`: un KeyError aquí sería una
-    señal real de que compute_fees() (fees.py) dejó de cumplir esa garantía,
-    no un dato opcional que la tarjeta deba tolerar en silencio. Las cuatro
-    restantes sí pueden faltar, cada una por su cuenta (sin precio de venta
-    no hay comisión de venta NI total con comisiones de venta), y entonces
-    nombran su propio insumo ausente vía `_fee_scenario_missing()`."""
-    salida_venta = (f'{_fmt_mxn_compact(p["exitFeeVenta"])} <small class="tiers">{_fee_tier_lines(p.get("saleFeeTiers", []), ASSUMPTION_DEFAULTS["exit_sale_commission_pct"], "venta")}</small>'
-                    if p.get("exitFeeVenta") is not None
-                    else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
-    salida_renta = (f'{_fmt_mxn_compact(p["exitFeeRenta"])} <small class="tiers">{_fee_tier_lines(p.get("rentFeeTiers", []), ASSUMPTION_DEFAULTS["exit_rent_commission_months"], "renta")}</small>'
-                    if p.get("exitFeeRenta") is not None
-                    else _fee_scenario_missing(p.get("feesMissingInputsRenta")))
-    total_venta = (_fmt_mxn_compact(p["totalInvestmentWithFeesVenta"])
-                   if p.get("totalInvestmentWithFeesVenta") is not None
-                   else _fee_scenario_missing(p.get("feesMissingInputsVenta")))
-    total_renta = (_fmt_mxn_compact(p["totalInvestmentWithFeesRenta"])
-                   if p.get("totalInvestmentWithFeesRenta") is not None
-                   else _fee_scenario_missing(p.get("feesMissingInputsRenta")))
-    return "".join([
-        _metric(f'{_fmt_mxn_compact(p["landFee"])} <small>{_fmt_pct(p.get("landCommissionPct"))}</small>', "Comisión compra terreno"),
-        _metric(f'{_fmt_mxn_compact(p["constructionFee"])} <small>{_fmt_pct(p.get("constructionCommissionPct"))}</small>', "Comisión de obra"),
-        _metric(salida_venta, "Comisión de salida · venta"),
-        _metric(salida_renta, "Comisión de salida · renta"),
-        _metric(total_venta, "Inversión c/comisiones · venta"),
-        _metric(total_renta, "Inversión c/comisiones · renta"),
-    ])
+def _opportunity_result_col(p: dict, kind: str, sections: ProspectusSections) -> str:
+    """Una columna de RESULTADO (`kind` es "venta" o "renta") — el espejo de
+    la misma columna en PropertyDetailPage.tsx: desglose de inversión,
+    comisiones del fondo, inversión con comisiones, y el resultado del
+    escenario, cada columna autosuficiente y leída de arriba a abajo sin
+    buscar nada en la otra.
+
+    Las primeras seis filas (desglose + Inversión sin comisiones) son el
+    MISMO costo base leído dos veces, una por columna — no una dispersión —
+    así que se repiten sin condición en las dos, igual que `investmentParts`
+    ya se repite en la ficha. Solo las partes con algo que aportar entran:
+    un $0 genuino no explica nada del total, así que no ocupa fila (mismo
+    criterio que la ficha).
+
+    Las cuatro filas de comisión quedan detrás de `sections.opportunity_fees`
+    — el mismo flag de siempre ("desglose de comisiones, apagable"), ahora
+    aplicado dentro de cada columna en vez de a una fila de seis celdas
+    completa. Terreno y obra son la MISMA comisión en las dos columnas (no
+    dependen de la salida elegida) y por eso acceden a `landFee`/
+    `constructionFee` con corchetes, no `.get()` — nunca faltan, siempre hay
+    una base y un % (el default si nadie lo capturó), así que un KeyError
+    aquí sería una señal real de que compute_fees() (fees.py) dejó de
+    cumplir esa garantía. Solo la comisión de salida y el total que resulta
+    son propios de `kind`, y esos dos sí pueden faltar cada uno por su
+    cuenta — sin precio de venta no hay comisión de venta NI total con
+    comisiones de venta — y entonces nombran su insumo ausente vía
+    `_fee_scenario_missing()`.
+
+    Las últimas filas —precio/renta y el resultado del escenario— nunca se
+    apagan: es a lo que el inversionista estaría entrando, la misma garantía
+    que ya tenía la vieja fila de proyección de seis celdas."""
+    rows = [
+        ("Precio de compra", _fmt_mxn(p.get("purchasePrice")) if _num(p.get("purchasePrice")) else None),
+        ("Costos de adquisición", _fmt_mxn(p.get("acquisitionCosts")) if _num(p.get("acquisitionCosts")) else None),
+        ("Permisos", _fmt_mxn(p.get("permitsCost")) if _num(p.get("permitsCost")) else None),
+        ("Subdivisión", _fmt_mxn(p.get("subdivisionCost")) if _num(p.get("subdivisionCost")) else None),
+        ("Obra a ejecutar", _fmt_mxn(p.get("constructionBudgeted")) if _num(p.get("constructionBudgeted")) else None),
+        ("Inversión sin comisiones", _fmt_mxn(p.get("totalInvestment")) if _num(p.get("totalInvestment")) else None),
+    ]
+
+    if sections.opportunity_fees:
+        if kind == "venta":
+            exit_fee, tiers, default_rate = p.get("exitFeeVenta"), p.get("saleFeeTiers", []), ASSUMPTION_DEFAULTS["exit_sale_commission_pct"]
+            missing, total = p.get("feesMissingInputsVenta"), p.get("totalInvestmentWithFeesVenta")
+        else:
+            exit_fee, tiers, default_rate = p.get("exitFeeRenta"), p.get("rentFeeTiers", []), ASSUMPTION_DEFAULTS["exit_rent_commission_months"]
+            missing, total = p.get("feesMissingInputsRenta"), p.get("totalInvestmentWithFeesRenta")
+        exit_html = (f'{_fmt_mxn(exit_fee)} <small class="tiers">{_fee_tier_lines(tiers, default_rate, kind)}</small>'
+                     if exit_fee is not None else _fee_scenario_missing(missing))
+        total_html = _fmt_mxn(total) if total is not None else _fee_scenario_missing(missing)
+        rows += [
+            ("Comisión terreno", f'{_fmt_mxn(p["landFee"])} <small>{_fmt_pct(p.get("landCommissionPct"))}</small>'),
+            ("Comisión obra", f'{_fmt_mxn(p["constructionFee"])} <small>{_fmt_pct(p.get("constructionCommissionPct"))}</small>'),
+            (f"Comisión {kind}", exit_html),
+            ("Inversión con comisiones", total_html),
+        ]
+
+    if kind == "venta":
+        rows.append(("Precio de venta", _fmt_mxn_or_dash(_sale_or_none(p.get("projectedSale")))))
+        rows.append(("Ganancia", _opportunity_gain_venta(p)))
+    else:
+        rent_m = p.get("rentMonthlyProjected")
+        rows.append(("Renta/mes", _fmt_mxn(rent_m) if _num(rent_m) else "—"))
+        rows.append(("Yield s/comisión", _fmt_pct_or_dash(p.get("grossYieldRenta"))))
+        rows.append(("Yield c/comisión", _fmt_pct_or_dash(p.get("netYieldRenta"))))
+
+    return _kv_rows(rows)
 
 
 def _strip(images, label: str, limit: int) -> str:
@@ -775,12 +819,14 @@ class ProspectusSections:
     documents.py) y se traduce una sola vez, ahí.
 
     Lo que NO es apagable, y por qué: de una página de oportunidad siempre
-    salen la banda (nombre y dirección), el hero, las dos columnas
-    (Financieros/Propiedad) y la fila de proyección. Sin ellas la página deja
-    de identificar a la propiedad o de decir a qué se estaría entrando — no es
-    un prospecto más corto, es una hoja que no dice nada. Apagable es lo que
-    ABUNDA (fotos, planos, presupuesto) o lo que es un desglose de algo que ya
-    se dijo (la fila de comisiones)."""
+    salen la banda (nombre y dirección), el hero, las dos filas de columnas
+    (Propiedad/Contexto, luego Escenario venta/Escenario renta) y el
+    resultado de cada escenario (precio/renta, ganancia/yield). Sin ellas la
+    página deja de identificar a la propiedad o de decir a qué se estaría
+    entrando — no es un prospecto más corto, es una hoja que no dice nada.
+    Apagable es lo que ABUNDA (fotos, planos, presupuesto) o lo que es un
+    desglose de algo que ya se dijo (las cuatro filas de comisión dentro de
+    cada columna de escenario)."""
     cover: bool = True
     portfolio_summary: bool = True
     closing: bool = True
@@ -1104,87 +1150,25 @@ def _summary_card(sold: list[dict], rented: list[dict]) -> str:
 
 
 def _opportunity(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
+    """La página de oportunidad — espejo de RESULTADO en PropertyDetailPage.tsx:
+    dos filas de dos columnas autosuficientes. La primera fila (Propiedad |
+    Contexto) es identidad y encuadre; la segunda (Escenario venta | Escenario
+    renta) es el resultado completo — desglose de inversión, comisiones del
+    fondo, inversión con comisiones, y bruto/neto — mismo texto, mismo orden
+    que la ficha, solo en `_kv_rows()` en vez de `StatRow`."""
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
     asset = _esc(_pretty_type(p.get("assetType")))
     strategy = _esc(_pretty_type(p.get("strategyType")))
     hold = int(_num(p.get("holdMonths")))
-    total_inv = p.get("totalInvestment")
-    projected_sale = p.get("projectedSale")
-    profit = p.get("projectedProfit")
-    # Monto y porcentaje son la MISMA cifra en dos unidades, así que llevan un
-    # solo nombre y viajan juntos: «Ganancia proyectada». El porcentaje sale del
-    # API (`projectedRoiTotal`) y es None cuando no hay venta modelada
-    # (prospecto sólo de renta) — entonces no hay ganancia que mostrar, en vez
-    # del -100% que salía de recalcularla aquí.
-    roi_total = p.get("projectedRoiTotal")
-    gain_value = (f'{_fmt_mxn_compact_or_dash(profit)} <small>{_fmt_pct(roi_total, 1)}</small>'
-                  if roi_total is not None else "—")
-    cap_rate = p.get("capRate")
-    rent_m = p.get("rentMonthlyProjected")
-    rent_a = p.get("rentAnnual")
     sqm_land = _num(p.get("sqmLand"))
     sqm_con = _num(p.get("sqmConstruction"))
-    purchase_price = p.get("purchasePrice")
-    acq_costs = p.get("acquisitionCosts")
-    # Todo lo que se invierte encima de adquirir la propiedad, que son exactamente
-    # tres cosas del desglose: obra a ejecutar, permisos y subdivisión. Se obtiene
-    # restando de los dos totales del API en vez de volver a sumar aquí una
-    # fórmula que ya vive en el underwriting. Como acquisitionTotal es precio +
-    # costos de adquisición, los tres renglones cuadran exactamente con la
-    # Inversión total de la tarjeta.
-    dev_investment = _num(total_inv) - _num(p.get("acquisitionTotal"))
 
-    # Meses de renta ESTIMADA (mensual) para recuperar totalInvestmentWithFees
-    # Venta — pedido explícito, reemplaza a "Inversión sin comisiones" en esta
-    # fila: el desglose de Financieros ya deja leer ese total sumando sus
-    # renglones, y aquí valía más el dato nuevo (cuánto tarda en pagarse sola).
-    # Se enseña en AÑOS, no meses (pedido explícito) — paybackMonths guarda el
-    # dato en meses (la unidad nativa de la fórmula), _fmt_years_or_dash solo
-    # lo traduce para mostrarlo.
-    payback = p.get("paybackMonths")
-    # Rendimiento sobre lo que de verdad cuesta comprar y vender — el "yield on
-    # cost" que capRate dejó de ser (finance/underwriting.py) — pedido
-    # explícito, AL LADO del cap rate de mercado, no en su lugar: "Cap rate"
-    # a secas ya significa NOI/valor en el mercado, así que este no puede
-    # llamarse igual con otro denominador nada más — se llama por lo que es.
-    #
-    # Las dos etiquetas van SIN calificar ("Cap rate", "Rendimiento sobre
-    # inversión") — pedido explícito, tras ver "Cap rate proy. s/ venta" y
-    # "Rendimiento proy. s/ inversión" envolver a 2 y 3 líneas. Esto es
-    # deliberadamente distinto de _development_card(), que sí necesita el
-    # calificador: ahí "Cap rate" solo, sin un "Rendimiento" al lado que ya
-    # se quedó con el nombre del denominador de costo, seguiría siendo
-    # ambiguo (inversión, venta, valuación son todas cifras de valor
-    # plausibles). Aquí el nombre distinto del vecino —no el calificador—
-    # es lo que quita la ambigüedad.
-    yield_on_cost = p.get("yieldOnCost")
-    metrics = "".join([
-        _metric(f"{hold} meses" if hold else "—", "Plazo proyectado"),
-        _metric(_fmt_years_or_dash(payback), "Plazo de recuperación"),
-        _metric(_fmt_mxn_compact_or_dash(_sale_or_none(projected_sale)), "Venta proyectada"),
-        _metric(gain_value, "Ganancia proyectada"),
-        _metric(_fmt_pct_or_dash(cap_rate), "Cap rate"),
-        _metric(_fmt_pct_or_dash(yield_on_cost), "Rendimiento sobre inversión"),
-    ])
-
-    # La ganancia proyectada, monto y porcentaje, ya vive en su métrica de arriba:
-    # aquí solo van los renglones del desglose de costos y de la renta modelada.
-    # El renglón «ROI proyectado» que estaba aquí repetía ese mismo porcentaje
-    # bajo un nombre que en otras superficies designaba la cifra ANUALIZADA —
-    # el mismo número dos veces, y el nombre para dos números distintos.
-    financieros = _kv_rows([
-        ("Precio de compra", _fmt_mxn(purchase_price) if _num(purchase_price) else None),
-        ("Costos de adquisición", _fmt_mxn(acq_costs) if _num(acq_costs) else None),
-        ("Obra, permisos y subdivisión", _fmt_mxn(dev_investment) if dev_investment > 0 else None),
-        ("Renta mensual estimada", _fmt_mxn(rent_m) if _num(rent_m) else None),
-        ("Renta anual estimada", _fmt_mxn(rent_a) if _num(rent_a) else None),
-    ])
     # Sin Dirección ni Ciudad aquí: la banda verde de arriba ya las imprime
     # ({address} · {city}), palabra por palabra — repetirlas en la tabla no
     # añadía información, solo un renglón más para desalinear contra la
-    # columna de Financieros.
+    # columna vecina.
     ubicacion = _kv_rows([
         ("Tipo de activo", asset or None),
         ("Estrategia", strategy or None),
@@ -1193,6 +1177,22 @@ def _opportunity(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
         # inmueble ya tiene: «Construcción» a secas se leía como lo segundo.
         ("Obra a ejecutar", f"{int(sqm_con):,} m²" if sqm_con else None),
     ])
+    # Los tres campos de la vieja fila de proyección que NO son ni desglose,
+    # ni comisión, ni resultado de un escenario — no tienen un hogar natural
+    # dentro de Escenario venta/renta, así que se quedan aparte. "Cap rate" se
+    # queda con su etiqueta actual sin calificar: ya no tiene al lado un
+    # "Rendimiento sobre inversión" con el que confundirse (ese denominador
+    # equivocado —dividía la renta entre la inversión con comisiones de
+    # VENTA— se retira del todo, no se muda). Siempre visibles con guion, no
+    # se caen de la tabla: mismo criterio que ya tenían como `_metric()`.
+    contexto = _kv_rows([
+        ("Plazo proyectado", f"{hold} meses" if hold else "—"),
+        ("Plazo de recuperación", _fmt_years_or_dash(p.get("paybackMonths"))),
+        ("Cap rate", _fmt_pct_or_dash(p.get("capRate"))),
+    ])
+
+    venta_col = _opportunity_result_col(p, "venta", sections)
+    renta_col = _opportunity_result_col(p, "renta", sections)
 
     images = _imgs_by_type(p.get("images", []))
     # El hero no se apaga con la galería: es la primera foto, la que dice de
@@ -1202,14 +1202,6 @@ def _opportunity(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
     strip = (_strip(images[1:], "Galería", 4)
              if sections.opportunity_gallery and len(images) > 1 else "")
     detail_html = _opportunity_detail(p, sections)
-    # De las DOS rejillas de seis solo la de comisiones se puede apagar. La de
-    # proyección (plazo/venta/ganancia/cap rate/rendimiento) es a lo que el
-    # inversionista estaría entrando: una página de oportunidad sin ella no es
-    # un prospecto más corto, es una hoja que no dice nada. Las comisiones sí
-    # son un desglose —de cuánto encarece la operación algo que ya se muestra
-    # sin ellas— y hay lectores a los que ese detalle no les toca.
-    fees_row = (f'<div class="metrics metrics-6">{_opportunity_fees_metrics(p)}</div>'
-                if sections.opportunity_fees else "")
 
     return f"""<div class="page-block opp">
   <div class="band">
@@ -1220,11 +1212,13 @@ def _opportunity(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
   {hero}
   <div class="opp-body">
     <div class="opp-cols">
-      <div><div class="col-label">Financieros</div>{financieros}</div>
       <div><div class="col-label">Propiedad</div>{ubicacion}</div>
+      <div><div class="col-label">Contexto</div>{contexto}</div>
     </div>
-    {fees_row}
-    <div class="metrics metrics-6">{metrics}</div>
+    <div class="opp-cols">
+      <div><div class="col-label">Escenario venta</div>{venta_col}</div>
+      <div><div class="col-label">Escenario renta</div>{renta_col}</div>
+    </div>
     {strip}
     {detail_html}
   </div>

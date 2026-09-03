@@ -452,50 +452,58 @@ def test_a_rented_property_reports_its_mark_with_the_valuation_date(client, desa
 
 
 def test_the_opportunity_card_prints_the_projection(client, test_property):
-    """Los tres renglones de costo suman exactamente la Inversión total:
-    propiedad 1,000,000 + adquisición 65,000 + desarrollo 2,415,000 = 3,480,000."""
+    """El desglose separa Permisos/Subdivisión/Obra a ejecutar en sus propias
+    filas — ya no fusionadas en "Obra, permisos y subdivisión" — y suman
+    exactamente la Inversión sin comisiones: propiedad 1,000,000 + adquisición
+    65,000 + permisos 50,000 + subdivisión 25,000 + obra 2,340,000 =
+    3,480,000. Se repiten sin condición en las dos columnas de escenario."""
     p = get_property(test_property["id"])
     html = build_prospectus_html([], [], [], [p])
-    assert _kv_row("Precio de compra", "$1,000,000") in html
-    assert _kv_row("Costos de adquisición", "$65,000") in html
-    assert _kv_row("Obra, permisos y subdivisión", "$2,415,000") in html
-    # "Inversión sin comisiones" ya no es una celda de esta fila — pedido
-    # explícito, reemplazada por el plazo de recuperación: 4,006,000 de
+    assert html.count('<tr>' + _kv_row("Precio de compra", "$1,000,000") + '</tr>') == 2
+    assert html.count('<tr>' + _kv_row("Costos de adquisición", "$65,000") + '</tr>') == 2
+    assert html.count('<tr>' + _kv_row("Permisos", "$50,000") + '</tr>') == 2
+    assert html.count('<tr>' + _kv_row("Subdivisión", "$25,000") + '</tr>') == 2
+    assert html.count('<tr>' + _kv_row("Obra a ejecutar", "$2,340,000") + '</tr>') == 2
+    assert html.count('<tr>' + _kv_row("Inversión sin comisiones", "$3,480,000") + '</tr>') == 2
+    # Plazo de recuperación se mudó a la columna "Contexto": 4,006,000 de
     # inversión con comisiones de venta / 18,000 de renta mensual = 222.6,
     # redondeado a 223 meses — enseñado en años (pedido explícito): 18.6.
-    assert _metric("18.6 años", "Plazo de recuperación") in html
-    assert '<div class="l">Inversión sin comisiones</div>' not in html
+    assert _kv_row("Plazo de recuperación", "18.6 años") in html
     # Terreno: 1,000,000 x 5%. Obra: 2,340,000 (presupuesto, con overhead ya
-    # aplicado una sola vez) x 15%.
-    assert _metric('$50K <small>5.0%</small>', "Comisión compra terreno") in html
-    assert _metric('$351K <small>15.0%</small>', "Comisión de obra") in html
+    # aplicado una sola vez) x 15% — la misma comisión en las dos columnas.
+    assert html.count('<tr>' + _kv_row("Comisión terreno", '$50,000 <small>5.0%</small>') + '</tr>') == 2
+    assert html.count('<tr>' + _kv_row("Comisión obra", '$351,000 <small>15.0%</small>') + '</tr>') == 2
     # La comisión de salida no venía desglosada en ningún lado — a diferencia
     # de terreno y obra, aquí sí sale su propio $ por escenario. Venta: precio
     # proyectado 2,500,000 x 5%. Renta: 18,000 x 3 rentas — ambas al default
     # de la escalera (`ASSUMPTION_DEFAULTS`, underwriting.py), porque
     # `test_property` no tiene tramos configurados en ningún lado.
     # `_fee_tier_lines()` nombra ese default en vez de imprimir
-    # `exitSaleCommissionPct`/`exitRentMonths` (los campos planos que
-    # precedieron a la escalera): el segundo en particular llevaba meses
-    # mintiendo — "3 meses" describía una fórmula que Task 2 ya había
-    # reemplazado (y que ahora sí vuelve a ser un número de rentas, esta vez
-    # por tramo, no plano).
-    assert _metric('$125K <small class="tiers">sin tramos · 5.0% por omisión</small>', "Comisión de salida · venta") in html
-    assert _metric('$54K <small class="tiers">sin tramos · 3 rentas por omisión</small>', "Comisión de salida · renta") in html
-    # Y los totales quedan tal cual estaban — cada uno en su propia celda, sin
-    # fundirse en una sola: 3,480,000 + 401,000 (terreno+obra) + comisión de
-    # salida de cada escenario. Renta sube de 3,881,900 a 3,935,000 con el
-    # nuevo default (3 rentas en vez de 5% de un mes) — mismo redondeo a $3.9M.
-    assert _metric('$4.0M', "Inversión c/comisiones · venta") in html
-    assert _metric('$3.9M', "Inversión c/comisiones · renta") in html
-    assert "metric-wide" not in html
-    # Sexto cuadro de la fila de proyección — pedido explícito, AL LADO del
-    # cap rate de mercado, no en su lugar: 216,000 de renta anual estimada /
-    # 4,006,000 de inversión con comisiones de venta = 5.4%. Las dos
-    # etiquetas van sin calificar (pedido explícito, envolvían a 2-3 líneas):
-    # el nombre distinto de cada una ya dice cuál es cuál.
-    assert _metric("8.6%", "Cap rate") in html
-    assert _metric("5.4%", "Rendimiento sobre inversión") in html
+    # `exitSaleCommissionPct`/`exitRentMonths`, campos huérfanos desde que la
+    # escalera reemplazó al mecanismo plano que describían.
+    assert _kv_row("Comisión venta", '$125,000 <small class="tiers">sin tramos · 5.0% por omisión</small>') in html
+    assert _kv_row("Comisión renta", '$54,000 <small class="tiers">sin tramos · 3 rentas por omisión</small>') in html
+    # Y los totales quedan cada uno en su propia fila, sin fundirse en una
+    # sola: 3,480,000 + 401,000 (terreno+obra) + comisión de salida de cada
+    # escenario. Renta sube de 3,881,900 a 3,935,000 con el nuevo default (3
+    # rentas en vez de 5% de un mes).
+    assert _kv_row("Inversión con comisiones", "$4,006,000") in html
+    assert _kv_row("Inversión con comisiones", "$3,935,000") in html
+    # Cap rate se queda sin calificar en "Contexto"; "Rendimiento sobre
+    # inversión" se retira del todo — no un renombre, una salida — y su lugar
+    # lo toma el par completo de yield de renta, con el denominador correcto
+    # (inversión con comisiones de RENTA, no de venta): 216,000 de renta
+    # anual / 3,480,000 sin comisiones = 6.2%; / 3,935,000 con comisiones de
+    # renta = 5.5%.
+    assert _kv_row("Cap rate", "8.6%") in html
+    assert "Rendimiento sobre inversión" not in html
+    assert _kv_row("Yield s/comisión", "6.2%") in html
+    assert _kv_row("Yield c/comisión", "5.5%") in html
+    # Ganancia: neta contra la inversión con comisiones de venta (una pérdida,
+    # el precio proyectado queda por debajo del costo con comisiones) y bruta
+    # contra la inversión sin comisiones, como sub-línea.
+    assert ('<tr>' + _kv_row("Ganancia", '$-1,506,000 <small>-37.6%</small>'
+                             '<br><small class="sub">bruta $-980,000 -28.2%</small>') + '</tr>') in html
 
 
 def test_the_opportunity_card_prints_the_sale_fee_ladder(client, test_property):
@@ -510,10 +518,7 @@ def test_the_opportunity_card_prints_the_sale_fee_ladder(client, test_property):
     properties_db.replace_fee_tiers(pid, "venta", _ESCOBECO_VENTA)
     p = get_property(pid)
     html = build_prospectus_html([], [], [], [p])
-    assert _metric(
-        '$0 <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0%</small>',
-        "Comisión de salida · venta",
-    ) in html
+    assert _kv_row("Comisión venta", '$0 <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0%</small>') in html
 
 
 def test_the_opportunity_card_prints_the_rent_fee_ladder(client, test_property):
@@ -529,10 +534,7 @@ def test_the_opportunity_card_prints_the_rent_fee_ladder(client, test_property):
     p = get_property(pid)
     html = build_prospectus_html([], [], [], [p])
     # 18,000 x 4 rentas (tramo ≥15,000, el que de hecho aplica) = 72,000.
-    assert _metric(
-        '$72K <small class="tiers">≥$15K→4 rentas</small>',
-        "Comisión de salida · renta",
-    ) in html
+    assert _kv_row("Comisión renta", '$72,000 <small class="tiers">≥$15K→4 rentas</small>') in html
 
 
 def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):
@@ -563,10 +565,10 @@ def test_an_opportunity_without_a_modeled_sale_has_no_estimated_gain(client, tes
     client.post(f"/api/properties/{test_property['id']}/clear-fields",
                 json={"fields": ["projectedSale"]})
     p = get_property(test_property["id"])
-    assert p["projectedRoiTotal"] is None
+    assert p["netGainVentaPct"] is None
     html = build_prospectus_html([], [], [], [p])
-    assert _metric("—", "Ganancia proyectada") in html
-    assert _metric("—", "Venta proyectada") in html
+    assert _kv_row("Ganancia", "—") in html
+    assert _kv_row("Precio de venta", "—") in html
     assert "-100" not in html
 
 
@@ -575,7 +577,7 @@ def test_the_opportunity_cap_rate_comes_from_the_api(client, test_property):
     # Etiqueta sin calificar en la tarjeta de oportunidad — pedido explícito,
     # ver el comentario sobre el sexto cuadro (rendimiento) más abajo.
     html = build_prospectus_html([], [], [], [get_property(test_property["id"])])
-    assert _metric("8.6%", "Cap rate") in html
+    assert _kv_row("Cap rate", "8.6%") in html
 
 
 def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
@@ -583,7 +585,7 @@ def test_a_property_that_will_not_rent_has_no_cap_rate(client, test_property):
                 json={"fields": ["rentMonthlyProjected"]})
     p = get_property(test_property["id"])
     assert p["capRate"] is None
-    assert _metric("—", "Cap rate") in build_prospectus_html([], [], [], [p])
+    assert _kv_row("Cap rate", "—") in build_prospectus_html([], [], [], [p])
 
 
 def test_the_document_translates_the_enums(client, make_property):

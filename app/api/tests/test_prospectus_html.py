@@ -6,9 +6,11 @@ import re
 from api.lib.prospectus_html import (ProspectusSections, _budget_full, _development_card,
                                      _fee_scenario_missing,
                                      _fmt_mxn, _opportunity, _opportunity_detail,
-                                     _opportunity_fees_metrics,
+                                     _opportunity_result_col,
                                      _photo_block, _photo_rows, _plan_block, _plan_rows, _rented_card,
                                      _sold_card, _summary_card, _BODY_CSS, _BUDGET_TWO_COLUMN_THRESHOLD)
+
+_ALL = ProspectusSections()
 
 BASE_PROPERTY = {
     "name": "[TEST] Casa Prueba",
@@ -30,7 +32,7 @@ BASE_PROPERTY = {
 # pero una vendida solo pasa venta (renta sería contrafactual: nunca se
 # cobró) y una rentada solo pasa renta, en espejo. Desarrollo sigue pasando
 # los dos: la salida sigue genuinamente indecisa. Oportunidad ya no pasa
-# ninguno — su detalle vive en la fila nueva (`_opportunity_fees_metrics`,
+# ninguno — su detalle vive en las columnas de RESULTADO (`_opportunity_result_col`,
 # más abajo). Resumen ya no llama a `_inv_value()`.
 # ---------------------------------------------------------------------------
 
@@ -108,51 +110,64 @@ def test_development_card_omits_the_sub_line_without_either_with_fees_figure():
     assert "c/comisiones" not in html
 
 
-def test_opportunity_card_shows_the_payback_period_instead_of_bare_investment():
-    """"Inversión sin comisiones" salió de esta fila — pedido explícito,
-    reemplazada por el plazo de recuperación. La tarjeta LEE `paybackMonths`
-    del API, no lo recalcula: el mismo criterio que ya sigue con
-    projectedProfit, capRate, etc. Se enseña en años (pedido explícito),
-    aunque el campo del API siga en meses — 223 / 12 = 18.6."""
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "paybackMonths": 223}
+def test_opportunity_card_shows_payback_and_hold_in_the_context_column():
+    """Plazo proyectado y plazo de recuperación viven en la columna
+    "Contexto" (kv-row), no en una rejilla de métricas — pedido explícito:
+    son campos de la vieja fila de proyección que no son ni desglose, ni
+    comisión, ni resultado de un escenario. Se enseñan en años (pedido
+    explícito), aunque paybackMonths guarde el dato en meses — 223 / 12 =
+    18.6."""
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "paybackMonths": 223, "holdMonths": 8}
     html = _opportunity(p)
-    assert '<div class="v">18.6 años</div><div class="l">Plazo de recuperación</div>' in html
-    assert '<div class="l">Inversión sin comisiones</div>' not in html
+    assert '<div class="col-label">Contexto</div>' in html
+    assert '<tr><td>Plazo proyectado</td><td class="n">8 meses</td></tr>' in html
+    assert '<tr><td>Plazo de recuperación</td><td class="n">18.6 años</td></tr>' in html
 
 
-def test_opportunity_card_payback_period_is_a_dash_without_one():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "paybackMonths": None}
+def test_opportunity_card_context_row_is_a_dash_without_payback_or_hold():
+    """Sin dato, la fila queda con guion — no se cae de la tabla: mismo
+    criterio que tenía como `_metric()` (siempre presente, nunca ausente)."""
+    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "paybackMonths": None, "holdMonths": None}
     html = _opportunity(p)
-    assert '<div class="v">—</div><div class="l">Plazo de recuperación</div>' in html
+    assert '<tr><td>Plazo proyectado</td><td class="n">—</td></tr>' in html
+    assert '<tr><td>Plazo de recuperación</td><td class="n">—</td></tr>' in html
 
 
-def test_opportunity_card_shows_yield_on_cost_next_to_cap_rate_as_a_sixth_cell():
-    """Pedido explícito: un sexto cuadro, "rendimiento sobre inversión" — el
-    yield on cost que capRate dejó de ser — AL LADO del cap rate de mercado,
-    no en su lugar. La fila pasa de .metrics-5 a .metrics-6. Las dos
-    etiquetas van sin calificar ("Cap rate", "Rendimiento sobre inversión")
-    — pedido explícito, tras ver los calificadores envolver a 2-3 líneas: el
-    nombre distinto de cada una ya dice cuál es cuál, a diferencia de
-    _development_card() (sin un vecino "Rendimiento"), que sí conserva
-    "Cap rate proy. s/ venta"."""
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "capRate": 0.0864, "yieldOnCost": 0.0539}
+def test_opportunity_card_cap_rate_is_unqualified_with_no_yield_neighbor():
+    """Cap rate se queda con su etiqueta actual sin calificar — ya no tiene
+    al lado un "Rendimiento sobre inversión" con el que confundirse: ese
+    denominador equivocado (dividía la renta contra la inversión con
+    comisiones de VENTA) se retira del todo, no se muda de lugar."""
+    p = {**BASE_PROPERTY, "capRate": 0.0864}
     html = _opportunity(p)
-    assert '<div class="v">8.6%</div><div class="l">Cap rate</div>' in html
-    assert '<div class="v">5.4%</div><div class="l">Rendimiento sobre inversión</div>' in html
-    # Dos filas de seis ahora: comisiones/totales, y plazo/venta/ganancia/cap
-    # rate/rendimiento — ninguna es ya la vieja fila de cinco.
-    assert html.count('class="metrics metrics-6"') == 2
-    assert 'class="metrics metrics-5"' not in html
+    assert '<tr><td>Cap rate</td><td class="n">8.6%</td></tr>' in html
+    assert "Rendimiento sobre inversión" not in html
+    assert "yieldOnCost" not in html
 
 
-def test_opportunity_card_yield_on_cost_is_a_dash_without_one():
-    p = {**BASE_PROPERTY, "totalInvestment": 1_000_000, "yieldOnCost": None}
-    html = _opportunity(p)
-    assert '<div class="v">—</div><div class="l">Rendimiento sobre inversión</div>' in html
+def test_opportunity_result_col_shows_the_gross_and_net_yield_pair():
+    """El yield de renta reemplaza a "Rendimiento sobre inversión" y corrige
+    el denominador (RESULTADO en la ficha ya lo usa así: `netYieldRenta`
+    divide contra `totalInvestmentWithFeesRenta`, no contra el de venta).
+    Pedido explícito: el par completo, con el mismo peso visual — dos filas,
+    no una apilada como Ganancia."""
+    p = {**BASE_PROPERTY, "grossYieldRenta": 0.184, "netYieldRenta": 0.156}
+    html = _opportunity_result_col(p, "renta", _ALL)
+    assert '<tr><td>Yield s/comisión</td><td class="n">18.4%</td></tr>' in html
+    assert '<tr><td>Yield c/comisión</td><td class="n">15.6%</td></tr>' in html
+
+
+def test_opportunity_result_col_yield_is_a_dash_without_one():
+    p = {**BASE_PROPERTY, "grossYieldRenta": None, "netYieldRenta": None}
+    html = _opportunity_result_col(p, "renta", _ALL)
+    assert '<tr><td>Yield s/comisión</td><td class="n">—</td></tr>' in html
+    assert '<tr><td>Yield c/comisión</td><td class="n">—</td></tr>' in html
 
 
 # ---------------------------------------------------------------------------
-# _opportunity_fees_metrics — la fila nueva: terreno, obra, y los dos finales
+# _opportunity_result_col — desglose, comisiones (detrás de
+# sections.opportunity_fees) y resultado (siempre visible), por columna de
+# escenario. Espejo de RESULTADO en la ficha.
 # ---------------------------------------------------------------------------
 
 def test_fee_scenario_missing_names_the_reason():
@@ -171,35 +186,57 @@ def test_fee_scenario_missing_falls_back_to_a_bare_dash_without_a_reason():
     assert _fee_scenario_missing([]) == "—"
 
 
-def test_opportunity_fees_metrics_shows_terreno_and_obra_as_their_own_cells():
+def test_opportunity_result_col_splits_the_breakdown_into_its_own_rows():
+    """Permisos, Subdivisión y Obra a ejecutar entran cada una en su propia
+    fila — ya no fusionadas en "Obra, permisos y subdivisión" — mismo
+    criterio que `investmentParts` ya usa en la ficha. Se repiten sin
+    condición en las dos columnas: el mismo costo base, leído dos veces."""
+    p = {**BASE_PROPERTY, "purchasePrice": 2_500_000, "acquisitionCosts": 80_000,
+         "permitsCost": 45_000, "subdivisionCost": 30_000, "constructionBudgeted": 400_000,
+         "totalInvestment": 3_055_000}
+    for kind in ("venta", "renta"):
+        html = _opportunity_result_col(p, kind, _ALL)
+        assert '<tr><td>Precio de compra</td><td class="n">$2,500,000</td></tr>' in html
+        assert '<tr><td>Costos de adquisición</td><td class="n">$80,000</td></tr>' in html
+        assert '<tr><td>Permisos</td><td class="n">$45,000</td></tr>' in html
+        assert '<tr><td>Subdivisión</td><td class="n">$30,000</td></tr>' in html
+        assert '<tr><td>Obra a ejecutar</td><td class="n">$400,000</td></tr>' in html
+        assert '<tr><td>Inversión sin comisiones</td><td class="n">$3,055,000</td></tr>' in html
+
+
+def test_opportunity_result_col_omits_zero_breakdown_rows():
+    """Un $0 genuino no explica nada del total — no ocupa fila."""
+    p = {**BASE_PROPERTY, "purchasePrice": 2_500_000, "permitsCost": 0, "subdivisionCost": 0,
+         "constructionBudgeted": 400_000}
+    html = _opportunity_result_col(p, "venta", _ALL)
+    assert "Permisos" not in html
+    assert "Subdivisión" not in html
+
+
+def test_opportunity_result_col_shows_terreno_and_obra_as_their_own_rows():
+    """Terreno y obra son la MISMA comisión en las dos columnas — no dependen
+    de la salida elegida — así que aparecen en ambas, sin cambio de valor."""
     p = {**BASE_PROPERTY,
          "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": 3_900_000}
-    html = _opportunity_fees_metrics(p)
-    assert '$150K <small>5.0%</small>' in html
-    assert "Comisión compra terreno" in html
-    assert '$420K <small>15.0%</small>' in html
-    assert "Comisión de obra" in html
+    for kind in ("venta", "renta"):
+        html = _opportunity_result_col(p, kind, _ALL)
+        assert '<tr><td>Comisión terreno</td><td class="n">$150,000 <small>5.0%</small></td></tr>' in html
+        assert '<tr><td>Comisión obra</td><td class="n">$420,000 <small>15.0%</small></td></tr>' in html
 
 
-def test_opportunity_fees_metrics_shows_the_exit_fee_venta_and_renta_as_their_own_cells():
-    """La comisión de salida no venía desglosada en ningún lado — a diferencia
-    de terreno y obra, que sí muestran su propio $ — así que cada escenario
-    necesita su propia celda con el monto que se cobra. Sin `saleFeeTiers`/
-    `rentFeeTiers` configurados, la sub-línea nombra el default del modelo
-    (`_fee_tier_lines`, sin tramos) — no `exitSaleCommissionPct`/
-    `exitRentMonths`, campos huérfanos desde que la escalera reemplazó al
-    mecanismo plano que describían."""
-    p = {**BASE_PROPERTY,
-         "exitFeeVenta": 195_000, "exitSaleCommissionPct": 0.05,
-         "exitFeeRenta": 144_000, "exitRentMonths": 3}
-    html = _opportunity_fees_metrics(p)
-    assert '$195K <small class="tiers">sin tramos · 5.0% por omisión</small>' in html
-    assert "Comisión de salida · venta" in html
-    assert '$144K <small class="tiers">sin tramos · 3 rentas por omisión</small>' in html
-    assert "Comisión de salida · renta" in html
+def test_opportunity_result_col_shows_the_exit_fee_as_its_own_row():
+    """La comisión de salida necesita su propia fila con el monto que se
+    cobra, con la escalera de tramos (o el default del modelo) como
+    sub-línea — no `exitSaleCommissionPct`/`exitRentMonths`, campos
+    huérfanos desde que la escalera reemplazó al mecanismo plano."""
+    p = {**BASE_PROPERTY, "exitFeeVenta": 195_000, "exitFeeRenta": 144_000}
+    html_venta = _opportunity_result_col(p, "venta", _ALL)
+    assert '<tr><td>Comisión venta</td><td class="n">$195,000 <small class="tiers">sin tramos · 5.0% por omisión</small></td></tr>' in html_venta
+    html_renta = _opportunity_result_col(p, "renta", _ALL)
+    assert '<tr><td>Comisión renta</td><td class="n">$144,000 <small class="tiers">sin tramos · 3 rentas por omisión</small></td></tr>' in html_renta
 
 
-def test_opportunity_fees_metrics_shows_the_configured_fee_tier_ladder():
+def test_opportunity_result_col_shows_the_configured_fee_tier_ladder():
     """Con `saleFeeTiers`/`rentFeeTiers` configurados, la sub-línea describe
     la escalera guardada — techo primero — en vez del fallback de default."""
     p = {**BASE_PROPERTY,
@@ -208,69 +245,125 @@ def test_opportunity_fees_metrics_shows_the_configured_fee_tier_ladder():
                            {"threshold": 5_500_000, "rate": 0.06}],
          "exitFeeRenta": 144_000,
          "rentFeeTiers": [{"threshold": 15_000, "rate": 3}]}
-    html = _opportunity_fees_metrics(p)
-    assert '$195K <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0%</small>' in html
-    assert '$144K <small class="tiers">≥$15K→3 rentas</small>' in html
+    assert '<small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0%</small>' in _opportunity_result_col(p, "venta", _ALL)
+    assert '<small class="tiers">≥$15K→3 rentas</small>' in _opportunity_result_col(p, "renta", _ALL)
 
 
-def test_opportunity_fees_metrics_ladder_without_floor_has_no_si_no_segment():
-    """No existe tramo piso — una escalera con solo tramos de umbral (el único
-    caso posible) no debe imprimir un segmento "si no→"."""
-    p = {**BASE_PROPERTY,
-         "exitFeeVenta": 0,
+def test_opportunity_result_col_ladder_without_floor_has_no_si_no_segment():
+    """No existe tramo piso — una escalera con solo tramos de umbral (el
+    único caso posible) no debe imprimir un segmento "si no→"."""
+    p = {**BASE_PROPERTY, "exitFeeVenta": 0,
          "saleFeeTiers": [{"threshold": 6_500_000, "rate": 0.07}]}
-    html = _opportunity_fees_metrics(p)
+    html = _opportunity_result_col(p, "venta", _ALL)
     assert '<small class="tiers">≥$6.5M→7.0%</small>' in html
     assert "si no" not in html
 
 
-def test_opportunity_fees_metrics_names_the_reason_when_an_exit_fee_is_missing():
-    p = {**BASE_PROPERTY,
-         "exitFeeVenta": None, "feesMissingInputsVenta": ["salePrice"],
-         "exitFeeRenta": 144_000, "exitRentMonths": 3}
-    html = _opportunity_fees_metrics(p)
-    assert '— <small>falta precio de venta</small>' in html
-    assert '$144K <small class="tiers">sin tramos · 3 rentas por omisión</small>' in html
+def test_opportunity_result_col_names_the_reason_when_an_exit_fee_is_missing():
+    p = {**BASE_PROPERTY, "exitFeeVenta": None, "feesMissingInputsVenta": ["salePrice"]}
+    html = _opportunity_result_col(p, "venta", _ALL)
+    assert '<tr><td>Comisión venta</td><td class="n">— <small>falta precio de venta</small></td></tr>' in html
 
 
-def test_opportunity_fees_metrics_shows_the_two_totals_as_separate_cells():
-    """El pedido del usuario: los totales quedan tal cual estaban, cada uno en
-    su propia celda — no se funden en una sola."""
+def test_opportunity_result_col_shows_the_total_with_fees_row():
+    """El total queda en su propia fila — no se funde con nada más."""
     p = {**BASE_PROPERTY,
          "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": 3_900_000}
-    html = _opportunity_fees_metrics(p)
-    assert '<div class="v">$4.0M</div><div class="l">Inversión c/comisiones · venta</div>' in html
-    assert '<div class="v">$3.9M</div><div class="l">Inversión c/comisiones · renta</div>' in html
-    assert "metric-wide" not in html
+    assert '<tr><td>Inversión con comisiones</td><td class="n">$3,970,000</td></tr>' in _opportunity_result_col(p, "venta", _ALL)
+    assert '<tr><td>Inversión con comisiones</td><td class="n">$3,900,000</td></tr>' in _opportunity_result_col(p, "renta", _ALL)
 
 
-def test_opportunity_fees_metrics_names_the_reason_when_a_total_is_missing():
+def test_opportunity_result_col_names_the_reason_when_the_total_is_missing():
+    p = {**BASE_PROPERTY, "totalInvestmentWithFeesVenta": None, "feesMissingInputsVenta": ["salePrice"]}
+    html = _opportunity_result_col(p, "venta", _ALL)
+    assert '<tr><td>Inversión con comisiones</td><td class="n">— <small>falta precio de venta</small></td></tr>' in html
+
+
+def test_opportunity_result_col_hides_the_four_fee_rows_when_the_section_is_off():
+    p = {**BASE_PROPERTY, "totalInvestmentWithFeesVenta": 3_970_000, "exitFeeVenta": 195_000}
+    html = _opportunity_result_col(p, "venta", ProspectusSections(opportunity_fees=False))
+    assert "Comisión terreno" not in html
+    assert "Comisión obra" not in html
+    assert "Comisión venta" not in html
+    assert "Inversión con comisiones" not in html
+
+
+def test_opportunity_result_col_shows_precio_de_venta_and_renta_mes():
+    p = {**BASE_PROPERTY, "projectedSale": 3_700_000, "rentMonthlyProjected": 28_500}
+    assert '<tr><td>Precio de venta</td><td class="n">$3,700,000</td></tr>' in _opportunity_result_col(p, "venta", _ALL)
+    assert '<tr><td>Renta/mes</td><td class="n">$28,500</td></tr>' in _opportunity_result_col(p, "renta", _ALL)
+
+
+def test_opportunity_result_col_precio_de_venta_and_renta_mes_are_a_dash_without_one():
+    """0 significa "sin venta/renta modelada" — el mismo criterio que
+    `_sale_or_none` ya aplica en toda la página, no un $0 real."""
+    p = {**BASE_PROPERTY, "projectedSale": 0, "rentMonthlyProjected": 0}
+    assert '<tr><td>Precio de venta</td><td class="n">—</td></tr>' in _opportunity_result_col(p, "venta", _ALL)
+    assert '<tr><td>Renta/mes</td><td class="n">—</td></tr>' in _opportunity_result_col(p, "renta", _ALL)
+
+
+def test_opportunity_gain_venta_shows_gross_and_net():
+    """La neta es la cifra principal, la bruta va debajo, más chica —
+    pedido explícito, a diferencia del par de yield (mismo peso)."""
     p = {**BASE_PROPERTY,
-         "totalInvestmentWithFeesVenta": None, "feesMissingInputsVenta": ["salePrice"],
-         "totalInvestmentWithFeesRenta": 3_900_000, "feesMissingInputsRenta": []}
-    html = _opportunity_fees_metrics(p)
-    assert '— <small>falta precio de venta</small>' in html
-    assert '<div class="v">$3.9M</div><div class="l">Inversión c/comisiones · renta</div>' in html
+         "netGainVenta": 1_460_951, "netGainVentaPct": 0.302,
+         "grossGainVenta": 2_196_555, "grossGainVentaPct": 0.535}
+    html = _opportunity_result_col(p, "venta", _ALL)
+    assert ('<tr><td>Ganancia</td><td class="n">$1,460,951 <small>+30.2%</small>'
+            '<br><small class="sub">bruta $2,196,555 +53.5%</small></td></tr>') in html
 
 
-def test_opportunity_card_wires_the_fee_metrics_row_after_opp_cols_and_before_the_top_metrics():
-    """Pedido explícito: la fila de plazo/inversión/venta/ganancia/cap rate
-    (`.metrics-5`) va DESPUÉS de la de comisiones (`.metrics-6`), no antes —
-    el desglose de comisiones se lee primero, la proyección resumida cierra
-    la página."""
+def test_opportunity_gain_venta_is_a_dash_without_a_modeled_sale():
+    """Gatea en `netGainVentaPct` — el mismo campo que antes gateaba
+    `roi_total` en la vieja "Ganancia proyectada": sin venta modelada (un
+    prospecto solo de renta) no hay ganancia que mostrar."""
+    p = {**BASE_PROPERTY, "netGainVentaPct": None}
+    html = _opportunity_result_col(p, "venta", _ALL)
+    assert '<tr><td>Ganancia</td><td class="n">—</td></tr>' in html
+
+
+def test_opportunity_result_col_rows_after_the_fees_stay_when_the_section_is_off():
+    """Precio/venta, Ganancia, Renta/mes y el yield nunca se apagan: es a lo
+    que el inversionista estaría entrando, la misma garantía que ya tenía la
+    vieja fila de proyección."""
+    p = {**BASE_PROPERTY, "projectedSale": 3_700_000, "netGainVentaPct": 0.3,
+         "rentMonthlyProjected": 28_500, "grossYieldRenta": 0.18, "netYieldRenta": 0.15}
+    off = ProspectusSections(opportunity_fees=False)
+    venta = _opportunity_result_col(p, "venta", off)
+    assert "Precio de venta" in venta and "Ganancia" in venta
+    renta = _opportunity_result_col(p, "renta", off)
+    assert "Renta/mes" in renta and "Yield s/comisión" in renta and "Yield c/comisión" in renta
+
+
+def test_opportunity_card_no_longer_shows_renta_anual():
+    """"Renta anual estimada" salía de `rentAnnual`
+    (rentMonthlyProjected × 12, redundante) — RESULTADO en la ficha tampoco
+    la muestra."""
+    p = {**BASE_PROPERTY, "rentMonthlyProjected": 30_000, "rentAnnual": 360_000}
+    html = _opportunity(p)
+    assert "Renta anual estimada" not in html
+    assert "$360,000" not in html
+
+
+def test_opportunity_card_wires_the_two_opp_cols_rows_in_order():
+    """Pedido explícito: primero Propiedad/Contexto, luego Escenario
+    venta/Escenario renta — la identidad y el encuadre antes que el
+    resultado."""
     p = {**BASE_PROPERTY, "totalInvestment": 1_000_000,
-         "exitFeeVenta": 195_000, "exitSaleCommissionPct": 0.05,
+         "exitFeeVenta": 195_000,
          "exitFeeRenta": None, "feesMissingInputsRenta": ["rentMonthly"],
          "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": None}
     html = _opportunity(p)
-    assert "Comisión compra terreno" in html
-    assert "Comisión de obra" in html
-    assert "Comisión de salida · venta" in html
-    assert "Comisión de salida · renta" in html
-    assert "Inversión c/comisiones · venta" in html
-    assert "Inversión c/comisiones · renta" in html
-    assert html.index('class="opp-cols"') < html.index("Comisión compra terreno")
-    assert html.index("Comisión compra terreno") < html.index("Plazo proyectado")
+    assert "Comisión terreno" in html
+    assert "Comisión obra" in html
+    assert "Comisión venta" in html
+    assert "Comisión renta" in html
+    assert "Inversión con comisiones" in html
+    assert html.count('class="opp-cols"') == 2
+    idx_first = html.index('class="opp-cols"')
+    idx_second = html.index('class="opp-cols"', idx_first + 1)
+    assert idx_first < html.index("Plazo proyectado") < idx_second
+    assert idx_second < html.index("Comisión terreno")
 
 
 # ---------------------------------------------------------------------------
@@ -643,10 +736,8 @@ def test_sin_plano_sin_render_y_sin_presupuesto_no_hay_detalle():
 # pruebas existen para atrapar.
 # ---------------------------------------------------------------------------
 
-# Cada bloque, por la única cadena que solo él imprime. Las dos rejillas de
-# seis comparten clase (`metrics-6`), así que se distinguen por su etiqueta:
-# la de comisiones abre con el terreno, la de proyección con el plazo.
-_FEES_ROW = "Comisión compra terreno"
+# Cada bloque, por la única cadena que solo él imprime.
+_FEES_ROW = "Comisión terreno"
 _PROJECTION_ROW = "Plazo proyectado"
 _GALLERY = '<div class="strip-label">Galería</div>'
 _PLANS = "Plano y propuesta"
@@ -686,16 +777,19 @@ def test_an_opportunity_card_with_no_opinion_prints_every_toggleable_block():
         assert marker in html, marker
 
 
-def test_turning_off_the_fees_row_leaves_the_projection_row_standing():
-    """Las dos filas son `metrics-6` y son vecinas: apagar la de comisiones
-    borrando "la rejilla de seis" se llevaría también la proyección, que es lo
-    único que dice a qué se estaría entrando. El conteo de rejillas lo fija:
-    queda exactamente una."""
+def test_turning_off_the_fees_row_leaves_the_result_rows_standing():
+    """Las cuatro filas de comisión se apagan con `opportunity_fees`; el
+    resultado de cada escenario —precio/venta, ganancia, renta/mes, yield—
+    nunca se apaga: es lo único que dice a qué se estaría entrando."""
     html = _opportunity(_opportunity_with_everything(),
                         ProspectusSections(opportunity_fees=False))
     assert _FEES_ROW not in html
     assert _PROJECTION_ROW in html
-    assert html.count('class="metrics metrics-6"') == 1
+    assert "Precio de venta" in html
+    assert "Ganancia" in html
+    assert "Renta/mes" in html
+    assert "Yield s/comisión" in html
+    assert html.count('class="opp-cols"') == 2
 
 
 def test_turning_off_the_gallery_leaves_the_hero_and_the_detail_blocks():
