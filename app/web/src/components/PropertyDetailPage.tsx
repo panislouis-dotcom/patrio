@@ -56,8 +56,8 @@ import { TasksPanel } from './detail/TasksPanel'
 /**
  * Una sola ficha para todo el ciclo de vida. Las herramientas aparecen cuando su
  * etapa las abre, pero nada se esconde al avanzar: en pasos de después se ve
- * todo lo de antes, en lectura. Por eso PLAN ORIGINAL (dentro de RESULTADO)
- * sigue ahí en una propiedad rentada.
+ * todo lo de antes, en lectura. Por eso RESULTADO corre las mismas dos
+ * columnas de escenario (VENTA/RENTA) sin importar la etapa.
  *
  * Escribir tiene tres puertas y solo tres, cada una con su significado:
  *   · PATCH sube o cambia un valor — una caja vacía significa "no lo toques".
@@ -106,9 +106,9 @@ function exitFeeHint(fee: number | null, rate: number | null, mode: 'venta' | 'r
   return mode === 'venta' ? 'FALTA PRECIO DE VENTA (REAL O PROYECTADO)' : 'FALTA RENTA MENSUAL (REAL O PROYECTADA)'
 }
 
-/** Agrupa filas DENTRO de RESULTADO (PLAN ORIGINAL, cada escenario, MARCA
- * ACTUAL) sin abrir un `SectionDivider` propio — mismo peso visual que ya usa
- * `FeeTierEditor` para su propia etiqueta dentro de COMISIONES DEL FONDO. */
+/** Agrupa filas DENTRO de RESULTADO (cada escenario, MARCA ACTUAL) sin abrir
+ * un `SectionDivider` propio — mismo peso visual que ya usa `FeeTierEditor`
+ * para su propia etiqueta dentro de COMISIONES DEL FONDO. */
 const resultSubheading: React.CSSProperties = {
   fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.secondary,
   marginTop: '16px', marginBottom: '4px',
@@ -707,12 +707,12 @@ export function PropertyDetailPage() {
                   un hecho tan real como la dirección o las unidades. */}
               {(editing || p.rentMonthlyActual != null) &&
                 numRow('RENTA/MES COBRADA', 'rentMonthlyActual', fmtMXN, { clearable: 'rentMonthlyActual' })}
-              {/* La renta anual cobrada vive aquí y no en RESULTADO, que
-                  contesta por lo estimado (RENTA ANUAL ESTIMADA, en PLAN
-                  ORIGINAL). Antes de partir la renta en dos, la anual de una
-                  rentada salía —correctamente— de lo que cobraba; al
-                  separarlas, esa cifra se quedó sin fila y desapareció de la
-                  ficha. Esto la devuelve, del lado que le toca. */}
+              {/* La renta anual cobrada vive aquí, no en RESULTADO — es un
+                  hecho de hoy, no parte del waterfall de retorno. Antes de
+                  partir la renta en dos, la anual de una rentada salía
+                  —correctamente— de lo que cobraba; al separarlas, esa cifra
+                  se quedó sin fila y desapareció de la ficha. Esto la
+                  devuelve, del lado que le toca. */}
               {(p.capRateActual != null || p.rentMonthlyActual != null) && (
                 <>
                   <EditableRow label="CAP RATE" editing={editing} value={fmtPct(p.capRateActual)} />
@@ -1028,12 +1028,9 @@ export function PropertyDetailPage() {
                   OBRA se repiten entre VENTA y RENTA a propósito: son el
                   mismo costo base leído dos veces, una por columna, no la
                   dispersión de antes (la misma cifra en 5 secciones distintas
-                  de la página). PLAN ORIGINAL congela projectedProfit/
-                  projectedRoi contra VENTA PROYECTADA aunque la propiedad ya
-                  haya vendido: es la promesa original, no se mueve. Las dos
-                  columnas de escenario corren siempre las dos, sin depender
-                  de una estrategia de salida elegida — el badge
-                  REAL/PROYECTADO(A) depende del DATO (salePrice/
+                  de la página). Las dos columnas de escenario corren siempre
+                  las dos, sin depender de una estrategia de salida elegida —
+                  el badge REAL/PROYECTADO(A) depende del DATO (salePrice/
                   rentMonthlyActual), no de la etapa, así que una `desarrollo`
                   y una `vendida` corren exactamente el mismo layout. Una vez
                   vendida, ESCENARIO VENTA YA ES la cifra realizada (precio
@@ -1044,17 +1041,7 @@ export function PropertyDetailPage() {
                   y no neta ninguna comisión de salida. */}
               <SectionDivider label="RESULTADO" />
 
-              {p.projectedRoiTotal != null && (
-                <>
-                  <div style={resultSubheading}>PLAN ORIGINAL</div>
-                  <StatRow label="GANANCIA PROYECTADA" value={fmtGain(p.projectedProfit, p.projectedRoiTotal)} />
-                  <StatRow label="ROI PROY. ANUAL" value={fmtPctSigned(p.projectedRoi)} />
-                  <StatRow label="RENTA ANUAL ESTIMADA" value={fmtMXN(p.rentAnnual)} />
-                  <StatRow label="CAP RATE PROY. S/ VENTA" value={fmtPct(p.capRate)} />
-                </>
-              )}
-
-              <div style={narrow ? { marginTop: '16px' } : { marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
+              <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
                 <div>
                   <div style={resultSubheading}>ESCENARIO VENTA · {p.salePrice != null ? 'REAL' : 'PROYECTADO'}</div>
                   <StatRow label="INVERSIÓN SIN COMISIONES" value={fmtMXN(p.totalInvestment)} />

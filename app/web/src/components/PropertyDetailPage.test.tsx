@@ -225,11 +225,12 @@ describe('PropertyDetailPage', () => {
 
   it('un prospecto muestra su proyección, y ningún resultado de venta real', async () => {
     // El héroe se retiró (con él, el score dejó de imprimirse en la ficha): la
-    // proyección vive ahora dentro de RESULTADO, en su bloque PLAN ORIGINAL.
+    // proyección vive ahora dentro de ESCENARIO VENTA, corriendo proyectado —
+    // PLAN ORIGINAL se retiró por ser el mismo número otra vez (antes de una
+    // venta real, la proyección congelada y la de ESCENARIO VENTA coinciden).
     await renderPage(BASE_PROPERTY)
 
-    expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
-    expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
+    expect(screen.getByText('ROI NETO ANUAL')).not.toBeNull()
     // Sin venta ni renta reales, ESCENARIO VENTA corre proyectado
     expect(screen.getByText('ESCENARIO VENTA · PROYECTADO')).not.toBeNull()
     // Antes de la oferta no hay capital que levantar
@@ -261,9 +262,8 @@ describe('PropertyDetailPage', () => {
     await renderPage(RENTED)
 
     expect(screen.getByText('GANANCIA NO REALIZADA')).not.toBeNull()
-    // "En pasos de después ves todo lo de antes": la proyección sigue ahí,
-    // ahora dentro de RESULTADO en vez de en su propia sección.
-    expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
+    // "En pasos de después ves todo lo de antes": VENTA PROYECTADA (el
+    // supuesto capturado) sigue visible aunque la propiedad ya rente.
     expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
     // El score dejó de existir al comprar (y con el héroe, dejó de imprimirse
     // del todo en la ficha): no hay a quién ganarle
@@ -366,15 +366,6 @@ describe('PropertyDetailPage', () => {
       expect(pos, campo).toBeGreaterThan(supuestos)
       expect(pos, campo).toBeLessThan(desglose)
     }
-  })
-
-  it('CAP RATE PROY. vive en RESULTADO: es un resultado, no un dato de la ficha', async () => {
-    // Antes vivía en DATOS junto a hechos capturados, y luego en su propia
-    // sección PROYECCIÓN; ahora corre con el resto de lo que el modelo
-    // produce, dentro del bloque PLAN ORIGINAL de RESULTADO.
-    await renderPage(BASE_PROPERTY)
-    const orden = document.body.textContent!
-    expect(orden.indexOf('CAP RATE PROY. S/ VENTA')).toBeGreaterThan(orden.indexOf('RESULTADO'))
   })
 
   it('la ficha nunca ofrece capturar un total: la inversión es el desglose', async () => {
@@ -554,16 +545,14 @@ describe('PropertyDetailPage', () => {
     expect((within(modal).getByText('DESARROLLO ▸') as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('una propiedad rentada enseña las dos rentas y los dos cap rates', async () => {
+  it('una propiedad rentada enseña las dos rentas', async () => {
     await renderPage(RENTED)
 
     expect(screen.getByText('RENTA/MES ESTIMADA')).not.toBeNull()
     expect(screen.getByText('RENTA/MES COBRADA')).not.toBeNull()
-    // El proyectado lleva su denominador (venta proyectada — sigue siendo una
-    // apuesta). El real ya no lo necesita: mide contra la valuación actual, que
-    // es la única cifra de valor en juego una vez que la propiedad renta —«cap
-    // rate» a secas, sin ambigüedad de contra qué (docs/glosario.md §8).
-    expect(screen.getByText('CAP RATE PROY. S/ VENTA')).not.toBeNull()
+    // CAP RATE mide contra la valuación actual, la única cifra de valor en
+    // juego una vez que la propiedad renta —«cap rate» a secas, sin
+    // ambigüedad de contra qué (docs/glosario.md §8).
     expect(screen.getByText('CAP RATE')).not.toBeNull()
     // La anual cobrada se quedó sin fila al partir la renta en dos: antes salía
     // de `rentAnnual`, que en una rentada era lo que de verdad se cobraba.
@@ -572,19 +561,6 @@ describe('PropertyDetailPage', () => {
   })
 
   // ── Fase B: métricas honestas por etapa ───────────────────────────────────
-
-  it('el héroe promueve una cifra, no la copia: no queda dos veces en pantalla', async () => {
-    // PROYECCIÓN repetía sus dos héroes como filas y RESULTADO no repetía el
-    // suyo: una misma cifra dos veces se lee como dos cifras, y eso es parte de
-    // lo que hacía confundir el par anualizado/total.
-    await renderPage(BASE_PROPERTY)
-
-    expect(screen.getAllByText('ROI PROY. ANUAL')).toHaveLength(1)
-    expect(screen.getAllByText('GANANCIA PROYECTADA')).toHaveLength(1)
-    // Lo que la sección sí conserva es todo lo que el héroe no subió
-    expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
-    expect(screen.getByText('RENTA ANUAL ESTIMADA')).not.toBeNull()
-  })
 
   it('VENTA PROYECTADA es una sola fila: no se duplica al entrar a edición', async () => {
     // Vivía dos veces: una caja en DESGLOSE DE INVERSIÓN (solo en edición) y un
@@ -621,35 +597,27 @@ describe('PropertyDetailPage', () => {
     expect(sqmLandInput.value).toBe('400')
   })
 
-  it('una vendida sigue enseñando el plan contra el que se mide', async () => {
+  it('una vendida muestra ESCENARIO VENTA real, y ninguna marca viva', async () => {
     await renderPage(SOLD)
 
-    // 5,270,000 proyectados (PLAN ORIGINAL, congelado) contra 4,270,000
-    // brutos realizados (ESCENARIO VENTA, badge REAL): el par que el modelo
-    // promete, legible completo y en la misma pantalla.
-    expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
-    expect(screen.getByText('$5,270,000 +141.3%')).not.toBeNull()
     expect(screen.getByText('ESCENARIO VENTA · REAL')).not.toBeNull()
     expect(screen.getByText('$4,270,000 +114.5%')).not.toBeNull()
-    // ROI PROY. ANUAL sigue siendo una fila, sin importar la etapa.
-    expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
-    // Pero la marca viva sí murió: una vendida no tiene ganancia sin realizar
+    // La marca viva murió: una vendida no tiene ganancia sin realizar
     expect(screen.queryByText('GANANCIA NO REALIZADA')).toBeNull()
   })
 
   it('en desarrollo sin avalúo, RESULTADO sigue enseñando la proyección, no dos guiones', async () => {
     // Amarrado a la etapa, el elemento más grande de la pantalla decía «— / —»
-    // mientras la proyección viva estaba treinta filas más abajo — con el
-    // héroe retirado, PLAN ORIGINAL no depende de que exista una marca viva.
+    // mientras la proyección viva estaba treinta filas más abajo — ESCENARIO
+    // VENTA (proyectado) no depende de que exista una marca viva.
     await renderPage({
       ...BASE_PROPERTY, status: 'desarrollo', score: null, totalUnits: 2,
       acquisitionDate: '2025-01-01', currentValuation: null,
       unrealizedGain: null, unrealizedGainPct: null, roi: null, holdMonthsActual: 19,
     })
 
-    expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
-    expect(screen.getByText('+23.0%')).not.toBeNull()
-    expect(screen.getByText('$1,705,000 +23.0%')).not.toBeNull()
+    expect(screen.getByText('ROI NETO ANUAL')).not.toBeNull()
+    expect(screen.getByText('$1,705,000 +23.4%')).not.toBeNull()
     // Sin valuación no hay MARCA ACTUAL que ofrecer
     expect(screen.queryByText('MARCA ACTUAL')).toBeNull()
   })
@@ -657,24 +625,18 @@ describe('PropertyDetailPage', () => {
   it('una archivada conserva lo que tenía al archivarse', async () => {
     await renderPage({ ...BASE_PROPERTY, status: 'archivada', score: null })
 
-    expect(screen.getByText('ROI PROY. ANUAL')).not.toBeNull()
-    expect(screen.getByText('$1,705,000 +23.0%')).not.toBeNull()
+    expect(screen.getByText('ROI NETO ANUAL')).not.toBeNull()
+    expect(screen.getByText('$1,705,000 +23.4%')).not.toBeNull()
     expect(screen.getByText('DESGLOSE DE INVERSIÓN')).not.toBeNull()
-    expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
   })
 
-  it('RESULTADO no ofrece PLAN ORIGINAL sin proyección, pero VENTA PROYECTADA sigue siendo capturable', async () => {
+  it('VENTA PROYECTADA sigue siendo capturable aunque no haya ningún modelo de salida', async () => {
     // VENTA PROYECTADA vive en SUPUESTOS y no es una cifra derivada — es la
     // misma regla que DATOS y FECHAS: un guion en un campo capturable SÍ es
-    // información, señala qué falta teclear. PLAN ORIGINAL sí depende de que
-    // haya proyección (projectedRoiTotal != null) y se oculta sin ella —
-    // ocultar el campo capturable también habría escondido el único dato
-    // que alguien sí podría capturar aquí.
+    // información, señala qué falta teclear.
     await renderPage(ALL_IN)
 
     expect(screen.getByText('VENTA PROYECTADA')).not.toBeNull()
-    expect(screen.queryByText('PLAN ORIGINAL')).toBeNull()
-    expect(screen.queryByText('GANANCIA PROYECTADA')).toBeNull()
   })
 
   it('un total all-in se dice como precio de compra, y explica el capital entero', async () => {
@@ -1132,10 +1094,9 @@ describe('PropertyDetailPage', () => {
   })
 
   describe('RESULTADO', () => {
-    it('un prospecto muestra PLAN ORIGINAL y los dos escenarios proyectados, sin MARCA ACTUAL', async () => {
+    it('un prospecto muestra los dos escenarios proyectados, sin MARCA ACTUAL', async () => {
       await renderPage(BASE_PROPERTY)
 
-      expect(screen.getByText('PLAN ORIGINAL')).not.toBeNull()
       expect(screen.getByText('ESCENARIO VENTA · PROYECTADO')).not.toBeNull()
       expect(screen.getByText('ESCENARIO RENTA · PROYECTADA')).not.toBeNull()
       expect(screen.queryByText('MARCA ACTUAL')).toBeNull()
@@ -1174,7 +1135,6 @@ describe('PropertyDetailPage', () => {
         grossRoiVenta: null, netRoiVenta: null, grossYieldRenta: null, netYieldRenta: null,
       })
 
-      expect(screen.queryByText('PLAN ORIGINAL')).toBeNull()
       expect(screen.getByText('ESCENARIO VENTA · PROYECTADO')).not.toBeNull()
       expect(screen.getByText('ESCENARIO RENTA · PROYECTADA')).not.toBeNull()
       // El mismo hint aparece dos veces: una en COMISIONES DEL FONDO (captura)
