@@ -37,15 +37,17 @@ from api.db import _row_to_dict
 from api.finance.quantize import money, money0, to_decimal
 
 # SUMA ALZADA: «1 lote» de algo, sin una medida detrás. Es la unidad de todo
-# renglón real de hoy —nadie mide en m² ni en piezas— y también la del residuo,
-# por la misma razón: lo que falta por detallar no se mide, se estima entero.
+# renglón real de hoy —nadie mide en m² ni en piezas— y también la del estimado
+# paramétrico, por la misma razón: lo que todavía no se detalla no se mide, se
+# estima entero.
 LUMP_SUM_UNIT = "lote"
 
-# El renglón que absorbe lo que todavía no se detalla. Nace con el presupuesto y
-# no se borra nunca: sin él, detallar una partida no tendría de dónde restar.
-RESIDUAL_CHAPTER = "Otros"
-RESIDUAL_NAME = "Otros, por detallar"
-RESIDUAL_UNIT = LUMP_SUM_UNIT
+# Dónde aterriza el renglón con el que nace un presupuesto. Es «Otros» y no un
+# capítulo nuevo porque ahí quedaron TODOS los residuos que convirtió la 053: un
+# presupuesto recién nacido y uno migrado se leen igual, que es lo que hace que
+# no haya dos clases de renglón. El capítulo ya no es especial —se renombra y se
+# borra como cualquier otro— y el renglón tampoco.
+ESTIMATE_CHAPTER = "Otros"
 
 # El multiplicador de indirectos que la calculadora aplica al producir el primer
 # renglón. Vive aquí y no entre los supuestos del underwriting porque ya no es
@@ -130,17 +132,66 @@ def calculator_estimate(sqm_construction, construction_cost_per_sqm,
 
     Esto es todo lo que queda de la fórmula que antes era el costo de obra: una
     CALCULADORA para llegar al primer número, no un campo que siga alimentando
-    nada. Su resultado se guarda como el importe del renglón residual y desde
-    ahí manda el presupuesto. Espeja al peso la aritmética de la migración 032,
-    incluido que un NULL resuelve al default y un 0 capturado es identidad.
+    nada. CORRE UNA SOLA VEZ EN LA VIDA DE UNA PROPIEDAD —al nacer, desde
+    `create_property`— y su resultado se guarda como el importe de un renglón
+    normal, que desde ese momento es dato de quien lo tenga que corregir. No
+    existe ningún otro camino de escritura de la métrica hacia el presupuesto:
+    editar los m² o el $/m² de la ficha no mueve un peso (ver
+    `properties_db.update_property`). Espeja al peso la aritmética de la
+    migración 032, incluido que un NULL resuelve al default y un 0 capturado es
+    identidad.
 
     Lo único que la 032 no tuvo que decidir —un factor por debajo de 1— lo rechaza
     `overhead_factor` antes de que el estimado exista: sembrar con él dejaría la
-    obra encogida dentro del renglón «Otros», donde ya no se corrige sola."""
+    obra encogida dentro de un renglón que nadie sabría que hay que corregir."""
     overhead = (CONSTRUCTION_OVERHEAD_DEFAULT if construction_overhead is None
                 else construction_overhead)
     return (to_decimal(sqm_construction) * to_decimal(construction_cost_per_sqm)
             * overhead_factor(overhead))
+
+
+def _cifra(number) -> str:
+    """Un número para leerse dentro de una frase: con separador de miles y sin
+    los ceros de relleno que arrastra un `Decimal` de columna. `200.00` es
+    «200», y `8500.50` sigue siendo «8,500.5» — se recorta el relleno, no la
+    cifra. El `.4f` siempre deja punto, así que el recorte nunca se come un
+    dígito: se detiene en él."""
+    return f"{to_decimal(number):,.4f}".rstrip("0").rstrip(".")
+
+
+ESTIMATE_LINE_LABEL = "Estimado inicial"
+
+# Con qué se abre la atribución que lleva un estimado copiado a otra obra —
+# «… (de «Casa Edison»)», ver `_copied_name`—. Es también cómo se reconoce una
+# que ya está puesta, así que vive aquí y no tecleada en dos lados.
+ATTRIBUTION_OPEN = " (de «"
+
+# Lo que el renglón confiesa cuando la copia proporcional le movió el importe:
+# su cuenta ya no da su cifra. Va DENTRO del paréntesis de la atribución.
+SCALED_NOTE = ", importe ajustado a esta obra"
+
+
+def estimate_line_name(sqm_construction, construction_cost_per_sqm,
+                       construction_overhead=None) -> str:
+    """«Estimado inicial · 200 m² × $8,000/m²» — el renglón se llama con la
+    aritmética que lo produjo.
+
+    EL NOMBRE ES LA ÚNICA MEMORIA QUE QUEDA DE ESA CUENTA. Antes los tres
+    insumos vivían en columnas que seguían multiplicando en cada lectura; ahora
+    corren una vez y se olvidan, así que si el renglón no dice de dónde salió su
+    importe, dentro de un mes nadie puede contestar si $1,600,000 fue una
+    cotización o una regla de tres. Va en el nombre y no en las notas porque el
+    nombre es lo que se lee en la tabla, en el PDF y en el selector de copiado,
+    y porque un renglón que hay que abrir para saber qué es no se abre.
+
+    El overhead aparece SOLO cuando multiplica. Con 1.3 el importe no es
+    `m² × $/m²` y callarlo dejaría un nombre que contradice su propia cifra —el
+    lector dividiría, le daría otro $/m² y no sabría cuál de los dos creer."""
+    factor = overhead_factor(CONSTRUCTION_OVERHEAD_DEFAULT
+                             if construction_overhead is None else construction_overhead)
+    indirectos = f" × {_cifra(factor)}" if factor != 1 else ""
+    return (f"{ESTIMATE_LINE_LABEL} · {_cifra(sqm_construction)} m² × "
+            f"${_cifra(construction_cost_per_sqm)}/m²{indirectos}")
 
 
 # ─── Lectura ──────────────────────────────────────────────────────────────────
@@ -206,10 +257,18 @@ def metrics(row: dict) -> dict:
     """Las cifras de obra de una propiedad, desde su fila ya enriquecida con los
     agregados del presupuesto (`construction_budgeted` y compañía).
 
-    `constructionCostPerSqm` es la única que cambió de naturaleza: era un insumo
-    que alguien tecleaba y ahora es el cociente presupuesto ÷ metraje. Se publica
-    solo para mostrarse — nada la vuelve a leer para calcular dinero — y es None
-    sin metraje, porque dividir entre cero no da «$0/m²», no da nada."""
+    `budgetedCostPerSqm` es el cociente presupuesto ÷ metraje. Se publica solo
+    para mostrarse —nada la vuelve a leer para calcular dinero— y es None sin
+    metraje, porque dividir entre cero no da «$0/m²», no da nada.
+
+    SE LLAMA ASÍ Y NO `constructionCostPerSqm` PORQUE SON DOS COSAS DISTINTAS, y
+    compartir nombre es el olor que este módulo vino a quitar. El otro es la
+    columna `properties.construction_cost_per_sqm`: el supuesto que alguien
+    TECLEÓ, escribible, que viaja tal cual desde la fila (ver
+    `properties_db.parse_property`). Los dos se publican y se enseñan juntos —tu
+    estimado contra el presupuesto— y ninguno es el relevo del otro: la
+    comparación solo es honesta mientras ninguno de los dos sea el fallback del
+    que falta."""
     budgeted = to_decimal(row.get("construction_budgeted"))
     committed = row.get("construction_committed")
     paid = row.get("construction_paid")
@@ -235,7 +294,7 @@ def metrics(row: dict) -> dict:
             money0(committed_variance) if committed_variance is not None else None,
         "constructionPaidVariance":
             money0(paid_variance) if paid_variance is not None else None,
-        "constructionCostPerSqm": money(budgeted / sqm) if sqm > 0 else None,
+        "budgetedCostPerSqm": money(budgeted / sqm) if sqm > 0 else None,
     }
 
 
@@ -267,15 +326,33 @@ _LINES_SQL = """
               FROM budget_line_payments p
              WHERE p.line_id = l.id) pagos ON TRUE
      WHERE l.budget_id = %s
-     ORDER BY l.is_residual, l.chapter_name, l.sort_order, l.id
+     ORDER BY l.chapter_name, l.sort_order, l.id
 """
 
 
 def get_budget(conn, property_id: int, plan_id: str | None = None) -> dict:
     """El presupuesto completo de una propiedad, con sus renglones y sus pagos.
 
-    El residuo va al final del orden a propósito: es lo que queda por detallar,
-    no un capítulo más, y leerlo al final es leerlo como se lee un remanente."""
+    Un solo orden para todos los renglones —capítulo, luego el orden que se les
+    dio dentro de él— porque ya no hay dos clases. El residuo salía al final por
+    no ser un capítulo más; una holgura es hoy un renglón con el nombre que
+    alguien le puso y se lee donde su capítulo la ponga.
+
+    `replaceable` DICE SI UNA COPIA PROPORCIONAL SOBRE ESTE PRESUPUESTO SERÍA
+    ACEPTADA en lo que a su contenido respecta, con las mismas palabras y la
+    misma expresión que en `list_sources` — y callado, igual que allá, sobre la
+    otra mitad de la regla: el alcance por capítulos lo sabe el cliente.
+
+    Va aquí porque `list_sources` no puede contestarlo para el caso de JALAR.
+    Ahí el destino es el presupuesto de esta misma obra, que es justo el que la
+    lista excluye a propósito —nadie se copia sobre sí mismo—, así que la única
+    fila que faltaba era la que el usuario tiene enfrente. Con `?planId=`
+    describe el ESCENARIO, no el presupuesto de la propiedad: `_require_budget`
+    ya devolvió el id del que este payload habla, y la respuesta es sobre ése.
+
+    Un presupuesto vacío contesta `true`, y aquí pesa más que en la lista: nacer
+    vacío es el estado normal de una propiedad recién capturada sin calculadora,
+    y jalar sobre ella es lo más común que alguien va a hacer."""
     budget_id = _require_budget(conn, property_id, plan_id)
     rows = conn.execute(_LINES_SQL, (budget_id,)).fetchall()
     lines = []
@@ -287,6 +364,10 @@ def get_budget(conn, property_id: int, plan_id: str | None = None) -> dict:
         "id": budget_id,
         "propertyId": property_id,
         "planId": plan_id,
+        # Cuarto lector de la misma expresión, y por eso `_UNTOUCHED_BUDGET` es
+        # un fragmento de SQL y no un helper de Python: se deja usar desde una
+        # lista y desde una lectura suelta sin volverse a escribir.
+        "replaceable": budget_holds_only_initial_estimate(conn, budget_id),
         "lines": lines,
         # Los capítulos son los que los renglones nombran: `chapter_name` es una
         # COPIA en la fila, no una referencia, así que un capítulo no existe sin
@@ -304,7 +385,7 @@ def _chapters(lines: list[dict]) -> list[str]:
     return seen
 
 
-# ─── El presupuesto y su residuo ──────────────────────────────────────────────
+# ─── El presupuesto ───────────────────────────────────────────────────────────
 
 def _require_budget(conn, property_id: int, plan_id: str | None = None) -> int:
     """El id del presupuesto de la propiedad (plan_id None) o del escenario de un
@@ -315,6 +396,13 @@ def _require_budget(conn, property_id: int, plan_id: str | None = None) -> int:
     entraron por fuera del API (una semilla, un fixture, un INSERT a mano). Sin
     ella volvería la rama «si existe presupuesto», que es la rama que este
     diseño existe para no tener.
+
+    NACE VACÍO, sin un renglón fantasma. La calculadora escribe una sola vez, al
+    dar de alta la propiedad, y aquí no hay con qué llamarla: leer el
+    presupuesto de una fila que entró por fuera no es una captura de nadie. Un
+    presupuesto sin renglones suma 0, y ese 0 es un estado legítimo —«todavía no
+    se ha capturado obra»— y no un síntoma: `investment_raw` y la comisión de
+    obra lo suman como el número que es, sin una rama de más.
 
     El escenario de un plan es lo contrario a propósito: NO se auto-crea. Nace
     de una acción explícita (copiado del de la propiedad, o vacío — ver
@@ -337,81 +425,147 @@ def _require_budget(conn, property_id: int, plan_id: str | None = None) -> int:
         return row["id"]
     if conn.execute("SELECT 1 FROM properties WHERE id = %s", (property_id,)).fetchone() is None:
         raise BudgetNotFound(f"Propiedad {property_id} no encontrada")
-    return create_budget(conn, property_id, Decimal(0))
+    return create_budget(conn, property_id)
 
 
-def create_budget(conn, property_id: int, estimate, plan_id: str | None = None) -> int:
-    """El presupuesto de una propiedad recién capturada: una sola fila, «Otros,
-    por detallar», con el estimado grueso entero.
+def create_budget(conn, property_id: int, plan_id: str | None = None) -> int:
+    """Un presupuesto vacío. Los renglones los pone quien los tenga que poner.
 
-    Esa fila YA es el presupuesto. No hay traspaso que diseñar más adelante —
-    ningún momento en que el costo de obra cambie de fuente— porque nace aquí,
-    en `prospecto`, y de aquí en adelante detallar solo lo reparte."""
-    budget_id = conn.execute(
+    Ya no siembra nada por su cuenta, y ese es el cambio: el estimado
+    paramétrico lo escribe `seed_estimate_line`, desde el ÚNICO lugar donde
+    corre la calculadora —el alta de la propiedad—, como un renglón normal. Aquí
+    quedó solo lo que siempre fue: la fila que hace que el presupuesto exista."""
+    return conn.execute(
         "INSERT INTO budgets (property_id, plan_id) VALUES (%s, %s) RETURNING id",
         (property_id, plan_id),
     ).fetchone()["id"]
+
+
+def seed_estimate_line(conn, budget_id: int, sqm_construction,
+                       construction_cost_per_sqm, construction_overhead=None) -> Decimal:
+    """El renglón con el que nace un presupuesto: el estimado grueso de la
+    calculadora, entero, con el nombre que dice de dónde salió. Devuelve su
+    importe.
+
+    Es el ÚNICO lugar del código que pone `seeded = TRUE`, y lo pone en el mismo
+    INSERT: la procedencia se declara al escribir, no se deduce después.
+
+    ES UN RENGLÓN COMO CUALQUIER OTRO desde el instante en que existe: se edita,
+    se renombra y se borra sin caso especial, y nada vuelve a reescribirlo. Ahí
+    está la diferencia entre un DEFAULT y una LIGA VIVA — corre una vez, deja un
+    dato real, y el dato es la verdad; no una fórmula que siga opinando cada vez
+    que alguien corrige un metraje.
+
+    Sin estimado no escribe nada. Un renglón de $0 llamado «Estimado inicial ·
+    0 m² × $0/m²» no dice nada que el presupuesto vacío no diga ya, y obligaría
+    a borrarlo a mano en toda propiedad dada de alta sin la calculadora."""
+    estimate = money(calculator_estimate(
+        sqm_construction, construction_cost_per_sqm, construction_overhead))
+    if estimate <= 0:
+        return Decimal(0)
     conn.execute(
         "INSERT INTO budget_lines"
-        " (budget_id, chapter_name, name, unit, quantity, unit_price, is_residual)"
+        " (budget_id, chapter_name, name, unit, quantity, unit_price, seeded)"
         " VALUES (%s, %s, %s, %s, 1, %s, TRUE)",
-        (budget_id, RESIDUAL_CHAPTER, RESIDUAL_NAME, RESIDUAL_UNIT, money(estimate)),
+        (budget_id, ESTIMATE_CHAPTER,
+         estimate_line_name(sqm_construction, construction_cost_per_sqm,
+                            construction_overhead),
+         LUMP_SUM_UNIT, estimate),
     )
-    return budget_id
+    return estimate
 
 
-def _totals(conn, budget_id: int) -> tuple[Decimal, Decimal]:
-    """(total del presupuesto, suma de los detallados), los dos al centavo.
+# ─── «Aquí no ha trabajado nadie» ─────────────────────────────────────────────
+#
+# UNA SOLA PREGUNTA, DOS USOS. La copia la hace para decidir si REEMPLAZA —el
+# estimado paramétrico se cambia por el desglose que llega— y el borrado de la
+# propiedad para decidir si RETIENE. Es la misma pregunta: si lo único que hay
+# es lo que puso el sistema, no hay nada que se pueda perder. Escrita dos veces
+# se despegarían, y el día que se despeguen una copia pisa trabajo capturado o
+# una propiedad se vuelve indeleble.
+#
+# LA CONTESTA UN DATO DECLARADO: `l.seeded`, la columna que puso la 054. La
+# escribe `seed_estimate_line` —el único lugar del código que la pone en TRUE— en
+# el mismo INSERT que crea el renglón, y NADIE la actualiza después.
+#
+# Se intentó antes deducirla del reloj (`l.created_at = b.created_at`, las dos
+# `DEFAULT now()` y `now()` congelado al inicio de la transacción) y la deducción
+# falla en los dos sentidos, que es por lo que se retiró: `_require_budget` crea
+# el presupuesto al vuelo y `create_line` mete presupuesto y renglón en la MISMA
+# transacción, así que el primer renglón tecleado de una propiedad que entró
+# fuera del API heredaba la marca y `apply` lo borraba; y las semillas corren en
+# autocommit por sentencia, así que el renglón sembrado NO la heredaba y las 18
+# propiedades sembradas quedaban indelebles. La igualdad de relojes correlaciona
+# con el origen del renglón; no es el origen del renglón.
+#
+# NO SE PREGUNTA POR EL NOMBRE, y es deliberado. El del estimado lleva dentro
+# los m² y el $/m² —«Estimado inicial · 200 m² × $8,000/m²»—, así que corregir
+# el metraje de la ficha lo cambiaría y el presupuesto dejaría de reconocerse a
+# sí mismo sin que nadie lo tocara. Es el mismo argumento con el que la 033
+# desmontó «Otros, por detallar»: un nombre lo teclea o lo renombra cualquiera.
+# La columna no se puede teclear, sobrevive a renombres y a ediciones de importe,
+# y no depende de ninguna métrica.
+#
+# Y NO ES `is_residual` OTRA VEZ. Aquella bandera definía ARITMÉTICA —el total se
+# expresaba en términos de ella, así que toda escritura tenía que mantenerla—.
+# `seeded` es procedencia de escritura única: nada la suma, nada la asienta,
+# ningún importe depende de ella. Que se quede vieja no descuadra un peso.
+#
+# Con eso la vieja rendija SE CIERRA: quien borre el estimado y teclee uno propio
+# ya no cae del lado equivocado —su renglón nace con `seeded = FALSE`, así que
+# retiene y no lo reemplaza una copia—. Se conservan las dos mitades que
+# antes competían: la propiedad recién dada de alta se puede borrar, y el
+# trabajo tecleado a mano se protege desde el primer renglón, sin ejecución
+# encima. Lo que sigue contando como «nada que perder» es exactamente: ningún
+# renglón, o uno solo escrito en el mismo acto que el presupuesto y sin
+# ejecución —proveedor, comprometido, cantidad real, cierre o pago—.
+#
+# Va como fragmento CORRELACIONADO con `b` porque la pregunta es POR
+# PRESUPUESTO: «el sistema siembra a lo más un renglón» es invariante de cada
+# presupuesto, no de la propiedad entera. Contarlos todos juntos volvía indeleble
+# a una propiedad con un escenario de plan recién copiado —un renglón aquí más
+# uno allá son dos, y nadie había capturado nada—.
+_UNTOUCHED_BUDGET = (
+    "(SELECT count(l.id) <= 1"
+    "    AND NOT coalesce(bool_or("
+    "          NOT l.seeded"
+    "       OR l.supplier_id      IS NOT NULL"
+    "       OR l.committed_amount IS NOT NULL"
+    "       OR l.actual_quantity  IS NOT NULL"
+    "       OR l.closed_at        IS NOT NULL"
+    "       OR EXISTS (SELECT 1 FROM budget_line_payments p WHERE p.line_id = l.id)"
+    "        ), FALSE)"
+    "   FROM budget_lines l WHERE l.budget_id = b.id)"
+)
 
-    El redondeo aquí no es cosmético, es lo que hace EXACTA la promesa de que
-    detallar no mueve el total. `cantidad × precio` puede traer cinco decimales
-    —la cantidad lleva tres y el precio dos— mientras que el importe del residuo
-    se guarda en una columna de dos. Restando en crudo, cada partida detallada
-    dejaba hasta medio centavo tirado, y cincuenta partidas movían el total un
-    cuarto de peso sin que nadie lo hubiera pedido.
 
-    Redondeando las dos puntas al centavo, el residuo queda exacto a dos
-    decimales y el total redondeado se conserva al centavo, operación tras
-    operación, sin acumular nada."""
+def budget_holds_only_initial_estimate(conn, budget_id: int) -> bool:
+    """Este presupuesto no tiene más que lo que el sistema sembró en el mismo
+    acto en que lo creó —o no tiene nada—. Ver `_UNTOUCHED_BUDGET`."""
+    return bool(conn.execute(
+        f"SELECT {_UNTOUCHED_BUDGET} AS intacto FROM budgets b WHERE b.id = %s",
+        (budget_id,),
+    ).fetchone()["intacto"])
+
+
+def _totals(conn, budget_id: int) -> Decimal:
+    """El total del presupuesto —la suma de sus renglones— al centavo.
+
+    UNA SOLA CIFRA, y esa es la entrega entera. Devolvía dos —el total y «lo
+    detallado»— porque el residuo era un renglón que no contaba como detalle, y
+    la diferencia entre las dos era de dónde salía el importe que lo absorbía
+    todo. Sin residuo no hay dos sumas que distinguir: cada renglón cuenta
+    exactamente una vez y el total es lo que dan sumados.
+
+    El redondeo sí se queda. `cantidad × precio` puede traer cinco decimales —la
+    cantidad lleva tres y el precio dos— y quien lea el total tiene que leer
+    pesos y centavos, no el residuo binario de una multiplicación."""
     row = conn.execute(
-        "SELECT coalesce(sum(l.quantity * l.unit_price), 0) AS total,"
-        "       coalesce(sum(l.quantity * l.unit_price) FILTER (WHERE NOT l.is_residual), 0)"
-        "           AS detallado"
+        "SELECT coalesce(sum(l.quantity * l.unit_price), 0) AS total"
         "  FROM budget_lines l WHERE l.budget_id = %s",
         (budget_id,),
     ).fetchone()
-    return money(row["total"]), money(row["detallado"])
-
-
-def current_total(conn, property_id: int) -> Decimal:
-    """El total presupuestado ahora mismo, sin pasar por la lectura completa
-    de la propiedad. Lo usa properties_db para saber contra qué tasa está
-    multiplicando cuando el m² cambia solo, sin $/m² nuevo en el mismo PATCH."""
-    return _totals(conn, _require_budget(conn, property_id))[0]
-
-
-def _settle_residual(conn, budget_id: int, total_objetivo: Decimal) -> Decimal:
-    """Deja el residuo en `total_objetivo − detallado` y contesta cuánto CRECIÓ
-    el presupuesto, que es lo único que esta operación no puede decidir sola.
-
-    Detallar distribuye costo, no lo crea: por eso el residuo se recalcula en vez
-    de capturarse. Dejarlo editable a mano convertiría una resta determinista en
-    una segunda captura, y ahí es donde nace el descuadre.
-
-    Cuando el detalle SUPERA el objetivo el residuo llega a 0 y el total sí
-    crece. Eso ya no es detallar, es aumentar el presupuesto, y son dos cosas
-    distintas: se devuelve el excedente para que la respuesta lo diga en vez de
-    que el total suba en silencio."""
-    _, detallado = _totals(conn, budget_id)
-    # Las dos puntas llegan al centavo, así que la resta ya cabe exacta en la
-    # columna del residuo y no vuelve a redondearse.
-    residuo = max(Decimal(0), money(total_objetivo) - detallado)
-    conn.execute(
-        "UPDATE budget_lines SET quantity = 1, unit_price = %s"
-        " WHERE budget_id = %s AND is_residual",
-        (residuo, budget_id),
-    )
-    return max(Decimal(0), detallado - total_objetivo)
+    return money(row["total"])
 
 
 # La normalización entera, y es literal a propósito: minúsculas y espacios de
@@ -423,6 +577,27 @@ def _settle_residual(conn, budget_id: int, total_objetivo: Decimal) -> Decimal:
 # está?».
 def _norm(column: str) -> str:
     return f"lower(btrim({column}))"
+
+
+def _identidad(column: str) -> str:
+    """El nombre SIN lo que es anotación de lectura — hoy, la nota de escalado.
+
+    EL NOMBRE CARGA DOS COSAS y sólo una de ellas dice quién es el renglón: su
+    cuenta y de qué obra viene (`_copied_name`) lo identifican; que su importe se
+    haya ajustado es una anotación para quien lee, y VARÍA entre copias legítimas
+    del mismo renglón —la misma partida del mismo origen llega con nota si la
+    copia fue proporcional y sin ella si fue directa—.
+
+    Deduplicar es preguntar quién es. Comparando la cadena entera, esa anotación
+    partía la llave: el mismo renglón entraba dos veces y el destino contaba el
+    dinero dos veces. Se quita de LAS DOS PUNTAS de la comparación —el nombre
+    guardado la trae o no según cómo se copió, igual que el que llega— porque
+    quitarla de un solo lado mueve el error en vez de arreglarlo.
+
+    Va sobre el texto crudo y no sobre `_norm`, para que la nota se reconozca con
+    las mayúsculas con las que se escribió: sale de una constante, nunca de algo
+    que alguien teclee."""
+    return f"replace({column}, '{SCALED_NOTE}', '')"
 
 
 # ─── Copiar un presupuesto a otro ──────────────────────────────────────────────
@@ -446,9 +621,17 @@ def _norm(column: str) -> str:
 # `is_proportional` SÍ viaja, por lo mismo que el oficio: «los permisos no crecen
 # con la obra» es verdad de la PARTIDA, no de una copia. Al viajar, un
 # presupuesto copiado nace sabiendo cuáles no escalan — aprender sin catálogo.
+# `seeded` VIAJA con la copia, y tiene que hacerlo: un escenario de plan nace
+# copiando el presupuesto de la obra (`create_plan_budget`), así que si la
+# procedencia no viajara, el renglón sembrado llegaría al escenario como si
+# alguien lo hubiera tecleado y la propiedad entera volvería a ser indeleble —el
+# defecto que la 054 vino a quitar—. Viajar es lo correcto además de lo cómodo:
+# la columna dice «esto lo escribió el sistema, nadie lo tecleó», y copiar no
+# convierte en tecleado lo que no lo era. Un renglón capturado a mano viaja con
+# su FALSE por la misma regla.
 _COPIED_LINE_COLUMNS = ("chapter_name", "name", "unit",
                         "quantity", "unit_price", "supplier_category_id",
-                        "sort_order", "notes", "is_proportional")
+                        "sort_order", "notes", "is_proportional", "seeded")
 
 
 # Qué renglones del origen entran a la copia. `NULL` es «todos los capítulos»,
@@ -466,7 +649,7 @@ _COPIED_LINE_COLUMNS = ("chapter_name", "name", "unit",
 # lo que se copió, que es un descuadre sin nada roto a la vista.
 _CANDIDATES = (
     "  FROM budget_lines l"
-    " WHERE l.budget_id = %s AND NOT l.is_residual"
+    " WHERE l.budget_id = %s"
     "   AND (%s::text[] IS NULL OR l.chapter_name = ANY(%s::text[]))"
 )
 
@@ -497,10 +680,13 @@ _SCALES_ITS_QUANTITY = f"l.is_proportional AND NOT {_ES_SUMA_ALZADA}"
 # redondear dos veces —una aquí y otra al asignar— y las dos rondas no siempre
 # dan lo mismo.
 #
-# Lo que el redondeo mueva NO descuadra el total: el residuo del destino se
-# calcula DESPUÉS, como `objetivo − detallado`, así que absorbe hasta el último
-# peso (ver `_settle_residual`). Por eso la suma final da el objetivo exacto y no
-# «el objetivo más lo que se acumuló redondeando».
+# LO QUE EL REDONDEO MUEVA SE QUEDA EN EL TOTAL, y ahí está toda la diferencia
+# con antes. El residuo absorbía el resto —se recalculaba como `objetivo −
+# detallado` y la suma daba el objetivo al peso— así que estas dos rondas eran
+# invisibles. Hoy el total es la suma de los renglones y de nadie más: lo
+# copiado aterriza en «el objetivo, ± lo que se acumuló redondeando», que a
+# pesos enteros por renglón es del orden de unos pesos en un presupuesto de
+# millones. Se prefiere ese error visible a un renglón que lo esconda.
 _SCALED_COLUMN = {
     "quantity": f"CASE WHEN {_SCALES_ITS_QUANTITY} THEN round(l.quantity * %s, 3)"
                 "      ELSE l.quantity END AS quantity",
@@ -509,7 +695,71 @@ _SCALED_COLUMN = {
 }
 
 
-def _candidate_columns(factor) -> tuple[str, list]:
+def _copied_name(misma_propiedad: bool, factor) -> str:
+    """Cómo se llama el renglón al otro lado de la copia.
+
+    EL NOMBRE DEL SEMBRADO LLEVA SU CUENTA ADENTRO —«Estimado inicial · 200 m² ×
+    $8,000/m²»— y esa cuenta habla de UNA propiedad. Copiado a otra obra, el
+    nombre afirma metros que no son los del destino: alguien abre su presupuesto
+    y lee un cálculo sobre un edificio que no es el suyo, divide por SUS 200 m² y
+    saca un $/m² que no existe. Se le agrega de quién es:
+
+        Estimado inicial · 150 m² × $10,000/m² (de «Casa Edison»)
+
+    SE ATRIBUYE, NO SE RECORTA. Quitarle la cuenta escondería la contradicción en
+    vez de resolverla: el importe seguiría siendo el del origen y quedaría un
+    «Estimado inicial» de $1,500,000 sin manera de contestar de dónde salió ese
+    número. El nombre es la única memoria que queda de esa cuenta
+    (`estimate_line_name`); truncarlo la borra, atribuirlo la completa.
+
+    Copiado al ESCENARIO DE PLAN de la misma propiedad se conserva entero: ahí
+    los metros sí son los suyos, y el escenario existe justamente para
+    espejearla. Lo que separa los dos casos es `budgets.property_id` y no que el
+    destino sea un plan: `create_plan_budget` acepta como origen el escenario de
+    OTRA obra, así que ser-plan y ser-de-la-misma-obra son preguntas distintas.
+
+    ES IDEMPOTENTE PORQUE EL NOMBRE ES LA LLAVE DE LA DEDUP: una copia de una
+    copia tiene que producir el mismo texto o el segundo `apply` deja de
+    deduplicar. Si el nombre ya trae atribución se deja como está, y A→B→C
+    conserva «(de «A»)», que además es la respuesta verdadera — la aritmética de
+    ese nombre son los metros de A, nunca los de B.
+
+    No se recalcula contra las métricas del destino, que sería el arreglo
+    aparente: un nombre armado con los metros de acá y el importe de allá
+    contradiría su propia cifra, que es exactamente el defecto del que venimos.
+
+    Y CON FACTOR NI SIQUIERA LA CUENTA DEL ORIGEN CUADRA YA. La proporcional
+    dimensiona lo copiado al costo que el destino tenía: «150 m² × $10,000/m²»
+    aterriza cargando $2,340,000, y quien divida entre los 150 m² de la fuente
+    saca $15,600/m², una tarifa que no tuvo ninguna de las dos obras. Atribuir
+    arregló que el lector dividiera entre SUS metros; no que dividiera entre los
+    del origen. Así que cuando hubo factor el renglón lo dice, DENTRO del mismo
+    paréntesis —para que la guarda de idempotencia lo siga cortando de un
+    `strpos`—: el nombre admite que su aritmética ya no es su importe en vez de
+    dejar al lector descubrirlo con una división.
+
+    No se marca cuando no hubo escalado: sin factor, con factor 1 —todo el
+    origen es fijo— o en un renglón que no escala, la cuenta y el importe
+    siguen siendo el mismo hecho. Mismo criterio que el overhead en
+    `estimate_line_name`: se dice cuando multiplica."""
+    if misma_propiedad:
+        return "l.name"
+    # `l.is_proportional` es exactamente la unión de las dos ramas que escalan
+    # (`_SCALES_ITS_PRICE` y `_SCALES_ITS_QUANTITY`): una fija no se mueve, así
+    # que su nombre no tiene nada que confesar.
+    marca = ("''" if factor is None or factor == 1 else
+             f"CASE WHEN l.is_proportional THEN '{SCALED_NOTE}' ELSE '' END")
+    # Sin parámetros a propósito: el nombre de la obra sale de un subquery y no
+    # de una interpolación, que con un nombre que traiga comilla sería inyección.
+    return (f"CASE WHEN l.seeded AND strpos(l.name, '{ATTRIBUTION_OPEN}') = 0"
+            f"     THEN l.name || '{ATTRIBUTION_OPEN}'"
+            "            || (SELECT p.name FROM properties p JOIN budgets o"
+            "                  ON o.property_id = p.id WHERE o.id = l.budget_id)"
+            f"            || '»' || {marca} || ')'"
+            "     ELSE l.name END AS name")
+
+
+def _candidate_columns(factor, misma_propiedad: bool) -> tuple[str, list]:
     """Las columnas del origen TAL COMO SE VAN A INSERTAR, con sus parámetros.
 
     Sin factor no se toca ni una: la copia directa es literalmente el SELECT de
@@ -517,10 +767,21 @@ def _candidate_columns(factor) -> tuple[str, list]:
     nadie pidió escalar. Con factor, el mismo valor entra tantas veces como
     `%s` haya en las columnas escaladas —el conteo sale del SQL y no de una
     constante que haya que acordarse de mover."""
-    if factor is None:
-        return ", ".join(f"l.{c}" for c in _COPIED_LINE_COLUMNS), []
-    sql = ", ".join(_SCALED_COLUMN.get(c, f"l.{c}") for c in _COPIED_LINE_COLUMNS)
+    columnas = {"name": _copied_name(misma_propiedad, factor)}
+    if factor is not None:
+        columnas |= _SCALED_COLUMN
+    sql = ", ".join(columnas.get(c, f"l.{c}") for c in _COPIED_LINE_COLUMNS)
     return sql, [factor] * sql.count("%s")
+
+
+def _same_property(conn, source_budget_id: int, target_budget_id: int) -> bool:
+    """Si los dos presupuestos son de la misma obra. Separa copiar ENTRE obras de
+    copiar a un escenario de plan, que es la misma operación con otro alcance."""
+    return bool(conn.execute(
+        "SELECT (SELECT o.property_id FROM budgets o WHERE o.id = %s)"
+        "        IS NOT DISTINCT FROM"
+        "       (SELECT d.property_id FROM budgets d WHERE d.id = %s) AS misma",
+        (source_budget_id, target_budget_id)).fetchone()["misma"])
 
 
 def copy_lines(conn, source_budget_id: int, target_budget_id: int,
@@ -530,13 +791,11 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
 
     ESTA es la única forma de arrancar un presupuesto que no es la captura
     manual, y copiar no distingue de dónde a dónde va: son dos presupuestos de
-    obra y nada más.
-
-    El residuo NO se copia, ni del origen ni contra el del destino. Es el
-    remanente de SU presupuesto —lo que a esa obra le falta por detallar— y
-    llevárselo a la obra que copia lo convertiría en una partida de $2.3M que
-    después le come el residuo a ésa. Por lo mismo tampoco cuenta como un
-    renglón ya existente: es un remanente contable, no una partida.
+    obra y nada más. TAMPOCO DISTINGUE RENGLONES: se copian todos, porque todos
+    son la misma cosa. El remanente quedaba fuera por ser un importe que el
+    sistema recalculaba; una holgura con nombre propio —«Por detallar», lo que
+    sea— es alcance que alguien decidió cargar, y la obra que copia la forma de
+    otra quiere heredar también cuánto le falta por detallar.
 
     DEDUPLICAR ES SALTAR, NUNCA ACTUALIZAR, y es la garantía central de esta
     operación. Un renglón que ya existe en el destino puede traer proveedor,
@@ -547,7 +806,16 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
     reporta; si hay que cambiarlo, lo cambia un humano renglón por renglón.
 
     Dos renglones son EL MISMO cuando coinciden su `(capítulo, nombre)`
-    normalizados con `_norm`.
+    normalizados con `_norm` —el nombre YA reescrito, si la copia cruzó de
+    propiedad, porque es el que va a quedar guardado— y sin la nota de escalado,
+    que es anotación de lectura y no identidad: ver `_identidad`. Con la nota
+    dentro de la comparación, el mismo renglón del mismo origen entraba una vez
+    copiado proporcional y otra copiado directo, y el destino contaba el dinero
+    dos veces.
+
+    LO ÚNICO QUE LA COPIA REESCRIBE ES EL NOMBRE DEL SEMBRADO, y sólo al cruzar
+    de propiedad: se le agrega de qué obra viene, porque su cuenta habla de
+    metros que no son los del destino. Ver `_copied_name`.
 
     `chapters` recorta el origen a esos capítulos; `None` los copia todos, que es
     el comportamiento de siempre.
@@ -576,7 +844,8 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
     # insertadas no puede despegarse de la lista de valores.
     columns = ", ".join(_COPIED_LINE_COLUMNS)
     source = ", ".join(f"l.{c}" for c in _COPIED_LINE_COLUMNS)
-    candidatas, escalado = _candidate_columns(factor)
+    candidatas, escalado = _candidate_columns(factor, _same_property(
+        conn, source_budget_id, target_budget_id))
     row = conn.execute(
         # `l.id` viaja en `cand` sin copiarse: solo desempata el ORDER BY, para
         # que el orden de inserción —y por lo tanto los `id` nuevos— sea el mismo
@@ -588,9 +857,10 @@ def copy_lines(conn, source_budget_id: int, target_budget_id: int,
         f"     INSERT INTO budget_lines (budget_id, {columns})"
         f"     SELECT %s, {source} FROM cand l"
         "       WHERE NOT EXISTS (SELECT 1 FROM budget_lines d"
-        "                          WHERE d.budget_id = %s AND NOT d.is_residual"
+        "                          WHERE d.budget_id = %s"
         f"                           AND {_norm('d.chapter_name')} = {_norm('l.chapter_name')}"
-        f"                           AND {_norm('d.name')} = {_norm('l.name')})"
+        f"                           AND {_norm(_identidad('d.name'))}"
+        f"                             = {_norm(_identidad('l.name'))})"
         "       ORDER BY l.chapter_name, l.sort_order, l.id"
         "     RETURNING 1"
         ") SELECT (SELECT count(*) FROM cand) AS candidatos,"
@@ -623,7 +893,7 @@ def _no_such_chapters(conn, source_budget_id: int, chapters: list[str]) -> str:
     que está mal es lo que se capturó en el cuerpo."""
     disponibles = [row["chapter_name"] for row in conn.execute(
         "SELECT DISTINCT chapter_name FROM budget_lines"
-        "  WHERE budget_id = %s AND NOT is_residual ORDER BY chapter_name",
+        "  WHERE budget_id = %s ORDER BY chapter_name",
         (source_budget_id,)).fetchall()]
     pedidos = "«" + "», «".join(chapters) + "»"
     if not disponibles:
@@ -653,43 +923,82 @@ def _no_such_chapters(conn, source_budget_id: int, chapters: list[str]) -> str:
 #
 #     factor = (T − F) / (total del origen − F)
 #
-# El denominador es TODO LO DEMÁS del origen —sus partidas proporcionales, su
-# residuo, y los capítulos que esta copia no se lleva—, y eso es lo que hace que
-# el destino herede también CUÁNTO LE FALTA POR DETALLAR: si el origen estaba a
-# medio detallar, el destino también, sin un solo caso especial. Un origen 100%
-# detallado deja el residuo del destino en cero por la misma aritmética.
+# El denominador es TODO LO DEMÁS del origen —sus partidas proporcionales y los
+# capítulos que esta copia no se lleva—, y eso es lo que hace que el destino
+# herede también CUÁNTO LE FALTA POR DETALLAR: si el origen cargaba una holgura,
+# viene escalada como todo lo demás, sin un solo caso especial.
 #
-# Y la suma cierra exacta en T sin que nadie la fuerce:
+# Y la suma de lo copiado cierra exacta en T sin que nadie la fuerce:
 #
 #     F + factor·(todo lo demás)  =  F + (T − F)  =  T
 #
-# donde `factor·(todo lo demás)` se reparte entre los renglones escalados y el
-# residuo, que aterriza solo en `_settle_residual` como `T − detallado`.
+# LO COPIADO SE SUMA A LO QUE YA HABÍA, y desde que el total es la suma de sus
+# renglones eso se ve: el presupuesto del destino queda en `T + T`. Antes el
+# residuo absorbía la diferencia y el total no se movía — que era precisamente
+# la absorción que este diseño retiró, porque un total que no puede moverse no
+# puede enseñar nada. El renglón que sobra (el estimado con el que nació la
+# propiedad, casi siempre) se borra con un clic, como cualquier otro, y ahí T es
+# lo que queda: el desglose real en vez del estimado paramétrico.
 #
 # T NO SE GUARDA EN NINGÚN LADO NUEVO: es el total de siempre, la suma de los
-# renglones. Por eso LAS DOS COPIAS PERSIGUEN EL MISMO OBJETIVO y ninguna de las
-# dos mueve el costo de obra de esta propiedad — lo que cambia entre ellas es a
-# qué TAMAÑO entran los renglones copiados: tal cual los del origen, o
-# dimensionados para caber aquí. Cambiar el costo de obra sigue siendo su propia
-# operación (`set_total`, o la ficha), y no un efecto secundario de copiar.
+# renglones. Lo que cambia entre las dos copias es a qué TAMAÑO entran los
+# renglones copiados: tal cual los del origen, o dimensionados a lo que esta
+# obra tenía presupuestado.
+
+def _property_name(conn, property_id: int) -> str:
+    """El nombre de la obra, para que un rechazo diga de cuál habla."""
+    return conn.execute(
+        "SELECT name FROM properties WHERE id = %s", (property_id,)
+    ).fetchone()["name"]
+
+
+def _require_replaceable(conn, property_id: int, entero: bool, reemplaza: bool) -> None:
+    """La copia PROPORCIONAL solo existe donde la copia reemplaza, y aquí se
+    exige.
+
+    El factor dimensiona lo copiado para que sume «lo que esta obra ya tenía
+    presupuestado». Si ese lugar sigue ocupado —porque hay renglones propios que
+    no se van a borrar, o porque se pidió un capítulo suelto que no puede
+    sustituir a un presupuesto entero— la copia aterriza ENCIMA y el total queda
+    en algo que el propio objetivo desmiente: ≈2×.
+
+    Se rechaza en vez de aproximar. Una operación que no puede cumplir su
+    garantía tiene dos salidas honestas —declinar, o borrar de más para hacerse
+    lugar— y la segunda no está disponible: identificar cuál renglón vino a
+    sustituir exige reconocer el estimado por su nombre, y un nombre lo teclea o
+    lo renombra cualquiera (el mismo argumento con el que la 033 desmontó «Otros,
+    por detallar»). La copia DIRECTA sigue funcionando en los dos casos: trae los
+    importes del origen y no promete nada sobre el total."""
+    if reemplaza:
+        return
+    nombre = _property_name(conn, property_id)
+    if not entero:
+        raise BudgetError(
+            f"La copia proporcional dimensiona lo copiado al costo de obra de "
+            f"«{nombre}», y un capítulo suelto no puede sumar el presupuesto "
+            f"completo. Copia ese capítulo tal cual, o pide el presupuesto "
+            f"entero en proporcional.")
+    raise BudgetError(
+        f"«{nombre}» ya tiene renglones capturados en su presupuesto de obra, y "
+        f"la copia proporcional dimensiona lo copiado a ese costo —el lugar ya "
+        f"está ocupado, así que lo copiado se sumaría encima y el total quedaría "
+        f"al doble—. Copia el presupuesto tal cual, o borra esos renglones y "
+        f"vuelve a intentar.")
+
 
 def _require_cost_of_works(conn, property_id: int, objetivo: Decimal) -> None:
     """El objetivo de la copia proporcional SE LEE, NO SE RECIBE: es el costo de
     obra que la propiedad ya tiene. Lo único que hay que exigirle es existir.
 
     En cero no hay nada a qué escalar —el factor daría 0 y la copia entera
-    aterrizaría en importes en cero—, y el arreglo no está en esta pantalla: el
-    costo de obra se captura en la ficha de la propiedad. Ahí manda el rechazo,
-    nombrando la obra."""
+    aterrizaría en importes en cero—, y el arreglo es capturar obra: un renglón,
+    el que sea. Ahí manda el rechazo, nombrando la obra."""
     if objetivo > 0:
         return
-    nombre = conn.execute(
-        "SELECT name FROM properties WHERE id = %s", (property_id,)
-    ).fetchone()["name"]
     raise BudgetError(
-        f"«{nombre}» no tiene capturado su costo de obra, y la copia proporcional "
-        f"dimensiona lo copiado a ese costo. Captúralo en la ficha de la obra —con "
-        f"sus m² de construcción y su $/m²— y vuelve a intentar, o copia el "
+        f"«{_property_name(conn, property_id)}» tiene el presupuesto de obra en $0, y la copia proporcional "
+        f"dimensiona lo copiado a ese costo. Captura al menos un renglón —aunque "
+        f"sea el estimado grueso, m² × $/m²— y vuelve a intentar, o copia el "
         f"presupuesto tal cual.")
 
 
@@ -699,14 +1008,27 @@ def _proportional_factor(conn, source_budget_id: int,
     quepa en `objetivo`.
 
     Las fijas se apartan de las dos puntas de la razón: entran al destino con su
-    monto original, así que ni consumen factor ni lo reciben. Se suman sobre los
-    MISMOS candidatos que se van a copiar (`_CANDIDATES`), no sobre el origen
-    entero, porque una fija de un capítulo que esta copia no se lleva no va a
-    cobrarle nada al destino."""
-    fijas = money(conn.execute(
+    monto original, así que ni consumen factor ni lo reciben.
+
+    LAS DOS SUMAS SALEN DEL MISMO CONJUNTO DE FILAS —los candidatos de
+    `_CANDIDATES`, que es exactamente lo que se va a copiar— y salen de la MISMA
+    consulta, para que no puedan despegarse. Una fija de un capítulo que esta
+    copia no se lleva no le cobra nada al destino, y un escalable que tampoco
+    viaja no puede entrar al denominador: el factor promete algo sobre lo
+    COPIADO, así que se calcula sobre lo copiado y sobre nada más.
+
+    Hoy `_require_replaceable` obliga a `chapters is None` en la proporcional,
+    así que candidatos y origen entero coinciden y la distinción no se nota. No
+    por eso se deja al azar: la garantía enunciada y la aritmética tienen que ser
+    la misma frase, no dos que hoy dan igual. Y esa restricción NO queda de más
+    —vive por otra razón, que la garantía sólo es cierta en la rama del
+    reemplazo—; lo que sí queda cubierto por aquí es su mitad de alcance."""
+    fila = conn.execute(
         "SELECT coalesce(sum(l.quantity * l.unit_price)"
-        "         FILTER (WHERE NOT l.is_proportional), 0) AS fijas"
-        + _CANDIDATES, (source_budget_id, chapters, chapters)).fetchone()["fijas"])
+        "         FILTER (WHERE NOT l.is_proportional), 0) AS fijas,"
+        "       coalesce(sum(l.quantity * l.unit_price), 0) AS candidatos"
+        + _CANDIDATES, (source_budget_id, chapters, chapters)).fetchone()
+    fijas = money(fila["fijas"])
     if objetivo <= fijas:
         raise BudgetError(
             f"No se puede copiar proporcional: las partidas fijas del presupuesto "
@@ -714,65 +1036,139 @@ def _proportional_factor(conn, source_budget_id: int,
             f"${objetivo:,.0f}. Una partida fija cuesta lo que cuesta —no encoge "
             f"con la obra— así que ya no cabe. Sube el costo de obra de esta "
             f"propiedad, o desmarca las partidas que sí deban escalar.")
-    escalable, _ = _totals(conn, source_budget_id)
-    escalable -= fijas
-    # Sin nada que escalar el factor no multiplica nada: todo el origen es fijo y
-    # su residuo está en cero. Devolver 1 evita una división entre cero para
-    # dejar exactamente el mismo resultado —las fijas entran tal cual y el
-    # objetivo lo cuadra el residuo del destino—.
+    escalable = money(fila["candidatos"]) - fijas
+    # Sin nada que escalar el factor no multiplica nada: todo el origen es fijo.
+    # Devolver 1 evita una división entre cero para dejar exactamente el mismo
+    # resultado —las fijas entran tal cual, con su monto propio—.
     if escalable <= 0:
         return Decimal(1)
     return (objetivo - fijas) / escalable
 
 
+def _has_candidates(conn, source_budget_id: int, chapters: list[str] | None) -> bool:
+    """¿Esta copia va a traer aunque sea un renglón?
+
+    Sobre los MISMOS candidatos que se van a copiar (`_CANDIDATES`), por la
+    misma razón que el factor: dos WHERE tecleados por separado se despegan. La
+    pregunta la hace el reemplazo, y solo él: cambiar el estimado por lo que
+    llega no puede significar cambiarlo por nada."""
+    return conn.execute("SELECT 1" + _CANDIDATES + " LIMIT 1",
+                        (source_budget_id, chapters, chapters)).fetchone() is not None
+
+
 def apply_budget(conn, property_id: int, source_budget_id: int,
                  chapters: list[str] | None = None, *,
                  proportional: bool = False,
-                 plan_id: str | None = None) -> tuple[int, int, Decimal]:
+                 plan_id: str | None = None) -> tuple[int, int]:
     """Arranca esta obra desde el presupuesto de otra.
 
-    Los renglones se SUMAN a lo que ya hubiera: el residuo baja lo que ellos
-    suben y el total no se mueve, igual que al detallar a mano. No hay
-    composición de bloques ni expansión recursiva —eso es lo que hacen las
-    plantillas de proceso con `source_template_id`, y ahí se ve el costo: la
+    DOS CASOS, Y LOS SEPARA QUÉ HABÍA EN EL DESTINO:
+
+    - Si el destino no tiene NADA MÁS QUE LO QUE EL SISTEMA SEMBRÓ —ningún
+      renglón, o uno solo marcado `seeded` y sin ejecución encima, que es
+      exactamente lo que pregunta
+      `budget_holds_only_initial_estimate`— Y se copia el presupuesto ENTERO,
+      ese renglón SE REEMPLAZA por lo que llega. Es el movimiento que esta operación
+      existe para hacer —la cifra paramétrica se vuelve el desglose que la
+      sustenta, Clase 5 → Clase 3 (ver el diseño)— y sumarlos contaría dos veces
+      la misma obra: el desglose no se agrega al estimado, ES el estimado, ahora
+      dicho por partidas. En la proporcional se ve solo: el factor dimensiona lo
+      copiado para que sume exactamente el total que el destino ya tenía, así
+      que sumarlo encima daría 2×, un número que la propia aritmética del modo
+      desmiente. Un capítulo suelto NO reemplaza: no sustituye a un presupuesto
+      entero, y cambiar un estimado de $2,340,000 por los $150,000 de una sección
+      sería pérdida de datos con cara de función.
+    - Si hay algo más —un segundo renglón, uno tecleado (nace con
+      `seeded = FALSE`), cualquier captura de ejecución— o si se pidieron capítulos sueltos, los renglones se
+      SUMAN a lo que ya hubiera y el total sube con ellos. Nada de lo que alguien
+      tecleó se toca, ni siquiera para hacerle lugar a una copia.
+
+    ESTA RAMA BORRA, y por eso la pregunta se contesta con un hecho estructural
+    y no con un parecido: `apply` no se lee como destructiva y no tiene paso de
+    confirmación.
+
+    Y BORRA EN SILENCIO: lo devuelto son `(copiados, saltados)` y no hay un
+    tercer número para lo quitado. Es deliberado. Lo único que esta rama puede
+    quitar es un renglón sembrado —lo dice el predicado que la abre, no una
+    convención—, o sea una cifra que este mismo sistema escribió y que vuelve a
+    escribirse sola si la propiedad se recaptura. Reportarlo obligaría a la
+    pantalla a explicar una pérdida que no lo es.
+
+    Con una salvedad que hay que decir: `seeded` sobrevive a las EDICIONES, así
+    que quien habló con su contratista y corrigió el estimado de $2,340,000 a
+    $2,800,000 sigue teniendo un renglón sembrado, y esta rama lo borra con su
+    cifra adentro. Se acepta —una sola cifra global la sustituye el desglose que
+    viene a sustentarla, que es la operación entera— pero no es cierto que no
+    haya nada suyo en juego.
+
+    De lo mismo se sigue que la rama es RE-ENTRANTE: copiar una fuente que sólo
+    trae su estimado deja aquí un renglón sembrado —la marca viaja con la copia—
+    así que el siguiente `apply` vuelve a entrar por el reemplazo y sustituye lo
+    recién copiado en vez de sumarle. Encadenar copias no acumula estimados. En
+    cuanto entra un renglón tecleado o un segundo renglón, la rama se cierra y no
+    se vuelve a abrir.
+
+    Y LA PROPORCIONAL SOLO EXISTE EN LA PRIMERA RAMA: fuera de ella rechaza
+    (`_require_replaceable`) en vez de aterrizar encima. La directa funciona en
+    las dos, porque no promete nada sobre el total.
+
+    La pregunta que separa los dos casos es la MISMA que decide si una propiedad
+    se puede borrar (`budget_holds_only_initial_estimate`). El reemplazo va antes
+    de copiar, no después, para que la dedup no compare contra un renglón que ya
+    está sentenciado.
+
+    No hay composición de bloques ni expansión recursiva —eso es lo que hacen
+    las plantillas de proceso con `source_template_id`, y ahí se ve el costo: la
     expansión quedó truncada a un nivel más un detector de ciclos completo.
     Arrancar desde otra obra y borrar tres renglones cuesta treinta segundos y
     cero código.
 
-    Devuelve `(copiados, saltados, cuánto creció el presupuesto)`. Los saltados
-    son los renglones que el destino YA tenía y que por eso quedaron intactos —
-    ver `copy_lines`—, y viajan de vuelta porque aplicar sin decir cuánto no se
-    aplicó es un «listo» que esconde la mitad del resultado. `chapters` recorta
-    el origen a esos capítulos; `None` copia el presupuesto entero.
+    Devuelve `(copiados, saltados)`. Los saltados son los renglones que el
+    destino YA tenía y que por eso quedaron intactos —ver `copy_lines`—, y
+    viajan de vuelta porque aplicar sin decir cuánto no se aplicó es un «listo»
+    que esconde la mitad del resultado. `chapters` recorta el origen a esos
+    capítulos; `None` copia el presupuesto entero.
 
-    LAS DOS COPIAS SON LA MISMA OPERACIÓN CON OTRO TAMAÑO. Las dos conservan el
-    costo de obra que la propiedad ya tenía —copiar sale del residuo, igual que
-    detallar a mano—; lo que cambia es a qué tamaño entran los renglones: la
-    directa los trae con los importes del origen, la PROPORCIONAL los dimensiona
-    para que la suma quepa exactamente en ese costo. De ahí en adelante las dos
-    son el mismo INSERT y el mismo `_settle_residual`.
+    LAS DOS COPIAS SON LA MISMA OPERACIÓN CON OTRO TAMAÑO. Lo que cambia es a
+    qué tamaño entran los renglones: la directa los trae con los importes del
+    origen, la PROPORCIONAL los dimensiona para que LO COPIADO sume exactamente
+    el total que esta obra ya tenía. De ahí en adelante las dos son el mismo
+    INSERT.
+
+    Y ahí hay que ser preciso, porque la frase se presta: el factor garantiza lo
+    que suma LO COPIADO, no en qué queda el total. Las dos coinciden únicamente
+    en la rama del reemplazo —lo que había se fue, así que el total ES lo
+    copiado— y por eso la proporcional no se ofrece en ninguna otra: donde no
+    coinciden, la garantía enunciada y el resultado se contradicen, y una
+    operación que no puede cumplir lo que promete declina.
 
     EL FACTOR LO CALCULA ESTE SERVIDOR, siempre, contra el costo de obra que el
     destino ya tiene capturado. Un factor mandado por el cliente volvería la
-    garantía —«la suma da exactamente el objetivo»— imposible de verificar aquí.
-
-    `budgetIncrease` significa lo mismo en las dos: cuánto REBASÓ el detalle al
-    objetivo."""
+    garantía —«lo copiado suma exactamente el objetivo»— imposible de verificar
+    aquí."""
     budget_id = _require_budget(conn, property_id, plan_id)
     if source_budget_id == budget_id:
         raise BudgetError("Un presupuesto no se copia sobre sí mismo.")
     if conn.execute("SELECT 1 FROM budgets WHERE id = %s",
                     (source_budget_id,)).fetchone() is None:
         raise BudgetNotFound(f"No existe el presupuesto {source_budget_id} que se quiere copiar")
-    # El objetivo es el mismo en los dos modos —el costo de obra que esta
-    # propiedad ya tiene— y por eso se lee una sola vez, antes de la rama.
-    objetivo, _ = _totals(conn, budget_id)
+    # Las dos lecturas van ANTES de tocar nada: sobre los renglones de ahora,
+    # incluido el estimado que quizá no sobreviva a esta misma llamada. Y el
+    # reemplazo exige copia ENTERA: un capítulo suelto no sustituye a un
+    # presupuesto, así que sumarlo es lo único honesto que puede hacer.
+    entero = chapters is None
+    reemplaza = entero and budget_holds_only_initial_estimate(conn, budget_id)
     factor = None
     if proportional:
+        _require_replaceable(conn, property_id, entero, reemplaza)
+        # El objetivo es el costo de obra que esta propiedad ya tiene: se lee,
+        # no se recibe.
+        objetivo = _totals(conn, budget_id)
         _require_cost_of_works(conn, property_id, objetivo)
         factor = _proportional_factor(conn, source_budget_id, chapters, objetivo)
-    copied, skipped = copy_lines(conn, source_budget_id, budget_id, chapters, factor)
-    return copied, skipped, _settle_residual(conn, budget_id, objetivo)
+    if reemplaza and _has_candidates(conn, source_budget_id, chapters):
+        conn.execute("DELETE FROM budget_lines WHERE budget_id = %s", (budget_id,))
+    return copy_lines(conn, source_budget_id, budget_id, chapters, factor)
 
 
 # ─── De dónde se puede copiar ─────────────────────────────────────────────────
@@ -786,17 +1182,12 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
 # JOIN con `properties` es total y el nombre que se enseña es el de la propiedad,
 # el único que hay. Ya no quedan dos clases de fuente que ordenar por separado.
 #
-# DOS DETALLES QUE LA HACEN ÚTIL EN VEZ DE MERAMENTE CORRECTA:
-#
-#   · `line_count` cuenta lo COPIABLE, no lo que hay. El residuo no se copia, así
-#     que incluirlo prometería un renglón que nunca llega — y en toda obra apenas
-#     capturada el residuo es lo único que hay. Aquí el número es exactamente
-#     cuántos renglones van a aparecer.
-#   · Por eso mismo se filtran los presupuestos sin nada que copiar. Hoy casi
-#     toda propiedad tiene solo su residuo: sin el filtro, el selector serían
-#     dieciocho renglones en cero y las dos obras que sí sirven, perdidas entre
-#     ellos. Un presupuesto del que no sale nada no es una respuesta a «de dónde
-#     puedo copiar».
+# `line_count` cuenta lo COPIABLE, que desde que no hay renglón especial es todo
+# lo que hay: el número es exactamente cuántos renglones van a aparecer. Y por
+# eso se filtran los presupuestos sin nada que copiar — uno del que no sale nada
+# no es una respuesta a «de dónde puedo copiar». Ese filtro ya no esconde a las
+# obras apenas capturadas: su renglón de estimado SÍ se copia, así que aparecen
+# con el 1 que traen, que es la verdad de lo que ofrecen.
 
 # Desde el addendum 2026-08-24 la lista es de PRESUPUESTOS, no de propiedades:
 # los escenarios de plan también aparecen (etiquetados con el nombre VIVO de su
@@ -805,12 +1196,23 @@ def apply_budget(conn, property_id: int, source_budget_id: int,
 # que era imposible cuando se excluía la propiedad entera. copy_lines siempre lo
 # dijo: "copiar no distingue de dónde a dónde va: son dos presupuestos de obra".
 #
-# `full_total` (con residuo) viaja aparte de `total` (lo copiable): el primero
-# es el OBJETIVO del destino en proporcional; el segundo, lo que saldría de ahí.
-_SOURCES_SQL = """
+# `full_total` (todo el presupuesto) y `total` (lo copiable) ERAN DOS NÚMEROS
+# porque el residuo entraba en uno y no en el otro. Hoy son el mismo: todo
+# renglón se copia. Se sigue publicando el par para no romper el cliente en este
+# despliegue —`fullTotal` se retira con la pantalla que lo lee— pero sale de una
+# sola suma, que es lo que impide que vuelvan a decir cosas distintas.
+# `fullTotal` queda DEPRECADO por lo mismo y se va en PR 2 · Contract, junto con
+# `budgetIncrease` y la columna: la sesión en vuelo durante el rollout es la que
+# lo sigue leyendo.
+_SOURCES_SQL = f"""
     SELECT b.id, p.name, b.property_id, b.plan_id, pl.plan_name,
            p.sqm_construction, p.construction_cost_per_sqm,
-           t.line_count, t.total, ft.full_total
+           t.line_count, t.total,
+           -- La MISMA expresión que contesta `budget_holds_only_initial_estimate`
+           -- y que decide si una propiedad se borra. Tres lectores, una regla:
+           -- restarla aquí sería tenerla escrita dos veces y descubrir el día en
+           -- que se despeguen que el cliente ofrecía lo que el servidor rechaza.
+           {_UNTOUCHED_BUDGET} AS replaceable
       FROM budgets b
       JOIN properties p ON p.id = b.property_id
       LEFT JOIN LATERAL (
@@ -821,11 +1223,7 @@ _SOURCES_SQL = """
             SELECT count(*) AS line_count,
                    coalesce(sum(l.quantity * l.unit_price), 0) AS total
               FROM budget_lines l
-             WHERE l.budget_id = b.id AND NOT l.is_residual) t ON TRUE
-      JOIN LATERAL (
-            SELECT coalesce(sum(l.quantity * l.unit_price), 0) AS full_total
-              FROM budget_lines l
-             WHERE l.budget_id = b.id) ft ON TRUE
+             WHERE l.budget_id = b.id) t ON TRUE
      WHERE (%(include_empty)s OR t.line_count > 0)
        AND (%(exclude_budget_id)s::bigint IS NULL OR b.id <> %(exclude_budget_id)s::bigint)
      ORDER BY lower(p.name), b.plan_id NULLS FIRST, lower(coalesce(pl.plan_name, ''))
@@ -849,9 +1247,28 @@ def list_sources(conn, exclude_budget_id: int | None = None, *,
     descubra la regla chocando con ella.
 
     `include_empty` es para la lista de DESTINOS de empuje: a un presupuesto
-    vacío sí se le puede copiar; como FUENTE no dice nada (default)."""
+    vacío sí se le puede copiar; como FUENTE no dice nada (default).
+
+    `replaceable` DICE SI UNA COPIA PROPORCIONAL SOBRE ESTE PRESUPUESTO SERÍA
+    ACEPTADA en lo que a su contenido respecta: no tiene más que el estimado que
+    le sembró el sistema, así que hay algo que sustituir y nada que perder. Lo
+    contesta la misma expresión que `budget_holds_only_initial_estimate` y que el
+    borrado de propiedades — una regla, tres lectores.
+
+    NO habla de la otra mitad de la restricción, la de alcance: la proporcional
+    también exige copiar el presupuesto entero, y ESA la sabe el cliente, que es
+    quien elige los capítulos. Existe porque la otra mitad el cliente no puede
+    saberla: en un empuje los destinos son otras propiedades y su contenido no
+    está en la pantalla. Sin este campo la pantalla ofrece una acción con un
+    factor en verde que el servidor va a rechazar entera.
+
+    UN PRESUPUESTO VACÍO SALE `true`, y es deliberado: cero renglones no es más
+    que el estimado sembrado, es MENOS, y el reemplazo sería un DELETE sin filas
+    seguido de la copia. Es además el caso que `include_empty` existe para
+    enseñar —los destinos de empuje— donde un vacío es el blanco más reemplazable
+    que hay; contestar `false` ahí habría escondido justo esa fila."""
     return [_row_to_dict(row)
-            | {"total": money0(row["total"]), "fullTotal": money0(row["full_total"])}
+            | {"total": money0(row["total"]), "fullTotal": money0(row["total"])}
             for row in conn.execute(_SOURCES_SQL, {
                 "exclude_budget_id": exclude_budget_id,
                 "include_empty": include_empty,
@@ -860,9 +1277,10 @@ def list_sources(conn, exclude_budget_id: int | None = None, *,
 
 # ─── Renglones ────────────────────────────────────────────────────────────────
 
-# Lo que un cliente puede escribir en un renglón. `is_residual` no está: el
-# residuo lo nombra el sistema. `quantity`/`unit_price` tampoco se aceptan en el
-# residuo — ver `_reject_residual_capture`.
+# Lo que un cliente puede escribir en un renglón — TODO renglón, sin excepción.
+# Hubo una: el remanente sólo aceptaba `notes`, porque su importe lo ponía una
+# resta y dejarlo teclear habría convertido esa resta en una segunda captura.
+# Ya no hay resta que proteger, así que tampoco hay dos clases de renglón.
 LINE_FIELDS = frozenset({
     "chapterName", "name", "unit", "quantity", "unitPrice",
     "supplierCategoryId", "supplierId", "committedAmount", "committedOn",
@@ -954,28 +1372,20 @@ def _get_line(conn, budget_id: int, line_id: int) -> dict:
     return _line_row(row)
 
 
-# El importe del residuo no se teclea. Es la resta que mantiene cuadrado el
-# presupuesto, y una resta que alguien puede sobrescribir deja de cuadrar nada.
-# Para mover el total está `set_total`, que es otra operación precisamente
-# porque significa otra cosa.
-_RESIDUAL_IS_NOT_TYPED = (
-    f"«{RESIDUAL_NAME}» es el remanente del presupuesto y se calcula solo: baja "
-    "cuando detallas partidas y sube cuando las quitas. Para cambiar el total de "
-    "la obra, ajusta el presupuesto.")
+def create_line(conn, property_id: int, data: dict, plan_id: str | None = None) -> int:
+    """Un renglón. El presupuesto sube exactamente su importe: es la suma de sus
+    renglones y hay uno más.
 
-
-def create_line(conn, property_id: int, data: dict, plan_id: str | None = None) -> tuple[int, Decimal]:
-    """Un renglón detallado. El residuo baja lo mismo que este renglón sube, así
-    que el costo de obra —y con él la inversión total— no se mueve.
-
-    Devuelve (id del renglón, cuánto creció el presupuesto). Lo segundo es 0 en
-    el caso normal; solo deja de serlo cuando el detalle rebasa el total, que es
-    aumentar el presupuesto y tiene que poder distinguirse de detallar.
+    Que el total se mueva ES la entrega. Antes el residuo bajaba lo mismo que el
+    renglón subía, y detallar no cambiaba el costo de obra: cuando la cotización
+    real de la instalación eléctrica llegaba $45,000 arriba del hueco que se le
+    había apartado, esos $45,000 —el número más valioso del sistema, el que dice
+    que el supuesto de $/m² iba corto— se los comía el remanente y nadie se
+    enteraba. Ahora se ven.
 
     Un renglón nace suelto, siempre: captura manual —capítulo, nombre, unidad,
     cantidad y precio tecleados— y nada más. Es el caso barato a propósito."""
     budget_id = _require_budget(conn, property_id, plan_id)
-    total_antes, _ = _totals(conn, budget_id)
 
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
     require_supplier_category(conn, data.get("supplierCategoryId"))
@@ -983,92 +1393,59 @@ def create_line(conn, property_id: int, data: dict, plan_id: str | None = None) 
     # Una partida puede nacer sin cantidad ni precio: la captura es celda por
     # celda con autoguardado, y exigir la fila completa de golpe convertiría un
     # estado intermedio normal en un error.
-    columns.setdefault("unit", RESIDUAL_UNIT)
+    columns.setdefault("unit", LUMP_SUM_UNIT)
     columns.setdefault("quantity", 0)
     columns.setdefault("unit_price", 0)
     columns["budget_id"] = budget_id
 
     names = ", ".join(columns)
     placeholders = ", ".join(["%s"] * len(columns))
-    line_id = conn.execute(
+    return conn.execute(
         f"INSERT INTO budget_lines ({names}) VALUES ({placeholders}) RETURNING id",
         list(columns.values()),
     ).fetchone()["id"]
 
-    return line_id, _settle_residual(conn, budget_id, total_antes)
 
-
-def update_line(conn, property_id: int, line_id: int, data: dict, plan_id: str | None = None) -> Decimal:
-    """Cambia un renglón detallado y vuelve a cuadrar el residuo contra el total
-    que el presupuesto tenía antes.
+def update_line(conn, property_id: int, line_id: int, data: dict,
+                plan_id: str | None = None) -> None:
+    """Cambia un renglón. Cualquier renglón, y cualquiera de sus celdas.
 
     `data` trae SOLO lo que el cliente mandó, y un `None` ahí significa «quítalo»
     —no «no lo toques»—: los campos de NULLABLE_LINE_FIELDS se vacían así y no
     hay otra puerta para hacerlo."""
     budget_id = _require_budget(conn, property_id, plan_id)
-    row = conn.execute(
-        "SELECT is_residual FROM budget_lines WHERE id = %s AND budget_id = %s",
+    if conn.execute(
+        "SELECT 1 FROM budget_lines WHERE id = %s AND budget_id = %s",
         (line_id, budget_id),
-    ).fetchone()
-    if row is None:
+    ).fetchone() is None:
         raise BudgetNotFound(f"Renglón {line_id} no encontrado en este presupuesto")
-    # Del residuo solo se anota: su importe lo pone la resta, y su capítulo,
-    # nombre y unidad los pone el sistema. Un residuo renombrado seguiría
-    # restando bien, pero dejaría de leerse como lo que es.
-    if row["is_residual"] and (set(data) - {"notes"}):
-        raise BudgetError(_RESIDUAL_IS_NOT_TYPED)
     _reject_empty(data)
     if "supplierCategoryId" in data:
         require_supplier_category(conn, data["supplierCategoryId"])
 
     columns = {_LINE_COLUMNS[k]: v for k, v in data.items() if k in LINE_FIELDS}
-    total_antes, _ = _totals(conn, budget_id)
     if columns:
         assignments = ", ".join(f"{col} = %s" for col in columns)
         conn.execute(
             f"UPDATE budget_lines SET {assignments} WHERE id = %s",
             list(columns.values()) + [line_id],
         )
-    return _settle_residual(conn, budget_id, total_antes)
 
 
 def delete_line(conn, property_id: int, line_id: int, plan_id: str | None = None) -> dict:
-    """Quita un renglón detallado y le devuelve su importe al residuo: dejar de
-    detallar es lo contrario de detallar, así que tampoco mueve el total."""
+    """Quita un renglón y baja el presupuesto exactamente su importe. Devuelve el
+    renglón como estaba: un borrado también es una escritura, y quien la pidió
+    tiene que poder decir qué fila quitar de la tabla.
+
+    NINGÚN RENGLÓN ESTÁ EXENTO, y eso incluye al último. Un presupuesto puede
+    quedarse en cero renglones y sumar $0 sin que nada se rompa: 0 es un número.
+    El remanente sí estaba exento —«no se borra», porque el mecanismo lo
+    necesitaba vivo para tener de dónde restar— y esa era la parte de la regla
+    que sobraba, no el dinero que cargaba."""
     budget_id = _require_budget(conn, property_id, plan_id)
     line = _get_line(conn, budget_id, line_id)
-    if line["isResidual"]:
-        raise BudgetError(
-            f"«{RESIDUAL_NAME}» no se borra: es el remanente del presupuesto y "
-            "todo presupuesto tiene uno. Para dejar la obra en cero, ajusta el "
-            "presupuesto a 0.")
-    total_antes, _ = _totals(conn, budget_id)
     conn.execute("DELETE FROM budget_lines WHERE id = %s", (line_id,))
-    _settle_residual(conn, budget_id, total_antes)
     return line
-
-
-def set_total(conn, property_id: int, amount, plan_id: str | None = None) -> Decimal:
-    """Ajusta el TOTAL de la obra presupuestada, moviendo el residuo.
-
-    Es la otra operación —la que sí cambia cuánto va a costar la obra— y existe
-    aparte justamente para que se distinga de detallar. Detallar reparte un
-    total que no se mueve; esto mueve el total sin tocar una sola partida
-    detallada. Mezclarlas las volvería indistinguibles, y entonces nadie podría
-    contestar si el presupuesto creció o solo se abrió.
-
-    Devuelve el nuevo residuo."""
-    budget_id = _require_budget(conn, property_id, plan_id)
-    objetivo = to_decimal(amount)
-    if objetivo < 0:
-        raise BudgetError("El presupuesto de obra no puede ser negativo.")
-    _, detallado = _totals(conn, budget_id)
-    if objetivo < detallado:
-        raise BudgetError(
-            f"El presupuesto no puede quedar en ${objetivo:,.0f} porque ya hay "
-            f"${detallado:,.0f} detallados en partidas. Quita o baja partidas primero.")
-    _settle_residual(conn, budget_id, objetivo)
-    return objetivo - detallado
 
 
 # ─── Capítulos ────────────────────────────────────────────────────────────────
@@ -1084,9 +1461,6 @@ def rename_chapter(conn, property_id: int, chapter: str, new_name: str, plan_id:
     new_name = (new_name or "").strip()
     if not new_name:
         raise BudgetError("El capítulo necesita un nombre.")
-    if chapter == RESIDUAL_CHAPTER:
-        raise BudgetError(
-            f"«{RESIDUAL_CHAPTER}» es donde vive el remanente del presupuesto y no se renombra.")
     changed = conn.execute(
         "UPDATE budget_lines SET chapter_name = %s WHERE budget_id = %s AND chapter_name = %s",
         (new_name, budget_id, chapter),
@@ -1097,21 +1471,15 @@ def rename_chapter(conn, property_id: int, chapter: str, new_name: str, plan_id:
 
 
 def delete_chapter(conn, property_id: int, chapter: str, plan_id: str | None = None) -> int:
-    """Borra el capítulo con sus renglones. Lo detallado vuelve al residuo, así
-    que el total sigue sin moverse: quitar el detalle es lo contrario de
-    ponerlo, no una rebaja del presupuesto."""
+    """Borra el capítulo con todos sus renglones, y el presupuesto baja lo que
+    sumaban. Es `delete_line` en bloque y significa lo mismo."""
     budget_id = _require_budget(conn, property_id, plan_id)
-    if chapter == RESIDUAL_CHAPTER:
-        raise BudgetError(
-            f"«{RESIDUAL_CHAPTER}» no se borra: ahí vive el remanente del presupuesto.")
-    total_antes, _ = _totals(conn, budget_id)
     deleted = conn.execute(
-        "DELETE FROM budget_lines WHERE budget_id = %s AND chapter_name = %s AND NOT is_residual",
+        "DELETE FROM budget_lines WHERE budget_id = %s AND chapter_name = %s",
         (budget_id, chapter),
     ).rowcount
     if deleted == 0:
         raise BudgetNotFound(f"El presupuesto no tiene un capítulo «{chapter}»")
-    _settle_residual(conn, budget_id, total_antes)
     return deleted
 
 
@@ -1120,7 +1488,7 @@ def delete_chapter(conn, property_id: int, chapter: str, plan_id: str | None = N
 # Lo único intrínsecamente múltiple de un renglón: anticipo, avances, finiquito.
 # Append-only, como los eventos de etapa — un pago mal capturado se borra, no se
 # reescribe, porque corregirlo en su lugar borraría que alguna vez se dijo otra
-# cosa. Un pago no toca el residuo ni el total: pagar no cambia lo que la obra
+# cosa. Un pago no toca el total: pagar no cambia lo que la obra
 # estaba planeada a costar, y esa brecha es justamente lo que se quiere ver.
 
 def add_payment(conn, property_id: int, line_id: int, amount, paid_on=None, plan_id: str | None = None,
@@ -1158,22 +1526,24 @@ def holds_captured_work(conn, property_id: int) -> bool:
     que ninguna propiedad se pudiera borrar jamás — y el presupuesto recién
     sembrado no es trabajo de nadie, es la fila que el sistema puso.
 
-    Retiene lo que alguien capturó: una partida detallada, un proveedor, un
-    monto comprometido, una cantidad real, un cierre o un pago."""
-    row = conn.execute(
-        "SELECT EXISTS ("
-        "  SELECT 1 FROM budget_lines l"
-        "   WHERE l.budget_id IN (SELECT id FROM budgets WHERE property_id = %s)"
-        "     AND (NOT l.is_residual"
-        "          OR l.supplier_id      IS NOT NULL"
-        "          OR l.committed_amount IS NOT NULL"
-        "          OR l.actual_quantity  IS NOT NULL"
-        "          OR l.closed_at        IS NOT NULL"
-        "          OR EXISTS (SELECT 1 FROM budget_line_payments p WHERE p.line_id = l.id))"
-        ") AS capturado",
+    Es `_UNTOUCHED_BUDGET` al derecho —la MISMA pregunta que decide si una copia
+    reemplaza el estimado— exigida a CADA presupuesto de la propiedad por
+    separado: el de la obra y los escenarios de plan, porque el borrado se los
+    lleva todos. Basta con que UNO traiga trabajo para que retenga.
+
+    Por separado y no en un solo conteo, que es donde estaba el error: «el
+    sistema siembra a lo más un renglón» vale por presupuesto, no por propiedad.
+    Sumándolos, una obra recién capturada con un escenario de plan copiado daba
+    dos renglones —uno suyo, uno del escenario— y quedaba retenida para siempre
+    sin que nadie hubiera capturado nada, con la única salida de borrar los
+    renglones del escenario a mano. Antes la pregunta la contestaba la bandera
+    del remanente; hoy la contesta cada presupuesto por su cuenta."""
+    return not bool(conn.execute(
+        f"SELECT NOT EXISTS (SELECT 1 FROM budgets b"
+        f"                    WHERE b.property_id = %s AND NOT {_UNTOUCHED_BUDGET})"
+        f"    AS intacto",
         (property_id,),
-    ).fetchone()
-    return bool(row["capturado"])
+    ).fetchone()["intacto"])
 
 
 def drop_budget(conn, property_id: int) -> None:
@@ -1201,14 +1571,15 @@ def create_plan_budget(conn, property_id: int, plan_id: str,
     """Nace el escenario de un plan: copiado de CUALQUIER presupuesto origen
     (el de la propiedad, el escenario de otro plan — el flujo real muchas veces
     va de plan a plan, y el de la propiedad se llena al final —, o el de otra
-    obra; misma maquinaria de siempre: copy_lines + residuo asentado, el flujo
-    de apply_budget con otro destino) o vacío con `source_budget_id` None.
-    Devuelve (budget_id, copiados, saltados).
+    obra; misma maquinaria de siempre: copy_lines, el flujo de apply_budget con
+    otro destino) o vacío con `source_budget_id` None. Devuelve (budget_id,
+    copiados, saltados).
 
-    El escenario nace con el MISMO total que su origen: los renglones
-    detallados viajan y el residuo del escenario absorbe el resto, igual que
-    copiar entre obras. Vacío = residuo en cero. NUNCA se auto-crea al leer
-    (ver _require_budget)."""
+    El escenario nace con el MISMO total que su origen, y ahora eso sale gratis:
+    viajan todos los renglones, así que las dos sumas son la misma suma. Antes
+    hacía falta leer el total del origen, sembrarlo como residuo y volver a
+    asentarlo, porque el remanente no se copiaba y había que reponerlo. Vacío =
+    cero renglones = $0. NUNCA se auto-crea al leer (ver _require_budget)."""
     if not _plan_exists(conn, property_id, plan_id):
         raise BudgetNotFound(
             f"El plan {plan_id} no existe en la propiedad {property_id}")
@@ -1218,23 +1589,25 @@ def create_plan_budget(conn, property_id: int, plan_id: str,
     ).fetchone() is not None:
         raise BudgetError(f"El plan {plan_id} ya tiene presupuesto")
     if source_budget_id is None:
-        return create_budget(conn, property_id, Decimal(0), plan_id=plan_id), 0, 0
+        return create_budget(conn, property_id, plan_id=plan_id), 0, 0
     if conn.execute("SELECT 1 FROM budgets WHERE id = %s",
                     (source_budget_id,)).fetchone() is None:
         raise BudgetNotFound(
             f"No existe el presupuesto {source_budget_id} que se quiere copiar")
-    objetivo, _ = _totals(conn, source_budget_id)
-    budget_id = create_budget(conn, property_id, objetivo, plan_id=plan_id)
+    budget_id = create_budget(conn, property_id, plan_id=plan_id)
     copied, skipped = copy_lines(conn, source_budget_id, budget_id)
-    _settle_residual(conn, budget_id, objetivo)
     return budget_id, copied, skipped
 
 
-def use_plan_budget(conn, property_id: int, plan_id: str) -> tuple[int, int, Decimal]:
+def use_plan_budget(conn, property_id: int, plan_id: str) -> tuple[int, int]:
     """«Usar este plan»: los renglones del escenario entran al presupuesto de la
     propiedad por la MISMA puerta que copiar de otra obra (apply_budget →
     copy_lines): deduplicar es saltar —el dinero ya capturado en la propiedad no
-    se pisa—, el residuo no viaja, y se reporta (copiados, saltados, creció).
-    El escenario queda intacto: es la propuesta, y la propuesta se califica."""
+    se pisa— y se reporta (copiados, saltados). El escenario queda intacto: es
+    la propuesta, y la propuesta se califica.
+
+    Y por la misma puerta llega el reemplazo: si la obra no tiene más que su
+    estimado inicial, el plan que se adopta lo sustituye en vez de sumársele.
+    Adoptar un plan es exactamente el movimiento que el reemplazo describe."""
     source_id = _require_budget(conn, property_id, plan_id)
     return apply_budget(conn, property_id, source_id)

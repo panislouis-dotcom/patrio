@@ -160,11 +160,14 @@ export interface Property {
   sqmLand: number | null
   sqmConstruction: number | null
   purchasePrice: number | null
-  // DERIVADA, ya no capturada: presupuesto ÷ metraje de obra. Se publica para
-  // mostrarse y nada la vuelve a leer para calcular dinero. Sigue siendo una
-  // entrada de la CALCULADORA que produce el primer renglón al dar de alta una
-  // propiedad (`PropertyCreate`), que es otra cosa: ahí se usa una vez y el
-  // resultado vive en el presupuesto.
+  // CAPTURADA: el supuesto de «a cuánto creo que sale el m² de obra». Es su
+  // propia columna y se escribe como cualquier otra fila de la ficha. NO
+  // gobierna nada — escribirla no toca el presupuesto —, y ésa es toda la
+  // corrección: hasta el 2026-08-30 un PATCH de este campo o del metraje
+  // repreciaba la obra entera, capítulos cotizados con proveedor incluidos.
+  // Sigue siendo además la entrada de la CALCULADORA que siembra el primer
+  // renglón al dar de alta una propiedad (`PropertyCreate`), y ahí termina: esa
+  // calculadora escribe UNA vez y no vuelve.
   constructionCostPerSqm: number | null
   permitsCost: number | null
   subdivisionCost: number | null
@@ -254,6 +257,17 @@ export interface Property {
   constructionPaid: number | null
   constructionCommittedVariance: number | null
   constructionPaidVariance: number | null
+  // DERIVADA: presupuesto ÷ metraje de obra. Se publica para mostrarse y nada
+  // la vuelve a leer para calcular dinero; es null sin metraje, porque dividir
+  // entre cero no da «$0/m²», no da nada.
+  //
+  // SE LLAMA ASÍ Y NO `constructionCostPerSqm` porque son dos cosas distintas y
+  // compartir nombre fue el olor que este trabajo vino a quitar: aquélla es el
+  // supuesto que alguien tecleó, ésta es lo que llevas capturado en renglones.
+  // La ficha las enseña juntas —tu estimado contra el presupuesto— y ninguna es
+  // el relevo de la otra: la comparación solo es honesta mientras ninguna sea el
+  // fallback de la que falta.
+  budgetedCostPerSqm: number | null
   // `purchasePricePerSqm`, `salePerSqm` e `investmentPerSqm` no están: la
   // ficha fue la primera en dejar de mostrar los dos primeros (se quitó
   // MÉTRICAS), y el prospecto en PDF —su último lector, en Python, sin pasar
@@ -298,14 +312,15 @@ export interface QualityEntry {
 // Lo que un PATCH puede escribir: nunca `status` (eso es una transición) y
 // nunca un null (vaciar es clear-fields).
 //
-// `constructionCostPerSqm` NO está: desde que el costo de obra es la suma del
-// presupuesto, ese precio por m² es un resultado —presupuesto ÷ metraje— y no
-// un insumo. Sigue siendo una entrada de la CALCULADORA que produce el primer
-// renglón al dar de alta una propiedad (`PropertyCreate`), que es otra cosa:
-// ahí se usa una vez y el resultado vive en el presupuesto. Dejarlo capturable
-// en la ficha daría un segundo lugar donde teclear el costo de obra, que es la
-// contradicción que este feature existe para cerrar. `sqmConstruction` sí se
-// queda: es metraje FÍSICO, y lo leen el analizador y el PDF.
+// `constructionCostPerSqm` SÍ está, y volvió a estarlo a propósito: es el
+// SUPUESTO CAPTURADO —«a cuánto creo que sale el m² de obra»—, su propia
+// columna, escribible como cualquier otra. No es un segundo lugar donde teclear
+// el costo de obra: el costo de obra es la suma del presupuesto y se cambia
+// capturando renglones. Lo que este campo da es el otro término de la
+// comparación, `budgetedCostPerSqm` (presupuesto ÷ metraje), que el presupuesto
+// enseña al lado. Escribirlo no mueve un peso del presupuesto.
+// `sqmConstruction` está por lo mismo de siempre: es metraje FÍSICO, y lo leen
+// el analizador y el PDF.
 // Lista y no unión suelta, por lo mismo que ASSUMPTION_FIELDS: así
 // `contract.test.ts` puede contrastarla contra `WRITABLE_FIELDS` del servidor.
 // Un campo que el servidor retira y aquí sobrevive es un PATCH que se ignora o
@@ -314,6 +329,7 @@ export const RAW_PROPERTY_FIELDS = [
   'name', 'assetType', 'strategyType', 'address', 'city', 'url',
   'latitude', 'longitude', 'notes',
   'sqmLand', 'sqmConstruction', 'purchasePrice', 'acquisitionCostPct',
+  'constructionCostPerSqm',
   'permitsCost', 'subdivisionCost',
   'projectedSale', 'holdMonths',
   'rentMonthlyProjected', 'rentMonthlyActual',
@@ -331,11 +347,6 @@ export type RawPropertyFields = Pick<Property, typeof RAW_PROPERTY_FIELDS[number
 export type PropertyPatch = Partial<RawPropertyFields> & {
   isFavorite?: boolean
   milestones?: Record<string, string>
-  // No es una columna — igual que en PropertyCreate, es el insumo de la
-  // CALCULADORA que (re)siembra el presupuesto. `contract.test.ts` no lo
-  // cuenta contra WRITABLE_FIELDS a propósito: nunca hay un UPDATE de columna
-  // que espejar.
-  constructionCostPerSqm?: number
 }
 
 // Alta: la dirección y el nombre son lo mínimo para reconocer un inmueble; el
@@ -383,9 +394,10 @@ export const CLEARABLE_FIELDS = [
   'assetType', 'strategyType',
   'sqmLand', 'sqmConstruction', 'purchasePrice', 'acquisitionCostPct',
   'permitsCost', 'subdivisionCost',
-  // Los dos de obra ya no están: vaciar solo tiene sentido sobre algo que se
-  // captura, y ninguno de los dos se captura. El costo de obra se cambia
-  // capturando partidas o ajustando el total del presupuesto.
+  // `constructionCostPerSqm` NO está, aunque sí se capture: no tiene default al
+  // que volver —como `latitude`, que tampoco está— así que vaciarlo no le
+  // devolvería el campo a ningún modelo, solo lo dejaría en blanco. Se corrige
+  // tecleando otro número. Y `constructionOverhead` tampoco: no es una columna.
   'projectedSale', 'holdMonths',
   'rentMonthlyProjected', 'rentMonthlyActual',
   'totalUnits', 'acquisitionDate', 'firstRentDate', 'saleDate', 'salePrice',
@@ -799,13 +811,6 @@ export interface BudgetLine {
   sortOrder: number
   notes: string
   /**
-   * «Otros, por detallar»: el remanente del estimado grueso que todavía no se
-   * reparte. No se teclea — baja al detallar y sube al quitar detalle, y por eso
-   * el total no se mueve. Lo marca el SERVIDOR con una columna suya: reconocerlo
-   * por su nombre sería amarrar una regla de dinero a una cadena de texto.
-   */
-  isResidual: boolean
-  /**
    * Si esta partida CRECE con el tamaño de la obra. Los permisos, las licencias
    * y las conexiones no: cuestan lo mismo en una casa de 120 m² que en una de
    * 300, y escalarlas al copiar el presupuesto a otra obra inventaría dinero.
@@ -831,6 +836,19 @@ export interface BudgetLine {
 export interface Budget {
   id: number
   propertyId: number
+  /**
+   * Si una copia PROPORCIONAL sobre ESTE presupuesto sería aceptada, por lo que
+   * toca a su contenido. Misma expresión y mismas palabras que el de
+   * `BudgetSource`, y callado sobre la misma mitad: el alcance por capítulos lo
+   * sabe el cliente.
+   *
+   * Vive aquí porque la lista de fuentes no puede contestarlo en el sentido de
+   * JALAR: ahí el destino es el presupuesto de esta misma obra, que es justo el
+   * que la lista excluye a propósito. Es una FOTO de la última lectura entera
+   * —una celda que se guarda sola no la refresca— y por eso bloquea antes de
+   * pedir, pero no manda: la autoridad sigue siendo el 422.
+   */
+  replaceable: boolean
   lines: BudgetLine[]
   chapters: string[]
 }
@@ -885,10 +903,9 @@ export interface BudgetPaymentCreate {
 /**
  * Lo que devuelve TODA escritura del presupuesto.
  *
- * El presupuesto ENTERO y no solo el renglón tocado, porque casi toda escritura
- * mueve DOS renglones: el que se editó y el residuo que lo absorbe. Con uno solo
- * la tabla enseñaría la mitad cierta de un presupuesto cuadrado, y la mitad que
- * falta es justo la que explica por qué el total no se movió.
+ * El presupuesto ENTERO y no solo el renglón tocado: copiar mete decenas de
+ * renglones de un golpe y borrar un capítulo se lleva todos los suyos, así que
+ * la respuesta tiene que poder decir el presupuesto que quedó y no un pedazo.
  *
  * Y la propiedad, porque la suma presupuestada ES el costo de obra: tocar un
  * renglón mueve la inversión total, la ganancia proyectada, el ROI y el cap
@@ -900,14 +917,6 @@ export interface BudgetWrite {
   line: BudgetLine | null
   budget: Budget
   property: Property
-  /**
-   * Cuánto CRECIÓ el presupuesto con esta escritura. Es 0 en el caso normal
-   * —detallar reparte, no crea— y solo deja de serlo cuando el detalle rebasa
-   * el total: ahí el residuo llega a 0 y la obra sí pasa a costar más. Aumentar
-   * el presupuesto y detallarlo son dos operaciones distintas, y ésta es la
-   * cifra que permite decir cuál de las dos acaba de pasar.
-   */
-  budgetIncrease: number
   /**
    * Cuántos renglones se copiaron. Solo lo mandan `apply` y `apply-chapter`;
    * en toda otra escritura no existe, y por eso es opcional en vez de 0 — «no
@@ -946,19 +955,31 @@ export interface BudgetSource {
    * el presupuesto de la propiedad. El nombre viene VIVO del geometry. */
   planId: string | null
   planName: string | null
-  /** El total CON residuo: el objetivo del destino en una copia proporcional
-   * (`total`, sin residuo, es lo que saldría de aquí como fuente). */
-  fullTotal: number | null
-  /** De la PROPIEDAD dueña — un escenario comparte los de su obra. Solo para el
-   * renglón informativo del empuje proporcional. */
+  /** De la PROPIEDAD dueña — un escenario comparte los de su obra. */
   sqmConstruction: number | null
   constructionCostPerSqm: number | null
-  /**
-   * Cuántos renglones se van a COPIAR, que no es cuántos tiene: el residuo
-   * nunca viaja. El número es exactamente lo que va a aparecer después, así que
-   * se puede prometer tal cual.
-   */
+  /** Cuántos renglones se van a COPIAR, que hoy son TODOS los que tiene: ya no
+   * hay un renglón que se quede. El número es exactamente lo que va a aparecer
+   * después, así que se puede prometer tal cual. */
   lineCount: number
+  /**
+   * Si el servidor aceptaría una copia PROPORCIONAL *hacia* este presupuesto,
+   * por lo que toca a su CONTENIDO: la proporcional reemplaza, y sólo reemplaza
+   * donde no hay más que el estimado con el que nació la obra. Un presupuesto ya
+   * capturado la rechaza con 422 —lo copiado se sumaría encima y el total
+   * quedaría al doble—, y el cliente lo sabe antes de prometer un número.
+   *
+   * NO dice nada sobre la regla del capítulo suelto: ésa el cliente ya la
+   * conoce, porque es él quien elige los capítulos. Son dos mitades del mismo
+   * `_require_replaceable`, y cada una se contesta donde vive su dato.
+   */
+  replaceable: boolean
+  /**
+   * La suma de sus renglones — y por eso es también el objetivo del destino en
+   * una copia proporcional. `fullTotal` acompañaba a este campo cuando el
+   * residuo entraba en uno y no en el otro; hoy serían el mismo número, y el
+   * cliente dejó de leerlo (el servidor lo retira en PR 2 · Contract).
+   */
   total: number
 }
 

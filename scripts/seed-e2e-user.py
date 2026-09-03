@@ -123,13 +123,25 @@ def main() -> int:
                 """,
             )
 
-            # Y su presupuesto, con la misma aritmética de la 032: toda propiedad
-            # tiene uno, y su suma es el costo de obra con el overhead ya dentro.
-            # `is_residual` prendida (033): es el renglón del que se resta al
-            # detallar, y sin él el costo de obra crecería con cada partida.
-            # Las dos semillas capturan 0 de obra, así que la fila nace en $0 —
-            # que es lo que dicen sus columnas, y sigue significando «nada
-            # capturado», no «cero pesos de obra».
+            # Y su presupuesto. Toda propiedad tiene uno, y su total es la suma
+            # de sus renglones (053) — ya no hay residuo del que restar.
+            #
+            # ESPEJO EXACTO de `db/seeds/properties/seed_zz_presupuestos.sql`, y
+            # tiene que seguir siéndolo: una base sembrada por aquí y una
+            # sembrada por allá se leen igual. De ahí las tres cosas que copia:
+            # `seeded = TRUE` declarada al INSERT —la procedencia se registra,
+            # no se deduce (054)—, el nombre con la cuenta que lo produjo en el
+            # formato de `estimate_line_name`, y la guarda del final.
+            #
+            # ESA GUARDA ES LA QUE MANDA HOY: las dos semillas capturan 0 de
+            # obra, así que no se escribe renglón y el presupuesto nace VACÍO,
+            # igual que lo haría el API. Un renglón de $0 llamado «Estimado
+            # inicial · 0 m² × $0/m²» no dice nada que el presupuesto vacío no
+            # diga ya (`seed_estimate_line`), y sembrado sin marca dejaba a las
+            # dos propiedades leyéndose como trabajo capturado: indelebles por
+            # el 422 de `holds_captured_work`, que es justo lo que las specs de
+            # borrado necesitan poder hacer. El nombre queda escrito para el día
+            # que alguna semilla sí traiga metraje.
             cur.execute(
                 """
                 WITH nuevos AS (
@@ -138,15 +150,32 @@ def main() -> int:
                      WHERE name IN ('[SEED] Terreno E2E', '[SEED] Propiedad E2E')
                     RETURNING id, property_id
                 )
-                INSERT INTO budget_lines (budget_id, chapter_name, name, unit, quantity, unit_price, is_residual)
-                SELECT n.id, 'Otros', 'Otros, por detallar', 'lote', 1,
+                INSERT INTO budget_lines (budget_id, chapter_name, name, unit,
+                                          quantity, unit_price, seeded)
+                SELECT n.id, 'Otros',
+                       'Estimado inicial · '
+                         || rtrim(trim(to_char(coalesce(p.sqm_construction::numeric, 0),
+                                               'FM999,999,990.999')), '.')
+                         || ' m² × $'
+                         || rtrim(trim(to_char(coalesce(p.construction_cost_per_sqm, 0),
+                                               'FM999,999,990.99')), '.')
+                         || '/m²'
+                         || CASE WHEN overhead.factor = 1 THEN ''
+                                 ELSE ' × ' || rtrim(trim(to_char(overhead.factor,
+                                                                  'FM999,990.9999')), '.') END,
+                       'lote', 1,
                        (coalesce(p.sqm_construction::numeric, 0)
                         * coalesce(p.construction_cost_per_sqm, 0)
-                        * CASE WHEN p.construction_overhead IS NULL THEN 1.3
-                               WHEN p.construction_overhead = 0     THEN 1
-                               ELSE p.construction_overhead::numeric END),
+                        * overhead.factor),
                        TRUE
-                  FROM nuevos n JOIN properties p ON p.id = n.property_id
+                  FROM nuevos n
+                  JOIN properties p ON p.id = n.property_id
+                  JOIN LATERAL (SELECT CASE WHEN p.construction_overhead IS NULL THEN 1.3
+                                            WHEN p.construction_overhead = 0     THEN 1
+                                            ELSE p.construction_overhead::numeric END AS factor)
+                       overhead ON TRUE
+                 WHERE coalesce(p.sqm_construction::numeric, 0)
+                       * coalesce(p.construction_cost_per_sqm, 0) > 0
                 """,
             )
 

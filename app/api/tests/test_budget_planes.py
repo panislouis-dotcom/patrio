@@ -46,14 +46,48 @@ def test_el_escenario_nace_copiado_del_de_la_propiedad(client, test_property):
     r = client.post(f"/api/properties/{pid}/budget/plans/plan-a")
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["linesAdded"] == 1        # el renglón detallado viajó
+    assert body["linesAdded"] == 2        # el detallado y el estimado de la obra
     assert body["budget"]["planId"] == "plan-a"
     names = [ln["name"] for ln in body["budget"]["lines"]]
     assert "Albañilería" in names
-    # Mismo total que el de la propiedad al nacer: el residuo absorbió el resto.
+    # Mismo total que el de la propiedad al nacer, y ahora sale gratis: viajan
+    # TODOS los renglones, así que las dos sumas son la misma suma.
     prop_total = sum(ln["quantity"] * ln["unitPrice"] for ln in _budget(client, pid).json()["lines"])
     plan_total = sum(ln["quantity"] * ln["unitPrice"] for ln in body["budget"]["lines"])
     assert plan_total == prop_total
+
+
+def test_el_escenario_conserva_la_cuenta_del_estimado_porque_es_la_suya(
+        client, test_property):
+    """El escenario de plan es la MISMA propiedad, así que el nombre del estimado
+    viaja entero: esos metros sí son los de esta obra y el escenario existe para
+    espejearla. Copiar a OTRA propiedad sí le quita la cuenta —ver
+    `budget_db._copied_name`—; aquí quitársela borraría información verdadera."""
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    de_la_obra = _budget(client, pid).json()["lines"][0]["name"]
+    assert de_la_obra.startswith("Estimado inicial · ")
+
+    r = client.post(f"/api/properties/{pid}/budget/plans/plan-a")
+    assert r.status_code == 201, r.text
+    assert [ln["name"] for ln in r.json()["budget"]["lines"]] == [de_la_obra]
+
+
+def test_replaceable_habla_del_presupuesto_del_payload_y_no_del_de_la_obra(
+        client, test_property):
+    """Con `?planId=` el payload describe el ESCENARIO, así que `replaceable`
+    tiene que describirlo a él. Aquí se separan a propósito: al escenario se le
+    teclea una partida y al de la propiedad no, y las dos respuestas difieren en
+    la misma llamada por el solo query param."""
+    pid = test_property["id"]
+    _seed_plans(client, pid, "plan-a")
+    assert client.post(f"/api/properties/{pid}/budget/plans/plan-a").status_code == 201
+    assert _budget(client, pid, "plan-a").json()["replaceable"] is True
+
+    _line(client, pid, "Mármol del escenario", 500_000, plan_id="plan-a")
+
+    assert _budget(client, pid, "plan-a").json()["replaceable"] is False
+    assert _budget(client, pid).json()["replaceable"] is True
 
 
 def test_el_escenario_puede_nacer_vacio(client, test_property):
@@ -62,9 +96,9 @@ def test_el_escenario_puede_nacer_vacio(client, test_property):
     r = client.post(f"/api/properties/{pid}/budget/plans/plan-a",
                     json={"copyFromProperty": False})
     assert r.status_code == 201, r.text
-    lines = r.json()["budget"]["lines"]
-    assert len(lines) == 1 and lines[0]["isResidual"]     # solo el residuo, en 0
-    assert lines[0]["quantity"] * lines[0]["unitPrice"] == 0
+    # Vacío es SIN RENGLONES, no un renglón en cero: el residuo fantasma se fue
+    # con la 053 y un presupuesto que suma 0 es un estado legítimo.
+    assert r.json()["budget"]["lines"] == []
 
 
 def test_nacimientos_invalidos(client, test_property):
@@ -113,7 +147,9 @@ def test_usar_el_plan_copia_al_de_la_propiedad_sin_pisar_lo_capturado(client, te
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["linesAdded"] == 1      # Cancelería entró
-    assert body["linesSkipped"] == 1    # Albañilería ya estaba: se saltó, no se pisó
+    # Albañilería y el estimado ya estaban: se saltan, no se pisan. El escenario
+    # nació copiado, así que trae los dos con el mismo (capítulo, nombre).
+    assert body["linesSkipped"] == 2
     prop_names = [ln["name"] for ln in _budget(client, pid).json()["lines"]]
     assert "Cancelería" in prop_names
     # El escenario queda intacto — es la propuesta.
@@ -150,7 +186,8 @@ def test_las_fuentes_listan_los_escenarios_de_la_misma_obra_etiquetados(client, 
     assert len(mine) == 1
     assert mine[0]["planId"] == "plan-a"
     assert mine[0]["planName"] == "Plan plan-a"     # el nombre vivo del geometry
-    assert mine[0]["lineCount"] == 1                 # lo copiable, sin residuo
+    # El escenario nació copiado del de la propiedad: su estimado y la partida.
+    assert mine[0]["lineCount"] == 2
     assert mine[0]["fullTotal"] is not None          # el objetivo para proporcional
 
 
@@ -177,7 +214,7 @@ def test_apply_puede_escribir_en_un_escenario_como_destino(client, test_property
     r = client.post(f"/api/properties/{pid}/budget/apply?planId=plan-a",
                     json={"budgetId": prop_budget_id})
     assert r.status_code == 201, r.text
-    assert r.json()["linesAdded"] == 1
+    assert r.json()["linesAdded"] == 2      # la partida y el estimado de la obra
     plan_names = [ln["name"] for ln in _budget(client, pid, "plan-a").json()["lines"]]
     assert "Albañilería" in plan_names
     # La propiedad no recibió nada de vuelta: el destino era el escenario.

@@ -276,8 +276,87 @@ def test_summary_card_still_omits_the_fee_sub_line_when_data_is_missing_too():
     assert "c/comisiones" not in html
 
 
-def test_budget_full_empty_lines_returns_empty_string():
-    assert _budget_full([], []) == ""
+def test_budget_full_prints_a_real_zero_for_an_empty_budget():
+    """Un presupuesto vacío es un estado legítimo desde que el total es la suma
+    de sus renglones, y suma $0 río abajo. Devolvía "" —lo mismo que un deck
+    pedido sin la sección de presupuesto—, así que la obra en cero no se podía
+    distinguir de la obra no enseñada."""
+    html = _budget_full([], [])
+    assert '<td class="n">$0</td>' in html
+    assert "Sin partidas capturadas" in html
+
+
+def test_budget_full_labels_a_lone_uncosted_line_as_an_order_of_magnitude_estimate():
+    """Una cifra global sin cotizar y trece capítulos con proveedor se imprimen
+    igual de grandes bajo la palabra «Total». El prospecto va a inversionistas:
+    la diferencia de madurez se dice, no se deduce."""
+    lines = [{"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $8,000/m² × 1.3",
+              "budgetedAmount": 2_080_000, "quantity": 1, "unit": "lote",
+              "seeded": True, "payments": []}]
+    html = _budget_full(lines, ["Otros"])
+    assert "Estimación de orden de magnitud" in html
+    assert "$2,080,000" in html
+    # El rótulo es una precisión sobre la cifra, no una advertencia sobre ella.
+    for alarma in ("no confiable", "cuidado", "provisional", "incompleto"):
+        assert alarma not in html.lower()
+
+
+def test_the_estimate_label_is_derived_and_disappears_the_moment_the_budget_grows():
+    """Derivado de los renglones, sin campo que mantener en sync: basta un
+    segundo renglón para que el presupuesto deje de ser una sola cifra."""
+    lines = [
+        {"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $8,000/m²",
+         "budgetedAmount": 1_600_000, "quantity": 1, "unit": "lote",
+         "seeded": True, "payments": []},
+        {"chapterName": "Albañilería", "name": "Cimentación", "budgetedAmount": 100_000,
+         "quantity": 1, "unit": "lote", "seeded": False, "payments": []},
+    ]
+    html = _budget_full(lines, ["Otros", "Albañilería"])
+    assert "budget-note" not in html
+
+
+def test_a_lone_line_typed_by_hand_never_wears_the_estimate_label():
+    """EL CASO QUE MOTIVÓ `seeded`. Una suma alzada que un contratista cotizó y
+    alguien tecleó de un tirón es un solo renglón sin desglose y sin ejecución
+    —indistinguible del estimado por su forma— pero está COTIZADA. Rotularla de
+    paramétrica sería una falsedad chica y confiada en un documento que va a
+    inversionistas."""
+    lines = [{"chapterName": "Otros", "name": "Remodelación integral (suma alzada)",
+              "budgetedAmount": 1_850_000, "quantity": 1, "unit": "lote",
+              "seeded": False, "payments": []}]
+    html = _budget_full(lines, ["Otros"])
+    assert "$1,850,000" in html
+    assert "budget-note" not in html
+
+
+def test_editing_the_seeded_line_amount_keeps_the_label():
+    """`seeded` es procedencia, no un candado: corregir el importe del estimado
+    lo deja siendo una sola cifra global sin partidas detrás."""
+    lines = [{"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $8,000/m²",
+              "budgetedAmount": 1_900_000, "quantity": 1, "unit": "lote",
+              "seeded": True, "payments": []}]
+    assert "Estimación de orden de magnitud" in _budget_full(lines, ["Otros"])
+
+
+def test_a_lone_seeded_line_with_execution_captured_is_no_longer_an_estimate():
+    """Un renglón adjudicado, comprometido, medido, cerrado o pagado ya es obra
+    costeada aunque siga siendo el único. Cada campo por separado, porque el
+    rótulo es una afirmación sobre el dinero de alguien más."""
+    base = {"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $8,000/m²",
+            "budgetedAmount": 1_600_000, "quantity": 1, "unit": "lote",
+            "seeded": True, "payments": []}
+    assert "budget-note" in _budget_full([base], ["Otros"])
+    for ejecucion in ({"supplierId": 7}, {"committedAmount": 1_500_000},
+                      {"actualQuantity": 1}, {"closedAt": "2026-08-01"},
+                      {"payments": [{"id": 1, "amount": 500_000}]}):
+        html = _budget_full([{**base, **ejecucion}], ["Otros"])
+        assert "budget-note" not in html, ejecucion
+
+
+def test_the_budget_note_is_styled_and_stays_with_the_total_it_qualifies():
+    assert ".budget-note" in _BODY_CSS
+    rule = re.search(r"\.budget-note \{[^}]*\}", _BODY_CSS).group()
+    assert "break-before: avoid" in rule
 
 
 def test_budget_full_lists_every_line_with_chapter_subtotals_and_grand_total():
@@ -287,7 +366,7 @@ def test_budget_full_lists_every_line_with_chapter_subtotals_and_grand_total():
     lines = [
         {"chapterName": "Albañilería", "name": "Cimentación", "budgetedAmount": 100_000,
          "quantity": 1, "unit": "lote"},
-        {"chapterName": "Otros", "name": "Otros, por detallar", "budgetedAmount": 50_000,
+        {"chapterName": "Otros", "name": "Holgura por detallar", "budgetedAmount": 50_000,
          "quantity": 1, "unit": "lote"},
         {"chapterName": "Albañilería", "name": "Muros", "budgetedAmount": 25_000,
          "quantity": 1, "unit": "lote"},
@@ -307,8 +386,8 @@ def test_budget_full_skips_the_subtotal_for_a_single_line_chapter():
     """Repetir el mismo número dos veces (la partida y un "Subtotal" idéntico
     debajo) no añade información — solo hay algo que sumar con dos renglones
     o más."""
-    lines = [{"chapterName": "Otros", "name": "Otros, por detallar", "budgetedAmount": 156_000,
-              "quantity": 1, "unit": "lote"}]
+    lines = [{"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $780/m²",
+              "budgetedAmount": 156_000, "quantity": 1, "unit": "lote"}]
     html = _budget_full(lines, ["Otros"])
     assert "$156,000" in html
     assert "budget-subtotal" not in html
@@ -316,12 +395,12 @@ def test_budget_full_skips_the_subtotal_for_a_single_line_chapter():
 
 def test_budget_full_stays_single_column_below_the_threshold():
     """Feedback en vivo: un presupuesto real de docenas de renglones ocupaba
-    hasta tres páginas — pero la mayoría de las propiedades solo tienen "Otros,
-    por detallar", una sola línea. Forzar dos columnas ahí dejaría la segunda
-    visiblemente vacía, así que el umbral solo aplica arriba de
-    _BUDGET_TWO_COLUMN_THRESHOLD."""
-    lines = [{"chapterName": "Otros", "name": "Otros, por detallar", "budgetedAmount": 156_000,
-              "quantity": 1, "unit": "lote"}]
+    hasta tres páginas — pero una propiedad recién dada de alta trae un solo
+    renglón, el estimado que sembró la calculadora. Forzar dos columnas ahí
+    dejaría la segunda visiblemente vacía, así que el umbral solo aplica arriba
+    de _BUDGET_TWO_COLUMN_THRESHOLD."""
+    lines = [{"chapterName": "Otros", "name": "Estimado inicial · 200 m² × $780/m²",
+              "budgetedAmount": 156_000, "quantity": 1, "unit": "lote"}]
     html = _budget_full(lines, ["Otros"])
     assert "budget-columns" not in html
 
@@ -369,6 +448,18 @@ def test_budget_full_total_is_never_inside_the_two_column_container():
 
 def test_opportunity_detail_is_empty_without_plano_or_budget():
     assert _opportunity_detail(BASE_PROPERTY) == ""
+
+
+def test_an_empty_budget_still_gets_its_section_but_a_switched_off_one_does_not():
+    """Las dos mitades de la misma decisión, que antes salían idénticas: la
+    propiedad TRAE presupuesto y está vacío (se imprime, en $0), contra un deck
+    pedido sin presupuesto (no se imprime nada)."""
+    vacia = {**BASE_PROPERTY, "budget": {"lines": [], "chapters": []}}
+    html = _opportunity_detail(vacia)
+    assert "Presupuesto de obra" in html
+    assert '<td class="n">$0</td>' in html
+    apagado = _opportunity_detail(vacia, ProspectusSections(opportunity_budget=False))
+    assert apagado == ""
 
 
 def test_opportunity_detail_shows_only_the_budget_section():
@@ -834,7 +925,7 @@ def test_cada_seccion_de_plan_imprime_su_presupuesto_escenario_si_existe():
          "planBudgets": {
              "plan-a": {"lines": [
                  {"chapterName": "Obra", "name": "Albañilería", "unit": "lote",
-                  "quantity": 1, "unitPrice": 100_000, "isResidual": False,
+                  "quantity": 1, "unitPrice": 100_000,
                   "committedAmount": None, "closedAt": None, "payments": [],
                   "supplierId": None, "actualQuantity": None, "isProportional": True}],
               "chapters": ["Obra"]},

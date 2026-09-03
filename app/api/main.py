@@ -137,9 +137,12 @@ async def _property_rejected(request: Request, exc: PropertyError) -> JSONRespon
 
 
 # El presupuesto rechaza en su propio vocabulario y por las mismas dos razones:
-# no existe lo que se pidió, o la regla del residual no deja hacer lo que se
-# pidió. Sin estos dos, «el remanente se calcula solo» le llegaría al navegador
-# como un 500 disfrazado de error de CORS.
+# no existe lo que se pidió (un renglón, un pago, el escenario de un plan), o el
+# dominio no puede cumplir lo que se pidió sin faltar a su palabra — la copia
+# proporcional que aterrizaría encima de renglones capturados y dejaría el total
+# al doble, o el borrado de una propiedad que sí tiene trabajo capturado. Sin
+# estos dos, «el lugar ya está ocupado» le llegaría al navegador como un 500
+# disfrazado de error de CORS en vez de como la frase que alguien puede leer.
 @app.exception_handler(BudgetNotFound)
 async def _budget_not_found(request: Request, exc: BudgetNotFound) -> JSONResponse:
     return _error(404, str(exc))

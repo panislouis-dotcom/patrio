@@ -66,7 +66,7 @@ from api.checks import run_checks, stage_requirements
 from api.db import get_db, _camel_to_snake, _row_to_dict, _snake_to_camel
 from api.finance import fees, underwriting
 from api.finance.analysis import months_between, parse_date, roi_cagr
-from api.finance.quantize import frac4, money0, to_decimal
+from api.finance.quantize import frac4, money0
 
 
 # ─── Lifecycle vocabulary ─────────────────────────────────────────────────────
@@ -160,15 +160,24 @@ PROCESS_STATUSES = frozenset({"desarrollo", "en_renta", "vendida"})
 # renombras las listas, cambias esa forma o metes una palabra entrecomillada en
 # un comentario DENTRO de las llaves, esa prueba se rompe o miente.
 #
-# `constructionCostPerSqm` y `constructionOverhead` NO están: dejaron de ser
-# insumos. El costo de obra es la suma del presupuesto, así que se cambia
-# capturando partidas o ajustando el total del presupuesto — no tecleando un
-# precio unitario compuesto que un desglose por partidas justamente no tiene.
-# Los dos sobreviven como entradas de la CALCULADORA de POST /api/properties,
-# que produce el primer renglón y no guarda ninguno de los dos.
+# `constructionCostPerSqm` SÍ ESTÁ, y volvió a estarlo a propósito: es el
+# SUPUESTO CAPTURADO —«a cuánto creo que sale el m² de obra»—, su propia columna,
+# escribible como cualquier otra. No gobierna nada. El costo de obra sigue siendo
+# la suma del presupuesto, y se cambia capturando renglones; lo que este campo da
+# es el otro término de la comparación, `budgetedCostPerSqm` (presupuesto ÷ m²),
+# que la ficha enseña al lado. Dos números reales, rotulados, ninguno relevo del
+# otro — que es la única forma en que una comparación es honesta.
+#
+# ESCRIBIRLO NO TOCA EL PRESUPUESTO. Ni este ni `sqmConstruction`: hasta el
+# 2026-08-30 un PATCH de cualquiera de los dos repreciaba la obra entera, trece
+# capítulos cotizados con proveedor incluidos, y nada en la pantalla lo decía.
+#
+# `constructionOverhead` NO está: sigue siendo solo entrada de la CALCULADORA de
+# POST /api/properties, que corre una vez y no guarda nada.
 WRITABLE_FIELDS = frozenset({
     "name", "address", "city", "url", "latitude", "longitude",
     "assetType", "strategyType",
+    "constructionCostPerSqm",
     "sqmLand", "sqmConstruction", "purchasePrice", "acquisitionCostPct",
     "permitsCost", "subdivisionCost",
     "projectedSale", "holdMonths",
@@ -403,8 +412,12 @@ _RECORD_KEYS = (
     "constructionBudgeted", "constructionCommitted", "constructionPaid",
     "constructionCommittedVariance", "constructionPaidVariance",
     # Derivada, no capturada: presupuesto ÷ metraje. Se publica para mostrarse y
-    # nada la vuelve a leer para calcular dinero.
-    "constructionCostPerSqm",
+    # nada la vuelve a leer para calcular dinero. `constructionCostPerSqm` NO
+    # está aquí y ésa es la corrección: es la COLUMNA, el supuesto que alguien
+    # tecleó, y viaja con las demás crudas. Compartían nombre siendo dos cosas
+    # distintas, con la columna sin escribir mientras el derivado se publicaba
+    # con su nombre.
+    "budgetedCostPerSqm",
     # `purchasePricePerSqm`, `salePerSqm` e `investmentPerSqm` no sobrevivieron:
     # la ficha fue la primera en dejar de mostrar los dos primeros, y el
     # prospecto en PDF —su último lector— dejó de mostrar el tercero
@@ -642,9 +655,11 @@ def score(prop: dict, peers: list[dict]) -> int | None:
 # presupuesto de una base recién sembrada, igual que los campos homónimos de
 # POST /api/properties. Su DROP va con la reescritura de db/seeds.
 #
-# `construction_cost_per_sqm` no necesita estar aquí: el cómputo lo pisa con el
-# cociente derivado, así que lo que se publica bajo ese nombre ya es el número
-# nuevo y no el de la columna.
+# `construction_cost_per_sqm` no está aquí porque NO se retiró: volvió a ser el
+# supuesto que alguien captura, se escribe por `WRITABLE_FIELDS` y se publica tal
+# cual. El derivado —presupuesto ÷ m²— viaja al lado con su propio nombre,
+# `budgetedCostPerSqm`, que es justo lo que evita que los dos vuelvan a
+# confundirse bajo una sola etiqueta.
 _RETIRED_COLUMNS = ("constructionOverhead",)
 
 
@@ -787,15 +802,19 @@ CAPTURE_DEFAULTS = {
     "subdivision_cost": 0.0,
 }
 
-# Los tres insumos de la CALCULADORA con la que nace el presupuesto. No son
-# columnas: se reciben, producen el importe del primer renglón y se olvidan. El
-# resultado vive en el presupuesto y no en un campo paralelo que pudiera
-# contradecirlo — que es exactamente la diferencia entre una calculadora y una
-# segunda fuente de verdad.
+# Los tres insumos de la CALCULADORA con la que nace el presupuesto, y SOLO al
+# nacer: producen el importe del primer renglón y ahí termina su trabajo. El
+# resultado vive en el presupuesto, como un renglón normal que se edita y se
+# borra, y no en una fórmula que siga opinando cada vez que alguien corrija un
+# metraje — que es exactamente la diferencia entre una calculadora y una liga
+# viva.
 #
-# `sqmConstruction` aparece en los dos lados y no es contradicción: es metraje
-# FÍSICO, se guarda como tal, y aquí además sirve de factor. Los otros dos solo
-# pasan por aquí.
+# Dos de los tres SON columnas, y no es contradicción: `sqmConstruction` es
+# metraje físico y `constructionCostPerSqm` es el supuesto de $/m² que alguien
+# tecleó. Se guardan porque valen por sí solos —el PDF lee el metraje, y la
+# ficha enseña el supuesto contra el `budgetedCostPerSqm` del presupuesto— y
+# además, aquí y una sola vez, se multiplican. `constructionOverhead` es el
+# único que solo pasa: no se guarda en ningún lado.
 _CALCULATOR_FIELDS = ("sqmConstruction", "constructionCostPerSqm", "constructionOverhead")
 
 
@@ -803,16 +822,20 @@ def create_property(data: dict) -> dict:
     """A property is born a prospecto. Every other state is reached by living
     through the one before it.
 
-    Nace también con su presupuesto de obra: una fila «Otros, por detallar» con
-    el estimado grueso que produce la calculadora. Esa fila YA es el costo de
-    obra de la propiedad, desde `prospecto` y sin compuerta de etapa, y por eso
-    nunca hay un momento en que la obra cambie de fuente."""
+    Nace también con su presupuesto de obra: un renglón con el estimado grueso
+    que produce la calculadora, nombrado con la cuenta que lo produjo («Estimado
+    inicial · 200 m² × $9,000/m² × 1.3»). Ese renglón YA es el costo de obra de
+    la propiedad, desde `prospecto` y sin compuerta de etapa, y por eso nunca
+    hay un momento en que la obra cambie de fuente.
+
+    ES LA ÚNICA VEZ QUE LA CALCULADORA CORRE. De aquí en adelante el renglón es
+    un renglón —se corrige, se parte en trece, se borra— y ninguna edición de la
+    ficha lo vuelve a tocar. Sin los dos insumos no hay nada que multiplicar y
+    el presupuesto nace vacío, sumando $0, que es un estado legítimo."""
     columns = {**CAPTURE_DEFAULTS, **to_columns(data)}
     columns["status"] = INITIAL_STATUS
     names = ", ".join(columns)
     placeholders = ", ".join(["%s"] * len(columns))
-    estimate = budget_db.calculator_estimate(
-        *(data.get(field) for field in _CALCULATOR_FIELDS))
     with get_db() as conn:
         with _readable_rejection():
             new_id = conn.execute(
@@ -826,7 +849,9 @@ def create_property(data: dict) -> dict:
         )
         # Misma transacción que la fila: una propiedad sin presupuesto sería la
         # única que necesitaría una rama para contestar cuánto cuesta su obra.
-        budget_db.create_budget(conn, new_id, estimate)
+        budget_id = budget_db.create_budget(conn, new_id)
+        budget_db.seed_estimate_line(
+            conn, budget_id, *(data.get(field) for field in _CALCULATOR_FIELDS))
     return get_property(new_id)
 
 
@@ -834,25 +859,21 @@ def update_property(property_id: int, data: dict) -> dict:
     """Partial update of the raw columns. Cannot move `status` (not writable) and
     cannot empty anything (the caller strips None before it gets here).
 
-    `constructionCostPerSqm` is not a column — it is the same one-shot
-    CALCULATOR that seeds a property's budget at birth (`_CALCULATOR_FIELDS`),
-    allowed to run again here because the property already has somewhere for
-    its answer to live. `sqmConstruction` comes from this same patch when it
-    arrives together, or from the row otherwise; without it there is nothing
-    to multiply, so nothing runs — the calculator needs both of its inputs,
-    same as at creation.
+    NO TOCA EL PRESUPUESTO. Ni un peso, ni por ningún campo. `sqmConstruction` y
+    `constructionCostPerSqm` se guardan en sus columnas y ahí termina: son
+    metraje físico y un supuesto capturado, no la mitad de una fórmula.
 
-    Overhead does NOT apply here, unlike at birth: a $/m² typed against a
-    property that already exists is a direct edit of a real budget, not a
-    rough estimate volunteering to be graded later — multiplying it by a
-    hidden 1.3 would make the number on screen disagree with the number
-    typed, for no reason anyone editing an existing property would expect.
+    Hasta el 2026-08-30 esto corría la calculadora en cada PATCH y le escribía
+    el resultado al presupuesto, por tres caminos, y el tercero era el grave:
+    corregir el metraje de 200 a 220 m² derivaba la tasa vigente del total
+    actual y la volvía a aplicar, inflando el presupuesto entero un 10% —los
+    trece capítulos cotizados con proveedor incluidos—. Un campo rotulado como
+    medida física repreciaba la carpintería y nada en la pantalla lo decía. Se
+    fue completo, y no se cambió por un botón: el presupuesto es la suma de sus
+    renglones, y para moverlo se mueven los renglones.
 
-    A $/m² is not the only way to reach the calculator: raising `sqmConstruction`
-    on its own re-applies whatever rate is already in force —today's total ÷
-    today's metraje— against the new metraje. Otherwise editing the m² alone
-    would leave the total frozen, disagreeing with a rate that was already on
-    screen a moment before."""
+    La calculadora sigue existiendo y corre UNA sola vez, en `create_property`,
+    donde deja un renglón que desde entonces es dato editable de alguien."""
     columns = to_columns(data)
     with get_db() as conn:
         before = _require_row(conn, property_id)
@@ -864,14 +885,6 @@ def update_property(property_id: int, data: dict) -> dict:
                     f"UPDATE properties SET {assignments} WHERE id = %s",
                     list(columns.values()) + [property_id],
                 )
-        cost_per_sqm = data.get("constructionCostPerSqm")
-        sqm = data.get("sqmConstruction", before["sqm_construction"])
-        if cost_per_sqm is None and "sqmConstruction" in data and before["sqm_construction"]:
-            current = budget_db.current_total(conn, property_id)
-            cost_per_sqm = current / to_decimal(before["sqm_construction"])
-        if cost_per_sqm and sqm:
-            estimate = budget_db.calculator_estimate(sqm, cost_per_sqm, construction_overhead=1)
-            budget_db.set_total(conn, property_id, estimate)
     return get_property(property_id)
 
 
@@ -951,7 +964,7 @@ _DELETE_BLOCKERS = {
     # El presupuesto de obra retiene, no cae en cascada: sus renglones llevan
     # cantidades medidas, precios negociados y pagos hechos, y eso es captura
     # manual que ningún borrado debe llevarse sin que alguien lo decida.
-    "budgets": "tiene un presupuesto de obra",
+    "budgets": "tiene renglones capturados en su presupuesto de obra",
     "profit_split_config": "tiene un reparto de utilidades configurado",
     "signals": "está ligada a una señal del sonar",
 }

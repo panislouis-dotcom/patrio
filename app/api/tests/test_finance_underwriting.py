@@ -107,6 +107,8 @@ def test_metrics_matches_locked_oracle(client, test_property):
     el costo de obra de su presupuesto."""
     from api import budget_db
     from api.db import get_db
+    from .conftest import _set_budget
+    _set_budget(test_property["id"], INPUTS["construction_budgeted"])
     with get_db() as conn:
         conn.execute(
             """UPDATE properties SET purchase_price=%s, acquisition_cost_pct=%s, permits_cost=%s,
@@ -116,7 +118,6 @@ def test_metrics_matches_locked_oracle(client, test_property):
              INPUTS["subdivision_cost"], INPUTS["sqm_construction"], INPUTS["projected_sale"],
              INPUTS["hold_months"], INPUTS["rent_monthly_projected"], INPUTS["sqm_land"],
              test_property["id"]))
-        budget_db.set_total(conn, test_property["id"], INPUTS["construction_budgeted"])
         base = conn.execute("SELECT * FROM properties WHERE id=%s",
                             (test_property["id"],)).fetchone()
         total = conn.execute(

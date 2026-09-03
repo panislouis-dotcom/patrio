@@ -14,11 +14,11 @@ from decimal import Decimal
 from api.db import get_db
 from api.finance import underwriting
 
-from .conftest import _delete_property
+from .conftest import _delete_property, _set_budget
 
 # El expediente. Sin ventana: aparece cuando sus insumos están, en la etapa que sea.
 RECORD = ("acquisitionCosts", "acquisitionTotal", "constructionBudgeted",
-          "constructionCostPerSqm",
+          "budgetedCostPerSqm",
           "projectedProfit", "projectedRoi", "projectedRoiTotal", "capRate", "rentAnnual")
 # El yield de la renta COBRADA. Va aparte porque su insumo aparece más tarde: una
 # propiedad en desarrollo tiene todo el resto del expediente y no tiene esto.
@@ -171,8 +171,8 @@ def test_an_all_in_total_is_captured_as_a_purchase_price(client, test_property):
                  json={"purchasePrice": 9_500_000, "acquisitionCostPct": 0,
                        "permitsCost": 0, "subdivisionCost": 0, "sqmConstruction": 0})
     # La obra ya no se apaga tecleando un $/m² en 0: se apaga dejando el
-    # presupuesto en 0, que es donde vive el costo de obra.
-    client.put(f"/api/properties/{test_property['id']}/budget/total", json={"amount": 0})
+    # presupuesto sin renglones, que es donde vive el costo de obra.
+    _set_budget(test_property["id"], 0)
     p = _get(client, test_property["id"])
     assert Decimal(str(p["totalInvestment"])) == Decimal("9500000")
     assert p["assumptions"]["acquisitionCostPct"]["source"] == "captured"
@@ -184,7 +184,7 @@ def test_an_empty_cost_stack_is_no_basis_at_all(client, test_property):
     client.patch(f"/api/properties/{test_property['id']}",
                  json={"purchasePrice": 0, "permitsCost": 0, "subdivisionCost": 0,
                        "sqmConstruction": 0})
-    client.put(f"/api/properties/{test_property['id']}/budget/total", json={"amount": 0})
+    _set_budget(test_property["id"], 0)
     p = _get(client, test_property["id"])
     assert p["totalInvestment"] is None
     assert p["projectedProfit"] is None
@@ -239,7 +239,7 @@ def test_unrealized_gain_pct_is_none_not_zero_when_uncomputable(client, desarrol
             "UPDATE properties SET purchase_price = NULL, permits_cost = NULL,"
             " subdivision_cost = NULL, sqm_construction = NULL WHERE id = %s",
             (desarrollo_property["id"],))
-    client.put(f"/api/properties/{desarrollo_property['id']}/budget/total", json={"amount": 0})
+    _set_budget(desarrollo_property["id"], 0)
     p = _get(client, desarrollo_property["id"])
     assert p["totalInvestment"] is None
     assert p["unrealizedGainPct"] is None

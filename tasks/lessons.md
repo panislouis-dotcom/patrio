@@ -197,3 +197,111 @@ Corolario del mismo día: la duda vale en las dos direcciones. Cuatro veces se
 reportó como pendiente algo ya hecho, y también llegaron reportes de errores ya
 arreglados. **Antes de actuar sobre el reporte de otro —o sobre el propio de
 hace una hora— vuelve a medir.**
+
+---
+
+## Un comentario que describe lo que hace OTRO archivo se pudre sin que nada falle
+
+**2026-08-30 · «la calculadora se retira» — llevaba 25 días sin retirarse**
+
+`67e05bf` (2026-08-05) volvió a atar la liga viva métricas→presupuesto: desde ese
+commit, editar los m² de la ficha reprecia el presupuesto entero. No tocó ninguna de
+las dos frases que lo negaban, escritas cada una en un archivo distinto del código
+que describían:
+
+- `app/README.md:36` — «it is the calculator that produces that first line and then
+  **retires**».
+- `db/schema.sql:1031` — «El API ya no la lee ni la escribe».
+
+**Nada falló.** No hay prueba que compare una oración con una rama, ni compilador que
+enumere los usos de un párrafo. Las dos siguieron leyéndose como verdad.
+
+**Lo que costó**: al abrir este trabajo diagnostiqué sobre esas frases y le dije a Ed
+que el acoplamiento *ya estaba quitado*. Tuve que retractarme. La prosa no me hizo
+perder tiempo: me hizo dar una respuesta equivocada sobre su propio sistema, que es
+más caro. Es la misma familia que [[Una salvedad sobre el estado ajeno caduca]] —una
+afirmación cierta el día que se escribe y que nadie vuelve a medir—, solo que aquí el
+«estado ajeno» es otro archivo del mismo repo.
+
+**Y NO FUERON DOS: FUERON SEIS**, todas encontradas en este mismo trabajo. Además de
+las dos de arriba, `app/.claude/skills/generate-prospectus.md` rotulaba
+`constructionCostPerSqm` como «derived, display-only», un comentario de
+`app/api/tests/conftest.py` afirmaba que ese campo no era escribible,
+`properties_db.py:658` decía que no hacía falta que estuviera, y
+`prospectus_html.py:954` describía la maquetación del presupuesto en términos de un
+residuo —«la mayoría: una sola línea Otros, por detallar»— que ya no existía.
+
+Cuatro de las seis —`db/schema.sql:1031`, la skill, el `conftest.py` y
+`properties_db.py:658`— describen **el mismo campo**, cada una desde un archivo
+distinto, **ninguna desde el archivo que lo gobierna**, y las cuatro estaban
+equivocadas al mismo tiempo. Ese es el número que hay que mirar: no «se nos pasó un
+comentario», sino que la descripción de un campo se replicó en cuatro lugares que
+nadie puede mantener a la vez.
+
+**Cómo aplicarlo**, dos reglas:
+
+1. **Una frase sobre código que vive en otro archivo es una pista, nunca evidencia.**
+   Si vas a diagnosticar, decidir o citarla, abre primero el código que describe. Vale
+   para el README, para el `COMMENT ON COLUMN`, para la skill y para tu propio
+   comentario de hace un mes.
+2. **Cambiar un comportamiento no termina en sus llamadores.** Antes de cerrar,
+   `grep` del NOMBRE de lo que moviste —`construction_cost_per_sqm`, `set_total`,
+   `is_residual`— sobre `*.md`, `*.sql`, las skills y los comentarios, no solo sobre
+   el código que lo invoca. Los llamadores los encuentra el compilador; las oraciones
+   no las encuentra nadie más que tú.
+3. **Si la referencia cruzada vale la pena, ánclala en algo que sobreviva.** Un número
+   de línea lo invalida la siguiente edición ARRIBA de él; el nombre del archivo
+   aguanta todo menos un rename; una frase citada aguanta hasta el rename, porque se
+   grepea desde cualquier parte. Cita el texto, no la coordenada.
+
+---
+
+## Un dump se parece a su base de datos, incluida la parte que nadie migró
+
+**2026-08-30 · el `COMMENT ON SCHEMA public` que borraba la 054**
+
+`db/schema.sql` es un dump, así que hereda cómo se construyó la base de la que sale.
+Una base recién hecha con `CREATE DATABASE` se lleva el `COMMENT ON SCHEMA public`
+de `template1`, y el dump salía con un hunk que **quitaba**
+`COMMENT ON SCHEMA public IS ''` — un cambio que nadie hizo y que ninguna migración
+explica. Regenerarlo desde una base rehecha como la rehace `make reset-db`
+(`DROP SCHEMA public CASCADE; CREATE SCHEMA public`) reproduce el archivo commiteado
+exacto, con la delta limitada a los objetos de la migración.
+
+El diff pasó por dos revisores y una suite verde. Lo que lo atrapó fue leer el
+artefacto contra la delta que se esperaba de él.
+
+**Cómo aplicarlo**: regenera `db/schema.sql` **solo** desde una base construida con
+la receta de `make reset-db`, y si el diff trae un hunk que no puedes atribuir a una
+migración, lo que está mal es el método del dump, no el esquema. La regla general:
+**una base de scratch no sustituye a la receta real** — difiere justo en lo que no se
+te ocurrió revisar, y el dump es donde eso sale a la superficie. Mismo consejo que
+cierra [[Verde en local puede significar «contaminado», no «correcto»]]: cuando un
+entorno da un resultado y otro da otro, compara sus recetas antes de teorizar.
+
+## Retransmitir un hallazgo ajeno sin verificarlo lo convierte en instrucción
+
+Un revisor marcó que `conftest.py` insertaba sin `seeded`. Lo retransmití como orden.
+El propio revisor lo **retiró** minutos después —al leer bien el docstring— pero la
+orden ya iba en camino: el implementador revirtió un cambio correcto, mi corrección
+cruzó con su commit, y el mismo hunk de cuatro líneas fue y volvió **tres veces**.
+
+Dos cosas lo hicieron caro. La primera es que retransmitir borra la incertidumbre: el
+revisor escribió una observación, y al llegar firmada por quien coordina llegó como
+decisión. La segunda es que el cambio era **inerte** —ninguna prueba lo distinguía,
+verificado desde dos bases independientes—, así que nada downstream iba a arbitrarlo
+nunca. Un cambio que ninguna prueba puede distinguir se re-litiga gratis y para siempre.
+
+Lo zanjó dejar de arbitrar entre dos prosas y mirar el dato: el helper inserta capítulo
+`'Otros'` y unidad `'lote'`, que son `ESTIMATE_CHAPTER` y `LUMP_SUM_UNIT`. La fila YA
+era un estimado sembrado en todo menos la bandera, así que `seeded = FALSE` la dejaba
+incoherente consigo misma. Ninguna de las dos lecturas del docstring era el argumento
+bueno.
+
+**Cómo aplicarlo**: antes de convertir el hallazgo de un revisor en instrucción,
+verifícalo tú contra el código — un hallazgo ajeno es una pista, no evidencia, igual
+que en [[Un comentario que describe lo que hace OTRO archivo se pudre sin que nada
+falle]]. Cuando dos lecturas de una prosa compiten, **el desempate está en lo que el
+código escribe**, no en la paráfrasis mejor. Y si un cambio es inerte para toda la
+suite, da el argumento de la forma del código a la primera: nada más lo va a decidir
+por ti.
