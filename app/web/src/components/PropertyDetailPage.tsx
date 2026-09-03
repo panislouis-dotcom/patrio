@@ -427,6 +427,19 @@ export function PropertyDetailPage() {
   const stage = p.status
   const sold = stage === 'vendida'
   const errors = p.issues.filter(i => i.severity === 'error')
+
+  /** Las partes que suman INVERSIÓN SIN COMISIONES, para pintar en RESULTADO
+   * justo encima de ella (una vez por columna de escenario). Mismos campos
+   * que DESGLOSE DE INVERSIÓN ya captura, solo en lectura. Un $0 genuino no
+   * explica nada del total —PERMISOS/SUBDIVISIÓN quedan fuera en la mayoría
+   * de las propiedades— así que se filtra, no se imprime en blanco. */
+  const investmentParts: Array<[string, number]> = [
+    ['PRECIO DE COMPRA', p.purchasePrice],
+    ['COSTOS ADQ.', p.acquisitionCosts],
+    ['PERMISOS', p.permitsCost],
+    ['SUBDIVISIÓN', p.subdivisionCost],
+    ['OBRA A EJECUTAR', p.constructionBudgeted],
+  ].filter((part): part is [string, number] => !!part[1])
   const warnings = p.issues.filter(i => i.severity === 'warning')
   const url = field('url') ?? ''
   const acquisitionCostPct = field('acquisitionCostPct')
@@ -1064,6 +1077,20 @@ export function PropertyDetailPage() {
               <div style={narrow ? undefined : { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
                 <div>
                   <div style={resultSubheading}>ESCENARIO VENTA · {p.salePrice != null ? 'REAL' : 'PROYECTADO'}</div>
+                  {/* Las partes que arman INVERSIÓN SIN COMISIONES, justo
+                      encima de ella: mismos campos que ya se capturan en
+                      DESGLOSE DE INVERSIÓN (arriba en esta misma columna), en
+                      lectura, para que el costo base deje de ser un número
+                      opaco sin salir de RESULTADO — cierra el mismo criterio
+                      de columna autónoma que ya vale para las comisiones y el
+                      precio/renta. Se repite en la columna RENTA por la misma
+                      razón que INVERSIÓN SIN COMISIONES ya se repite: mismo
+                      costo base, cada columna autosuficiente. Solo las partes
+                      que tengan algo que aportar: un $0 genuino no explica
+                      nada del total, así que no ocupa una fila. */}
+                  {investmentParts.map(([label, value]) => (
+                    <StatRow key={label} label={label} value={fmtMXN(value)} />
+                  ))}
                   <StatRow label="INVERSIÓN SIN COMISIONES" value={fmtMXN(p.totalInvestment)} />
                   <StatRow label="COMISIÓN TERRENO" value={fmtMXN(p.landFee)} />
                   <StatRow label="COMISIÓN OBRA" value={fmtMXN(p.constructionFee)} />
@@ -1079,6 +1106,9 @@ export function PropertyDetailPage() {
                 </div>
                 <div style={narrow ? { marginTop: '20px' } : undefined}>
                   <div style={resultSubheading}>ESCENARIO RENTA · {p.rentMonthlyActual != null ? 'REAL' : 'PROYECTADA'}</div>
+                  {investmentParts.map(([label, value]) => (
+                    <StatRow key={label} label={label} value={fmtMXN(value)} />
+                  ))}
                   <StatRow label="INVERSIÓN SIN COMISIONES" value={fmtMXN(p.totalInvestment)} />
                   <StatRow label="COMISIÓN TERRENO" value={fmtMXN(p.landFee)} />
                   <StatRow label="COMISIÓN OBRA" value={fmtMXN(p.constructionFee)} />

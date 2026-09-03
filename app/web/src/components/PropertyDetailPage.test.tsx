@@ -646,7 +646,10 @@ describe('PropertyDetailPage', () => {
     await renderPage(ALL_IN)
 
     expect(screen.queryByText('SIN DESGLOSAR')).toBeNull()
-    const precioCompraRow = screen.getByText('PRECIO DE COMPRA').closest('div')!
+    // PRECIO DE COMPRA aparece en DESGLOSE DE INVERSIÓN (primera) y de nuevo
+    // en RESULTADO, una vez por columna de escenario (mismo costo base) — las
+    // tres dicen el mismo monto.
+    const [precioCompraRow] = screen.getAllByText('PRECIO DE COMPRA').map(el => el.closest('div')!)
     expect(within(precioCompraRow).getByText('$10,000,000')).not.toBeNull()
     expect(screen.getAllByText('$10,000,000').length).toBeGreaterThan(0)
   })
