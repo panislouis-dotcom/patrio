@@ -114,10 +114,19 @@ const resultSubheading: React.CSSProperties = {
 }
 
 /** La misma etiqueta de escenario que `resultSubheading`, sin los márgenes
- * pensados para apilarse entre StatRows — la tira fija de la columna GENERAL
- * vive en su propio recuadro, no en la lista de RESULTADO. */
+ * pensados para apilarse entre StatRows — la tira destacada de la columna
+ * GENERAL vive en su propio recuadro, no en la lista de RESULTADO. */
 const heroGroupLabel: React.CSSProperties = {
   fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.secondary,
+}
+const heroMetricLabel: React.CSSProperties = {
+  fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary,
+}
+/** Serif grande, mismo criterio de tamaño que el antiguo `MetricHero` (42px
+ * para una sola cifra dominante) pero a una escala que cuatro cifras puedan
+ * compartir sin pelearse por el espacio. */
+const heroMetricValue: React.CSSProperties = {
+  fontFamily: fonts.serif, fontSize: '24px', color: colors.neutral, lineHeight: 1.15, marginTop: '3px',
 }
 
 export function PropertyDetailPage() {
@@ -658,25 +667,6 @@ export function PropertyDetailPage() {
           display: 'flex', flexDirection: 'column',
           overflow: narrow ? 'visible' : 'hidden',
         }}>
-          {/* Las cuatro cifras que de verdad deciden — bruto y neto de cada
-              escenario — fijas hasta arriba de la columna GENERAL, encima de
-              las pestañas y de su scroll: son la conclusión de RESULTADO (más
-              abajo, con el waterfall completo de cada una), repetidas aquí
-              para que no haga falta bajarlo todo, ni que se vayan al
-              scrollear. Mismo criterio que ya rige RESULTADO: los dos
-              escenarios siempre, bruto Y neto siempre juntos, badge REAL/
-              PROYECTADO(A) según el dato, no la etapa. Mismo `StatRow` que
-              usa RESULTADO —sin tamaño de letra propio— para que la tira no
-              compita visualmente con el resto de la ficha. */}
-          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${colors.border}`, background: colors.surface, flexShrink: 0 }}>
-            <div style={heroGroupLabel}>VENTA · {p.salePrice != null ? 'REAL' : 'PROYECTADO'}</div>
-            <StatRow label="GANANCIA BRUTA (s/comisiones)" value={fmtGain(p.grossGainVenta, p.grossGainVentaPct)} />
-            <StatRow label="GANANCIA NETA (c/comisiones)" value={fmtGain(p.netGainVenta, p.netGainVentaPct)} />
-            <div style={{ ...heroGroupLabel, marginTop: '10px' }}>RENTA · {p.rentMonthlyActual != null ? 'REAL' : 'PROYECTADA'}</div>
-            <StatRow label="YIELD BRUTO (s/comisión)" value={fmtPct(p.grossYieldRenta)} />
-            <StatRow label="YIELD NETO (c/comisión)" value={fmtPct(p.netYieldRenta)} />
-          </div>
-
           {/* Con una sola pestaña no hay nada que elegir, y la tira de tabs
               solo restaba espacio a la columna: se pinta nada más cuando hay
               algo entre qué cambiar. */}
@@ -699,6 +689,37 @@ export function PropertyDetailPage() {
           {/* ── GENERAL ── */}
           {leftTab === 'general' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none' }}>
+
+              {/* Las cuatro cifras que de verdad deciden — bruto y neto de
+                  cada escenario — hasta arriba de la lista, en grande: son la
+                  conclusión de RESULTADO (más abajo, con el waterfall
+                  completo de cada una), repetidas aquí para que no haga falta
+                  bajar toda la columna a verlas. Sin fijar: feedback en vivo
+                  del dueño del producto — fija robaba espacio de scroll
+                  permanentemente. Mismo criterio que ya rige RESULTADO: los
+                  dos escenarios siempre, bruto Y neto siempre juntos, badge
+                  REAL/PROYECTADO(A) según el dato, no la etapa. */}
+              <div style={{ paddingBottom: '18px', marginBottom: '4px', borderBottom: `1px solid ${colors.border}` }}>
+                <div style={heroGroupLabel}>VENTA · {p.salePrice != null ? 'REAL' : 'PROYECTADO'}</div>
+                <div style={{ marginTop: '8px' }}>
+                  <div style={heroMetricLabel}>GANANCIA BRUTA (s/comisiones)</div>
+                  <div style={heroMetricValue}>{fmtGain(p.grossGainVenta, p.grossGainVentaPct)}</div>
+                </div>
+                <div style={{ marginTop: '12px' }}>
+                  <div style={heroMetricLabel}>GANANCIA NETA (c/comisiones)</div>
+                  <div style={heroMetricValue}>{fmtGain(p.netGainVenta, p.netGainVentaPct)}</div>
+                </div>
+
+                <div style={{ ...heroGroupLabel, marginTop: '18px' }}>RENTA · {p.rentMonthlyActual != null ? 'REAL' : 'PROYECTADA'}</div>
+                <div style={{ marginTop: '8px' }}>
+                  <div style={heroMetricLabel}>YIELD BRUTO (s/comisión)</div>
+                  <div style={heroMetricValue}>{fmtPct(p.grossYieldRenta)}</div>
+                </div>
+                <div style={{ marginTop: '12px' }}>
+                  <div style={heroMetricLabel}>YIELD NETO (c/comisión)</div>
+                  <div style={heroMetricValue}>{fmtPct(p.netYieldRenta)}</div>
+                </div>
+              </div>
 
               <SectionDivider label="DATOS" />
               {numRow('VALUACIÓN', 'currentValuation', fmtMXN, { clearable: 'currentValuation' })}
