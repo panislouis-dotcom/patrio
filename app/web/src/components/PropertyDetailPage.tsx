@@ -113,6 +113,19 @@ const resultSubheading: React.CSSProperties = {
   marginTop: '16px', marginBottom: '4px',
 }
 
+/** La misma etiqueta de escenario que `resultSubheading`, sin los márgenes
+ * pensados para apilarse entre StatRows — la tira del encabezado vive en su
+ * propio recuadro, no en la lista. */
+const heroGroupLabel: React.CSSProperties = {
+  fontFamily: fonts.label, fontSize: '9px', letterSpacing: '0.12em', color: colors.secondary,
+}
+const heroMetricLabel: React.CSSProperties = {
+  fontFamily: fonts.label, fontSize: '8px', letterSpacing: '0.1em', color: colors.secondary,
+}
+const heroMetricValue: React.CSSProperties = {
+  fontFamily: fonts.serif, fontSize: '19px', color: colors.neutral, lineHeight: 1.2, marginTop: '2px',
+}
+
 export function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -629,6 +642,50 @@ export function PropertyDetailPage() {
       />
 
       <ErrorBanner message={saveError} />
+
+      {/* Las cuatro cifras que de verdad deciden — bruto y neto de cada
+          escenario, uno al lado del otro — hasta arriba y a todo el ancho: son
+          la conclusión de RESULTADO (línea ~1010 más abajo, que trae el
+          waterfall completo de cada una), repetidas aquí para que no haga
+          falta bajar toda la columna GENERAL a verlas. Mismo criterio que ya
+          rige RESULTADO: dos escenarios siempre, sin elegir uno; bruto Y neto
+          siempre juntos, nunca uno solo escondiendo al otro; badge REAL/
+          PROYECTADO(A) según el dato, no la etapa. */}
+      <div style={{
+        ...fade(20),
+        display: 'flex', flexDirection: narrow ? 'column' : 'row',
+        borderBottom: `1px solid ${colors.border}`, background: colors.surface, flexShrink: 0,
+      }}>
+        <div style={{
+          flex: 1, padding: '12px 24px',
+          ...(narrow ? { borderBottom: `1px solid ${colors.border}` } : { borderRight: `1px solid ${colors.border}` }),
+        }}>
+          <div style={heroGroupLabel}>VENTA · {p.salePrice != null ? 'REAL' : 'PROYECTADO'}</div>
+          <div style={{ display: 'flex', gap: '32px', marginTop: '6px' }}>
+            <div>
+              <div style={heroMetricLabel}>GANANCIA BRUTA (s/comisiones)</div>
+              <div style={heroMetricValue}>{fmtGain(p.grossGainVenta, p.grossGainVentaPct)}</div>
+            </div>
+            <div>
+              <div style={heroMetricLabel}>GANANCIA NETA (c/comisiones)</div>
+              <div style={heroMetricValue}>{fmtGain(p.netGainVenta, p.netGainVentaPct)}</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ flex: 1, padding: '12px 24px' }}>
+          <div style={heroGroupLabel}>RENTA · {p.rentMonthlyActual != null ? 'REAL' : 'PROYECTADA'}</div>
+          <div style={{ display: 'flex', gap: '32px', marginTop: '6px' }}>
+            <div>
+              <div style={heroMetricLabel}>YIELD BRUTO (s/comisión)</div>
+              <div style={heroMetricValue}>{fmtPct(p.grossYieldRenta)}</div>
+            </div>
+            <div>
+              <div style={heroMetricLabel}>YIELD NETO (c/comisión)</div>
+              <div style={heroMetricValue}>{fmtPct(p.netYieldRenta)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* La columna izquierda mide 360px FIJOS. Debajo de 900px eso no deja
           nada para la de medios —en un teléfono de 390 le quedaban 15— y la

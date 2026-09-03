@@ -598,7 +598,8 @@ describe('PropertyDetailPage', () => {
     await renderPage(SOLD)
 
     expect(screen.getByText('ESCENARIO VENTA · REAL')).not.toBeNull()
-    expect(screen.getByText('$4,270,000 +114.5%')).not.toBeNull()
+    // La cifra se ve dos veces: la tira de encabezado y RESULTADO.
+    expect(screen.getAllByText('$4,270,000 +114.5%')).toHaveLength(2)
     // La marca viva murió: una vendida no tiene ganancia sin realizar
     expect(screen.queryByText('GANANCIA NO REALIZADA')).toBeNull()
   })
@@ -614,7 +615,8 @@ describe('PropertyDetailPage', () => {
     })
 
     expect(screen.getByText('ROI NETO ANUAL')).not.toBeNull()
-    expect(screen.getByText('$1,705,000 +23.4%')).not.toBeNull()
+    // La cifra se ve dos veces: la tira de encabezado y RESULTADO.
+    expect(screen.getAllByText('$1,705,000 +23.4%')).toHaveLength(2)
     // Sin valuación no hay MARCA ACTUAL que ofrecer
     expect(screen.queryByText('MARCA ACTUAL')).toBeNull()
   })
@@ -623,7 +625,7 @@ describe('PropertyDetailPage', () => {
     await renderPage({ ...BASE_PROPERTY, status: 'archivada', score: null })
 
     expect(screen.getByText('ROI NETO ANUAL')).not.toBeNull()
-    expect(screen.getByText('$1,705,000 +23.4%')).not.toBeNull()
+    expect(screen.getAllByText('$1,705,000 +23.4%')).toHaveLength(2)
     expect(screen.getByText('DESGLOSE DE INVERSIÓN')).not.toBeNull()
   })
 
@@ -1093,14 +1095,38 @@ describe('PropertyDetailPage', () => {
       expect(screen.queryByText('MARCA ACTUAL')).toBeNull()
     })
 
+    it('las cuatro cifras que deciden se repiten hasta arriba, antes de DATOS', async () => {
+      // La tira del encabezado existe para no tener que bajar toda la columna
+      // GENERAL hasta RESULTADO — si aparece después de DATOS, no cumplió su
+      // propósito.
+      await renderPage(BASE_PROPERTY)
+      const orden = document.body.textContent!
+      const datos = orden.indexOf('DATOS')
+      for (const etiqueta of ['GANANCIA BRUTA', 'GANANCIA NETA', 'YIELD BRUTO', 'YIELD NETO']) {
+        const pos = orden.indexOf(etiqueta)
+        expect(pos, etiqueta).toBeGreaterThan(-1)
+        expect(pos, `${etiqueta} debe aparecer antes de DATOS`).toBeLessThan(datos)
+      }
+    })
+
+    it('la tira del encabezado no elige un escenario: badge REAL/PROYECTADO por dato, igual que RESULTADO', async () => {
+      await renderPage(RENTED)
+      // RENTED tiene rentMonthlyActual capturado (badge REAL) pero ningún
+      // salePrice (badge PROYECTADO) — la tira debe coincidir con RESULTADO
+      // en los dos, sin depender de la etapa.
+      expect(screen.getByText('VENTA · PROYECTADO')).not.toBeNull()
+      expect(screen.getByText('RENTA · REAL')).not.toBeNull()
+    })
+
     it('una vendida muestra ESCENARIO VENTA real, con ganancia bruta y neta visiblemente distintas', async () => {
       await renderPage(SOLD)
 
       expect(screen.getByText('ESCENARIO VENTA · REAL')).not.toBeNull()
       // Bruta contra totalInvestment, neta contra totalInvestmentWithFeesVenta:
       // nunca coinciden por casualidad, la comisión de venta es la diferencia.
-      expect(screen.getByText('$4,270,000 +114.5%')).not.toBeNull()
-      expect(screen.getByText('$3,683,500 +85.3%')).not.toBeNull()
+      // Cada una se ve dos veces: la tira de encabezado y RESULTADO.
+      expect(screen.getAllByText('$4,270,000 +114.5%')).toHaveLength(2)
+      expect(screen.getAllByText('$3,683,500 +85.3%')).toHaveLength(2)
     })
 
     it('una propiedad en renta con avalúo muestra MARCA ACTUAL junto a los dos escenarios', async () => {
