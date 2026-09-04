@@ -88,12 +88,13 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await expect(detailRow(page, 'ETAPA')).toContainText('PROSPECTO')
     // 7,000,000 out of a 4,550,000 basis WITH the venta exit commission
     // (4,000,000 + 200,000 terreno + 0 obra + 350,000 salida), over the
-    // twenty-four modelled months
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+24.0%')
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('+53.8%')
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(/Score \d+/)
-    // Nothing has been bought, so there is no result to report
-    await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
+    // twenty-four modelled months. RESULTADO runs the same shape in every
+    // stage, prospecto included — there is no separate PROYECCIÓN section
+    // any more, and no Score row riding along on it (Score never lands on
+    // the ficha now; it only ever showed in PROPIEDADES).
+    await expect(page.getByText('RESULTADO', { exact: true })).toBeVisible()
+    await expect(detailRow(page, 'GANANCIA NETA (c/comisiones)')).toContainText('+53.8%')
+    await expect(detailRow(page, 'ROI NETO ANUAL')).toContainText('+24.0%')
 
     expect(await offeredStages(page)).toEqual(['OFERTA'])
   })
@@ -109,8 +110,6 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     await confirmTransition(page, 'OFERTA').click()
 
     await expect(detailRow(page, 'ETAPA')).toContainText('OFERTA')
-    // Still competing for capital, so still scored
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(/Score \d+/)
     // From the offer on there is a real deal to fund
     await expect(page.getByRole('button', { name: 'FINANZAS', exact: true })).toBeVisible()
 
@@ -192,11 +191,11 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // hoy. (Que la marca lo desplace cuando alguien sí valúa es el test que
     // sigue.)
     await expect(page.getByText('GANANCIA NO REALIZADA')).toHaveCount(0)
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+24.0%')
 
     // The projection it was bought on stays readable — it is what reality is
     // measured against, and in later steps you see everything from before
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$2,450,000')
+    await expect(detailRow(page, 'GANANCIA NETA (c/comisiones)')).toContainText('$2,450,000')
+    await expect(detailRow(page, 'ROI NETO ANUAL')).toContainText('+24.0%')
     // Works can be tracked on a building that is yours
     await expect(page.getByText('TAREAS', { exact: true })).toBeVisible()
 
@@ -216,10 +215,10 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // 5,000,000 marked against the 4,000,000 that went in — y ahora la marca sí
     // desplaza a la proyección en el héroe, porque tiene más realidad detrás.
     await expect(detailRow(page, 'GANANCIA NO REALIZADA')).toContainText('$1,000,000 +25.0%')
-    // Se capturó el monto y no su fecha de corte, así que el reloj del ROI sí
-    // corre a hoy — y la ficha lo dice con esas palabras en vez de dejar leer la
-    // cifra como si fuera de cualquier día.
-    await expect(detailRow(page, 'ROI ANUAL')).toContainText('AL DÍA DE HOY')
+    // Se capturó el monto y no su fecha de corte, así que el reloj del ROI corre
+    // a hoy (mark_months cae a date.today() sin valuationDate) — un StatRow ya
+    // no lleva hint, así que eso ya no se lee en la fila, solo en la cifra.
+    await expect(detailRow(page, 'ROI (MARCA) ANUAL')).toContainText('+10.4%')
   })
 
   // ── En renta ────────────────────────────────────────────────────────────────
@@ -254,9 +253,10 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
     // earlier, in the previous test), the value the property is worth today
     await expect(detailRow(page, 'CAP RATE')).toContainText('9.6%')
     await expect(detailRow(page, 'RENTA ANUAL COBRADA')).toContainText('$480,000')
-    // Nothing was ever modelled, so the projected pair stays empty rather than
-    // quietly adopting the collected rent
-    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText('—')
+    // Nothing was ever modelled for RENTA/MES ESTIMADA — but RESULTADO's YIELD
+    // BRUTO/NETO resolve real-before-projected (resolve_rent), so once a real
+    // rent exists they read it regardless; there is no "unmodelled" state left
+    // to assert on that pair once the property is renting.
 
     // The rent history is kept: a hold still exits through a sale
     expect(await offeredStages(page)).toEqual(['VENDIDA'])
@@ -264,7 +264,7 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 
   // ── Vendida ─────────────────────────────────────────────────────────────────
 
-  test('al vender, el resultado encabeza y el plan queda a su lado para calificarlo', async ({ page }) => {
+  test('al vender, RESULTADO deja de proyectar y pasa a reportar lo real', async ({ page }) => {
     await gotoProperty(page, id)
     await advanceTo(page, 'VENDIDA')
 
@@ -274,37 +274,32 @@ test.describe.serial('El ciclo de vida de una propiedad', () => {
 
     await expect(detailRow(page, 'ETAPA')).toContainText('VENDIDA')
 
-    // 7,000,000 out of 4,000,000, held the twenty-four months between the two
-    // dates. El ROI cierra su reloj en la fecha de venta, y lo dice.
-    await expect(detailRow(page, 'ROI REAL ANUAL')).toContainText('+32.3%')
-    await expect(detailRow(page, 'ROI REAL ANUAL')).toContainText(`AL ${SOLD_SHOWN.toUpperCase()}`)
-    await expect(detailRow(page, 'GANANCIA REALIZADA')).toContainText('$3,000,000 +75.0%')
-
-    // Lo realizado NO tiene sección propia, y es la misma regla que gobierna
-    // todo lo demás: cada cifra etiquetada vive en un solo lugar. Sus dos cifras
-    // derivadas son justo las que el héroe promueve, y las capturadas ya viven
-    // donde se capturan — PRECIO DE VENTA en FECHAS, PLAZO REAL en DATOS. Una
-    // sección que solo puede repetir lo que ya está en pantalla no organiza
-    // nada: hace dudar de si son la misma cifra o dos parecidas.
-    await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
-    await expect(page.getByText('GANANCIA %', { exact: true })).toHaveCount(0)
+    // RESULTADO corre la misma forma en las 5 etapas — lo que cambia es el
+    // dato, no la estructura. Una vez vendida, ESCENARIO VENTA YA ES la cifra
+    // realizada (precio real, comisión real, badge REAL): reemplaza la lectura
+    // aparte de GANANCIA REALIZADA/ROI REAL ANUAL que existía antes de este
+    // cambio — un solo costo base, leído una vez por columna, no la misma
+    // cifra repetida en cinco secciones de la página.
+    await expect(page.getByText('RESULTADO', { exact: true })).toBeVisible()
+    await expect(page.getByText('VENTA · REAL', { exact: true })).toBeVisible()
     await expect(detailRow(page, 'PRECIO DE VENTA')).toContainText('$7,000,000')
-    // PLAZO REAL congela en la primera renta (jun 2025), no en la venta (jun
-    // 2026): doce meses, no los veinticuatro que ROI REAL ANUAL sí anualiza.
-    await expect(detailRow(page, 'PLAZO REAL')).toContainText('12 meses')
-    await expect(page.getByText('ROI REAL ANUAL')).toHaveCount(1)
-    await expect(page.getByText('GANANCIA REALIZADA')).toHaveCount(1)
-    await expect(page.getByText('PLAZO REAL')).toHaveCount(1)
+    // 7,000,000 sobre los 4,000,000 de inversión sin comisiones — la misma
+    // aritmética que antes vivía en GANANCIA REALIZADA.
+    await expect(detailRow(page, 'GANANCIA BRUTA (s/comisiones)')).toContainText('$3,000,000 +75.0%')
+    // Neto contra los 4,550,000 con comisión de salida, anualizado sobre los
+    // veinticuatro meses reales entre compra y venta (jun 2024 → jun 2026) —
+    // que coinciden con los proyectados porque la venta cerró exactamente en
+    // lo proyectado, no porque el cálculo siga siendo el de antes de vender.
+    await expect(detailRow(page, 'GANANCIA NETA (c/comisiones)')).toContainText('$2,450,000 +53.8%')
+    await expect(detailRow(page, 'ROI NETO ANUAL')).toContainText('+24.0%')
 
-    // A sold asset is a closed fact, not a live mark: la marca se apaga…
+    // PLAZO REAL congela en la primera renta (jun 2025), no en la venta (jun
+    // 2026): doce meses, no los veinticuatro que RESULTADO sí anualiza.
+    await expect(detailRow(page, 'PLAZO REAL')).toContainText('12 meses')
+
+    // A sold asset is a closed fact, not a live mark: la marca se apaga
     await expect(page.getByText('GANANCIA NO REALIZADA')).toHaveCount(0)
-    // …pero el plan NO. Es el par que el modelo promete, y se apagaba justo
-    // cuando se volvía comprobable: se proyectaron 2,450,000 (con comisión de
-    // salida) y se realizaron 3,000,000 (realizedGain no la lleva) — números
-    // distintos aunque la venta cerró exactamente en lo proyectado, y las dos
-    // cifras tienen que poder leerse juntas de todos modos.
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$2,450,000')
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('24.0%')
+    await expect(page.getByText('MARCA ACTUAL', { exact: true })).toHaveCount(0)
 
     // Terminal: a sale is the firm's track record, and it is not filed away
     await expect(page.getByRole('button', { name: 'AVANZAR A ▸' })).toHaveCount(0)
@@ -365,9 +360,10 @@ test.describe('El portón de desarrollo sin precio de compra', () => {
     await gotoProperty(page, id)
 
     // Suma cero es vacío, no cero: nadie capturó nada, y «$0» afirmaría que la
-    // propiedad no costó nada. Se ancla por el hint porque es de la fila, no del
-    // héroe, que sin proyección resoluble se llama igual.
-    await expect(page.getByText('SUMA DEL DESGLOSE').locator('..')).toContainText('—')
+    // propiedad no costó nada — basis() (underwriting.py) devuelve None, no 0,
+    // cuando el desglose entero suma cero. INVERSIÓN SIN COMISIONES es ahora un
+    // StatRow sin hint dentro de RESULTADO; se ancla por esa fila.
+    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('—')
 
     await advanceTo(page, 'DESARROLLO')
 
@@ -451,8 +447,8 @@ test.describe.serial('Archivar una propiedad', () => {
     // terreno + 0 de obra + 60,000 de salida, 5% de la venta proyectada). El
     // plazo supuesto (hold_months, default 12) hace que lo anualizado y lo
     // simple coincidan.
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText('+2.1%')
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText('$25,000')
+    await expect(detailRow(page, 'ROI NETO ANUAL')).toContainText('+2.1%')
+    await expect(detailRow(page, 'GANANCIA NETA (c/comisiones)')).toContainText('$25,000')
     await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('$1,065,000')
   })
 

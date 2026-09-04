@@ -49,15 +49,19 @@ const PROSPECTO = {
 
 // purchase 2,000,000 + the assumed 6.5% acquisition cost, 130,000
 const INVESTMENT = '$2,130,000'
-// 20,000 × 12 / 3,000,000 — the modelled rent over the projected sale
-const CAP_RATE = '8.0%'
-// projectedRoi/projectedRoiTotal divide by the investment WITH the venta exit
-// commission, not the bare INVESTMENT above: 2,130,000 + 100,000 (terreno,
-// 5% of 2,000,000) + 0 (obra, no construction budgeted) + 150,000 (salida,
-// 5% of the 3,000,000 projected sale) = 2,380,000. (3,000,000 − 2,380,000)
-// over the twelve modelled months (hold=12, so the annualized figure equals
-// the simple one).
-const PROJECTED_ROI = '+26.1%'
+// GANANCIA BRUTA reads against INVESTMENT alone: 3,000,000 − 2,130,000 =
+// 870,000. GANANCIA NETA/ROI NETO read against INVESTMENT plus the venta exit
+// commissions (100,000 terreno, 5% of 2,000,000; 0 obra; 150,000 salida, 5% of
+// the 3,000,000 projected sale) = 2,380,000: (3,000,000 − 2,380,000) over the
+// twelve modelled months (hold=12, so annualized equals simple).
+const GROSS_GAIN_VENTA = '$870,000 +40.8%'
+const NET_GAIN_VENTA = '$620,000 +26.1%'
+const NET_ROI_VENTA = '+26.1%'
+// YIELD BRUTO is 20,000 × 12 over INVESTMENT; YIELD NETO over INVESTMENT plus
+// the renta exit commissions (100,000 terreno, 0 obra, 60,000 salida — 3 meses
+// de renta, la escalera por default) = 2,290,000.
+const YIELD_BRUTO_RENTA = '11.3%'
+const YIELD_NETO_RENTA = '10.5%'
 
 test.describe('Ficha de propiedad — un prospecto', () => {
   let token: string
@@ -105,14 +109,15 @@ test.describe('Ficha de propiedad — un prospecto', () => {
 
   // ── GENERAL, la pestaña por defecto ─────────────────────────────────────────
 
-  test('the heroes are the projection, and the score rides along', async ({ page }) => {
+  test('the heroes are bruto/neto on both scenarios, badged PROYECTADO', async ({ page }) => {
     await gotoProperty(page, id)
 
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(PROJECTED_ROI)
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText(PROJECTED_ROI)
-    // Score is a percentile against the other candidates, so it moves with them:
-    // this asserts it is computed and shown, not what it happens to be today.
-    await expect(detailRow(page, 'ROI PROY. ANUAL')).toContainText(/Score \d+/)
+    await expect(detailRow(page, 'GANANCIA S/ COMISIONES')).toContainText(GROSS_GAIN_VENTA)
+    await expect(detailRow(page, 'GANANCIA C/ COMISIONES')).toContainText(NET_GAIN_VENTA)
+    await expect(page.getByText('VENTA · PROYECTADO', { exact: true })).toBeVisible()
+    await expect(detailRow(page, 'YIELD S/ COMISIÓN')).toContainText(YIELD_BRUTO_RENTA)
+    await expect(detailRow(page, 'YIELD C/ COMISIÓN')).toContainText(YIELD_NETO_RENTA)
+    await expect(page.getByText('RENTA · PROYECTADA', { exact: true })).toBeVisible()
   })
 
   test('DATOS shows what is known and leaves the post-purchase rows empty', async ({ page }) => {
@@ -120,7 +125,6 @@ test.describe('Ficha de propiedad — un prospecto', () => {
 
     await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText(INVESTMENT)
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('$20,000')
-    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText(CAP_RATE)
     await expect(detailRow(page, 'TIPO DE ACTIVO')).toContainText('Casa')
     await expect(detailRow(page, 'ETAPA')).toContainText('PROSPECTO')
     // Nothing has been bought, so nothing has been held
@@ -146,27 +150,22 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(detailRow(page, 'M² DE CONSTRUCCIÓN')).toBeVisible()
   })
 
-  test('PROYECCIÓN spells out the bet the property is', async ({ page }) => {
+  test('SUPUESTOS captures the bet, and RESULTADO runs it — projected, badged', async ({ page }) => {
     await gotoProperty(page, id)
 
-    // La ganancia se imprime entera: monto y porcentaje son la misma cifra en dos
-    // unidades. Aquí la sube el héroe, así que ahí va completa.
-    await expect(detailRow(page, 'GANANCIA PROYECTADA')).toContainText(`$620,000 ${PROJECTED_ROI}`)
-
-    // Y lo que queda en la sección es lo que el héroe no subió
-    await expect(page.getByText('PROYECCIÓN', { exact: true })).toBeVisible()
+    // The bet itself lives in SUPUESTOS: what the model was told to assume
     await expect(detailRow(page, 'VENTA PROYECTADA')).toContainText('$3,000,000')
-    await expect(detailRow(page, 'RENTA ANUAL ESTIMADA')).toContainText('$240,000')
-    // Un héroe es una promoción, no una copia: cada cifra queda una sola vez.
-    for (const promoted of ['ROI PROY. ANUAL', 'GANANCIA PROYECTADA']) {
-      await expect(page.getByText(promoted, { exact: true })).toHaveCount(1)
-    }
-    // El plazo tampoco está aquí: es un supuesto, y SUPUESTOS lo enseña con su
-    // origen — que es más de lo que decía esta fila.
+    await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('$20,000')
     await expect(detailRow(page, 'PLAZO PROYECTADO (MESES)')).toContainText('12')
-    // Lo realizado no tiene sección propia: sus cifras son las que el héroe
-    // promueve, y las capturadas viven donde se capturan.
-    await expect(page.getByText('RESULTADO', { exact: true })).toHaveCount(0)
+
+    // RESULTADO runs the same shape in every stage — nothing bought yet, so
+    // both scenario columns still read PROYECTADO(A), not REAL
+    await expect(page.getByText('RESULTADO', { exact: true })).toBeVisible()
+    await expect(page.getByText('ESCENARIO VENTA · PROYECTADO', { exact: true })).toBeVisible()
+    await expect(page.getByText('ESCENARIO RENTA · PROYECTADA', { exact: true })).toBeVisible()
+    await expect(detailRow(page, 'PRECIO DE VENTA')).toContainText('$3,000,000')
+    await expect(detailRow(page, 'GANANCIA NETA (c/comisiones)')).toContainText(NET_GAIN_VENTA)
+    await expect(detailRow(page, 'ROI NETO ANUAL')).toContainText(NET_ROI_VENTA)
   })
 
   test('a prospecto has no tab switcher — money comes with the offer', async ({ page }) => {
@@ -206,15 +205,19 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await gotoProperty(page, id)
     await enterEditMode(page)
 
-    // El desglose es el único origen del total: el sistema lo suma, nadie lo teclea
-    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('SUMA DEL DESGLOSE')
+    // El desglose es el único origen del total: el sistema lo suma, nadie lo
+    // teclea. INVERSIÓN SIN COMISIONES vive ahora dentro de RESULTADO como un
+    // StatRow — sin hint, porque StatRow no tiene rama de edición: no hay campo
+    // que ofrecerle a `editing`, así que no hace falta explicar por qué no hay uno.
+    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText(INVESTMENT)
+    await expect(fieldInput(page, 'INVERSIÓN SIN COMISIONES')).toHaveCount(0)
     // Y la fila donde antes se tecleaba tampoco aparece al editar
     await expect(fieldInput(page, 'INVERSIÓN CAPTURADA')).toHaveCount(0)
     await expect(detailRow(page, 'PLAZO REAL')).toContainText('DERIVADO DE FECHAS')
     // The stage has its own door, and the row says which one
     await expect(detailRow(page, 'ETAPA')).toContainText('SE MUEVE CON AVANZAR A')
 
-    for (const label of ['INVERSIÓN SIN COMISIONES', 'CAP RATE PROY. S/ VENTA', 'PLAZO REAL']) {
+    for (const label of ['INVERSIÓN SIN COMISIONES', 'ROI NETO ANUAL', 'PLAZO REAL']) {
       await expect(fieldInput(page, label)).toHaveCount(0)
     }
   })
@@ -305,22 +308,24 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await expect(page.getByText(notes)).toBeVisible()
   })
 
-  test('saving a new RENTA/MES ESTIMADA recomputes the projected CAP RATE', async ({ page }) => {
+  test('saving a new RENTA/MES ESTIMADA recomputes RESULTADO\'s yield', async ({ page }) => {
     await gotoProperty(page, id)
     await enterEditMode(page)
 
-    // 30,000 × 12 / 3,000,000 — the projected sale, not the investment, is the denominator now
+    // 30,000 × 12 over INVESTMENT (bruto) and over INVESTMENT plus the renta
+    // exit commissions (neto)
     await setNumericField(page, 'RENTA/MES ESTIMADA', '30000')
     await saveEdits(page)
 
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('$30,000')
-    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText('12.0%')
+    await expect(detailRow(page, 'YIELD BRUTO (s/comisión)')).toContainText('16.9%')
+    await expect(detailRow(page, 'YIELD NETO (c/comisión)')).toContainText('15.5%')
 
     await page.reload()
-    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText('12.0%')
+    await expect(detailRow(page, 'YIELD BRUTO (s/comisión)')).toContainText('16.9%')
   })
 
-  test('✕ empties the field through clear-fields, and the cap rate goes with it', async ({ page }) => {
+  test('✕ empties the field through clear-fields, and the yield goes with it', async ({ page }) => {
     await gotoProperty(page, id)
     await enterEditMode(page)
 
@@ -331,8 +336,10 @@ test.describe('Ficha de propiedad — un prospecto', () => {
 
     await page.getByRole('button', { name: 'VER', exact: true }).click()
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('—')
-    // No rent, no yield — and an empty rent is not a zero rent
-    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText('—')
+    // No rent captured, and nothing real to fall back on either — an empty
+    // rent is not a zero rent, so both sides of the yield stay blank
+    await expect(detailRow(page, 'YIELD BRUTO (s/comisión)')).toContainText('—')
+    await expect(detailRow(page, 'YIELD NETO (c/comisión)')).toContainText('—')
 
     await page.reload()
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('—')
@@ -341,7 +348,7 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await enterEditMode(page)
     await setNumericField(page, 'RENTA/MES ESTIMADA', '20000')
     await saveEdits(page)
-    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText(CAP_RATE)
+    await expect(detailRow(page, 'YIELD BRUTO (s/comisión)')).toContainText(YIELD_BRUTO_RENTA)
   })
 
   // ── Columna central ─────────────────────────────────────────────────────────
@@ -470,8 +477,12 @@ test.describe('Ficha de propiedad — un prospecto', () => {
     await page.getByText('PRESUPUESTO DE OBRA').click()   // soltar la celda = guardar
 
     // La barra aparece con lo capturado, y la inversión sube exactamente eso:
-    // 2,130,000 + 500,000. Una sola escritura movió las dos columnas.
-    await expect(page.getByText('OBRA A EJECUTAR', { exact: true })).toBeVisible()
+    // 2,130,000 + 500,000. Una sola escritura movió las dos columnas — y
+    // OBRA A EJECUTAR aparece dos veces en RESULTADO a propósito, una por
+    // columna de escenario (ESCENARIO VENTA, ESCENARIO RENTA): mismo costo
+    // base, cada columna autosuficiente.
+    await expect(page.getByText('OBRA A EJECUTAR', { exact: true })).toHaveCount(2)
+    await expect(page.getByText('OBRA A EJECUTAR', { exact: true }).first()).toBeVisible()
     await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('$2,630,000')
   })
 
@@ -537,6 +548,16 @@ test.describe('Ficha de propiedad — una en renta', () => {
   test('the heroes turn to what the property is returning', async ({ page }) => {
     await gotoProperty(page, id)
 
+    // RESULTADO's two scenario columns read the sale/rent it was bought on,
+    // still PROYECTADO(A) for venta (no salePrice yet) but REAL for renta (a
+    // real rentMonthlyActual exists) — the badge follows the data, not the stage
+    await expect(detailRow(page, 'GANANCIA S/ COMISIONES')).toContainText('$4,000,000 +80.0%')
+    await expect(detailRow(page, 'GANANCIA C/ COMISIONES')).toContainText('$3,300,000 +57.9%')
+    await expect(page.getByText('VENTA · PROYECTADO', { exact: true })).toBeVisible()
+    await expect(detailRow(page, 'YIELD S/ COMISIÓN')).toContainText('12.0%')
+    await expect(detailRow(page, 'YIELD C/ COMISIÓN')).toContainText('11.1%')
+    await expect(page.getByText('RENTA · REAL', { exact: true })).toBeVisible()
+
     // 8,000,000 marked against a 5,000,000 base. El monto y su porcentaje son la
     // misma cifra en dos unidades y se imprimen juntos: separarlos dejaba media
     // pareja arriba y media veinte filas abajo, las dos con el mismo nombre.
@@ -545,9 +566,10 @@ test.describe('Ficha de propiedad — una en renta', () => {
     // VALUACIÓN (2025-06): diecisiete meses, y ahí se queda. Antes el numerador
     // era de junio y el denominador llegaba a hoy, así que la cifra bajaba sola
     // cada mes sin que nadie tocara un dato — por eso este valor no se podía
-    // afirmar. Ahora sí, y la ficha además dice hasta cuándo cuenta.
-    await expect(detailRow(page, 'ROI ANUAL')).toContainText('+39.3%')
-    await expect(detailRow(page, 'ROI ANUAL')).toContainText('AL JUN 2025')
+    // afirmar. StatRow ya no lleva hint, así que hasta cuándo cuenta ya no se
+    // lee en la fila — solo en FECHA DE VALUACIÓN, aparte.
+    await expect(detailRow(page, 'ROI (MARCA) ANUAL')).toContainText('+39.3%')
+    await expect(detailRow(page, 'FECHA DE VALUACIÓN')).toContainText('jun 2025')
   })
 
   test('the score is gone — a bought property competes with nobody', async ({ page }) => {
@@ -562,7 +584,6 @@ test.describe('Ficha de propiedad — una en renta', () => {
     // 5,000,000 × (1 + 0) — un total all-in vive en el desglose como cualquier
     // otro, y llega a la ficha por el mismo camino que una compra desglosada.
     await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('$5,000,000')
-    await expect(detailRow(page, 'INVERSIÓN SIN COMISIONES')).toContainText('SUMA DEL DESGLOSE')
     await expect(detailRow(page, 'UNIDADES')).toContainText('4')
     await expect(detailRow(page, 'ETAPA')).toContainText('EN RENTA')
     // El 0% está capturado, no supuesto: es la mitad del idioma, y sin ella el
@@ -599,10 +620,12 @@ test.describe('Ficha de propiedad — una en renta', () => {
     // 50,000 × 12 / 8,000,000 — the yield against the current valuation, not
     // the 9,000,000 projected sale: what it's actually worth today
     await expect(detailRow(page, 'CAP RATE')).toContainText('7.5%')
-    // Nothing was ever modelled, so the projected pair has nothing to report —
-    // and says so rather than borrowing the collected rent
+    // Nothing was ever modelled for RENTA/MES ESTIMADA, so that row stays
+    // empty. RESULTADO's YIELD BRUTO/NETO don't have an "unmodelled" reading
+    // to fall back on here — resolve_rent() reads real-before-projected, so
+    // once a real rent exists (as it does from EN RENTA on) they report off
+    // it regardless of what SUPUESTOS never captured.
     await expect(detailRow(page, 'RENTA/MES ESTIMADA')).toContainText('—')
-    await expect(detailRow(page, 'CAP RATE PROY. S/ VENTA')).toContainText('—')
   })
 
   test('the dates of the purchase are on the record', async ({ page }) => {
@@ -615,12 +638,8 @@ test.describe('Ficha de propiedad — una en renta', () => {
   test('the projection it was bought on is still readable', async ({ page }) => {
     await gotoProperty(page, id)
 
-    await expect(page.getByText('PROYECCIÓN', { exact: true })).toBeVisible()
+    // PROYECCIÓN as its own section is gone; SUPUESTOS carries the bet now
     await expect(detailRow(page, 'VENTA PROYECTADA')).toContainText('$9,000,000')
-    // El plazo lo dice SUPUESTOS con su origen, que es más de lo que decía la
-    // fila de PROYECCIÓN. Repetido, era además lo único que esa sección siempre
-    // tenía, así que una propiedad que nunca se modeló no podía dejar de
-    // anunciar una proyección vacía.
     await expect(detailRow(page, 'PLAZO PROYECTADO (MESES)')).toContainText('24')
     await expect(page.getByText('PLAZO PROYECTADO', { exact: true })).toHaveCount(0)
   })
