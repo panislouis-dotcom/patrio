@@ -851,17 +851,6 @@ export function usePlanBudget(propertyId: number, planId: string): Promise<Budge
 }
 
 /**
- * La operación que SÍ mueve cuánto va a costar la obra, moviendo el residuo.
- * Existe aparte de detallar precisamente para que las dos se distingan:
- * detallar reparte un total que no cambia, esto cambia el total sin tocar una
- * sola partida. Mezclarlas volvería imposible contestar si el presupuesto
- * creció o solo se abrió.
- */
-export function setBudgetTotal(propertyId: number, amount: number, planId?: string): Promise<BudgetWrite> {
-  return budgetWrite(budgetUrl(propertyId, '/total', planId), 'PUT', { amount })
-}
-
-/**
  * Renombrar y borrar un capítulo son las dos únicas operaciones que tocan
  * varios renglones a la vez; hacerlas renglón por renglón dejaría el
  * presupuesto a medio renombrar si algo falla en medio.
@@ -893,8 +882,19 @@ export function deleteBudgetPayment(
 /**
  * Arrancar desde el presupuesto de otra obra.
  *
- * Los renglones se SUMAN a lo que ya hubiera y el residuo baja lo que ellos
- * suben: el total no se mueve, igual que al detallar a mano.
+ * **El total SE MUEVE, y moverse es la entrega** — igual que al detallar a
+ * mano. No hay ningún renglón que absorba lo que entra.
+ *
+ * Y hay DOS ramas, según qué haya en el destino:
+ *
+ * - Normalmente los renglones se SUMAN a lo que ya hubiera, y el total sube su
+ *   importe exacto.
+ * - Si el destino no tiene más que el estimado que sembró la calculadora —nada
+ *   tecleado, nada ejecutado— y se copia el presupuesto ENTERO, lo copiado
+ *   REEMPLAZA ese estimado: se borra antes de copiar. Es el movimiento que la
+ *   operación existe para hacer —la cifra paramétrica se vuelve el desglose que
+ *   la sustenta— y sumarlos contaría dos veces la misma obra. Ojo: lo borrado
+ *   NO se reporta en `linesAdded` ni en `linesSkipped`.
  *
  * **`propertyId` es SIEMPRE el DESTINO.** Por eso las dos direcciones son esta
  * misma función: «arranco desde X» la llama con la obra que se está viendo, y
@@ -947,14 +947,15 @@ export function applyBudgetSource(
  * alfabéticamente por el servidor, así que el selector los pinta tal cual.
  *
  * Dos comportamientos que no se deducen de la forma y que la pantalla tiene que
- * respetar: `lineCount` cuenta lo COPIABLE (el residuo nunca viaja, así que el
- * número se puede prometer), y **los presupuestos sin nada copiable no
+ * respetar: `lineCount` es exactamente cuántos renglones van a aparecer —hoy
+ * viajan todos, el estimado inicial incluido—, y **los presupuestos sin nada
+ * copiable no
  * aparecen** — que una obra no esté en la lista no es un defecto, es que no
  * tiene nada que dar.
  *
- * `excludePropertyId` saca a la obra que pregunta. `apply` ya rechaza copiarse
- * sobre sí mismo con un 422, y ofrecer una opción que solo puede dar error es
- * hacer que alguien descubra la regla chocando con ella.
+ * `excludeBudgetId` saca al presupuesto que pregunta. `apply` ya rechaza
+ * copiarse sobre sí mismo con un 422, y ofrecer una opción que solo puede dar
+ * error es hacer que alguien descubra la regla chocando con ella.
  */
 export async function fetchBudgetSources(
   excludeBudgetId?: number, includeEmpty = false,

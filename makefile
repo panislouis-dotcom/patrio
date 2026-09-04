@@ -8,6 +8,9 @@ TEST_DB_URL_COMPOSE ?= $(shell grep '^TEST_DATABASE_URL=' .env | cut -d= -f2- | 
 PSQL               = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(PG_DB) --set=ON_ERROR_STOP=on
 PSQL_TEST          = docker exec -i $(PG_CTR) psql -U $(PG_USER) -d $(TEST_PG_DB) --set=ON_ERROR_STOP=on
 
+dev-env: ## Deja el .env de este worktree listo (credenciales de ~/.config/patrio/dev.env)
+	@python3 scripts/dev_env.py
+
 install-dev: ## Install development tools — run once after cloning (Mac)
 	@command -v dbmate >/dev/null 2>&1 && echo "dbmate already installed" || brew install dbmate
 

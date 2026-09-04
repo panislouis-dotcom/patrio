@@ -190,7 +190,8 @@ def test_delete_blocked_by_captured_budget_work_is_422_with_the_reason(client, t
     r = client.delete(f"/api/properties/{pid}")
     assert r.status_code == 422
     assert r.json()["error"]["message"] == (
-        "No se puede eliminar la propiedad porque tiene un presupuesto de obra.")
+        "No se puede eliminar la propiedad porque tiene renglones capturados en "
+        "su presupuesto de obra.")
     assert client.get(f"/api/properties/{pid}").status_code == 200
 
 
@@ -203,6 +204,105 @@ def test_a_seeded_budget_does_not_block_the_delete(client, test_property):
     assert client.get(f"/api/properties/{pid}/budget").json()["lines"]
     assert client.delete(f"/api/properties/{pid}").status_code == 204
     assert client.get(f"/api/properties/{pid}").status_code == 404
+
+
+def test_a_budget_born_empty_on_read_does_not_block_the_delete(client, test_property):
+    """`_require_budget` fabrica el presupuesto AL LEERLO, y el que fabrica nace
+    VACÍO —sin renglón sembrado—. Es el único camino por el que existe un
+    presupuesto sin nada dentro, y tiene que seguir sin retener: cero renglones
+    es cero trabajo capturado, no un dato faltante."""
+    pid = test_property["id"]
+    with get_db() as conn:
+        conn.execute("DELETE FROM budgets WHERE property_id = %s", (pid,))
+    assert client.get(f"/api/properties/{pid}/budget").json()["lines"] == []
+    assert client.get(f"/api/properties/{pid}").json()["constructionBudgeted"] == 0
+
+    assert client.delete(f"/api/properties/{pid}").status_code == 204
+    assert client.get(f"/api/properties/{pid}").status_code == 404
+
+
+def test_a_line_you_typed_yourself_holds_the_property_back_from_the_first_one(
+        client, test_property):
+    """UN RENGLÓN TECLEADO RETIENE, sin necesidad de ejecución encima.
+
+    «¿Trabajó alguien aquí?» no se contesta por el nombre del renglón —el del
+    estimado lleva dentro los m² y el $/m², así que corregir la ficha lo
+    cambiaría— ni por la hora en que se escribió, sino por un hecho REGISTRADO:
+    `budget_lines.seeded`. Lo pone en TRUE quien siembra; lo tecleado nace
+    `FALSE` por default de la columna, sin que nadie tenga que acordarse.
+
+    Aquí se borra el estimado y se teclea uno propio sin proveedor, sin
+    comprometido, sin cantidad real, sin cierre y sin pagos: el caso que antes
+    se perdía en silencio. Hoy retiene."""
+    pid = test_property["id"]
+    estimado = client.get(f"/api/properties/{pid}/budget").json()["lines"][0]["id"]
+    assert client.delete(
+        f"/api/properties/{pid}/budget/lines/{estimado}").status_code == 200
+    r = client.post(f"/api/properties/{pid}/budget/lines", json={
+        "chapterName": "Clósets", "name": "Clósets cotizados", "unit": "lote",
+        "quantity": 1, "unitPrice": 950_000})
+    assert r.status_code == 201, r.text
+
+    r = client.delete(f"/api/properties/{pid}")
+    assert r.status_code == 422, r.text
+    assert client.get(f"/api/properties/{pid}").status_code == 200
+
+
+def _seed_plan(client, property_id: int, plan_id: str) -> None:
+    """Un plan vive en el geometry, y es de ahí de donde `_plan_exists` lo lee.
+    Mismo camino que el cliente real: leer la revisión vigente y declararla."""
+    fs = {"slab_m": 0.15, "activeFloor": 0,
+          "floors": [{"id": "floor-1", "name": "Planta Baja", "height_m": 2.6,
+                      "extWall_m": 0.15, "intWall_m": 0.10,
+                      "vertices": {}, "edges": {}, "rooms": []}]}
+    revision = client.get(f"/api/properties/{property_id}/geometry").json()["revision"]
+    r = client.put(f"/api/properties/{property_id}/geometry", json={
+        "geometry": {"schemaVersion": 4,
+                     "variants": {"original": fs,
+                                  "plans": [{"id": plan_id, "name": "Plan A", "fs": fs}]}},
+        "expectedRevision": revision})
+    assert r.status_code == 200, r.text
+
+
+def test_a_plan_scenario_seeded_by_copy_does_not_block_the_delete(
+        client, test_property):
+    """La pregunta es POR PRESUPUESTO, no por propiedad, y aquí se ve por qué.
+
+    «El sistema siembra a lo más un renglón» es invariante de CADA presupuesto.
+    Contando todos los de la propiedad juntos, una obra recién capturada con un
+    escenario de plan copiado daba dos renglones —el suyo y el del escenario— y
+    quedaba retenida para siempre sin que nadie hubiera capturado nada, con la
+    única salida de borrar los renglones del escenario a mano: no hay ruta que
+    borre un presupuesto-escenario."""
+    pid = test_property["id"]
+    _seed_plan(client, pid, "plan-a")
+    r = client.post(f"/api/properties/{pid}/budget/plans/plan-a")
+    assert r.status_code == 201, r.text
+    assert len(client.get(f"/api/properties/{pid}/budget?planId=plan-a")
+               .json()["lines"]) == 1
+
+    assert client.delete(f"/api/properties/{pid}").status_code == 204
+    assert client.get(f"/api/properties/{pid}").status_code == 404
+
+
+def test_a_plan_scenario_carrying_real_work_still_holds_the_property_back(
+        client, test_property):
+    """Y el escenario que SÍ trae trabajo retiene igual que el presupuesto de la
+    obra: el borrado se lleva todos los presupuestos de la propiedad, así que
+    basta con que UNO tenga algo que perder. El renglón vive solo en el
+    escenario —el presupuesto de la obra sigue con su estimado sembrado—."""
+    pid = test_property["id"]
+    _seed_plan(client, pid, "plan-a")
+    assert client.post(
+        f"/api/properties/{pid}/budget/plans/plan-a").status_code == 201
+    r = client.post(f"/api/properties/{pid}/budget/lines?planId=plan-a", json={
+        "chapterName": "Acabados", "name": "Mármol del escenario", "unit": "lote",
+        "quantity": 1, "unitPrice": 500_000})
+    assert r.status_code == 201, r.text
+
+    r = client.delete(f"/api/properties/{pid}")
+    assert r.status_code == 422, r.text
+    assert "renglones capturados" in r.json()["error"]["message"]
 
 
 def test_quality_reports_issues_per_property(client, test_property):

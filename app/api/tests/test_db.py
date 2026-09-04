@@ -33,7 +33,7 @@ def test_status_is_writable_through_neither_door():
 def test_flat_exit_commission_fields_are_no_longer_writable_or_clearable():
     """La comisión de salida plana (exitSaleCommissionPct/exitRentMonths)
     quedó reemplazada por la escalera de tramos en `property_fee_tiers`
-    (`replace_fee_tiers`, migración 053) — su propio sub-recurso, fuera del
+    (`replace_fee_tiers`, migración 055) — su propio sub-recurso, fuera del
     PATCH batched. Las columnas siguen en `properties` (retiro diferido) pero
     ningún cliente puede volver a escribirlas ni vaciarlas por aquí."""
     assert "exitSaleCommissionPct" not in WRITABLE_FIELDS

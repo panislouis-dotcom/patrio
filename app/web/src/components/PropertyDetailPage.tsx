@@ -137,10 +137,6 @@ export function PropertyDetailPage() {
 
   const [property, setProperty] = useState<Property | null>(null)
   const { edits, field, setField, hasEdits, clear } = useEdits<RawPropertyFields>(property)
-  // No vive en `edits`: no es una columna, es el insumo de la misma
-  // CALCULADORA que siembra el presupuesto al nacer — nunca hay un valor
-  // guardado que prellenar aquí, solo uno que, al guardarse, la vuelve a correr.
-  const [costPerSqm, setCostPerSqm] = useState<number | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -347,17 +343,13 @@ export function PropertyDetailPage() {
   }
 
   async function save() {
-    if (!property || (!hasEdits && costPerSqm == null && !planEditorRef.current?.api.isDirty())) return
+    if (!property || (!hasEdits && !planEditorRef.current?.api.isDirty())) return
     setSaving(true)
     setSaveError(null)
     try {
-      if (hasEdits || costPerSqm != null) {
-        setProperty(await updateProperty(propertyId, {
-          ...edits,
-          ...(costPerSqm != null ? { constructionCostPerSqm: costPerSqm } : {}),
-        }))
+      if (hasEdits) {
+        setProperty(await updateProperty(propertyId, edits))
         clear()
-        setCostPerSqm(undefined)
       }
       const planEditor = planEditorRef.current
       if (planEditor?.api.isDirty()) {
@@ -615,10 +607,10 @@ export function PropertyDetailPage() {
         statusColor={PROPERTY_STATUS_COLOR[stage]}
         editing={editing}
         onToggleEdit={() => setEditing(v => !v)}
-        hasChanges={hasEdits || costPerSqm != null || planDirty}
+        hasChanges={hasEdits || planDirty}
         saving={saving}
         onSave={save}
-        onCancel={() => { clear(); setCostPerSqm(undefined); setEditing(false) }}
+        onCancel={() => { clear(); setEditing(false) }}
         onDelete={handleDelete}
         onDeleteError={setSaveError}
         actions={
@@ -879,40 +871,29 @@ export function PropertyDetailPage() {
               <SectionDivider label="DESGLOSE DE INVERSIÓN" />
               {numRow('PRECIO DE COMPRA', 'purchasePrice', fmtMXN, { clearable: 'purchasePrice' })}
               {numRow('M² DE TERRENO', 'sqmLand', fmtNum, { clearable: 'sqmLand' })}
-              {/* El metraje se queda: es FÍSICO, y lo leen el analizador de
-                  mercado y el PDF, a los que no les importa lo que cueste la
-                  obra. */}
+              {/* Metraje FÍSICO, y nada más: lo leen el analizador de mercado y
+                  el PDF, a los que no les importa lo que cueste la obra.
+                  Escribirlo NO reprecia el presupuesto — hasta el 2026-08-30
+                  corregir 200 por 220 m² inflaba la obra entera un 10%, trece
+                  capítulos cotizados con proveedor incluidos, y nada en esta
+                  pantalla lo decía. */}
               {numRow('M² DE CONSTRUCCIÓN', 'sqmConstruction', fmtNum, { clearable: 'sqmConstruction' })}
-              {/* No es un insumo guardado —«OBRA/m²» en lectura sigue siendo
-                  presupuesto ÷ metraje, nunca esta caja— es la CALCULADORA
-                  que siembra el presupuesto al nacer, disponible de nuevo
-                  aquí mientras nadie haya detallado una partida real: el
-                  servidor rechaza el intento si ya hay más detallado que lo
-                  que esta cuenta produciría.
+              {/* UN CAMPO COMO CUALQUIER OTRO. Es el supuesto que tú capturas
+                  —«a cuánto creo que sale el m² de obra»—, su propia columna, y
+                  escribirlo no toca un renglón del presupuesto: la calculadora
+                  que lo multiplica corre UNA vez, al dar de alta la propiedad, y
+                  desde ahí el presupuesto es la suma de sus renglones.
 
-                  SIN overhead, a propósito y a diferencia del alta: aquí
-                  no se está proponiendo un estimado grueso para calificar
-                  después, se está editando un presupuesto real, y un
-                  multiplicador oculto dejaría el número tecleado sin
-                  relación directa con el número que se enseña — que fue
-                  justo la confusión que esto causó la primera vez.
+                  El otro `$/m²` —presupuesto ÷ metraje— se enseña rotulado en el
+                  pie de PRESUPUESTO, junto a éste. Son dos cifras de dos
+                  preguntas distintas y por eso están en dos lugares con dos
+                  nombres, en vez de una sola que a veces cambiaba sola.
 
-                  Prellenada con el cociente derivado: sin overhead que se
-                  aplique dos veces, guardar sin tocarla reproduce el mismo
-                  total, así que no hay razón para abrirla vacía. */}
-              <EditableRow
-                label="COSTO OBRA/m²"
-                editing={editing}
-                value={fmtMXN(p.constructionCostPerSqm)}
-                input={
-                  <NumericInput
-                    value={costPerSqm ?? p.constructionCostPerSqm ?? undefined}
-                    onChange={setCostPerSqm}
-                    ariaLabel="COSTO OBRA/m²"
-                    style={fieldInput}
-                  />
-                }
-              />
+                  No es vaciable: no tiene default al que volver, así que un ✕
+                  aquí solo dejaría la ficha en blanco. Se corrige tecleando. */}
+              {numRow('COSTO OBRA/m²', 'constructionCostPerSqm', fmtMXN, {
+                hint: 'TU ESTIMADO · NO MUEVE EL PRESUPUESTO',
+              })}
               {numRow('PERMISOS', 'permitsCost', fmtMXN, { clearable: 'permitsCost' })}
               {numRow('SUBDIVISIÓN', 'subdivisionCost', fmtMXN, { clearable: 'subdivisionCost' })}
               {/* El avance de obra EN DINERO. Son cifras NUEVAS, no otra versión
@@ -935,7 +916,7 @@ export function PropertyDetailPage() {
                   ADQ. / PLAZO PROYECTADO / VENTA PROYECTADA nadie las encontraba.
                   TERRENO y OBRA siguen siendo un % plano (editable, mismo badge
                   CAPTURADO/SUPUESTO POR OMISIÓN de siempre) seguido de su monto en
-                  pesos. VENTA y RENTA ya no son un % plano (migración 053, Tarea 6):
+                  pesos. VENTA y RENTA ya no son un % plano (migración 055, Tarea 6):
                   cada una es una escalera de tramos (`FeeTierEditor`) seguida del
                   mismo monto en pesos de siempre — que el backend ya calculaba y la
                   ficha nunca pintaba antes de esta sección.

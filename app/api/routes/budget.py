@@ -14,10 +14,11 @@ inversión total, la ganancia proyectada, el ROI y el cap rate. Sin eso el
 cliente tendría que saber qué cifras dependen del presupuesto —o volver a pedir
 la propiedad— y esa es plomería que se puede no escribir.
 
-`budget` viaja junto a `line` porque casi toda escritura mueve DOS renglones: el
-que se tocó y el residual que lo absorbe. Devolver solo el primero le daría al
-cliente la mitad cierta de un presupuesto cuadrado, y la mitad que falta es
-justamente la que explica por qué el total no se movió.
+`budget` viaja junto a `line` porque el total es la suma de los renglones y una
+escritura acaba de moverla: devolver solo el renglón tocado dejaría al cliente
+recalculando por su cuenta un total que el servidor ya sabe. Antes viajaba por
+la razón contraria —toda escritura movía DOS renglones, el que se tocó y el
+residual que lo absorbía— y esa segunda mitad ya no existe.
 """
 from decimal import Decimal
 from typing import Optional
@@ -101,10 +102,6 @@ class PaymentCreate(BaseModel):
     notes: str = ""
 
 
-class TotalUpdate(BaseModel):
-    amount: float
-
-
 class ChapterRename(BaseModel):
     name: str
 
@@ -125,18 +122,19 @@ class BudgetApply(BaseModel):
     `proportional` pide la copia DIMENSIONADA: los importes del origen se ajustan
     al costo de obra que esta propiedad YA tiene —el total de su presupuesto—, en
     vez de entrar tal cual. Es lo único que el cuerpo dice del modo: EL COSTO
-    OBJETIVO NO SE RECIBE, se lee. Toda propiedad lo trae ya capturado (la ficha
-    lo siembra como `m² × $/m²`), así que pedirlo aquí otra vez sería capturar por
-    segunda vez un número que ya existe, y la única novedad posible sería que las
-    dos capturas discreparan.
+    OBJETIVO NO SE RECIBE, se lee. Ese total ya existe —la calculadora lo sembró
+    como un renglón al dar de alta la obra, o alguien capturó renglones—, así que
+    pedirlo aquí otra vez sería capturar por segunda vez un número que ya está, y
+    la única novedad posible sería que las dos capturas discreparan.
 
     Que el modo sea un campo propio y no «vino un costo, luego es proporcional»
     es lo que evita elegirlo por omisión: un popup incompleto caería a copia
     directa en silencio, con el resultado equivocado y sin nada que se vea roto.
 
-    EL COSTO OBJETIVO TAMPOCO SE MUEVE. El total del presupuesto sigue siendo la
-    suma de sus renglones; lo que la copia proporcional hace es entrar los
-    renglones al tamaño que hace que esa suma siga dando el mismo total."""
+    EL OBJETIVO DIMENSIONA LO COPIADO, no congela el total: los renglones entran
+    al tamaño que hace que ELLOS sumen ese objetivo, y se suman a los que ya
+    estaban. El total del presupuesto es la suma de sus renglones, aquí como en
+    todas partes."""
     budgetId: int
     chapters: Optional[list[str]] = None
     proportional: bool = False
@@ -144,29 +142,40 @@ class BudgetApply(BaseModel):
 
 # ─── La respuesta ─────────────────────────────────────────────────────────────
 
-def _written(property_id: int, budget: dict, line: dict | None,
-             budget_increase: Decimal) -> dict:
+def _written(property_id: int, budget: dict, line: dict | None = None) -> dict:
     """La respuesta de toda escritura, armada en un solo lugar.
 
-    `budgetIncrease` es 0 en el caso normal y solo deja de serlo cuando el
-    detalle rebasó el total: ahí el residual llega a 0 y el presupuesto SÍ
-    crece. Eso es aumentar el presupuesto, no detallarlo, y se reporta en vez de
-    dejarlo pasar en silencio — quien confunde las dos operaciones deja de poder
-    contestar si el alcance creció o solo se abrió."""
+    `budgetIncrease` está DEPRECADO y SE QUEDÓ EN CERO, siempre. Lo retira
+    **PR 2 · Contract**, el mismo que hace el `DROP COLUMN is_residual`, y por
+    la misma razón: el cable necesita la misma disciplina expand/contract que la
+    columna. El SPA y el API viajan en UNA imagen —no hay despliegue de frontend
+    por separado— pero quien tenga la página abierta durante el rollout está
+    corriendo el JS viejo contra el API nuevo, y ESA sesión en vuelo es toda la
+    superficie de compatibilidad que hay. Quitarlo hoy la rompería.
+
+    Decía cuánto había REBASADO el detalle al residual —la única forma en que el
+    total podía moverse cuando detallar no lo movía— y esa condición ya no puede
+    ocurrir: hoy toda escritura mueve el total exactamente su propio importe.
+    Reportar el delta de verdad dispararía el toast «El detalle rebasó el
+    estimado» del BudgetPanel VIEJO —el de la sesión en vuelo durante el
+    rollout— en CADA renglón que se agregue, con un texto que ya no significa
+    nada. En HEAD ese aviso ya no existe —murió con el residuo que lo hacía
+    posible: `grep «el detalle rebasó el estimado»` cae en `BudgetPanel.tsx`, y
+    su ausencia está fijada en `BudgetPanel.test.tsx`—, y por eso mismo el cero
+    no se puede quitar
+    todavía: el único lector que aún reacciona al delta es el JS que ya no
+    volveríamos a escribir. Cero es la respuesta correcta, y el `budget` y la
+    `property` que viajan aquí al lado dicen el total con la cifra en la mano."""
     return {
         "line": line,
         "budget": budget,
         "property": properties.get_property(property_id),
-        "budgetIncrease": budget_increase,
+        "budgetIncrease": Decimal(0),
     }
 
 
 def _line_of(budget: dict, line_id: int) -> dict | None:
     return next((line for line in budget["lines"] if line["id"] == line_id), None)
-
-
-def _residual_of(budget: dict) -> dict | None:
-    return next((line for line in budget["lines"] if line["isResidual"]), None)
 
 
 # ─── Lectura ──────────────────────────────────────────────────────────────────
@@ -186,17 +195,17 @@ def read_budget(property_id: int, planId: str | None = None,
              operation_id="budget_line_create")
 def create_line(property_id: int, body: LineCreate, planId: str | None = None,
                 _: dict = Depends(get_current_user)):
-    """Detallar: la partida sube lo mismo que el residual baja, así que el costo
-    de obra —y con él la inversión total— no se mueve un peso."""
+    """Detallar: el costo de obra —y con él la inversión total— sube exactamente
+    el importe de la partida. El presupuesto es la suma de sus renglones."""
     with get_db() as conn:
         # `exclude_none` aquí y `exclude_unset` en el PATCH, y la diferencia es
         # deliberada: al CREAR, «no vino» y «vino en null» dan la misma fila —la
         # columna nace NULL de todos modos— así que no hay nada que distinguir.
         # Al ACTUALIZAR sí lo hay, y ahí el null es la única forma de vaciar.
-        line_id, increase = budget_db.create_line(
+        line_id = budget_db.create_line(
             conn, property_id, body.model_dump(exclude_none=True), plan_id=planId)
         budget = budget_db.get_budget(conn, property_id, planId)
-    return _written(property_id, budget, _line_of(budget, line_id), increase)
+    return _written(property_id, budget, _line_of(budget, line_id))
 
 
 @router.patch("/api/properties/{property_id}/budget/lines/{line_id}",
@@ -204,24 +213,24 @@ def create_line(property_id: int, body: LineCreate, planId: str | None = None,
 def update_line(property_id: int, line_id: int, body: LineUpdate,
                 planId: str | None = None, _: dict = Depends(get_current_user)):
     with get_db() as conn:
-        increase = budget_db.update_line(
+        budget_db.update_line(
             conn, property_id, line_id, body.model_dump(exclude_unset=True), plan_id=planId)
         budget = budget_db.get_budget(conn, property_id, planId)
-    return _written(property_id, budget, _line_of(budget, line_id), increase)
+    return _written(property_id, budget, _line_of(budget, line_id))
 
 
 @router.delete("/api/properties/{property_id}/budget/lines/{line_id}",
                operation_id="budget_line_delete")
 def delete_line(property_id: int, line_id: int, planId: str | None = None,
                 _: dict = Depends(get_current_user)):
-    """Dejar de detallar es lo contrario de detallar: el importe vuelve al
-    residual y el total tampoco se mueve."""
+    """Dejar de detallar es lo contrario de detallar: el total baja exactamente
+    el importe que el renglón traía."""
     with get_db() as conn:
         line = budget_db.delete_line(conn, property_id, line_id, plan_id=planId)
         budget = budget_db.get_budget(conn, property_id, planId)
     # El renglón viaja tal como estaba: un borrado también es una escritura, y el
     # cliente tiene que poder decir qué fila quitar de la tabla.
-    return _written(property_id, budget, line, Decimal(0))
+    return _written(property_id, budget, line)
 
 
 # ─── Arrancar desde algo que ya existe ────────────────────────────────────────
@@ -232,10 +241,13 @@ def delete_line(property_id: int, line_id: int, planId: str | None = None,
 # editar el origen mañana no mueve un peso de lo que hoy se copió, porque aquí
 # el objeto es dinero y tiene lectores fuera de la app.
 #
-# No mueve el total: los renglones copiados salen del residuo, igual que al
-# detallar a mano. `budgetIncrease` solo deja de ser 0 si lo copiado rebasa lo
-# que la obra tenía presupuestado, que ya no es detallar sino aumentar el
-# presupuesto, y por eso se reporta.
+# LOS RENGLONES COPIADOS SE SUMAN A LOS QUE YA HABÍA, y el total sube con ellos
+# —es la suma de sus renglones y acaban de llegar renglones—, CON UNA EXCEPCIÓN:
+# si lo único que hay en el destino es el estimado que sembró la calculadora al
+# nacer la propiedad (`budget_lines.seeded`, sin nada de ejecución encima) y se
+# copia el presupuesto entero, ese renglón se REEMPLAZA. El desglose no se agrega
+# al estimado, ES el estimado dicho por partidas, y sumarlos contaría dos veces la
+# misma obra. La regla vive en `budget_db.apply_budget`, que la explica entera.
 
 @router.post("/api/properties/{property_id}/budget/apply", status_code=201,
              operation_id="budget_apply")
@@ -265,11 +277,11 @@ def apply_budget(property_id: int, body: BudgetApply, planId: str | None = None,
     LA DEDUP NO CAMBIA EN NINGUNO DE LOS DOS MODOS. Un renglón que ya está aquí
     se salta —no se escala, no se actualiza— por la misma razón de siempre."""
     with get_db() as conn:
-        copied, skipped, increase = budget_db.apply_budget(
+        copied, skipped = budget_db.apply_budget(
             conn, property_id, body.budgetId, body.chapters,
             proportional=body.proportional, plan_id=planId)
         budget = budget_db.get_budget(conn, property_id, planId)
-    return {**_written(property_id, budget, None, increase),
+    return {**_written(property_id, budget),
             "linesAdded": copied, "linesSkipped": skipped}
 
 
@@ -287,32 +299,29 @@ def list_sources(excludeBudgetId: Optional[int] = None,
     """Los presupuestos entre los que se puede copiar — el de cada obra y los
     escenarios de plan, etiquetados con su plan.
 
-    `lineCount` es lo que de verdad se va a copiar —el residuo queda fuera— y
-    sin `includeEmpty` los presupuestos sin nada copiable no aparecen: uno del
-    que no sale nada no es una respuesta a «de dónde puedo copiar» (como
-    DESTINO de empuje sí lo es, y para eso existe la bandera). El `id` va
-    directo a `POST .../budget/apply`."""
+    `lineCount` es lo que de verdad se va a copiar —todos sus renglones; ya no
+    hay ninguno que quede fuera— y sin `includeEmpty` los presupuestos sin nada
+    copiable no aparecen: uno del que no sale nada no es una respuesta a «de
+    dónde puedo copiar» (como DESTINO de empuje sí lo es, y para eso existe la
+    bandera). El `id` va directo a `POST .../budget/apply`.
+
+    `replaceable` dice si un `apply` con `proportional` sobre ESE presupuesto
+    sería aceptado en lo que a su contenido respecta —no tiene más que el
+    estimado que le sembró el sistema, o está vacío—. No habla de la otra mitad
+    de la regla, que es de alcance: la proporcional también exige copiar el
+    presupuesto entero, y eso lo sabe el cliente, que es quien elige capítulos.
+    Va aquí porque el contenido de un destino de empuje —otra propiedad— no está
+    en la pantalla, y sin el campo se ofrece una acción que el servidor rechaza
+    entera después de haber enseñado un factor en verde."""
     with get_db() as conn:
         return budget_db.list_sources(conn, exclude_budget_id=excludeBudgetId,
                                       include_empty=includeEmpty)
 
 
-# ─── El total ─────────────────────────────────────────────────────────────────
-
-@router.put("/api/properties/{property_id}/budget/total", operation_id="budget_set_total")
-def set_total(property_id: int, body: TotalUpdate, planId: str | None = None,
-              _: dict = Depends(get_current_user)):
-    """Ajusta cuánto va a costar la obra, moviendo el residual.
-
-    Es la operación que SÍ mueve el total, y existe aparte de detallar
-    justamente para que las dos se distingan. Aquí es también donde aterriza la
-    calculadora `m² × $/m² × overhead` cuando alguien la vuelve a correr después
-    de la captura: produce un número, y el número entra por esta puerta —no por
-    un campo que se quede guardado compitiendo con el presupuesto."""
-    with get_db() as conn:
-        budget_db.set_total(conn, property_id, body.amount, plan_id=planId)
-        budget = budget_db.get_budget(conn, property_id, planId)
-    return _written(property_id, budget, _residual_of(budget), Decimal(0))
+# NO HAY RUTA PARA «EL TOTAL». `PUT .../budget/total` movía el residual hasta
+# dejar el presupuesto en la cifra que le mandaran, y era la puerta por la que la
+# ficha repreciaba obra cotizada a mano. El total es la suma de los renglones: se
+# mueve moviendo renglones, con las rutas que ya están arriba.
 
 
 # ─── Capítulos ────────────────────────────────────────────────────────────────
@@ -330,7 +339,7 @@ def rename_chapter(property_id: int, chapter: str, body: ChapterRename,
     with get_db() as conn:
         budget_db.rename_chapter(conn, property_id, chapter, body.name, plan_id=planId)
         budget = budget_db.get_budget(conn, property_id, planId)
-    return _written(property_id, budget, None, Decimal(0))
+    return _written(property_id, budget)
 
 
 @router.delete("/api/properties/{property_id}/budget/chapters/{chapter}",
@@ -340,12 +349,12 @@ def delete_chapter(property_id: int, chapter: str, planId: str | None = None,
     with get_db() as conn:
         budget_db.delete_chapter(conn, property_id, chapter, plan_id=planId)
         budget = budget_db.get_budget(conn, property_id, planId)
-    return _written(property_id, budget, None, Decimal(0))
+    return _written(property_id, budget)
 
 
 # ─── Pagos ────────────────────────────────────────────────────────────────────
 #
-# Un pago no toca el residual ni el total: pagar no cambia lo que la obra estaba
+# Un pago no toca el total: pagar no cambia lo que la obra estaba
 # planeada a costar. La brecha entre las dos cifras es la información útil, y
 # corregir el presupuestado para que empate sería borrarla.
 
@@ -357,7 +366,7 @@ def add_payment(property_id: int, line_id: int, body: PaymentCreate,
         budget_db.add_payment(conn, property_id, line_id, body.amount,
                               paid_on=body.paidOn, notes=body.notes, plan_id=planId)
         budget = budget_db.get_budget(conn, property_id, planId)
-    return _written(property_id, budget, _line_of(budget, line_id), Decimal(0))
+    return _written(property_id, budget, _line_of(budget, line_id))
 
 
 @router.delete("/api/properties/{property_id}/budget/lines/{line_id}/payments/{payment_id}",
@@ -369,7 +378,7 @@ def delete_payment(property_id: int, line_id: int, payment_id: int,
     with get_db() as conn:
         budget_db.delete_payment(conn, property_id, line_id, payment_id, plan_id=planId)
         budget = budget_db.get_budget(conn, property_id, planId)
-    return _written(property_id, budget, _line_of(budget, line_id), Decimal(0))
+    return _written(property_id, budget, _line_of(budget, line_id))
 
 
 # ─── Presupuesto-escenario por plan de proyecto (addendum 2026-08-24) ─────────
@@ -379,8 +388,7 @@ class PlanBudgetCreate(BaseModel):
     # propiedad, el escenario de otro plan — el flujo real muchas veces arma
     # plan a plan y el de la propiedad se llena al final —, o el de otra obra);
     # sin él, `copyFromProperty` (default) copia del de la propiedad; con los
-    # dos apagados, nace vacío. La copia es la maquinaria de siempre:
-    # copy_lines, con su residuo asentado.
+    # dos apagados, nace vacío. La copia es la maquinaria de siempre: copy_lines.
     copyFromProperty: bool = True
     sourceBudgetId: int | None = None
 
@@ -409,11 +417,11 @@ def create_plan_budget(property_id: int, plan_id: str, body: PlanBudgetCreate | 
 def use_plan_budget(property_id: int, plan_id: str, _: dict = Depends(get_current_user)):
     """«Usar este plan»: sus renglones entran al presupuesto de LA PROPIEDAD por
     la misma puerta que copiar de otra obra (apply): deduplicar es saltar — el
-    dinero ya capturado no se pisa —, el residuo no viaja, y se reporta cuánto
-    entró y cuánto ya estaba. El escenario queda intacto: es la propuesta, y la
+    dinero ya capturado no se pisa — y se reporta cuánto entró y cuánto ya
+    estaba. El escenario queda intacto: es la propuesta, y la
     propuesta se califica."""
     with get_db() as conn:
-        copied, skipped, increase = budget_db.use_plan_budget(conn, property_id, plan_id)
+        copied, skipped = budget_db.use_plan_budget(conn, property_id, plan_id)
         budget = budget_db.get_budget(conn, property_id)
-    return {**_written(property_id, budget, None, increase),
+    return {**_written(property_id, budget),
             "linesAdded": copied, "linesSkipped": skipped}

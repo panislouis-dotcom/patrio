@@ -4,10 +4,18 @@ import { test, expect, request } from '@playwright/test'
 // In prod CI: BASE_URL=https://admin.refigan.com
 // In local dev: BASE_URL=http://localhost:5173 (default from playwright.config.ts)
 //
-// API_BASE_URL is separate because in local dev the API runs on a different port.
-// In prod both frontend and API are served from the same origin (FastAPI serves the SPA).
+// E2E_API_BASE_URL is separate because in local dev the API runs on a different
+// port. In prod both frontend and API are served from the same origin (FastAPI
+// serves the SPA), which is what the BASE_URL fallback below covers: a prod
+// BASE_URL has no ':5173' to rewrite, so it is used as-is.
+//
+// The name is E2E_API_BASE_URL and not API_BASE_URL because that is the one
+// helpers/api.ts, global.setup.ts and fixtures/auth.ts all read. Two names for
+// one thing meant this file alone silently ignored the variable the rest of the
+// suite was pointed at, fell through to the ':5173'→':8000' rewrite, and — on
+// any port but the default — asked the SPA server for JSON and got '<!DOCTYPE'.
 const API_BASE =
-  process.env.API_BASE_URL ??
+  process.env.E2E_API_BASE_URL ??
   (process.env.BASE_URL
     ? process.env.BASE_URL.replace(':5173', ':8000')
     : 'http://localhost:8000')

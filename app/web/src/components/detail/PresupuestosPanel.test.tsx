@@ -35,10 +35,12 @@ function scenarioBudget(): Budget {
     id: 99, propertyId: 7, planId: 'plan-a',
     lines: [
       { id: 1, chapterName: 'Obra', name: 'Albañilería', unit: 'lote', quantity: 2,
-        unitPrice: 100, isResidual: false, committedAmount: 150, closedAt: null,
+        unitPrice: 100, committedAmount: 150, closedAt: null,
         supplierId: null, actualQuantity: null, isProportional: true, payments: [] },
+      // Una holgura, y hoy es un renglón como el de arriba: sin bandera, sin
+      // regla propia y sin nada que la distinga salvo el nombre que le pusieron.
       { id: 2, chapterName: 'Otros', name: 'Por detallar', unit: 'lote', quantity: 1,
-        unitPrice: 300, isResidual: true, committedAmount: null, closedAt: null,
+        unitPrice: 300, committedAmount: null, closedAt: null,
         supplierId: null, actualQuantity: null, isProportional: true, payments: [] },
     ],
     chapters: ['Obra', 'Otros'],
@@ -93,7 +95,7 @@ describe('PresupuestosPanel', () => {
     vi.mocked(api.fetchBudget).mockResolvedValue(scenarioBudget())
     const real = { ...PROPERTY, constructionBudgeted: 999 } as Property
     vi.mocked(api.usePlanBudget).mockResolvedValue(
-      { property: real, budget: scenarioBudget(), linesAdded: 3, linesSkipped: 1, budgetIncrease: 0 } as never)
+      { property: real, budget: scenarioBudget(), linesAdded: 3, linesSkipped: 1 } as never)
     const { onPropertyChange } = setup()
     fireEvent.click(screen.getByText('Plan A'))
     fireEvent.click(await screen.findByText('USAR EN LA PROPIEDAD'))
@@ -125,8 +127,8 @@ describe('nacimiento copiado de otro presupuesto (plan a plan)', () => {
     vi.mocked(api.fetchBudget).mockRejectedValue(new Error('El plan plan-a no tiene presupuesto todavía'))
     vi.mocked(api.fetchBudgetSources).mockResolvedValue([
       { id: 77, name: 'Locales Salon Escobedo', propertyId: 7, planId: 'plan-b',
-        planName: 'Plan B', lineCount: 4, total: 400_000, fullTotal: 900_000,
-        sqmConstruction: null, constructionCostPerSqm: null },
+        planName: 'Plan B', lineCount: 4, total: 400_000,
+        sqmConstruction: null, constructionCostPerSqm: null, replaceable: true },
     ])
     vi.mocked(api.createPlanBudget).mockResolvedValue({
       budget: scenarioBudget(), linesAdded: 4, linesSkipped: 0 })
@@ -148,7 +150,8 @@ describe('nacimiento copiado de otro presupuesto (plan a plan)', () => {
     vi.mocked(api.fetchBudget).mockRejectedValue(new Error('El plan plan-a no tiene presupuesto todavía'))
     vi.mocked(api.fetchBudgetSources).mockResolvedValue([
       { id: 77, name: 'X', propertyId: 9, planId: null, planName: null,
-        lineCount: 1, total: 1, fullTotal: 1, sqmConstruction: null, constructionCostPerSqm: null },
+        lineCount: 1, total: 1, sqmConstruction: null, constructionCostPerSqm: null,
+        replaceable: true },
     ])
     setup()
     fireEvent.click(screen.getByText('Plan A'))
