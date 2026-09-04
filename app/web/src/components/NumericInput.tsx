@@ -47,7 +47,14 @@ export function NumericInput({ value, onChange, style, placeholder, step, ariaLa
 
   function fmt(n: number | undefined): string {
     if (n == null) return ''
-    if (isDecimal) return String(n)
+    // Redondeado a 6 decimales antes de `String()`: un valor decimal que dio
+    // una vuelta por el servidor (ej. una tasa 0.07 vista como % → ×100) puede
+    // volver con ruido de punto flotante — 0.07 * 100 === 7.000000000000001
+    // en JS — que sin este redondeo se le enseñaba al usuario tal cual, con
+    // más "precisión" de la que el dato tiene. Ninguna captura de esta caja
+    // usa más de 4 decimales (NUMERIC(5,4) es lo más fino que guarda la BD),
+    // así que 6 nunca recorta una cifra real, solo el ruido.
+    if (isDecimal) return String(Math.round(n * 1e6) / 1e6)
     return Math.round(n).toLocaleString('en-US')
   }
 

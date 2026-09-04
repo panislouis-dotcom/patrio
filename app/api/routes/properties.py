@@ -43,8 +43,6 @@ class PropertyCreate(BaseModel):
     acquisitionCostPct: Optional[float] = None
     landCommissionPct: Optional[float] = None
     constructionCommissionPct: Optional[float] = None
-    exitSaleCommissionPct: Optional[float] = None
-    exitRentMonths: Optional[float] = None
     permitsCost: Optional[float] = None
     subdivisionCost: Optional[float] = None
     constructionCostPerSqm: Optional[float] = None
@@ -73,8 +71,6 @@ class PropertyUpdate(BaseModel):
     acquisitionCostPct: Optional[float] = None
     landCommissionPct: Optional[float] = None
     constructionCommissionPct: Optional[float] = None
-    exitSaleCommissionPct: Optional[float] = None
-    exitRentMonths: Optional[float] = None
     exitStrategy: Optional[str] = None
     permitsCost: Optional[float] = None
     subdivisionCost: Optional[float] = None
@@ -164,6 +160,15 @@ class ImageTypeUpdate(BaseModel):
 
 class ImageReorderRequest(BaseModel):
     image_ids: list[int]
+
+
+class FeeTierBody(BaseModel):
+    threshold: float
+    rate: float
+
+
+class FeeTiersReplaceRequest(BaseModel):
+    tiers: list[FeeTierBody]
 
 
 # ─── Collection ───────────────────────────────────────────────────────────────
@@ -312,6 +317,18 @@ def update_property_image_type(property_id: int, image_id: int, body: ImageTypeU
 def reorder_property_images(property_id: int, body: ImageReorderRequest,
                             _: dict = Depends(get_current_user)):
     return properties.reorder_images(property_id, body.image_ids)
+
+
+# ─── Fee tiers ──────────────────────────────────────────────────────────────
+
+@router.put("/api/properties/{property_id}/fee-tiers/{kind}",
+            operation_id="properties_replace_fee_tiers")
+def replace_property_fee_tiers(
+    property_id: int, kind: Literal["venta", "renta"], body: FeeTiersReplaceRequest,
+    _: dict = Depends(get_current_user),
+):
+    return properties.replace_fee_tiers(
+        property_id, kind, [t.model_dump() for t in body.tiers])
 
 
 # ─── Floorplan geometry ───────────────────────────────────────────────────────

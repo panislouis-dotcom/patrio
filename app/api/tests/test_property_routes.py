@@ -117,6 +117,36 @@ def test_invalid_exit_strategy_is_rejected(client, test_property):
     assert r.status_code == 422
 
 
+def test_patch_silently_ignores_the_flat_exit_commission_fields(client, test_property):
+    """exitSaleCommissionPct/exitRentMonths salieron de WRITABLE_FIELDS (053):
+    la escalera de tramos (replace_fee_tiers) los reemplaza y vive en su
+    propio sub-recurso, fuera del PATCH batched. to_columns() los descarta en
+    silencio, igual que cualquier otro campo fuera de WRITABLE_FIELDS — la
+    petición no truena y la propiedad no cambia."""
+    pid = test_property["id"]
+    before = client.get(f"/api/properties/{pid}").json()
+
+    r = client.patch(f"/api/properties/{pid}", json={
+        "exitSaleCommissionPct": 0.09, "exitRentMonths": 4,
+    })
+    assert r.status_code == 200, r.text
+    after = r.json()
+    assert after["exitSaleCommissionPct"] == before["exitSaleCommissionPct"]
+    assert after["exitRentMonths"] == before["exitRentMonths"]
+
+
+def test_clear_fields_rejects_the_flat_exit_commission_fields(client, test_property):
+    """Salieron de CLEARABLE_FIELDS junto con WRITABLE_FIELDS: vaciarlos ya no
+    es una operación que este endpoint entienda."""
+    pid = test_property["id"]
+    r = client.post(f"/api/properties/{pid}/clear-fields",
+                     json={"fields": ["exitSaleCommissionPct"]})
+    assert r.status_code == 422
+    r = client.post(f"/api/properties/{pid}/clear-fields",
+                     json={"fields": ["exitRentMonths"]})
+    assert r.status_code == 422
+
+
 def test_delete(client, test_property):
     assert client.delete(f"/api/properties/{test_property['id']}").status_code == 204
     assert client.get(f"/api/properties/{test_property['id']}").status_code == 404
@@ -401,4 +431,81 @@ def test_reorder_repeating_an_image_is_422(client, test_property):
 
 def test_reorder_on_a_missing_property_is_404(client):
     r = client.put("/api/properties/999999999/images/reorder", json={"image_ids": []})
+    assert r.status_code == 404
+
+
+# ─── Fee tiers ────────────────────────────────────────────────────────────────
+# properties_db.replace_fee_tiers()/validate_tiers() are already exercised
+# thoroughly at the properties_db layer in test_property_fee_tiers.py — these
+# only prove the HTTP wiring: the route delegates without adding its own
+# validation, and the two domain errors map to the status codes main.py's
+# global handlers promise (PropertyNotFound → 404, PropertyError → 422).
+
+_ESCOBEDO_VENTA = {"tiers": [
+    {"threshold": 6_500_000, "rate": 0.07},
+    {"threshold": 5_500_000, "rate": 0.06},
+]}
+
+
+def test_put_fee_tiers_venta_returns_the_stored_ladder(client, test_property):
+    pid = test_property["id"]
+    r = client.put(f"/api/properties/{pid}/fee-tiers/venta", json=_ESCOBEDO_VENTA)
+    assert r.status_code == 200, r.text
+    assert r.json() == [
+        {"threshold": 5_500_000, "rate": 0.06},
+        {"threshold": 6_500_000, "rate": 0.07},
+    ]
+
+    after = client.get(f"/api/properties/{pid}").json()
+    assert after["saleFeeTiers"] == [
+        {"threshold": 5_500_000, "rate": 0.06},
+        {"threshold": 6_500_000, "rate": 0.07},
+    ]
+    assert after["rentFeeTiers"] == []
+
+
+def test_put_fee_tiers_renta_returns_the_stored_ladder(client, test_property):
+    pid = test_property["id"]
+    body = {"tiers": [{"threshold": 15_000, "rate": 0.08}]}
+    r = client.put(f"/api/properties/{pid}/fee-tiers/renta", json=body)
+    assert r.status_code == 200, r.text
+    assert r.json() == [{"threshold": 15_000, "rate": 0.08}]
+
+    after = client.get(f"/api/properties/{pid}").json()
+    assert after["rentFeeTiers"] == [{"threshold": 15_000, "rate": 0.08}]
+    assert after["saleFeeTiers"] == []
+
+
+def test_put_fee_tiers_invalid_kind_is_422(client, test_property):
+    r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/foo",
+                    json={"tiers": [{"threshold": 100, "rate": 0.05}]})
+    assert r.status_code == 422
+
+
+def test_put_fee_tiers_missing_floor_tier_is_allowed(client, test_property):
+    """There is no floor tier concept at all — a threshold-only ladder is the
+    only valid shape, and validate_tiers accepts it as-is."""
+    r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/venta",
+                    json={"tiers": [{"threshold": 100, "rate": 0.05}]})
+    assert r.status_code == 200
+    assert r.json() == [{"threshold": 100, "rate": 0.05}]
+
+
+def test_put_fee_tiers_floor_tier_is_rejected(client, test_property):
+    """The floor tier ('si no', threshold: null) used to be optional — it is
+    now rejected outright, even as a single tier."""
+    r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/venta",
+                    json={"tiers": [{"threshold": None, "rate": 0.05}]})
+    assert r.status_code == 422
+
+
+def test_put_fee_tiers_rate_out_of_range_is_422(client, test_property):
+    r = client.put(f"/api/properties/{test_property['id']}/fee-tiers/venta",
+                    json={"tiers": [{"threshold": 100, "rate": 1.5}]})
+    assert r.status_code == 422
+
+
+def test_put_fee_tiers_on_a_missing_property_is_404(client):
+    r = client.put("/api/properties/999999999/fee-tiers/venta",
+                    json={"tiers": [{"threshold": 100, "rate": 0.05}]})
     assert r.status_code == 404

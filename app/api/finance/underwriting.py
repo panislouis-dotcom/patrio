@@ -97,9 +97,32 @@ ASSUMPTION_DEFAULTS: dict[str, Decimal | int] = {
     "construction_commission_pct": Decimal("0.15"),
     "exit_sale_commission_pct": Decimal("0.05"),
     "exit_rent_months": Decimal("3"),
+    # Default de la escalera de renta (finance/fee_tiers.py) cuando la propiedad no
+    # tiene tramos configurados: NÚMERO DE RENTAS (meses de renta), no un %. Un
+    # tramo de renta se cobra como "N meses de renta cobrada/proyectada", no como
+    # una fracción de un solo mes — la magnitud real que maneja el fondo (2-4
+    # meses) es demasiado grande para leerse como porcentaje de un mes sin
+    # producir tasas de cientos por ciento. 3 hereda literalmente el valor de
+    # exit_rent_months arriba, que es huérfano desde que dejó de leerse aquí —
+    # ambos describen la misma convención real del fondo, esta es la que
+    # `fees.py` de verdad aplica ahora, por tramo en vez de plana.
+    "exit_rent_commission_months": Decimal("3"),
 }
 
-ASSUMPTION_KEYS = tuple(ASSUMPTION_DEFAULTS)
+# exit_rent_commission_months vive en ASSUMPTION_DEFAULTS porque ahí es donde vive
+# todo default que mueve dinero (mismo criterio de la nota de comisiones), pero no
+# es un input capturable de la propiedad — no tiene columna en `properties`, nadie
+# lo "captura", y por eso no debe aparecer como séptimo campo en assumptions()/la
+# respuesta de properties_db.py ("captured vs default" es un concepto de columnas de
+# propiedad, y esta key no es una). finance/fee_tiers.py lo lee directo de
+# ASSUMPTION_DEFAULTS, sin pasar por assumption()/ASSUMPTION_KEYS.
+#
+# Exclusión explícita en vez de una tupla escrita a mano: así cualquier assumption
+# legítima que se agregue después a ASSUMPTION_DEFAULTS sigue apareciendo aquí sola,
+# sin que alguien tenga que acordarse de tocar dos lugares — solo esta única
+# excepción deliberada queda nombrada.
+_MODEL_ONLY_DEFAULTS = frozenset({"exit_rent_commission_months"})
+ASSUMPTION_KEYS = tuple(k for k in ASSUMPTION_DEFAULTS if k not in _MODEL_ONLY_DEFAULTS)
 
 _INPUT_KEYS = COST_KEYS + ASSUMPTION_KEYS + (
     "projected_sale", "rent_monthly_projected", "rent_monthly_actual", "sqm_land",

@@ -141,6 +141,8 @@ class ProspectusOptions(BaseModel):
     opportunityPlans: bool = True
     opportunityRenders: bool = True
     opportunityBudget: bool = True
+    opportunityScenarioVenta: bool = True
+    opportunityScenarioRenta: bool = True
 
 
 @router.post("/prospectus", operation_id="documents_prospectus")
@@ -230,6 +232,8 @@ async def generate_prospectus(body: ProspectusOptions | None = None,
             opportunity_plans=options.opportunityPlans,
             opportunity_renders=options.opportunityRenders,
             opportunity_budget=options.opportunityBudget,
+            opportunity_scenario_venta=options.opportunityScenarioVenta,
+            opportunity_scenario_renta=options.opportunityScenarioRenta,
         ),
     )
     try:

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { updateProperty, clearPropertyFields, generatePropertyRenderFromPlan, listRenderPrompts, createRenderPrompt } from './api'
+import { updateProperty, clearPropertyFields, generatePropertyRenderFromPlan, listRenderPrompts, createRenderPrompt, replaceFeeTiers } from './api'
 
 // La sesión no es lo que se está probando: aquí importa qué sale por el cable.
 vi.mock('./auth', () => ({ getToken: () => 'test-token', clearToken: () => {} }))
@@ -49,6 +49,21 @@ describe('clearPropertyFields', () => {
 
     expect(fetchMock.mock.calls[0][0]).toContain('/api/properties/1/clear-fields')
     expect(bodyOf(fetchMock)).toEqual({ fields: ['rentMonthlyProjected', 'currentValuation'] })
+  })
+})
+
+describe('replaceFeeTiers', () => {
+  it('pega al endpoint del kind correcto y envuelve la lista en `tiers` — así la espera FeeTiersReplaceRequest', async () => {
+    const fetchMock = stubFetch([])
+    await replaceFeeTiers(1, 'venta', [
+      { threshold: 6_500_000, rate: 0.07 },
+      { threshold: 5_500_000, rate: 0.06 },
+    ])
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/properties/1/fee-tiers/venta')
+    expect(bodyOf(fetchMock)).toEqual({
+      tiers: [{ threshold: 6_500_000, rate: 0.07 }, { threshold: 5_500_000, rate: 0.06 }],
+    })
   })
 })
 

@@ -125,6 +125,14 @@ export type AssumptionField = typeof ASSUMPTION_FIELDS[number]
 
 export type Assumptions = Record<AssumptionField, Assumption>
 
+// Un tramo de la escalera de comisión de salida (finance/fee_tiers.py): dice
+// desde qué monto aplica su `rate`. No existe tramo piso ("si no") — si el
+// valor no alcanza ningún umbral, la tasa es 0% automáticamente.
+export interface FeeTier {
+  threshold: number
+  rate: number   // fracción, ej. 0.07 = 7%
+}
+
 // Una propiedad recorre un ciclo de vida (ver lib/status.ts). Los campos CRUDOS
 // siempre se devuelven tal como están en la base — nunca se blanquean, porque en
 // pasos posteriores quieres ver todo lo de antes.
@@ -218,12 +226,32 @@ export interface Property {
   constructionFee: number | null
   exitFeeVenta: number | null
   exitFeeRenta: number | null
+  // La tasa vigente para cada lado: el tramo alcanzado si hay escalera y ya
+  // hay valor con qué evaluarla, o el default del modelo si la escalera está
+  // vacía (conocido de entrada, sin esperar precio/renta). Null solo cuando
+  // SÍ hay tramos configurados pero todavía no hay valor contra qué elegir
+  // uno — mismo caso que deja exitFeeVenta/Renta en null.
+  // exitFeeVentaRate es una FRACCIÓN de precio de venta (0-1). exitFeeRentaMonths
+  // es un NÚMERO DE RENTAS (meses de renta, típicamente 2-4) — unidades
+  // distintas, de ahí el nombre distinto en vez de reusar "Rate".
+  exitFeeVentaRate: number | null
+  exitFeeRentaMonths: number | null
   totalFeesVenta: number | null
   totalFeesRenta: number | null
   totalInvestmentWithFeesVenta: number | null
   totalInvestmentWithFeesRenta: number | null
   feesMissingInputsVenta: string[]
   feesMissingInputsRenta: string[]
+  // La escalera que reemplaza el % plano de comisión de salida (migración 055):
+  // cada tramo dice desde qué monto aplica su tasa. Sin tramo piso — si el
+  // valor no alcanza ningún umbral, la tasa es 0%. Siempre presentes —
+  // arreglo vacío cuando la propiedad no tiene tramos
+  // configurados y `exitFeeVenta`/`exitFeeRenta` caen al default del modelo
+  // (`ASSUMPTION_DEFAULTS` en underwriting.py). Se leen y escriben aparte de
+  // PATCH, por PUT /api/properties/{id}/fee-tiers/{kind} (`replaceFeeTiers`,
+  // api.ts) — son su propio sub-recurso, no una columna.
+  saleFeeTiers: FeeTier[]
+  rentFeeTiers: FeeTier[]
 
   // --- Datos que solo existen tras comprar ---
   totalUnits: number | null
@@ -297,6 +325,23 @@ export interface Property {
   realizedGainPct: number | null
   realizedRoi: number | null
 
+  // --- RESULTADO: bruto vs. neto, venta vs. renta, misma forma en las 5
+  // etapas. Bruto descuenta contra la inversión SIN comisiones (`totalInvestment`);
+  // neto contra la inversión CON comisiones (`totalInvestmentWithFeesVenta`/`Renta`)
+  // — la diferencia entre ambos es la comisión del fondo, explícita. Leen
+  // real-antes-que-proyectado (precio/renta real una vez que existe), por eso
+  // el reloj de venta también cambia con el dato: `exit_months` una vez
+  // vendida, la asunción de `holdMonths` mientras tanto — igual que
+  // `realizedRoi` vs. `projectedRoi`.
+  grossGainVenta: number | null
+  grossGainVentaPct: number | null
+  netGainVenta: number | null
+  netGainVentaPct: number | null
+  grossRoiVenta: number | null
+  netRoiVenta: number | null
+  grossYieldRenta: number | null
+  netYieldRenta: number | null
+
   // --- Calculados por el servidor (única casa) ---
   score: number | null    // solo prospecto/oferta
   issues: Issue[]
@@ -325,6 +370,13 @@ export interface QualityEntry {
 // `contract.test.ts` puede contrastarla contra `WRITABLE_FIELDS` del servidor.
 // Un campo que el servidor retira y aquí sobrevive es un PATCH que se ignora o
 // se rechaza sin que nada lo note.
+//
+// exitSaleCommissionPct/exitRentMonths NO están (migración 055): la comisión
+// de salida plana quedó reemplazada por la escalera de tramos en
+// `property_fee_tiers` (`replaceFeeTiers`, api.ts), que es su propio
+// sub-recurso fuera de PATCH — no hay campo plano que escribir. Siguen
+// existiendo en `Property.assumptions` porque ahí no son un insumo capturable
+// sino lo que el modelo resuelve; ver la nota de `ASSUMPTION_FIELDS`.
 export const RAW_PROPERTY_FIELDS = [
   'name', 'assetType', 'strategyType', 'address', 'city', 'url',
   'latitude', 'longitude', 'notes',
@@ -335,8 +387,7 @@ export const RAW_PROPERTY_FIELDS = [
   'rentMonthlyProjected', 'rentMonthlyActual',
   'totalUnits', 'acquisitionDate', 'firstRentDate', 'valuationDate',
   'currentValuation', 'saleDate', 'salePrice',
-  'landCommissionPct', 'constructionCommissionPct', 'exitSaleCommissionPct',
-  'exitRentMonths', 'exitStrategy',
+  'landCommissionPct', 'constructionCommissionPct', 'exitStrategy',
 ] as const
 
 export type RawPropertyFields = Pick<Property, typeof RAW_PROPERTY_FIELDS[number]>
@@ -365,13 +416,13 @@ export interface PropertyCreate {
   sqmConstruction?: number
   purchasePrice?: number
   acquisitionCostPct?: number
-  // Las cuatro comisiones del fondo (ver finance/fees.py). `exitStrategy` NO
-  // está: es un hecho que se decide después, no algo con lo que una propiedad
-  // pueda nacer.
+  // Dos de las comisiones del fondo (ver finance/fees.py); las otras dos vivían
+  // aquí como `exitSaleCommissionPct`/`exitRentMonths` y ya no están (migración
+  // 053): la comisión de salida se decide con la escalera de tramos, y esa
+  // escalera es su propio sub-recurso — no algo con lo que una propiedad nazca.
+  // `exitStrategy` tampoco está: es un hecho que se decide después.
   landCommissionPct?: number
   constructionCommissionPct?: number
-  exitSaleCommissionPct?: number
-  exitRentMonths?: number
   permitsCost?: number
   subdivisionCost?: number
   // Los dos insumos de la CALCULADORA con la que nace el presupuesto —junto a
@@ -390,6 +441,11 @@ export interface PropertyCreate {
 // Espeja CLEARABLE_FIELDS de properties_db: las columnas que pueden quedar
 // vacías. Que una fila concreta pueda perder un campo concreto lo decide el
 // servidor según su etapa — esta lista solo dice qué es vaciable en principio.
+//
+// exitSaleCommissionPct/exitRentMonths NO están (migración 055), por la misma
+// razón que en RAW_PROPERTY_FIELDS: la comisión de salida plana quedó
+// reemplazada por la escalera de tramos, su propio sub-recurso fuera de
+// PATCH/clear-fields — no hay campo plano que vaciar.
 export const CLEARABLE_FIELDS = [
   'assetType', 'strategyType',
   'sqmLand', 'sqmConstruction', 'purchasePrice', 'acquisitionCostPct',
@@ -402,8 +458,7 @@ export const CLEARABLE_FIELDS = [
   'rentMonthlyProjected', 'rentMonthlyActual',
   'totalUnits', 'acquisitionDate', 'firstRentDate', 'saleDate', 'salePrice',
   'currentValuation', 'valuationDate',
-  'landCommissionPct', 'constructionCommissionPct', 'exitSaleCommissionPct',
-  'exitRentMonths', 'exitStrategy',
+  'landCommissionPct', 'constructionCommissionPct', 'exitStrategy',
 ] as const
 export type ClearableField = typeof CLEARABLE_FIELDS[number]
 

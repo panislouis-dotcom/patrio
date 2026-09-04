@@ -23,11 +23,12 @@ que un exit_price ausente en waterfall.py.
 """
 from decimal import Decimal
 
+from .fee_tiers import select_tier
 from .quantize import money0, to_decimal
-from .underwriting import assumption
+from .underwriting import ASSUMPTION_DEFAULTS, assumption
 
 
-def _resolve_sale_value(row: dict) -> Decimal | None:
+def resolve_sale_value(row: dict) -> Decimal | None:
     """Precio de venta REAL una vez que existe, la proyección mientras tanto —
     mismo relevo que gain()/roi ya usan en underwriting.py."""
     sale_price = row.get("sale_price")
@@ -37,7 +38,7 @@ def _resolve_sale_value(row: dict) -> Decimal | None:
     return to_decimal(projected) if projected else None
 
 
-def _resolve_rent(row: dict) -> Decimal | None:
+def resolve_rent(row: dict) -> Decimal | None:
     """Renta COBRADA una vez que existe, la proyectada mientras tanto."""
     actual = row.get("rent_monthly_actual")
     if actual:
@@ -49,19 +50,47 @@ def _resolve_rent(row: dict) -> Decimal | None:
 def compute_fees(row: dict, basis: Decimal | None) -> dict:
     land_pct = to_decimal(assumption(row, "land_commission_pct")[0])
     construction_pct = to_decimal(assumption(row, "construction_commission_pct")[0])
-    sale_pct = to_decimal(assumption(row, "exit_sale_commission_pct")[0])
-    rent_months = to_decimal(assumption(row, "exit_rent_months")[0])
 
     land_fee = to_decimal(row.get("purchase_price")) * land_pct
     construction_fee = to_decimal(row.get("construction_budgeted")) * construction_pct
     base_fees = land_fee + construction_fee
 
-    sale_value = _resolve_sale_value(row)
-    exit_fee_venta = sale_value * sale_pct if sale_value is not None else None
+    # La comisión de salida ya no es un % plano: es una escalera de tramos por
+    # valor alcanzado (finance/fee_tiers.py), y el tramo que aplica depende del
+    # valor — al revés que land/construction arriba, aquí hay que resolver el
+    # valor PRIMERO y recién entonces preguntar qué tasa le toca. Pero la TASA
+    # en sí solo depende del valor cuando hay tramos que elegir entre ellos:
+    # sin tramos configurados la tasa es el default fijo, conocido aunque
+    # todavía no exista con qué cobrarlo — por eso se resuelve aparte del
+    # monto, y la ficha puede mostrarla incluso antes de tener precio/renta.
+    sale_tiers = row.get("sale_fee_tiers", [])
+    sale_value = resolve_sale_value(row)
+    if sale_value is not None:
+        sale_pct = select_tier(sale_tiers, sale_value, ASSUMPTION_DEFAULTS["exit_sale_commission_pct"])
+    elif not sale_tiers:
+        sale_pct = ASSUMPTION_DEFAULTS["exit_sale_commission_pct"]
+    else:
+        sale_pct = None
+    exit_fee_venta = sale_value * sale_pct if (sale_value is not None and sale_pct is not None) else None
     missing_venta = [] if exit_fee_venta is not None else ["salePrice"]
 
-    rent = _resolve_rent(row)
-    exit_fee_renta = rent * rent_months if rent is not None else None
+    # Base de la comisión de renta: un NÚMERO DE RENTAS (meses de renta cobrada
+    # o proyectada) — no una fracción de un solo mes. El fondo cobra 2-4 meses
+    # de renta como comisión de colocación, y esa magnitud real no cabe en el
+    # mismo molde de "% de precio" que usa venta, así que el tramo alcanzado
+    # aplica su número de rentas directo sobre la renta mensual que
+    # resolve_rent ya resuelve: `exit_fee_renta = meses × renta_mensual`.
+    # Mismo relevo que arriba: sin tramos, el número de rentas es el default
+    # fijo (`exit_rent_commission_months`).
+    rent_tiers = row.get("rent_fee_tiers", [])
+    rent = resolve_rent(row)
+    if rent is not None:
+        rent_months = select_tier(rent_tiers, rent, ASSUMPTION_DEFAULTS["exit_rent_commission_months"])
+    elif not rent_tiers:
+        rent_months = ASSUMPTION_DEFAULTS["exit_rent_commission_months"]
+    else:
+        rent_months = None
+    exit_fee_renta = rent * rent_months if (rent is not None and rent_months is not None) else None
     missing_renta = [] if exit_fee_renta is not None else ["rentMonthly"]
 
     total_fees_venta = None if exit_fee_venta is None else base_fees + exit_fee_venta
@@ -75,6 +104,12 @@ def compute_fees(row: dict, basis: Decimal | None) -> dict:
         "constructionFee": money0(construction_fee),
         "exitFeeVenta": money0(exit_fee_venta) if exit_fee_venta is not None else None,
         "exitFeeRenta": money0(exit_fee_renta) if exit_fee_renta is not None else None,
+        # El tramo alcanzado (o el default si la escalera está vacía) — ver
+        # comentario arriba. Nunca money0: venta es una TASA (fracción de
+        # precio), renta es un NÚMERO DE RENTAS (meses) — no son la misma
+        # unidad, por eso no comparten nombre de campo.
+        "exitFeeVentaRate": sale_pct,
+        "exitFeeRentaMonths": rent_months,
         "totalFeesVenta": money0(total_fees_venta) if total_fees_venta is not None else None,
         "totalFeesRenta": money0(total_fees_renta) if total_fees_renta is not None else None,
         "totalInvestmentWithFeesVenta": (

@@ -1087,6 +1087,41 @@ ALTER SEQUENCE public.properties_id_seq OWNED BY public.properties.id;
 
 
 --
+-- Name: property_fee_tiers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.property_fee_tiers (
+    id bigint NOT NULL,
+    property_id bigint NOT NULL,
+    kind text NOT NULL,
+    threshold numeric(14,2),
+    rate numeric(5,4) NOT NULL,
+    sort_order integer NOT NULL,
+    CONSTRAINT property_fee_tiers_kind_check CHECK ((kind = ANY (ARRAY['venta'::text, 'renta'::text]))),
+    CONSTRAINT property_fee_tiers_rate_check CHECK ((((kind = 'venta'::text) AND (rate >= (0)::numeric) AND (rate <= (1)::numeric)) OR ((kind = 'renta'::text) AND (rate >= (0)::numeric))))
+);
+
+
+--
+-- Name: property_fee_tiers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.property_fee_tiers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: property_fee_tiers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.property_fee_tiers_id_seq OWNED BY public.property_fee_tiers.id;
+
+
+--
 -- Name: property_id_map; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1916,6 +1951,13 @@ ALTER TABLE ONLY public.properties ALTER COLUMN id SET DEFAULT nextval('public.p
 
 
 --
+-- Name: property_fee_tiers id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_fee_tiers ALTER COLUMN id SET DEFAULT nextval('public.property_fee_tiers_id_seq'::regclass);
+
+
+--
 -- Name: property_images id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2192,6 +2234,30 @@ ALTER TABLE ONLY public.projects_legacy
 
 ALTER TABLE ONLY public.properties
     ADD CONSTRAINT properties_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: property_fee_tiers property_fee_tiers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_fee_tiers
+    ADD CONSTRAINT property_fee_tiers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: property_fee_tiers property_fee_tiers_property_id_kind_sort_order_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_fee_tiers
+    ADD CONSTRAINT property_fee_tiers_property_id_kind_sort_order_key UNIQUE (property_id, kind, sort_order);
+
+
+--
+-- Name: property_fee_tiers property_fee_tiers_property_id_kind_threshold_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_fee_tiers
+    ADD CONSTRAINT property_fee_tiers_property_id_kind_threshold_key UNIQUE (property_id, kind, threshold);
 
 
 --
@@ -2817,6 +2883,13 @@ CREATE UNIQUE INDEX uq_profit_split_property ON public.profit_split_config USING
 
 
 --
+-- Name: uq_property_fee_tiers_one_floor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_property_fee_tiers_one_floor ON public.property_fee_tiers USING btree (property_id, kind) WHERE (threshold IS NULL);
+
+
+--
 -- Name: budget_lines trg_budget_lines_touch; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -3069,6 +3142,14 @@ ALTER TABLE ONLY public.projects_legacy
 
 
 --
+-- Name: property_fee_tiers property_fee_tiers_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_fee_tiers
+    ADD CONSTRAINT property_fee_tiers_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(id) ON DELETE CASCADE;
+
+
+--
 -- Name: property_id_map property_id_map_new_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3315,4 +3396,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('051'),
     ('052'),
     ('053'),
-    ('054');
+    ('054'),
+    ('055'),
+    ('056');
