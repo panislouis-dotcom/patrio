@@ -237,9 +237,9 @@ export function ProspectusMenu({ properties, generating, onGenerate }: Prospectu
   /**
    * Sin propiedades y sin portada ni cierre no queda documento que generar.
    *
-   * Ni el resumen de portafolio ni los cinco bloques de contenido cuentan como
-   * página propia, y por el mismo motivo: los cinco son el interior de una
-   * oportunidad y el resumen resume el track record, así que los seis imprimen
+   * Ni el resumen de portafolio ni los siete bloques de contenido cuentan como
+   * página propia, y por el mismo motivo: los siete son el interior de una
+   * oportunidad y el resumen resume el track record, así que los ocho imprimen
    * en blanco cuando no hay propiedades detrás. Dejarlos contar habilitaría el
    * botón para un PDF vacío — y el servidor lo rechazaría de todos modos con un
    * 400 (`generate_prospectus` en routes/documents.py), que es la peor versión:
