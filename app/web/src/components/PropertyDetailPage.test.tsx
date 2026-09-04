@@ -1192,7 +1192,7 @@ describe('PropertyDetailPage', () => {
       const ventaHeader = orden.indexOf('ESCENARIO VENTA · PROYECTADO')
       const rentaHeader = orden.indexOf('ESCENARIO RENTA · PROYECTADA')
       const secuencia = [
-        'INVERSIÓN SIN COMISIONES', 'COMISIÓN TERRENO', 'COMISIÓN OBRA', 'COMISIÓN VENTA',
+        'INVERSIÓN SIN COMISIONES', 'COMISIÓN ADQUISICIÓN', 'COMISIÓN OBRA', 'COMISIÓN VENTA',
         'INVERSIÓN CON COMISIONES', 'PRECIO DE VENTA', 'GANANCIA BRUTA', 'GANANCIA NETA', 'ROI NETO ANUAL',
       ]
       let cursor = ventaHeader

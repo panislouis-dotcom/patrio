@@ -1092,7 +1092,7 @@ export function PropertyDetailPage() {
                     <StatRow key={label} label={label} value={fmtMXN(value)} />
                   ))}
                   <StatRow label="INVERSIÓN SIN COMISIONES" value={fmtMXN(p.totalInvestment)} />
-                  <StatRow label="COMISIÓN TERRENO" value={fmtMXN(p.landFee)} />
+                  <StatRow label="COMISIÓN ADQUISICIÓN" value={fmtMXN(p.landFee)} />
                   <StatRow label="COMISIÓN OBRA" value={fmtMXN(p.constructionFee)} />
                   <StatRow
                     label="COMISIÓN VENTA"
@@ -1110,7 +1110,7 @@ export function PropertyDetailPage() {
                     <StatRow key={label} label={label} value={fmtMXN(value)} />
                   ))}
                   <StatRow label="INVERSIÓN SIN COMISIONES" value={fmtMXN(p.totalInvestment)} />
-                  <StatRow label="COMISIÓN TERRENO" value={fmtMXN(p.landFee)} />
+                  <StatRow label="COMISIÓN ADQUISICIÓN" value={fmtMXN(p.landFee)} />
                   <StatRow label="COMISIÓN OBRA" value={fmtMXN(p.constructionFee)} />
                   <StatRow
                     label="COMISIÓN RENTA"
