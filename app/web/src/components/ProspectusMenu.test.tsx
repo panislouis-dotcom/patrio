@@ -92,12 +92,12 @@ describe('ProspectusMenu · qué se ofrece elegir', () => {
     }
   })
 
-  it('los cinco bloques de contenido de una oportunidad viven bajo Oportunidades', () => {
+  it('los bloques de contenido de una oportunidad viven bajo Oportunidades', () => {
     mount()
     openMenu()
 
     const opps = within(screen.getByTestId('grupo-oportunidades'))
-    for (const label of ['Comisiones del fondo', 'Galería de fotos', 'Plano y propuesta', 'Fotos y propuesta', 'Presupuesto de obra']) {
+    for (const label of ['Comisiones del fondo', 'Galería de fotos', 'Plano y propuesta', 'Fotos y propuesta', 'Presupuesto de obra', 'Escenario venta', 'Escenario renta']) {
       expect(opps.getByLabelText(label)).not.toBeNull()
     }
   })
@@ -283,6 +283,8 @@ describe('ProspectusMenu · generar', () => {
       opportunityPlans: true,
       opportunityRenders: true,
       opportunityBudget: true,
+      opportunityScenarioVenta: true,
+      opportunityScenarioRenta: true,
     })
   })
 
@@ -306,6 +308,24 @@ describe('ProspectusMenu · generar', () => {
       opportunityPlans: true,
       opportunityRenders: true,
       opportunityBudget: true,
+      opportunityScenarioVenta: true,
+      opportunityScenarioRenta: true,
+    })
+  })
+
+  it('desmarcar un escenario manda solo ese campo en false y deja el otro en true', () => {
+    const { onGenerate } = mount()
+    openMenu()
+
+    expect(box('Escenario venta').checked).toBe(true)
+    expect(box('Escenario renta').checked).toBe(true)
+
+    fireEvent.click(box('Escenario venta'))
+    fireEvent.click(screen.getByText('GENERAR PDF'))
+
+    expect(onGenerate.mock.calls[0][0]).toMatchObject({
+      opportunityScenarioVenta: false,
+      opportunityScenarioRenta: true,
     })
   })
 

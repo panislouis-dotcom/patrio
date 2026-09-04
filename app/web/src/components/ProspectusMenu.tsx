@@ -25,6 +25,8 @@ const OPPORTUNITY_BLOCKS: Array<[PageKey, string]> = [
   ['opportunityPlans', 'Plano y propuesta'],
   ['opportunityRenders', 'Fotos y propuesta'],
   ['opportunityBudget', 'Presupuesto de obra'],
+  ['opportunityScenarioVenta', 'Escenario venta'],
+  ['opportunityScenarioRenta', 'Escenario renta'],
 ]
 
 /**
@@ -228,6 +230,8 @@ export function ProspectusMenu({ properties, generating, onGenerate }: Prospectu
     opportunityPlans: pageOn('opportunityPlans'),
     opportunityRenders: pageOn('opportunityRenders'),
     opportunityBudget: pageOn('opportunityBudget'),
+    opportunityScenarioVenta: pageOn('opportunityScenarioVenta'),
+    opportunityScenarioRenta: pageOn('opportunityScenarioRenta'),
   }
 
   /**

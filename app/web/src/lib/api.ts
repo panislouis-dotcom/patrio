@@ -144,6 +144,8 @@ export interface ProspectusOptions {
   opportunityPlans: boolean
   opportunityRenders: boolean
   opportunityBudget: boolean
+  opportunityScenarioVenta: boolean
+  opportunityScenarioRenta: boolean
 }
 
 export async function generateProspectus(options: ProspectusOptions): Promise<Blob> {
