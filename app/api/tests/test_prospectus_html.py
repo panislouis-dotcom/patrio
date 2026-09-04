@@ -164,6 +164,43 @@ def test_opportunity_result_col_yield_is_a_dash_without_one():
     assert '<tr><td>Yield c/comisión</td><td class="n">—</td></tr>' in html
 
 
+def test_opportunity_result_col_shows_operating_expenses_net_income_and_full_yield():
+    """Gastos operativos (10% administración + 5% costos, sobre la renta
+    mensual) en una sola fila compacta — el monto total con el desglose como
+    sub-línea (mismo patrón que ya usan `.tiers` y la sub-línea de
+    "Ganancia": el desglose en su PROPIA línea, no compartiendo una con el
+    monto, porque un solo renglón largo distorsiona el ancho de columna de
+    toda la tabla — ver el comentario en el código). Ingresos mensuales es
+    renta/mes menos esos dos. "Yield c/com. y gastos" usa ese ingreso ya
+    neto sobre el mismo denominador que `netYieldRenta` (inversión con
+    comisiones de renta): 63,000 renta → 6,300 admin + 3,150 costos = 9,450
+    de gastos, 53,550 de ingreso neto, 53,550*12/4,839,049 = 13.3%."""
+    p = {**BASE_PROPERTY, "rentMonthlyProjected": 63_000,
+         "totalInvestmentWithFeesRenta": 4_839_049,
+         "grossYieldRenta": 0.184, "netYieldRenta": 0.156}
+    html = _opportunity_result_col(p, "renta", _ALL)
+    assert ('<tr><td>Gastos operativos</td><td class="n">$9,450<br>'
+            '<small class="sub">10% admin + 5% costos</small></td></tr>') in html
+    assert '<tr><td>Ingresos mensuales</td><td class="n">$53,550</td></tr>' in html
+    assert '<tr><td>Yield c/com. y gastos</td><td class="n">13.3%</td></tr>' in html
+    # El orden importa: gastos y el ingreso neto entre la renta bruta y los
+    # tres yields, no mezclados con las filas de comisión de arriba.
+    assert (html.index("Renta/mes") < html.index("Gastos operativos")
+            < html.index("Ingresos mensuales") < html.index("Yield s/comisión"))
+
+
+def test_opportunity_result_col_operating_expenses_and_full_yield_are_absent_without_a_projected_rent():
+    """Sin renta proyectada no hay nada que descontar ni ingreso que anualizar
+    — ni gastos operativos, ni ingresos mensuales, se inventan; el yield
+    completo se queda en guion en vez de fabricar un cero."""
+    p = {**BASE_PROPERTY, "rentMonthlyProjected": None,
+         "totalInvestmentWithFeesRenta": 4_839_049}
+    html = _opportunity_result_col(p, "renta", _ALL)
+    assert "Gastos operativos" not in html
+    assert "Ingresos mensuales" not in html
+    assert '<tr><td>Yield c/com. y gastos</td><td class="n">—</td></tr>' in html
+
+
 # ---------------------------------------------------------------------------
 # _opportunity_result_col — desglose, comisiones (detrás de
 # sections.opportunity_fees) y resultado (siempre visible), por columna de
@@ -220,7 +257,7 @@ def test_opportunity_result_col_shows_terreno_and_obra_as_their_own_rows():
          "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": 3_900_000}
     for kind in ("venta", "renta"):
         html = _opportunity_result_col(p, kind, _ALL)
-        assert '<tr><td>Comisión terreno</td><td class="n">$150,000 <small>5.0%</small></td></tr>' in html
+        assert '<tr><td>Comisión adquisición</td><td class="n">$150,000 <small>5.0%</small></td></tr>' in html
         assert '<tr><td>Comisión obra</td><td class="n">$420,000 <small>15.0%</small></td></tr>' in html
 
 
@@ -231,22 +268,52 @@ def test_opportunity_result_col_shows_the_exit_fee_as_its_own_row():
     huérfanos desde que la escalera reemplazó al mecanismo plano."""
     p = {**BASE_PROPERTY, "exitFeeVenta": 195_000, "exitFeeRenta": 144_000}
     html_venta = _opportunity_result_col(p, "venta", _ALL)
-    assert '<tr><td>Comisión venta</td><td class="n">$195,000 <small class="tiers">sin tramos · 5.0% por omisión</small></td></tr>' in html_venta
+    assert '<tr><td>Comisión venta</td><td class="n">$195,000<br><small class="tiers">sin tramos · 5.0% por omisión</small></td></tr>' in html_venta
     html_renta = _opportunity_result_col(p, "renta", _ALL)
-    assert '<tr><td>Comisión renta</td><td class="n">$144,000 <small class="tiers">sin tramos · 3 rentas por omisión</small></td></tr>' in html_renta
+    assert '<tr><td>Comisión renta</td><td class="n">$144,000<br><small class="tiers">sin tramos · 3 rentas por omisión</small></td></tr>' in html_renta
 
 
 def test_opportunity_result_col_shows_the_configured_fee_tier_ladder():
     """Con `saleFeeTiers`/`rentFeeTiers` configurados, la sub-línea describe
-    la escalera guardada — techo primero — en vez del fallback de default."""
+    la escalera guardada — techo primero — en vez del fallback de default,
+    y sin la cifra líder plana (`exitFeeVenta`/`exitFeeRenta`) arriba: sería
+    el mismo número que ya carga el paréntesis del tramo que ganó, repetido
+    una segunda vez sin ningún propósito."""
     p = {**BASE_PROPERTY,
          "exitFeeVenta": 195_000,
          "saleFeeTiers": [{"threshold": 6_500_000, "rate": 0.07},
                            {"threshold": 5_500_000, "rate": 0.06}],
          "exitFeeRenta": 144_000,
          "rentFeeTiers": [{"threshold": 15_000, "rate": 3}]}
-    assert '<small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0%</small>' in _opportunity_result_col(p, "venta", _ALL)
-    assert '<small class="tiers">≥$15K→3 rentas</small>' in _opportunity_result_col(p, "renta", _ALL)
+    assert ('<tr><td>Comisión venta</td><td class="n">'
+            '<small class="tiers"><span class="tier">≥$6.5M→7.0% ($455K)</span><br>'
+            '<span class="tier">≥$5.5M→6.0% ($330K)</span></small></td></tr>'
+            in _opportunity_result_col(p, "venta", _ALL))
+    assert ('<tr><td>Comisión renta</td><td class="n">'
+            '<small class="tiers"><span class="tier">≥$15K→3 rentas ($45K)</span></small></td></tr>'
+            in _opportunity_result_col(p, "renta", _ALL))
+
+
+def test_opportunity_result_col_every_tier_shows_its_peso_amount_uniformly():
+    """Los dos tramos usan el MISMO formato — "≥umbral→tasa (pesos)" — sin
+    importar cuál de los dos coincide con `projectedSale`/
+    `rentMonthlyProjected`: se probó antes que el que coincidiera se
+    quedara sin paréntesis (ya se veía en pesos, exacto, en la cifra líder
+    de la celda) y el resultado se leía inconsistente, un tramo con formato
+    distinto a los demás sin ninguna pista visual de por qué."""
+    p = {**BASE_PROPERTY,
+         "exitFeeVenta": 195_000, "projectedSale": 6_300_000,
+         "saleFeeTiers": [{"threshold": 6_300_000, "rate": 0.06},
+                           {"threshold": 5_500_000, "rate": 0.05}],
+         "exitFeeRenta": 144_000, "rentMonthlyProjected": 63_000,
+         "rentFeeTiers": [{"threshold": 63_000, "rate": 6},
+                           {"threshold": 55_000, "rate": 4}]}
+    assert ('<small class="tiers"><span class="tier">≥$6.3M→6.0% ($378K)</span><br>'
+            '<span class="tier">≥$5.5M→5.0% ($275K)</span></small>'
+            in _opportunity_result_col(p, "venta", _ALL))
+    assert ('<small class="tiers"><span class="tier">≥$63K→6 rentas ($378K)</span><br>'
+            '<span class="tier">≥$55K→4 rentas ($220K)</span></small>'
+            in _opportunity_result_col(p, "renta", _ALL))
 
 
 def test_opportunity_result_col_ladder_without_floor_has_no_si_no_segment():
@@ -255,7 +322,7 @@ def test_opportunity_result_col_ladder_without_floor_has_no_si_no_segment():
     p = {**BASE_PROPERTY, "exitFeeVenta": 0,
          "saleFeeTiers": [{"threshold": 6_500_000, "rate": 0.07}]}
     html = _opportunity_result_col(p, "venta", _ALL)
-    assert '<small class="tiers">≥$6.5M→7.0%</small>' in html
+    assert '<small class="tiers"><span class="tier">≥$6.5M→7.0% ($455K)</span></small>' in html
     assert "si no" not in html
 
 
@@ -282,7 +349,7 @@ def test_opportunity_result_col_names_the_reason_when_the_total_is_missing():
 def test_opportunity_result_col_hides_the_four_fee_rows_when_the_section_is_off():
     p = {**BASE_PROPERTY, "totalInvestmentWithFeesVenta": 3_970_000, "exitFeeVenta": 195_000}
     html = _opportunity_result_col(p, "venta", ProspectusSections(opportunity_fees=False))
-    assert "Comisión terreno" not in html
+    assert "Comisión adquisición" not in html
     assert "Comisión obra" not in html
     assert "Comisión venta" not in html
     assert "Inversión con comisiones" not in html
@@ -345,6 +412,30 @@ def test_opportunity_card_no_longer_shows_renta_anual():
     assert "$360,000" not in html
 
 
+def test_opportunity_card_shows_the_maintenance_offer_note_under_renta():
+    """La oferta de mantenimiento (10% de la renta, -2 meses de comisión de
+    salida con contrato de 2 años) va bajo Escenario renta, con el 10% ya
+    convertido a pesos cuando hay una renta proyectada real que multiplicar."""
+    p = {**BASE_PROPERTY, "rentMonthlyProjected": 30_000}
+    html = _opportunity(p)
+    assert ('<p class="opp-note">Servicio de mantenimiento opcional: '
+            '10% de la renta mensual ($3,000/mes). Firmando un contrato de 2 años, '
+            'la comisión de salida de renta se reduce 2 meses.</p>') in html
+    # Vive DESPUÉS de la columna de renta, no de venta — la oferta es
+    # específica al escenario de renta.
+    assert html.index("Escenario renta") < html.index("Servicio de mantenimiento")
+
+
+def test_opportunity_card_maintenance_offer_note_has_no_peso_figure_without_a_projected_rent():
+    """Sin `rentMonthlyProjected`, la nota no inventa una cifra en pesos —
+    solo el 10% queda, sin paréntesis."""
+    p = {**BASE_PROPERTY, "rentMonthlyProjected": None}
+    html = _opportunity(p)
+    assert ('<p class="opp-note">Servicio de mantenimiento opcional: '
+            '10% de la renta mensual. Firmando un contrato de 2 años, '
+            'la comisión de salida de renta se reduce 2 meses.</p>') in html
+
+
 def test_opportunity_card_wires_the_two_opp_cols_rows_in_order():
     """Pedido explícito: primero Propiedad/Contexto, luego Escenario
     venta/Escenario renta — la identidad y el encuadre antes que el
@@ -354,7 +445,7 @@ def test_opportunity_card_wires_the_two_opp_cols_rows_in_order():
          "exitFeeRenta": None, "feesMissingInputsRenta": ["rentMonthly"],
          "totalInvestmentWithFeesVenta": 3_970_000, "totalInvestmentWithFeesRenta": None}
     html = _opportunity(p)
-    assert "Comisión terreno" in html
+    assert "Comisión adquisición" in html
     assert "Comisión obra" in html
     assert "Comisión venta" in html
     assert "Comisión renta" in html
@@ -363,7 +454,41 @@ def test_opportunity_card_wires_the_two_opp_cols_rows_in_order():
     idx_first = html.index('class="opp-cols"')
     idx_second = html.index('class="opp-cols"', idx_first + 1)
     assert idx_first < html.index("Plazo proyectado") < idx_second
-    assert idx_second < html.index("Comisión terreno")
+    assert idx_second < html.index("Comisión adquisición")
+
+
+def test_opportunity_card_puts_the_gallery_before_the_scenarios_on_its_own_page():
+    """Pedido explícito: con galería, la primera página es banda+hero+galería
+    grande (`.opp-gallery`), y Propiedad/Contexto + Escenario venta/renta
+    arrancan en su propia hoja después (`.opp-scenarios-break`) — ya no
+    empujados hasta después de las dos filas de escenario, donde terminaban
+    a la mitad de una hoja cualquiera."""
+    p = {**BASE_PROPERTY,
+         "images": [{"id": 6, "dataUri": "data:FOTO-HERO"},
+                    {"id": 7, "dataUri": "data:FOTO-GALERIA"}]}
+    html = _opportunity(p)
+    assert '<div class="opp-gallery">' in html
+    assert 'class="opp-scenarios-break"' in html
+    assert (html.index('class="opp-gallery"') < html.index('class="opp-scenarios-break"')
+            < html.index('class="opp-cols"'))
+
+
+def test_opportunity_card_does_not_force_a_scenarios_page_without_a_gallery():
+    """Sin fotos de galería (una sola foto, o `opportunity_gallery` apagado)
+    no hay nada que llene una primera hoja aparte — forzar el salto ahí
+    sería una hoja casi en blanco sin razón, así que Propiedad/Contexto y
+    Escenario venta/renta se quedan arrancando justo debajo del hero, como
+    antes de este cambio."""
+    p = {**BASE_PROPERTY, "images": [{"id": 6, "dataUri": "data:FOTO-HERO"}]}
+    html = _opportunity(p)
+    assert '<div class="opp-gallery">' not in html
+    assert 'opp-scenarios-break' not in html
+
+
+def test_opp_scenarios_break_css_forces_a_page_break():
+    assert ".opp-scenarios-break" in _BODY_CSS
+    rule = re.search(r"\.opp-scenarios-break \{[^}]*\}", _BODY_CSS).group()
+    assert "break-before: page" in rule
 
 
 # ---------------------------------------------------------------------------
@@ -523,16 +648,21 @@ def test_the_budget_forces_its_own_page_after_plano_or_renders():
     assert "break-before: page" in rule
 
 
-def test_the_budget_does_not_force_a_page_without_plano_or_renders_before_it():
-    """Sin plano ni renders no hay nada de qué separar el presupuesto — forzar
-    el salto ahí sería una hoja en blanco sin razón."""
+def test_the_budget_forces_its_own_page_even_without_plano_or_renders_before_it():
+    """El presupuesto es la tercera hoja fija del documento de oportunidad
+    (galería, Escenario venta/renta, presupuesto) — pedido explícito, ya no
+    depende de que haya plano/renders antes que separar. Antes NO forzaba
+    el salto en este caso (sería una hoja en blanco sin nada que separar),
+    pero eso asumía que el presupuesto seguía inmediatamente a Escenario
+    venta/renta en la misma hoja; ahora esa hoja es fija sin importar qué
+    más traiga la propiedad."""
     p = {**BASE_PROPERTY, "budget": {
         "lines": [{"chapterName": "Otros", "budgetedAmount": 156_000}],
         "chapters": ["Otros"],
     }}
     html = _opportunity_detail(p)
     assert "Presupuesto de obra" in html
-    assert "detail-section-budget" not in html
+    assert 'class="detail-section detail-section-budget"' in html
 
 
 def test_opportunity_detail_flows_right_after_the_gallery_not_a_new_page():
@@ -737,7 +867,7 @@ def test_sin_plano_sin_render_y_sin_presupuesto_no_hay_detalle():
 # ---------------------------------------------------------------------------
 
 # Cada bloque, por la única cadena que solo él imprime.
-_FEES_ROW = "Comisión terreno"
+_FEES_ROW = "Comisión adquisición"
 _PROJECTION_ROW = "Plazo proyectado"
 _GALLERY = '<div class="strip-label">Galería</div>'
 _PLANS = "Plano y propuesta"
@@ -834,22 +964,22 @@ def test_turning_off_the_budget_leaves_the_plans_and_the_photo_renders():
     assert _PLANS in html and _PHOTO_RENDERS in html
 
 
-def test_the_budget_does_not_force_its_own_page_when_plans_and_renders_are_turned_off():
+def test_the_budget_still_forces_its_own_page_when_plans_and_renders_are_turned_off():
     """Mismo criterio que cuando el dato no existe (ver
-    test_the_budget_does_not_force_a_page_without_plano_or_renders_before_it),
-    ahora por elección: si el salto siguiera atado a que la propiedad TIENE
-    plano, un deck pedido sin planos ni renders abriría cada presupuesto con
-    una hoja en blanco — no hay nada antes de qué separarlo."""
+    test_the_budget_forces_its_own_page_even_without_plano_or_renders_before_it):
+    el salto del presupuesto ya no depende de que la propiedad TENGA (o
+    muestre) plano/renders — es la tercera hoja fija tenga o no plano."""
     html = _opportunity_detail(_opportunity_with_everything(),
                                ProspectusSections(opportunity_plans=False,
                                                   opportunity_renders=False))
     assert _BUDGET in html
-    assert "detail-section-budget" not in html
+    assert 'class="detail-section detail-section-budget"' in html
 
 
 def test_the_budget_still_forces_its_own_page_when_only_the_renders_are_turned_off():
-    """El plano solo ya es algo de qué separarlo: el salto no depende de que
-    estén los dos bloques, sino de que quede alguno."""
+    """El presupuesto fuerza su salto sin importar qué combinación de
+    plano/renders quede — es incondicional, no depende de que quede
+    alguno."""
     html = _opportunity_detail(_opportunity_with_everything(),
                                ProspectusSections(opportunity_renders=False))
     assert 'class="detail-section detail-section-budget"' in html
@@ -871,6 +1001,54 @@ def test_a_stripped_opportunity_still_says_which_property_it_is_and_what_it_proj
     # Sin ninguno de los tres bloques, el contenedor del detalle tampoco se
     # imprime vacío — mismo comportamiento que una propiedad sin esos datos.
     assert 'class="opp-detail"' not in html
+
+
+# ─── Escenario venta / Escenario renta, cada uno apagable por su cuenta ──────
+
+def test_turning_off_the_venta_scenario_leaves_renta_alone_in_a_single_column():
+    html = _opportunity(_opportunity_with_everything(),
+                        ProspectusSections(opportunity_scenario_venta=False))
+    assert '<div class="col-label">Escenario venta</div>' not in html
+    assert '<div class="col-label">Escenario renta</div>' in html
+    assert 'class="opp-cols single"' in html
+    # Sigue habiendo solo dos `opp-cols`: Propiedad/Contexto de siempre, más
+    # la única celda de escenario que sobrevivió.
+    assert html.count('class="opp-cols') == 2
+
+
+def test_turning_off_the_renta_scenario_leaves_venta_alone_in_a_single_column():
+    html = _opportunity(_opportunity_with_everything(),
+                        ProspectusSections(opportunity_scenario_renta=False))
+    assert '<div class="col-label">Escenario renta</div>' not in html
+    assert '<div class="col-label">Escenario venta</div>' in html
+    assert 'class="opp-cols single"' in html
+    # La nota de mantenimiento es una oferta sobre RENTAR: apagado el
+    # escenario, no tiene nada que ofrecer.
+    assert "Servicio de mantenimiento opcional" not in html
+    assert html.count('class="opp-cols') == 2
+
+
+def test_turning_off_both_scenarios_drops_the_entire_second_opp_cols_row():
+    html = _opportunity(_opportunity_with_everything(),
+                        ProspectusSections(opportunity_scenario_venta=False,
+                                           opportunity_scenario_renta=False))
+    assert '<div class="col-label">Escenario venta</div>' not in html
+    assert '<div class="col-label">Escenario renta</div>' not in html
+    assert "Servicio de mantenimiento opcional" not in html
+    # No queda un `opp-cols` (ni `single`) vacío en su lugar — la fila entera
+    # se omite y solo sobrevive el de Propiedad/Contexto.
+    assert 'class="opp-cols single"' not in html
+    assert html.count('class="opp-cols') == 1
+
+
+def test_with_both_scenarios_on_the_row_stays_plain_opp_cols_without_single():
+    """El caso default (los dos escenarios prendidos) no debe llevar el
+    modificador `single` — mismo grid de dos columnas de siempre."""
+    html = _opportunity(_opportunity_with_everything(), _ALL)
+    assert '<div class="col-label">Escenario venta</div>' in html
+    assert '<div class="col-label">Escenario renta</div>' in html
+    assert 'class="opp-cols single"' not in html
+    assert html.count('class="opp-cols') == 2
 
 
 # ─── Múltiples planes: una sección por plan seleccionado ─────────────────────

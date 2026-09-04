@@ -8,7 +8,15 @@ import tempfile
 from decimal import Decimal
 from markupsafe import escape as _esc
 
-from api.finance.underwriting import ASSUMPTION_DEFAULTS
+from api.finance.underwriting import ASSUMPTION_DEFAULTS, cap_rate
+
+# Gastos operativos recurrentes de renta — política fija del fondo, no un
+# insumo capturado por propiedad (mismo estatus que el 10%/2 meses de
+# `_maintenance_offer_note`, un número distinto por coincidencia): se
+# descuentan de la renta bruta para llegar a un ingreso y un yield que ya
+# reflejan operar la unidad, no solo cobrarla.
+_RENT_ADMIN_PCT = 0.10
+_RENT_COSTOS_PCT = 0.05
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +143,37 @@ table.kv td.n { text-align: right; font-weight: 600; color: var(--ink); }
    comisión: una anotación secundaria dentro de la misma celda, en su propio
    bloque en vez de compartir línea con el valor que sí manda. */
 table.kv td.n small.sub { display: block; font-weight: 400; font-size: 7.5pt; color: var(--sec); margin-top: 1px; }
+/* La escalera de comisión (_fee_tier_lines): más chica que el monto de
+   arriba pero en negritas y tinta oscura, igual que el resto de los valores
+   de la columna (`table.kv td.n`) — pedido explícito, a diferencia de
+   `.sub` (la sub-línea de "Ganancia"), que sí se queda en gris/regular por
+   ser un dato secundario. El monto va seguido de un `<br>` (en el f-string
+   que arma esta celda) y CADA tramo trae el suyo propio — nunca comparten
+   línea. Medido en vivo contra la columna real (`Comisión venta/renta`,
+   ~157-165px): los dos tramos juntos en una sola línea piden 220-244px, más
+   de lo que hay incluso encogiendo la letra a donde deja de ser legible —
+   no hay ancho real para "todo junto". Una línea por tramo sí cabe holgada
+   a 7.5pt, y de paso es lo que por fin hace la alineación a la derecha
+   consistente: una línea corta dejaba aire a la izquierda; una línea larga
+   con dos tramos pegados podía llegar a tocar el margen izquierdo por pura
+   falta de espacio y se leía "pegada" junto a una corta que sí tenía aire.
+   `.tier` con `white-space: nowrap` es un respaldo, no la defensa
+   principal: con cada tramo ya en su propia línea no debería necesitar
+   partirse, pero si un umbral con muchos dígitos algún día no cupiera de
+   sobra, sigue sin cortarse a la mitad. */
+table.kv td.n small.tiers { font-weight: 600; font-size: 7.5pt; color: var(--ink); }
+table.kv td.n small.tiers .tier { white-space: nowrap; }
 /* Sin esto un encabezado como "PRESUPUESTO DE OBRA" puede quedar solo al pie
    de una página con toda su tabla en la siguiente. */
 .col-label { font-family: 'Inter', sans-serif; font-size: 6.5pt; font-weight: 600;
              letter-spacing: 0.16em; text-transform: uppercase; color: var(--green-dark);
              margin-bottom: 9px; break-after: avoid; page-break-after: avoid; }
+/* Nota de oferta bajo Escenario renta (_maintenance_offer_note): texto
+   corrido, no una fila de table.kv — no es un dato del escenario, es una
+   oferta aparte, así que no compite por alineación con la columna de
+   valores a su izquierda. */
+.opp-note { font-family: 'Inter', sans-serif; font-size: 7.5pt; color: var(--sec);
+            line-height: 1.5; margin-top: 6px; }
 
 /* ── Presupuesto, renglón por renglón ────────────────────────────────────── */
 /* Dos columnas por CSS puro (Python solo decide SI aplica — ver
@@ -239,7 +273,7 @@ table.kv td.n small.sub { display: block; font-weight: 400; font-size: 7.5pt; co
    `.detail-section-budget` (más abajo) le fuerza su propio salto, sin volver
    a envolverlo en una page-block completa — el mismo bug que este párrafo
    describe, en miniatura, es justo lo que ese wrapper habría reintroducido. */
-.opp .hero { width: 100%; height: 78mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
+.opp .hero { width: 100%; height: 88mm; object-fit: cover; object-position: center; display: block; background: var(--warm); }
 /* box-decoration-break:clone — sin esto, el padding de .opp-body (lo único
    que separa su contenido del borde de la hoja, porque @page no tiene
    margen) solo se aplica al PRIMER fragmento cuando el contenido pide una
@@ -253,16 +287,34 @@ table.kv td.n small.sub { display: block; font-weight: 400; font-size: 7.5pt; co
             -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .opp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-bottom: 6mm;
             break-inside: avoid; page-break-inside: avoid; }
-.opp .strip { margin-top: 6mm; }
-/* Techo, no piso: con dos o más fotos aspect-ratio ya las deja bajo este
-   alto sin ayuda (170mm entre 2 ya da ~63mm) — este límite solo cubre filas
-   más angostas. Con UNA sola foto no se usa: ver :only-child abajo, que le
-   pone techo al ANCHO en vez de al alto. Ponerle techo al alto a una foto
-   que ya ocupa el 100% del ancho es exactamente el recorte panorámico
-   exagerado que aspect-ratio existe para evitar (ver comentario arriba) —
-   con max-height a secas eso volvía a pasar en el caso de una sola foto. */
-.opp .strip img { max-height: 60mm; }
-.opp .strip img:only-child { flex: none; width: 62%; max-height: none; }
+/* Con un solo escenario prendido (`opportunity_scenario_venta`/`_renta` en
+   ProspectusSections) la fila de Escenario venta/renta cae a una sola celda:
+   sin este modificador se quedaría angosta, a la mitad del ancho, dejando la
+   otra mitad de la hoja en blanco por el grid de dos columnas de arriba. */
+.opp-cols.single { grid-template-columns: 1fr; }
+/* Propiedad/Contexto y Escenario venta/renta arrancan en su propia hoja
+   cuando hay galería antes (ver _opportunity()) — mismo mecanismo que ya
+   usa `.detail-section-budget` para el presupuesto: una clase que fuerza
+   el salto, nunca envolver en una `page-block` completa (ese bug ya se
+   documentó arriba, en el comentario grande de OPPORTUNITY). */
+.opp-scenarios-break { break-before: page; page-break-before: always; }
+/* Galería grande, dos filas, arriba de Escenario venta/renta (pedido
+   explícito) — pensada para llenar sola el resto de la primera página,
+   debajo de la banda y el hero. Alto de imagen (70mm) medido en vivo, no a
+   ojo: banda ~44mm + hero 88mm (subido de 78mm — pedido explícito, "más
+   alta"; la galería bajó de 75mm a 70mm por fila para compensar, "un
+   poquito más chicas") + padding-top de opp-body 8mm + label de galería
+   ~5mm + dos filas de foto + el gap entre ellas + padding-bottom de
+   opp-body 7mm debe sumar ~297mm (una hoja A4); 70mm por fila deja margen
+   de sobra sobre el mínimo que pide esa cuenta (~67mm) para absorber
+   nombres de propiedad que hagan crecer la banda a dos líneas.
+   flex-wrap en vez de una fila sola (el `.strip` de siempre): con
+   flex-basis fijo a 50% menos medio gap, cualquier cantidad de fotos cae
+   en pares, dos por fila, en vez de una sola fila angosta que reparte 4+
+   fotos entre el mismo ancho. */
+.opp-gallery .strip { flex-wrap: wrap; }
+.opp-gallery .strip img { flex: 0 0 calc(50% - 2px); aspect-ratio: auto; height: 70mm; max-height: none; }
+.opp-gallery .strip img:only-child { flex: none; width: 62%; aspect-ratio: 4 / 3; height: auto; max-height: none; }
 
 .opp-detail { margin-top: 8mm; }
 /* Los renders del detalle usan `contain`, no `cover`: aquí caben planos-render
@@ -551,13 +603,46 @@ def _fee_tier_lines(tiers: list[dict], default_rate: Decimal, kind: str) -> str:
     lugar. Derivar una tasa "efectiva" de `exitFeeVenta ÷ salePrice` parecería
     más preciso pero mentiría: esta celda describe la CONFIGURACIÓN
     guardada, no el resultado ya calculado (que vive en su propia celda, al
-    lado)."""
+    lado).
+
+    Cada tramo lleva su propio equivalente en pesos entre paréntesis —
+    umbral × tasa — sin excepción, ni siquiera el que de hecho ganó: se
+    probó antes que ese tramo se quedara sin paréntesis (ya se veía en
+    pesos, exacto, en una cifra líder aparte, arriba de la escalera) y el
+    resultado se leía inconsistente — un tramo con formato distinto a los
+    demás, sin ninguna pista visual de por qué. Todos en el MISMO formato,
+    "≥umbral→tasa (pesos)", es más fácil de leer que intentar explicar cuál
+    es "el especial". Esa cifra líder aparte, a su vez, ya no se imprime
+    cuando hay escalera (`_opportunity_result_col()`): sería el mismo
+    número — el que de hecho se cobró — repetido una tercera vez, ahí
+    arriba, ya cubierto por el paréntesis del tramo que ganó. Solo sigue
+    imprimiéndose cuando NO hay escalera (`tiers` vacío): sin tramos, esta
+    función no devuelve ningún peso, así que esa cifra líder es la única
+    pista en pesos que le queda a la celda.
+
+    Cada tramo va en su PROPIA línea (`<br>` entre ellos, no un separador " · "
+    en un solo párrafo que envuelve donde el navegador alcance): medido en
+    vivo contra la columna real de `Comisión venta/renta` (~157-165px), un
+    tramo con paréntesis mide 90-125px — cabe cómodo en su propia línea a
+    7.5pt — pero los DOS tramos juntos en una sola línea miden 220-244px,
+    ni con el texto encogido a 6pt (que ya se probó y seguía sin caber, y
+    más chico deja de ser legible). No hay ancho real para "todo en una
+    línea", así que cada tramo se queda en la suya: eso además es lo que
+    hace que la alineación a la derecha por fin sea consistente — una línea
+    corta con un solo tramo siempre deja aire a la izquierda, a diferencia
+    de una línea larga con dos tramos pegados que puede llegar a tocar el
+    margen izquierdo por pura falta de espacio, y entonces parece "pegada a
+    la izquierda" junto a la línea corta de abajo que sí tiene aire."""
     fmt_rate = _fmt_pct if kind == "venta" else _fmt_rentas
     if not tiers:
         return f"sin tramos · {fmt_rate(default_rate)} por omisión"
     ordered = sorted(tiers, key=lambda t: -t["threshold"])
-    parts = [f"≥{_fmt_mxn_compact(t['threshold'])}→{fmt_rate(t['rate'])}" for t in ordered]
-    return " · ".join(parts)
+    parts = [
+        f'<span class="tier">≥{_fmt_mxn_compact(t["threshold"])}→{fmt_rate(t["rate"])} '
+        f'({_fmt_mxn_compact(t["threshold"] * t["rate"])})</span>'
+        for t in ordered
+    ]
+    return "<br>".join(parts)
 
 
 def _opportunity_gain_venta(p: dict) -> str:
@@ -633,11 +718,15 @@ def _opportunity_result_col(p: dict, kind: str, sections: ProspectusSections) ->
         else:
             exit_fee, tiers, default_rate = p.get("exitFeeRenta"), p.get("rentFeeTiers", []), ASSUMPTION_DEFAULTS["exit_rent_commission_months"]
             missing, total = p.get("feesMissingInputsRenta"), p.get("totalInvestmentWithFeesRenta")
-        exit_html = (f'{_fmt_mxn(exit_fee)} <small class="tiers">{_fee_tier_lines(tiers, default_rate, kind)}</small>'
-                     if exit_fee is not None else _fee_scenario_missing(missing))
+        if exit_fee is not None:
+            tier_lines = _fee_tier_lines(tiers, default_rate, kind)
+            exit_html = (f'<small class="tiers">{tier_lines}</small>' if tiers
+                         else f'{_fmt_mxn(exit_fee)}<br><small class="tiers">{tier_lines}</small>')
+        else:
+            exit_html = _fee_scenario_missing(missing)
         total_html = _fmt_mxn(total) if total is not None else _fee_scenario_missing(missing)
         rows += [
-            ("Comisión terreno", f'{_fmt_mxn(p["landFee"])} <small>{_fmt_pct(p.get("landCommissionPct"))}</small>'),
+            ("Comisión adquisición", f'{_fmt_mxn(p["landFee"])} <small>{_fmt_pct(p.get("landCommissionPct"))}</small>'),
             ("Comisión obra", f'{_fmt_mxn(p["constructionFee"])} <small>{_fmt_pct(p.get("constructionCommissionPct"))}</small>'),
             (f"Comisión {kind}", exit_html),
             ("Inversión con comisiones", total_html),
@@ -649,10 +738,56 @@ def _opportunity_result_col(p: dict, kind: str, sections: ProspectusSections) ->
     else:
         rent_m = p.get("rentMonthlyProjected")
         rows.append(("Renta/mes", _fmt_mxn(rent_m) if _num(rent_m) else "—"))
+        # Gastos operativos en una sola fila (monto total + el desglose como
+        # anotación en la misma línea, mismo patrón compacto que ya usan
+        # "Comisión adquisición"/"Comisión obra" arriba) — no una fila por
+        # gasto, que es exactamente el diseño de dos filas por tramo que ya
+        # se descartó antes en esta misma columna por ocupar espacio de más.
+        net_income = None
+        if _num(rent_m):
+            admin = _num(rent_m) * _RENT_ADMIN_PCT
+            costos = _num(rent_m) * _RENT_COSTOS_PCT
+            net_income = _num(rent_m) - admin - costos
+            # `<br>` + `.sub` (no un solo renglón con espacios): con todo en
+            # una línea, el auto-layout de la tabla mide el ancho SIN cortar
+            # del texto completo para dimensionar la columna, y ese texto es
+            # más ancho que cualquier otra celda de la columna — termina
+            # angostando la columna de etiquetas y partiendo "Costos de
+            # adquisición"/"Inversión con comisiones" a la mitad más abajo,
+            # en la MISMA tabla. Con `<br>`, el ancho que cuenta es el de la
+            # línea más angosta de las dos (mismo mecanismo que ya evita esto
+            # en `.tiers` y en la sub-línea de "Ganancia").
+            rows.append(("Gastos operativos",
+                         f'{_fmt_mxn(admin + costos)}<br><small class="sub">'
+                         f'{_fmt_pct(_RENT_ADMIN_PCT, 0)} admin + {_fmt_pct(_RENT_COSTOS_PCT, 0)} costos</small>'))
+            rows.append(("Ingresos mensuales", _fmt_mxn(net_income)))
         rows.append(("Yield s/comisión", _fmt_pct_or_dash(p.get("grossYieldRenta"))))
         rows.append(("Yield c/comisión", _fmt_pct_or_dash(p.get("netYieldRenta"))))
+        # Mismo denominador que `netYieldRenta` (inversión CON comisiones de
+        # salida de renta) — la única diferencia es el numerador: ingreso
+        # mensual ya neto de gastos operativos, no la renta bruta.
+        yield_full = cap_rate(net_income, p.get("totalInvestmentWithFeesRenta")) if net_income else None
+        rows.append(("Yield c/com. y gastos", _fmt_pct_or_dash(yield_full)))
 
     return _kv_rows(rows)
+
+
+def _maintenance_offer_note(p: dict) -> str:
+    """La oferta de mantenimiento, bajo Escenario renta: un servicio opcional
+    del fondo, 10% de la renta mensual, con 2 meses menos de comisión de
+    salida · renta si el inversionista firma un contrato de 2 años. Es una
+    oferta fija del fondo, no un dato calculado por `compute_fees()` — no
+    hay `maintenanceFeePct` ni insumo equivalente en `p`, así que el 10% y
+    los 2 meses van fijos en el texto en vez de leerse de la propiedad.
+
+    El único número que SÍ sale de `p` es la cifra en pesos entre paréntesis
+    — 10% de `rentMonthlyProjected` — y solo aparece cuando hay una renta
+    proyectada real que multiplicar; sin ella la nota se queda en el
+    porcentaje, sin inventar un peso que no está soportado por ningún dato."""
+    rent_m = p.get("rentMonthlyProjected")
+    cost = f" ({_fmt_mxn(_num(rent_m) * 0.10)}/mes)" if _num(rent_m) else ""
+    return (f'<p class="opp-note">Servicio de mantenimiento opcional: 10% de la renta mensual{cost}. '
+            f'Firmando un contrato de 2 años, la comisión de salida de renta se reduce 2 meses.</p>')
 
 
 def _strip(images, label: str, limit: int) -> str:
@@ -819,14 +954,17 @@ class ProspectusSections:
     documents.py) y se traduce una sola vez, ahí.
 
     Lo que NO es apagable, y por qué: de una página de oportunidad siempre
-    salen la banda (nombre y dirección), el hero, las dos filas de columnas
-    (Propiedad/Contexto, luego Escenario venta/Escenario renta) y el
-    resultado de cada escenario (precio/renta, ganancia/yield). Sin ellas la
-    página deja de identificar a la propiedad o de decir a qué se estaría
-    entrando — no es un prospecto más corto, es una hoja que no dice nada.
-    Apagable es lo que ABUNDA (fotos, planos, presupuesto) o lo que es un
-    desglose de algo que ya se dijo (las cuatro filas de comisión dentro de
-    cada columna de escenario)."""
+    salen la banda (nombre y dirección), el hero y la primera fila de
+    columnas (Propiedad/Contexto). Sin ellas la página deja de identificar a
+    la propiedad o de decir dónde y qué es — no es un prospecto más corto,
+    es una hoja que no dice nada. Apagable es lo que ABUNDA (fotos, planos,
+    presupuesto), lo que es un desglose de algo que ya se dijo (las cuatro
+    filas de comisión dentro de cada columna de escenario), y ahora también
+    la segunda fila de columnas: `opportunity_scenario_venta` y
+    `opportunity_scenario_renta` deciden, cada una por su cuenta, si
+    Escenario venta y Escenario renta aparecen. Apagar las dos no deja un
+    hueco en blanco — esa fila entera se omite, y nada más en la tarjeta
+    depende de que exista."""
     cover: bool = True
     portfolio_summary: bool = True
     closing: bool = True
@@ -835,6 +973,8 @@ class ProspectusSections:
     opportunity_plans: bool = True
     opportunity_renders: bool = True
     opportunity_budget: bool = True
+    opportunity_scenario_venta: bool = True
+    opportunity_scenario_renta: bool = True
 
 
 # El documento completo. Vive como constante —y no como `ProspectusSections()`
@@ -1150,12 +1290,31 @@ def _summary_card(sold: list[dict], rented: list[dict]) -> str:
 
 
 def _opportunity(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
-    """La página de oportunidad — espejo de RESULTADO en PropertyDetailPage.tsx:
-    dos filas de dos columnas autosuficientes. La primera fila (Propiedad |
-    Contexto) es identidad y encuadre; la segunda (Escenario venta | Escenario
-    renta) es el resultado completo — desglose de inversión, comisiones del
-    fondo, inversión con comisiones, y bruto/neto — mismo texto, mismo orden
-    que la ficha, solo en `_kv_rows()` en vez de `StatRow`."""
+    """La página de oportunidad — espejo de RESULTADO en PropertyDetailPage.tsx,
+    en tres hojas forzadas cuando hay galería: banda+hero+galería primero
+    (`.opp-gallery`, dos filas grandes), Propiedad/Contexto y Escenario
+    venta/renta después (`.opp-scenarios-break` fuerza el salto), y planos/
+    renders/presupuesto al final (`.detail-section-budget` ya fuerza el
+    suyo). Antes la galería vivía DESPUÉS de Escenario venta/renta —
+    pedido explícito: con las filas nuevas de Escenario renta (gastos
+    operativos, ingresos, el tercer yield) la columna creció lo bastante
+    para desfasar dónde caía cada salto de página, y las fotos de una sola
+    fila angosta quedaban a la mitad de la hoja que les tocara. Sin
+    galería (`sections.opportunity_gallery` apagado, o la propiedad no
+    tiene fotos de sobra) no hay nada que llene una primera hoja aparte,
+    así que no se fuerza el salto: Propiedad/Contexto y Escenario
+    venta/renta arrancan justo debajo del hero, como antes.
+
+    Propiedad/Contexto es identidad y encuadre; Escenario venta/renta es el
+    resultado completo — desglose de inversión, comisiones del fondo,
+    inversión con comisiones, y bruto/neto — mismo texto, mismo orden que
+    la ficha, solo en `_kv_rows()` en vez de `StatRow`.
+
+    Escenario venta y Escenario renta se apagan cada uno por su cuenta
+    (`sections.opportunity_scenario_venta`/`_renta`): con los dos prendidos
+    la fila es el grid de dos columnas de siempre; con uno solo, esa columna
+    ocupa la fila entera (`.opp-cols.single`); con los dos apagados la fila
+    completa desaparece, sin dejar un `.opp-cols` vacío en su lugar."""
     name = _esc(p.get("name", ""))
     address = _esc(p.get("address", ""))
     city = _esc(p.get("city", ""))
@@ -1191,8 +1350,22 @@ def _opportunity(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
         ("Cap rate", _fmt_pct_or_dash(p.get("capRate"))),
     ])
 
-    venta_col = _opportunity_result_col(p, "venta", sections)
-    renta_col = _opportunity_result_col(p, "renta", sections)
+    # Cada celda se computa solo si su escenario está prendido: la nota de
+    # mantenimiento (`_maintenance_offer_note`) es una oferta sobre RENTAR, así
+    # que no tiene sentido calcularla —ni imprimirla— cuando renta está apagado.
+    # La indentación de cada línea replica a mano la del f-string de abajo para
+    # que, con los dos escenarios prendidos, el HTML salga byte por byte igual
+    # al de antes de este cambio.
+    venta_cell = (f'        <div><div class="col-label">Escenario venta</div>'
+                  f'{_opportunity_result_col(p, "venta", sections)}</div>\n'
+                  if sections.opportunity_scenario_venta else "")
+    renta_cell = (f'        <div><div class="col-label">Escenario renta</div>'
+                  f'{_opportunity_result_col(p, "renta", sections)}{_maintenance_offer_note(p)}</div>\n'
+                  if sections.opportunity_scenario_renta else "")
+    n_scenarios = sum(1 for c in (venta_cell, renta_cell) if c)
+    scenarios_html = (f'<div class="opp-cols{"" if n_scenarios == 2 else " single"}">\n'
+                       f'{venta_cell}{renta_cell}      </div>'
+                       if n_scenarios else "")
 
     images = _imgs_by_type(p.get("images", []))
     # El hero no se apaga con la galería: es la primera foto, la que dice de
@@ -1201,6 +1374,16 @@ def _opportunity(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
     hero = f'<img class="hero" src="{images[0]["dataUri"]}" alt="">' if images else ""
     strip = (_strip(images[1:], "Galería", 4)
              if sections.opportunity_gallery and len(images) > 1 else "")
+    # `.opp-gallery` la sube arriba de las dos filas de opp-cols (pedido
+    # explícito) — antes vivía después, empujada por Escenario venta/renta
+    # hasta terminar a la mitad de una hoja cualquiera, con las fotos
+    # angostas de una sola fila. Ahora es lo primero bajo el hero, en dos
+    # filas grandes (`.opp-gallery .strip`, CSS) dimensionadas para llenar
+    # el resto de la primera página: banda (~44mm) + hero (78mm) + label de
+    # la galería (~5mm) + dos filas de foto (75mm c/u) + paddings de
+    # opp-body (8mm/7mm) ≈ 297mm, medido en vivo contra un render real
+    # (Locales Salon Escobedo) — no a ojo.
+    gallery_html = f'<div class="opp-gallery">{strip}</div>' if strip else ""
     detail_html = _opportunity_detail(p, sections)
 
     return f"""<div class="page-block opp">
@@ -1211,15 +1394,14 @@ def _opportunity(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -> str:
   </div>
   {hero}
   <div class="opp-body">
-    <div class="opp-cols">
-      <div><div class="col-label">Propiedad</div>{ubicacion}</div>
-      <div><div class="col-label">Contexto</div>{contexto}</div>
+    {gallery_html}
+    <div class="{'opp-scenarios-break' if gallery_html else ''}">
+      <div class="opp-cols">
+        <div><div class="col-label">Propiedad</div>{ubicacion}</div>
+        <div><div class="col-label">Contexto</div>{contexto}</div>
+      </div>
+      {scenarios_html}
     </div>
-    <div class="opp-cols">
-      <div><div class="col-label">Escenario venta</div>{venta_col}</div>
-      <div><div class="col-label">Escenario renta</div>{renta_col}</div>
-    </div>
-    {strip}
     {detail_html}
   </div>
 </div>"""
@@ -1238,16 +1420,17 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
     puertas. Se empareja por piso y variante (`_plan_rows`), y cada hoja se
     imprime al lado de sus propios renders, no en una sección aparte.
 
-    Vive en el mismo flujo que la tarjeta principal, justo después de la
-    galería — ya no en su propia page-block. Forzar un salto de página aquí
-    era lo que dejaba una cola de dos líneas sola arriba de una hoja casi en
-    blanco: plano/renders/presupuesto brincaban a la siguiente por el
-    page-break-after:always de su propia page-block sin importar cuánta hoja
-    quedara libre. Sin ese salto forzado, Chromium solo pasa de página cuando
-    de verdad se le acaba el espacio — con una excepción deliberada: el
-    presupuesto SÍ fuerza su propio salto (`.detail-section-budget`, ver más
-    abajo), pedido explícito para que plano/renders y presupuesto queden cada
-    uno en su hoja.
+    Vive en el mismo flujo que la tarjeta principal, justo después de
+    Escenario venta/renta — ya no en su propia page-block. Forzar un salto
+    de página aquí era lo que dejaba una cola de dos líneas sola arriba de
+    una hoja casi en blanco: plano/renders/presupuesto brincaban a la
+    siguiente por el page-break-after:always de su propia page-block sin
+    importar cuánta hoja quedara libre. Sin ese salto forzado, Chromium
+    solo pasa de página cuando de verdad se le acaba el espacio — con una
+    excepción deliberada: el presupuesto SIEMPRE fuerza su propio salto
+    (`.detail-section-budget`, ver más abajo), pedido explícito para que
+    sea la tercera hoja fija del documento de oportunidad (galería,
+    Escenario venta/renta, presupuesto), plano/renders queden antes o no.
 
     Los renders son la cabeza de cada cadena (`renderHeads`, una por línea, la
     propuesta vigente de cada idea, sin pasos intermedios) — INCLUIDOS los
@@ -1336,22 +1519,19 @@ def _opportunity_detail(p: dict, sections: ProspectusSections = _ALL_SECTIONS) -
         # esperando a los que no se eligieron.
         f'<div class="detail-section"><div class="col-label">Fotos y propuesta</div>{photos_html}</div>'
         if photos_html else "",
-        # El presupuesto arranca en su PROPIA hoja cuando hay plano/renders
-        # antes — pedido explícito, revierte la decisión anterior ("un
-        # presupuesto típico es corto y cabe en lo que dejan los renders"):
-        # el presupuesto real, con los datos de producción, resultó más largo
-        # de lo que esa premisa asumía, y arrancaba a media hoja de planos
-        # para luego cortarse. `.detail-section-budget` (CSS) fuerza el salto.
-        # Sin plano ni renders no hay nada de qué separarlo, así que no lo
-        # fuerza: sería una hoja en blanco antes del presupuesto sin razón.
-        # APAGADOS cuenta igual que ausentes — la condición mira el HTML que
-        # de verdad se va a imprimir, no lo que la propiedad traía: un deck
-        # pedido sin planos y sin renders arrancaría con una hoja en blanco si
-        # el salto siguiera atado a que el dato existe.
+        # El presupuesto SIEMPRE arranca en su PROPIA hoja — pedido explícito
+        # (revierte la decisión anterior, "un presupuesto típico es corto y
+        # cabe en lo que dejan los renders"): el presupuesto real, con datos
+        # de producción, resultó más largo de lo que esa premisa asumía y
+        # arrancaba a media hoja de planos para luego cortarse.
+        # `.detail-section-budget` (CSS) fuerza el salto. Ya no depende de
+        # que haya plano/renders antes que separar: con la galería y
+        # Escenario venta/renta reordenados a sus propias hojas
+        # (`_opportunity()`), el presupuesto es la tercera hoja fija del
+        # documento de oportunidad tenga o no plano/renders — otra vez
+        # pedido explícito, no una inferencia de este archivo.
         (f'<div class="detail-section detail-section-budget"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>'
-         if (plan_sections_html or photos_html) else
-         f'<div class="detail-section"><div class="col-label">Presupuesto de obra</div>{budget_html}</div>')
-        if budget_html else "",
+         if budget_html else ""),
     ])
     return f'<div class="opp-detail">{sections}</div>'
 

@@ -195,7 +195,8 @@ def test_a_prospectus_without_a_body_is_the_document_with_every_default(
     todo_explicito = _capture(client, "/api/documents/prospectus", {
         "propertyIds": None, "cover": True, "portfolioSummary": True, "closing": True,
         "opportunityFees": True, "opportunityGallery": True, "opportunityPlans": True,
-        "opportunityRenders": True, "opportunityBudget": True})
+        "opportunityRenders": True, "opportunityBudget": True,
+        "opportunityScenarioVenta": True, "opportunityScenarioRenta": True})
     assert con_cuerpo_vacio == sin_cuerpo
     assert todo_explicito == sin_cuerpo
 
@@ -471,7 +472,7 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     assert _kv_row("Plazo de recuperación", "18.6 años") in html
     # Terreno: 1,000,000 x 5%. Obra: 2,340,000 (presupuesto, con overhead ya
     # aplicado una sola vez) x 15% — la misma comisión en las dos columnas.
-    assert html.count('<tr>' + _kv_row("Comisión terreno", '$50,000 <small>5.0%</small>') + '</tr>') == 2
+    assert html.count('<tr>' + _kv_row("Comisión adquisición", '$50,000 <small>5.0%</small>') + '</tr>') == 2
     assert html.count('<tr>' + _kv_row("Comisión obra", '$351,000 <small>15.0%</small>') + '</tr>') == 2
     # La comisión de salida no venía desglosada en ningún lado — a diferencia
     # de terreno y obra, aquí sí sale su propio $ por escenario. Venta: precio
@@ -481,8 +482,8 @@ def test_the_opportunity_card_prints_the_projection(client, test_property):
     # `_fee_tier_lines()` nombra ese default en vez de imprimir
     # `exitSaleCommissionPct`/`exitRentMonths`, campos huérfanos desde que la
     # escalera reemplazó al mecanismo plano que describían.
-    assert _kv_row("Comisión venta", '$125,000 <small class="tiers">sin tramos · 5.0% por omisión</small>') in html
-    assert _kv_row("Comisión renta", '$54,000 <small class="tiers">sin tramos · 3 rentas por omisión</small>') in html
+    assert _kv_row("Comisión venta", '$125,000<br><small class="tiers">sin tramos · 5.0% por omisión</small>') in html
+    assert _kv_row("Comisión renta", '$54,000<br><small class="tiers">sin tramos · 3 rentas por omisión</small>') in html
     # Y los totales quedan cada uno en su propia fila, sin fundirse en una
     # sola: 3,480,000 + 401,000 (terreno+obra) + comisión de salida de cada
     # escenario. Renta sube de 3,881,900 a 3,935,000 con el nuevo default (3
@@ -510,31 +511,27 @@ def test_the_opportunity_card_prints_the_sale_fee_ladder(client, test_property):
     """Con una escalera de venta configurada (Salón Escobedo: ≥$6.5M→7%,
     ≥$5.5M→6%), la sub-línea de la comisión de salida · venta describe la
     escalera guardada, no el `exitSaleCommissionPct` plano ni un default
-    inventado. `test_property` proyecta una venta de 2,500,000 — por debajo
-    de TODOS los umbrales, y ya no hay tramo piso que la rescate — así que la
-    comisión que de hecho aplica es $0, y la etiqueta no debe traer ningún
-    segmento "si no→"."""
+    inventado — y sin repetir la comisión cobrada arriba de la escalera:
+    cada tramo ya trae su propio equivalente en pesos entre paréntesis."""
     pid = test_property["id"]
     properties_db.replace_fee_tiers(pid, "venta", _ESCOBECO_VENTA)
     p = get_property(pid)
     html = build_prospectus_html([], [], [], [p])
-    assert _kv_row("Comisión venta", '$0 <small class="tiers">≥$6.5M→7.0% · ≥$5.5M→6.0%</small>') in html
+    assert _kv_row("Comisión venta", '<small class="tiers"><span class="tier">≥$6.5M→7.0% ($455K)</span><br>'
+                                      '<span class="tier">≥$5.5M→6.0% ($330K)</span></small>') in html
 
 
 def test_the_opportunity_card_prints_the_rent_fee_ladder(client, test_property):
     """Espejo del test anterior para el lado de renta: una escalera propia
-    (≥$15K→4 rentas) reemplaza la sub-línea plana. `test_property` proyecta
-    18,000 de renta mensual — por encima del único umbral — así que aquí sí
-    aplica un tramo real: la comisión deja de ser la del default (3 rentas ·
-    54,000) y pasa a ser la del tramo (4 rentas · 72,000)."""
+    (≥$15K→4 rentas) reemplaza la sub-línea plana, sin repetir la comisión
+    cobrada arriba de la escalera."""
     pid = test_property["id"]
     properties_db.replace_fee_tiers(pid, "renta", [
         {"threshold": Decimal("15000"), "rate": Decimal("4")},
     ])
     p = get_property(pid)
     html = build_prospectus_html([], [], [], [p])
-    # 18,000 x 4 rentas (tramo ≥15,000, el que de hecho aplica) = 72,000.
-    assert _kv_row("Comisión renta", '$72,000 <small class="tiers">≥$15K→4 rentas</small>') in html
+    assert _kv_row("Comisión renta", '<small class="tiers"><span class="tier">≥$15K→4 rentas ($60K)</span></small>') in html
 
 
 def test_the_opportunity_detail_shows_a_chosen_render_next_to_its_photo(client, test_property):
